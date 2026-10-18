@@ -37,6 +37,7 @@ pub(super) async fn claimed_on_kitsu(
         .kitsu
         .anime_by_external_id(site(kind)?, show.id)
         .await?
+        .entries
         .is_empty()
     {
         return Ok(true);
@@ -47,6 +48,7 @@ pub(super) async fn claimed_on_kitsu(
                 .kitsu
                 .anime_by_external_id("myanimelist/anime", id_mal)
                 .await?
+                .entries
                 .is_empty());
         }
     }
@@ -62,13 +64,15 @@ pub(super) async fn sharing_on_kitsu(
     let mut found = state
         .kitsu
         .anime_by_external_id(site(kind)?, entry.id)
-        .await?;
+        .await?
+        .entries;
     if kind == ProviderKind::AniList {
         if let Some(id_mal) = entry.id_mal {
             for anime in state
                 .kitsu
                 .anime_by_external_id("myanimelist/anime", id_mal)
                 .await?
+                .entries
             {
                 if !found.iter().any(|a| a.id == anime.id) {
                     found.push(anime);

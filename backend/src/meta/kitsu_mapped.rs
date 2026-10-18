@@ -49,13 +49,23 @@ struct PointerRef {
     id: String,
 }
 
+/// The Kitsu entries mapped to one tracker id, and whether the page
+/// read held all of them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KitsuMapped {
+    /// The entries on the page read, in Kitsu's order.
+    pub entries: Vec<KitsuAnimeRef>,
+    /// Whether they are every mapping Kitsu counts.
+    pub complete: bool,
+}
+
 /// Every anime a `/mappings?filter[externalSite]=…&filter[externalId]=…
 /// &include=item` body inlines for its mappings, in Kitsu's order, a
 /// music-subtype entry dropped as every mapping lookup drops it.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
-pub fn parse_mapped_anime_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
+pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
     #[derive(Deserialize)]
     struct Wrap {
         data: Vec<Mapping>,
@@ -76,14 +86,18 @@ pub fn parse_mapped_anime_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
         detail: format!("kitsu mapped anime parse: {e}"),
     })?;
     let mut anime = inlined_anime(parsed.included);
-    Ok(parsed
+    let entries = parsed
         .data
         .into_iter()
         .filter_map(|m| m.relationships?.item?.data)
         .filter(|r| r.kind == "anime")
         .filter_map(|r| anime.remove(&r.id))
         .filter(|a| !is_music_subtype(a.subtype.as_deref()))
-        .collect())
+        .collect();
+    Ok(KitsuMapped {
+        entries,
+        complete: true,
+    })
 }
 
 impl KitsuClient {
@@ -115,11 +129,7 @@ impl KitsuClient {
     ///
     /// # Errors
     /// Same as [`Self::search`].
-    pub async fn anime_by_external_id(
-        &self,
-        site: &str,
-        external_id: u32,
-    ) -> Result<Vec<KitsuAnimeRef>> {
+    pub async fn anime_by_external_id(&self, site: &str, external_id: u32) -> Result<KitsuMapped> {
         let body = self
             .get_json_api(
                 "mappings",

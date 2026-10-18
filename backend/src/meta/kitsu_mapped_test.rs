@@ -29,7 +29,8 @@ async fn every_kitsu_entry_mapped_to_a_tracker_id_is_returned_with_its_count_and
         .await
         .expect("ok");
     assert_eq!(
-        got.iter()
+        got.entries
+            .iter()
             .map(|a| (a.id.as_str(), a.episode_count, a.start_date.as_deref()))
             .collect::<Vec<_>>(),
         [
@@ -60,14 +61,14 @@ async fn one_mapped_entry_and_none_read_as_they_are() {
         .anime_by_external_id("anilist/anime", 153_406)
         .await
         .expect("ok");
-    assert_eq!(one.len(), 1);
-    assert_eq!(one[0].id, "46312");
-    assert_eq!(one[0].episode_count, Some(13));
+    assert_eq!(one.entries.len(), 1);
+    assert_eq!(one.entries[0].id, "46312");
+    assert_eq!(one.entries[0].episode_count, Some(13));
     let none = client
         .anime_by_external_id("anilist/anime", 1)
         .await
         .expect("ok");
-    assert!(none.is_empty());
+    assert!(none.entries.is_empty());
 }
 
 #[tokio::test]
