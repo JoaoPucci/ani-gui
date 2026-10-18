@@ -250,7 +250,17 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		expect(seen.evictions).toBe(0);
 		expect(toastStore.items.length).toBe(toastsBefore);
 		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
+		// A Reload clicked while the lookup is out would be declined in
+		// the same way: it does nothing, and the overlay stays.
+		(reloadButton() as HTMLButtonElement).click();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(seen.evictions).toBe(0);
+		expect(reloadButton()).not.toBeNull();
+		// Once the lookup lands, the Reload goes through.
 		settle();
+		await until(() => !(reloadButton() as HTMLButtonElement | null)?.disabled, 'Reload enabled');
+		(reloadButton() as HTMLButtonElement).click();
+		await until(() => seen.evictions === 1, 'the Reload recovery');
 	});
 
 	it('a failure on an episode the switch would take keeps its Reload', async () => {
