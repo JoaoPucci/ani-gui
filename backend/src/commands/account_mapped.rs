@@ -5,7 +5,7 @@
 //! is identity the write is the one [`super::account`] has always made.
 
 use crate::account::episode_map::{EarlierSegment, MappedWrite, Target};
-use crate::account::provider::{EntryUpdate, ListEntry, ProviderMediaId, TrackedMedia};
+use crate::account::provider::{CurrentEntry, EntryUpdate, ListEntry, ProviderMediaId};
 use crate::account::status::ListStatus;
 use crate::error::Result;
 
@@ -49,10 +49,15 @@ pub(crate) async fn push_progress_mapped(
             .await
             .target(episode)
         {
-            Target::Mapped(write) => write_mapped(ask, &write, &update, None).await,
+            Target::Mapped(write) => write_mapped(ask, &write, &update).await,
             Target::Identity => Ok(None),
         };
     };
+    // The resolved entry's read — whose total the map is checked against
+    // — and an identity write on it are one read-then-write, under the
+    // entry's lock.
+    let lock = entry_lock(ask, native.0);
+    let guard = lock.lock().await;
     let media = ask.provider.tracked_media(ask.tokens, native).await?;
     match episode_map_for(ask, kitsu_id, native, media.episodes)
         .await
@@ -70,36 +75,42 @@ pub(crate) async fn push_progress_mapped(
             )
             .await
         }
-        Target::Mapped(write) => write_mapped(ask, &write, &update, Some((native, media))).await,
-    }
-}
-
-/// The user's row on `entry`, from the read already made when it is the
-/// resolved one.
-async fn row_on(
-    ask: &MapAsk<'_>,
-    entry: u32,
-    read: Option<(ProviderMediaId, TrackedMedia)>,
-) -> Result<TrackedMedia> {
-    match read {
-        Some((native, media)) if native.0 == entry => Ok(media),
-        _ => {
-            ask.provider
-                .tracked_media(ask.tokens, ProviderMediaId(entry))
-                .await
+        // The resolved entry is a map's first segment, so a write to it
+        // starts no later segment: it is written on the read just made.
+        Target::Mapped(write) if write.entry == native.0 && write.earlier.is_empty() => {
+            write_episode(ask, &write, &update, media.entry).await
+        }
+        Target::Mapped(write) => {
+            drop(guard);
+            write_mapped(ask, &write, &update).await
         }
     }
 }
 
+/// The lock guarding read-then-write on tracker entry `entry`.
+fn entry_lock(ask: &MapAsk<'_>, entry: u32) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    ask.state
+        .account_write_locks
+        .for_entry(ask.kind, ProviderMediaId(entry))
+}
+
+/// The user's row on tracker entry `entry`.
+async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
+    Ok(ask
+        .provider
+        .tracked_media(ask.tokens, ProviderMediaId(entry))
+        .await?
+        .entry)
+}
+
 /// Bring an earlier segment's entry to its total — completed where the
-/// tracker has it finished — unless the row is already there. The
-/// monotonic reconcile keeps it from lowering a row and keeps a rewatch.
-async fn bring_to_total(
-    ask: &MapAsk<'_>,
-    earlier: &EarlierSegment,
-    read: Option<(ProviderMediaId, TrackedMedia)>,
-) -> Result<()> {
-    let row = row_on(ask, earlier.entry, read).await?.entry;
+/// tracker has it finished — unless the row is already there, reading
+/// and writing it under its own lock. The monotonic reconcile keeps it
+/// from lowering a row and keeps a rewatch.
+async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()> {
+    let lock = entry_lock(ask, earlier.entry);
+    let _guard = lock.lock().await;
+    let row = row_on(ask, earlier.entry).await?;
     let done = row.is_some_and(|r| {
         r.progress_episodes >= earlier.total
             && matches!(r.status, ListStatus::Completed | ListStatus::Rewatching)
@@ -128,24 +139,43 @@ async fn bring_to_total(
 
 /// Write a mapped episode: the earlier segments' entries brought to
 /// their totals first when this write starts its segment (its row is
-/// absent or at 0), then the episode's own number on its own entry,
-/// completed where it is that entry's last on a finished entry. The
-/// fan-out's own finale status is not read here: the map knows which
-/// entry the finale is the end of. A score the update carries goes with
-/// the episode.
+/// absent or at 0), then the episode's own number on its own entry.
+/// Each entry is read and written under its own lock, one at a time:
+/// the episode's entry is read, released while the earlier entries are
+/// brought up, and read again before its write.
 async fn write_mapped(
     ask: &MapAsk<'_>,
     write: &MappedWrite,
     update: &EntryUpdate,
-    read: Option<(ProviderMediaId, TrackedMedia)>,
 ) -> Result<Option<ListEntry>> {
-    let row = row_on(ask, write.entry, read).await?.entry;
+    let lock = entry_lock(ask, write.entry);
+    let mut guard = lock.lock().await;
+    let mut row = row_on(ask, write.entry).await?;
     let starts_segment = row.is_none_or(|r| r.progress_episodes == 0);
-    if starts_segment {
+    if starts_segment && !write.earlier.is_empty() {
+        drop(guard);
         for earlier in &write.earlier {
-            bring_to_total(ask, earlier, read).await?;
+            bring_to_total(ask, earlier).await?;
         }
+        guard = lock.lock().await;
+        row = row_on(ask, write.entry).await?;
     }
+    let written = write_episode(ask, write, update, row).await;
+    drop(guard);
+    written
+}
+
+/// The episode's own number on its own entry, against the entry's row
+/// `row` read under the entry's lock: completed where it is that
+/// entry's last on a finished entry. The fan-out's own finale status is
+/// not read: the map knows which entry the finale is the end of. A
+/// score the update carries goes with the episode.
+async fn write_episode(
+    ask: &MapAsk<'_>,
+    write: &MappedWrite,
+    update: &EntryUpdate,
+    row: Option<CurrentEntry>,
+) -> Result<Option<ListEntry>> {
     let ours = EntryUpdate {
         status: write.complete.then_some(ListStatus::Completed),
         progress_episodes: Some(write.progress),

@@ -86,8 +86,9 @@ impl AccountWriteLocks {
     /// The lock guarding read-then-write on one tracker entry. A mapped
     /// write reaches an entry from several Kitsu ids, each with its own
     /// show lock, so the entry's read and write are held under this one.
-    pub(crate) fn for_entry(&self, kind: ProviderKind, _entry: ProviderMediaId) -> ShowLock {
-        self.for_show(kind, "unused-entry-lock")
+    pub(crate) fn for_entry(&self, kind: ProviderKind, entry: ProviderMediaId) -> ShowLock {
+        // A Kitsu id is digits only, so `entry:` keys never meet a show's.
+        self.for_show(kind, &format!("entry:{}", entry.0))
     }
 }
 
@@ -808,6 +809,8 @@ pub(crate) async fn push_progress_via(
     // progress costs one bearer-scoped GET per write — only when the
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
+    let lock = state.account_write_locks.for_entry(kind, native);
+    let _entry_guard = lock.lock().await;
     if update.progress_episodes.is_none() {
         return write_through(state, kind, provider, tokens, native, update)
             .await
