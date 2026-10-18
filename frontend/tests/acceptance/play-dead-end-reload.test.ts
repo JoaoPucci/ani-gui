@@ -81,6 +81,8 @@ interface Scenario {
 	other?: CacheAnswer;
 	/** The schedule's aired count; `null` for a finished show. */
 	aired?: number | null;
+	/** Holds the schedule's answer until it settles. */
+	airingHeld?: Promise<void>;
 }
 
 interface Seen {
@@ -100,13 +102,14 @@ function useHandlers(s: Scenario): Seen {
 				status: airing === null ? 'finished' : 'current'
 			})
 		),
-		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json(
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, async () => {
+			await s.airingHeld;
+			return HttpResponse.json(
 				airing === null
 					? null
 					: { aired: airing, next_episode: airing + 1, next_airing_at: null, upcoming: [] }
-			)
-		),
+			);
+		}),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability`, () => {
@@ -228,6 +231,26 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		// in the switch refusing the episode.
 		expect(seen.evictions).toBe(0);
 		expect(toastStore.items.length).toBe(toastsBefore);
+	});
+
+	it('a network failure while the schedule is out waits for it, with a Reload', async () => {
+		// The switch holds while the airing lookup is out, so a
+		// recovery started then is declined and leaves a blank frame.
+		// The lookup settles, so this is no dead end: the error stays up
+		// with a Reload that works once it has.
+		let settle = () => {};
+		const airingHeld = new Promise<void>((r) => (settle = r));
+		const seen = useHandlers({
+			availability: { available: true, episode_count: 12 },
+			aired: 12,
+			airingHeld
+		});
+		const toastsBefore = toastStore.items.length;
+		await failStream(seen, 1, NETWORK);
+		expect(seen.evictions).toBe(0);
+		expect(toastStore.items.length).toBe(toastsBefore);
+		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
+		settle();
 	});
 
 	it('a failure on an episode the switch would take keeps its Reload', async () => {
