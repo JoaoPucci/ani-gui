@@ -392,6 +392,82 @@ describe('QualityGovernor — a pin is never exceeded while it is shown', () => 
 	});
 });
 
+describe('QualityGovernor — a pinned play climbs back to its pin', () => {
+	it('after its segments failed, climbs back to the pinned level once healthy, and no higher', () => {
+		// The setting allows 1080p; the viewer pinned 720p.
+		const g = governor(BEST, 720);
+		g.start();
+		expect(g.fragmentsFailed(1, 1_000)?.level).toBe(0);
+		expect(g.isPinned).toBe(true);
+		// A stall under a pin steps nothing further down.
+		expect(g.stall(5_000)).toBeNull();
+		expect(g.healthy(1_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(g.healthy(1_000 + HEALTHY_WINDOWS_MS[0], FULL)).toEqual({
+			level: 1,
+			from: 0,
+			reason: 'healthy',
+			via: 'load'
+		});
+		expect(g.healthy(10_000_000, FULL)).toBeNull();
+		expect(g.isPinned).toBe(true);
+	});
+
+	it('waits longer after every fall from the pin, like Auto', () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		g.fragmentsFailed(2, 1_000);
+		g.healthy(1_000 + HEALTHY_WINDOWS_MS[0], FULL);
+		g.fragmentsFailed(2, 100_000);
+		expect(g.healthy(100_000 + HEALTHY_WINDOWS_MS[1] - 1, FULL)).toBeNull();
+		expect(g.healthy(100_000 + HEALTHY_WINDOWS_MS[1], FULL)?.level).toBe(2);
+	});
+
+	it('picking the pinned level again while below it goes back to it at once', () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		g.fragmentsFailed(2, 1_000);
+		expect(g.pick(2, 2_000)).toEqual({ level: 2, from: 1, reason: 'pick', via: 'next' });
+	});
+
+	it('a pinned level whose playlist fails while the play is below it moves the pin down to the nearest loadable level', () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		g.fragmentsFailed(2, 1_000);
+		expect(g.levelFailed(2, 2_000)).toBeNull();
+		expect(g.isPinned).toBe(true);
+		// 720p is the pin now: nothing to climb to.
+		expect(g.healthy(10_000_000, FULL)).toBeNull();
+		// With nothing loadable at or below the pin, the pin is let go.
+		const h = governor(BEST, 720);
+		h.start();
+		h.fragmentsFailed(1, 1_000);
+		h.levelFailed(1, 2_000);
+		expect(h.isPinned).toBe(true);
+		expect(h.levelFailed(0, 3_000)?.level).toBe(2);
+		expect(h.isPinned).toBe(false);
+	});
+
+	it('a pinned level the engine left over its audio re-pins at the nearest loadable level below it', () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		expect(g.follow(0, 1_000)?.level).toBe(0);
+		expect(g.isPinned).toBe(true);
+		// The pin is 720p now: a climb could reach it, never 1080p.
+		expect(g.pick(2, 2_000)).toBeNull();
+		expect(g.pick(1, 2_000)?.level).toBe(1);
+	});
+
+	it("a play below its pin whose own level's playlist fails moves up only as far as the pin", () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		g.fragmentsFailed(2, 1_000);
+		g.levelFailed(0, 1_500);
+		// 720p fails: 1080p, the pin, is the nearest loadable level, and the pin holds.
+		expect(g.levelFailed(1, 2_000)?.level).toBe(2);
+		expect(g.isPinned).toBe(true);
+	});
+});
+
 describe('QualityGovernor — whatever happens', () => {
 	type Step =
 		| { k: 'stall'; dt: number }

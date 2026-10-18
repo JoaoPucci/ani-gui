@@ -47,11 +47,14 @@ describe('quality remap', () => {
 			kind: 'best'
 		});
 		expect(below.current).toBe(0);
-		// Nothing loadable at all: the seat stands, for the engine to settle.
+		// Nothing loadable at all: the hold is released, as a failure with
+		// nothing below releases it — the engine is never put back on a
+		// level that failed.
 		const none = remapHold({ ...base, unavailable: new Set([0, 1]) }, removeTop, left, {
 			kind: 'best'
 		});
-		expect(none.current).toBe(1);
+		expect(none.engaged).toBe(false);
+		expect(none.pinLevel).toBeNull();
 	});
 
 	it('a pin re-seated below holds; one re-seated above, or released, is let go', () => {
@@ -82,6 +85,35 @@ describe('quality remap', () => {
 		});
 		expect(one.engaged).toBe(false);
 		expect(one.pinLevel).toBeNull();
+	});
+
+	it('a pin above the hold is carried with it, and let go when the hold must seat above it', () => {
+		const below = {
+			ladder: [0, 1, 2],
+			ceiling: 2,
+			current: 1,
+			engaged: true,
+			pinLevel: 2,
+			unavailable: new Set<number>()
+		};
+		// The lowest level removed: hold and pin keep their levels, re-indexed.
+		const kept = remapHold(below, [-1, 0, 1], [LEVELS[1], LEVELS[2]], { kind: 'best' });
+		expect(kept.current).toBe(0);
+		expect(kept.pinLevel).toBe(1);
+		// The pin's level removed: the pin moves to the nearest loadable level below it.
+		const pinGone = remapHold(below, [0, 1, -1], [LEVELS[0], LEVELS[1]], { kind: 'best' });
+		expect(pinGone.current).toBe(1);
+		expect(pinGone.pinLevel).toBe(1);
+		// The hold's level removed with nothing loadable below: it seats at
+		// the pin, which holds.
+		const holdGone = remapHold(
+			{ ...below, unavailable: new Set([0]) },
+			[0, -1, 1],
+			[LEVELS[0], LEVELS[2]],
+			{ kind: 'best' }
+		);
+		expect(holdGone.current).toBe(1);
+		expect(holdGone.pinLevel).toBe(1);
 	});
 
 	it('levels all replaced, as a content-steering switch does, seat the hold at the setting and let the pin go', () => {

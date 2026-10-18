@@ -787,6 +787,48 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.lastView()?.pinned).toBe(0);
 	});
 
+	it('a removal leaving only levels that failed releases the choice rather than forcing one', async () => {
+		const s = armObjects();
+		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: true, level: 0 });
+		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: true, level: 1 });
+		expect(s.engine.loads).toEqual([2]);
+		// hls.js drops to its own choice as it removes the level it was on.
+		s.engine.manual = -1;
+		s.remove(2);
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: true,
+			sourceBufferName: 'video'
+		});
+		await tickOver();
+		expect(s.engine.loads).toEqual([2]);
+		expect(s.engine.autoLevelEnabled).toBe(true);
+		expect(s.lastView()?.pinned).toBeNull();
+		expect(s.logs.join('\n')).toMatch(/released/);
+	});
+
+	it('the menu shows the pinned level while the play sits below it, and the play climbs back', () => {
+		const s = armObjects();
+		s.control.pick(2);
+		s.engine.manual = -1;
+		s.at(1_000);
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_TIMEOUT,
+			fatal: false,
+			levelRetry: true,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 2 }
+		});
+		expect(s.engine.loads.at(-1)).toBe(1);
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 1 } });
+		expect(s.lastView()).toMatchObject({ pinned: 2, playing: 1 });
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(1_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 1 } });
+		expect(s.engine.loads.at(-1)).toBe(2);
+		expect(s.logs.join('\n')).toMatch(/healthy: 720p.*→ 1080p/);
+	});
+
 	it('a pinned level removed re-seats at the nearest level below it, still pinned', async () => {
 		const s = armObjects();
 		s.control.pick(1);
