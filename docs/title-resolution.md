@@ -283,7 +283,7 @@ Several sources number a show's episodes, and they do not always agree about a r
 - **AniList** fills in thumbnails Kitsu lacks from `streamingEpisodes`, matched by the whole number in the episode's title ("Episode 8"; a "7.5" is skipped), and gives the aired count the strips grey tiles past.
 - **The provider's listing** decides what plays. Each hianime row has a slot (its position) and, when it differs, a display tag (`number2`): a recap between 7 and 8 sits in slot 8 tagged `7.5`, and every row after it carries its own number as its tag. Availability reports the highest whole tag as the cap and the fractional tags as `extra_episodes`, translated to the entry's own numbering by the continuation offset (above). A request for a whole episode N plays the row whose display number is N (plus the offset) — its tag where it has one, its slot where it has none — so after a recap it is never slot N; a request for `7.5` plays the row tagged `7.5`.
 - **History** stores the slot a play resolved to and reads it back through the numbering sidecar: its offset, and one (slot, tag) stamp per show, the latest resolve whose row's tag differed from its slot. Warms stamp too. So after a recap, a later resolve of another displaced row replaces the stamp, and an earlier watch's row then reads back by its slot — one episode high.
-- **aniskip** is asked by MAL id and the tile's whole number; **tracker progress** is the tile's whole number, fitted to the tracker's own total (below).
+- **aniskip** is asked by MAL id and the tile's whole number; **tracker progress** is the tile's whole number, read through the show's map on that tracker and fitted to the entry's own total (below).
 
 The app's own number for an episode is the tile's: Kitsu's whole numbers, plus the provider's fractional extras as tiles of their own beside the episode they follow (a `0.5` beside episode 1). A whole episode is requested, resumed and sent to the trackers by that number (fitted to the tracker's total, below), and recorded through the history's slot and stamp (above); a fractional extra is requested and resumed by its own number (`7.5`) and recorded the same way, asks aniskip for nothing, and moves no tracker progress, since aniskip and the trackers count whole episodes. Prev and next step from a recap to the whole episodes either side.
 
@@ -294,14 +294,58 @@ Nothing reconciles Kitsu's numbering with the provider's beyond the continuation
 - **Kitsu counts a recap the provider does not list**: the same one-early labels after it, and Kitsu's last episode past the provider's cap — a greyed tile where the strip reaches it, none where the strip stops at the cap — with no recap tile.
 - **MAL, or AniList's streaming list, counts a recap Kitsu does not**: from the recap on, aniskip's skip times and AniList's backfilled thumbnails are one episode early in that list (tile 8 gets the recap's), since both are asked by the tile's number.
 
-The trackers keep a count of their own, and the write-back reads it — MAL's `num_episodes`, AniList's `Media.episodes` — in the request that already reads the user's row before a write:
+The trackers keep a count of their own, and they do not always file a show as Kitsu does. The write-back reads every watched episode through the show's map on that tracker (below); a show the map does not explain is sent as it always was:
 
-- **The tracker counts more episodes than Kitsu**: AniList counts 13 episodes of Air, the first of them a prologue, where Kitsu, MyAnimeList and the provider number 12 — the same holds for Fate/stay night: Unlimited Blade Works, Saekano, Kimi ni Todoke 2nd Season, Tales of Zestiria the X and High School DxD Hero; a long show's tracker may count recaps the provider lists as 0.5s; AniList's Haruhi (2009) counts 28, the whole series in story order, against Kitsu's 14. The count alone does not say which of these the extra episodes are, so the gap is not filled: every tile sends its own number, and the last episode of a finished show sends its number without the completed status, leaving the tracker's row short of its total.
-- **The tracker's entry is shorter than Kitsu's show** (AniList splits Ranma ½'s 161 episodes, which MyAnimeList counts as one entry, into an 18-episode entry and a 143-episode sequel): nothing past the entry's end is sent, and, the totals differing, no completed status either.
-- **The totals agree**: the tile's number is sent as it is, and the last episode of a finished show completes the row.
-- **The tracker's total is unknown** (AniList's `null`, MAL's `0`, as for many airing shows): the tile's number is sent as it is, and the last episode of a finished show completes the row, as it did before the total was read.
+- **The totals agree, or the tracker's is unknown** (AniList's `null`, MAL's `0`, as for many airing shows): the tile's number is sent as it is, and the last episode of a finished show completes the row.
+- **The tracker's entry is shorter than Kitsu's show and nothing explains it**: nothing past the entry's end is sent, and, the totals differing, no completed status either.
+- **The tracker counts more episodes than Kitsu and nothing identifies them**: every tile sends its own number, and the last episode of a finished show sends its number without the completed status, leaving the tracker's row short of its total. AniList counts 13 episodes of Air, Kimi ni Todoke 2nd Season, High School DxD Hero and Saekano ♭'s 12 against Kitsu's and MyAnimeList's 12 (11 for Saekano ♭), and lists nothing that says which the 13th is; AniList's Haruhi (2009) counts 28, the whole series in story order, against Kitsu's 14, its surplus being 2006 episodes Kitsu files as another entry. The app does not fill such a gap or complete such a row: a wrong completion is worse than a row left short.
 
-Only Kitsu's own last episode of a finished show can complete a row: an episode the provider lists past Kitsu's count sends its number, clamped to a known total, and no completed status, whatever the tracker's total — its place in the tracker's numbering is as unknown as a count gap's. An airing show whose tracker total is known is clamped to it like any other. A watched episode never moves a tracker's progress backwards, and a rewatch's last episode sends no completed status, so the row stays a rewatch. These describe what the app sends: a tracker may apply rules of its own on receiving it. The detail page's list editor writes what the user sets, as it is.
+Only Kitsu's own last episode of a finished show can complete a row by itself: an episode the provider lists past Kitsu's count sends its number, clamped to a known total, and no completed status, whatever the tracker's total — its place in the tracker's numbering is as unknown as a count gap's. An airing show whose tracker total is known is clamped to it like any other. A watched episode never moves a tracker's progress backwards, on any entry the write touches, and a rewatch's last episode sends no completed status, so the row stays a rewatch. These describe what the app sends: a tracker may apply rules of its own on receiving it. The detail page's list editor writes what the user sets, as it is, to the entry Kitsu's mappings name.
+
+## Kitsu's episodes on a tracker's entries
+
+A show's map on one tracker says, for each of Kitsu's episodes, which of the tracker's entries it belongs to, under which number, and whether it is that entry's last. It is built from what the tracker and Kitsu say about the show, by four rules. Each fires only on evidence that settles it; two rules that file the episodes differently are no explanation at all; and anything short of that leaves the map **identity** — every episode sent as above. A wrong mapping is worse than none.
+
+- **A chain of the tracker's entries.** Kitsu files Ranma ½ as one 161-episode entry; AniList files it as an 18-episode entry and its sequel Nettou-hen, 143 episodes with no MyAnimeList id. When the tracker's entry is shorter than Kitsu's show and following its only series sequel (not a movie or music video), hop by hop, sums exactly to Kitsu's count, every entry's run lies inside Kitsu's run (compared by month), and no entry after the first is mapped by a Kitsu entry of its own, each entry takes its run of Kitsu's episodes: Kitsu's 1–18 are 210's 1–18, Kitsu's 19–161 are Nettou-hen's 1–143. A chain whose sum is exact but whose dates fall outside Kitsu's run — Sonic X's third season on AniList, aired two years after Kitsu's end date — is identity, pending a look at each.
+- **Kitsu entries sharing one entry.** MyAnimeList files both Attack on Titan Final Chapters specials as one 2-episode entry, and Kitsu maps both of its entries to it. When the Kitsu entries mapped to the tracker's entry, ordered by their distinct start dates, sum exactly to its total, each part's episodes are the entry's after the parts before it.
+- **Kitsu parts filed under one entry.** AniList files Tower of God's second season as 26 episodes where Kitsu has the season and its sequel Koubou-sen, which AniList does not know. When Kitsu's own chain of single sequels — parts that resolve on the tracker to nothing or to the same entry — sums exactly to the entry's total, each part's episodes are the entry's after the parts before it. A part with no entry of its own is found through its prequels: Koubou-sen's progress goes to season 2's AniList entry, from its 14th episode.
+- **Episodes the tracker counts that Kitsu does not list.** AniList counts 13 episodes of Unlimited Blade Works' first season and lists "Episode 0 - Prologue" first. When the tracker's own episode list (AniList's `streamingEpisodes`; MyAnimeList gives none the app reads) carries exactly as many extras — an episode 0, or one numbered with a fraction, each counted once however many tracks list it — as the surplus, each inside Kitsu's run, every episode is sent as its own number plus the extras before it. A prologue and several half-episode recaps a long show's tracker counts whole are the same rule: the number runs one further ahead after each. A list whose extras do not account for the whole surplus — Seikaisuru Kado's "Episode 0" and "6.5" for one surplus episode — is identity.
+
+What the write sends, with the map:
+
+| The watched Kitsu episode | Sent |
+|---|---|
+| Outside every segment (identity, or past Kitsu's count) | as above: its number, clamped; completed only where the totals agree or the tracker's is unknown |
+| Inside a segment | its number in the segment's entry, to that entry |
+| The segment entry's last episode, on an entry the tracker has finished | the entry's total, completed — even where it is not the app's finale (Ranma ½'s 18th) |
+| The segment entry's last episode, on an entry still airing | its total, no status |
+| The last of several Kitsu parts filed under one entry | the entry's total, completed; an earlier part's last episode sends progress alone |
+| The app's finale under extras | the entry's total, completed (Unlimited Blade Works' 12th sends 13) |
+| The first episode of a later segment (its entry not on the list, or at 0) | first, each earlier segment's entry brought to its total, completed where finished, unless it is already there; then its own number |
+| Any episode, on an entry being rewatched | progress only; the rewatch stays |
+| A replay, on any entry | nothing that lowers it |
+
+The map is built once per show and tracker and kept in the cache under `tracker-map:v1:<tracker>:k<Kitsu id>`: thirty days when the counts agree or a rule explained them, a day when a count was unknown or nothing explained the difference (a count may be announced, a tracker's relations filled in), and not at all when a read failed — the write goes ahead as identity. Agreeing counts cost nothing beyond the read the write already makes; a disagreement costs, once per window, one bearer-scoped read of the tracker's entry, one per sequel followed, and a Kitsu request per mapping or relationship the rule needs. The rules and their evidence are checked against every mismatch found across Kitsu's whole catalogue and against a model of this section (`tests/tracker-map-oracle/README.md`).
+
+A later part is filed only where its first part's map agrees: Kamitsubaki on AniList is 13 episodes, "Episode 0" listed, against Kitsu's 12 and a one-episode Kitsu sequel with no AniList entry — two explanations of one surplus episode, placing it differently — so the first part is identity, and so is the sequel, whose own view sees only the parts.
+
+Comparing Kitsu's 22,504 entries with the entries the app resolves each to (`tests/fixtures/tracker-map/` records every disagreement):
+
+| | AniList | MyAnimeList |
+|---|---|---|
+| A chain of the tracker's entries | 22 | 4 |
+| A chain whose dates fall outside Kitsu's run (identity) | 13 | 5 |
+| A chain a Kitsu entry of its own claims a part of (identity) | 5 | 5 |
+| Kitsu entries sharing one entry, summing exactly | — | 2 shows (5 Kitsu entries) |
+| Kitsu entries sharing one entry, not summing (identity) | 12 | 4 |
+| Kitsu parts filed under one entry | 17 shows | 15 shows |
+| Parts whose later part Kitsu maps to an id the tracker no longer serves (identity) | 2 | 2 |
+| Extras the tracker's list identifies | 8 | — |
+| Extras that do not account for the surplus, or a conflict (identity) | 3 | — |
+| A shorter entry nothing explains (identity, clamped) | 108 | 110 |
+| A longer entry nothing identifies (identity, never completed) | 152 | 187 |
+
+Most of the last row are long-running streaming series whose Kitsu count lags the tracker's. No tracker was found counting half-episode recaps Kitsu omits on a long series: where a long show has recaps, Kitsu and MyAnimeList count them alike, and the extras rule's several-recap case is covered by the model alone.
 
 ## Kitsu → MAL and AniList via the mappings endpoint
 

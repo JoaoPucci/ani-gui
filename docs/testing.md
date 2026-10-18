@@ -42,6 +42,10 @@ tests/
 │   ├── cases/             # hand-written pools with the docs' answers
 │   ├── allowlist.json     # accepted disagreements, each with its reason
 │   └── fixtures-golden.json  # every recorded picker fixture's outcome
+├── tracker-map-oracle/    # the episode map's checks (README inside)
+│   ├── oracle.py          # model of the tracker-entry rules, and the comparison
+│   ├── allowlist.json     # accepted disagreements, each with its reason
+│   └── fixtures-golden.json  # every recorded tracker case's map
 └── arch/                  # cross-cutting architectural invariants
     ├── i18n.sh
     ├── deferral_record.sh
@@ -130,6 +134,25 @@ golden and the allowlist change only in a PR that changes the picker,
 with the reason in the commit body. The model follows the docs: when
 the model and the docs disagree, fix whichever is wrong and say which;
 it is never bent to the picker.
+
+## The episode map
+
+The rules that file a Kitsu episode under a tracker's entry are checked
+the same two ways, under `tests/tracker-map-oracle/` (its README has
+the commands): every recorded case under `tests/fixtures/tracker-map/`
+must map to the shape it names and as `fixtures-golden.json` records,
+an ordinary `cargo test`; and the rules must agree with `oracle.py`, a
+model of "Kitsu's episodes on a tracker's entries" in
+`docs/title-resolution.md`, on every generated and recorded case,
+unless `allowlist.json` carries the disagreement with a reason.
+
+The rule for a reported tracker mismatch — progress on the wrong
+entry, under the wrong number, or a completion at the wrong episode:
+it becomes a recorded case in `tests/fixtures/tracker-map/anilist.json`
+or `mal.json`, the evidence as the app's readers return it with the
+shape the docs answer, in the PR that fixes it. The golden and the
+allowlist change only in a PR that changes the rules, with the reason
+in the commit body.
 
 ## Fixture management
 

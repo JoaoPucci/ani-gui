@@ -150,6 +150,7 @@ A hero image that fails to load gives way to the next in that order, without a r
 | aniskip OP/ED skip-time intervals (per Kitsu id + MAL id + episode) | SQLite `meta_cache` | 7 days |
 | A show's MAL and AniList ids from Kitsu's mappings (per Kitsu id) | SQLite `meta_cache` | 30 days when both are present; 24 hours when either is missing |
 | An id AniList translated to or from MAL's (per id, each direction) | SQLite `meta_cache` | 30 days; 24 hours for an id AniList does not index |
+| A show's episode map on one tracker — which of the tracker's entries each Kitsu episode belongs to, under which number (per tracker + Kitsu id, `tracker-map:v1:`) | SQLite `meta_cache` | 30 days when the counts agree or a rule explained their difference; 24 hours when a count was unknown or nothing explained it; nothing for a read that failed |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite `meta_cache` (`play:` rows) | 7 days, or until upstream rotates |
 | In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | 4 hours (also dedupes concurrent calls) |
