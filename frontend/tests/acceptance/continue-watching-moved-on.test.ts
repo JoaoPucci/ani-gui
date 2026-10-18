@@ -56,6 +56,8 @@ const g = globalThis as unknown as GlobalLike;
 const SHOW = 'Cowboy Bebop';
 
 let target: HTMLElement;
+let numberHeld: Promise<void> | null = null;
+let numberAsked = false;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
@@ -66,8 +68,18 @@ beforeEach(() => {
 	window.localStorage.clear();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
+	numberHeld = null;
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
+			// A row read again waits while a scenario holds it: the click
+			// reads its row before it asks for a session.
+			http.get(`${API_BASE}/api/history/:id/number`, async () => {
+				if (numberHeld) {
+					numberAsked = true;
+					await numberHeld;
+				}
+				return HttpResponse.json({ ep_no: '3' });
+			}),
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 26)])),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
 		])
@@ -148,5 +160,48 @@ describe('a Continue click whose session lands after the viewer moved on', () =>
 
 		stream.dispatch('done', SESSION);
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the player');
+	});
+});
+
+// The click reads its row again before it asks for a session. A viewer
+// who moved on during that read has abandoned the click before any
+// play began: none is resolved, no watch is recorded or mirrored to
+// their trackers, and no episode is marked started.
+describe('a Continue click the viewer moved on from before its session was asked for', () => {
+	async function clickAndHoldTheRow(): Promise<() => void> {
+		let release!: () => void;
+		numberHeld = new Promise<void>((r) => (release = r));
+		numberAsked = false;
+		await until(() => resumeButton() !== null, 'the resolved Continue card');
+		resumeButton()!.click();
+		await until(() => numberAsked, 'the click to read its row again');
+		return release;
+	}
+
+	it('asks for no session once the viewer has left home', async () => {
+		app = mount(HomePage, { target });
+		const release = await clickAndHoldTheRow();
+
+		unmount(app);
+		app = null;
+		release();
+		await new Promise((r) => setTimeout(r, 100));
+
+		expect(FakeEventSource.instances).toEqual([]);
+		expect(window.localStorage.getItem('ani-gui.watch-positions')).toBeNull();
+		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('asks for no session once a navigation started, and lets the card go', async () => {
+		app = mount(HomePage, { target });
+		const release = await clickAndHoldTheRow();
+
+		startNavigation();
+		release();
+		await new Promise((r) => setTimeout(r, 100));
+
+		expect(FakeEventSource.instances).toEqual([]);
+		expect(goto).not.toHaveBeenCalled();
+		expect(overlay()).toBeNull();
 	});
 });

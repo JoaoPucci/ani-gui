@@ -45,7 +45,14 @@ export interface StartResumeDeps {
 	/** `args` is what the failed play asked for — the show, episode
 	 *  and audio a failure surface needs to word its message. Busy
 	 *  holds until a returned promise settles. */
-	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void | Promise<void>;
+	onFailure: (
+		title: string,
+		error: unknown,
+		args: ResumePlayArgs,
+		/** Whether the click's navigation claim still holds — asked once
+		 *  the failure is worded, which can outlast the viewer staying. */
+		isCurrent?: () => boolean
+	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
 	getPlayableCount: (entryId: string) => number | null;

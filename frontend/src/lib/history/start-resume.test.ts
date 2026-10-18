@@ -631,3 +631,47 @@ describe('makeStartResume (after the viewer moved on)', () => {
 		expect(h.deps.navigateToSession).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('makeStartResume (moved on before the session was asked for)', () => {
+	it('resolves nothing and marks nothing started once the claim lapsed', async () => {
+		let holds = true;
+		const markStarted = vi.fn();
+		const h = makeHarness({
+			claimNavigation: () => () => holds,
+			markStarted,
+			getSettings: vi.fn().mockImplementation(async () => {
+				holds = false;
+				return { mode: 'sub' as const, quality: 'best' };
+			})
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.resolvePlay).not.toHaveBeenCalled();
+		expect(markStarted).not.toHaveBeenCalled();
+		expect(h.deps.markWatched).not.toHaveBeenCalled();
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+		expect(h.deps.navigateToSession).not.toHaveBeenCalled();
+		expect(h.failures).toEqual([]);
+		expect(h.busyLog).toEqual(['k1', null]);
+	});
+});
+
+describe('makeStartResume (moved on while a failure is worded)', () => {
+	// The page words a failure after a cache lookup, and the viewer can
+	// move on during it: the failure surface is told whether the click
+	// still holds once its words are ready.
+	it('hands the failure surface the click’s claim', async () => {
+		let holds = true;
+		let current: (() => boolean) | undefined;
+		const h = makeHarness({
+			claimNavigation: () => () => holds,
+			resolvePlay: vi.fn().mockRejectedValue(new Error('no session')),
+			onFailure: (_title, _e, _args, isCurrent) => {
+				current = isCurrent;
+			}
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(current?.()).toBe(true);
+		holds = false;
+		expect(current?.()).toBe(false);
+	});
+});

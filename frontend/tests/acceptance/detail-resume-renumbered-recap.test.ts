@@ -33,6 +33,8 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { savePosition } from '../../src/lib/play/watch-position';
+import { goto } from '$app/navigation';
+import { forgetNavigationListeners, startNavigation } from './navigation';
 
 const KITSU_ID = '42';
 const TITLE = 'Stitched Show';
@@ -68,6 +70,8 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
+	vi.mocked(goto).mockClear();
+	forgetNavigationListeners();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
@@ -306,5 +310,44 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		}
 		await new Promise((r) => setTimeout(r, 500));
 		expect(reads).toBeLessThan(10);
+	});
+});
+
+// Play waits, busy, for the row being read again before it goes on.
+// The page stays on screen until a navigation the viewer started
+// lands; a click that came out of that wait and played would cancel
+// it.
+describe('detail route — a navigation started while Play waits for the row', () => {
+	it('plays nothing and goes nowhere', async () => {
+		let repaired = false;
+		useShowHandlers();
+		server.use(
+			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
+			http.get(`${API_BASE}/api/history/:id/number`, () =>
+				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+			),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
+		);
+		app = mount(DetailPage, { target });
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=24.5')),
+			'the warm of the row'
+		);
+		playButton(m.detail_play_button_resume({ episode: '25' }))?.click();
+		startNavigation();
+		repaired = true;
+		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
+			warm.dispatch(
+				'done',
+				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+			);
+		}
+		await new Promise((r) => setTimeout(r, 300));
+
+		const clicked = FakeEventSource.instances.filter(
+			(i) => /episode=(13|25)\b/.test(i.url) && !i.url.includes('prefetch=1')
+		);
+		expect(clicked).toEqual([]);
+		expect(goto).not.toHaveBeenCalled();
 	});
 });
