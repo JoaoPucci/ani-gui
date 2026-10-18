@@ -117,8 +117,24 @@ jobs:
           node --test tests/complexity/*.test.mjs
 
       - if: needs.filter.outputs.relevant == 'true'
+        name: Fetch the crates and llvm-tools before the network is refused
+        working-directory: backend
+        # cargo-llvm-cov asks rustup for llvm-tools-preview on the
+        # pinned toolchain the first time it runs, and rustup honours
+        # the proxy variables the next step sets.
+        run: |
+          rustup component add llvm-tools-preview
+          cargo fetch --locked
+      - if: needs.filter.outputs.relevant == 'true'
         name: Generate Rust lcov
         working-directory: backend
+        # Offline, as rust.yml's `test` job runs; see there.
+        env:
+          http_proxy: http://proxy.invalid:9
+          https_proxy: http://proxy.invalid:9
+          all_proxy: http://proxy.invalid:9
+          no_proxy: 127.0.0.1,localhost,::1
+          CARGO_NET_OFFLINE: 'true'
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
 
       - if: needs.filter.outputs.relevant == 'true'

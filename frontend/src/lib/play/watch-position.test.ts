@@ -8,6 +8,7 @@ import {
 	clearRowPositions,
 	clearShowPositions,
 	markStarted,
+	movePosition,
 	readPosition,
 	savePosition,
 	snapshotPositions,
@@ -348,5 +349,46 @@ describe("a removal's cleanup and a pick or write since", () => {
 		clearShowPositions('A', flaky, since);
 
 		expect(readPosition('A', 3, flaky)).toBeNull();
+	});
+});
+
+describe('movePosition', () => {
+	it('keeps what was kept for one number under another', () => {
+		const s = memory();
+		savePosition('42', 24.5, 612, 1420, s, 'row-1');
+		movePosition('42', 24.5, 12.5, s);
+		expect(readPosition('42', 12.5, s)).toBe(612);
+		expect(readPosition('42', 24.5, s)).toBeNull();
+	});
+
+	it('keeps the point already under the number it moves to, and forgets the other', () => {
+		// The episode was watched under its number now since: that is
+		// the later point.
+		const s = memory();
+		savePosition('42', 24.5, 612, 1420, s);
+		savePosition('42', 12.5, 100, 1420, s);
+		movePosition('42', 24.5, 12.5, s);
+		expect(readPosition('42', 12.5, s)).toBe(100);
+		expect(readPosition('42', 24.5, s)).toBeNull();
+	});
+
+	it('moves nothing of another show, and nothing when there is nothing to move', () => {
+		const s = memory();
+		savePosition('7', 24.5, 612, 1420, s);
+		movePosition('42', 24.5, 12.5, s);
+		expect(readPosition('7', 24.5, s)).toBe(612);
+		expect(readPosition('42', 12.5, s)).toBeNull();
+	});
+});
+
+describe('movePosition (what it answers)', () => {
+	it('answers whether a point now sits under the number it moved to', () => {
+		const s = memory();
+		expect(movePosition('42', 24.5, 12.5, s)).toBe(false);
+		savePosition('42', 24.5, 612, 1420, s);
+		expect(movePosition('42', 24.5, 12.5, s)).toBe(true);
+		savePosition('42', 24.5, 300, 1420, s);
+		expect(movePosition('42', 24.5, 12.5, s)).toBe(false);
+		expect(readPosition('42', 12.5, s)).toBe(612);
 	});
 });

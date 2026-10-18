@@ -275,6 +275,14 @@ export interface CreateSessionResponse {
 	/** Sidecar subtitle tracks the resolve listed; absent or empty when
 	 *  the stream carries none outside its playlist. */
 	subtitles?: SessionSubtitle[];
+	/** The episode the session plays, as the app numbers it — the
+	 *  request, unless the request named it by a number it no longer
+	 *  carries ("24.5" for the recap that is "12.5" now). Absent from
+	 *  older backends and from replays of rows from before the field. */
+	episode?: string;
+	/** The number an earlier version gave the same episode, when it gave
+	 *  another: what a position kept from then is keyed by. */
+	former_episode?: string;
 }
 
 /** Player flag-syntax flavor — controls the argv shape `build_argv`
@@ -501,6 +509,20 @@ export function historyDelete(id: string): Promise<void> {
  *  made without a Kitsu id, or a row older than the mapping. */
 export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
 	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`);
+}
+
+/** The episode one history row reads as now, and the number it read as
+ *  before its show's numbering was put right. */
+export interface HistoryNumber {
+	ep_no: string;
+	former_ep_no?: string;
+}
+
+/** What the history row of show `id` reads as now — a Continue card
+ *  asks before it resumes, since the row may have been put right since
+ *  the page read it. `null` when no row is the show's. */
+export function historyNumber(id: string): Promise<HistoryNumber | null> {
+	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`);
 }
 
 export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {
@@ -914,16 +936,30 @@ export interface AvailabilityResponse {
 	 *  answered `available`. Absent on negative rows and on rows from
 	 *  before the backend named it. */
 	provider?: StreamProvider;
-	/** True when the probe reached the provider and came back without
-	 *  a verdict — a hit the count fit refused on how it is named, dead
-	 *  listings on a healthy provider, a mode nobody answered for.
-	 *  (A show found nowhere is the clean miss: settled, and kept.) `available` is then false and means nothing, the
-	 *  count is absent, and the backend persisted nothing. Readers
-	 *  treat the answer as unknown: the card stays, the page keeps its
-	 *  lazy play, exactly as when the request fails. Absent from every
-	 *  settled answer. */
-	unsettled?: boolean;
+	/** Present when the probe reached the provider and came back
+	 *  without a settled verdict, naming why ({@link UnsettledReason}).
+	 *  (A show found nowhere is the clean miss: settled, and kept.)
+	 *  `available` is then false, the count is absent, and the backend
+	 *  persisted nothing. For every reason but `'refused'` the false
+	 *  means nothing; `'refused'` says the catalogue lists nothing
+	 *  named for the show, and reads as it not being in the catalogue.
+	 *  Read it through `$lib/availability/verdict`. A backend before
+	 *  reasons sends `true`. Absent from every settled answer. */
+	unsettled?: boolean | UnsettledReason;
 }
+
+/** Why an availability probe reached no verdict
+ *  ({@link AvailabilityResponse.unsettled}). */
+export type UnsettledReason =
+	/** Every pool was refused on how its hits are named: the catalogue
+	 *  lists nothing named for the show, and Play can only fail. */
+	| 'refused'
+	/** Dead listings, or a mode nobody answered for. */
+	| 'unanswered'
+	/** An absence answered past a provider a positive row remembers. */
+	| 'past_affinity'
+	/** A negative a positive row overtook while the probe was out. */
+	| 'superseded';
 
 /** "Is this title in the provider's catalog?" probe. The detail page hits
  *  this on mount so it can gate the Play + Download CTAs ahead of a

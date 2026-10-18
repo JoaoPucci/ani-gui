@@ -79,7 +79,8 @@ function useHandlers(
 	mode: 'sub' | 'dub',
 	other: CacheAnswer | 'fails',
 	probeAvailable = false,
-	subtype: string | null = null
+	subtype: string | null = null,
+	unsettled?: string
 ): Asked {
 	const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 	server.use(
@@ -97,7 +98,7 @@ function useHandlers(
 			return HttpResponse.json(
 				probeAvailable
 					? { available: true, episode_count: 12, extra_episodes: [] }
-					: { available: false, episode_count: null, extra_episodes: [] }
+					: { available: false, episode_count: null, extra_episodes: [], unsettled }
 			);
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
@@ -167,6 +168,25 @@ describe('detail — the unavailable notice and the other audio', () => {
 			expect(asked.warms, 'nothing warms the cache for the notice').toBe(0);
 		});
 	}
+});
+
+describe('detail — a title the provider refused by name', () => {
+	it('keeps "not in the streaming catalogue", and never asks or names the other audio', async () => {
+		// A refusal by name is about the title in every audio: the
+		// provider lists nothing named for it. Even with the cache
+		// holding the other audio, the notice must not send the viewer
+		// there, and the page must not ask.
+		const asked = useHandlers('dub', HAS, false, null, 'refused');
+		app = mount(DetailPage, { target });
+		await until(() => notice() !== null, 'the unavailable notice');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(notice()).toContain(m.detail_unavailable_message());
+		expect(notice()).not.toContain(m.detail_unavailable_in_dub_message());
+		expect(
+			asked.batch.filter((b) => b.mode === 'sub'),
+			'the other audio is never asked'
+		).toEqual([]);
+	});
 });
 
 describe('detail — the notice asks about the other audio only while it is up', () => {

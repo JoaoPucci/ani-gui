@@ -19,7 +19,8 @@ use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 
 use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
-use super::play_native_episode::{classify_chain_failure, ChainOutcome};
+use super::play_native_episode::{classify_chain_failure, resolve_episode_stamped, ChainOutcome};
+use super::play_native_merge::former_tags_of;
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
 
@@ -65,6 +66,11 @@ pub struct NativeResolved {
     /// The matched row's display tag, stamped beside the offset when
     /// it differs from the slot so the read boundary can translate.
     pub resolved_tag: Option<String>,
+    /// Rows of the picked listing an earlier version tagged otherwise:
+    /// (slot, the tag it had then, the tag it has now) — a stitched
+    /// recap before a cumulatively numbered part. Empty for any other
+    /// listing.
+    pub former_tags: Vec<(u32, String, String)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -88,6 +94,13 @@ pub struct NativeError {
     /// the breaker tells a stall the walk kept from the deadline's
     /// `Timeout` by this stamp.
     pub failed_at: Option<tokio::time::Instant>,
+    /// True when the verdict is the answered dead end and every pool
+    /// behind it was refused on how its hits are named
+    /// ([`AniError::RefusedByName`]): the catalogue answered, and lists
+    /// nothing named for the entry. Set by the availability walk
+    /// ([`super::play_native_walk::pick_native_walk`]); false on every
+    /// other verdict, a dead end on dead listings included.
+    pub refused_by_name: bool,
 }
 
 /// What a native resolution is asked for — the play-relevant slice
@@ -115,6 +128,14 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// The history file whose numbering sidecar keeps each show's
+    /// (slot, tag) display stamp — what a request from the user's
+    /// history names a row by. `None` asks nothing of it.
+    pub stamps_beside: Option<&'a std::path::Path>,
+    /// Where the evidence about the entry's last episodes comes from,
+    /// when the caller knows the entry
+    /// ([`super::play_native_appended`]).
+    pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -148,6 +169,7 @@ where
             error: AniError::Timeout,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         }),
     }
 }
@@ -211,13 +233,26 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = super::play_native_appended::fit_appended(
+                            picked,
+                            req.expected_count,
+                            req.tail,
+                        )
+                        .await;
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let resolved = match resolve_episode(
+                        let stamp = req.stamps_beside.and_then(|history| {
+                            crate::commands::numbering_offset::stamp_beside(
+                                history,
+                                &ShowKey::new(client.id(), picked.hit.slug.clone()).to_string(),
+                            )
+                        });
+                        let resolved = match resolve_episode_stamped(
                             client,
                             &picked,
                             req.episode,
+                            stamp.as_ref(),
                             req.mode,
                             req.quality,
                         )
@@ -269,6 +304,7 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            former_tags: former_tags_of(&picked.episodes),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
@@ -283,13 +319,15 @@ where
                             error: e,
                             clean_miss: false,
                             failed_at: None,
+                            refused_by_name: false,
                         });
                     }
-                    // An all-answered-not-found pool: dead candidates
-                    // on a healthy provider. The walk moves on, and
-                    // the verdict stays answered — the breaker must
-                    // not open on a provider that answered.
-                    Err(AniError::Upstream { .. }) => {
+                    // An all-answered-not-found pool — dead candidates
+                    // on a healthy provider — or one refused on how
+                    // its hits are named. The walk moves on, and the
+                    // verdict stays answered — the breaker must not
+                    // open on a provider that answered.
+                    Err(AniError::Upstream { .. } | AniError::RefusedByName) => {
                         any_answered_dead_end = true;
                     }
                     Err(e) => {
@@ -304,6 +342,7 @@ where
                     error: AniError::Upstream { status },
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             // The gate refused this chain: every subsequent fetch
@@ -314,6 +353,7 @@ where
                     error: AniError::GateRefused,
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(e) => {
@@ -342,12 +382,14 @@ where
             },
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         });
     }
     Err(NativeError {
         error: AniError::NoResults,
         clean_miss: true,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 

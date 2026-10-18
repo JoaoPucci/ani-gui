@@ -47,6 +47,7 @@
 		historyClear,
 		historyDelete,
 		historyList,
+		historyNumber,
 		imageProxyUrl,
 		kitsuAnimeDetail,
 		kitsuByMalIds,
@@ -118,8 +119,12 @@
 		clearShowPositions,
 		snapshotPositions,
 		markStarted,
+		movePosition,
 		readPosition
 	} from '$lib/play/watch-position';
+	import { followPlayed } from '$lib/play/played-episode';
+	import { refreshedRows } from '$lib/history/row-number';
+	import { latestReads } from '$lib/history/latest-call';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -217,6 +222,25 @@
 		leftPartWay
 	});
 
+	// A card's row, read again for each answer that can put it right —
+	// its match, its probe, a retried probe. Those reads can answer out
+	// of order: the latest asked counts.
+	const rowNumberNow = latestReads(historyNumber);
+	async function readRowAgain(id: string) {
+		const kitsuId = historyMatches[id]?.id;
+		const next = await refreshedRows(
+			id,
+			() => history,
+			rowNumberNow,
+			kitsuId ? (from, to) => movePosition(kitsuId, from, to) : undefined
+		);
+		if (!next) return;
+		history = next;
+		for (const h of next) historyById.set(h.id, h);
+		// The card's episode metadata follows the number it offers now.
+		const m = historyMatches[id];
+		if (m) rowReady(id, m, historyPlayableCounts[id] ?? null);
+	}
 	/**
 	 * Publishes a cap the background side learned — the loader's first
 	 * pass and `retryApproximateCaps`' later re-probe both land here.
@@ -283,8 +307,18 @@
 			// concurrent dedupe firing during the gate's window has
 			// different ids and short-circuits.
 			const snapshot = dedupedHistory.map((e) => e.id);
-			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
+			await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
+				currentHistory: () => history ?? [],
+				// Open the gate IMMEDIATELY before the optimistic mutation
+				// so the 350ms auto-close window starts when Svelte's
+				// out-transition factory is about to fire — not when the
+				// click was first received. See $lib/history/animation-gate
+				// for the per-id scope + Svelte-batched-reset story.
+				applyRemaining: (rows, removedIds) => {
+					deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
+					history = rows;
+				},
 				matches: historyMatches,
 				historyDelete,
 				snapshotPositions,
@@ -298,13 +332,6 @@
 						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
 					)
 			});
-			// Open the gate IMMEDIATELY before the optimistic mutation
-			// so the 350ms auto-close window starts when Svelte's
-			// out-transition factory is about to fire — not when the
-			// click was first received. See $lib/history/animation-gate
-			// for the per-id scope + Svelte-batched-reset story.
-			deleteAnimationGate.open(result.removedIds, shiftedSurvivorIds(snapshot, result.removedIds));
-			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
@@ -429,8 +456,14 @@
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
-					onRowReady: (id, m, count, approximate) =>
-						publishLoaderCap(id, m, count, approximate === true)
+					onRowReady: (id, m, count, approximate) => {
+						publishLoaderCap(id, m, count, approximate === true);
+						// Read the row again once its match is known — the
+						// stamp can name its former number with no listing
+						// behind this load — and again once the probe paid
+						// for the listing that can put its numbering right.
+						if (m) void readRowAgain(id);
+					}
 				}).then(async (state) => {
 					// Second chance for the rows the scraper gate refused.
 					// Their cap is the search hit's count, which runs high
@@ -452,8 +485,12 @@
 						fetchAvailability: (m, mode) =>
 							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
-						onRefined: (id, count) =>
-							publishLoaderCap(id, historyMatches[id] ?? null, count, false),
+						// The retry pays for the listing the first probe
+						// did not: read the row again after it.
+						onRefined: (id, count) => {
+							publishLoaderCap(id, historyMatches[id] ?? null, count, false);
+							void readRowAgain(id);
+						},
 						wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 						cancelled: () => continueRetryCancelled,
 						// A row stops being worth asking about when its cap is
@@ -681,6 +718,10 @@
 	const startResume = makeStartResume({
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
+		currentNumber: (entryId) => historyNumber(entryId),
+		movePosition: (kitsuId, from, to) => movePosition(kitsuId, from, to),
+		followPlayed: (kitsuId, session, requested) => followPlayed(kitsuId, session, requested),
+		warm: (a) => playStream({ ...playArgsFor(a), prefetch: true }, () => {}),
 		isBusy: () => !!resumeBusy,
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {

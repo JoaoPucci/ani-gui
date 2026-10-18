@@ -76,6 +76,10 @@ pub(super) fn episode_verdict(error: AniError) -> AniError {
     }
 }
 
+#[path = "play_native_episode_stamped.rs"]
+mod stamped;
+pub use stamped::resolve_episode_stamped;
+
 /// Resolve the requested episode within a picked show down to the
 /// master URL. Split from the walk for the per-file complexity bar
 /// and because the orchestrator's cache-hit path may someday reuse
@@ -111,6 +115,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         },
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     // A row's identity is its effective display tag — number2 when
     // present, the integer slot otherwise. A recap occupying slot 4
@@ -127,12 +132,22 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         // back ([`provider_fraction`]).
         Err(_) => provider_fraction(episode.trim(), offset),
     };
+    // A row's tag now wins; failing one, a row an earlier version
+    // tagged so (a stitched recap it placed a part later) — a history
+    // row from then may still ask for it.
     let ep = picked
         .episodes
         .iter()
         .find(|e| match e.number2.as_deref() {
             Some(tag) => tag_matches(tag, &target),
             None => tag_matches(&e.number.to_string(), &target),
+        })
+        .or_else(|| {
+            picked.episodes.iter().find(|e| {
+                e.former_tag
+                    .as_deref()
+                    .is_some_and(|t| tag_matches(t, &target))
+            })
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
     // One step, validated by the provider: the master answered and
