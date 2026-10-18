@@ -42,13 +42,22 @@ fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(
 }
 
 /// The shared-entry rule: every Kitsu entry mapped to the tracker's
-/// entry, in the order of their distinct start dates, sums exactly to
+/// entry, in the order of their distinct start dates (each a real,
+/// full calendar date), sums exactly to
 /// its total, the show among them. The show's episodes are the entry's
 /// after the parts before it; only the last part's last episode is the
 /// entry's.
 pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
     let mut parts: Vec<&KitsuShow> = evidence.sharing.iter().collect();
-    if parts.iter().any(|p| p.start.is_none()) {
+    // Only a real, full calendar date orders a part: `YYYY-MM-DD` strings
+    // that `parse_date` accepts sort as the days they name.
+    let full_date = |p: &&KitsuShow| {
+        p.start
+            .as_deref()
+            .and_then(crate::account::episode_map_calendar::parse_date)
+            .is_some_and(|d| d.day.is_some())
+    };
+    if !parts.iter().all(full_date) {
         return None;
     }
     parts.sort_by(|a, b| a.start.cmp(&b.start));
