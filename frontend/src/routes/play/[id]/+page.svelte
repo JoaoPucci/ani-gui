@@ -1889,9 +1889,11 @@
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
-	// The backend does not see all of these at once. `play-cache.ts`
-	// caps background warms at PREFETCH_CONCURRENCY (2) and only a
-	// foreground click bypasses that, and the backend paces provider
+	// The backend does not see all of these at once. The play cache
+	// caps background warms at PREFETCH_CONCURRENCY (2,
+	// `$lib/play/prefetch-slots`) and only a foreground click — or the
+	// detail page's resume warm, which a click waits on — bypasses
+	// that, and the backend paces provider
 	// traffic again through ScraperGate, which spaces background
 	// admits and refuses them outright while its breaker is open.
 	// Widening the radius here changes how many are queued, not how

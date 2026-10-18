@@ -23,13 +23,13 @@ const fireQueue: Array<() => void> = [];
 /**
  * Schedule `fn` under the prefetch concurrency cap. Returns the
  * promise + a `startNow` escape hatch that callers can invoke to cut
- * the queue (used by clicks). `startNow` is a no-op once the slot is
- * already running.
+ * the queue (used by clicks, and by `getOrFireNow` for a warm a click
+ * waits on). `startNow` is a no-op once the slot is already running.
  *
  * Bypassing the cap briefly exceeds PREFETCH_CONCURRENCY by one for
- * each click — that's the explicit trade. The cap is for *background*
- * warming; foreground clicks shouldn't be punished for the warming
- * having queued ahead of them.
+ * each caller that cuts the queue — that's the explicit trade. The cap
+ * is for *background* warming; a click, or a warm a click waits on,
+ * shouldn't be punished for the warming having queued ahead of it.
  */
 export function withSlot<T>(fn: () => Promise<T>): {
 	promise: Promise<T>;

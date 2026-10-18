@@ -265,7 +265,7 @@ describe('getOrFire', () => {
 
 describe('PREFETCH_CONCURRENCY semaphore', () => {
 	it('queues fires beyond the cap and only releases when an in-flight one settles', async () => {
-		// PREFETCH_CONCURRENCY = 2 (see play-cache.ts). Fire 4 entries
+		// PREFETCH_CONCURRENCY = 2 (see prefetch-slots.ts). Fire 4 entries
 		// at once: the first two should run immediately, the latter
 		// two queue at the `await new Promise(resolve => fireQueue.push(resolve))`
 		// branch until a slot frees up.

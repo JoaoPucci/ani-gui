@@ -65,8 +65,9 @@ interface CacheEntry {
 	/** When the entry is still waiting for a slot in `withSlot`'s queue,
 	 *  this is the resolver that, when called, lets it run. A click
 	 *  (priority subscriber) calls this to cut the queue rather than
-	 *  sit on a Lottie while the backend warms unrelated episodes.
-	 *  Cleared once the slot is acquired and `fire` actually starts. */
+	 *  sit on a Lottie while the backend warms unrelated episodes, and
+	 *  so does `getOrFireNow` for a warm a click waits on. A no-op once
+	 *  the slot is acquired and `fire` actually starts. */
 	startNow?: () => void;
 	/** Drives cancellation when the user navigates away mid-resolve
 	 *  (clearForShow aborts; playStream's listener closes the
