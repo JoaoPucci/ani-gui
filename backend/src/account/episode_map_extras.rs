@@ -6,8 +6,9 @@ use super::parts_rule::part_of_entry;
 use crate::account::episode_map::{Evidence, Segment};
 
 /// A number from the tracker's episode list as its whole part and its
-/// fraction's digits: `"7"` is `(7, None)`, `"6.5"` is `(6, Some("5"))`,
-/// `"0"` is `(0, None)`. Anything else — a title with no number, an
+/// fraction's digits without trailing zeros: `"7"` and `"7.0"` are
+/// `(7, None)`, `"6.5"` and `"6.50"` are `(6, Some("5"))`, `"0"` is
+/// `(0, None)`. Anything else — a title with no number, an
 /// empty string, letters — is `None` and ignored.
 pub(super) fn listed_number(text: &str) -> Option<(u32, Option<&str>)> {
     let (whole, fraction) = match text.split_once('.') {
@@ -20,6 +21,10 @@ pub(super) fn listed_number(text: &str) -> Option<(u32, Option<&str>)> {
     if fraction.is_some_and(|f| f.is_empty() || !f.chars().all(|c| c.is_ascii_digit())) {
         return None;
     }
+    // "6.50" is "6.5", and "6.0" is episode 6.
+    let fraction = fraction
+        .map(|f| f.trim_end_matches('0'))
+        .filter(|f| !f.is_empty());
     Some((whole.parse().ok()?, fraction))
 }
 

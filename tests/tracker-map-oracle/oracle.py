@@ -127,7 +127,8 @@ def listed_number(text):
     m = re.fullmatch(r"(\d+)(?:\.(\d+))?", text)
     if not m:
         return None
-    return int(m.group(1)), m.group(2)
+    fraction = (m.group(2) or "").rstrip("0") or None
+    return int(m.group(1)), fraction
 
 
 def extras_rule(ev, count, total):

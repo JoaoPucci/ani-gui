@@ -85,8 +85,15 @@ fn cached(state: &AppState, key: &str) -> Option<EpisodeMap> {
 /// Write `map` under `key` for the window its evidence warrants.
 /// Best-effort: a failed write costs the next write the same reads.
 fn remember(state: &AppState, key: &str, map: &EpisodeMap) {
+    remember_for(state, key, map, map_ttl(map));
+}
+
+/// Write `map` under `key` for at most `ttl` — never longer than its
+/// evidence warrants.
+fn remember_for(state: &AppState, key: &str, map: &EpisodeMap, ttl: Duration) {
     if let Ok(body) = serde_json::to_string(map) {
-        let _ = meta_cache_put(&state.cache_pool, key, &body, map_ttl(map).as_secs());
+        let ttl = ttl.min(map_ttl(map));
+        let _ = meta_cache_put(&state.cache_pool, key, &body, ttl.as_secs());
     }
 }
 
@@ -146,7 +153,9 @@ pub(crate) async fn episode_map_for_unresolved(ask: &MapAsk<'_>, kitsu_id: &str)
         Ok(map) => map,
         Err(err) => return unlearnt(kitsu_id, &err),
     };
-    remember(ask.state, &key, &map);
+    // The key names no entry for such a show, so a recount of the entry
+    // it is filed under reaches no new key: it is asked for daily.
+    remember_for(ask.state, &key, &map, TRACKER_MAP_UNSETTLED_TTL);
     map
 }
 

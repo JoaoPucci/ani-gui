@@ -65,10 +65,11 @@ pub(super) async fn sharing_on_kitsu(
         .kitsu
         .anime_by_external_id(site(kind)?, entry.id)
         .await?;
-    // A page that did not hold every mapping Kitsu counts says nothing
-    // the shared-entry rule can sum.
+    // A page that did not hold every mapping Kitsu counts stands for
+    // what it left out with one entry it did not list: no id, no count,
+    // so nothing sums with it and the show is not the entry's only one.
     if !first.complete {
-        return Ok(Vec::new());
+        return Ok(vec![KitsuShow::default()]);
     }
     let mut found = first.entries;
     if kind == ProviderKind::AniList {
@@ -78,7 +79,7 @@ pub(super) async fn sharing_on_kitsu(
                 .anime_by_external_id("myanimelist/anime", id_mal)
                 .await?;
             if !by_mal.complete {
-                return Ok(Vec::new());
+                return Ok(vec![KitsuShow::default()]);
             }
             for anime in by_mal.entries {
                 if !found.iter().any(|a| a.id == anime.id) {
