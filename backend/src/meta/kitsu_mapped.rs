@@ -61,7 +61,8 @@ pub struct KitsuMapped {
 
 /// Every anime a `/mappings?filter[externalSite]=…&filter[externalId]=…
 /// &include=item` body inlines for its mappings, in Kitsu's order, a
-/// music-subtype entry dropped as every mapping lookup drops it.
+/// music-subtype entry dropped as every mapping lookup drops it. The
+/// page is complete when it held as many mappings as Kitsu counts.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
@@ -71,6 +72,12 @@ pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
         data: Vec<Mapping>,
         #[serde(default)]
         included: Vec<Included>,
+        #[serde(default)]
+        meta: Option<Meta>,
+    }
+    #[derive(Deserialize)]
+    struct Meta {
+        count: Option<usize>,
     }
     #[derive(Deserialize)]
     struct Mapping {
@@ -85,6 +92,8 @@ pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("kitsu mapped anime parse: {e}"),
     })?;
+    let read = parsed.data.len();
+    let complete = parsed.meta.and_then(|m| m.count) == Some(read);
     let mut anime = inlined_anime(parsed.included);
     let entries = parsed
         .data
@@ -94,10 +103,7 @@ pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
         .filter_map(|r| anime.remove(&r.id))
         .filter(|a| !is_music_subtype(a.subtype.as_deref()))
         .collect();
-    Ok(KitsuMapped {
-        entries,
-        complete: true,
-    })
+    Ok(KitsuMapped { entries, complete })
 }
 
 impl KitsuClient {
@@ -138,6 +144,7 @@ impl KitsuClient {
                     ("filter[externalId]", external_id.to_string()),
                     ("include", "item".to_string()),
                     ("fields[anime]", ANIME_FIELDS.to_string()),
+                    ("page[limit]", "20".to_string()),
                 ],
             )
             .await?;

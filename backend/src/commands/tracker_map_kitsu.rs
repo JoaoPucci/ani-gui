@@ -61,19 +61,26 @@ pub(super) async fn sharing_on_kitsu(
     kind: ProviderKind,
     entry: &TrackerShow,
 ) -> Result<Vec<KitsuShow>> {
-    let mut found = state
+    let first = state
         .kitsu
         .anime_by_external_id(site(kind)?, entry.id)
-        .await?
-        .entries;
+        .await?;
+    // A page that did not hold every mapping Kitsu counts says nothing
+    // the shared-entry rule can sum.
+    if !first.complete {
+        return Ok(Vec::new());
+    }
+    let mut found = first.entries;
     if kind == ProviderKind::AniList {
         if let Some(id_mal) = entry.id_mal {
-            for anime in state
+            let by_mal = state
                 .kitsu
                 .anime_by_external_id("myanimelist/anime", id_mal)
-                .await?
-                .entries
-            {
+                .await?;
+            if !by_mal.complete {
+                return Ok(Vec::new());
+            }
+            for anime in by_mal.entries {
                 if !found.iter().any(|a| a.id == anime.id) {
                     found.push(anime);
                 }
