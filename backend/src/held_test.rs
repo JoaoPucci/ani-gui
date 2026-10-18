@@ -246,18 +246,22 @@ impl Queue {
         }
     }
 
-    /// [`Self::joined`], for a test on a thread of its own.
+    /// [`Self::joined`], for a test on a thread of its own, watching
+    /// `ahead` meanwhile: whether the waiter has gone past the lock,
+    /// which it can only have done without queueing on it.
     ///
     /// # Panics
-    /// When none has within [`QUEUE_DEADLINE`].
-    pub(crate) fn joined_blocking(&self) {
+    /// When the waiter went ahead, or none has queued within
+    /// [`QUEUE_DEADLINE`].
+    pub(crate) fn joined_blocking(&self, ahead: impl Fn() -> bool) {
         let deadline = std::time::Instant::now() + QUEUE_DEADLINE;
         let mut queued = QUEUED.lock().unwrap_or_else(PoisonError::into_inner);
         while queued_on(&queued, &self.on) <= self.before {
+            assert!(!ahead(), "went ahead without queueing on {}", self.on);
             let left = deadline.saturating_duration_since(std::time::Instant::now());
             assert!(!left.is_zero(), "nothing queued on {}", self.on);
             queued = QUEUED_CHANGED
-                .wait_timeout(queued, left)
+                .wait_timeout(queued, left.min(std::time::Duration::from_millis(5)))
                 .unwrap_or_else(PoisonError::into_inner)
                 .0;
         }
@@ -316,7 +320,7 @@ fn a_queue_opened_after_a_wait_does_not_count_it() {
     assert!(!queue.has_joined(), "the wait before the watch is not seen");
     queued(on);
     assert!(queue.has_joined(), "the wait after it is");
-    queue.joined_blocking();
+    queue.joined_blocking(|| false);
 }
 
 #[test]

@@ -1058,6 +1058,7 @@ fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
     let td = tempfile::tempdir().expect("td");
     let state = make_state(td.path().join("history"));
     let show = "hianime:stitched-show-4";
+    let queue = crate::held::queue(state.history_path.display().to_string());
     let reader = crate::history::guard::hold(&state.history_path, |held| {
         held.upsert(HistoryEntry {
             ep_no: "2".into(),
@@ -1069,7 +1070,10 @@ fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
         .expect("row");
         let reading = state.clone();
         let reader = std::thread::spawn(move || history_list(&reading).expect("list"));
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        // Behind the hold, not merely not there yet: a reader that has
+        // not reached the history has not read it either, and proves
+        // nothing.
+        queue.joined_blocking(|| reader.is_finished());
         assert!(
             !reader.is_finished(),
             "a reader waits for the watch to be written whole"
