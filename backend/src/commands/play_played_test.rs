@@ -691,7 +691,7 @@ async fn a_fresh_play_of_a_stamped_recap_keeps_the_tag_the_stamp_replaced() {
 }
 
 /// A play whose numbering repair stands behind the rows it caches.
-async fn rows_a_play_caches_behind_its_repair(prefetch: bool) {
+async fn rows_a_play_caches_behind_its_repair(prefetch: bool, stamp_after: (u32, &str)) {
     // An upgraded profile: a history row's stamp names the stitched
     // recap's slot 2 by its former tag "2.5". A play of episode 5 pays
     // for the listing, which puts the stamp right — before the rows
@@ -711,22 +711,20 @@ async fn rows_a_play_caches_behind_its_repair(prefetch: bool) {
         .await
         .expect("plays");
     let after = crate::commands::numbering_offset::display_stamp(&state, &stitched_key());
-    assert_ne!(
-        after,
-        Some((2, "2.5".to_string())),
-        "the play repaired the stamp"
-    );
+    // A prefetch leaves the repaired stamp; a watch moves it on to the
+    // episode it records, slot 6, as the app numbers it "5".
+    assert_eq!(after, Some((stamp_after.0, stamp_after.1.to_string())));
     assert_rows_landed_after_the_repair(&seen, &["availability:", "play:"], &after);
 }
 
 #[tokio::test]
 async fn a_play_puts_the_numbering_right_before_it_caches_its_rows() {
-    rows_a_play_caches_behind_its_repair(false).await;
+    rows_a_play_caches_behind_its_repair(false, (6, "5")).await;
 }
 
 #[tokio::test]
 async fn a_prefetch_puts_the_numbering_right_before_it_caches_its_rows() {
-    rows_a_play_caches_behind_its_repair(true).await;
+    rows_a_play_caches_behind_its_repair(true, (2, "1.5")).await;
 }
 
 #[tokio::test]
