@@ -51,6 +51,20 @@ async fn serve(grace: Duration) -> Served {
     }
 }
 
+/// Returns once the server at `base` refuses a connection.
+async fn stopped_accepting(base: &str) {
+    let addr = base.trim_start_matches("http://");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while let Ok(conn) = tokio::net::TcpStream::connect(addr).await {
+        drop(conn);
+        assert!(
+            Instant::now() < deadline,
+            "the server never stopped accepting"
+        );
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+}
+
 #[tokio::test]
 async fn a_server_with_nothing_in_flight_stops_at_once() {
     // The grace is far longer than the test waits: stopping an idle
@@ -72,10 +86,19 @@ async fn a_request_in_flight_gets_its_answer_before_the_server_stops() {
     served.entered.notified().await;
 
     served.stop.send(()).expect("stop");
-    // Still held: the stop has been asked for and the request has not
-    // been answered, so the server is waiting on it.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!served.done.is_finished());
+    // Still held: the stop has been taken in and the request has not
+    // been answered, so the server is waiting on it. The stop is taken
+    // in once the server stops accepting connections — until then a
+    // server that has not got round to it has not stopped either, and
+    // proves nothing. The test runs on one thread, so by the time it
+    // sees a connection refused, the poll that closed the listener has
+    // ended, and a server that stops with the request in flight has
+    // stopped in it.
+    stopped_accepting(&served.base).await;
+    assert!(
+        !served.done.is_finished(),
+        "the server stopped with a request in flight"
+    );
 
     served.release.notify_one();
     let body = request.await.expect("join").expect("answered");
