@@ -101,3 +101,35 @@ async fn the_client_asks_for_the_destinations_it_reads() {
         Err(AniError::Upstream { status: 503 })
     ));
 }
+
+/// The bodies the episode map's recorded cases came from: Ranma ½'s
+/// one sequel on Kitsu is its OVA (Nettou-hen has no Kitsu entry), and
+/// Tower of God's second season is chained between its first and
+/// Koubou-sen.
+#[test]
+fn the_tracker_map_s_recorded_relations_read_their_single_sequels() {
+    let read = |name: &str| {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("tests/fixtures/tracker-map/wire")
+            .join(name);
+        parse_relationships_response(&std::fs::read(&path).expect("fixture")).expect("parsed")
+    };
+    let sequels = |r: &KitsuRelations| -> Vec<String> {
+        r.entries
+            .iter()
+            .filter(|e| e.role == "sequel" && e.kind == "anime")
+            .map(|e| e.id.clone())
+            .collect()
+    };
+    let ranma = read("kitsu-relationships-186.json");
+    assert_eq!(sequels(&ranma), ["897"]);
+    let tower = read("kitsu-relationships-46312.json");
+    assert!(tower.complete);
+    assert_eq!(sequels(&tower), ["49244"]);
+    assert!(tower
+        .entries
+        .iter()
+        .any(|e| e.role == "prequel" && e.id == "43004" && e.episode_count == Some(13)));
+}
