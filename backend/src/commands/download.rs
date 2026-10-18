@@ -215,6 +215,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        stamps_beside: Some(&state.history_path),
         tail: tail
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -261,6 +262,10 @@ where
     let resolved =
         match crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await {
             Ok(attempted) => {
+                // As a play does: a stamp an earlier version wrote with
+                // a stitched row's former tag reads right — before the
+                // row a probe would take instead of the listing.
+                crate::commands::numbering_offset::retag_from_resolve(state, &attempted.value);
                 // A served stream is a positive availability fact naming
                 // the provider that served it — the next operation for
                 // the show starts there, not from a primary whose clean
@@ -301,7 +306,12 @@ where
         dest = %dest.display(),
         "download: spawning tool on natively resolved stream",
     );
-    let file_stem = format!("{} Episode {}", resolved.title, args.episode);
+    // Named for the episode it plays, or for the number an earlier
+    // version gave it where that version's download is in the folder.
+    let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
+    let former = crate::commands::play_native_merge::former_number(&resolved);
+    let file_stem =
+        super::download_names::episode_stem(&dest, &resolved.title, &played, former.as_deref());
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,

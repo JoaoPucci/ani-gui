@@ -245,6 +245,14 @@ export interface CreateSessionResponse {
 	/** Sidecar subtitle tracks the resolve listed; absent or empty when
 	 *  the stream carries none outside its playlist. */
 	subtitles?: SessionSubtitle[];
+	/** The episode the session plays, as the app numbers it — the
+	 *  request, unless the request named it by a number it no longer
+	 *  carries ("24.5" for the recap that is "12.5" now). Absent from
+	 *  older backends and from replays of rows from before the field. */
+	episode?: string;
+	/** The number an earlier version gave the same episode, when it gave
+	 *  another: what a position kept from then is keyed by. */
+	former_episode?: string;
 }
 
 /** Player flag-syntax flavor — controls the argv shape `build_argv`
@@ -471,6 +479,20 @@ export function historyDelete(id: string): Promise<void> {
  *  made without a Kitsu id, or a row older than the mapping. */
 export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
 	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`);
+}
+
+/** The episode one history row reads as now, and the number it read as
+ *  before its show's numbering was put right. */
+export interface HistoryNumber {
+	ep_no: string;
+	former_ep_no?: string;
+}
+
+/** What the history row of show `id` reads as now — a Continue card
+ *  asks before it resumes, since the row may have been put right since
+ *  the page read it. `null` when no row is the show's. */
+export function historyNumber(id: string): Promise<HistoryNumber | null> {
+	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`);
 }
 
 export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {

@@ -6,12 +6,18 @@ import { rowShow, rowShowIds, type RowShowDeps } from './row-show';
  * Inputs the controller needs to execute a confirmed Continue
  * Watching delete. Kept narrow: the in-memory history snapshot,
  * the resolved Kitsu match map, and the per-id backend delete
- * IPC. The component owns the modal/busy state and is responsible
- * for re-applying `remainingHistory` to its $state after the
- * promise resolves.
+ * IPC. The component owns the modal/busy state, and applies the rows
+ * the delete leaves through `applyRemaining`, called in the turn they
+ * are read off the strip.
  */
 export interface ConfirmDeleteDeps extends RowShowDeps {
 	history: HistoryEntry[];
+	/** The strip's rows as they stand now, which the remaining rows are
+	 *  read off once the deletes land. Omitted, `history`. */
+	currentHistory?: () => readonly HistoryEntry[];
+	/** Puts the rows the delete leaves on the strip. Omitted, the caller
+	 *  applies `remainingHistory` itself. */
+	applyRemaining?: (rows: HistoryEntry[], removedIds: string[]) => void;
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
 	/** The moment the removed rows are gone (watch-position-clear.ts): the
@@ -56,9 +62,9 @@ export interface ConfirmDeleteResult {
  *      delete, and the calls stay in sequence because nothing is
  *      gained by racing them.
  *
- * Returning the filtered history (rather than mutating) keeps
- * the function pure and lets the test assert ordering + filter
- * without rigging up Svelte's `$state`.
+ * The filtered history is returned too, and handed to
+ * `applyRemaining` rather than written here, so the test can assert
+ * ordering + filter without rigging up Svelte's `$state`.
  */
 export async function executeKitsuGroupDelete(
 	clickedId: string,
@@ -73,8 +79,11 @@ export async function executeKitsuGroupDelete(
 	// What is kept from here on is the user's since the removal.
 	const snapshot = deps.snapshotPositions?.();
 	const since: [] | [number] = snapshot === undefined ? [] : [snapshot];
-	const removed = new Set(groupIds);
-	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
+	// Off the strip as it stands now: a row read again while the
+	// deletes were out keeps what it read.
+	const remainingHistory = remainingOf(deps.currentHistory?.() ?? deps.history, groupIds);
+	// In the same turn: nothing re-read in between is overwritten.
+	deps.applyRemaining?.(remainingHistory, groupIds);
 	// Telling a remaining row's show can take a Kitsu read; the card's
 	// removal does not wait on it.
 	const forgetting = forgetLeftWithoutRows(shows, groupIds, remainingHistory, deps, since).catch(
@@ -128,4 +137,15 @@ async function removedShows(ids: string[], deps: ConfirmDeleteDeps): Promise<Set
 		for (const kitsuId of await rowShowIds(row, deps)) shows.add(kitsuId);
 	}
 	return shows;
+}
+
+/** The strip's rows once a delete of `removedIds` has landed, read off
+ *  the rows as they stand then — a row read again while the delete was
+ *  out keeps what it read. */
+export function remainingOf(
+	current: readonly HistoryEntry[],
+	removedIds: readonly string[]
+): HistoryEntry[] {
+	const removed = new Set(removedIds);
+	return current.filter((e) => !removed.has(e.id));
 }

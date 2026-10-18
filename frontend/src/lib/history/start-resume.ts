@@ -18,7 +18,7 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
-import { resumeOr } from '$lib/play/next-episode';
+import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 export interface ResumePlayArgs {
@@ -67,7 +67,7 @@ export interface StartResumeDeps {
 	resolvePlay: (
 		args: ResumePlayArgs,
 		onProgress: (label: string) => void
-	) => Promise<{ session_id: string }>;
+	) => Promise<{ session_id: string; episode?: string; former_episode?: string }>;
 	markWatched: (args: ResumePlayArgs) => Promise<void>;
 	syncTrackers: (
 		kitsuId: string,
@@ -92,6 +92,23 @@ export interface StartResumeDeps {
 	 *  forgets it (delete-controller.ts), by `row`, the clicked history
 	 *  row's id, whatever show the card names by then. */
 	markStarted?: (kitsuId: string, episode: number, row?: string) => void;
+	/** What the clicked history row reads as now, asked once the cap is
+	 *  settled — the lookup that settles it can put the row's numbering
+	 *  right. Omitted, the row reads as the card read it. */
+	currentNumber?: (entryId: string) => Promise<{ ep_no: string; former_ep_no?: string } | null>;
+	/** Keeps what was kept for `from` of `kitsuId` under `to` instead.
+	 *  Omitted, nothing moves. */
+	movePosition?: (kitsuId: string, from: number, to: number) => void;
+	/** Resolves `args` without recording a watch — a prefetch — so the
+	 *  backend fetches the show's listing. Omitted, nothing is warmed. */
+	warm?: (args: ResumePlayArgs) => Promise<unknown>;
+	/** The episode the opened session plays ({@link followPlayed}).
+	 *  Omitted, the one asked for. */
+	followPlayed?: (
+		kitsuId: string,
+		session: { episode?: string; former_episode?: string },
+		requested: number
+	) => number;
 }
 
 export function makeStartResume(
@@ -127,29 +144,52 @@ export function makeStartResume(
 			deps.isPlayableCountApproximate?.(entry.id) ?? false
 		);
 		const { count, approximate } = resolved;
+		// The row as it reads now: the lookup that settled the cap pays
+		// for the listing that puts its numbering right, and the card
+		// read it before. A position kept under what it read as moves.
+		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
+		const guess = deps.isGuess?.(entry.id) ?? false;
+		const now = await settledRow(deps, entry.id, card, count === null || approximate, {
+			match,
+			title,
+			mode,
+			quality,
+			guess
+		});
+		if (now.former !== null && now.last !== null) {
+			deps.movePosition?.(match.id, now.former, now.last);
+		}
+		const last = now.last;
+		const next =
+			last === card
+				? resolved.episode
+				: pickNextEpisode(last, count ?? match.episode_count ?? null);
 		// The last watched episode was left part-way: going back to it,
 		// not on to the next, is what Continue means.
-		const last = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
 		const episode = resumeOr(
 			last,
-			resolved.episode,
+			next,
 			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
 		);
 		if (typeof count === 'number') {
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
-		const guess = deps.isGuess?.(entry.id) ?? false;
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
 		deps.markStarted?.(match.id, episode, entry.id);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
-			void deps.markWatched(args).catch(() => {});
+			// The episode the session plays, which the request may have
+			// named by a number it no longer carries.
+			const played = deps.followPlayed?.(match.id, session, episode) ?? episode;
+			// Marked as the episode played: a resolve the request named by a
+			// former tag is kept under it.
+			void deps.markWatched({ ...args, episode: played }).catch(() => {});
 			// A guessed match writes nothing to the user's tracker accounts.
 			if (!guess) {
-				void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
+				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
-			deps.navigateToSession(match.id, session, episode, guess, entry.id);
+			deps.navigateToSession(match.id, session, played, guess, entry.id);
 		} catch (e) {
 			deps.onProgress(null);
 			// Busy holds until the failure is on screen: the page words it
@@ -162,4 +202,46 @@ export function makeStartResume(
 			}
 		}
 	};
+}
+
+/** What the clicked row reads as now, and the number it read as
+ *  before its numbering was put right; what the card read when the row
+ *  cannot be asked. */
+async function rowNow(
+	deps: StartResumeDeps,
+	entryId: string,
+	card: number | null
+): Promise<{ last: number | null; former: number | null }> {
+	try {
+		const row = await deps.currentNumber?.(entryId);
+		if (!row) return { last: card, former: null };
+		return {
+			last: parseHistoryEpisode(row.ep_no),
+			former: parseHistoryEpisode(row.former_ep_no)
+		};
+	} catch {
+		return { last: card, former: null };
+	}
+}
+
+/** {@link rowNow}, with the row's own episode warmed first when no
+ *  listing stands behind the cap (`unmeasured`) and the row reads as a
+ *  fractional episode — the one kind a renumbering leaves under a
+ *  number it no longer has. The warm resolves the listing, which puts
+ *  the row right, and records no watch. */
+async function settledRow(
+	deps: StartResumeDeps,
+	entryId: string,
+	card: number | null,
+	unmeasured: boolean,
+	play: Omit<ResumePlayArgs, 'episode'>
+): Promise<{ last: number | null; former: number | null }> {
+	const now = await rowNow(deps, entryId, card);
+	if (!unmeasured || !deps.warm || now.last === null || Number.isInteger(now.last)) return now;
+	try {
+		await deps.warm({ ...play, episode: now.last });
+	} catch {
+		return now;
+	}
+	return rowNow(deps, entryId, now.last);
 }

@@ -625,6 +625,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v21: a recap tagged at a continuation's offset ("12.5" under
+    //      offset 12) advertises as the entry's 0.5, and a stitched
+    //      split's such recap as the tag between its parts ("12.5",
+    //      not "24.5"), a second recap between the same episodes with
+    //      a tag of its own ("12.75"); rows from before carry the old
+    //      extras, and the probe that replaces them puts a history
+    //      row's stamp from then right.
     // v20: the extras a provider appends after a show's last episode
     //      are read as extras beside it when Kitsu and AniList end the
     //      show at its count. A v19 row for such a show holds the
@@ -746,7 +753,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v20:{kitsu_id}:{m}")
+    format!("availability:v21:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -839,6 +846,17 @@ pub async fn check_availability(
                 // which is not absence, so persist nothing.
                 return Ok(AvailabilityResponse::unsettled(UnsettledReason::Unanswered));
             };
+            // The listing is at hand, whatever the mode answered: a
+            // history row's stamp an earlier version wrote with a
+            // stitched row's former tag reads right before its Continue
+            // card is clicked, and before the verdict is cached — the
+            // next probe that takes it fetches no listing.
+            crate::commands::numbering_offset::retag_from_listing(
+                state,
+                &crate::scraper::provider::ShowKey::new(attempted.provider, p.hit.slug.clone())
+                    .to_string(),
+                &p.episodes,
+            );
             if present {
                 (
                     true,
@@ -1521,3 +1539,7 @@ mod subtype_args_tests;
 #[cfg(test)]
 #[path = "availability_unwalked_test.rs"]
 mod unwalked_tests;
+
+#[cfg(test)]
+#[path = "availability_former_test.rs"]
+mod former_tests;
