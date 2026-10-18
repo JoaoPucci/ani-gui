@@ -258,7 +258,10 @@ async fn the_transport_leaves_ciphers_to_curl_off_darwin() {
     assert!(!resp.body.contains("--ciphers"));
 }
 
-#[cfg(unix)]
+/// Linux only: ETXTBSY on exec of a write-open file is a Linux
+/// guarantee. macOS permits the exec, so there is no busy executable
+/// to wait out and the case would describe nothing.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn the_transport_outlives_a_briefly_busy_executable() {
     // The suite stages executable stubs from many threads, and a
@@ -273,8 +276,12 @@ async fn the_transport_outlives_a_briefly_busy_executable() {
         .append(true)
         .open(dir.path().join("curl_firefox135"))
         .expect("hold the stub open for writing");
+    // Let go once the spawn has found the stub busy: a spawn that came
+    // to it after the release would exec at once, retry nothing, and
+    // prove nothing.
+    let queue = crate::held::queue(dir.path().join("curl_firefox135").display().to_string());
     let handle = tokio::spawn(async move { fetch.get("https://example.test/x").await });
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    queue.joined().await;
     drop(writer);
     let resp = handle
         .await

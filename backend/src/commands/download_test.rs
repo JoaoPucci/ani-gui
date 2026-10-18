@@ -594,8 +594,12 @@ async fn a_busy_executable_is_retried_rather_than_failed() {
         .write(true)
         .open(bin.path().join("yt-dlp"))
         .expect("hold the tool open for writing");
+    // Let go once the spawn has found the tool busy: a spawn that came
+    // to it after the release would exec at once, retry nothing, and
+    // prove nothing.
+    let queue = crate::held::queue(bin.path().join("yt-dlp").display().to_string());
     let releaser = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        queue.joined().await;
         drop(held);
     });
     let got = spawn_download_tool(
@@ -1595,9 +1599,13 @@ async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
     std::fs::write(&target, b"").expect("the other publisher's claim");
     let scratch = dest.path().join("finished.part.mp4");
     std::fs::write(&scratch, b"the whole episode").expect("scratch");
+    // The claim dissolves once the publisher is waiting it out: one
+    // that came to the name after the claim had gone would find it
+    // free, wait for nothing, and prove nothing.
     let claim = target.clone();
+    let queue = crate::held::queue(target.display().to_string());
     let _cleanup = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        queue.joined().await;
         let _ = std::fs::remove_file(&claim);
     });
 
