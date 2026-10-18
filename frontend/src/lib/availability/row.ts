@@ -72,7 +72,9 @@ export function mergeRow(
 	key: string | null,
 	patch: AvailabilityPatch
 ): AvailabilityRow | null {
-	if (key === null) return row;
+	// A patch that carries nothing writes nothing, whichever key it is
+	// stamped with.
+	if (key === null || Object.values(patch).every((v) => v === undefined)) return row;
 	const next: AvailabilityRow = { ...(row?.key === key ? row : UNKNOWN_ROW), key };
 	if (patch.available !== undefined) {
 		next.listed = patch.available;
