@@ -186,6 +186,7 @@ mod rule;
 pub use rule::{appended_extras, ALIGNED};
 #[path = "play_native_appended_names.rs"]
 mod names;
+pub use names::is_announced;
 #[path = "play_native_appended_titles.rs"]
 mod titles;
 pub use titles::same_title;

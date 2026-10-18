@@ -118,15 +118,19 @@ impl KitsuTail<'_> {
             .ok()
     }
 
-    /// The entries Kitsu relates the show to, each TV sequel with its
-    /// first page of episodes, and whether they are all of them.
+    /// The entries Kitsu relates the show to, each TV sequel that has
+    /// aired with its first page of episodes, and whether they are all
+    /// of them. A sequel only announced has aired nothing, and the rule
+    /// passes it over: its page is not asked for, since an answer the
+    /// read does not need could still fail it.
     pub(super) async fn read_related(&self) -> Option<(Vec<Related>, bool)> {
         let relations = crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
             .await
             .ok()?;
         let mut out = Vec::new();
         for r in relations.entries {
-            let first_episodes = if is_tv_sequel(&r) {
+            let aired = !crate::commands::play_native_appended::is_announced(r.status.as_deref());
+            let first_episodes = if is_tv_sequel(&r) && aired {
                 let page = crate::commands::kitsu::kitsu_episode_page(self.state, &r.id, 1)
                     .await
                     .ok()?;
