@@ -23,6 +23,13 @@ use extras_rule::listed_number;
 use extras_rule::{extras, first_part_extras};
 use parts_rule::{shared_entry, split_parts};
 
+/// The Kitsu episodes whose air dates could place an exact chain the
+/// dates alone cannot (none yet).
+#[must_use]
+pub fn chain_dates_needed(_evidence: &Evidence) -> std::collections::BTreeSet<u32> {
+    std::collections::BTreeSet::new()
+}
+
 /// The map for `evidence`.
 ///
 /// The counts decide which rules can apply: a tracker entry shorter

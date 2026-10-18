@@ -989,7 +989,10 @@ async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
     )
     .await;
     kitsu_mapped(&kitsu, "anilist/anime", 129_610, EMPTY_PAGE).await;
-    for (offset, numbers) in [("0", 1..=20), ("40", 41..=60), ("60", 61..=78)] {
+    // Only the third season's bounds need Kitsu's dates — episodes 53
+    // and 78, pages 3 and 4; the first season is inside Kitsu's run and
+    // page 1 is never asked for.
+    for (offset, numbers, times) in [("0", 1..=20, 0), ("40", 41..=60, 1), ("60", 61..=78, 1)] {
         Mock::given(method("GET"))
             .and(path("/anime/1633/episodes"))
             .and(query_param("page[offset]", offset))
@@ -1002,7 +1005,7 @@ async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
                     (78, "2006-05-06"),
                 ],
             )))
-            .expect(1)
+            .expect(times)
             .mount(&kitsu)
             .await;
     }
