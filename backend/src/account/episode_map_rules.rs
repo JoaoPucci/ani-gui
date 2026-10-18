@@ -255,3 +255,7 @@ mod tests;
 #[cfg(test)]
 #[path = "episode_map_prop_test.rs"]
 mod prop_tests;
+
+#[cfg(test)]
+#[path = "episode_map_fixture_test.rs"]
+mod fixture_tests;

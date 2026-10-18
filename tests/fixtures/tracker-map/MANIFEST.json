@@ -1,5 +1,18 @@
 {
-  "$comment": "Recorded cases for the episode map (backend/src/account/episode_map_rules.rs): one file per show and tracker, holding the evidence as the readers return it and the map the docs' rules answer. wire/ holds the bodies the readers are checked against.",
+  "$comment": "Recorded cases for the episode map (backend/src/account/episode_map_rules.rs), captured by scanning Kitsu's catalogue against both trackers. Every reported tracker mismatch becomes a case here (docs/testing.md). wire/ holds the bodies the readers are checked against.",
   "captured_at": "2026-10-18",
-  "fixtures": {}
+  "fixtures": {
+    "anilist.json": {
+      "request": "Kitsu's whole catalogue (GET /anime?sort=id&include=mappings, 22,504 entries) against AniList (Page { media(idMal_in / id_in) } with relations, then streamingEpisodes for every longer entry) — one case per Kitsu entry whose count the AniList entry the app resolves it to disagrees with, plus each later Kitsu part of a split; Kitsu's media-relationships for each, two hops out.",
+      "notes": "Each case: id, kitsu_title, scan_class (the shape the scan classified: A, A-relaxed, A-claimed, B, B?, B', D, D-ambiguous, E, U), the evidence as the app's readers return it, the shape the documented rules answer (expect), and a note where the case is pinned or the scan and the app part ways.",
+      "size": 231561,
+      "sha256": "b2864b36d5d1841b435fe877182a6502f0b3cfc779a3fdcac481206a511676f4"
+    },
+    "mal.json": {
+      "request": "Kitsu's whole catalogue against MyAnimeList (GET /v2/anime/ranking?ranking_type=all|bypopularity&fields=num_episodes,start_date,end_date,media_type,status, then GET /v2/anime/{id}?fields=…,related_anime for every mismatch and its sequels) — one case per Kitsu entry whose count the MyAnimeList entry disagrees with, plus each later Kitsu part of a split.",
+      "notes": "Same shape as anilist.json; MyAnimeList carries no episode list the app reads, so no case lists one.",
+      "size": 223602,
+      "sha256": "3e2aa102a8264b1f94b28ee8354018448938336359af3e863445888d2d3fd498"
+    }
+  }
 }
