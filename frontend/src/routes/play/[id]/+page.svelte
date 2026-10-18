@@ -2108,6 +2108,11 @@
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
 		if (!detail) return;
+		// A switch or re-check holds the switch lock: Reload waits for it.
+		// A switch replaces the stream, and one that fails, like a
+		// re-check that does not switch, leaves the error and its Reload
+		// on screen. (The automatic path never starts under the lock.)
+		if (switchBusy) return;
 		// The visit this recovery is for ($lib/play/owned-play): a page
 		// moved on while the eviction was out must not resolve afresh.
 		// Nor must one a switch overtook: the recovery does not hold the
@@ -2120,7 +2125,9 @@
 			() => gone || !here()
 		);
 		const atSwitch = switchesStarted;
-		const switchBusyAtStart = switchBusy;
+		// What the overlay says now, to put back if the recovery has to
+		// offer Reload again.
+		const shownError = playerError;
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2167,12 +2174,12 @@
 		const turn = recoveryAfterEviction({
 			left: !owner.isCurrent(),
 			switchedSince: switchesStarted !== atSwitch,
-			switchBusyAtStart,
 			switchBusyNow: switchBusy
 		});
 		// A re-check holds the lock and may not switch: the stale stream
 		// is still on screen, so Reload is offered again.
-		if (turn === 'offer-reload') playerError = m.play_error_playback_technical({ detail: reason });
+		if (turn === 'offer-reload')
+			playerError = shownError ?? m.play_error_playback_technical({ detail: reason });
 		if (turn !== 'resolve') return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);

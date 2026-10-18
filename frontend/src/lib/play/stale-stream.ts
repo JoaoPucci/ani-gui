@@ -187,8 +187,9 @@ export interface RecoveryAfterEviction {
 	left: boolean;
 	/** A switch started since the recovery began. */
 	switchedSince: boolean;
-	/** A switch or re-check held the switch lock as the recovery began. */
-	switchBusyAtStart: boolean;
+	/** A switch or re-check held the switch lock as the recovery began.
+	 *  The player starts no recovery under the lock, and passes none. */
+	switchBusyAtStart?: boolean;
 	/** A switch or re-check holds the switch lock now. */
 	switchBusyNow: boolean;
 }
