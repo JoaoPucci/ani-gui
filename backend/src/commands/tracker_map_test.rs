@@ -959,3 +959,82 @@ async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_wit
             .expect("read")
     );
 }
+
+/// A Kitsu episodes page holding `numbers`, each dated by `dated`.
+fn episodes_page(numbers: std::ops::RangeInclusive<u32>, dated: &[(u32, &str)]) -> String {
+    let rows: Vec<String> = numbers
+        .map(|n| {
+            let air = dated
+                .iter()
+                .find(|(d, _)| *d == n)
+                .map_or("null".to_string(), |(_, a)| format!("\"{a}\""));
+            format!(
+                r#"{{"id":"e{n}","type":"episodes","attributes":{{"number":{n},"airdate":{air}}}}}"#
+            )
+        })
+        .collect();
+    format!(r#"{{"data":[{}]}}"#, rows.join(","))
+}
+
+#[tokio::test]
+async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
+    // Sonic X on AniList: 52 + 26 = 78; Kitsu's dates end 2004-03, its
+    // episodes 53 and 78 are dated to the third season's run.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "1633",
+        detail("1633", Some(78), "2003-04-06", "2004-03-28"),
+        1,
+    )
+    .await;
+    kitsu_mapped(&kitsu, "anilist/anime", 129_610, EMPTY_PAGE).await;
+    for (offset, numbers) in [("0", 1..=20), ("40", 41..=60), ("60", 61..=78)] {
+        Mock::given(method("GET"))
+            .and(path("/anime/1633/episodes"))
+            .and(query_param("page[offset]", offset))
+            .respond_with(ResponseTemplate::new(200).set_body_string(episodes_page(
+                numbers,
+                &[
+                    (1, "2003-08-23"),
+                    (52, "2005-03-26"),
+                    (53, "2005-09-10"),
+                    (78, "2006-05-06"),
+                ],
+            )))
+            .expect(1)
+            .mount(&kitsu)
+            .await;
+    }
+    let anilist_server = MockServer::start().await;
+    anilist_media(
+        &anilist_server,
+        1816,
+        r#"{"data":{"Media":{"id":1816,"idMal":1816,"episodes":52,"status":"FINISHED","format":"TV",
+            "startDate":{"year":2003,"month":4,"day":6},"endDate":{"year":2004,"month":3,"day":28},
+            "relations":{"edges":[{"relationType":"SEQUEL","node":{"id":129610,"type":"ANIME","format":"TV"}}]},
+            "streamingEpisodes":[]}}}"#,
+    )
+    .await;
+    anilist_media(
+        &anilist_server,
+        129_610,
+        r#"{"data":{"Media":{"id":129610,"idMal":null,"episodes":26,"status":"FINISHED","format":"TV",
+            "startDate":{"year":2005,"month":9,"day":10},"endDate":{"year":2006,"month":5,"day":6},
+            "relations":{"edges":[]},"streamingEpisodes":[]}}}"#,
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::AniList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: None,
+    };
+    let map = episode_map_for(&ask, "1633", ProviderMediaId(1816), Some(52)).await;
+    assert_eq!(map.shape, Shape::Chain);
+    assert_eq!(map.segments[1].entry, 129_610);
+}
