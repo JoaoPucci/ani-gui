@@ -17,19 +17,15 @@ fn whole_entry(show: &TrackerShow, total: u32, from: u32, to: u32) -> Segment {
     }
 }
 
-/// `YYYY-MM` of a date, `None` when the date is unknown or names no
-/// month. Runs are compared by month: the sources disagree by a day
+/// `YYYY-MM` of a date, `None` when the date is unknown or is not a
+/// real calendar date or month
+/// ([`crate::account::episode_map_calendar::parse_date`]). Runs are compared by month: the sources disagree by a day
 /// about the same broadcast often enough that a day would refuse
 /// chains that are plainly right.
 fn month(date: Option<&str>) -> Option<&str> {
     let date = date?;
-    let month = date.get(..7)?;
-    let (year, mm) = month.split_at(4);
-    (year.chars().all(|c| c.is_ascii_digit())
-        && mm.len() == 3
-        && mm.starts_with('-')
-        && mm[1..].chars().all(|c| c.is_ascii_digit()))
-    .then_some(month)
+    crate::account::episode_map_calendar::parse_date(date)?;
+    date.get(..7)
 }
 
 /// The chain rule: `entry` and its sequels, in the order the tracker

@@ -33,8 +33,15 @@ def identity(why):
 
 
 def month(date):
-    """`YYYY-MM` of a date, None when the date names no month."""
-    if not date or not re.match(r"^\d{4}-\d{2}", date):
+    """`YYYY-MM` of a date, None unless the date is a real calendar date
+    (`YYYY-MM-DD`) or month (`YYYY-MM`)."""
+    import datetime
+
+    if not date or not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", date):
+        return None
+    try:
+        datetime.date(int(date[:4]), int(date[5:7]), int(date[8:]) if len(date) == 10 else 1)
+    except ValueError:
         return None
     return date[:7]
 
@@ -249,7 +256,7 @@ def chain_family(rng):
         total = sum(counts)
         segs = [show(100 + i, counts[i], fins[i], months(2001, 3 * i) + "-02", months(2001, 3 * i + 2) + "-20") for i in range(n)]
         k = kitsu(1, total, "2001-01-01", months(2001, 3 * n) + "-28")
-        tweak = rng.choice(["ok", "ok", "ok", "over", "under", "claimed", "early", "late", "undated", "unknown_hop", "year_only", "extra_hop"])
+        tweak = rng.choice(["ok", "ok", "ok", "over", "under", "claimed", "early", "late", "undated", "unknown_hop", "year_only", "extra_hop", "impossible"])
         ev = evidence(k, segs[0], chain=segs[1:])
         if tweak == "over":
             ev["kitsu"]["episodes"] = total + 1
@@ -265,6 +272,8 @@ def chain_family(rng):
             ev["kitsu"]["end"] = None
         elif tweak == "unknown_hop":
             ev["chain"][0] = dict(ev["chain"][0], episodes=None)
+        elif tweak == "impossible":
+            ev["entry"] = dict(ev["entry"], start=rng.choice(["2001-03-31x", "2001-02-30", "2001-13-05", "2001-00"]))
         elif tweak == "year_only":
             ev["chain"][-1] = dict(ev["chain"][-1], start=ev["chain"][-1]["start"][:4])
         elif tweak == "extra_hop":
