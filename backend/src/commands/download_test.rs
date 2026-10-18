@@ -4157,6 +4157,39 @@ async fn queued_behind_the_lane(queue: &crate::held::Queue, log: &std::path::Pat
     }
 }
 
+/// Returns once the process `pid` is gone: no such process, or one
+/// that has exited and waits only to be reaped.
+#[cfg(unix)]
+async fn until_gone(pid: &str, what: &str) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let signalled = std::process::Command::new("kill")
+            .args(["-0", pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("kill -0")
+            .success();
+        let exited = || {
+            std::process::Command::new("ps")
+                .args(["-o", "stat=", "-p", pid])
+                .output()
+                .is_ok_and(|o| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .trim_start()
+                        .starts_with('Z')
+                })
+        };
+        if !signalled || exited() {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what} ({pid}) to be gone"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 /// The byte-rate limit a logged spawn carries, if any.
 #[cfg(unix)]
 fn rate_limit_of(line: &str) -> Option<&str> {
@@ -4432,7 +4465,17 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
         got.expect("the resumed transfer completes"),
         Transferred::Episode
     );
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The first run is gone before its log is read: a first run that
+    // was left going, and has not got round to finishing yet, has not
+    // logged it either, and proves nothing.
+    let first_pid = std::fs::read_to_string(&log)
+        .expect("the tool ran")
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().next())
+        .expect("the first run's pid")
+        .to_string();
+    until_gone(&first_pid, "the first run").await;
     let calls = std::fs::read_to_string(&log).expect("the tool ran");
     let done: Vec<&str> = calls.lines().filter(|l| l.starts_with("done")).collect();
     let second_pid = calls
