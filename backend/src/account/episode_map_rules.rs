@@ -6,7 +6,7 @@
 //! explains the difference, since a wrong mapping is worse than none.
 //! `docs/title-resolution.md` ("Episode numbers") tables the cases.
 
-use super::episode_map::{EpisodeMap, Evidence, Identity, Segment, Shape, TrackerShow};
+use super::episode_map::{EpisodeMap, Evidence, Identity, KitsuShow, Segment, Shape, TrackerShow};
 
 /// The map for `evidence`.
 ///
@@ -30,6 +30,13 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
     if tracker_total < kitsu_count {
         if let Some(segments) = chain(evidence, kitsu_count, tracker_total) {
             explanations.push((Shape::Chain, segments));
+        }
+    } else {
+        if let Some(segments) = shared_entry(evidence, tracker_total) {
+            explanations.push((Shape::SharedEntry, segments));
+        }
+        if let Some(segments) = split_parts(evidence, tracker_total) {
+            explanations.push((Shape::SplitParts, segments));
         }
     }
     match explanations.len() {
@@ -112,6 +119,82 @@ fn chain(evidence: &Evidence, kitsu_count: u32, tracker_total: u32) -> Option<Ve
         }
     }
     Some(segments)
+}
+
+/// The segment filing the whole of `part` — Kitsu's `1..=count` — under
+/// `entry`, after `lead` of the entry's episodes.
+fn part_of_entry(entry: &TrackerShow, total: u32, count: u32, lead: u32) -> Segment {
+    Segment {
+        entry: entry.id,
+        entry_total: total,
+        entry_finished: entry.finished,
+        kitsu_from: 1,
+        kitsu_to: count,
+        lead,
+        extras_after: Vec::new(),
+    }
+}
+
+/// Where the show being mapped sits in `parts`, given in order, when
+/// the parts up to some one of them sum exactly to the entry's total
+/// and the show is among those: the episodes before its, and its count.
+fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(u32, u32)> {
+    let mut covered = 0u32;
+    let mut place = None;
+    let mut taken = 0usize;
+    for part in parts {
+        if covered >= tracker_total {
+            break;
+        }
+        let count = part.episodes.filter(|n| *n > 0)?;
+        if part.id == ours {
+            place = Some((covered, count));
+        }
+        covered = covered.checked_add(count)?;
+        taken += 1;
+    }
+    (covered == tracker_total && taken >= 2)
+        .then_some(place)
+        .flatten()
+}
+
+/// The shared-entry rule: every Kitsu entry mapped to the tracker's
+/// entry, in the order of their distinct start dates, sums exactly to
+/// its total, the show among them. The show's episodes are the entry's
+/// after the parts before it; only the last part's last episode is the
+/// entry's.
+fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
+    let mut parts: Vec<&KitsuShow> = evidence.sharing.iter().collect();
+    if parts.iter().any(|p| p.start.is_none()) {
+        return None;
+    }
+    parts.sort_by(|a, b| a.start.cmp(&b.start));
+    if parts.windows(2).any(|w| w[0].start == w[1].start) {
+        return None;
+    }
+    let (lead, count) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
+    Some(vec![part_of_entry(
+        &evidence.entry,
+        tracker_total,
+        count,
+        lead,
+    )])
+}
+
+/// The split-parts rule: Kitsu's chain of parts from the entry the
+/// tracker knows — each the single sequel of the one before, with no
+/// entry of its own on the tracker — sums exactly to the entry's total
+/// as far as the sum reaches, the show among those parts. The chain's
+/// order is Kitsu's own.
+fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
+    let parts: Vec<&KitsuShow> = evidence.parts.iter().collect();
+    let (lead, count) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
+    Some(vec![part_of_entry(
+        &evidence.entry,
+        tracker_total,
+        count,
+        lead,
+    )])
 }
 
 #[cfg(test)]
