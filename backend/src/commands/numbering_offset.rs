@@ -31,7 +31,7 @@ use crate::app::AppState;
 
 #[path = "numbering_offset_store.rs"]
 mod numbering_offset_store;
-use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
+use numbering_offset_store::{merge_row, remove_rows};
 
 #[cfg(test)]
 #[path = "numbering_offset_read_tap.rs"]
@@ -81,18 +81,13 @@ pub fn display_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
 
 /// Whether the slug has a row in the store at all.
 pub fn has(state: &AppState, slug: &str) -> bool {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body).iter().any(|r| r.slug == slug)
+    Numbering::read(&state.history_path).has(slug)
 }
 
 /// The slug's stamped numbering offset; 0 on a missing row or an
 /// unreadable file — the no-shift case.
 pub fn get(state: &AppState, slug: &str) -> u32 {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body)
-        .into_iter()
-        .find(|r| r.slug == slug)
-        .map_or(0, |r| r.offset)
+    Numbering::read(&state.history_path).offset(slug)
 }
 
 /// The per-entry (Kitsu-space) reading of a stored row: the stamped
