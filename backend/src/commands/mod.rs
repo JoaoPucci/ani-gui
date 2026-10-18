@@ -7,6 +7,7 @@
 
 pub mod account;
 pub mod account_edit;
+mod account_mapped;
 pub mod airing;
 mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;

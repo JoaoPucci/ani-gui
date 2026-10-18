@@ -777,7 +777,7 @@ async fn push_progress_with_anilist_base(
 /// fire syncWatchedToTrackers without awaiting, so two writes for the
 /// same show would otherwise both read the same count and the
 /// later-landing lower one would regress it.
-async fn push_progress_via(
+pub(crate) async fn push_progress_via(
     state: &Arc<AppState>,
     kind: ProviderKind,
     provider: &dyn UserListProvider,
