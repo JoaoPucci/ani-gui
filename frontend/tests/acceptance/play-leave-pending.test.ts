@@ -390,14 +390,10 @@ describe('play route — a recovery overtaken by a switch', () => {
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 	});
 
-	it('a Reload clicked during a switch leaves the switch alone', async () => {
-		let releaseEvict: () => void = () => {};
+	it('a Reload clicked during a switch leaves the switch alone and keeps its overlay', async () => {
 		let evictAsked = false;
-		useShowHandlers(async () => {
+		useShowHandlers(() => {
 			evictAsked = true;
-			await new Promise<void>((r) => {
-				releaseEvict = r;
-			});
 			return new HttpResponse(null, { status: 204 });
 		});
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -415,28 +411,28 @@ describe('play route — a recovery overtaken by a switch', () => {
 			);
 		await until(() => switchStreams().length > 0, "the switch's session request");
 
-		// The old stream fails mid-switch: no automatic recovery, the
-		// overlay offers Reload, and the viewer takes it.
+		// The old stream fails mid-switch: no automatic recovery, and the
+		// overlay offers Reload. The loading overlay covers it from the
+		// pointer, not from the keyboard, and the viewer takes it.
 		const video = playerVideo();
 		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
 		video.dispatchEvent(new Event('error'));
 		const reload = () =>
 			target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
 		await until(() => reload() !== null, 'the Reload button');
+		const shown = target.querySelector('.player-error-detail')?.textContent;
 		reload()!.click();
-		await until(() => evictAsked, 'the recovery to evict the stale row');
+		await new Promise((r) => setTimeout(r, 100));
+
+		// The switch owns the lock and replaces the stream: Reload waits
+		// for it, and the error stays on screen with its Reload in case
+		// the switch fails.
+		expect(evictAsked).toBe(false);
+		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 
 		switchStreams()[0].dispatch('done', session('session-3'));
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
-		setUrl(`/play/${KITSU_ID}`, { session: 'session-3', episode: '3', kind: 'mp4' });
-		flushSync();
-		const before = switchStreams().length;
-
-		releaseEvict();
-		await new Promise((r) => setTimeout(r, 200));
-
-		expect(switchStreams().length).toBe(before);
-		expect(goto).toHaveBeenCalledTimes(1);
+		expect(switchStreams()).toHaveLength(1);
 	});
 
 	it('offers Reload again when a re-check held the lock as the eviction answered', async () => {
@@ -493,6 +489,83 @@ describe('play route — a recovery overtaken by a switch', () => {
 		releaseAsk();
 		await new Promise((r) => setTimeout(r, 200));
 
-		expect(target.querySelector('button.player-error-reload')).not.toBeNull();
+		const reload = target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
+		expect(reload).not.toBeNull();
+		// The error is the one the stream failed with.
+		expect(target.querySelector('.player-error-detail')?.textContent).not.toContain(
+			'manual reload'
+		);
+
+		// And Reload works: the episode on screen is resolved afresh.
+		const fresh = () =>
+			FakeEventSource.instances.filter(
+				(i) => i.url.includes('episode=1') && !i.url.includes('prefetch=1')
+			).length;
+		const before = fresh();
+		evictAsked = false;
+		reload!.click();
+		await until(() => evictAsked, "the Reload's eviction");
+		releaseEvict();
+		await until(() => fresh() > before, 'the Reload to resolve the episode afresh');
+	});
+
+	it('puts back the error the viewer saw when a Reload meets a re-check', async () => {
+		let releaseEvict: () => void = () => {};
+		let evictAsked = false;
+		useShowHandlers(async () => {
+			evictAsked = true;
+			await new Promise<void>((r) => {
+				releaseEvict = r;
+			});
+			return new HttpResponse(null, { status: 204 });
+		});
+		let releaseAsk: () => void = () => {};
+		let asked = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) {
+					asked = true;
+					await new Promise<void>((r) => {
+						releaseAsk = r;
+					});
+				}
+				return HttpResponse.json({
+					available: true,
+					episode_count: 4,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(
+			() => target.querySelector('li[data-ep-num="5"] button') !== null,
+			'the dimmed card'
+		);
+
+		// A failure that is not retried on its own: the overlay shows it
+		// with Reload, and the viewer takes Reload.
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		const reload = () =>
+			target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
+		await until(() => reload() !== null, 'the Reload button');
+		const shown = target.querySelector('.player-error-detail')?.textContent;
+		reload()!.click();
+		await until(() => evictAsked, "the Reload's eviction");
+
+		(target.querySelector('li[data-ep-num="5"] button') as HTMLButtonElement).click();
+		await until(() => asked, 'the re-check to go out');
+		releaseEvict();
+		await new Promise((r) => setTimeout(r, 100));
+		releaseAsk();
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(reload()).not.toBeNull();
+		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 	});
 });
