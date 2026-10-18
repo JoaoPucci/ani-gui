@@ -25,16 +25,21 @@ pub struct HistoryNumber {
 /// # Errors
 /// As [`super::history::history_list`].
 pub fn history_number(state: &AppState, id: &str) -> Result<Option<HistoryNumber>> {
-    let Some(row) = super::history::history_list(state)?
-        .into_iter()
-        .find(|e| e.id == id)
-    else {
-        return Ok(None);
-    };
-    Ok(Some(HistoryNumber {
-        former_ep_no: former_number(state, id, &row.ep_no),
-        ep_no: row.ep_no,
-    }))
+    // One hold for the row, the pair it reads through and the former
+    // tag kept beside the pair: what a writer puts together is read
+    // together.
+    crate::history::guard::hold(&state.history_path, |_| {
+        let Some(row) = super::history::history_list_held(state)?
+            .into_iter()
+            .find(|e| e.id == id)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(HistoryNumber {
+            former_ep_no: former_number(state, id, &row.ep_no),
+            ep_no: row.ep_no,
+        }))
+    })
 }
 
 /// The number a row reading `ep_no` read as before its show's stamp

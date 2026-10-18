@@ -65,6 +65,14 @@ fn to_kitsu_numbering(
 /// Returns [`crate::error::AniError::Io`] if the file exists but cannot
 /// be read.
 pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
+    // Under the guard every writer of a row holds: a watch writes its
+    // row and then the display pair the row reads through, and a read
+    // between the two would see the row by its slot.
+    crate::history::guard::hold(&state.history_path, |_| history_list_held(state))
+}
+
+/// [`history_list`] for a caller that already holds the history guard.
+pub(crate) fn history_list_held(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
     Ok(read_all(&state.history_path)?
         .into_iter()
         .map(|e| to_kitsu_numbering(state, e, None))
@@ -108,6 +116,17 @@ pub fn history_by_kitsu(
     if kitsu_id.is_empty() {
         return Ok(None);
     }
+    // Under the writers' guard, as the list is: the row and the pair
+    // it reads through are read together.
+    crate::history::guard::hold(&state.history_path, |_| {
+        history_by_kitsu_held(state, kitsu_id)
+    })
+}
+
+fn history_by_kitsu_held(
+    state: &crate::app::AppState,
+    kitsu_id: &str,
+) -> Result<Option<HistoryEntry>> {
     let entries = read_all(&state.history_path)?;
     // Two providers can leave two rows for one show, one under each
     // provider's id. The one the user watched last is the one to
