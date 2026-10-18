@@ -165,14 +165,15 @@ use crate::proxy::MediaKind;
 // holds an OAD's stream under a whole episode's number (Noragami's
 // first OAD), and a HEAD-passing hit would keep playing and recording
 // it as that episode; bumping re-resolves.
-// (This branch: a season the provider lists twice — an "(Uncensored)"
-// copy and a plain one — is one pick with two versions, the uncensored
-// one playing unless the request names another, and a request naming a
+// v22: a season the provider lists twice — an "(Uncensored)" copy and
+// a plain one — is one pick with two versions, the uncensored one
+// playing unless the request names another, and a request naming a
 // version keys its own row. A row from before holds whichever copy the
 // pool's tie happened to pick, under the key a request naming no
-// version reads, and a HEAD-passing hit would keep serving it; the
-// re-key past the v21 above follows.)
-const SCHEMA: &str = "v21";
+// version reads, and a HEAD-passing hit would keep serving it; bumping
+// re-resolves. Keyed past the v21 above, whose rows name no versions
+// either.
+const SCHEMA: &str = "v22";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
