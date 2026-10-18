@@ -173,6 +173,7 @@ fn plain(titles: &[&str]) -> Vec<EpisodeRef> {
             number: n,
             number2: None,
             title: Some((*t).to_string()),
+            former_tag: None,
         })
         .collect()
 }
@@ -432,6 +433,7 @@ impl CorpusShow {
                 number: *slot,
                 number2: (*number != slot.to_string()).then(|| number.clone()),
                 title: title.clone(),
+                former_tag: None,
             })
             .collect()
     }

@@ -49,6 +49,7 @@ fn native() -> NativeResolved {
         provider: crate::scraper::provider::ProviderId::TestA,
         referer: None,
         subtitles: Vec::new(),
+        former_tags: Vec::new(),
     }
 }
 
@@ -798,4 +799,95 @@ fn a_play_begun_before_a_watch_leaves_the_watchs_row() {
     let rows = crate::history::read_all(&state.history_path).unwrap();
     let row = rows.iter().find(|e| e.id == SHOW).expect("row");
     assert_eq!(row.ep_no, "5", "the later watch's episode stands");
+}
+
+#[test]
+fn a_former_tag_in_the_sidecar_gives_way_to_the_rows_tag_on_its_next_watch() {
+    // A watch of a stitched recap under an earlier version left the
+    // history row's slot 13 stamped "24.5". Asked for again, the resolve
+    // finds the recap by that former tag and reports its tag now; the
+    // watch's stamp then reads the row back as "12.5".
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_former_recap_row(&state);
+    let mut recap = native();
+    recap.numbering_offset = 0;
+    recap.resolved_slot = 13;
+    let listed = || {
+        crate::commands::history::history_list(&state)
+            .expect("list")
+            .into_iter()
+            .find(|e| e.id == SHOW)
+            .expect("row")
+            .ep_no
+    };
+    assert_eq!(listed(), "24.5");
+    let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    recap.resolved_tag = Some("12.5".into());
+    stamp_numbering(&state, &recap, again);
+    write_history(&state, &recap, "24.5", again);
+    assert_eq!(listed(), "12.5");
+}
+
+#[test]
+fn any_resolve_of_the_show_puts_a_former_tag_in_the_sidecar_right() {
+    // The history row's slot 13 was stamped "24.5" by an earlier
+    // version. A resolve of any episode of the show — a warm of
+    // episode 5 — has the listing at hand and knows slot 13 is "12.5"
+    // now: the row reads back as the recap it is from then on.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_former_recap_row(&state);
+    let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut five = native();
+    five.numbering_offset = 0;
+    five.resolved_slot = 5;
+    five.resolved_tag = None;
+    five.former_tags = vec![(13, "24.5".into(), "12.5".into())];
+    stamp_numbering(&state, &five, warm);
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == SHOW)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}
+
+#[tokio::test]
+async fn a_former_tag_repair_survives_the_players_mark_watched() {
+    // After the repaired watch, the player marks the episode watched
+    // from the cached resolution — keyed by the request, "24.5". That
+    // must not put the row back to the former tag.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_former_recap_row(&state);
+    let mut recap = native();
+    recap.numbering_offset = 0;
+    recap.resolved_slot = 13;
+    let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    recap.resolved_tag = Some("12.5".into());
+    stamp_numbering(&state, &recap, again);
+    write_history(&state, &recap, "24.5", again);
+    let cached = crate::commands::play::cached_resolution_for(&recap);
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "24.5");
+    crate::commands::play_native_record::record_watch(&state, &watch, None).await;
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == SHOW)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}
+
+/// A history row from before stitched recaps were renumbered: the slot an
+/// earlier version stored (13) and the stamp it left, "24.5" — written
+/// as that version left them, not through this version's writers.
+fn seed_former_recap_row(state: &AppState) {
+    let row = crate::history::parse(&format!("13\t{SHOW}\tThe Show\n"))
+        .pop()
+        .expect("a row");
+    crate::history::upsert_and_write(&state.history_path, row).expect("write");
+    crate::commands::numbering_offset::put_display(state, SHOW, 0, 13, "24.5");
 }

@@ -87,8 +87,9 @@ pub fn extra_episode_tags(episodes: &[crate::scraper::provider::EpisodeRef]) -> 
 }
 
 /// A provider fraction in per-entry numbering: "41.5" under offset
-/// 40 advertises as "1.5". Tags without a parseable integer part
-/// above the offset pass through verbatim.
+/// 40 advertises as "1.5", and "40.5" — a recap before the entry's
+/// first episode — as "0.5". Tags without a parseable integer part
+/// at or above the offset pass through verbatim.
 pub fn per_entry_fraction(tag: &str, offset: u32) -> String {
     if offset == 0 {
         // Identity, byte-for-byte: reconstruction would normalize
@@ -99,7 +100,7 @@ pub fn per_entry_fraction(tag: &str, offset: u32) -> String {
         return tag.to_string();
     };
     match int.parse::<u32>() {
-        Ok(n) if n > offset => format!("{}.{frac}", n - offset),
+        Ok(n) if n >= offset => format!("{}.{frac}", n - offset),
         _ => tag.to_string(),
     }
 }
