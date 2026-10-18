@@ -54,6 +54,35 @@ fn display_stamps_round_trip_and_survive_offset_puts() {
 }
 
 #[test]
+fn writes_map_a_stamped_display_back_to_its_slot() {
+    // The mark-watched and cache-hit writers have no listing at
+    // hand: when the requested episode names the stamped display
+    // tag — by numeric identity, since the frontend normalizes
+    // "3.50" to "3.5" — the stored row gets the slot a resume looks
+    // up. Everything else keeps the offset translation.
+    let state = make_state();
+    put_display(&state, "the-show-77", 0, 4, "3.50");
+    assert_eq!(
+        Numbering::read(&state.history_path).write_ep_no("the-show-77", "3.5"),
+        "4"
+    );
+    assert_eq!(
+        Numbering::read(&state.history_path).write_ep_no("the-show-77", "2"),
+        "2"
+    );
+    let cont = make_state();
+    put_display(&cont, "the-sequel-88", 40, 2, "41.5");
+    assert_eq!(
+        Numbering::read(&cont.history_path).write_ep_no("the-sequel-88", "1.5"),
+        "2"
+    );
+    assert_eq!(
+        Numbering::read(&cont.history_path).write_ep_no("the-sequel-88", "1"),
+        "41"
+    );
+}
+
+#[test]
 fn reads_present_the_stamped_display_per_entry() {
     // The read boundary turns the stored slot back into the
     // per-entry display the GUI counts in: "4" with stamp (4, "3.5")
@@ -215,9 +244,11 @@ fn fractional_episodes_translate_like_integers() {
     // the row it wrote. The read boundary maps it back for display.
     assert_eq!(provider_ep_no("1.5", 40), "41.5");
     assert_eq!(kitsu_ep_no("41.5", 40), "1.5");
-    // At or below the offset the stamp doesn't describe this row —
-    // same pass-through rule as integers.
+    // Below the offset the stamp doesn't describe this row, and it
+    // passes through; a fraction at the offset is the recap before
+    // the entry's first episode.
     assert_eq!(kitsu_ep_no("3.5", 40), "3.5");
+    assert_eq!(kitsu_ep_no("40.5", 40), "0.5");
 }
 
 #[test]
@@ -253,6 +284,29 @@ proptest::proptest! {
         proptest::prop_assert_eq!(
             kitsu_ep_no(&provider, offset),
             episode.to_string()
+        );
+    }
+
+    /// A listing-less write of the episode a stamp names stores its
+    /// slot, and the slot reads back as that episode, from one read of
+    /// the store whatever its offset; any other row reads by the offset.
+    #[test]
+    fn a_stamped_episode_writes_as_its_slot_and_reads_back_as_itself(
+        episode in 1u32..=10_000,
+        frac in 1u32..10,
+        offset in 0u32..=5_000,
+        slot in 1u32..=20_000,
+        other in 1u32..=20_000,
+    ) {
+        let per_entry = format!("{episode}.{frac}");
+        let tag = provider_ep_no(&per_entry, offset);
+        let store = Numbering::from_body(&format!("the-show\t{offset}\t{slot}\t{tag}\n"));
+        proptest::prop_assert_eq!(store.write_ep_no("the-show", &per_entry), slot.to_string());
+        proptest::prop_assert_eq!(store.read_ep_no("the-show", &slot.to_string()), per_entry);
+        proptest::prop_assume!(other != slot);
+        proptest::prop_assert_eq!(
+            store.read_ep_no("the-show", &other.to_string()),
+            kitsu_ep_no(&other.to_string(), offset)
         );
     }
 

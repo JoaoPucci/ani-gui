@@ -44,6 +44,7 @@ fn seitokai() -> Watch {
         show_id: "hianime:seitokai-10497".into(),
         title: "Seitokai ni mo Ana wa Aru!".into(),
         ep_no: "1".into(),
+        display: None,
     }
 }
 

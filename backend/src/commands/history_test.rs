@@ -834,6 +834,7 @@ fn delete_removes_the_shows_skip_times() {
     let s = make_state(path.clone());
     let older = HistoryEntry {
         kitsu_id: None,
+        own_number: false,
         ..row("hianime:seitokai-10497", "Seitokai")
     };
     write_atomic(&path, &[row("one-piece-69", "One Piece"), older]).unwrap();
@@ -902,6 +903,7 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
     let s = make_state(path.clone());
     let unrecorded = |id: &str, title: &str| HistoryEntry {
         kitsu_id: None,
+        own_number: false,
         ..row(id, title)
     };
     write_atomic(
@@ -910,6 +912,7 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
             unrecorded("hianime:seitokai-10497", "Seitokai"),
             HistoryEntry {
                 kitsu_id: Some("1623".into()),
+                own_number: false,
                 ..row("hianime:here-is-greenwood-3081", "Here is Greenwood")
             },
             unrecorded("naruto-20", "Naruto"),
@@ -998,6 +1001,7 @@ fn renamed_legacy_row(s: &AppState) {
         &s.history_path,
         &[HistoryEntry {
             kitsu_id: None,
+            own_number: false,
             ..row(RENAMED_ID, "The Show: Renamed")
         }],
     )
@@ -1063,4 +1067,45 @@ fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() 
     put(&s, "title-match:v3:hianime:the show: renamed:c1", "77");
 
     delete_fails_then_retries_after_a_restart(&s, tmp.path());
+}
+
+#[test]
+fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
+    // A watch's writes go in under the history guard. A reader that
+    // starts between two of them waits for both: it never reads the
+    // row half-written.
+    let td = tempfile::tempdir().expect("td");
+    let state = make_state(td.path().join("history"));
+    let show = "hianime:stitched-show-4";
+    let reader = crate::history::guard::hold(&state.history_path, |held| {
+        held.upsert(HistoryEntry {
+            ep_no: "2".into(),
+            id: show.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: false,
+        })
+        .expect("row");
+        let reading = state.clone();
+        let reader = std::thread::spawn(move || history_list(&reading).expect("list"));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(
+            !reader.is_finished(),
+            "a reader waits for the watch to be written whole"
+        );
+        held.upsert(HistoryEntry {
+            ep_no: "1.5".into(),
+            id: show.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        })
+        .expect("own-number row");
+        reader
+    });
+    let rows = reader.join().expect("reader");
+    let row = rows.into_iter().find(|e| e.id == show).expect("the row");
+    assert_eq!(row.ep_no, "1.5");
 }

@@ -365,6 +365,52 @@ pub async fn kitsu_episodes_with(
 /// degrades to a Kitsu-only response.
 const ANILIST_ENRICHMENT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// One page of an anime's episodes as Kitsu lists them: the row
+/// [`kitsu_episodes`] caches, or Kitsu's answer when it holds none,
+/// cached the same way. No thumbnail backfill — the reader wants
+/// Kitsu's own rows.
+///
+/// # Errors
+/// As [`kitsu_episodes`].
+pub(crate) async fn kitsu_episode_page(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+) -> Result<Vec<KitsuEpisode>> {
+    let p = page.max(1);
+    let key = format!("kitsu:episodes:{anime_id}:p{p}");
+    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+        if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
+            return Ok(eps);
+        }
+    }
+    kitsu_episodes_fresh(state, anime_id, p, &key).await
+}
+
+/// The entries Kitsu relates an anime to
+/// ([`crate::meta::kitsu::KitsuClient::media_relationships`]), cached
+/// under `kitsu:relations:v1:<id>` for as long as a finished show's
+/// detail row.
+///
+/// # Errors
+/// As the client's, on a miss.
+pub async fn kitsu_relationships(
+    state: &AppState,
+    anime_id: &str,
+) -> Result<crate::meta::kitsu::KitsuRelations> {
+    let key = format!("kitsu:relations:v1:{anime_id}");
+    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+        if let Ok(rel) = serde_json::from_str(&body) {
+            return Ok(rel);
+        }
+    }
+    let rel = state.kitsu.media_relationships(anime_id).await?;
+    if let Ok(body) = serde_json::to_string(&rel) {
+        let _ = meta_cache_put(&state.cache_pool, &key, &body, ANIME_DETAIL_TTL.as_secs());
+    }
+    Ok(rel)
+}
+
 async fn kitsu_episodes_fresh(
     state: &AppState,
     anime_id: &str,

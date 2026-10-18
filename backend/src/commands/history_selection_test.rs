@@ -313,6 +313,7 @@ async fn a_stale_mapping_the_guard_refuses_does_not_outrank_a_correct_row() {
         show_id: "one-piece-69".into(),
         title: "One Piece Part 2".into(),
         ep_no: "4".into(),
+        display: None,
     };
     crate::commands::play_native_record::record_watch(&s, &watch, Some("12")).await;
     let hit = history_by_kitsu(&s, "12").unwrap().expect("match");
@@ -391,6 +392,7 @@ async fn a_watch_the_cache_could_not_stamp_still_resumes_over_an_older_stamped_s
         show_id: "hianime:the-show-9".into(),
         title: "The Show".into(),
         ep_no: "2".into(),
+        display: None,
     };
     crate::commands::play_native_record::record_watch(&s, &watch, None).await;
     assert_eq!(

@@ -31,6 +31,7 @@ fn cached_launch_args_lead_with_the_providers_default_track() {
         subtitles: vec![track("ar", false), track("en", true), track("es", false)],
         kitsu_id: None,
         played: None,
+        former_episode: None,
     };
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
         serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub" }),
@@ -453,6 +454,7 @@ fn a_cached_watch_records_the_episode_played() {
         subtitles: Vec::new(),
         kitsu_id: None,
         played: None,
+        former_episode: None,
     };
     let stamped = super::cached_watch(&row(Some(5)), "4");
     assert_eq!(
@@ -481,6 +483,7 @@ fn a_cached_watch_records_the_episode_the_resolve_matched() {
         subtitles: Vec::new(),
         kitsu_id: None,
         played: played.map(str::to_owned),
+        former_episode: None,
     };
     assert_eq!(
         super::cached_watch(&row(Some("12.5")), "24.5").ep_no,
@@ -527,6 +530,7 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
     let cfg = crate::config::Config {
@@ -608,6 +612,7 @@ fn seed_cached_row(
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
 }
@@ -737,6 +742,7 @@ mod row_provider_props {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         }
     }
 
@@ -806,6 +812,7 @@ async fn row_redirecting_elsewhere(
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
     (mock, elsewhere)

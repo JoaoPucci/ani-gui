@@ -19,7 +19,8 @@ use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 
 use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
-use super::play_native_episode::{classify_chain_failure, ChainOutcome};
+use super::play_native_episode::{classify_chain_failure, resolve_episode_stamped, ChainOutcome};
+use super::play_native_merge::former_tags_of;
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
 
@@ -66,6 +67,11 @@ pub struct NativeResolved {
     /// stamps are no longer written from it; kept for the log and the
     /// tests that describe a listing.
     pub resolved_tag: Option<String>,
+    /// Rows of the picked listing an earlier version tagged otherwise:
+    /// (slot, the tag it had then, the tag it has now) — a stitched
+    /// recap before a cumulatively numbered part. Empty for any other
+    /// listing.
+    pub former_tags: Vec<(u32, String, String)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -123,6 +129,14 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// The history file whose numbering sidecar keeps each show's
+    /// (slot, tag) display stamp — what a request from the user's
+    /// history names a row by. `None` asks nothing of it.
+    pub stamps_beside: Option<&'a std::path::Path>,
+    /// Where the evidence about the entry's last episodes comes from,
+    /// when the caller knows the entry
+    /// ([`super::play_native_appended`]).
+    pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -220,13 +234,26 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = super::play_native_appended::fit_appended(
+                            picked,
+                            req.expected_count,
+                            req.tail,
+                        )
+                        .await;
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let resolved = match resolve_episode(
+                        let stamp = req.stamps_beside.and_then(|history| {
+                            crate::commands::numbering_offset::stamp_beside(
+                                history,
+                                &ShowKey::new(client.id(), picked.hit.slug.clone()).to_string(),
+                            )
+                        });
+                        let resolved = match resolve_episode_stamped(
                             client,
                             &picked,
                             req.episode,
+                            stamp.as_ref(),
                             req.mode,
                             req.quality,
                         )
@@ -278,6 +305,7 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            former_tags: former_tags_of(&picked.episodes),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
