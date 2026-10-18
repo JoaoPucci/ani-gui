@@ -158,3 +158,7 @@ mod tests;
 #[cfg(test)]
 #[path = "play_native_versions_flow_test.rs"]
 mod flow_tests;
+
+#[cfg(test)]
+#[path = "play_native_versions_numbering_test.rs"]
+pub(crate) mod numbering_tests;
