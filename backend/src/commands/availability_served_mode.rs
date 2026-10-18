@@ -5,14 +5,16 @@
 //! never stands in for the reprobe the row's expiry schedules.
 
 use crate::app::AppState;
+use crate::cache::db::MetaCacheRow;
 use crate::cache::{meta_cache_rebody, meta_cache_row};
 use crate::commands::availability::AvailabilityResponse;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
 
-/// How many times the merge re-reads a row another writer changed
+/// How many times the merge tries a row another writer may change
 /// under it. Every writer but an airing cut holds the row's lock while
-/// the merge runs, so only a cut can land in between, and a cut
-/// changes the window once.
+/// the merge runs, so only a cut can land in between, and each cut only
+/// shortens the window; a merge that still misses after this many
+/// gives up, leaving the mode for the next fresh play or probe.
 const ATTEMPTS: usize = 3;
 
 /// Merge into the row at `key` that the version `played` names in
@@ -28,17 +30,30 @@ pub(crate) fn merge_served_mode(
     let Some(served) = played.and_then(|kind| versions.iter().find(|v| v.kind == kind)) else {
         return;
     };
+    let Ok(Some(row)) = meta_cache_row(&state.cache_pool, key) else {
+        return;
+    };
+    merge_from(state, key, served, row);
+}
+
+/// [`merge_served_mode`] from the row as first read, `row`: a row
+/// changed since that read is read again and merged as it now stands.
+pub(crate) fn merge_from(state: &AppState, key: &str, served: &VersionInfo, row: MetaCacheRow) {
+    let mut row = row;
     for _ in 0..ATTEMPTS {
-        let Ok(Some(row)) = meta_cache_row(&state.cache_pool, key) else {
-            return;
-        };
         let Some(body) = merged_body(&row.body, served) else {
             return;
         };
-        match meta_cache_rebody(&state.cache_pool, key, &row, &body) {
-            Ok(false) => continue,
-            _ => return,
+        if !matches!(
+            meta_cache_rebody(&state.cache_pool, key, &row, &body),
+            Ok(false)
+        ) {
+            return;
         }
+        let Ok(Some(now)) = meta_cache_row(&state.cache_pool, key) else {
+            return;
+        };
+        row = now;
     }
 }
 
