@@ -122,6 +122,10 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// Where the evidence about the entry's last episodes comes from,
+    /// when the caller knows the entry
+    /// ([`super::play_native_appended`]).
+    pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -219,6 +223,12 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = super::play_native_appended::fit_appended(
+                            picked,
+                            req.expected_count,
+                            req.tail,
+                        )
+                        .await;
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
