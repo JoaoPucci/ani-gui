@@ -1102,3 +1102,61 @@ fn a_sequel_page_is_read_by_episode_number() {
     });
     assert_eq!(appended_extras(&rows, 12, &two), None, "a second sequel");
 }
+
+/// A season the provider lists twice is one pick with versions, each a
+/// listing of the same episodes: the appended-extras reading of the
+/// listing that plays holds for every version's, so a version chosen
+/// later — or played when the first lacks the mode — carries the same
+/// extras rather than the OADs as episodes 13 and 14.
+#[tokio::test]
+async fn every_version_of_a_pick_is_fitted_with_it() {
+    use crate::commands::play_native_versions::{ShowVersion, VersionKind};
+    let (rows, tail) = noragami();
+    let copy = |offset: u64| -> Vec<EpisodeRef> {
+        rows.iter()
+            .map(|e| EpisodeRef {
+                id: e.id + offset,
+                ..e.clone()
+            })
+            .collect()
+    };
+    let hit = |slug: &str, title: &str| crate::scraper::provider::BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: None,
+        jname: None,
+    };
+    let mut p = picked(rows.clone());
+    p.versions = vec![
+        ShowVersion {
+            kind: VersionKind::Standard,
+            hit: p.hit.clone(),
+            episodes: rows.clone(),
+        },
+        ShowVersion {
+            kind: VersionKind::Uncensored,
+            hit: hit("noragami-uncensored-917", "Noragami (Uncensored)"),
+            episodes: copy(100_000),
+        },
+    ];
+    let source = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(None),
+    };
+    let fitted = fit_appended(p, Some(12), Some(&source)).await;
+    assert_eq!(extra_episode_tags(&fitted.episodes), vec!["12.1", "12.2"]);
+    for v in &fitted.versions {
+        assert_eq!(
+            extra_episode_tags(&v.episodes),
+            vec!["12.1", "12.2"],
+            "{:?} fitted with the pick",
+            v.kind
+        );
+        assert_eq!(v.episodes.len(), fitted.episodes.len());
+    }
+    // The other copy's rows are still its own: the ids it streams from.
+    assert!(fitted.versions[1].episodes.iter().all(|e| e.id > 100_000));
+    // Choosing it plays the fitted listing.
+    let chosen = fitted.clone().choose(Some(VersionKind::Uncensored));
+    assert_eq!(extra_episode_tags(&chosen.episodes), vec!["12.1", "12.2"]);
+}
