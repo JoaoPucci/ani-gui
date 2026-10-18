@@ -34,6 +34,7 @@
 	"controls_menu_quality_label": "Qualidade",
 	"quality_auto": "Automática",
 	"quality_auto_playing": "Automática · {quality}",
+	"quality_pinned_playing": "{pinned} · {quality}",
 	"quality_height": "{height}p",
 	"quality_height_bitrate": "{height}p · {mbps} Mbps",
 	"quality_bitrate": "{mbps} Mbps",

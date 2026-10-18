@@ -63,9 +63,23 @@ describe('qualityMenu', () => {
 	});
 
 	it('checks a pinned level and names it as the row value', () => {
-		const menu = qualityMenu(view({ pinned: 1, playing: 2 }));
+		// The play never sits above its pin: a pinned play plays its pin
+		// or a level below it.
+		const menu = qualityMenu(view({ pinned: 1, playing: 1 }));
 		expect(menu?.items.filter((i) => i.checked).map((i) => i.key)).toEqual([1]);
 		expect(menu?.current).toBe(m.play_quality_height({ height: '720' }));
+	});
+
+	it('names what plays under a pin while the play sits below it', () => {
+		expect(qualityMenu(view({ pinned: 2, playing: 1 }))?.current).toBe(
+			m.play_quality_pinned_playing({
+				pinned: m.play_quality_height({ height: '1080' }),
+				quality: m.play_quality_height({ height: '720' })
+			})
+		);
+		expect(qualityMenu(view({ pinned: 2, playing: 2 }))?.current).toBe(
+			m.play_quality_height({ height: '1080' })
+		);
 	});
 
 	it('leaves out the levels the engine could not load', () => {

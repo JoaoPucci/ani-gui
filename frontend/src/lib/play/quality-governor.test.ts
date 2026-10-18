@@ -447,14 +447,36 @@ describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 		expect(h.isPinned).toBe(false);
 	});
 
-	it('a pinned level the engine left over its audio re-pins at the nearest loadable level below it', () => {
+	it('the pinned level left over its audio moves the pin to the level the engine chose', () => {
+		// hls.js skipped every level between: they share the failing
+		// audio. A climb to them would fail and fall again.
 		const g = governor(BEST, 1080);
 		g.start();
 		expect(g.follow(0, 1_000)?.level).toBe(0);
-		expect(g.isPinned).toBe(true);
-		// The pin is 720p now: a climb could reach it, never 1080p.
+		expect(g.pinnedLevel).toBe(0);
+		expect(g.healthy(10_000_000, FULL)).toBeNull();
+		// The viewer may still ask for a level between, explicitly.
 		expect(g.pick(2, 2_000)).toBeNull();
 		expect(g.pick(1, 2_000)?.level).toBe(1);
+	});
+
+	it('a play already below its pin that the engine moves further down climbs back to the pin', () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		g.fragmentsFailed(2, 1_000);
+		expect(g.follow(0, 2_000)?.level).toBe(0);
+		expect(g.pinnedLevel).toBe(2);
+		// Two falls: the second window. 720p, left over its audio, is
+		// skipped; the climb goes straight to the pin.
+		expect(g.healthy(2_000 + HEALTHY_WINDOWS_MS[1] - 1, FULL)).toBeNull();
+		expect(g.healthy(2_000 + HEALTHY_WINDOWS_MS[1], FULL)?.level).toBe(2);
+	});
+
+	it('an Auto play the engine moved down over its audio does not climb', () => {
+		const g = governor();
+		g.start();
+		g.follow(0, 1_000);
+		expect(g.healthy(10_000_000, FULL)).toBeNull();
 	});
 
 	it("a play below its pin whose own level's playlist fails moves up only as far as the pin", () => {

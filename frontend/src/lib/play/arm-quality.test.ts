@@ -804,7 +804,50 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.engine.loads).toEqual([2]);
 		expect(s.engine.autoLevelEnabled).toBe(true);
 		expect(s.lastView()?.pinned).toBeNull();
-		expect(s.logs.join('\n')).toMatch(/released/);
+		expect(s.logs.join('\n')).toMatch(/released to the engine: every level left has failed/);
+	});
+
+	it('a removal after the choice was released says the hold was not held', () => {
+		const s = armObjects('worst');
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 0 }
+		});
+		expect(s.engine.autoLevelEnabled).toBe(true);
+		s.remove(2);
+		expect(s.logs.join('\n')).toMatch(/2 left, not held/);
+		expect(s.logs.join('\n')).not.toMatch(/2 left, released/);
+	});
+
+	it('a pinned play the engine moved down over its audio, below the pin, climbs back to the pin', () => {
+		const s = armObjects();
+		s.control.pick(2);
+		s.engine.manual = -1;
+		s.at(1_000);
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_TIMEOUT,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 2 }
+		});
+		s.engine.manual = -1;
+		s.at(2_000);
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(0),
+			frag: { type: 'audio', level: 1 }
+		});
+		expect(s.engine.loads.slice(-2)).toEqual([1, 0]);
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 0 } });
+		expect(s.lastView()).toMatchObject({ pinned: 2, playing: 0, unavailable: [1] });
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(2_000 + HEALTHY_WINDOWS_MS[1]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
+		expect(s.engine.loads.at(-1)).toBe(2);
 	});
 
 	it('the menu shows the pinned level while the play sits below it, and the play climbs back', () => {
@@ -1116,6 +1159,8 @@ describe('armQuality — levels hls.js removes', () => {
 		const s = armObjects();
 		s.remove(0, 1);
 		expect(s.lastView()?.levels).toEqual([MASTER[2]]);
+		expect(s.logs.join('\n')).toMatch(/1 left, released to the engine: one level/);
+		expect(s.logs.join('\n')).not.toMatch(/failed/);
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, { details: D.FRAG_LOAD_ERROR, fatal: false, frag: { type: 'main' } });
 		expect(s.engine.autoLevelEnabled).toBe(true);
