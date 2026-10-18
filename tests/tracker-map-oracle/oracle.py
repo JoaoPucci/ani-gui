@@ -155,9 +155,19 @@ def predict(ev):
         if c:
             found.append(("chain", c))
     else:
+        split = split_rule(ev, total)
+        rival = None
+        if split and ev["parts"] and ev["parts"][0]["id"] != ev["kitsu"]["id"]:
+            # A later part is filed only where its first part's view
+            # agrees: the list explaining the surplus over the first part
+            # is a rival explanation.
+            first = ev["parts"][0]["episodes"]
+            if first and first < total:
+                rival = extras_rule(ev, first, total)
         for shape, segs in (
             ("shared_entry", shared_rule(ev, total)),
-            ("split_parts", split_rule(ev, total)),
+            ("split_parts", split),
+            ("extras", rival),
             ("extras", extras_rule(ev, count, total)),
         ):
             if segs and not any(segs == f[1] for f in found):
@@ -304,7 +314,13 @@ def split_family(rng):
         elif tweak == "alone":
             parts = parts[:1]
             ours = 0
-        out.append(("split-" + tweak, evidence(parts[ours], show(9, total, rng.random() < 0.85), parts=parts)))
+        ev = evidence(parts[ours], show(9, total, rng.random() < 0.85), parts=parts)
+        if rng.random() < 0.2 and counts[0] < total:
+            # The entry's list names extras for the surplus over the
+            # first part: a later part conflicts.
+            ev["listed"] = ["0"] + [f"{i}.5" for i in range(1, total - counts[0])]
+            tweak += "-listed"
+        out.append(("split-" + tweak, ev))
     return out
 
 

@@ -272,7 +272,7 @@
   "anilist-49900": {"shape":"identity","why":"conflict","segments":[]},
   "anilist-49934": {"shape":"identity","why":"unexplained","segments":[]},
   "anilist-50008": {"shape":"identity","why":"unexplained","segments":[]},
-  "anilist-50027": {"shape":"split_parts","segments":[{"entry":173335,"entry_total":13,"entry_finished":true,"kitsu_from":1,"kitsu_to":1,"lead":12,"extras_after":[]}]},
+  "anilist-50027": {"shape":"identity","why":"conflict","segments":[]},
   "anilist-5024": {"shape":"identity","why":"unexplained","segments":[]},
   "anilist-50330": {"shape":"identity","why":"unexplained","segments":[]},
   "anilist-50458": {"shape":"identity","why":"unexplained","segments":[]},

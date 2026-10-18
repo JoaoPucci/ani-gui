@@ -37,6 +37,12 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
         }
         if let Some(segments) = split_parts(evidence, tracker_total) {
             explanations.push((Shape::SplitParts, segments));
+            // A later part is filed only where its first part's view
+            // agrees: the entry's list explaining the surplus over the
+            // first part is a rival explanation of the same episodes.
+            if let Some(rival) = first_part_extras(evidence, tracker_total) {
+                explanations.push((Shape::Extras, rival));
+            }
         }
         if let Some(segments) = extras(evidence, kitsu_count, tracker_total) {
             explanations.push((Shape::Extras, segments));
@@ -246,6 +252,17 @@ fn extras(evidence: &Evidence, kitsu_count: u32, tracker_total: u32) -> Option<V
         extras_after: extras.iter().map(|(whole, _)| *whole).collect(),
         ..part_of_entry(&evidence.entry, tracker_total, kitsu_count, 0)
     }])
+}
+
+/// The extras rule read from the first of the Kitsu parts, when the
+/// show being mapped is a later one.
+fn first_part_extras(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
+    let first = evidence.parts.first()?;
+    if first.id == evidence.kitsu.id {
+        return None;
+    }
+    let count = first.episodes.filter(|n| *n > 0 && *n < tracker_total)?;
+    extras(evidence, count, tracker_total)
 }
 
 #[cfg(test)]

@@ -102,6 +102,13 @@ class CaseTable(unittest.TestCase):
         agree = evidence(parts[0], show(173335, 13), parts=parts, sharing=parts)
         self.assertEqual(predict(agree)["shape"], "shared_entry")
 
+    def test_a_later_part_is_not_filed_where_its_first_part_conflicts(self):
+        parts = [kitsu(49900, 12, "2025-07-09", ""), kitsu(50027, 1, "2025-10-02", "")]
+        later = evidence(parts[1], show(173335, 13), parts=parts, listed=["0", "1"])
+        self.assertEqual(predict(later)["why"], "conflict")
+        later["listed"] = ["1", "2"]
+        self.assertEqual(predict(later)["shape"], "split_parts")
+
     def test_an_unfinished_entry_is_not_completed(self):
         ev = ranma()
         ev["chain"][0]["finished"] = False
