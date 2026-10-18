@@ -42,6 +42,8 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
             explanations.push((Shape::Extras, segments));
         }
     }
+    // Two rules filing the episodes the same way are one explanation.
+    explanations.dedup_by(|b, a| a.1 == b.1);
     match explanations.len() {
         0 => EpisodeMap::identity(Identity::Unexplained),
         1 => {

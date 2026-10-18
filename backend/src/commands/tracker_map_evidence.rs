@@ -143,11 +143,13 @@ async fn tracker_chain(
 }
 
 /// Kitsu's chain of parts from `root`: each the single sequel of the
-/// one before, with no entry of its own on `kind`, followed until the
-/// counts reach `tracker_total` or the chain ends.
+/// one before, resolving on the tracker to nothing or to `native`
+/// itself — never to an entry of its own — followed until the counts
+/// reach `tracker_total` or the chain ends.
 async fn kitsu_parts(
     ask: &MapAsk<'_>,
     root: KitsuShow,
+    native: ProviderMediaId,
     tracker_total: u32,
 ) -> Result<Vec<KitsuShow>> {
     let mut covered = root.episodes.unwrap_or(0);
@@ -167,7 +169,7 @@ async fn kitsu_parts(
             ask.anilist_base,
         )
         .await?;
-        if own_entry.is_some() {
+        if own_entry.is_some_and(|own| own != native) {
             break;
         }
         let part = kitsu_show_of(&sequel.anime);
@@ -213,8 +215,36 @@ pub(super) async fn gather(
             ..Default::default()
         });
     }
-    let root = kitsu.clone();
-    gather_longer(ask, kitsu, root, entry).await
+    let root = first_part_under(ask, &kitsu, native).await?;
+    gather_longer(ask, kitsu, root, native, entry).await
+}
+
+/// The first Kitsu part filed under `native`: `kitsu` itself, or the
+/// earliest of its single prequels, up the chain, that resolves to
+/// `native` too.
+async fn first_part_under(
+    ask: &MapAsk<'_>,
+    kitsu: &KitsuShow,
+    native: ProviderMediaId,
+) -> Result<KitsuShow> {
+    let mut root = kitsu.clone();
+    for _ in 0..MAX_PREQUEL_HOPS {
+        let Some(prequel) = single_relation(ask.state, &root.id, "prequel").await? else {
+            break;
+        };
+        let resolves = crate::commands::account::resolve_native_media_id(
+            ask.state,
+            ask.kind,
+            &prequel.anime.id,
+            ask.anilist_base,
+        )
+        .await?;
+        if resolves != Some(native) {
+            break;
+        }
+        root = kitsu_show_of(&prequel.anime);
+    }
+    Ok(root)
 }
 
 /// The evidence for `ours` filed under the tracker entry `native`, which
@@ -228,7 +258,7 @@ pub(super) async fn gather_under(
     native: ProviderMediaId,
 ) -> Result<Evidence> {
     let entry = ask.provider.media_evidence(ask.tokens, native).await?;
-    gather_longer(ask, ours, root, entry).await
+    gather_longer(ask, ours, root, native, entry).await
 }
 
 /// [`gather_under`] with the entry already read.
@@ -236,11 +266,12 @@ async fn gather_longer(
     ask: &MapAsk<'_>,
     ours: KitsuShow,
     root: KitsuShow,
+    native: ProviderMediaId,
     entry: MediaEvidence,
 ) -> Result<Evidence> {
     let sharing = sharing_on_kitsu(ask.state, ask.kind, &entry.show).await?;
     let parts = match entry.show.episodes {
-        Some(total) => kitsu_parts(ask, root, total).await?,
+        Some(total) => kitsu_parts(ask, root, native, total).await?,
         None => vec![root],
     };
     Ok(Evidence {
