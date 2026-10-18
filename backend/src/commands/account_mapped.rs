@@ -170,3 +170,7 @@ async fn write_mapped(
 #[cfg(test)]
 #[path = "account_mapped_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "account_mapped_wire_test.rs"]
+mod wire_tests;
