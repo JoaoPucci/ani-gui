@@ -52,8 +52,9 @@ pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderI
 }
 
 /// Refresh the availability row a served replay stands on with the
-/// provider the cached row names, for the request's own show and
-/// mode — the embedded player's replay and the handoff's alike, so
+/// provider the cached row names, and the versions it holds with the
+/// one that served marked as carrying the mode, for the request's own
+/// show and mode — the embedded player's replay and the handoff's alike, so
 /// the affinity a fresh resolve would have written survives the
 /// resolution cache outliving the row.
 ///
@@ -78,6 +79,7 @@ pub(crate) async fn stamp_availability_on_cache_hit(
         at_start,
         provider,
         &cached.versions,
+        cached.version,
     )
     .await;
 }
