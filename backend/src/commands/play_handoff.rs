@@ -18,9 +18,9 @@ use crate::error::Result;
 /// interactive priority against the providers in order, and each
 /// breaker hears its attempt's outcome under the same mapping the
 /// embedded path uses. The resolve stamps the offset and former tags
-/// it learned, and hands back the watch to record — the history row
-/// and the watched-at stamp — with the display pair that row reads
-/// through, which the command writes once the player has started: the spawn is the watch, and a player that fails to start
+/// it learned, and hands back the watch to record — the history row,
+/// the display pair it reads through and the watched-at stamp — which
+/// the command writes once the player has started: the spawn is the watch, and a player that fails to start
 /// leaves nothing behind. Both paths go through
 /// [`crate::commands::play_native_record`] so they cannot disagree
 /// about what a row's number means.
@@ -42,11 +42,7 @@ pub async fn resolve_launch_args(
     state: &AppState,
     args: &PlayArgs,
     asked: crate::history::guard::Asked<'_>,
-) -> Result<(
-    LaunchArgs,
-    crate::commands::play_native_record::Watch,
-    Option<crate::commands::play_native_record::WatchedDisplay>,
-)> {
+) -> Result<(LaunchArgs, crate::commands::play_native_record::Watch)> {
     let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
@@ -107,12 +103,11 @@ pub async fn resolve_launch_args(
                 return Err(ne.error);
             }
         };
-    // The display pair waits for the watch: the caller puts it once
-    // the player has started and the row records its slot.
-    crate::commands::play_native_record::stamp_numbering_unwatched(state, &native, asked);
+    // The display pair rides on the watch: the record writes it with
+    // the row once the player has started.
+    crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     let watch = crate::commands::play_native_record::Watch::of(&native);
-    let display = crate::commands::play_native_record::watched_display(&native);
-    Ok((launch_args_for(native, args, &cfg), watch, display))
+    Ok((launch_args_for(native, args, &cfg), watch))
 }
 
 /// The launch a resolve describes: the stream, the referer its

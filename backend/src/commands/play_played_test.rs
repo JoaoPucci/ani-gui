@@ -248,23 +248,33 @@ async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched
     let cached = first_recap_row("http://x");
     let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
     crate::commands::play_native_record::record_watch(&state, &watch, None).await;
-    crate::commands::play_cache::restamp_recorded(&state, &cached);
     assert_eq!(listed_as(&state), "12.5");
 }
 
-#[test]
-fn a_watch_that_recorded_another_slot_leaves_the_stamp_where_it_is() {
-    // The row holds slot 14 ("12.75"): a mark-watched of the cached
-    // slot-13 recap that recorded nothing — overtaken by that watch —
-    // must not move the stamp off the row.
+#[tokio::test]
+async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_stamp() {
+    // A mark-watched of the cached slot-13 recap began before the
+    // slot-14 recap ("12.75") was watched: it records nothing, and
+    // moves no stamp off the row that watch left.
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
-    let row = crate::history::parse(&format!("14\t{}\tStitched Show\n", stitched_key()))
-        .pop()
-        .expect("a row");
-    crate::history::upsert_and_write(&state.history_path, row).expect("write");
-    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
-    crate::commands::play_cache::restamp_recorded(&state, &first_recap_row("http://x"));
+    let begun = crate::history::guard::epoch(&state.history_path);
+    let later = crate::commands::play_native_record::Watch {
+        show_id: stitched_key(),
+        title: "Stitched Show".into(),
+        ep_no: "14".into(),
+        display: Some(crate::commands::play_native_record::WatchedDisplay {
+            slug: stitched_key(),
+            offset: 0,
+            slot: 14,
+            tag: "12.75".into(),
+        }),
+    };
+    crate::commands::play_native_record::record_watch(&state, &later, None).await;
+    let cached = first_recap_row("http://x");
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
+    crate::commands::play_native_record::record_watch_requested_at(&state, &watch, None, begun)
+        .await;
     assert_eq!(listed_as(&state), "12.75");
 }
 

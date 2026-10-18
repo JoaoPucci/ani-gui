@@ -443,6 +443,7 @@ async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
         show_id: walked_key("the-show-77"),
         title: "The Show".into(),
         ep_no: "3".into(),
+        display: None,
     };
     crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     assert_eq!(
@@ -469,6 +470,7 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
         show_id: walked_key("the-show-77"),
         title: "The Show".into(),
         ep_no: "3".into(),
+        display: None,
     };
     crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");

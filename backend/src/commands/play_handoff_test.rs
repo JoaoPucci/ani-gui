@@ -68,7 +68,7 @@ async fn the_handoff_resolves_through_the_native_walk() {
     let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server);
-    let (launch, _watch, _display) =
+    let (launch, _watch) =
         super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
             .await
             .expect("the native walk resolves the stream");
@@ -300,7 +300,7 @@ async fn the_resolve_records_no_watch_before_the_spawn() {
     let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server);
-    let (_launch, _native, _display) =
+    let (_launch, _native) =
         super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
             .await
             .expect("the native walk resolves the stream");

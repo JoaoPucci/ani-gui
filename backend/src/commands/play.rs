@@ -157,8 +157,11 @@ fn write_history_on_cache_hit(
             return Ok(());
         }
         held.upsert(entry)?;
-        // The row holds the cached slot now: the stamp names it.
-        crate::commands::play_cache::restamp_cached(state, cached);
+        // The pair the row reads through goes in with the row.
+        crate::commands::play_native_record::put_display_of(
+            state,
+            crate::commands::play_cache::cached_display(state, cached).as_ref(),
+        );
         held.played_from(&cached.show_id, asked.page);
         Ok::<_, AniError>(())
     });
@@ -396,7 +399,7 @@ where
     // Only a play that records its watch moves the display stamp, and
     // prefetches stay out of the user's history.
     if args.prefetch {
-        crate::commands::play_native_record::stamp_numbering_unwatched(state, &native, asked);
+        crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     } else {
         crate::commands::play_native_record::record_fresh_watch(
             state,
