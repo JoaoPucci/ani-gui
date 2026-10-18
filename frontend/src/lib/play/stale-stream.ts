@@ -196,6 +196,8 @@ export interface RecoveryAfterEviction {
 /** What a stale-stream recovery does once its eviction has answered:
  *  resolve the episode on screen afresh, or stand down. The recovery
  *  does not hold the switch lock while it evicts. */
-export function recoveryAfterEviction(s: RecoveryAfterEviction): 'resolve' | 'stand-down' {
+export function recoveryAfterEviction(
+	s: RecoveryAfterEviction
+): 'resolve' | 'stand-down' | 'offer-reload' {
 	return s.left || s.switchedSince || s.switchBusyNow ? 'stand-down' : 'resolve';
 }

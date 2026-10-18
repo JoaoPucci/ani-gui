@@ -389,4 +389,110 @@ describe('play route — a recovery overtaken by a switch', () => {
 		switchStream()!.dispatch('done', session('session-3'));
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 	});
+
+	it('a Reload clicked during a switch leaves the switch alone', async () => {
+		let releaseEvict: () => void = () => {};
+		let evictAsked = false;
+		useShowHandlers(async () => {
+			evictAsked = true;
+			await new Promise<void>((r) => {
+				releaseEvict = r;
+			});
+			return new HttpResponse(null, { status: 204 });
+		});
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(
+			() => target.querySelector('li[data-ep-num="3"] button') !== null,
+			'the episode strip'
+		);
+
+		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
+		const switchStreams = () =>
+			FakeEventSource.instances.filter(
+				(i) => i.url.includes('episode=3') && !i.url.includes('prefetch=1')
+			);
+		await until(() => switchStreams().length > 0, "the switch's session request");
+
+		// The old stream fails mid-switch: no automatic recovery, the
+		// overlay offers Reload, and the viewer takes it.
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		const reload = () =>
+			target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
+		await until(() => reload() !== null, 'the Reload button');
+		reload()!.click();
+		await until(() => evictAsked, 'the recovery to evict the stale row');
+
+		switchStreams()[0].dispatch('done', session('session-3'));
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-3', episode: '3', kind: 'mp4' });
+		flushSync();
+		const before = switchStreams().length;
+
+		releaseEvict();
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(switchStreams().length).toBe(before);
+		expect(goto).toHaveBeenCalledTimes(1);
+	});
+
+	it('offers Reload again when a re-check held the lock as the eviction answered', async () => {
+		let releaseEvict: () => void = () => {};
+		let evictAsked = false;
+		useShowHandlers(async () => {
+			evictAsked = true;
+			await new Promise<void>((r) => {
+				releaseEvict = r;
+			});
+			return new HttpResponse(null, { status: 204 });
+		});
+		// Episode 5 aired but sits past the provider's count, so its card
+		// is dimmed and a click re-asks; the re-ask is held, and answers
+		// that it is still not there.
+		let releaseAsk: () => void = () => {};
+		let asked = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) {
+					asked = true;
+					await new Promise<void>((r) => {
+						releaseAsk = r;
+					});
+				}
+				return HttpResponse.json({
+					available: true,
+					episode_count: 4,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(
+			() => target.querySelector('li[data-ep-num="5"] button') !== null,
+			'the dimmed card'
+		);
+
+		const video = playerVideo();
+		video.currentTime = 720;
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => evictAsked, 'the recovery to evict the stale row');
+
+		(target.querySelector('li[data-ep-num="5"] button') as HTMLButtonElement).click();
+		await until(() => asked, 'the re-check to go out');
+
+		releaseEvict();
+		await new Promise((r) => setTimeout(r, 100));
+		releaseAsk();
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(target.querySelector('button.player-error-reload')).not.toBeNull();
+	});
 });

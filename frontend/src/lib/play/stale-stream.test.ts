@@ -405,3 +405,30 @@ describe('recoveryAfterEviction', () => {
 		expect(recoveryAfterEviction({ ...quiet, switchedSince: true })).toBe('stand-down');
 	});
 });
+
+describe('recoveryAfterEviction, with the switch lock held', () => {
+	const quiet = {
+		left: false,
+		switchedSince: false,
+		switchBusyAtStart: false,
+		switchBusyNow: false
+	};
+
+	// Reload is offered while a switch is under way: that switch
+	// replaces the stream, and resolving the episode on screen once it
+	// has landed would throw its session away.
+	it('stands down for a recovery begun while a switch was under way', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchBusyAtStart: true })).toBe('stand-down');
+	});
+
+	// A re-check holds the lock without a switch of its own until it
+	// clears its episode, and it may not. The stream is still the stale
+	// one, so the viewer gets Reload back rather than a dead video.
+	it('offers Reload again while a re-check holds the lock', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchBusyNow: true })).toBe('offer-reload');
+	});
+
+	it('stands down for a page left, whatever holds the lock', () => {
+		expect(recoveryAfterEviction({ ...quiet, left: true, switchBusyNow: true })).toBe('stand-down');
+	});
+});
