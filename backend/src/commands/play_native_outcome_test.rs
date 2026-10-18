@@ -15,6 +15,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         error: AniError::EpisodeUnavailable,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(absent_episode)),
@@ -24,6 +25,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         error: AniError::NoResults,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(rejected_pool)),
@@ -34,6 +36,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         error: AniError::Upstream { status: 403 },
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(refusal)),
@@ -45,6 +48,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         },
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(limited)),
@@ -54,6 +58,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
         error: AniError::Network,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(transport)),
@@ -73,6 +78,7 @@ fn a_gate_refusal_is_no_evidence_at_all() {
         error: AniError::GateRefused,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(breaker_outcome::<()>(ScrapePriority::Interactive, &Err(refused)).is_none());
 }
@@ -90,6 +96,7 @@ fn an_http_429_is_a_rate_limit_to_the_breaker() {
         error: AniError::Upstream { status: 429 },
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Interactive, &Err(limited)),
@@ -111,6 +118,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
             error: AniError::Upstream { status },
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         };
         assert!(
             matches!(
@@ -125,6 +133,7 @@ fn an_answered_not_found_at_the_episode_step_is_health() {
             error: AniError::Upstream { status },
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         };
         assert!(
             matches!(
@@ -154,6 +163,7 @@ fn a_background_deadline_elapse_is_no_evidence() {
         error: AniError::Timeout,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert_eq!(
         breaker_outcome::<()>(ScrapePriority::Background, &Err(elapsed())),
@@ -167,6 +177,7 @@ fn a_background_deadline_elapse_is_no_evidence() {
         error: AniError::Network,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     assert!(matches!(
         breaker_outcome::<()>(ScrapePriority::Background, &Err(transport)),
@@ -188,6 +199,7 @@ fn a_stream_server_that_did_not_serve_is_distress() {
             },
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         };
         assert!(
             matches!(
@@ -214,6 +226,7 @@ fn a_stall_the_walk_kept_is_distress_on_every_priority() {
             error: AniError::Timeout,
             clean_miss: false,
             failed_at: Some(tokio::time::Instant::now()),
+            refused_by_name: false,
         };
         assert!(
             matches!(
@@ -290,7 +303,7 @@ proptest::proptest! {
                 _ => Some(ScrapeOutcome::Failure),
             }
         };
-        let got = breaker_outcome::<()>(priority, &Err(NativeError { error, clean_miss, failed_at }));
+        let got = breaker_outcome::<()>(priority, &Err(NativeError { error, clean_miss, failed_at, refused_by_name: false }));
         proptest::prop_assert_eq!(got, expected);
     }
 }

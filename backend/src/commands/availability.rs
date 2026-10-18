@@ -155,19 +155,19 @@ pub struct AvailabilityResponse {
     /// field existed.
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
-    /// True when the probe reached the provider and came back without
-    /// a verdict: a pool refused on how its hits are named, dead
-    /// listings on a healthy provider, a mode nobody answered for, an
-    /// absence answered past a provider whose live record has not
-    /// denied the show, or a negative that yielded to a positive row
-    /// written while the probe was out. `available` is false and means
-    /// nothing; readers treat the answer as unknown — the card stays,
-    /// the page keeps its lazy play — where an error status sent them
-    /// to the same place by way of the console. Nothing is persisted:
-    /// the next look asks again. Absent from every settled answer and
-    /// from every cached row, which hold verdicts.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub unsettled: bool,
+    /// Present when the probe reached the provider and came back
+    /// without a verdict, naming why ([`UnsettledReason`]). `available`
+    /// is false and means nothing; nothing is persisted, and the next
+    /// look asks again. Readers treat every reason but a refusal by
+    /// name as unknown — the card stays, the page keeps its lazy play —
+    /// where an error status sent them to the same place by way of the
+    /// console; a refusal by name says the catalogue lists nothing
+    /// named for the entry, and they show the show as not in it. A
+    /// reader before reasons reads any of them as the `true` it was.
+    /// Absent from every settled answer and from every cached row,
+    /// which hold verdicts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsettled: Option<UnsettledReason>,
     /// The show's versions, in the provider's order, when its pick has
     /// several — copies of one season under a version tag ("Versions of
     /// one pick" in `docs/title-resolution.md`); absent otherwise. The
@@ -176,12 +176,34 @@ pub struct AvailabilityResponse {
     pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
 }
 
+/// Why an availability probe reached no verdict, on the wire as a
+/// snake-case string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnsettledReason {
+    /// Every pool the walk met was refused on how its hits are named
+    /// (`NativeError::refused_by_name`): the catalogue answered, and
+    /// lists nothing named for the entry. An inference, so it is not
+    /// the clean miss and is not persisted — and the one reason that
+    /// says the show cannot be played.
+    Refused,
+    /// The probe found something and nothing it found answered: dead
+    /// listings on a healthy provider, or a mode nobody answered for.
+    Unanswered,
+    /// An absence answered past a provider a positive row remembers,
+    /// which has not denied the show.
+    PastAffinity,
+    /// A negative that yielded to a positive row written while the
+    /// probe was out.
+    Superseded,
+}
+
 impl AvailabilityResponse {
-    /// The answer of a probe that reached no verdict
+    /// The answer of a probe that reached no verdict for `reason`
     /// ([`Self::unsettled`]): not available, no count, no extras, no
     /// provider, and nothing to persist.
     #[must_use]
-    pub fn unsettled() -> Self {
+    pub fn unsettled(reason: UnsettledReason) -> Self {
         Self {
             available: false,
             episode_count: None,
@@ -189,7 +211,7 @@ impl AvailabilityResponse {
             episode_count_approximate: false,
             gate_refused: false,
             provider: None,
-            unsettled: true,
+            unsettled: Some(reason),
             versions: Vec::new(),
         }
     }
@@ -513,7 +535,7 @@ pub async fn stamp_after_native(
                             extra_episodes: verdict.extra_tags.to_vec(),
                             episode_count_approximate: false,
                             gate_refused: false,
-                            unsettled: false,
+                            unsettled: None,
                             provider: verdict.provider,
                             versions: with_modes_kept(
                                 state,
@@ -912,7 +934,7 @@ pub async fn check_availability(
                 // for the day an inconclusive answer reaches here
                 // regardless — nothing about this mode was said,
                 // which is not absence, so persist nothing.
-                return Ok(AvailabilityResponse::unsettled());
+                return Ok(AvailabilityResponse::unsettled(UnsettledReason::Unanswered));
             };
             if present {
                 (
@@ -944,7 +966,9 @@ pub async fn check_availability(
                 // and outlive the row's provider's recovery. Surface
                 // it as the unknown it is, persist nothing; the row
                 // stands.
-                return Ok(AvailabilityResponse::unsettled());
+                return Ok(AvailabilityResponse::unsettled(
+                    UnsettledReason::PastAffinity,
+                ));
             } else {
                 // The provider ANSWERED absence for this mode.
                 // Cacheable, like the clean search miss, and named as
@@ -967,11 +991,19 @@ pub async fn check_availability(
         // it is, under the same read rule.
         Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, Vec::new()),
         // An answered dead end — a pool refused on how its hits are
-        // named, dead listings on a healthy provider — proves nothing
-        // about the show and is no failure of the probe: the unknown
-        // answer, persisting nothing.
+        // named, dead listings on a healthy provider, a mode nobody
+        // answered for — proves nothing about the show's absence and is
+        // no failure of the probe: unsettled, persisting nothing, and
+        // saying which. A refusal by name says the catalogue lists
+        // nothing named for the entry; the rest say nothing.
         Err(ne) if matches!(ne.error, crate::error::AniError::NoResults) => {
-            return Ok(AvailabilityResponse::unsettled());
+            return Ok(AvailabilityResponse::unsettled(dead_end_reason(
+                state,
+                args,
+                mode,
+                &at_start,
+                ne.refused_by_name,
+            )));
         }
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
@@ -1006,7 +1038,7 @@ pub async fn check_availability(
                 extra_episodes,
                 episode_count_approximate,
                 gate_refused,
-                unsettled: false,
+                unsettled: None,
                 provider,
                 versions: versions.clone(),
             });
@@ -1018,7 +1050,7 @@ pub async fn check_availability(
         // yields to a replay served meanwhile as well (see
         // `RowAtStart`).
         if !available && at_start.positive_row_appeared_since(state, &row) {
-            return Ok(AvailabilityResponse::unsettled());
+            return Ok(AvailabilityResponse::unsettled(UnsettledReason::Superseded));
         }
         if available && at_start.positive_row_written_since(state, &row) {
             return Ok(AvailabilityResponse {
@@ -1027,7 +1059,7 @@ pub async fn check_availability(
                 extra_episodes,
                 episode_count_approximate,
                 gate_refused,
-                unsettled: false,
+                unsettled: None,
                 provider,
                 versions: versions.clone(),
             });
@@ -1045,7 +1077,7 @@ pub async fn check_availability(
                 episode_count_approximate,
                 // Not cached: it describes this request, not the show.
                 gate_refused: false,
-                unsettled: false,
+                unsettled: None,
                 // Cached: a cache hit must still say whose catalogue
                 // carries the show.
                 provider,
@@ -1060,10 +1092,35 @@ pub async fn check_availability(
         extra_episodes,
         episode_count_approximate,
         gate_refused,
-        unsettled: false,
+        unsettled: None,
         provider,
         versions: versions.clone(),
     })
+}
+
+/// Why an answered dead end settled nothing. A refusal by name says the
+/// catalogue lists nothing named for the show — unless a positive row
+/// appeared while the probe was out, a play having served the show
+/// meanwhile, which a refusal no more outranks than a clean miss does:
+/// the answer is then the superseded unknown. Read without the row's
+/// lock, since nothing is written.
+fn dead_end_reason(
+    state: &AppState,
+    args: &AvailabilityArgs,
+    mode: &str,
+    at_start: &RowAtStart,
+    refused_by_name: bool,
+) -> UnsettledReason {
+    let overtaken = args
+        .kitsu_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .is_some_and(|id| at_start.positive_row_appeared_since(state, &cache_key(id, mode)));
+    match (refused_by_name, overtaken) {
+        (true, false) => UnsettledReason::Refused,
+        (true, true) => UnsettledReason::Superseded,
+        (false, _) => UnsettledReason::Unanswered,
+    }
 }
 
 /// The probe's provider half: pick the show, then measure how far
@@ -1100,6 +1157,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         error,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     let present = crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
         .await
@@ -1229,7 +1287,7 @@ fn write_boolean_row(
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider,
             versions,
         },

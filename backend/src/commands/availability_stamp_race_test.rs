@@ -43,7 +43,7 @@ fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse 
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(provider),
         versions: Vec::new(),
     }
@@ -784,4 +784,64 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
         "the fallback's row, stamped while the probe was out, stands: {row:?}"
     );
     assert_eq!(row.episode_count, Some(24));
+}
+
+/// A refusal by name that a play overtakes is no refusal: while the
+/// probe's walk refuses the pool, a resolve serves the show and stamps
+/// the positive row. The answer is the superseded unknown, not the
+/// refusal that would show the show as not in the catalogue.
+#[tokio::test]
+async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
+    // A count and no year: "Other" fits and nothing names it.
+    let primary = std::sync::Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .search_default(vec![BrowseHit {
+                slug: "other-7".into(),
+                title: "Other".into(),
+                kind: None,
+                jname: None,
+            }])
+            .listing(
+                7,
+                (1..=12)
+                    .map(|n| EpisodeRef {
+                        id: 7000 + u64::from(n),
+                        number: n,
+                        number2: None,
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .delaying_searches(std::time::Duration::from_millis(300)),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = std::sync::Arc::new(walking_both(&td));
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Show: Arc",
+        "mode": MODE,
+        "kitsu_id": ID,
+        "episode_count": 12
+    }))
+    .expect("args");
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
+    let probe = tokio::spawn({
+        let state = state.clone();
+        let primary = std::sync::Arc::clone(&primary);
+        async move { check_with(&state, &args, &primary).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::served(ProviderId::TestA, Some(12), &[]),
+    )
+    .await;
+    let got = probe.await.expect("the probe finishes");
+    assert_eq!(
+        super::tests::unsettled_reason(&got).as_deref(),
+        Some("superseded"),
+        "{got:?}"
+    );
 }

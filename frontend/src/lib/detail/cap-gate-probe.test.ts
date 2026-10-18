@@ -84,6 +84,21 @@ function harness(probe: () => Promise<CapGateAnswer | null>) {
 }
 
 describe('createCapGateProbe', () => {
+	it('hands the route a refusal by name with the refresh', async () => {
+		// The route words its notice by it: a refused title is in no
+		// audio, so it must not be sent to the other one.
+		const { gate, refreshes } = harness(async () => ({
+			count: null,
+			approximate: false,
+			available: false,
+			extraEpisodes: [],
+			refused: true
+		}));
+		gate.request(5);
+		await flush();
+		expect(refreshes.at(-1)?.refused).toBe(true);
+	});
+
 	it('plays the episode when the fresh count now reaches it', async () => {
 		const d = deferredProbe();
 		const { gate, cleared, stillGated } = harness(d.probe);
@@ -483,5 +498,33 @@ describe('capGateAnswerFrom', () => {
 				unsettled: true
 			})
 		).toBeNull();
+		expect(
+			capGateAnswerFrom({
+				available: false,
+				episode_count: null,
+				extra_episodes: [],
+				unsettled: 'unanswered'
+			})
+		).toBeNull();
+	});
+
+	it('reads a refusal by name as the show being unavailable', () => {
+		// The catalogue lists nothing named for the show: the tile is
+		// gated as for a show the provider does not carry, with no count
+		// and no extras — not the could-not-tell of an unsettled answer.
+		expect(
+			capGateAnswerFrom({
+				available: false,
+				episode_count: null,
+				extra_episodes: [],
+				unsettled: 'refused'
+			})
+		).toEqual({
+			count: null,
+			approximate: false,
+			available: false,
+			extraEpisodes: [],
+			refused: true
+		});
 	});
 });

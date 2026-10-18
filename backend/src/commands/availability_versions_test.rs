@@ -263,7 +263,11 @@ async fn an_absence_one_version_never_answered_is_not_settled() {
     ))
     .await
     .expect("answered");
-    assert!(got.unsettled, "the plain copy never answered: {got:?}");
+    assert_eq!(
+        got.unsettled,
+        Some(UnsettledReason::Unanswered),
+        "the plain copy never answered: {got:?}"
+    );
 }
 
 #[tokio::test]

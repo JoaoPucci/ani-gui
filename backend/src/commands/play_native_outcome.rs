@@ -49,7 +49,9 @@ pub fn breaker_outcome<T>(
             {
                 None
             }
-            AniError::NoResults | AniError::EpisodeUnavailable => Some(ScrapeOutcome::Success),
+            AniError::NoResults | AniError::RefusedByName | AniError::EpisodeUnavailable => {
+                Some(ScrapeOutcome::Success)
+            }
             AniError::RateLimited { retry_after_secs } => Some(ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
             }),

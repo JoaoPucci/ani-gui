@@ -180,6 +180,26 @@ starting it, and delete it when you find it done.
   pick or a cut broad listing streams under a MAL id that is not the
   entry's.
 
+- **A listing that answers not-found never blocks a pick it would
+  have changed.** The pick guards a winner, an airing rescue and a
+  stitched chain against a candidate whose probe died in transport,
+  never against one whose listing answered not-found: such a candidate
+  is dropped as a stale slug. So a dead completing sibling leaves its
+  broad listing uncut and another listing of the right length wins
+  (a 22-episode "Show Season 3" beside a dead "… Part 2" and a live
+  14-episode hit, against 12), a confirmed split lead whose later part
+  is dead is rescued alone, and a three-part chain with its last part
+  dead is stitched short as an airing one. The success paths waited
+  because blocking on a not-found answer turns every stale slug into a
+  pool that never picks, and the shape has not been seen in a recorded
+  pool. The rejection verdicts read a dead completing sibling by
+  restating the spanning cut's conditions on the broad listing as it
+  stands, not by running the cut with the sibling put back: where
+  another broad listing wins the cut over it, or an exact listing of
+  the entry's own stands beside it, they can read the sibling
+  otherwise than the cut would — shapes no review has built a pool
+  for.
+
 - **A refusal by name is probed again on every look.** A pool rejected
   after a hit the count accepted was scored out on how it is named is
   the refusal by title, which the availability cache does not persist,
