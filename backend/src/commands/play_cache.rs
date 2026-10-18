@@ -269,7 +269,6 @@ pub(crate) fn cached_watch(
             .played
             .clone()
             .unwrap_or_else(|| episode.trim().to_string()),
-        display: None,
     }
 }
 

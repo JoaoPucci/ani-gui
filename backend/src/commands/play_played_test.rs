@@ -252,10 +252,10 @@ async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched
 }
 
 #[tokio::test]
-async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_stamp() {
+async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_row() {
     // A mark-watched of the cached slot-13 recap began before the
-    // slot-14 recap ("12.75") was watched: it records nothing, and
-    // moves no stamp off the row that watch left.
+    // slot-14 recap ("12.75") was watched: it records nothing, and the
+    // row stays the one that watch left.
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
     let begun = crate::history::guard::epoch(&state.history_path);
@@ -263,12 +263,6 @@ async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_stamp() {
         show_id: stitched_key(),
         title: "Stitched Show".into(),
         ep_no: "12.75".into(),
-        display: Some(crate::commands::play_native_record::WatchedDisplay {
-            slug: stitched_key(),
-            offset: 0,
-            slot: 14,
-            tag: "12.75".into(),
-        }),
     };
     crate::commands::play_native_record::record_watch(&state, &later, None).await;
     let cached = first_recap_row("http://x");
