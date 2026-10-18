@@ -189,11 +189,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                 return Err(crate::error::AniError::Network);
             }
             let (hit, episodes, _, _) = probed_ok.swap_remove(idx);
-            return Ok(PickedShow {
-                hit: hit.clone(),
-                episodes,
-                stitched: false,
-            });
+            return Ok(PickedShow::listed(hit.clone(), episodes));
         }
         // A rejection is only a clean verdict when every candidate
         // got to answer: a transiently dead probe may have hidden
@@ -210,9 +206,5 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         return Err(crate::error::AniError::Network);
     }
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
-    Ok(PickedShow {
-        hit: hit.clone(),
-        episodes,
-        stitched: false,
-    })
+    Ok(PickedShow::listed(hit.clone(), episodes))
 }

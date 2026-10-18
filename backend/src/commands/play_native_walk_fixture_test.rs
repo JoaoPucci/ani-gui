@@ -128,6 +128,7 @@ impl Provider for Recorded {
                 id: *id,
                 number: *number,
                 number2: number2.clone(),
+                former_tag: None,
                 title: None,
             })
             .collect())

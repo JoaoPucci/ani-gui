@@ -93,6 +93,12 @@ export function homeHandlers(
 		...overrides,
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig(mode))),
 		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(history)),
+		// A row read again — by a card whose probe answered, or by a
+		// click — reads as the fixture has it.
+		http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
+			const row = history.find((h) => h.id === params.id);
+			return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
+		}),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
 		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
