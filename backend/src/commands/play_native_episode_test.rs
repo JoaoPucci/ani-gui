@@ -17,6 +17,7 @@ fn ep(id: u64, number: u32, tag: Option<&str>) -> EpisodeRef {
         id,
         number,
         number2: tag.map(str::to_string),
+        former_tag: None,
         title: None,
     }
 }
@@ -766,4 +767,151 @@ mod verdict_props {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn a_request_for_a_rows_former_tag_still_finds_it() {
+    // A stitched recap an earlier version tagged "24.5", now "12.5": a
+    // history row from then reads back as "24.5", and asking for it
+    // plays the recap rather than ending in episode-unavailable.
+    let mut recap = ep(13, 13, Some("12.5"));
+    recap.former_tag = Some("24.5".into());
+    let mut rows: Vec<EpisodeRef> = (1..=12).map(|n| ep(u64::from(n), n, None)).collect();
+    rows.push(recap);
+    rows.push(ep(14, 14, Some("13")));
+    let picked = show(rows);
+    let client = only_episode(13);
+    let resolved = resolve_episode(&client, &picked, "24.5", "sub", "best")
+        .await
+        .expect("the former tag still names the recap");
+    assert_eq!(resolved.slot, 13);
+    assert_eq!(resolved.tag.as_deref(), Some("12.5"), "the row's tag now");
+}
+
+#[tokio::test]
+async fn a_rows_tag_wins_over_another_rows_former_tag() {
+    let mut odd = ep(20, 3, Some("2.5"));
+    odd.former_tag = Some("4.5".into());
+    let picked = show(vec![ep(19, 1, None), odd, ep(21, 4, Some("4.5"))]);
+    let client = only_episode(21);
+    let resolved = resolve_episode(&client, &picked, "4.5", "sub", "best")
+        .await
+        .expect("the row tagged 4.5 now");
+    assert_eq!(resolved.slot, 4);
+}
+
+/// A stitched listing whose part 2, numbered from 13, opens on a recap
+/// and closes on another: slot 13 is "12.5" now ("24.5" before), and
+/// slot 26 is "24.5".
+fn recaps_at_both_ends() -> PickedShow {
+    let mut rows: Vec<EpisodeRef> = (1..=12).map(|n| ep(u64::from(n), n, None)).collect();
+    let mut opening = ep(13, 13, Some("12.5"));
+    opening.former_tag = Some("24.5".into());
+    rows.push(opening);
+    rows.extend((14..=25).map(|slot| ep(u64::from(slot), slot, Some(&(slot - 1).to_string()))));
+    rows.push(ep(26, 26, Some("24.5")));
+    show(rows)
+}
+
+fn streaming(ids: &[u64]) -> crate::scraper::table_provider::TableProvider {
+    ids.iter().fold(
+        crate::scraper::table_provider::TableProvider::new(),
+        |t, id| t.stream(*id, "sub", "https://cdn.example/x/master.m3u8"),
+    )
+}
+
+#[tokio::test]
+async fn a_stamp_still_naming_a_row_by_its_former_tag_takes_the_request_to_that_row() {
+    // The history row's stamp says slot 13 is "24.5" — the user's
+    // last watch, from before the renumbering. A request for "24.5"
+    // is that watch, not the closing recap that is "24.5" now.
+    let picked = recaps_at_both_ends();
+    let stamp = (13, "24.5".to_string());
+    let resolved = resolve_episode_stamped(
+        &streaming(&[13, 26]),
+        &picked,
+        "24.5",
+        Some(&stamp),
+        "sub",
+        "best",
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(resolved.slot, 13);
+    assert_eq!(resolved.tag.as_deref(), Some("12.5"));
+}
+
+#[tokio::test]
+async fn a_request_for_a_rows_tag_now_plays_it_once_the_stamp_names_the_row_by_its_own() {
+    // Repaired, the stamp names slot 13 "12.5": "24.5" is the closing
+    // recap, as the listing tags it.
+    let picked = recaps_at_both_ends();
+    let stamp = (13, "12.5".to_string());
+    let resolved = resolve_episode_stamped(
+        &streaming(&[13, 26]),
+        &picked,
+        "24.5",
+        Some(&stamp),
+        "sub",
+        "best",
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(resolved.slot, 26);
+}
+
+#[tokio::test]
+async fn without_a_stamp_a_rows_tag_now_wins() {
+    let picked = recaps_at_both_ends();
+    let resolved =
+        resolve_episode_stamped(&streaming(&[13, 26]), &picked, "24.5", None, "sub", "best")
+            .await
+            .expect("resolved");
+    assert_eq!(resolved.slot, 26);
+}
+
+#[tokio::test]
+async fn a_stamp_on_a_row_with_no_former_tag_names_nothing_but_its_tag() {
+    // The stamp's slot never carried "24.5" as a former tag: the
+    // request means the row tagged "24.5".
+    let picked = recaps_at_both_ends();
+    let stamp = (12, "24.5".to_string());
+    let resolved = resolve_episode_stamped(
+        &streaming(&[12, 26]),
+        &picked,
+        "24.5",
+        Some(&stamp),
+        "sub",
+        "best",
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(resolved.slot, 26);
+}
+
+#[tokio::test]
+async fn a_cumulative_first_parts_recap_stamped_by_its_former_tag_is_found_by_it() {
+    // Part 1 numbered from 13 opens on "12.5" — "0.5" now — and
+    // part 2's opening recap is "12.5" now. A stamp (1, "12.5") from
+    // before names the first.
+    let mut first = ep(1, 1, Some("0.5"));
+    first.former_tag = Some("12.5".into());
+    let mut rows = vec![first];
+    rows.extend((2..=13).map(|slot| ep(u64::from(slot), slot, Some(&(slot - 1).to_string()))));
+    let mut second = ep(14, 14, Some("12.5"));
+    second.former_tag = Some("36.5".into());
+    rows.push(second);
+    let picked = show(rows);
+    let stamp = (1, "12.5".to_string());
+    let resolved = resolve_episode_stamped(
+        &streaming(&[1, 14]),
+        &picked,
+        "12.5",
+        Some(&stamp),
+        "sub",
+        "best",
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(resolved.slot, 1);
 }

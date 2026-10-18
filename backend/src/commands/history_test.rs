@@ -1049,3 +1049,35 @@ fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() 
 
     delete_fails_then_retries_after_a_restart(&s, tmp.path());
 }
+
+#[test]
+fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
+    // A watch writes its row and then the display pair the row reads
+    // through, under the history guard. A reader that starts between
+    // the two waits for both: it never reads the row by its slot.
+    let td = tempfile::tempdir().expect("td");
+    let state = make_state(td.path().join("history"));
+    let show = "hianime:stitched-show-4";
+    let reader = crate::history::guard::hold(&state.history_path, |held| {
+        held.upsert(HistoryEntry {
+            ep_no: "2".into(),
+            id: show.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+        })
+        .expect("row");
+        let reading = state.clone();
+        let reader = std::thread::spawn(move || history_list(&reading).expect("list"));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(
+            !reader.is_finished(),
+            "a reader waits for the watch to be written whole"
+        );
+        crate::commands::numbering_offset::put_watched_display(&state, show, 0, 2, "1.5");
+        reader
+    });
+    let rows = reader.join().expect("reader");
+    let row = rows.into_iter().find(|e| e.id == show).expect("the row");
+    assert_eq!(row.ep_no, "1.5");
+}
