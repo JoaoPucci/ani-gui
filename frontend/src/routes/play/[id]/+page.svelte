@@ -1109,10 +1109,10 @@
 	// audio on failure, and the warm acts only on what this lookup said.
 	let warmListed = $state<boolean | null>(null);
 	/** Whether the provider has the show at all, as the detail page tracks
-	 *  it. null until the first answer. Separate from the cap: a
-	 *  delisted show comes back without a count, so the cap alone
-	 *  cannot express "there is nothing here" — it just stays where it
-	 *  was and keeps every episode under it looking playable. */
+	 *  it. null until an answer for this show in this audio. Separate
+	 *  from the cap: a delisted show comes back without a count, so the
+	 *  cap alone cannot express "there is nothing here" — it just stays
+	 *  where it was and keeps every episode under it looking playable. */
 	const showListed = $derived(knownRow.listed);
 	/** Whether `showListed`'s verdict is the provider refusing the
 	 *  title by name, which the detail page's notice never answers with

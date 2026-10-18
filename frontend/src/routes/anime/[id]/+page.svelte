@@ -135,8 +135,9 @@
 		isSingleVideo(detail?.subtype ?? null, detail?.episode_count ?? null, detail?.status ?? null)
 	);
 
-	// Availability probe — runs once after detail loads. null = not
-	// yet checked / network error (lazy fallback handles the click);
+	// Availability probe — runs after detail loads, and again when the
+	// audio changes. null = no answer yet for this show in this audio /
+	// network error (lazy fallback handles the click);
 	// true = the provider has at least one candidate; false = the show
 	// isn't in the provider's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
