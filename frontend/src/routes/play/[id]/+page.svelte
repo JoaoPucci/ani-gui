@@ -2601,10 +2601,13 @@
 						<span>{m.play_error_stream_back_to_show()}</span>
 					</a>
 				{:else}
+					<!-- Held while the airing lookup is out: the switch the
+					     Reload hands to would decline it ($lib/play/reload-offer). -->
 					<p class="player-error-body">{m.play_error_stream_body()}</p>
 					<button
 						type="button"
 						class="player-error-action player-error-reload"
+						disabled={airingIsPending}
 						onclick={onReloadStream}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -4622,6 +4625,12 @@
 	.player-error-action:focus-visible {
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
+	}
+	.player-error-action:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		transform: none;
+		filter: none;
 	}
 	.player-error-detail {
 		font-size: var(--type-meta);

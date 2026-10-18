@@ -28,13 +28,16 @@
  * expired link (the fresh resolve gets a fresh URL), a decode or
  * unsupported-format failure and a stream the engine stopped for
  * looping on a fragment (the fresh resolve can land on another
- * stream), a webview without HLS and a failure while the page has
- * not yet heard whether the provider lists the show (nothing known
- * refuses the switch).
+ * stream), and a failure while the page has not yet heard whether
+ * the provider lists the show (the switch may well take it). A webview
+ * without HLS keeps it too, though only because nothing known refuses
+ * the switch: a fresh resolve has no reason to land on another kind of
+ * stream.
  *
  * The switch also holds while the airing lookup is out. That is not a
- * dead end — the lookup settles on its own — so the Reload stays, but
- * the automatic recovery waits: started then, it would be declined.
+ * dead end — the lookup settles on its own — so the Reload stays on
+ * screen, held until the lookup lands, and the automatic recovery
+ * waits: started then, either would be declined.
  */
 
 import { availabilityBatch } from '$lib/api';
