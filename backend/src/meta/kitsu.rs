@@ -885,9 +885,13 @@ impl KitsuClient {
     }
 }
 
+#[path = "kitsu_mapped.rs"]
+mod mapped;
 #[path = "kitsu_relations.rs"]
 mod relations;
-pub use relations::KitsuRelation;
+pub use relations::{
+    parse_relationships_response, KitsuRelation, KitsuRelations, RELATIONS_PAGE_LIMIT,
+};
 
 #[cfg(test)]
 mod tests {

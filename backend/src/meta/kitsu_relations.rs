@@ -1,155 +1,158 @@
-//! Kitsu's two reads the episode map needs beyond an entry's own
-//! mappings: every Kitsu entry mapped to one tracker id, and an entry's
-//! relationships with the related anime inlined. Split from [`super`]
-//! so each file stays inside the CRAP gate's per-file bar.
+//! The entries Kitsu relates an anime to — its sequels, side stories,
+//! OVAs — from the `media-relationships` endpoint, split from
+//! `kitsu.rs` so that file stays inside the complexity bar.
 
-use super::*;
+use serde::{Deserialize, Serialize};
 
-/// One relationship Kitsu records from an anime to another anime.
-#[derive(Debug, Clone, PartialEq)]
+use super::KitsuClient;
+use crate::error::{AniError, Result};
+
+/// One entry Kitsu relates an anime to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KitsuRelation {
-    /// Kitsu's role: `sequel`, `prequel`, `side_story`, `other`, …
+    /// How Kitsu relates it: `sequel`, `side_story`, `adaptation`, ….
     pub role: String,
-    /// The related anime, as Kitsu inlined it.
-    pub anime: KitsuAnimeRef,
+    /// The related resource's type: `anime` or `manga`.
+    pub kind: String,
+    /// Its Kitsu id.
+    pub id: String,
+    /// Its subtype: `TV`, `OVA`, `ONA`, `special`, `manga`, ….
+    pub subtype: Option<String>,
+    /// Its status: `finished`, `current`, ….
+    pub status: Option<String>,
+    /// Its episode count, for an anime.
+    pub episode_count: Option<u32>,
 }
 
-/// A side-loaded resource of any type; only `anime` ones are read.
+/// The entries Kitsu relates an anime to, and whether the page read
+/// held all of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KitsuRelations {
+    /// The relations on the page read, in Kitsu's order.
+    pub entries: Vec<KitsuRelation>,
+    /// Whether they are every relation Kitsu counts.
+    pub complete: bool,
+}
+
+/// How many relations the backend asks Kitsu for at once — the most a
+/// page holds.
+pub const RELATIONS_PAGE_LIMIT: u8 = 20;
+
 #[derive(Deserialize)]
-struct Included {
-    id: String,
-    #[serde(rename = "type")]
-    kind: String,
-    attributes: serde_json::Value,
-}
-
-/// The inlined anime among `included`, by id.
-fn inlined_anime(included: Vec<Included>) -> HashMap<String, KitsuAnimeRef> {
-    included
-        .into_iter()
-        .filter(|r| r.kind == "anime")
-        .filter_map(|r| {
-            let attributes: AnimeAttributes = serde_json::from_value(r.attributes).ok()?;
-            Some((
-                r.id.clone(),
-                into_ref(AnimeResource {
-                    id: r.id,
-                    attributes,
-                }),
-            ))
-        })
-        .collect()
-}
-
-/// A JSON:API relationship pointer: `{ data: { type, id } }`, `data`
-/// null where there is nothing on the other end.
-#[derive(Deserialize)]
-struct Pointer {
+struct Doc {
+    data: Vec<Edge>,
     #[serde(default)]
-    data: Option<PointerRef>,
+    included: Vec<Node>,
+    #[serde(default)]
+    meta: Option<Meta>,
 }
 
 #[derive(Deserialize)]
-struct PointerRef {
+struct Meta {
+    count: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct Edge {
+    attributes: EdgeAttributes,
+    relationships: EdgeLinks,
+}
+
+#[derive(Deserialize)]
+struct EdgeAttributes {
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct EdgeLinks {
+    destination: Destination,
+}
+
+#[derive(Deserialize)]
+struct Destination {
+    data: Option<Ref>,
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+struct Ref {
     #[serde(rename = "type")]
     kind: String,
     id: String,
 }
 
-/// Every anime a `/mappings?filter[externalSite]=…&filter[externalId]=…
-/// &include=item` body inlines for its mappings, in Kitsu's order, a
-/// music-subtype entry dropped as every mapping lookup drops it.
-///
-/// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
-pub fn parse_mapped_anime_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
-    #[derive(Deserialize)]
-    struct Wrap {
-        data: Vec<Mapping>,
-        #[serde(default)]
-        included: Vec<Included>,
-    }
-    #[derive(Deserialize)]
-    struct Mapping {
-        #[serde(default)]
-        relationships: Option<MappingRelationships>,
-    }
-    #[derive(Deserialize)]
-    struct MappingRelationships {
-        #[serde(default)]
-        item: Option<Pointer>,
-    }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("kitsu mapped anime parse: {e}"),
-    })?;
-    let mut anime = inlined_anime(parsed.included);
-    Ok(parsed
-        .data
-        .into_iter()
-        .filter_map(|m| m.relationships?.item?.data)
-        .filter(|r| r.kind == "anime")
-        .filter_map(|r| anime.remove(&r.id))
-        .filter(|a| !is_music_subtype(a.subtype.as_deref()))
-        .collect())
+#[derive(Deserialize)]
+struct Node {
+    #[serde(rename = "type")]
+    kind: String,
+    id: String,
+    #[serde(default)]
+    attributes: NodeAttributes,
 }
 
-/// Every relationship an `/anime/:id/media-relationships?include=
-/// destination` body records to an anime Kitsu inlined, in Kitsu's
-/// order.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct NodeAttributes {
+    subtype: Option<String>,
+    status: Option<String>,
+    episode_count: Option<u32>,
+}
+
+/// Parse a `media-relationships?include=destination` page. A relation
+/// whose destination names nothing is dropped; the page is complete
+/// when it held as many relations as Kitsu counts.
 ///
 /// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
-pub fn parse_media_relationships_response(body: &[u8]) -> Result<Vec<KitsuRelation>> {
-    #[derive(Deserialize)]
-    struct Wrap {
-        data: Vec<Relationship>,
-        #[serde(default)]
-        included: Vec<Included>,
-    }
-    #[derive(Deserialize)]
-    struct Relationship {
-        attributes: Attributes,
-        #[serde(default)]
-        relationships: Option<Links>,
-    }
-    #[derive(Deserialize)]
-    struct Attributes {
-        role: Option<String>,
-    }
-    #[derive(Deserialize)]
-    struct Links {
-        #[serde(default)]
-        destination: Option<Pointer>,
-    }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("kitsu media relationships parse: {e}"),
+/// [`AniError::ParseFailed`] when the body is not that document.
+pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
+    let doc: Doc = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("kitsu relationships parse: {e}"),
     })?;
-    let anime = inlined_anime(parsed.included);
-    Ok(parsed
+    let read = doc.data.len();
+    let entries = doc
         .data
         .into_iter()
-        .filter_map(|r| {
-            let destination = r.relationships?.destination?.data?;
-            if destination.kind != "anime" {
-                return None;
-            }
+        .filter_map(|edge| {
+            let dst = edge.relationships.destination.data?;
+            let attrs = doc
+                .included
+                .iter()
+                .find(|n| n.kind == dst.kind && n.id == dst.id);
             Some(KitsuRelation {
-                role: r.attributes.role?,
-                anime: anime.get(&destination.id)?.clone(),
+                role: edge.attributes.role,
+                subtype: attrs.and_then(|n| n.attributes.subtype.clone()),
+                status: attrs.and_then(|n| n.attributes.status.clone()),
+                episode_count: attrs.and_then(|n| n.attributes.episode_count),
+                kind: dst.kind,
+                id: dst.id,
             })
         })
-        .collect())
+        .collect();
+    let complete = doc.meta.and_then(|m| m.count) == Some(read);
+    Ok(KitsuRelations { entries, complete })
 }
 
 impl KitsuClient {
-    /// A GET against `path` with the JSON:API accept header, answering
-    /// the body on 2xx.
-    async fn get_json_api(&self, path: &str, query: &[(&str, String)]) -> Result<bytes::Bytes> {
+    /// The entries Kitsu relates `anime_id` to: one page of them, with
+    /// each destination's subtype, status and episode count.
+    ///
+    /// # Errors
+    /// [`AniError::Network`] when Kitsu cannot be reached,
+    /// [`AniError::Upstream`] for a non-success status, and the
+    /// parser's errors.
+    pub async fn media_relationships(&self, anime_id: &str) -> Result<KitsuRelations> {
         let resp = self
             .http
-            .get(format!("{}/{path}", self.base))
+            .get(format!(
+                "{}/anime/{}/media-relationships",
+                self.base, anime_id
+            ))
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
-            .query(query)
+            .query(&[
+                ("include", "destination".to_string()),
+                ("fields[anime]", "subtype,status,episodeCount".to_string()),
+                ("fields[manga]", "subtype,status".to_string()),
+                ("page[limit]", RELATIONS_PAGE_LIMIT.to_string()),
+            ])
             .send()
             .await
             .map_err(|_| AniError::Network)?;
@@ -158,56 +161,8 @@ impl KitsuClient {
                 status: resp.status().as_u16(),
             });
         }
-        resp.bytes().await.map_err(|_| AniError::Network)
-    }
-
-    /// Every Kitsu anime mapped to `external_id` on `site`
-    /// (`myanimelist/anime`, `anilist/anime`), each inlined in full.
-    /// Several Kitsu entries can map to one tracker entry — the Attack
-    /// on Titan Final Chapters specials both map to one MyAnimeList id
-    /// — and the episode map reads them all; [`Self::lookup_by_mal_id`]
-    /// takes the first for a card.
-    ///
-    /// # Errors
-    /// Same as [`Self::search`].
-    pub async fn anime_by_external_id(
-        &self,
-        site: &str,
-        external_id: u32,
-    ) -> Result<Vec<KitsuAnimeRef>> {
-        let body = self
-            .get_json_api(
-                "mappings",
-                &[
-                    ("filter[externalSite]", site.to_string()),
-                    ("filter[externalId]", external_id.to_string()),
-                    ("include", "item".to_string()),
-                    ("fields[anime]", ANIME_FIELDS.to_string()),
-                ],
-            )
-            .await?;
-        parse_mapped_anime_response(&body)
-    }
-
-    /// The relationships Kitsu records from anime `kitsu_id` to other
-    /// anime, with each destination inlined so a sequel's count and run
-    /// cost no further request. Relationships to manga, and any whose
-    /// destination Kitsu did not inline, are dropped.
-    ///
-    /// # Errors
-    /// Same as [`Self::search`].
-    pub async fn media_relationships(&self, kitsu_id: &str) -> Result<Vec<KitsuRelation>> {
-        let body = self
-            .get_json_api(
-                &format!("anime/{kitsu_id}/media-relationships"),
-                &[
-                    ("include", "destination".to_string()),
-                    ("page[limit]", "20".to_string()),
-                    ("fields[anime]", ANIME_FIELDS.to_string()),
-                ],
-            )
-            .await?;
-        parse_media_relationships_response(&body)
+        let body = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_relationships_response(&body)
     }
 }
 

@@ -88,21 +88,37 @@ async fn sharing_on_kitsu(
     Ok(found.iter().map(kitsu_show_of).collect())
 }
 
-/// The one relationship of `role` Kitsu records from `kitsu_id`, or
-/// `None` when it records none or several.
+/// A related Kitsu anime as the map reads it.
+fn kitsu_show_of_relation(relation: &KitsuRelation) -> KitsuShow {
+    KitsuShow {
+        id: relation.id.clone(),
+        episodes: relation.episode_count,
+        start: None,
+        end: None,
+    }
+}
+
+/// The one anime Kitsu relates `kitsu_id` to in `role`, or `None` when
+/// it relates none or several — or when the page read did not hold all
+/// of its relations, since a second one could be past it.
 async fn single_relation(
     state: &std::sync::Arc<AppState>,
     kitsu_id: &str,
     role: &str,
-) -> Result<Option<KitsuRelation>> {
-    let mut found: Vec<KitsuRelation> = state
-        .kitsu
-        .media_relationships(kitsu_id)
-        .await?
-        .into_iter()
-        .filter(|r| r.role == role)
+) -> Result<Option<KitsuShow>> {
+    let relations = crate::commands::kitsu::kitsu_relationships(state, kitsu_id).await?;
+    if !relations.complete {
+        return Ok(None);
+    }
+    let found: Vec<&KitsuRelation> = relations
+        .entries
+        .iter()
+        .filter(|r| r.role == role && r.kind == "anime")
         .collect();
-    Ok((found.len() == 1).then(|| found.remove(0)))
+    Ok(match found.as_slice() {
+        [one] => Some(kitsu_show_of_relation(one)),
+        _ => None,
+    })
 }
 
 /// The tracker's single-sequel chain from `entry`, each hop's evidence
@@ -165,14 +181,14 @@ async fn kitsu_parts(
         let own_entry = crate::commands::account::resolve_native_media_id(
             ask.state,
             ask.kind,
-            &sequel.anime.id,
+            &sequel.id,
             ask.anilist_base,
         )
         .await?;
         if own_entry.is_some_and(|own| own != native) {
             break;
         }
-        let part = kitsu_show_of(&sequel.anime);
+        let part = sequel;
         covered = covered.saturating_add(part.episodes.unwrap_or(0));
         let more = part.episodes.is_some();
         parts.push(part);
@@ -235,14 +251,14 @@ async fn first_part_under(
         let resolves = crate::commands::account::resolve_native_media_id(
             ask.state,
             ask.kind,
-            &prequel.anime.id,
+            &prequel.id,
             ask.anilist_base,
         )
         .await?;
         if resolves != Some(native) {
             break;
         }
-        root = kitsu_show_of(&prequel.anime);
+        root = prequel;
     }
     Ok(root)
 }
@@ -295,7 +311,7 @@ pub(super) async fn root_through_prequels(
         let Some(prequel) = single_relation(ask.state, &current, "prequel").await? else {
             return Ok(None);
         };
-        let show = kitsu_show_of(&prequel.anime);
+        let show = prequel;
         if let Some(native) = crate::commands::account::resolve_native_media_id(
             ask.state,
             ask.kind,

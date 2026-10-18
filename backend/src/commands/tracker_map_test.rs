@@ -112,11 +112,12 @@ fn relationship(role: &str, id: &str, count: u32, start: &str, end: &str) -> Str
         r#"{{"data":[{{"id":"r1","type":"mediaRelationships","attributes":{{"role":"{role}"}},
             "relationships":{{"destination":{{"data":{{"type":"anime","id":"{id}"}}}}}}}}],
           "included":[{{"id":"{id}","type":"anime","attributes":{{"canonicalTitle":"Show {id}",
-            "episodeCount":{count},"startDate":"{start}","endDate":"{end}","status":"finished","subtype":"TV"}}}}]}}"#
+            "episodeCount":{count},"startDate":"{start}","endDate":"{end}","status":"finished","subtype":"TV"}}}}],
+          "meta":{{"count":1}}}}"#
     )
 }
 
-const EMPTY_PAGE: &str = r#"{"data":[],"meta":{"count":0}}"#;
+const EMPTY_PAGE: &str = r#"{"data":[],"included":[],"meta":{"count":0}}"#;
 
 async fn kitsu_detail(server: &MockServer, id: &str, body: String, times: u64) {
     Mock::given(method("GET"))
