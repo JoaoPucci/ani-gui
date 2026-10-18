@@ -2,19 +2,17 @@
 //! sources about one broadcast. Split from the dates comparison so each
 //! file stays inside the CRAP gate's per-file bar.
 
-/// Days since 1970-01-01 of a full `YYYY-MM-DD` date, `None` for
-/// anything less.
+/// Days since 1970-01-01 of a full `YYYY-MM-DD` date the calendar has
+/// ([`crate::account::episode_map_calendar::parse_date`]), `None` for
+/// anything else — a date short of a day, or one naming no real day,
+/// never carried into a neighbouring month.
 pub(super) fn days(date: Option<&str>) -> Option<i64> {
-    let date = date?;
-    if date.len() != 10 || date.as_bytes()[4] != b'-' || date.as_bytes()[7] != b'-' {
-        return None;
-    }
-    let y: i64 = date[..4].parse().ok()?;
-    let m: i64 = date[5..7].parse().ok()?;
-    let d: i64 = date[8..].parse().ok()?;
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
-        return None;
-    }
+    let date = crate::account::episode_map_calendar::parse_date(date?)?;
+    let (y, m, d) = (
+        i64::from(date.year),
+        i64::from(date.month),
+        i64::from(date.day?),
+    );
     // Days from civil (Howard Hinnant's algorithm).
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
