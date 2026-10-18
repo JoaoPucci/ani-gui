@@ -7408,6 +7408,17 @@ async fn every_episode_of_a_range_falls_through_to_a_version_that_carries_it() {
         calls.contains("/m/1002/"),
         "episode 2 from the plain copy: {calls}"
     );
+    // Each file is named after the version that served it.
+    assert!(
+        dest.path()
+            .join("The Show (Uncensored) Episode 1.mp4")
+            .exists(),
+        "episode 1 named for the uncensored copy that served it"
+    );
+    assert!(
+        dest.path().join("The Show Episode 2.mp4").exists(),
+        "episode 2 named for the plain copy that served it"
+    );
 }
 
 /// A range whose first episode only the plain copy dubs keeps the
@@ -7478,5 +7489,17 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
     assert!(
         calls.contains("/m/2002/"),
         "episode 2 from the uncensored copy: {calls}"
+    );
+    // The first episode's file is named after the copy that served it,
+    // not the version the range was asked for.
+    assert!(
+        dest.path().join("The Show Episode 1.mp4").exists(),
+        "episode 1 named for the plain copy that served it"
+    );
+    assert!(
+        dest.path()
+            .join("The Show (Uncensored) Episode 2.mp4")
+            .exists(),
+        "episode 2 named for the uncensored copy that served it"
     );
 }
