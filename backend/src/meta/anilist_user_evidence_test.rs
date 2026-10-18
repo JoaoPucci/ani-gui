@@ -20,7 +20,7 @@ async fn evidence_for(id: u32, body: &'static str) -> MediaEvidence {
         .and(header("authorization", "Bearer test-access-token"))
         .and(body_string_contains("relations"))
         .and(body_string_contains("streamingEpisodes"))
-        .and(body_string_contains(&format!("\"mediaId\":{id}")))
+        .and(body_string_contains(format!("\"mediaId\":{id}")))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
         .expect(1)
         .mount(&server)

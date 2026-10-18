@@ -410,14 +410,18 @@ impl UserListProvider for AniListProvider {
         parse_tracked_media_response(&bytes)
     }
 
-    async fn media_evidence(
-        &self,
-        _tokens: &Tokens,
-        _id: ProviderMediaId,
-    ) -> Result<MediaEvidence> {
-        Err(AniError::Metadata)
+    async fn media_evidence(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<MediaEvidence> {
+        let body = serde_json::json!({
+            "query": evidence::MEDIA_EVIDENCE_GQL,
+            "variables": { "mediaId": id.0 },
+        });
+        let bytes = self.post_graphql(tokens, &body).await?;
+        evidence::parse_media_evidence_response(&bytes)
     }
 }
+
+#[path = "anilist_user_evidence.rs"]
+mod evidence;
 
 /// Pure parser for the `Media { mediaListEntry { status progress } }`
 /// response. Returns `None` when `mediaListEntry` is `null` (the show

@@ -233,14 +233,20 @@ impl UserListProvider for MalProvider {
         parse_tracked_media(&bytes)
     }
 
-    async fn media_evidence(
-        &self,
-        _tokens: &Tokens,
-        _id: ProviderMediaId,
-    ) -> Result<MediaEvidence> {
-        Err(AniError::Metadata)
+    async fn media_evidence(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<MediaEvidence> {
+        let url = format!(
+            "{}/anime/{}?fields={}&nsfw=true",
+            self.api_url(),
+            id.0,
+            evidence::MAL_EVIDENCE_FIELDS
+        );
+        let bytes = self.get_auth_bytes(&url, tokens).await?;
+        evidence::parse_media_evidence(&bytes)
     }
 }
+
+#[path = "mal_user_evidence.rs"]
+mod evidence;
 
 #[cfg(test)]
 #[path = "mal_user_test.rs"]
