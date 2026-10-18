@@ -54,7 +54,14 @@ fn tokens() -> Tokens {
 fn seed(state: &AppState, kind: ProviderKind, kitsu_id: &str, map: &EpisodeMap) {
     meta_cache_put(
         &state.cache_pool,
-        &map_key(kind, kitsu_id),
+        &map_key(
+            kind,
+            kitsu_id,
+            Some(match kitsu_id {
+                "186" => (210, Some(18)),
+                _ => (51_535, Some(2)),
+            }),
+        ),
         &serde_json::to_string(map).expect("serialise"),
         3600,
     )

@@ -195,8 +195,16 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
             .collect::<Vec<_>>(),
         [(210, 1, 18), (149_939, 19, 161)]
     );
-    let key = map_key(ProviderKind::AniList, "186");
-    assert_eq!(key, "tracker-map:v1:anilist:k186");
+    let key = map_key(ProviderKind::AniList, "186", Some((210, Some(18))));
+    assert_eq!(key, "tracker-map:v1:anilist:k186:e210:t18");
+    assert_eq!(
+        map_key(ProviderKind::MyAnimeList, "49244", None),
+        "tracker-map:v1:mal:k49244:unresolved"
+    );
+    assert_eq!(
+        map_key(ProviderKind::MyAnimeList, "7", Some((70, None))),
+        "tracker-map:v1:mal:k7:e70:t"
+    );
     assert_eq!(ttl_of(&state, &key), TRACKER_MAP_TTL.as_secs());
 
     // A second write reads the row and asks nothing (every mock expects
@@ -249,7 +257,10 @@ async fn agreeing_counts_are_identity_kept_for_the_long_window_with_no_tracker_r
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::CountsAgree));
     assert_eq!(
-        ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "186")),
+        ttl_of(
+            &state,
+            &map_key(ProviderKind::MyAnimeList, "186", Some((210, Some(161))))
+        ),
         TRACKER_MAP_TTL.as_secs()
     );
 }
@@ -275,7 +286,10 @@ async fn an_unknown_count_is_identity_kept_for_a_day() {
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::CountUnknown));
     assert_eq!(
-        ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "7")),
+        ttl_of(
+            &state,
+            &map_key(ProviderKind::MyAnimeList, "7", Some((70, Some(12))))
+        ),
         TRACKER_MAP_UNSETTLED_TTL.as_secs()
     );
 }
@@ -309,7 +323,7 @@ async fn a_read_that_fails_is_identity_and_kept_nowhere() {
     assert_eq!(
         meta_cache_get(
             &state.cache_pool,
-            &map_key(ProviderKind::MyAnimeList, "186")
+            &map_key(ProviderKind::MyAnimeList, "186", Some((210, Some(18))))
         )
         .expect("read"),
         None
@@ -360,7 +374,10 @@ async fn a_difference_nothing_explains_is_identity_kept_for_a_day() {
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
     assert_eq!(
-        ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "186")),
+        ttl_of(
+            &state,
+            &map_key(ProviderKind::MyAnimeList, "186", Some((210, Some(100))))
+        ),
         TRACKER_MAP_UNSETTLED_TTL.as_secs()
     );
 }
@@ -549,7 +566,7 @@ async fn tower_of_god_s_later_part_is_filed_under_its_prequel_s_anilist_entry() 
         (1, 13)
     );
     assert_eq!(
-        ttl_of(&state, &map_key(ProviderKind::AniList, "49244")),
+        ttl_of(&state, &map_key(ProviderKind::AniList, "49244", None)),
         TRACKER_MAP_TTL.as_secs()
     );
 }
@@ -584,7 +601,7 @@ async fn a_show_with_no_prequel_that_resolves_is_identity_kept_for_a_day() {
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
     assert_eq!(
-        ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "5")),
+        ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "5", None)),
         TRACKER_MAP_UNSETTLED_TTL.as_secs()
     );
 }
@@ -848,4 +865,60 @@ fn the_in_house_tracker_has_no_kitsu_mapping_site() {
         super::kitsu_side::site(ProviderKind::AniList).expect("site"),
         "anilist/anime"
     );
+}
+
+#[tokio::test]
+async fn a_cached_map_is_built_again_once_the_entry_s_total_moves() {
+    // The map Kitsu's 186 has on an 18-episode AniList 210 does not
+    // answer for 210 once AniList recounts it. (Kitsu's detail is the
+    // detail page's cached row, read once.)
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "186",
+        detail("186", Some(161), "1989-04-15", "1992-09-25"),
+        1,
+    )
+    .await;
+    kitsu_mapped(&kitsu, "anilist/anime", 149_939, EMPTY_PAGE).await;
+    let anilist_server = MockServer::start().await;
+    anilist_media(&anilist_server, 210, RANMA_ANILIST).await;
+    anilist_media(&anilist_server, 149_939, NETTOU_HEN_ANILIST).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::AniList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: None,
+    };
+    let first = episode_map_for(&ask, "186", ProviderMediaId(210), Some(18)).await;
+    assert_eq!(first.shape, Shape::Chain);
+    // AniList recounts 210 as 161: the counts agree now, and the old
+    // row is not what answers.
+    let moved = episode_map_for(&ask, "186", ProviderMediaId(210), Some(161)).await;
+    assert_eq!(moved, EpisodeMap::identity(Identity::CountsAgree));
+}
+
+#[test]
+fn a_map_with_an_entry_still_airing_is_kept_for_the_short_window() {
+    use crate::account::episode_map::Segment;
+    let airing = EpisodeMap {
+        shape: Shape::SplitParts,
+        segments: vec![Segment {
+            entry: 1,
+            entry_total: 26,
+            entry_finished: false,
+            kitsu_from: 1,
+            kitsu_to: 13,
+            lead: 13,
+            extras_after: vec![],
+        }],
+    };
+    assert_eq!(map_ttl(&airing), TRACKER_MAP_UNSETTLED_TTL);
+    let mut done = airing.clone();
+    done.segments[0].entry_finished = true;
+    assert_eq!(map_ttl(&done), TRACKER_MAP_TTL);
 }

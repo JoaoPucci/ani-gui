@@ -40,7 +40,11 @@ mod parts_walk;
 
 /// Cache key for one show's map on one tracker.
 #[must_use]
-pub(crate) fn map_key(kind: ProviderKind, kitsu_id: &str) -> String {
+pub(crate) fn map_key(
+    kind: ProviderKind,
+    kitsu_id: &str,
+    _resolved: Option<(u32, Option<u32>)>,
+) -> String {
     format!("tracker-map:v1:{}:k{kitsu_id}", kind.slug())
 }
 
@@ -102,7 +106,7 @@ pub(crate) async fn episode_map_for(
     native: ProviderMediaId,
     tracker_total: Option<u32>,
 ) -> EpisodeMap {
-    let key = map_key(ask.kind, kitsu_id);
+    let key = map_key(ask.kind, kitsu_id, Some((native.0, tracker_total)));
     if let Some(map) = cached(ask.state, &key) {
         return map;
     }
@@ -118,7 +122,7 @@ pub(crate) async fn episode_map_for(
 /// nothing on the tracker: a later Kitsu part filed under the entry a
 /// prequel resolves to, when Kitsu's prequel chain reaches one.
 pub(crate) async fn episode_map_for_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> EpisodeMap {
-    let key = map_key(ask.kind, kitsu_id);
+    let key = map_key(ask.kind, kitsu_id, None);
     if let Some(map) = cached(ask.state, &key) {
         return map;
     }

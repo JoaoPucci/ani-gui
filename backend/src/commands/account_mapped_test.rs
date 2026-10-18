@@ -189,11 +189,22 @@ fn state() -> Arc<AppState> {
     })
 }
 
+/// The resolved entry and its total each recorded show writes through.
+fn resolved_as(kitsu_id: &str) -> Option<(u32, Option<u32>)> {
+    match kitsu_id {
+        "186" => Some((210, Some(18))),
+        "7882" => Some((19_603, Some(13))),
+        "3579" => Some((4382, Some(28))),
+        "1" => Some((21, Some(12))),
+        _ => None,
+    }
+}
+
 fn seed(state: &AppState, kitsu_id: &str, map: &EpisodeMap) {
     let body = serde_json::to_string(map).expect("serialise");
     meta_cache_put(
         &state.cache_pool,
-        &map_key(ProviderKind::AniList, kitsu_id),
+        &map_key(ProviderKind::AniList, kitsu_id, resolved_as(kitsu_id)),
         &body,
         3600,
     )
