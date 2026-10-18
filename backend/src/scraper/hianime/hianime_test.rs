@@ -4429,7 +4429,12 @@ async fn without_an_attempt_deadline_each_stalled_server_spends_the_fixed_bound(
 /// had passed, and a later episode would fail with a healthy server
 /// unasked. Told a deadline already past and then none, the client
 /// serves a bounded server that answers inside the fixed bound.
-#[tokio::test]
+///
+/// On a paused clock, like its siblings below: every wait in it is a
+/// timer of the stand-in's or the client's, so the brief server is
+/// served or cut off by what the client does, never by how long a
+/// loaded machine takes to get round to it.
+#[tokio::test(start_paused = true)]
 async fn a_client_told_no_deadline_keeps_the_fixed_bound_for_a_later_resolve() {
     let c = client_with_server_budget(100);
     c.bound_attempt(Some(
