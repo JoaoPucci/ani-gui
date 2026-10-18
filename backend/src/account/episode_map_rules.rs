@@ -38,6 +38,9 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
         if let Some(segments) = split_parts(evidence, tracker_total) {
             explanations.push((Shape::SplitParts, segments));
         }
+        if let Some(segments) = extras(evidence, kitsu_count, tracker_total) {
+            explanations.push((Shape::Extras, segments));
+        }
     }
     match explanations.len() {
         0 => EpisodeMap::identity(Identity::Unexplained),
@@ -195,6 +198,52 @@ fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> 
         count,
         lead,
     )])
+}
+
+/// A number from the tracker's episode list as `(whole, fractional)`:
+/// `"7"` is `(7, false)`, `"6.5"` is `(6, true)`, `"0"` is `(0, false)`.
+/// Anything else — a title with no number, an empty string, letters —
+/// is `None` and ignored.
+fn listed_number(text: &str) -> Option<(u32, bool)> {
+    let (whole, fraction) = match text.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (text, None),
+    };
+    if whole.is_empty() || !whole.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    if fraction.is_some_and(|f| f.is_empty() || !f.chars().all(|c| c.is_ascii_digit())) {
+        return None;
+    }
+    Some((whole.parse().ok()?, fraction.is_some()))
+}
+
+/// The extras rule: the tracker's own episode list carries exactly as
+/// many extras — episodes numbered 0, or with a fraction, each listed
+/// once however many tracks carry it — as the entry's surplus over
+/// Kitsu's count, every one of them inside Kitsu's run. Each extra then
+/// sits after the whole Kitsu episode its number names (before the
+/// first, for 0), and the episodes after it are counted one further on.
+fn extras(evidence: &Evidence, kitsu_count: u32, tracker_total: u32) -> Option<Vec<Segment>> {
+    let listed = evidence.listed.as_ref()?;
+    let mut extras: Vec<(u32, bool)> = listed
+        .iter()
+        .filter_map(|n| listed_number(n))
+        .filter(|(whole, fractional)| *whole == 0 || *fractional)
+        .collect();
+    extras.sort_unstable();
+    extras.dedup();
+    let surplus = tracker_total - kitsu_count;
+    if u32::try_from(extras.len()).ok()? != surplus {
+        return None;
+    }
+    if extras.iter().any(|(whole, _)| *whole > kitsu_count) {
+        return None;
+    }
+    Some(vec![Segment {
+        extras_after: extras.iter().map(|(whole, _)| *whole).collect(),
+        ..part_of_entry(&evidence.entry, tracker_total, kitsu_count, 0)
+    }])
 }
 
 #[cfg(test)]
