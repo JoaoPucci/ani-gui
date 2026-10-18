@@ -421,6 +421,16 @@ describe('armQuality — trouble', () => {
 });
 
 describe('armQuality — recovery and what plays', () => {
+	it('a segment playing with no level of its own — a removed level hls.js marked -1 — names nothing', () => {
+		const s = arm();
+		s.parse();
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 2 } });
+		expect(() =>
+			s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: -1 } })
+		).not.toThrow();
+		expect(s.lastView()?.playing).toBe(2);
+	});
+
 	it('only a segment of the level held is evidence that it is healthy', () => {
 		// The step down takes effect from the next request; a segment of
 		// the level left, in flight at the time, lands after it and says
