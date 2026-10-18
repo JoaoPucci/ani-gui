@@ -651,15 +651,19 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
     .expect("seed row");
     let begun = crate::history::guard::epoch(&state.history_path);
     // Another writer holds the history with the file unreadable, and
-    // makes it readable again before letting go.
+    // makes it readable again before letting go — once the recording
+    // has come to the history and is waiting for it. A recording that
+    // reached the file only after it was readable again would read it
+    // whether it held the history or not, and prove nothing.
     let path = state.history_path.clone();
+    let queue = crate::held::queue(path.display().to_string());
     let (ready, held) = std::sync::mpsc::channel();
     let holder = std::thread::spawn(move || {
         crate::history::guard::hold(&path, |_| {
             let mode = |m| std::fs::set_permissions(&path, std::fs::Permissions::from_mode(m));
             mode(0o000).expect("unreadable");
             ready.send(()).expect("ready");
-            std::thread::sleep(Duration::from_millis(300));
+            queue.joined_blocking(|| false);
             mode(0o600).expect("readable");
         });
     });
