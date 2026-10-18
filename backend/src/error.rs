@@ -47,6 +47,17 @@ pub enum AniError {
     #[error("no results")]
     NoResults,
 
+    /// The pick's verdict on a pool it rejected on how its hits are
+    /// named: the entry's titles refused a hit the count accepted, or
+    /// without a count refused every hit, or nothing but a hit's count
+    /// vouched for it. An inference, never the catalogue's clean miss.
+    /// The walks answer it as the answered dead end they move on from,
+    /// [`Self::NoResults`] with `clean_miss` false, and say on the
+    /// verdict that it was a refusal by name; it never leaves them, so
+    /// it shares the miss's key and status.
+    #[error("refused by name")]
+    RefusedByName,
+
     /// The show was found and the episode was not — not listed, or
     /// with no stream in the requested mode. The episode's verdict,
     /// distinct from a title the catalogue lacks, so the page can
@@ -269,7 +280,7 @@ impl AniError {
                 failure: DownloadToolFailure::NotStarted,
             } => crate::i18n::keys::DOWNLOAD_TOOL_SPAWN_FAILED,
             Self::Timeout => "error.scraper.timeout",
-            Self::NoResults => "error.search.no_results",
+            Self::NoResults | Self::RefusedByName => "error.search.no_results",
             Self::EpisodeUnavailable => crate::i18n::keys::PLAY_EPISODE_UNAVAILABLE,
             Self::StreamServerFailed { .. } => crate::i18n::keys::PLAY_STREAM_SERVER_FAILED,
             Self::ParseFailed { .. } => "error.scraper.parse_failed",
@@ -330,7 +341,7 @@ impl AniError {
     #[must_use]
     pub fn http_status_code(&self) -> u16 {
         match self {
-            Self::NoResults | Self::EpisodeUnavailable => 404,
+            Self::NoResults | Self::RefusedByName | Self::EpisodeUnavailable => 404,
             Self::InvalidToken => 401,
             // A rate-limit passes through verbatim so the frontend can tell it
             // apart from a generic bad gateway and tell the user to retry.

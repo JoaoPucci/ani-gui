@@ -140,4 +140,28 @@ describe('createAvailabilityWriteback', () => {
 			extraEpisodes: ['12.5']
 		});
 	});
+
+	it('carries a refusal by name with the verdict it writes, and only then', () => {
+		// The notice words itself by whether the verdict is a refusal, so
+		// the flag must belong to whoever owns the verdict.
+		const wb = createAvailabilityWriteback(() => 'show-1:sub');
+		const settle = wb.begin();
+		expect(settle({ ...answer(false, null), refused: true })).toEqual({
+			available: false,
+			count: null,
+			extraEpisodes: [],
+			refused: true
+		});
+
+		const owned = createAvailabilityWriteback(() => 'show-1:sub');
+		const late = owned.begin();
+		// A re-ask's refusal owns the verdict, and says so.
+		expect(
+			owned.refresh({ available: false, count: null, extraEpisodes: null, refused: true })
+		).toEqual({ available: false, refused: true });
+		// The lookup that lands after it writes no verdict — and so no
+		// word on whether it is a refusal, either way.
+		expect(late({ ...answer(false, null), refused: true })).toEqual({});
+		expect(late(answer(true, 3))).toEqual({ count: 3, extraEpisodes: [] });
+	});
 });

@@ -1,5 +1,6 @@
 import type { AvailabilityResponse } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
+import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
 
 /**
  * Re-asking availability when a user clicks a cap-gated episode tile.
@@ -49,6 +50,9 @@ export interface CapGateAnswer {
 	available: boolean;
 	/** Non-integer episode tags — recaps and specials, e.g. "1061.5". */
 	extraEpisodes: string[];
+	/** True when `available: false` is the provider refusing the title
+	 *  by name. */
+	refused?: boolean;
 }
 
 /**
@@ -60,9 +64,16 @@ export interface CapGateAnswer {
  * confirmed where confirmation matters.
  */
 export interface CapGateRefresh {
-	/** Always trustworthy: a search that could not be completed comes
-	 *  back as a failure, never as a false. */
+	/** A search that could not be completed comes back as a failure,
+	 *  never as a false. A false is the provider's answer: the show
+	 *  not listed, or listed under nothing named for it — the refusal
+	 *  by name, an inference from how the catalogue names its listings
+	 *  that the backend does not persist and asks again on the next
+	 *  look. */
 	available: boolean;
+	/** True when the false is a refusal by name: the title is in the
+	 *  catalogue under nothing named for it, in any audio. */
+	refused?: boolean;
 	/** The confirmed cap, or null when the answer did not establish one
 	 *  — a count that can read one high must not replace a real cap.
 	 *
@@ -86,15 +97,21 @@ export interface CapGateRefresh {
  * verdict, and its `available: false` means nothing, so it is the
  * controller's null — "nothing was established" — the same path the
  * request's failure takes. Both routes read answers through this, so
- * neither can take that false for the show being gone.
+ * neither can take that false for the show being gone. A refusal by
+ * name is the exception: the catalogue lists nothing named for the
+ * show, and the answer is the show unavailable
+ * (`$lib/availability/verdict`).
  */
 export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null {
-	if (r.unsettled) return null;
+	const available = availabilityVerdict(r);
+	if (available === null) return null;
 	return {
 		count: r.episode_count,
 		approximate: r.episode_count_approximate === true,
-		available: r.available,
-		extraEpisodes: r.extra_episodes ?? []
+		available,
+		extraEpisodes: r.extra_episodes ?? [],
+		// Present only when true, as every answer before refusals reads.
+		...(refusedByName(r) ? { refused: true } : {})
 	};
 }
 
@@ -159,6 +176,7 @@ export interface CapGateProbeDeps {
 function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
 	return {
 		available: answer.available,
+		...(answer.refused === true ? { refused: true } : {}),
 		count: answer.approximate ? null : (answer.count ?? 0),
 		extraEpisodes: answer.approximate ? null : answer.extraEpisodes
 	};

@@ -320,6 +320,7 @@ where
                 error: AniError::Network,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             },
             None,
         ));
@@ -383,6 +384,7 @@ fn unavailability(unreachable: Option<NativeError>) -> NativeError {
         error: AniError::GateRefused,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 
@@ -410,6 +412,22 @@ enum Negative<'c, T> {
 }
 
 impl<T> Negative<'_, T> {
+    /// Whether the negative is an answered dead end that is no refusal
+    /// by name: candidates whose listings answered not-found, which
+    /// may have been the show.
+    fn unrefused_dead_end(&self) -> bool {
+        matches!(self, Self::Miss(ne, _)
+            if !ne.clean_miss && matches!(ne.error, AniError::NoResults) && !ne.refused_by_name)
+    }
+
+    /// The negative, its refusal by name withdrawn when `withdrawn`.
+    fn refusal_unless(mut self, withdrawn: bool) -> Self {
+        if let Self::Miss(ne, _) = &mut self {
+            ne.refused_by_name &= !withdrawn;
+        }
+        self
+    }
+
     /// Whether the negative found the show: a negative answer is a
     /// show found without the requested mode, the unknown verdict
     /// is a show found with nothing said about the mode, the episode
@@ -499,6 +517,19 @@ fn negative_outranks<T>(earlier: &Negative<'_, T>, later: &Negative<'_, T>) -> b
 /// own is refusing, so that is the row the read rule can serve — the
 /// later when neither stands ahead of the other.
 fn firmer_negative<'c, T>(
+    earlier: Negative<'c, T>,
+    later: Negative<'c, T>,
+    configured: &[ProviderId],
+) -> Negative<'c, T> {
+    // A refusal by name stands only where nothing else may be the show:
+    // the other provider's dead end on dead listings may have been it,
+    // whichever of the two is kept.
+    let unrefused = earlier.unrefused_dead_end() || later.unrefused_dead_end();
+    firmest(earlier, later, configured).refusal_unless(unrefused)
+}
+
+/// [`firmer_negative`]'s choice of the two, as it stands.
+fn firmest<'c, T>(
     earlier: Negative<'c, T>,
     later: Negative<'c, T>,
     configured: &[ProviderId],
@@ -598,6 +629,7 @@ where
                 error,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             });
             return Tried::FailedOver;
         }
@@ -617,6 +649,7 @@ where
             error: AniError::Timeout,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         }),
     };
     client.bound_attempt(None);
@@ -755,10 +788,14 @@ where
             answer.past_undenied_affinity = walk.remembered_undenied;
             Ok(answer)
         }
-        Negative::Miss(error, by) => {
+        Negative::Miss(mut error, by) => {
             if miss_past_affinity(walk.remembered_undenied, &error) {
                 return Err(unavailability(walk.first_unreachable.take()));
             }
+            // Past a remembered provider that has not denied the show,
+            // the catalogue's refusal by name is no verdict on it: that
+            // provider proved the show.
+            error.refused_by_name &= !walk.remembered_undenied;
             if let Some(by) = by {
                 attempt.missed_by(by);
             }
@@ -772,6 +809,7 @@ where
                 error: AniError::NoResults,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             })
         }
     }
