@@ -2,15 +2,16 @@
 //! tracker: the show's [`EpisodeMap`], built from evidence the tracker
 //! and Kitsu answer and kept in `meta_cache`.
 //!
-//! The map is keyed per tracker and Kitsu id,
-//! `tracker-map:v1:<tracker>:k<kitsu id>`, and the key's version moves
-//! with the map's shape so an older row is never read as the new one.
-//! A map that rests on evidence that does not move — the counts
-//! agreeing, or a rule explaining their difference — is kept for
-//! [`TRACKER_MAP_TTL`]; one that rests on evidence that was missing or
-//! inconclusive, an unknown count or a difference nothing explains, for
-//! [`TRACKER_MAP_UNSETTLED_TTL`], since the count may be announced or
-//! the tracker's relations filled in. A read that fails is kept nowhere:
+//! The map is keyed per tracker, Kitsu id and what it was built against
+//! — the resolved entry and its total, or no entry at all
+//! ([`map_key`]) — and the key's version moves with the map's shape so
+//! an older row is never read as the new one. A map that rests on
+//! evidence that does not move — the counts agreeing, or a rule
+//! explaining their difference over entries that have all finished
+//! airing — is kept for [`TRACKER_MAP_TTL`]; one that rests on evidence
+//! that was missing, inconclusive or still moving — an unknown count, a
+//! difference nothing explains, an entry still airing — for
+//! [`TRACKER_MAP_UNSETTLED_TTL`]. A read that fails is kept nowhere:
 //! it says nothing about the show, and the write it was for proceeds as
 //! if nothing had been learnt.
 //!
@@ -38,20 +39,34 @@ mod kitsu_side;
 #[path = "tracker_map_parts.rs"]
 mod parts_walk;
 
-/// Cache key for one show's map on one tracker.
+/// Cache key for one show's map on one tracker: the Kitsu id, and what
+/// the map was built against — the entry Kitsu's mappings resolve the
+/// show to with the total the write read for it, or that it resolves to
+/// nothing. A remapped show or a recounted entry is a new key, so a map
+/// never answers for evidence it was not built from.
 #[must_use]
 pub(crate) fn map_key(
     kind: ProviderKind,
     kitsu_id: &str,
-    _resolved: Option<(u32, Option<u32>)>,
+    resolved: Option<(u32, Option<u32>)>,
 ) -> String {
-    format!("tracker-map:v1:{}:k{kitsu_id}", kind.slug())
+    let place = match resolved {
+        Some((entry, total)) => format!(
+            "e{entry}:t{}",
+            total.map(|t| t.to_string()).unwrap_or_default()
+        ),
+        None => "unresolved".to_string(),
+    };
+    format!("tracker-map:v1:{}:k{kitsu_id}:{place}", kind.slug())
 }
 
-/// How long `map` is served from its row.
+/// How long `map` is served from its row: the long window only for a
+/// conclusive map whose every entry has finished airing, since an
+/// airing entry's status — and with it each segment's completion —
+/// moves.
 #[must_use]
 pub(crate) fn map_ttl(map: &EpisodeMap) -> Duration {
-    if map.conclusive() {
+    if map.conclusive() && map.segments.iter().all(|s| s.entry_finished) {
         TRACKER_MAP_TTL
     } else {
         TRACKER_MAP_UNSETTLED_TTL
