@@ -569,3 +569,48 @@ describe('play route — a recovery overtaken by a switch', () => {
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 	});
 });
+
+// Switching episodes clears the playback error, since the switch will
+// replace the stream. A switch that fails replaces nothing: the stream
+// that failed is still on screen, and so must be its error and Reload.
+describe('play route — a failed switch away from a failed stream', () => {
+	it('puts the playback error and its Reload back', async () => {
+		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			)
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(
+			() => target.querySelector('li[data-ep-num="3"] button') !== null,
+			'the episode strip'
+		);
+
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		const reload = () =>
+			target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
+		await until(() => reload() !== null, 'the Reload button');
+		const shown = target.querySelector('.player-error-detail')?.textContent;
+
+		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
+		const switchStream = () =>
+			FakeEventSource.instances.find(
+				(i) => i.url.includes('episode=3') && !i.url.includes('prefetch=1')
+			);
+		await until(() => switchStream() !== undefined, "the switch's session request");
+		switchStream()!.dispatch(
+			'error',
+			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+		);
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(goto).not.toHaveBeenCalled();
+		expect(reload()).not.toBeNull();
+		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
+	});
+});
