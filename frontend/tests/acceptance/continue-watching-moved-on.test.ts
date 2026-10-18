@@ -76,8 +76,6 @@ beforeEach(() => {
 	batchAsked = false;
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
-			// A row read again waits while a scenario holds it: the click
-			// reads its row before it asks for a session.
 			// The cache the failure message is worded from: the other
 			// audio's answer for the show.
 			http.post(`${API_BASE}/api/availability/batch`, async () => {
@@ -85,6 +83,8 @@ beforeEach(() => {
 				if (batchHeld) await batchHeld;
 				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
 			}),
+			// A row read again waits while a scenario holds it: the click
+			// reads its row before it asks for a session.
 			http.get(`${API_BASE}/api/history/:id/number`, async () => {
 				if (numberHeld) {
 					numberAsked = true;

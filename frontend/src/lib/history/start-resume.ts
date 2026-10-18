@@ -16,10 +16,10 @@
  *   reports through onFailure. A click whose navigation claim lapsed
  *   meanwhile (claimNavigation) neither navigates nor reports, and
  *   clears busy; one that lapsed before its play was asked for asks
- *   for none, and records nothing — and one that lapsed while
- *   settings loaded sends no cap lookup either, while the row was read
- *   warms nothing. onFailure gets the claim, to ask once the failure
- *   is worded.
+ *   for none, and records nothing. One that lapsed while settings
+ *   loaded sends no cap lookup either, and one that lapsed by the time
+ *   the row was read warms nothing. onFailure gets the claim, to ask
+ *   once the failure is worded.
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';

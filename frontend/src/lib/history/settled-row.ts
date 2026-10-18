@@ -36,7 +36,7 @@ async function rowNow(
  *  fractional episode — the one kind a renumbering leaves under a
  *  number it no longer has. The warm resolves the listing, which puts
  *  the row right, and records no watch. A click the viewer moved on
- *  from while the row was read (`stillHere`) warms nothing. */
+ *  from by the time the row was read (`stillHere`) warms nothing. */
 export async function settledRow(
 	deps: SettledRowDeps,
 	entryId: string,
