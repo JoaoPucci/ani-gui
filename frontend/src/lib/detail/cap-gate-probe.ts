@@ -160,7 +160,7 @@ export interface CapGateProbeDeps {
 }
 
 /**
- * Which parts of an answer a route may write. Three fields, three
+ * Which parts of an answer a route may write. Four fields, three
  * different reasons to trust them.
  *
  * The verdict always. It comes from the search, which either found
