@@ -169,7 +169,7 @@ A hero image that fails to load gives way to the next in that order, without a r
 | An id AniList translated to or from MAL's (per id, each direction) | SQLite `meta_cache` | 30 days; 24 hours for an id AniList does not index |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite `meta_cache` (`play:` rows) | 7 days, or until upstream rotates |
-| In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | 4 hours (also dedupes concurrent calls) |
+| In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | Until the page clears the show's prefetches or the resolve fails; the sessions it holds last the backend session table's 4 hours (also dedupes concurrent calls) |
 | AniList banner per Kitsu id (from the trending feed) | SQLite `meta_cache` | 30 days; rewritten or dropped by each trending answer that lists the show, and dropped by a detail read once the image proxy has found the URL gone |
 | Image URL the upstream answered 404 or 410 for | SQLite `meta_cache` | 30 days, or until a fetch of it succeeds |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
@@ -233,11 +233,11 @@ Two prefetch surfaces warm play data ahead of demand so episode boundaries don't
 - **Adjacent-episode warm.** When the play page mounts, it warms `episode + 1` (and on the detail page, `episode 1`) through the same play-resolution path the click would take. Hits land in the long-term resolution cache. If the current playback ends and auto-play-next is on, the next episode usually plays from cache instead of waiting on a fresh provider walk.
 - **Visible-page warm.** The episode strip's currently-rendered Kitsu page is warmed in parallel so episode tiles get titles and thumbnails before the user scrolls.
 
-Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality — which dedupes concurrent calls and keeps a 4-hour TTL. At most two run at once; a click cuts the queue. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
+Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality — which dedupes concurrent calls and keeps each answer until the show's prefetches are cleared or the resolve fails. The 4-hour lifetime is the backend session table's. At most two run at once; a click cuts the queue. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
 
 The detail page's resume warm uses the same cache. When no listing stood behind the page's availability answer and the history row reads as a fractional episode, the page resolves that episode as a prefetch so the listing puts the row right. It cuts the queue like a click (`getOrFireNow`), since a click on Play waits for it.
 
-When the play or detail page goes, it clears its show's in-flight prefetches. A move to another show on the same page clears nothing: the first show's warms, queued ones included, run to the end under that show's key and title.
+When the play or detail page goes, it clears its show's in-flight prefetches. When the detail page moves to another show without unmounting, it drops the first show's warms, running and queued (`clearBackgroundForShow`). A click's own play for that show runs on and records its watch.
 
 ## User settings
 
