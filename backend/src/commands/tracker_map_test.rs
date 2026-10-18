@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
-use crate::account::episode_map::{Identity, Shape, TrackerShow};
+use crate::account::episode_map::{Identity, KitsuShow, Shape, TrackerShow};
 use crate::cache::{meta_cache_get, meta_cache_row};
 use crate::meta::kitsu::ANIME_FIELDS;
 use wiremock::matchers::{body_string_contains, method, path, query_param};
@@ -565,9 +565,12 @@ async fn tower_of_god_s_later_part_is_filed_under_its_prequel_s_anilist_entry() 
         (map.segments[0].kitsu_from, map.segments[0].kitsu_to),
         (1, 13)
     );
+    // A show Kitsu resolves to nothing is keyed without the entry it is
+    // filed under, so its map is asked for again daily: the entry's
+    // recount reaches no new key.
     assert_eq!(
         ttl_of(&state, &map_key(ProviderKind::AniList, "49244", None)),
-        TRACKER_MAP_TTL.as_secs()
+        TRACKER_MAP_UNSETTLED_TTL.as_secs()
     );
 }
 
@@ -945,7 +948,10 @@ async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_wit
     let got = super::kitsu_side::sharing_on_kitsu(&state, ProviderKind::MyAnimeList, &entry)
         .await
         .expect("read");
-    assert!(got.is_empty(), "{got:?}");
+    // One Kitsu entry the page did not list stands for the rest: no
+    // id, no count, so nothing sums with it and the show is not the
+    // entry's only one.
+    assert_eq!(got, vec![KitsuShow::default()]);
     // It is still claimed: some Kitsu entry maps to it.
     assert!(
         super::kitsu_side::claimed_on_kitsu(&state, ProviderKind::MyAnimeList, &entry)

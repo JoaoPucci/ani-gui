@@ -740,3 +740,27 @@ fn distinct_fractions_after_one_episode_are_distinct_extras() {
     assert_eq!(map.segments[0].extras_after, vec![0, 6, 6]);
     assert_eq!(map.target(7), mapped(19_603, 10, false, &[]));
 }
+
+#[test]
+fn a_kitsu_entry_the_mappings_page_did_not_list_keeps_the_list_from_explaining_alone() {
+    // Kitsu maps more entries to the tracker's id than its page held:
+    // the gatherer records one it did not list (no id, no count), so
+    // the show is not known to be the entry's only Kitsu entry.
+    let mut ev = ubw();
+    ev.sharing = vec![
+        kitsu("7882", Some(12), "2014-10-12", "2014-12-28"),
+        KitsuShow::default(),
+    ];
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_number_written_with_trailing_zeros_is_the_same_number() {
+    // "6.5" and "6.50" are one extra; "6.0" is episode 6.
+    let mut ev = ubw();
+    ev.entry.episodes = Some(14);
+    ev.listed = listed(&["0", "1", "6.5", "6.50", "6.0", "7"]);
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::Extras);
+    assert_eq!(map.segments[0].extras_after, vec![0, 6]);
+}

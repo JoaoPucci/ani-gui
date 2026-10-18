@@ -569,6 +569,10 @@ fn an_entry_s_lock_is_one_per_tracker_entry_and_apart_from_the_show_locks() {
     assert!(Arc::ptr_eq(&a, &b));
     assert!(!Arc::ptr_eq(
         &a,
+        &locks.for_entry(ProviderKind::AniList, ProviderMediaId(8))
+    ));
+    assert!(!Arc::ptr_eq(
+        &a,
         &locks.for_entry(ProviderKind::MyAnimeList, ProviderMediaId(7))
     ));
     assert!(!Arc::ptr_eq(
