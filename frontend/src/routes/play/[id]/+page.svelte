@@ -2184,18 +2184,21 @@
 			switchedSince: switchesStarted !== atSwitch,
 			switchBusyNow: switchBusy
 		});
+		// The error to show again while the stream that failed stays on
+		// screen: the one the viewer saw, or one worded from the reason.
+		const restore = shownError ?? m.play_error_playback_technical({ detail: reason });
 		// A re-check holds the lock and may not switch: the stale stream
 		// is still on screen, so Reload is offered again.
-		if (turn === 'offer-reload')
-			playerError = shownError ?? m.play_error_playback_technical({ detail: reason });
+		if (turn === 'offer-reload') playerError = restore;
 		if (turn !== 'resolve') return;
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
-		await switchToEpisode(
-			episodeNum,
-			shownError ?? m.play_error_playback_technical({ detail: reason })
-		);
+		// So does one the switch declines before it starts — the airing
+		// lookup still out, the show delisted, the episode past the cap.
+		const switchesBefore = switchesStarted;
+		await switchToEpisode(episodeNum, restore);
+		if (switchesStarted === switchesBefore) playerError ??= restore;
 	}
 
 	/** Wired to the Reload button on the player-error overlay. Bypasses
