@@ -131,7 +131,14 @@
 	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
-	import { deadEnd, type EpisodeStanding } from '$lib/play/reload-offer';
+	import {
+		deadEnd,
+		deadEndMessage,
+		watchDeadEndOtherAudio,
+		type EpisodeStanding
+	} from '$lib/play/reload-offer';
+	import type { OtherAudio } from '$lib/play/error-copy';
+	import { isMusicSubtype } from '$lib/history/resolve';
 	import {
 		claimPlay,
 		playArgsFor,
@@ -974,6 +981,9 @@
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
 		if (patch.available !== undefined) {
 			showListed = patch.available;
+			// Whether that verdict is a refusal by name travels with it
+			// ($lib/detail/availability-writeback).
+			showRefused = patch.refused === true;
 			// A patch that carries the verdict is the current lookup's
 			// or a re-ask's that won it — either way the warm's too.
 			warmListed = patch.available;
@@ -1100,6 +1110,10 @@
 	 *  cannot express "there is nothing here" — it just stays where it
 	 *  was and keeps every episode under it looking playable. */
 	let showListed = $state<boolean | null>(null);
+	/** Whether `showListed`'s verdict is the provider refusing the
+	 *  title by name, which the detail page's notice never answers with
+	 *  the other audio. */
+	let showRefused = $state(false);
 	// Non-integer episode tags the provider has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
@@ -1198,6 +1212,27 @@
 			beyondPlayable: beyondPlayable(n, playableEpisodeCount)
 		};
 	}
+	/** Whether the episode on screen is one a play cannot reach. The
+	 *  player-error overlay's Reload, and the automatic recovery, would
+	 *  re-resolve it through the switch that refuses it, so neither is
+	 *  offered then: the overlay says why instead ($lib/play/reload-offer). */
+	const reloadEnd = $derived(deadEnd(standingOf(episodeNum)));
+	// What the cache says about the other audio while the overlay names
+	// a dead end; a late answer to an old question is dropped.
+	let deadEndOtherAudio = $state<OtherAudio>(null);
+	$effect(() => {
+		const end = reloadEnd;
+		const q = {
+			kitsuId: id,
+			mode: availabilityMode,
+			episode: episodeNum,
+			music: isMusicSubtype(detail?.subtype ?? null),
+			refused: showRefused
+		};
+		deadEndOtherAudio = null;
+		if (!end || !playerError) return;
+		return watchDeadEndOtherAudio(end, q, (answer) => (deadEndOtherAudio = answer));
+	});
 
 	// How far the strip renders tiles: with airing data present it
 	// extends past the provider's count to the announced total, so the
@@ -1656,7 +1691,8 @@
 			// a recovery that would silently bail.
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, switchBusy })
+				canRecoverFromStaleStream({ detail, switchBusy }) &&
+				reloadEnd === null
 			) {
 				hasAutoRetried = true;
 				void recoverFromStaleStream(`video ${reason}`);
@@ -1763,7 +1799,11 @@
 				// fast initial fatal errors can land before detail/config
 				// populate; surface the overlay instead of consuming the
 				// budget on a no-op recovery.
-				if (action.act === 'recover' && canRecoverFromStaleStream({ detail, switchBusy })) {
+				if (
+					action.act === 'recover' &&
+					canRecoverFromStaleStream({ detail, switchBusy }) &&
+					reloadEnd === null
+				) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
 					return;
@@ -2532,16 +2572,47 @@
 			     users / bug reports still have it. -->
 			<div class="player-empty player-error">
 				<p class="player-error-headline">{m.play_error_stream_headline()}</p>
-				<p class="player-error-body">{m.play_error_stream_body()}</p>
-				<button type="button" class="player-error-reload" onclick={onReloadStream}>
-					<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-						<path
-							d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-6-6 5.94 5.94 0 014.22 1.78L13 11h7V4z"
-							fill="currentColor"
-						/>
-					</svg>
-					<span>{m.play_error_stream_reload()}</span>
-				</button>
+				{#if reloadEnd}
+					<!-- An episode no play can reach: a Reload would only be
+					     refused, so the overlay says why and sends the viewer
+					     to the show's page, where the audio switch is. -->
+					<p class="player-error-body">
+						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
+					</p>
+					<a
+						class="player-error-action"
+						href={resolve('/anime/[id]', { id })}
+						onclick={(e) => {
+							// Replace, like the now-playing link: the show's page
+							// is "up" from the player.
+							e.preventDefault();
+							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+						}}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+							<path
+								d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"
+								fill="currentColor"
+							/>
+						</svg>
+						<span>{m.play_error_stream_back_to_show()}</span>
+					</a>
+				{:else}
+					<p class="player-error-body">{m.play_error_stream_body()}</p>
+					<button
+						type="button"
+						class="player-error-action player-error-reload"
+						onclick={onReloadStream}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+							<path
+								d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-6-6 5.94 5.94 0 014.22 1.78L13 11h7V4z"
+								fill="currentColor"
+							/>
+						</svg>
+						<span>{m.play_error_stream_reload()}</span>
+					</button>
+				{/if}
 				<p class="player-error-detail">{playerError}</p>
 			</div>
 		{:else}
@@ -4519,7 +4590,7 @@
 		margin: 0;
 		line-height: 1.5;
 	}
-	.player-error-reload {
+	.player-error-action {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
@@ -4533,18 +4604,19 @@
 		font-family: var(--font-body);
 		font-size: var(--type-body);
 		font-weight: 600;
+		text-decoration: none;
 		cursor: pointer;
 		transition:
 			transform var(--dur-fast) var(--ease-out-soft),
 			filter var(--dur-fast) var(--ease-out-soft);
 	}
-	.player-error-reload:hover {
+	.player-error-action:hover {
 		filter: brightness(1.1);
 	}
-	.player-error-reload:active {
+	.player-error-action:active {
 		transform: scale(0.97);
 	}
-	.player-error-reload:focus-visible {
+	.player-error-action:focus-visible {
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
 	}
