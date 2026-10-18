@@ -36,7 +36,7 @@ describe('quality remap', () => {
 			ceiling: 2,
 			current: 2,
 			engaged: true,
-			pinned: false,
+			pinLevel: null,
 			unavailable: new Set<number>()
 		};
 		const removeTop = [0, 1, -1];
@@ -60,21 +60,28 @@ describe('quality remap', () => {
 			ceiling: 2,
 			current: 0,
 			engaged: true,
-			pinned: true,
+			pinLevel: 0,
 			unavailable: new Set<number>()
 		};
 		const removeBottom = [-1, 0, 1];
 		const above = remapHold(pinned, removeBottom, [LEVELS[1], LEVELS[2]], { kind: 'best' });
 		expect(above.current).toBe(0);
-		expect(above.pinned).toBe(false);
-		const belowKept = remapHold({ ...pinned, current: 1 }, [0, -1, 1], [LEVELS[0], LEVELS[2]], {
+		expect(above.pinLevel).toBeNull();
+		const belowKept = remapHold(
+			{ ...pinned, current: 1, pinLevel: 1 },
+			[0, -1, 1],
+			[LEVELS[0], LEVELS[2]],
+			{
+				kind: 'best'
+			}
+		);
+		expect(belowKept.current).toBe(0);
+		expect(belowKept.pinLevel).toBe(0);
+		const one = remapHold({ ...pinned, current: 1, pinLevel: 1 }, [-1, -1, 0], [LEVELS[2]], {
 			kind: 'best'
 		});
-		expect(belowKept.current).toBe(0);
-		expect(belowKept.pinned).toBe(true);
-		const one = remapHold({ ...pinned, current: 1 }, [-1, -1, 0], [LEVELS[2]], { kind: 'best' });
 		expect(one.engaged).toBe(false);
-		expect(one.pinned).toBe(false);
+		expect(one.pinLevel).toBeNull();
 	});
 
 	it('levels all replaced, as a content-steering switch does, seat the hold at the setting and let the pin go', () => {
@@ -83,7 +90,7 @@ describe('quality remap', () => {
 			ceiling: 2,
 			current: 1,
 			engaged: true,
-			pinned: true,
+			pinLevel: 1,
 			unavailable: new Set<number>([0])
 		};
 		const fresh = [{ ...LEVELS[0] }, { ...LEVELS[1] }, { ...LEVELS[2] }];
@@ -91,7 +98,7 @@ describe('quality remap', () => {
 		expect(next.current).toBe(2);
 		expect(next.unavailable.size).toBe(0);
 		// The setting's level may be above the pin: it is let go.
-		expect(next.pinned).toBe(false);
+		expect(next.pinLevel).toBeNull();
 		// A short mapping reads as every level gone, the same way.
 		expect(remapHold(state, [], fresh, { kind: 'worst' }).current).toBe(0);
 	});

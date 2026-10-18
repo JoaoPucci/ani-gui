@@ -46,7 +46,8 @@ export interface HoldState {
 	ceiling: number;
 	current: number;
 	engaged: boolean;
-	pinned: boolean;
+	/** The level pinned, or null while the choice is Auto. */
+	pinLevel: number | null;
 	unavailable: Set<number>;
 }
 
@@ -72,8 +73,8 @@ export function remapHold(
 	const current = nearestLoadable(ladder, unavailable, kept ?? seat?.level ?? ceiling);
 	const engaged = state.engaged && levels.length > 1;
 	// A pin holds only where the hold stayed or re-seated below it.
-	const pinned = state.pinned && engaged && (kept !== null || seat?.above === false);
-	return { ladder, ceiling, current, unavailable, engaged, pinned };
+	const pinned = state.pinLevel !== null && engaged && (kept !== null || seat?.above === false);
+	return { ladder, ceiling, current, unavailable, engaged, pinLevel: pinned ? current : null };
 }
 
 function nearestLoadable(ladder: number[], unavailable: Set<number>, level: number): number {

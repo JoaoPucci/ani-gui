@@ -9,12 +9,12 @@ import {
 	ladderOrder,
 	isLoadable,
 	neighbourLevel,
-	pinnedLevel,
 	targetLevel,
 	type LadderLevel,
 	type QualityPinChoice,
 	type QualityTarget
 } from './quality-ladder';
+import { startPin } from './quality-pinlevel';
 import { remapHold } from './quality-remap';
 
 /** Why the level changed, for the log. */
@@ -44,7 +44,8 @@ export abstract class QualityHold {
 	/** The setting's level: auto never climbs above it. */
 	protected ceiling: number;
 	protected current: number;
-	protected pinned: boolean;
+	/** The level the viewer pinned, or null while the choice is Auto. */
+	protected pinLevel: number | null;
 	protected engaged: boolean;
 	protected unavailable = new Set<number>();
 
@@ -56,9 +57,8 @@ export abstract class QualityHold {
 		this.ladder = ladderOrder(levels);
 		this.ceiling = targetLevel(target, levels);
 		// A pin with no level at or below it starts the stream as Auto.
-		const pinLevel = pin === null ? -1 : pinnedLevel(pin, levels);
-		this.pinned = pinLevel >= 0;
-		this.current = this.pinned ? pinLevel : this.ceiling;
+		this.pinLevel = startPin(pin, levels);
+		this.current = this.pinLevel ?? this.ceiling;
 		this.engaged = levels.length > 1;
 	}
 
@@ -69,7 +69,7 @@ export abstract class QualityHold {
 
 	/** Whether the viewer pinned the level. */
 	get isPinned(): boolean {
-		return this.pinned;
+		return this.pinLevel !== null;
 	}
 
 	/** Whether the governor holds the engine's level at all: not for a
@@ -92,7 +92,7 @@ export abstract class QualityHold {
 			ceiling: this.ceiling,
 			current: this.current,
 			engaged: this.engaged,
-			pinned: this.pinned,
+			pinLevel: this.pinLevel,
 			unavailable: this.unavailable
 		};
 		const next = remapHold(held, mapping, levels, this.target);
@@ -100,7 +100,7 @@ export abstract class QualityHold {
 		this.ceiling = next.ceiling;
 		this.current = next.current;
 		this.engaged = next.engaged;
-		this.pinned = next.pinned;
+		this.pinLevel = next.pinLevel;
 		this.unavailable = next.unavailable;
 	}
 
@@ -121,7 +121,7 @@ export abstract class QualityHold {
 		const next = lower ?? this.neighbour(level, 1);
 		if (next === null) return this.release();
 		// Only a level above is left: a pin cannot be honoured there.
-		if (lower === null) this.pinned = false;
+		if (lower === null) this.pinLevel = null;
 		this.settled(now);
 		return this.move(next, 'level-failed', 'load');
 	}
@@ -131,7 +131,7 @@ export abstract class QualityHold {
 		if (this.ladder.length < 2) return null;
 		if (choice === 'auto') return this.auto(now);
 		if (!isLoadable(this.ladder, this.unavailable, choice)) return null;
-		this.pinned = true;
+		this.pinLevel = choice;
 		this.engaged = true;
 		return choice === this.current ? null : this.move(choice, 'pick', 'next');
 	}
@@ -141,7 +141,7 @@ export abstract class QualityHold {
 	 *  run's pin, by height, stays for the next stream. */
 	protected release(): null {
 		this.engaged = false;
-		this.pinned = false;
+		this.pinLevel = null;
 		return null;
 	}
 
@@ -161,6 +161,8 @@ export abstract class QualityHold {
 	protected move(level: number, reason: QualityReason, via: QualityMove['via']): QualityMove {
 		const from = this.current;
 		this.current = level;
+		// The pin moves with the hold.
+		if (this.pinLevel !== null) this.pinLevel = level;
 		return { level, from, reason, via };
 	}
 
@@ -169,7 +171,7 @@ export abstract class QualityHold {
 	}
 
 	private auto(now: number): QualityMove | null {
-		this.pinned = false;
+		this.pinLevel = null;
 		this.restarted(now);
 		const below = this.unavailable.has(this.ceiling)
 			? this.neighbour(this.ceiling, -1)

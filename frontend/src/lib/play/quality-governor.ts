@@ -47,7 +47,7 @@ export class QualityGovernor extends QualityHold {
 
 	/** Playback stalled with nothing buffered. */
 	stall(now: number): QualityMove | null {
-		if (!this.engaged || this.pinned || this.pace.inSeekGrace(now)) return null;
+		if (!this.engaged || this.pinLevel !== null || this.pace.inSeekGrace(now)) return null;
 		const lower = this.pace.coolingDown(now) ? null : this.neighbour(this.current, -1);
 		// A stall that moves nothing — at the lowest level, or inside the
 		// cooldown — is trouble all the same: the climb waits for a
@@ -72,7 +72,8 @@ export class QualityGovernor extends QualityHold {
 
 	/** A segment of the main rendition was buffered. */
 	healthy(now: number, bufferAheadS: number): QualityMove | null {
-		if (!this.engaged || this.pinned || !this.pace.mayClimb(now, bufferAheadS)) return null;
+		if (!this.engaged || this.pinLevel !== null || !this.pace.mayClimb(now, bufferAheadS))
+			return null;
 		const higher = this.neighbour(this.current, 1);
 		if (higher === null || this.ladder.indexOf(higher) > this.ladder.indexOf(this.ceiling)) {
 			return null;
@@ -96,7 +97,7 @@ export class QualityGovernor extends QualityHold {
 		// a removal re-seated the hold on a level that never played.
 		if (blame) this.unavailable.add(this.current);
 		// The engine moved above the pin: it can no longer be honoured.
-		if (this.pinned && isAbove(this.ladder, level, this.current)) this.pinned = false;
+		if (this.pinLevel !== null && isAbove(this.ladder, level, this.current)) this.pinLevel = null;
 		this.settled(now);
 		return this.move(level, 'followed', 'load');
 	}
