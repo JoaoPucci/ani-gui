@@ -14,7 +14,8 @@ use super::play_native_wide_listing::{Probed, UNFIT};
 /// refused, by the titles or by that rule, and the titles of every dead
 /// listing that could not have won: with a count such a hit is probed
 /// or kept as evidence, and as a broad listing's completing sibling it
-/// decides the pick. A dead
+/// decides the pick. Every title is read past a bracketed version tag,
+/// as every reader of a probed candidate's divisions reads. A dead
 /// listing that is another entry of the same show counts for none:
 /// answered, it would have been scored out.
 #[derive(Default)]
@@ -36,7 +37,10 @@ impl DeadListings {
         self.could_win |= stands && !another;
         self.refused |= !(another || stands);
         if !stands {
-            self.siblings.push(title.to_string());
+            self.siblings
+                .push(super::play_native_version_copies::without_version_tag(
+                    title,
+                ));
         }
     }
 
@@ -54,14 +58,17 @@ impl DeadListings {
     ) -> bool {
         self.could_win
             || probed.iter().any(|(w, eps, d, confirmed)| {
+                // The broad listing read past its version tag, as the
+                // spanning cut reads it and as the siblings were noted.
+                let wide = super::play_native_version_copies::without_version_tag(&w.title);
                 *confirmed
                     && *d != UNFIT
                     && regular_episode_count(eps) > expected
-                    && entry.names(&w.title)
+                    && entry.names(&wide)
                     && self
                         .siblings
                         .iter()
-                        .any(|sibling| entry.names_later_part(sibling, &w.title))
+                        .any(|sibling| entry.names_later_part(sibling, &wide))
             })
     }
 
