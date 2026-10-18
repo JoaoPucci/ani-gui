@@ -846,16 +846,18 @@ pub async fn check_availability(
                 // which is not absence, so persist nothing.
                 return Ok(AvailabilityResponse::unsettled(UnsettledReason::Unanswered));
             };
+            // The listing is at hand, whatever the mode answered: a
+            // history row's stamp an earlier version wrote with a
+            // stitched row's former tag reads right before its Continue
+            // card is clicked, and before the verdict is cached — the
+            // next probe that takes it fetches no listing.
+            crate::commands::numbering_offset::retag_from_listing(
+                state,
+                &crate::scraper::provider::ShowKey::new(attempted.provider, p.hit.slug.clone())
+                    .to_string(),
+                &p.episodes,
+            );
             if present {
-                // The listing is at hand: a history row's stamp an
-                // earlier version wrote with a stitched row's former
-                // tag reads right before its Continue card is clicked.
-                crate::commands::numbering_offset::retag_from_listing(
-                    state,
-                    &crate::scraper::provider::ShowKey::new(attempted.provider, p.hit.slug.clone())
-                        .to_string(),
-                    &p.episodes,
-                );
                 (
                     true,
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
