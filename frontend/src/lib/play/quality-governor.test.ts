@@ -472,6 +472,30 @@ describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 		expect(g.healthy(2_000 + HEALTHY_WINDOWS_MS[1], FULL)?.level).toBe(2);
 	});
 
+	it('a pin re-seated by a removal keeps its place when a switch it is not blamed for follows', () => {
+		// The pinned 720p was removed; the pin re-seated on 480p, which
+		// never played. The removal's own error then switches to 240p:
+		// nothing judged 480p, so the pin stays there and the play
+		// climbs back to it.
+		const ladder = [
+			{ height: 240, bitrate: 400_000 },
+			{ height: 360, bitrate: 800_000 },
+			{ height: 480, bitrate: 1_400_000 },
+			{ height: 720, bitrate: 2_500_000 }
+		];
+		const g = new QualityGovernor(ladder, BEST, 720);
+		g.start();
+		g.remap([0, 1, 2, -1], ladder.slice(0, 3));
+		expect(g.level).toBe(2);
+		expect(g.pinnedLevel).toBe(2);
+		expect(g.follow(0, 1_000, false)?.level).toBe(0);
+		expect(g.pinnedLevel).toBe(2);
+		// One level per window, up to the pin.
+		const t1 = 1_000 + HEALTHY_WINDOWS_MS[0];
+		expect(g.healthy(t1, FULL)?.level).toBe(1);
+		expect(g.healthy(t1 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
+	});
+
 	it('an Auto play the engine moved down over its audio does not climb', () => {
 		const g = governor();
 		g.start();
