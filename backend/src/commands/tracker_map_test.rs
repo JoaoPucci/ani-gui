@@ -174,14 +174,16 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
     let provider = anilist(&anilist_server.uri());
 
     let map = episode_map_for(
-        &state,
-        ProviderKind::AniList,
-        &provider,
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::AniList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_server.uri()),
+        },
         "186",
         ProviderMediaId(210),
         Some(18),
-        Some(&anilist_server.uri()),
     )
     .await;
     assert_eq!(map.shape, Shape::Chain);
@@ -199,14 +201,16 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
     // A second write reads the row and asks nothing (every mock expects
     // one request).
     let again = episode_map_for(
-        &state,
-        ProviderKind::AniList,
-        &provider,
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::AniList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_server.uri()),
+        },
         "186",
         ProviderMediaId(210),
         Some(18),
-        Some(&anilist_server.uri()),
     )
     .await;
     assert_eq!(again, map);
@@ -230,14 +234,16 @@ async fn agreeing_counts_are_identity_kept_for_the_long_window_with_no_tracker_r
         .await;
     let state = state_with_kitsu(&kitsu.uri());
     let map = episode_map_for(
-        &state,
-        ProviderKind::MyAnimeList,
-        &mal(&mal_server.uri()),
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&mal_server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
         "186",
         ProviderMediaId(210),
         Some(161),
-        None,
     )
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::CountsAgree));
@@ -254,14 +260,16 @@ async fn an_unknown_count_is_identity_kept_for_a_day() {
     let state = state_with_kitsu(&kitsu.uri());
     let server = MockServer::start().await;
     let map = episode_map_for(
-        &state,
-        ProviderKind::MyAnimeList,
-        &mal(&server.uri()),
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
         "7",
         ProviderMediaId(70),
         Some(12),
-        None,
     )
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::CountUnknown));
@@ -283,14 +291,16 @@ async fn a_read_that_fails_is_identity_and_kept_nowhere() {
     let server = MockServer::start().await;
     for _ in 0..2 {
         let map = episode_map_for(
-            &state,
-            ProviderKind::MyAnimeList,
-            &mal(&server.uri()),
-            &tokens(),
+            &MapAsk {
+                state: &state,
+                kind: ProviderKind::MyAnimeList,
+                provider: &mal(&server.uri()),
+                tokens: &tokens(),
+                anilist_base: None,
+            },
             "186",
             ProviderMediaId(210),
             Some(18),
-            None,
         )
         .await;
         assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
@@ -335,14 +345,16 @@ async fn a_difference_nothing_explains_is_identity_kept_for_a_day() {
         .await;
     let state = state_with_kitsu(&kitsu.uri());
     let map = episode_map_for(
-        &state,
-        ProviderKind::MyAnimeList,
-        &mal(&mal_server.uri()),
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&mal_server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
         "186",
         ProviderMediaId(210),
         Some(100),
-        None,
     )
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
@@ -384,14 +396,16 @@ async fn the_final_chapters_second_special_on_mal_shares_the_entry_after_the_fir
         .await;
     let state = state_with_kitsu(&kitsu.uri());
     let map = episode_map_for(
-        &state,
-        ProviderKind::MyAnimeList,
-        &mal(&mal_server.uri()),
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&mal_server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
         "47132",
         ProviderMediaId(51_535),
         Some(2),
-        None,
     )
     .await;
     assert_eq!(map.shape, Shape::SharedEntry);
@@ -481,12 +495,14 @@ async fn tower_of_god_s_later_part_is_filed_under_its_prequel_s_anilist_entry() 
     let state = state_with_kitsu(&kitsu.uri());
     let provider = anilist(&anilist_server.uri());
     let map = episode_map_for_unresolved(
-        &state,
-        ProviderKind::AniList,
-        &provider,
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::AniList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_server.uri()),
+        },
         "49244",
-        Some(&anilist_server.uri()),
     )
     .await;
     assert_eq!(map.shape, Shape::SplitParts);
@@ -522,12 +538,14 @@ async fn a_show_with_no_prequel_that_resolves_is_identity_kept_for_a_day() {
     let state = state_with_kitsu(&kitsu.uri());
     let server = MockServer::start().await;
     let map = episode_map_for_unresolved(
-        &state,
-        ProviderKind::MyAnimeList,
-        &mal(&server.uri()),
-        &tokens(),
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
         "5",
-        None,
     )
     .await;
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
