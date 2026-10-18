@@ -36,13 +36,20 @@ pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, conf
     }
 }
 
+/// Whether a candidate could have been picked, as far as the entry's
+/// titles go: admitted, not another entry of the same show, and not
+/// ruled out by the caller's rules otherwise (`could_win`).
+pub(super) fn could_have_won(entry: EntryTitles<'_>, title: &str, could_win: bool) -> bool {
+    could_win && entry.admits(title) && !entry.another_entry(title)
+}
+
 /// The strongest transport-dead candidate so far, by [`entry_rank`]
 /// and then provider position, with the candidate that just died at
 /// `pos` weighed in. A candidate the entry's titles refuse, or another
 /// entry of the same show ([`EntryTitles::another_entry`]), could
 /// never have won, so its death blocks no winner, and neither does one
-/// the caller's rules otherwise rule out (`could_win` false: a dated
-/// entry's candidate no name vouches for); it still leaves the pool
+/// the name rule that applies would have refused (`could_win` false:
+/// `play_native_dated_name::may_win`); it still leaves the pool
 /// unheard, which the caller records apart.
 pub(super) fn strongest_dead(
     best: Option<(u8, usize)>,
@@ -53,7 +60,7 @@ pub(super) fn strongest_dead(
     pos: usize,
     could_win: bool,
 ) -> Option<(u8, usize)> {
-    if !could_win || !entry.admits(title) || entry.another_entry(title) {
+    if !could_have_won(entry, title, could_win) {
         return best;
     }
     let failed = (entry_rank(entry, title, needle, confirmed), pos);
