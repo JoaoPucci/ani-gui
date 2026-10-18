@@ -605,12 +605,13 @@ fn with_modes_kept(
 /// stream replays for days after an airing show's positive row has
 /// expired — so without this the next probe would start from the
 /// primary, whose clean miss could hide a stream the cache just
-/// served. A replay learns nothing new about the listing, and
-/// nothing about the provider it came through either — the CDN
-/// answered for a URL resolved when that provider last served — so
-/// a standing positive row is left exactly as it is, whichever
-/// provider proved it, lifetime included: written back even
-/// unchanged it would take a fresh one, and an ongoing show's exact
+/// served. A replay learns nothing new about the listing beyond the
+/// mode of the version it served, and nothing about the provider it
+/// came through — the CDN answered for a URL resolved when that
+/// provider last served — so a standing positive row is left as it
+/// is but for that one mode, whichever provider proved it, lifetime
+/// included: written back as a fresh row it would take a fresh
+/// lifetime, and an ongoing show's exact
 /// cap, replayed daily, would never expire into the reprobe that
 /// learns its new episodes. Only where no positive row stands does
 /// the replay write the boolean positive row a served resolve
@@ -621,13 +622,18 @@ fn with_modes_kept(
 /// time never weighed, so a resolve that set out before the replay
 /// does not write its miss over the row — while a later success,
 /// which weighs against rows written, is still free to write its
-/// own. The row itself, and its lifetime, are untouched. Under the
-/// same refresh guard as a resolve's stamp.
+/// own. The row's lifetime, and all of it but the served version's
+/// mode, are untouched. Under the same refresh guard as a resolve's
+/// stamp.
 ///
 /// `played` is the version the cached resolution served: the replay
 /// has just proved a stream of it in this mode, so where the replay
 /// writes the row it says that version carries the mode, as a fresh
-/// play's stamp does.
+/// play's stamp does. Where a positive row stands, that one fact is
+/// merged into it ([`merge_served_mode`]) — the row's window and every
+/// other field kept, a mode it already knows never taken back.
+///
+/// [`merge_served_mode`]: crate::commands::availability_served_mode::merge_served_mode
 ///
 /// The row is read inside the lock, not on the way to it. A native
 /// resolve stamping the same row is not a cache-bypassing refresh
@@ -657,6 +663,9 @@ pub async fn stamp_after_cache_hit(
         || {
             if positive_row_stands(state, &row) {
                 state.availability_refreshes.note_replay(&row);
+                crate::commands::availability_served_mode::merge_served_mode(
+                    state, &row, versions, played,
+                );
             } else {
                 write_boolean_row(
                     state,

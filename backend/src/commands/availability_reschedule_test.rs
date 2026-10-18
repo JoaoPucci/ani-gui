@@ -263,3 +263,50 @@ fn a_count_level_with_the_schedule_keeps_the_next_airing_bound() {
     assert_eq!(ttl_of(&pool, &apart), DAY);
     assert_eq!(ttl_of(&pool, &neg), DAY);
 }
+
+// --- a cut racing a replay's mode merge -------------------------------
+
+#[test]
+fn a_cut_whose_row_gained_a_merged_mode_since_its_read_still_lands() {
+    // The cut read the row; before it shortened it, a replay merged a
+    // version's mode into the body, keeping the row's window. The cut
+    // still applies, as it would have to the row it read.
+    let pool = pool();
+    let key = cache_key("merged", "sub");
+    seed(&pool, &key, &positive_with(7), HOUR, DAY);
+    let read = meta_cache_row(&pool, &key).expect("read").expect("row");
+    let conn = pool.get().expect("conn");
+    let merged = serde_json::to_string(&AvailabilityResponse {
+        versions: vec![crate::commands::play_native_versions::VersionInfo {
+            kind: crate::commands::play_native_versions::VersionKind::Uncensored,
+            show_key: "hianime:merged-2".into(),
+            has_mode: Some(true),
+        }],
+        ..serde_json::from_str(&positive_with(7)).expect("row")
+    })
+    .expect("serializes");
+    conn.execute(
+        "UPDATE meta_cache SET body = ?1 WHERE key = ?2",
+        rusqlite::params![merged, key],
+    )
+    .expect("merge");
+    drop(conn);
+    let t = now();
+    cut_seen_row(&pool, &key, &read, Some(t + 2 * HOUR), None, t);
+    let ttl = ttl_of(&pool, &key);
+    assert!(ttl.abs_diff(HOUR + 2 * HOUR + GRACE_SECS) <= 2, "{ttl}");
+}
+
+#[test]
+fn a_cut_whose_row_was_rewritten_since_its_read_keeps_the_new_window() {
+    // A put since the read gives the row a new window of its own; the
+    // cut read before it does not touch it.
+    let pool = pool();
+    let key = cache_key("rewritten", "sub");
+    seed(&pool, &key, &positive_with(7), HOUR, DAY);
+    let read = meta_cache_row(&pool, &key).expect("read").expect("row");
+    seed(&pool, &key, &positive_with(8), 0, 2 * DAY);
+    let t = now();
+    cut_seen_row(&pool, &key, &read, Some(t + 2 * HOUR), None, t);
+    assert_eq!(ttl_of(&pool, &key), 2 * DAY);
+}
