@@ -107,13 +107,21 @@ pub fn named_versions(
 /// — the pick's listing after a reading re-tagged it — numbers them,
 /// row by row: a version is the same episodes under its own ids, so a
 /// reading of the pick's listing is a reading of each. A version whose
-/// listing is not the pick's length is left as it is.
+/// listing is not the pick's length, or whose rows are not numbered by
+/// position, is left as it is.
 #[must_use]
 pub(crate) fn fitted_versions(versions: &[ShowVersion], fitted: &[EpisodeRef]) -> Vec<ShowVersion> {
     versions
         .iter()
         .map(|v| {
-            if v.episodes.len() != fitted.len() {
+            // Only a copy numbered by position, as the reading needs the
+            // pick's to be, takes the pick's numbering.
+            let positional = v
+                .episodes
+                .iter()
+                .zip(1u32..)
+                .all(|(e, slot)| e.number == slot && e.number2.is_none());
+            if v.episodes.len() != fitted.len() || !positional {
                 return v.clone();
             }
             ShowVersion {
