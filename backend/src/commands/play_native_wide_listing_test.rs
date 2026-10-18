@@ -16,6 +16,8 @@ fn listing(n: u32) -> Vec<EpisodeRef> {
             id: u64::from(k),
             number: k,
             number2: None,
+            former_tag: None,
+            title: None,
         })
         .collect()
 }
@@ -159,6 +161,8 @@ fn the_cut_keeps_a_recap_listed_among_the_entry_s_episodes() {
         id: u64::from(number),
         number,
         number2: tag.map(str::to_string),
+        former_tag: None,
+        title: None,
     };
     let rows = vec![
         row(1, None),
@@ -186,7 +190,7 @@ proptest::proptest! {
             .map(|(i, recap)| EpisodeRef {
                 id: i as u64,
                 number: i as u32 + 1,
-                number2: recap.then(|| format!("{i}.5")),
+                number2: recap.then(|| format!("{i}.5")), former_tag: None, title: None,
             })
             .collect();
         let head = head_of(&rows, expected);

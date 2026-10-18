@@ -20,8 +20,18 @@ jobs:
           workspaces: backend
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
+      - name: Fetch the crates before the network is refused
+        working-directory: backend
+        run: cargo fetch --locked
       - name: Run cargo-mutants on scoped modules
         working-directory: backend
+        # Offline, as rust.yml's `test` job runs; see there.
+        env:
+          http_proxy: http://proxy.invalid:9
+          https_proxy: http://proxy.invalid:9
+          all_proxy: http://proxy.invalid:9
+          no_proxy: 127.0.0.1,localhost,::1
+          CARGO_NET_OFFLINE: 'true'
         run: |
           cargo mutants \
             --in-place \

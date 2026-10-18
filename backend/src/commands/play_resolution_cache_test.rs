@@ -85,7 +85,7 @@ fn sample_resolution() -> CachedResolution {
         show_title: "Naruto: Shippuuden (500 episodes)".into(),
         resolved_slot: None,
         subtitles: Vec::new(),
-        kitsu_id: None,
+        kitsu_id: None, played: None, former_episode: None,
     }
 }
 
@@ -201,7 +201,42 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v20:"), "got {k}");
+    assert!(k.starts_with("play:v22:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_offset_recaps_were_renumbered_is_not_served() {
+    // A stitched recap before a cumulatively numbered part was "24.5";
+    // it is "12.5" now, and a second recap between the same episodes
+    // "12.75". A row from before replays without the resolve that puts
+    // a history row's stamp from then right, and names no `played`
+    // episode for the session. Master moved to v21 for the appended
+    // extras; this schema sits above it.
+    let pool = pool();
+    let current = cache_key("Stitched Show", "sub", "best", "12.5", None, Some(24), None);
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v21:", 1);
+    assert_ne!(
+        previous, current,
+        "the schema must have moved past master's v21"
+    );
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
+}
+
+#[test]
+fn a_row_resolved_before_appended_extras_were_extras_is_not_served() {
+    // Noragami's OADs were whole episodes 13 and 14: a v20 row for
+    // episode 13 holds the first OAD's stream under that number, and
+    // a HEAD-passing hit would keep playing it — and recording it — as
+    // episode 13 after the OAD became `12.1`.
+    let pool = pool();
+    let current = cache_key("Noragami", "sub", "best", "13", None, Some(12), None);
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v20:", 1);
+    assert_ne!(previous, current, "the schema must have moved past v20");
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }
 
 #[test]

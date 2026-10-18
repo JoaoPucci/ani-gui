@@ -79,6 +79,7 @@
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { buildPlayQuery } from '$lib/play/play-url';
+	import { followPlayed } from '$lib/play/played-episode';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
 	import { createAniskipFetchTrigger } from '$lib/play/aniskip-fetch-trigger';
@@ -120,11 +121,14 @@
 	import {
 		extraOnPage,
 		nextEpisode,
+		extraNumbers,
+		stepAllowed,
 		parseEpisodeNumber,
 		previousEpisode,
 		stripColumns,
 		wholeEpisodeCount
 	} from '$lib/play/episode-number';
+	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
 	import {
@@ -1253,10 +1257,11 @@
 	// so the next arrow and auto-play-next can't walk into a greyed
 	// tile. Unknown airing passes the cap through untouched.
 	const totalEpisodes = $derived(airedCap(episodeCap, airing));
-	const prevEpisodeNum = $derived(previousEpisode(episodeNum));
-	const nextEpisodeNum = $derived(nextEpisode(episodeNum));
+	const extraNums = $derived(extraNumbers(extraEpisodes));
+	const prevEpisodeNum = $derived(previousEpisode(episodeNum, extraNums));
+	const nextEpisodeNum = $derived(nextEpisode(episodeNum, extraNums));
 	const hasPrev = $derived(prevEpisodeNum >= 1);
-	const hasNext = $derived(totalEpisodes === null || nextEpisodeNum <= totalEpisodes);
+	const hasNext = $derived(stepAllowed(nextEpisodeNum, totalEpisodes, extraNums));
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the
@@ -2021,8 +2026,17 @@
 			// The tracker mirror is renderer-driven — the backend is
 			// stateless — and a guessed match writes nothing to the
 			// user's trackers.
+			// The episode the session plays: the request may have named it
+			// by a number it no longer carries.
+			const played = followPlayed(owner.showId, outcome.session, targetEp);
 			recordPlayed(
-				{ args: playArgs, showId: owner.showId, episode: targetEp, show, mirror: !guess },
+				{
+					args: { ...playArgs, episode: String(played) },
+					showId: owner.showId,
+					episode: played,
+					show,
+					mirror: !guess
+				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);
 			// The player on screen belongs to another visit: leave it.
@@ -2040,7 +2054,7 @@
 			// flag. A navigation that fails is not a failed play.
 			await goto(
 				resolve('/play/[id]', { id: owner.showId }) +
-					withRow(withGuess(buildPlayQuery(outcome.session, targetEp), guess), row),
+					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
 				{ replaceState: true }
 			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -2167,7 +2181,8 @@
 		const decision = decideAutoPlayNext({
 			enabled: autoPlayNext,
 			episodeNum,
-			totalEpisodes
+			totalEpisodes,
+			extras: extraNums
 		});
 		if (decision.advance) {
 			void switchToEpisode(decision.target);
@@ -3530,7 +3545,12 @@
 											{/if}
 										</span>
 										<span class="ep-card-foot-title">
-											{ep.canonical_title ?? m.play_episode_card_title_fallback({ num: String(n) })}
+											{ep.canonical_title ??
+												fallbackTileTitle(
+													n,
+													(x) => m.play_episode_card_title_fallback({ num: x }),
+													(x) => m.play_episode_card_extra_title_fallback({ num: x })
+												)}
 										</span>
 									</span>
 								</button>

@@ -16,7 +16,7 @@ async fn walk(
     alts: &[String],
     expected: Option<u32>,
 ) -> std::result::Result<PickedShow, NativeError> {
-    pick_native_walk(provider, title, alts, expected, None, None).await
+    pick_native_walk(provider, title, alts, expected, None, None, None).await
 }
 
 #[tokio::test]
@@ -152,7 +152,7 @@ async fn a_dead_listing_no_name_vouches_for_withdraws_no_refusal() {
         ("dated-name", Some(3), Some(2020)),
     ] {
         let alone = scripted(&[("ghost", Pool::Hits(&[("ghost-1", "Other Entry")]))]);
-        let ne = pick_native_walk(&alone, "ghost", &[], expected, year, None)
+        let ne = pick_native_walk(&alone, "ghost", &[], expected, year, None, None)
             .await
             .expect_err("nothing picked");
         assert!(!ne.clean_miss, "{rule}: alone");
@@ -171,6 +171,7 @@ async fn a_dead_listing_no_name_vouches_for_withdraws_no_refusal() {
             &["ghost".to_string()],
             expected,
             year,
+            None,
             None,
         )
         .await
@@ -197,6 +198,7 @@ async fn the_pick_walk_aggregates_transport_deaths_with_a_stamp() {
         &provider,
         "dead alias",
         &["clean alias".to_string()],
+        None,
         None,
         None,
         None,
@@ -283,6 +285,7 @@ async fn the_pick_walk_stops_typed_on_a_gate_refusal() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect_err("the refusal stops the walk");
@@ -308,7 +311,7 @@ async fn refused_walk(
     year: Option<u32>,
 ) -> NativeError {
     let provider = scripted(&[(title, pool)]);
-    pick_native_walk(&provider, title, &[], expected, year, None)
+    pick_native_walk(&provider, title, &[], expected, year, None, None)
         .await
         .expect_err("refused")
 }
@@ -449,12 +452,12 @@ async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name(
         // The refused pool alone is a refusal by name: what the dead
         // listing beside it has to withdraw.
         let only = scripted(&[refused]);
-        let ne = pick_native_walk(&only, "refused", &[], expected, None, None)
+        let ne = pick_native_walk(&only, "refused", &[], expected, None, None, None)
             .await
             .expect_err("refused");
         assert!(ne.refused_by_name, "{label}: the refused pool alone");
         let alone = scripted(&[("the show", pool)]);
-        let ne = pick_native_walk(&alone, "the show", &[], expected, None, None)
+        let ne = pick_native_walk(&alone, "the show", &[], expected, None, None, None)
             .await
             .expect_err("nothing picked");
         assert!(
@@ -468,6 +471,7 @@ async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name(
             "the show",
             &["refused".to_string()],
             expected,
+            None,
             None,
             None,
         )
@@ -490,7 +494,7 @@ async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name(
 #[tokio::test]
 async fn a_dead_listing_of_another_entry_withdraws_no_refusal() {
     let alone = scripted(&[("show 2", Pool::Hits(&[("x-1", "Show")]))]);
-    let ne = pick_native_walk(&alone, "show 2", &[], Some(3), None, None)
+    let ne = pick_native_walk(&alone, "show 2", &[], Some(3), None, None, None)
         .await
         .expect_err("nothing picked");
     assert!(
@@ -507,6 +511,7 @@ async fn a_dead_listing_of_another_entry_withdraws_no_refusal() {
         "show 2",
         &["other name 2".to_string()],
         Some(3),
+        None,
         None,
         None,
     )
@@ -563,7 +568,7 @@ async fn a_dead_sibling_decides_the_pick_only_as_a_broad_listings_completion() {
     ] {
         let site = TableProvider::counted_with_years(&[(99, 7, Some(2020)), (77, 2, Some(2020))])
             .hits("the show season 3", named_hits(entries));
-        let ne = pick_native_walk(&site, "the show season 3", &[], Some(3), year, None)
+        let ne = pick_native_walk(&site, "the show season 3", &[], Some(3), year, None, None)
             .await
             .expect_err("nothing picked");
         assert!(!ne.clean_miss, "{label}");
@@ -581,7 +586,7 @@ async fn a_dead_refused_listing_beside_a_live_misfit_is_a_refusal_by_name() {
         "show",
         named_hits(&[("show-5", "Show"), ("ghost-1", "Show Season 2")]),
     );
-    let ne = pick_native_walk(&site, "show", &[], Some(12), None, None)
+    let ne = pick_native_walk(&site, "show", &[], Some(12), None, None, None)
         .await
         .expect_err("nothing picked");
     assert!(!ne.clean_miss);
@@ -601,7 +606,7 @@ async fn a_dead_sibling_the_name_rule_refuses_still_completes_a_broad_listing() 
         "show 2",
         named_hits(&[("show-2-5", "Show 2"), ("ghost-1", "Show 2 Part 2")]),
     );
-    let ne = pick_native_walk(&site, "show 2", &[], Some(1), Some(2021), None)
+    let ne = pick_native_walk(&site, "show 2", &[], Some(1), Some(2021), None, None)
         .await
         .expect_err("nothing picked");
     assert!(!ne.clean_miss);
