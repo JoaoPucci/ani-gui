@@ -101,6 +101,7 @@
 	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
 	import { joinResumeRefresh, refreshedResume } from '$lib/detail/resume-refresh';
+	import { warmResumeEpisode } from '$lib/detail/resume-warm';
 	import { settledWithin } from '$lib/detail/resume-join';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -837,16 +838,13 @@
 	function warmResume(ep: number) {
 		const d = detail;
 		const title = playTitle();
-		if (!d || !title) return Promise.resolve();
-		const args = playArgsFor({
-			title,
-			episode: ep,
-			mode: playMode(config),
-			quality: playQuality(config),
-			show: d,
-			kitsuId: d.id
-		});
-		return playStream({ ...args, prefetch: true }, () => {});
+		// The route's id, which the play cache is keyed and cleared by.
+		const showId = id;
+		if (!d || !title || !showId) return Promise.resolve();
+		const mode = playMode(config);
+		const quality = playQuality(config);
+		const args = playArgsFor({ title, episode: ep, mode, quality, show: d, kitsuId: d.id });
+		return warmResumeEpisode({ showId, episode: ep, mode, quality }, args, playStream);
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
