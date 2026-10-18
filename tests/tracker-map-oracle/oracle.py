@@ -147,7 +147,7 @@ def place(parts, ours, total):
 
 def shared_rule(ev, total):
     parts = ev["sharing"]
-    if any(not p["start"] for p in parts):
+    if any(not (p["start"] and len(p["start"]) == 10 and month(p["start"])) for p in parts):
         return None
     parts = sorted(parts, key=lambda p: p["start"])
     starts = [p["start"] for p in parts]
