@@ -13,6 +13,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { forgetNavigationListeners, startNavigation } from './navigation';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -27,7 +28,7 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import HomePage from '../../src/routes/+page.svelte';
-import { beforeNavigate, goto } from '$app/navigation';
+import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
@@ -59,7 +60,7 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	vi.mocked(goto).mockClear();
-	vi.mocked(beforeNavigate).mockClear();
+	forgetNavigationListeners();
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
 	window.localStorage.clear();
@@ -96,13 +97,6 @@ const resumeButton = () =>
 
 /** The blocking overlay the page raises while a click works. */
 const overlay = () => target.querySelector('[role="status"].backdrop');
-
-/** A navigation starts, as SvelteKit reports one to the page. */
-function startNavigation() {
-	for (const [callback] of vi.mocked(beforeNavigate).mock.calls) {
-		(callback as (nav: unknown) => void)({ type: 'link', willUnload: false, cancel() {} });
-	}
-}
 
 /** Click the card and wait until only its session stands between it
  *  and the player. */
