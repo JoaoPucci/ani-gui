@@ -23,6 +23,7 @@ import { resolveResumeEpisode } from './resume-episode';
 import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
 import { claimOrHold } from '$lib/navigation/claims';
+import { settledRow } from './settled-row';
 
 export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
@@ -225,46 +226,4 @@ export function makeStartResume(
 			}
 		}
 	};
-}
-
-/** What the clicked row reads as now, and the number it read as
- *  before its numbering was put right; what the card read when the row
- *  cannot be asked. */
-async function rowNow(
-	deps: StartResumeDeps,
-	entryId: string,
-	card: number | null
-): Promise<{ last: number | null; former: number | null }> {
-	try {
-		const row = await deps.currentNumber?.(entryId);
-		if (!row) return { last: card, former: null };
-		return {
-			last: parseHistoryEpisode(row.ep_no),
-			former: parseHistoryEpisode(row.former_ep_no)
-		};
-	} catch {
-		return { last: card, former: null };
-	}
-}
-
-/** {@link rowNow}, with the row's own episode warmed first when no
- *  listing stands behind the cap (`unmeasured`) and the row reads as a
- *  fractional episode — the one kind a renumbering leaves under a
- *  number it no longer has. The warm resolves the listing, which puts
- *  the row right, and records no watch. */
-async function settledRow(
-	deps: StartResumeDeps,
-	entryId: string,
-	card: number | null,
-	unmeasured: boolean,
-	play: Omit<ResumePlayArgs, 'episode'>
-): Promise<{ last: number | null; former: number | null }> {
-	const now = await rowNow(deps, entryId, card);
-	if (!unmeasured || !deps.warm || now.last === null || Number.isInteger(now.last)) return now;
-	try {
-		await deps.warm({ ...play, episode: now.last });
-	} catch {
-		return now;
-	}
-	return rowNow(deps, entryId, now.last);
 }
