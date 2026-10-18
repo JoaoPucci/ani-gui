@@ -12,12 +12,14 @@
  * "best effort" stance as the existing prev/next buttons' hasNext
  * derivation.
  */
-import { nextEpisode } from './episode-number';
+import { nextEpisode, stepAllowed } from './episode-number';
 
 export interface AutoPlayInput {
 	enabled: boolean;
 	episodeNum: number;
 	totalEpisodes: number | null;
+	/** The fractional extras the provider lists. */
+	extras?: readonly number[];
 }
 
 export type AutoPlayDecision = { advance: true; target: number } | { advance: false };
@@ -25,10 +27,11 @@ export type AutoPlayDecision = { advance: true; target: number } | { advance: fa
 export function decideAutoPlayNext({
 	enabled,
 	episodeNum,
-	totalEpisodes
+	totalEpisodes,
+	extras = []
 }: AutoPlayInput): AutoPlayDecision {
 	if (!enabled) return { advance: false };
-	const target = nextEpisode(episodeNum);
-	if (totalEpisodes !== null && target > totalEpisodes) return { advance: false };
+	const target = nextEpisode(episodeNum, extras);
+	if (!stepAllowed(target, totalEpisodes, extras)) return { advance: false };
 	return { advance: true, target };
 }

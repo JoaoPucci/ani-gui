@@ -147,7 +147,7 @@ proptest! {
         let hits = hits(&rows);
         let names = page_names(&rows);
         let listing = |n: u32| -> Vec<EpisodeRef> {
-            (1..=n).map(|k| EpisodeRef { id: u64::from(k), number: k, number2: None }).collect()
+            (1..=n).map(|k| EpisodeRef { id: u64::from(k), number: k, number2: None, title: None, }).collect()
         };
         let mut probed: Vec<_> = hits
             .iter()

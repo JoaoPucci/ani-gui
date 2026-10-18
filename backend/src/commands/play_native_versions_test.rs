@@ -167,6 +167,7 @@ async fn a_copy_numbered_otherwise_is_no_version() {
                 id: 2000 + u64::from(n),
                 number: n + 12,
                 number2: None,
+                title: None,
             })
             .collect::<Vec<_>>(),
     );

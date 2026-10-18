@@ -722,14 +722,19 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
-    // v21: v20 as below, keyed past the v20 the recap-before-a-
-    //      continuation-cour change takes for its own re-probe: a row
-    //      written under that v20 names no versions.
-    // v20: a season the provider lists twice — an "(Uncensored)" copy
+    // v21: a season the provider lists twice — an "(Uncensored)" copy
     //      and a plain one — is one pick with two versions, and the
-    //      answer names them. A v19 row cannot say whether its show
-    //      has versions, and served for its lifetime it would hide the
-    //      choice; re-keying re-probes.
+    //      answer names them and says of each whether it carries the
+    //      mode. A row from before cannot say whether its show has
+    //      versions, and served for its lifetime it would hide the
+    //      choice; re-keying re-probes. Keyed past the v20 below,
+    //      whose rows name no versions either.
+    // v20: the extras a provider appends after a show's last episode
+    //      are read as extras beside it when Kitsu and AniList end the
+    //      show at its count. A v19 row for such a show holds the
+    //      listing's whole count as its cap (Noragami's fourteen, its
+    //      two OADs as episodes 13 and 14); nothing in a row says
+    //      which reading stamped it, so re-keying re-probes.
     // v19: a dated entry with a count takes only a hit a name vouches
     //      for, and a dated entry's hit its own page files under
     //      Hentai is never a pick. A v18 row for such an entry can be
@@ -916,9 +921,13 @@ pub async fn check_availability(
     // records it under the play path's mapping: answered verdicts
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let mut attempt = ProbeAttempt {
         args,
         mode,
+        tail: tail
+            .as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
         answered_by: None,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
@@ -1143,6 +1152,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     client: &P,
     args: &AvailabilityArgs,
     mode: &str,
+    tail: Option<&dyn super::play_native_appended::TailSource>,
 ) -> std::result::Result<ShowModes, crate::commands::play_native_resolve::NativeError> {
     let picked = pick_native_walk(
         client,
@@ -1151,6 +1161,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.episode_count,
         args.year,
         args.subtype.as_deref(),
+        tail,
     )
     .await?;
     let fail = |error| crate::commands::play_native_resolve::NativeError {
@@ -1191,6 +1202,9 @@ type ShowModes = (
 struct ProbeAttempt<'r> {
     args: &'r AvailabilityArgs,
     mode: &'r str,
+    /// The evidence about the entry's last episodes, when the probe
+    /// knows the entry.
+    tail: Option<&'r dyn super::play_native_appended::TailSource>,
     /// The provider whose miss the walk returned — set by the walk,
     /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
@@ -1204,7 +1218,7 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
-        probe_show(provider, self.args, self.mode).await
+        probe_show(provider, self.args, self.mode, self.tail).await
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {

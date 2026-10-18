@@ -58,6 +58,7 @@ async fn resolve(
             year: Some(YEAR),
             subtype: Some("TV"),
             version,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -120,7 +121,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
     .expect("play args");
     assert_eq!(play.version, Some(VersionKind::Standard));
     assert_eq!(
-        play.native_request("best").version,
+        play.native_request("best", None).version,
         Some(VersionKind::Standard)
     );
     let download: crate::commands::download::DownloadArgs =
@@ -129,7 +130,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
         }))
         .expect("download args");
     assert_eq!(
-        download.native_request("best").version,
+        download.native_request("best", None).version,
         Some(VersionKind::Uncensored)
     );
 }
@@ -183,16 +184,20 @@ fn the_resolution_cache_keys_a_version_apart() {
 
 /// A row resolved before picks had versions holds whichever copy the
 /// pool's tie happened to pick, under a key a request naming no
-/// version still reads.
+/// version still reads. Master keys its rows `play:v21:` for the
+/// appended-extras reading, whose picker names no versions, so this
+/// key is past that one as well.
 #[test]
 fn a_row_resolved_before_versions_is_not_read() {
     let key = crate::commands::play_resolution_cache::cache_key(
         "t", "sub", "best", "1", None, None, None,
     );
-    assert!(
-        !key.starts_with("play:v20:"),
-        "the key must have moved past v20: {key}"
-    );
+    for before in ["play:v20:", "play:v21:"] {
+        assert!(
+            !key.starts_with(before),
+            "the key must have moved past {before}: {key}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -297,6 +302,7 @@ async fn resolve_in(
             year: Some(YEAR),
             subtype: Some("TV"),
             version,
+            tail: None,
         },
         &mut |_| {},
     )

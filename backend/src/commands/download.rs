@@ -92,7 +92,11 @@ pub struct DownloadArgs {
 impl DownloadArgs {
     /// The native resolve this download asks for, at `quality`.
     #[must_use]
-    pub fn native_request<'a>(&'a self, quality: &'a str) -> NativeResolveRequest<'a> {
+    pub fn native_request<'a>(
+        &'a self,
+        quality: &'a str,
+        tail: Option<&'a dyn super::play_native_appended::TailSource>,
+    ) -> NativeResolveRequest<'a> {
         NativeResolveRequest {
             title: &self.title,
             alt_titles: &self.alt_titles,
@@ -103,6 +107,7 @@ impl DownloadArgs {
             year: self.year,
             subtype: self.subtype.as_deref(),
             version: self.version,
+            tail,
         }
     }
 }
@@ -227,7 +232,12 @@ where
     // Downloads are always a user waiting at the dock — interactive
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
-    let request = args.native_request(quality);
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let request = args.native_request(
+        quality,
+        tail.as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
+    );
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
             crate::commands::progress::ProgressLine::LinksFetched { provider } => {

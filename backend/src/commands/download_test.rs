@@ -7408,6 +7408,17 @@ async fn every_episode_of_a_range_falls_through_to_a_version_that_carries_it() {
         calls.contains("/m/1002/"),
         "episode 2 from the plain copy: {calls}"
     );
+    // Each file is named after the version that served it.
+    assert!(
+        dest.path()
+            .join("The Show (Uncensored) Episode 1.mp4")
+            .exists(),
+        "episode 1 named for the uncensored copy that served it"
+    );
+    assert!(
+        dest.path().join("The Show Episode 2.mp4").exists(),
+        "episode 2 named for the plain copy that served it"
+    );
 }
 
 /// A range whose first episode only the plain copy dubs keeps the
@@ -7463,6 +7474,7 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
         "episode_count": 2,
         "year": 2020,
         "subtype": "TV",
+        "kitsu_id": "777",
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
@@ -7479,4 +7491,33 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
         calls.contains("/m/2002/"),
         "episode 2 from the uncensored copy: {calls}"
     );
+    // The first episode's file is named after the copy that served it,
+    // not the version the range was asked for.
+    assert!(
+        dest.path().join("The Show Episode 1.mp4").exists(),
+        "episode 1 named for the plain copy that served it"
+    );
+    assert!(
+        dest.path()
+            .join("The Show (Uncensored) Episode 2.mp4")
+            .exists(),
+        "episode 2 named for the uncensored copy that served it"
+    );
+    // The show's availability row says the copy that served the first
+    // episode carries the dub, as a play's and a single download's do.
+    let row: crate::commands::availability::AvailabilityResponse = serde_json::from_str(
+        &crate::cache::meta_cache_get(
+            &state.cache_pool,
+            &crate::commands::availability::cache_key("777", "dub"),
+        )
+        .expect("read")
+        .expect("a row"),
+    )
+    .expect("row");
+    let standard = row
+        .versions
+        .iter()
+        .find(|v| v.kind == crate::commands::play_native_versions::VersionKind::Standard)
+        .expect("the plain copy among the versions");
+    assert_eq!(standard.has_mode, Some(true));
 }

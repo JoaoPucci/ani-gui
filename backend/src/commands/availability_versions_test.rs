@@ -183,10 +183,9 @@ async fn a_mode_no_version_carries_is_absent() {
     assert!(!got.available);
 }
 
-/// Another change re-keys availability rows to v20 for a reason of its
-/// own (a recap before a continuation cour); a v20 row may be written
-/// by that change's picker, which names no versions, so this key moves
-/// past it.
+/// Master keys availability rows `availability:v20:` for the
+/// appended-extras reading, whose picker names no versions, so this
+/// key is past that one.
 #[test]
 fn a_row_keyed_v20_elsewhere_is_not_read() {
     let current = cache_key("7158", "sub");

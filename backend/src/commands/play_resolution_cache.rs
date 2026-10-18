@@ -160,14 +160,20 @@ use crate::proxy::MediaKind;
 // pick. A v19 row for such an entry can hold a same-year show's stream
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-// v21: a season the provider lists twice — an "(Uncensored)" copy and
+// v21: the extras a provider appends after a show's last episode are
+// read as extras beside it. A v20 row for such a show's episode 13
+// holds an OAD's stream under a whole episode's number (Noragami's
+// first OAD), and a HEAD-passing hit would keep playing and recording
+// it as that episode; bumping re-resolves.
+// v22: a season the provider lists twice — an "(Uncensored)" copy and
 // a plain one — is one pick with two versions, the uncensored one
 // playing unless the request names another, and a request naming a
-// version keys its own row. A v20 row for such a show holds whichever
-// copy the pool's tie happened to pick, under the key a request naming
-// no version reads, and a HEAD-passing hit would keep serving it;
-// bumping re-resolves.
-const SCHEMA: &str = "v21";
+// version keys its own row. A row from before holds whichever copy the
+// pool's tie happened to pick, under the key a request naming no
+// version reads, and a HEAD-passing hit would keep serving it; bumping
+// re-resolves. Keyed past the v21 above, whose rows name no versions
+// either.
+const SCHEMA: &str = "v22";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
