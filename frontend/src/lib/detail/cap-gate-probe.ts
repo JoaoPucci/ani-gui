@@ -186,8 +186,9 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 	request: (episode: number) => void;
 	isProbing: (episode: number) => boolean;
 } {
-	/** The shared in-flight lookup, or null when none is out. */
-	let pending: Promise<CapGateAnswer | null> | null = null;
+	/** The shared in-flight lookup and the context it asked in, or
+	 *  null when none is out. */
+	let pending: { context: string; answer: Promise<CapGateAnswer | null> } | null = null;
 	/** Tiles waiting on it — per episode, because the spinner belongs
 	 *  to the tile the user pressed rather than to the whole strip. */
 	const waiting = new Set<number>();
@@ -203,13 +204,24 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// so applying an answer across either change plays the wrong
 			// thing.
 			const asked = deps.currentContext();
-			// Cleared as soon as the request settles, so a click after
-			// this one gets a current answer instead of joining a
+			// Joined only while it asks the same question: the lookup
+			// fixed its show and audio when it started, so a click after
+			// the context moved — settings landing on dub — asks again
+			// rather than taking the other audio's answer, which would
+			// pass the check below once the page is back on that
+			// context. Cleared as soon as the request settles, so a click
+			// after this one gets a current answer instead of joining a
 			// lookup that has already finished.
-			pending ??= deps.probe().finally(() => {
-				pending = null;
-			});
-			void pending
+			if (pending?.context !== asked) {
+				const mine = {
+					context: asked,
+					answer: deps.probe().finally(() => {
+						if (pending === mine) pending = null;
+					})
+				};
+				pending = mine;
+			}
+			void pending.answer
 				.then((answer) => {
 					if (deps.currentContext() !== asked) return deps.onSuperseded(episode);
 					if (answer == null) return deps.onFailed(episode, null);
