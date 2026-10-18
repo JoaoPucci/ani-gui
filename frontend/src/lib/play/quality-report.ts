@@ -109,15 +109,19 @@ export function readInitSegment(data: unknown): { level: number; height: number 
 	return height ? { level, height } : null;
 }
 
-/** The governor's answer to a segment buffered: only the video's
- *  segments say anything about the level. */
+/** The governor's answer to a segment buffered: only a video segment
+ *  of the level held says anything about that level. A step down takes
+ *  effect from the next request, so a segment of the level left, in
+ *  flight at the time, lands after it — and says nothing about the
+ *  level now held. */
 export function healthyMove(
 	governor: QualityGovernor,
-	frag: { type?: unknown },
+	frag: { type?: unknown; level?: number },
 	now: number,
 	bufferAheadS: number
 ): QualityMove | null {
-	return isMain(frag) ? governor.healthy(now, bufferAheadS) : null;
+	const ofHeld = isMain(frag) && frag.level === governor.level;
+	return ofHeld ? governor.healthy(now, bufferAheadS) : null;
 }
 
 /** The page's clock. */
