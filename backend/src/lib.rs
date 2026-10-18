@@ -26,6 +26,9 @@ pub mod cache;
 pub mod commands;
 pub mod config;
 pub mod error;
+#[cfg(test)]
+#[path = "held_test.rs"]
+pub(crate) mod held;
 pub mod history;
 pub mod i18n;
 pub mod kitsu_id;

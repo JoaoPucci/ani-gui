@@ -535,37 +535,23 @@ use crate::commands::play_native_test_provider::{
     cumulative_opening_recap_season, CUMULATIVE_S2, CUMULATIVE_S2_SLUG,
 };
 
-/// A Kitsu that holds every lookup it is asked: the request is taken
-/// and signalled on `asked`, and its answer is held back past the end
-/// of the test, so a watch's mapping lookup stays out until the test
-/// lets the recording go.
-struct HeldKitsu {
-    asked: std::sync::Arc<tokio::sync::Notify>,
-}
-
-impl wiremock::Respond for HeldKitsu {
-    fn respond(&self, _req: &wiremock::Request) -> wiremock::ResponseTemplate {
-        self.asked.notify_one();
-        wiremock::ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(3600))
-    }
-}
-
-/// A Kitsu that holds its lookups, and the signal its first lookup
-/// raises when it arrives.
-async fn kitsu_that_holds() -> (wiremock::MockServer, std::sync::Arc<tokio::sync::Notify>) {
+/// A Kitsu that holds every lookup it is asked ([`crate::held`]), so a
+/// watch's mapping lookup stays out until the test lets it go.
+async fn kitsu_that_holds() -> (wiremock::MockServer, crate::held::Gate) {
     let mock = wiremock::MockServer::start().await;
-    let asked = std::sync::Arc::new(tokio::sync::Notify::new());
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(wiremock::matchers::any())
-        .respond_with(HeldKitsu {
-            asked: asked.clone(),
-        })
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200),
+        ))
         .mount(&mock)
         .await;
-    (mock, asked)
+    (mock, gate)
 }
 
 /// What the row of the show `slug` keys reads as once `recording` has
-/// its Kitsu lookup out — `asked` raised — and while it still has: the
+/// its Kitsu lookup out — `kitsu` asked — and while it still has: the
 /// lookup is held, so the recording cannot have finished, and the read
 /// is taken with nothing left of the watch to wait for but Kitsu. A
 /// recording that ends without asking Kitsu fails the test, as does
@@ -577,11 +563,11 @@ async fn kitsu_that_holds() -> (wiremock::MockServer, std::sync::Arc<tokio::sync
 async fn reads_while_kitsu_is_out<T: std::fmt::Debug>(
     state: &AppState,
     slug: &str,
-    asked: &tokio::sync::Notify,
+    kitsu: &crate::held::Gate,
     recording: &mut tokio::task::JoinHandle<T>,
 ) -> String {
     tokio::select! {
-        () = asked.notified() => {}
+        () = kitsu.asked() => {}
         ended = &mut *recording => panic!("the recording ended without asking Kitsu: {ended:?}"),
     }
     let key = crate::scraper::provider::ShowKey::new(
@@ -596,6 +582,7 @@ async fn reads_while_kitsu_is_out<T: std::fmt::Debug>(
         .map_or_else(|| String::from("<no row>"), |row| row.ep_no);
     assert!(!recording.is_finished(), "the lookup is still out");
     recording.abort();
+    kitsu.release();
     read
 }
 
@@ -607,7 +594,7 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // Continue card loaded meanwhile reads the row — as the recap, not
     // as the slot it holds.
     use tower::ServiceExt as _;
-    let (mock, asked) = kitsu_that_holds().await;
+    let (mock, kitsu) = kitsu_that_holds().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = state(&td);
     state.providers.set_stub(std::sync::Arc::new(
@@ -645,7 +632,7 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             .expect("oneshot")
             .status()
     });
-    let read = reads_while_kitsu_is_out(&state, CUMULATIVE_S2_SLUG, &asked, &mut marking).await;
+    let read = reads_while_kitsu_is_out(&state, CUMULATIVE_S2_SLUG, &kitsu, &mut marking).await;
     assert_eq!(read, "0.5");
 }
 
@@ -654,7 +641,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The watch a handoff records from its fresh resolve, with the
     // page's Kitsu id: the pair its row reads through goes in with the
     // row, not after the lookup.
-    let (mock, asked) = kitsu_that_holds().await;
+    let (mock, kitsu) = kitsu_that_holds().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = state(&td);
     state.kitsu = crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), mock.uri());
@@ -684,7 +671,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             crate::commands::play_native_record::record_watch(&state, &watch, Some("77")).await;
         })
     };
-    let read = reads_while_kitsu_is_out(&state, CUMULATIVE_S2_SLUG, &asked, &mut recording).await;
+    let read = reads_while_kitsu_is_out(&state, CUMULATIVE_S2_SLUG, &kitsu, &mut recording).await;
     assert_eq!(read, "0.5");
 }
 
