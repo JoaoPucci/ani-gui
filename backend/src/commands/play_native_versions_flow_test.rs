@@ -184,16 +184,20 @@ fn the_resolution_cache_keys_a_version_apart() {
 
 /// A row resolved before picks had versions holds whichever copy the
 /// pool's tie happened to pick, under a key a request naming no
-/// version still reads.
+/// version still reads. Master keys its rows `play:v21:` for the
+/// appended-extras reading, whose picker names no versions, so this
+/// key is past that one as well.
 #[test]
 fn a_row_resolved_before_versions_is_not_read() {
     let key = crate::commands::play_resolution_cache::cache_key(
         "t", "sub", "best", "1", None, None, None,
     );
-    assert!(
-        !key.starts_with("play:v20:"),
-        "the key must have moved past v20: {key}"
-    );
+    for before in ["play:v20:", "play:v21:"] {
+        assert!(
+            !key.starts_with(before),
+            "the key must have moved past {before}: {key}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -203,7 +203,7 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v21:"), "got {k}");
+    assert!(k.starts_with("play:v22:"), "got {k}");
 }
 
 #[test]
