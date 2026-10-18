@@ -19,6 +19,12 @@ pub(super) fn store_path(history_path: &Path) -> PathBuf {
     history_path.with_file_name("ani-gui-offsets")
 }
 
+/// The store's body as it is now; empty when it is missing or
+/// unreadable.
+pub(super) fn read_store(history_path: &Path) -> String {
+    std::fs::read_to_string(store_path(history_path)).unwrap_or_default()
+}
+
 /// The cross-process lock beside the store. A dedicated file rather
 /// than the store itself because the atomic rename replaces the
 /// store's inode — a lock held on the old inode would exclude nobody

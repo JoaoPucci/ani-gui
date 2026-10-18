@@ -22,7 +22,11 @@ use crate::app::AppState;
 
 #[path = "numbering_offset_store.rs"]
 mod numbering_offset_store;
-use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
+use numbering_offset_store::{merge_row, remove_rows};
+
+#[path = "numbering_offset_snapshot.rs"]
+mod snapshot;
+pub use snapshot::Numbering;
 
 #[path = "numbering_offset_former.rs"]
 mod former;
@@ -60,18 +64,13 @@ pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> st
 
 /// The slug's stamped (slot, display tag) pair, when one exists.
 pub fn display_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body).into_iter().find(|r| r.slug == slug)?.display
+    Numbering::read(&state.history_path).display(slug)
 }
 
 /// The slug's stamped numbering offset; 0 on a missing row or an
 /// unreadable file — the no-shift case.
 pub fn get(state: &AppState, slug: &str) -> u32 {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body)
-        .into_iter()
-        .find(|r| r.slug == slug)
-        .map_or(0, |r| r.offset)
+    Numbering::read(&state.history_path).offset(slug)
 }
 
 /// The ep_no a listing-less writer (mark-watched, cache-hit) should
