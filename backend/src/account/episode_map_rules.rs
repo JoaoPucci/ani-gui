@@ -22,3 +22,7 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
     }
     EpisodeMap::identity(Identity::Unexplained)
 }
+
+#[cfg(test)]
+#[path = "episode_map_test.rs"]
+mod tests;
