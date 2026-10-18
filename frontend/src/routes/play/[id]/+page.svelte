@@ -131,6 +131,7 @@
 	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
+	import { deadEnd, type EpisodeStanding } from '$lib/play/reload-offer';
 	import {
 		claimPlay,
 		playArgsFor,
@@ -1188,6 +1189,15 @@
 		};
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+	/** What the page knows about episode `n`, for the plays it refuses
+	 *  ($lib/play/reload-offer). */
+	function standingOf(n: number): EpisodeStanding {
+		return {
+			listed: showListed,
+			unaired: epAirState(n, airing).unaired,
+			beyondPlayable: beyondPlayable(n, playableEpisodeCount)
+		};
+	}
 
 	// How far the strip renders tiles: with airing data present it
 	// extends past the provider's count to the announced total, so the
@@ -1932,19 +1942,10 @@
 		// in flight everything reads as aired (airing is null), so
 		// switches hold until the answer lands (Codex P2 #3565988145);
 		// aired-but-uncatalogued targets above the provider's count are
-		// equally doomed (catalog lag).
-		// A delisted show comes back without a count, so the cap check
-		// below cannot catch it — the cap is whatever it already was.
-		// Every path lands here, including auto-play-next, which no
-		// card state would cover.
-		if (showListed === false) return;
-		if (
-			epAirState(targetEp, airing).unaired ||
-			airingIsPending ||
-			beyondPlayable(targetEp, playableEpisodeCount)
-		) {
-			return;
-		}
+		// equally doomed (catalog lag), and so is any episode of a
+		// delisted show ($lib/play/reload-offer). Every path lands here,
+		// including auto-play-next, which no card state would cover.
+		if (airingIsPending || deadEnd(standingOf(targetEp)) !== null) return;
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = playMode(config);
