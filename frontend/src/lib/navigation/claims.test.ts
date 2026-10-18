@@ -56,3 +56,40 @@ describe('claimOrHold', () => {
 		expect(claimOrHold(undefined)()).toBe(true);
 	});
 });
+
+// A navigation that changes only the query — the detail page's
+// episode pager, the player's own episode switch, a link or goto to
+// the URL on screen — keeps the page on screen as it is. An action
+// pending through one is still the viewer's.
+describe('createNavigationClaims, by where a navigation goes', () => {
+	const at = (path: string) => ({ url: new URL(path, 'http://127.0.0.1:31337') });
+
+	const cases: [
+		string,
+		Parameters<ReturnType<typeof createNavigationClaims>['started']>[0],
+		boolean
+	][] = [
+		['a link to another page', { from: at('/anime/42'), to: at('/search?q=x') }, false],
+		['another show', { from: at('/anime/42'), to: at('/anime/77') }, false],
+		['back to another page', { from: at('/play/42?episode=2'), to: at('/anime/42') }, false],
+		['the episode pager', { from: at('/anime/42'), to: at('/anime/42?page=2') }, true],
+		['an episode switch', { from: at('/play/42?episode=1'), to: at('/play/42?episode=2') }, true],
+		['the URL already on screen', { from: at('/'), to: at('/') }, true],
+		['leaving the app', { from: at('/anime/42'), to: null }, false],
+		[
+			'another origin',
+			{ from: at('/anime/42'), to: { url: new URL('https://example.com/anime/42') } },
+			false
+		],
+		['a navigation reported without its ends', {}, false]
+	];
+
+	for (const [what, nav, holds] of cases) {
+		it(`${holds ? 'holds' : 'lapses'} a claim for ${what}`, () => {
+			const claims = createNavigationClaims();
+			const here = claims.claim();
+			claims.started(nav);
+			expect(here()).toBe(holds);
+		});
+	}
+});

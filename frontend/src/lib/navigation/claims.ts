@@ -14,14 +14,21 @@
  * must survive the page's own navigations does not claim.
  */
 
+/** The part of SvelteKit's `beforeNavigate` navigation a claim reads. */
+export interface NavigationLike {
+	from?: { url: URL } | null;
+	to?: { url: URL } | null;
+}
+
 export interface NavigationClaims {
 	/** Advances each time a navigation starts. */
 	readonly epoch: number;
 	/** Claim navigation for an action starting now; the returned
 	 *  predicate says whether the claim still holds. */
 	claim(): () => boolean;
-	/** A navigation has started. */
-	started(): void;
+	/** A navigation has started; `nav` is what SvelteKit's
+	 *  `beforeNavigate` reports about it. */
+	started(nav?: NavigationLike): void;
 	/** The page has gone. */
 	left(): void;
 }

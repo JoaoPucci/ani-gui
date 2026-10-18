@@ -13,7 +13,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
-import { forgetNavigationListeners, startNavigation } from './navigation';
+import { forgetNavigationListeners, startNavigation, startQueryNavigation } from './navigation';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -164,6 +164,15 @@ describe('a Continue click whose session lands after the viewer moved on', () =>
 		// Home is still on screen until that navigation lands; the card
 		// it let go of takes a click again.
 		expect(overlay()).toBeNull();
+	});
+
+	it('opens the player through a navigation that stays on home', async () => {
+		app = mount(HomePage, { target });
+		const stream = await clickAndHoldTheSession();
+
+		startQueryNavigation();
+		stream.dispatch('done', SESSION);
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the player');
 	});
 
 	it('opens the player while the viewer stays', async () => {

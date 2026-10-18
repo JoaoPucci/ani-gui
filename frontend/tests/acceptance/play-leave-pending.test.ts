@@ -33,7 +33,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { readPosition } from '../../src/lib/play/watch-position';
-import { forgetNavigationListeners, startNavigation } from './navigation';
+import { forgetNavigationListeners, startNavigation, startQueryNavigation } from './navigation';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -269,5 +269,29 @@ describe('play route — a navigation the viewer started is theirs', () => {
 		await new Promise((r) => setTimeout(r, 100));
 
 		expect(goto).not.toHaveBeenCalled();
+	});
+});
+
+describe('play route — a navigation that stays on the player', () => {
+	it('lets a switch whose session is in hand go through', async () => {
+		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=2')),
+			'the next-episode warm stream'
+		);
+		FakeEventSource.instances
+			.filter((i) => i.url.includes('episode=2'))
+			.at(-1)!
+			.dispatch('done', session('session-2'));
+		await new Promise((r) => setTimeout(r, 20));
+
+		(target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement).click();
+		// The player's own episode query changes, as a switch's goto
+		// does: the show stays on screen.
+		startQueryNavigation({ episode: '3' });
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 	});
 });

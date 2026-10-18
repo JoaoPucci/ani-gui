@@ -13,7 +13,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
-import { forgetNavigationListeners, startNavigation } from './navigation';
+import { forgetNavigationListeners, startNavigation, startQueryNavigation } from './navigation';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -140,6 +140,29 @@ describe('detail route — a play that resolves after a navigation started', () 
 		// The page is still on screen until that navigation lands.
 		expect(overlay()).toBeNull();
 	});
+
+	// The episode pager is the page's own navigation, and a link to
+	// the URL on screen keeps it as it is: the show stays on screen,
+	// and the play the viewer clicked is still theirs.
+	for (const [what, query] of [
+		['the episode pager', { page: '2' }],
+		['a link to the URL on screen', {}]
+	] as const) {
+		it(`opens the player through ${what}`, async () => {
+			let release!: () => void;
+			const held = new Promise<void>((r) => (release = r));
+			let asked = false;
+			serve(held, () => (asked = true));
+			app = mount(DetailPage, { target });
+			await until(() => tile(CLICKED) !== null, `the tile for episode ${CLICKED}`);
+
+			tile(CLICKED)!.click();
+			await until(() => asked, 'the click to ask for its session');
+			startQueryNavigation(query);
+			release();
+			await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the player');
+		});
+	}
 
 	it('opens the player while the viewer stays', async () => {
 		let release!: () => void;
