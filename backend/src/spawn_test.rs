@@ -271,16 +271,38 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
         );
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
+    // The withdrawal says whether it found the probe held before it
+    // waits for it: a withdrawal still on its way has not withdrawn
+    // anything either, and proves nothing.
+    let (found, on_found) = std::sync::mpsc::channel();
     let (withdrawn, on_withdrawn) = std::sync::mpsc::channel();
     let withdraw = std::thread::spawn(move || {
-        *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+        let mut probe = match TREE_KILL_PROBE.try_lock() {
+            Ok(probe) => {
+                let _ = found.send(false);
+                probe
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                let _ = found.send(true);
+                TREE_KILL_PROBE.lock().expect("probe lock")
+            }
+            Err(std::sync::TryLockError::Poisoned(_)) => panic!("probe lock poisoned"),
+        };
+        *probe = None;
         let _ = withdrawn.send(());
     });
-    let early = on_withdrawn.recv_timeout(std::time::Duration::from_millis(300));
+    let held = on_found
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the withdrawal asked for the probe");
+    let early = on_withdrawn.try_recv();
     std::fs::write(&release, b"").expect("release");
     let late = on_withdrawn.recv_timeout(std::time::Duration::from_secs(10));
     teardown.join().expect("teardown");
     withdraw.join().expect("withdraw");
+    assert!(
+        held,
+        "the withdrawal found the probe free while a teardown was running it"
+    );
     assert!(
         early.is_err(),
         "the probe was withdrawn while a teardown was running it"
