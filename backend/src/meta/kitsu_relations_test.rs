@@ -100,10 +100,7 @@ async fn an_entry_s_relationships_inline_the_related_anime_and_drop_the_manga() 
         ]
     );
     assert_eq!(got[1].anime.start_date.as_deref(), Some("2024-10-06"));
-    assert_eq!(
-        got[1].anime.canonical_title,
-        "Kami no Tou: Tower of God - Ouji no Kikan"
-    );
+    assert_eq!(got[1].anime.canonical_title, "Kami no Tou: Koubou-sen");
 }
 
 #[tokio::test]

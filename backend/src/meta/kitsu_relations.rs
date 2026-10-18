@@ -14,7 +14,153 @@ pub struct KitsuRelation {
     pub anime: KitsuAnimeRef,
 }
 
+/// A side-loaded resource of any type; only `anime` ones are read.
+#[derive(Deserialize)]
+struct Included {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    attributes: serde_json::Value,
+}
+
+/// The inlined anime among `included`, by id.
+fn inlined_anime(included: Vec<Included>) -> HashMap<String, KitsuAnimeRef> {
+    included
+        .into_iter()
+        .filter(|r| r.kind == "anime")
+        .filter_map(|r| {
+            let attributes: AnimeAttributes = serde_json::from_value(r.attributes).ok()?;
+            Some((
+                r.id.clone(),
+                into_ref(AnimeResource {
+                    id: r.id,
+                    attributes,
+                }),
+            ))
+        })
+        .collect()
+}
+
+/// A JSON:API relationship pointer: `{ data: { type, id } }`, `data`
+/// null where there is nothing on the other end.
+#[derive(Deserialize)]
+struct Pointer {
+    #[serde(default)]
+    data: Option<PointerRef>,
+}
+
+#[derive(Deserialize)]
+struct PointerRef {
+    #[serde(rename = "type")]
+    kind: String,
+    id: String,
+}
+
+/// Every anime a `/mappings?filter[externalSite]=…&filter[externalId]=…
+/// &include=item` body inlines for its mappings, in Kitsu's order, a
+/// music-subtype entry dropped as every mapping lookup drops it.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
+pub fn parse_mapped_anime_response(body: &[u8]) -> Result<Vec<KitsuAnimeRef>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Vec<Mapping>,
+        #[serde(default)]
+        included: Vec<Included>,
+    }
+    #[derive(Deserialize)]
+    struct Mapping {
+        #[serde(default)]
+        relationships: Option<MappingRelationships>,
+    }
+    #[derive(Deserialize)]
+    struct MappingRelationships {
+        #[serde(default)]
+        item: Option<Pointer>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("kitsu mapped anime parse: {e}"),
+    })?;
+    let mut anime = inlined_anime(parsed.included);
+    Ok(parsed
+        .data
+        .into_iter()
+        .filter_map(|m| m.relationships?.item?.data)
+        .filter(|r| r.kind == "anime")
+        .filter_map(|r| anime.remove(&r.id))
+        .filter(|a| !is_music_subtype(a.subtype.as_deref()))
+        .collect())
+}
+
+/// Every relationship an `/anime/:id/media-relationships?include=
+/// destination` body records to an anime Kitsu inlined, in Kitsu's
+/// order.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
+pub fn parse_media_relationships_response(body: &[u8]) -> Result<Vec<KitsuRelation>> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Vec<Relationship>,
+        #[serde(default)]
+        included: Vec<Included>,
+    }
+    #[derive(Deserialize)]
+    struct Relationship {
+        attributes: Attributes,
+        #[serde(default)]
+        relationships: Option<Links>,
+    }
+    #[derive(Deserialize)]
+    struct Attributes {
+        role: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Links {
+        #[serde(default)]
+        destination: Option<Pointer>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("kitsu media relationships parse: {e}"),
+    })?;
+    let anime = inlined_anime(parsed.included);
+    Ok(parsed
+        .data
+        .into_iter()
+        .filter_map(|r| {
+            let destination = r.relationships?.destination?.data?;
+            if destination.kind != "anime" {
+                return None;
+            }
+            Some(KitsuRelation {
+                role: r.attributes.role?,
+                anime: anime.get(&destination.id)?.clone(),
+            })
+        })
+        .collect())
+}
+
 impl KitsuClient {
+    /// A GET against `path` with the JSON:API accept header, answering
+    /// the body on 2xx.
+    async fn get_json_api(&self, path: &str, query: &[(&str, String)]) -> Result<bytes::Bytes> {
+        let resp = self
+            .http
+            .get(format!("{}/{path}", self.base))
+            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
+            .query(query)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        if !resp.status().is_success() {
+            return Err(AniError::Upstream {
+                status: resp.status().as_u16(),
+            });
+        }
+        resp.bytes().await.map_err(|_| AniError::Network)
+    }
+
     /// Every Kitsu anime mapped to `external_id` on `site`
     /// (`myanimelist/anime`, `anilist/anime`), each inlined in full.
     /// Several Kitsu entries can map to one tracker entry — the Attack
@@ -26,10 +172,21 @@ impl KitsuClient {
     /// Same as [`Self::search`].
     pub async fn anime_by_external_id(
         &self,
-        _site: &str,
-        _external_id: u32,
+        site: &str,
+        external_id: u32,
     ) -> Result<Vec<KitsuAnimeRef>> {
-        Err(AniError::Metadata)
+        let body = self
+            .get_json_api(
+                "mappings",
+                &[
+                    ("filter[externalSite]", site.to_string()),
+                    ("filter[externalId]", external_id.to_string()),
+                    ("include", "item".to_string()),
+                    ("fields[anime]", ANIME_FIELDS.to_string()),
+                ],
+            )
+            .await?;
+        parse_mapped_anime_response(&body)
     }
 
     /// The relationships Kitsu records from anime `kitsu_id` to other
@@ -39,8 +196,18 @@ impl KitsuClient {
     ///
     /// # Errors
     /// Same as [`Self::search`].
-    pub async fn media_relationships(&self, _kitsu_id: &str) -> Result<Vec<KitsuRelation>> {
-        Err(AniError::Metadata)
+    pub async fn media_relationships(&self, kitsu_id: &str) -> Result<Vec<KitsuRelation>> {
+        let body = self
+            .get_json_api(
+                &format!("anime/{kitsu_id}/media-relationships"),
+                &[
+                    ("include", "destination".to_string()),
+                    ("page[limit]", "20".to_string()),
+                    ("fields[anime]", ANIME_FIELDS.to_string()),
+                ],
+            )
+            .await?;
+        parse_media_relationships_response(&body)
     }
 }
 
