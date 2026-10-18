@@ -165,21 +165,21 @@ use crate::proxy::MediaKind;
 // holds an OAD's stream under a whole episode's number (Noragami's
 // first OAD), and a HEAD-passing hit would keep playing and recording
 // it as that episode; bumping re-resolves.
-// v22: a season the provider lists twice — an "(Uncensored)" copy and
-// a plain one — is one pick with two versions, the uncensored one
-// playing unless the request names another, and a request naming a
-// version keys its own row. A row from before holds whichever copy the
-// pool's tie happened to pick, under the key a request naming no
-// version reads, and a HEAD-passing hit would keep serving it; bumping
-// re-resolves. Keyed past the v21 above, whose rows name no versions
-// either.
 // v22: a stitched recap before a cumulatively numbered part is tagged
 // a part earlier ("12.5", not "24.5"), and a second recap between the
 // same episodes has a tag of its own ("12.75"). A row from before
 // replays without the resolve that puts a history row's stamp from
 // then right, and records no `played` episode for the session to name;
 // bumping makes the first play of each episode a fresh resolve.
-const SCHEMA: &str = "v22";
+// v23: a season the provider lists twice — an "(Uncensored)" copy and
+// a plain one — is one pick with two versions, the uncensored one
+// playing unless the request names another, and a request naming a
+// version keys its own row. A row from before holds whichever copy the
+// pool's tie happened to pick, under the key a request naming no
+// version reads, and a HEAD-passing hit would keep serving it; bumping
+// re-resolves. Keyed past the v21 and v22 above, whose rows name no
+// versions either.
+const SCHEMA: &str = "v23";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

@@ -737,13 +737,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
-    // v21: a season the provider lists twice — an "(Uncensored)" copy
+    // v22: a season the provider lists twice — an "(Uncensored)" copy
     //      and a plain one — is one pick with two versions, and the
     //      answer names them and says of each whether it carries the
     //      mode. A row from before cannot say whether its show has
     //      versions, and served for its lifetime it would hide the
-    //      choice; re-keying re-probes. Keyed past the v20 below,
-    //      whose rows name no versions either.
+    //      choice; re-keying re-probes. Keyed past the v21 and v20
+    //      below, whose rows name no versions either.
     // v21: a recap tagged at a continuation's offset ("12.5" under
     //      offset 12) advertises as the entry's 0.5, and a stitched
     //      split's such recap as the tag between its parts ("12.5",
@@ -872,7 +872,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v21:{kitsu_id}:{m}")
+    format!("availability:v22:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
