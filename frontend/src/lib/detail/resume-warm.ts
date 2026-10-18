@@ -8,6 +8,7 @@
  */
 
 import type { CreateSessionResponse, PlayArgs, PlayProgress } from '$lib/api';
+import { getOrFireNow, makeKey } from '$lib/play/play-cache';
 
 /** The play-cache axes of the episode warmed. */
 export interface ResumeWarmKey {
@@ -24,11 +25,25 @@ export type ResumeWarmStream = (
 	signal?: AbortSignal
 ) => Promise<CreateSessionResponse>;
 
-/** Resolves `args` as a prefetch. */
+/** Resolves `args` as a prefetch, through the play cache.
+ *
+ *  Through the cache, leaving the page cancels it with the page's other
+ *  prefetches (`clearForShow`), so it does not hold a connection on the
+ *  resolve lane after its page; and a click on the same episode plays
+ *  the session it resolved instead of asking again.
+ *
+ *  It starts at once rather than behind the next episodes' background
+ *  warms, since a click on Play waits for the row this warm puts right.
+ *  It stays a background entry all the same: a click that attaches
+ *  while it runs fires its own Interactive resolve, as for any
+ *  prefetch, rather than waiting on one the backend paces as
+ *  background. */
 export function warmResumeEpisode(
-	_key: ResumeWarmKey,
+	key: ResumeWarmKey,
 	args: PlayArgs,
 	stream: ResumeWarmStream
 ): Promise<unknown> {
-	return stream({ ...args, prefetch: true }, () => {});
+	return getOrFireNow(makeKey(key.showId, key.episode, key.mode, key.quality), (emit, signal) =>
+		stream({ ...args, prefetch: true }, emit, signal)
+	);
 }

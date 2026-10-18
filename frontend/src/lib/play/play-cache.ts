@@ -243,6 +243,19 @@ export function getOrFire(
 }
 
 /**
+ * {@link getOrFire} for a background caller that must not wait behind
+ * the prefetch cap: the entry is a background one — a click attaching
+ * while it runs still aborts it and fires its own Interactive request —
+ * but it starts now, past the queue, as a click's would. For a warm a
+ * click waits on.
+ */
+export function getOrFireNow(key: CacheKey, fire: FireFn): Promise<CreateSessionResponse> {
+	const promise = getOrFire(key, fire);
+	cached.get(key)?.startNow?.();
+	return promise;
+}
+
+/**
  * Drop every cache entry for the given show and abort any in-flight
  * fires. Called on detail-page / player-page unmount so prefetched-
  * but-unused sessions don't keep streaming SSE events into the void
