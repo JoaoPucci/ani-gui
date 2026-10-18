@@ -81,7 +81,8 @@ fn stamp_watched_at(state: &AppState, show_id: &str, now_ms: i64) {
 }
 
 /// A watch a handoff will record once its player has started: the
-/// history row's three fields, from a fresh resolve or a cached one.
+/// history row's fields and the display pair the row reads through,
+/// from a fresh resolve or a cached one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Watch {
     /// The show key's string.

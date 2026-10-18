@@ -45,16 +45,19 @@ pub(crate) fn put_display_of(state: &AppState, display: Option<&WatchedDisplay>)
     }
 }
 
-/// A fresh play's numbering and history row: the offset and any former
-/// tag put right whatever happens, the display pair once the row holds
-/// its slot — a play overtaken by a later watch records no row, and
-/// moves the pair only where that watch's row holds the same slot.
+/// A fresh play's numbering, then its history row with the display
+/// pair it reads through in the same hold — the order a handoff keeps
+/// too: the offset and any former tag are put right first, whatever
+/// happens, so a stamp an earlier version wrote with the row's former
+/// tag is still read as such and the former tag kept, before the pair
+/// replaces it. A play overtaken by a later watch records no row and
+/// moves no pair.
 pub(crate) fn record_fresh_watch(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
 ) {
-    super::write_history(state, native, requested, asked);
     super::stamp_numbering(state, native, asked);
+    super::write_history(state, native, requested, asked);
 }
