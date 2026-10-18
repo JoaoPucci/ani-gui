@@ -178,3 +178,13 @@ async fn a_year_alone_is_kept_as_the_year_and_a_body_that_is_not_json_fails() {
         .expect_err("not JSON");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
+
+#[tokio::test]
+async fn a_fuzzy_date_naming_no_real_day_or_month_is_no_date() {
+    let crafted = r#"{"data":{"Media":{"id":8,"idMal":null,"episodes":4,"status":"FINISHED","format":"TV",
+        "startDate":{"year":2021,"month":4,"day":31},"endDate":{"year":2021,"month":13,"day":null},
+        "relations":null,"streamingEpisodes":null}}}"#;
+    let got = evidence_for(8, crafted).await;
+    assert_eq!(got.show.start, None);
+    assert_eq!(got.show.end, None);
+}

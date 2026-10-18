@@ -764,3 +764,22 @@ fn a_number_written_with_trailing_zeros_is_the_same_number() {
     assert_eq!(map.shape, Shape::Extras);
     assert_eq!(map.segments[0].extras_after, vec![0, 6]);
 }
+
+#[test]
+fn a_chain_whose_dates_name_no_real_day_or_month_is_refused() {
+    for bad in [
+        "1989-04-31",
+        "1989-13-01",
+        "1989-00-15",
+        "1989-04-xx",
+        "1989-13",
+    ] {
+        let mut ev = ranma();
+        ev.entry.start = Some(bad.into());
+        assert_eq!(map_show(&ev), identity(Identity::Unexplained), "{bad}");
+    }
+    // A month a source knows without its day is still a date.
+    let mut ev = ranma();
+    ev.entry.start = Some("1989-04".into());
+    assert_eq!(map_show(&ev).shape, Shape::Chain);
+}

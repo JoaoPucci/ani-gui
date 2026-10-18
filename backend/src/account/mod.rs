@@ -23,6 +23,7 @@ pub mod cache;
 pub mod cache_upsert;
 pub mod credentials;
 pub mod episode_map;
+pub mod episode_map_calendar;
 pub mod episode_map_rules;
 pub mod internal_secret;
 pub mod pkce;
