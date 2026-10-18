@@ -188,6 +188,11 @@ describe('leaving the player', () => {
 		// the player goes.
 		const othersKey = makeKey(OTHER, 1, 'sub', 'best');
 		const othersWarm = getOrFire(othersKey, () => new Promise(() => {}));
+		// No flush between the route change and the unmount: SvelteKit
+		// destroys the leaving page's branch before that page's effects
+		// would see the new route, so the player never reports the
+		// other show as its own. The detail cases flush because there
+		// the component is kept and does see it.
 		setParams({ id: OTHER });
 		unmount(app);
 		app = null;
