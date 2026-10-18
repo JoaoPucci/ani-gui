@@ -147,6 +147,8 @@ where
         }
     };
     let (picked, first_served, first_resolved) = attempted.value;
+    let (_, played) =
+        super::play_native_versions::named_versions(attempted.provider, &first_served);
     // The range's first stream is a positive availability fact
     // naming the provider that served it, with the cap the pick's
     // listing paid for — the row the play path writes.
@@ -162,7 +164,9 @@ where
             super::play_native_numbering::kitsu_episode_cap(&picked.episodes),
             &extra_tags,
         )
-        .with_versions(&versions),
+        .with_versions(&versions)
+        // The copy that served the first episode carries the mode.
+        .with_played(played),
     )
     .await;
     let client = attempted.client;
