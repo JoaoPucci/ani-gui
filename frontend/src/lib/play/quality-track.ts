@@ -111,7 +111,7 @@ export class QualityTrack {
 	view(governor: QualityGovernor): QualityView {
 		return {
 			levels: this.levels(),
-			pinned: governor.isPinned ? governor.level : null,
+			pinned: governor.pinnedLevel,
 			playing: this.playing,
 			unavailable: governor.unavailableLevels,
 			// The rows in the order the player moves through the levels,

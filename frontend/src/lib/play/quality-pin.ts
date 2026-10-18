@@ -38,7 +38,7 @@ export function rememberPick(
 		qualityPin.clear();
 		return 'auto';
 	}
-	if (!governor.isPinned || governor.level !== choice) return null;
+	if (governor.pinnedLevel !== choice) return null;
 	qualityPin.set(track.pinFor(choice));
 	return `pinned ${track.describe(choice)}`;
 }

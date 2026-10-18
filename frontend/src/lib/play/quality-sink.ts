@@ -71,7 +71,10 @@ export function levelsUpdated(
 	const wasPinned = governor.isPinned;
 	governor.remap(mapping, track.declared());
 	repinAfterReplacement(governor, mapping, wasPinned, track.declared());
-	log(`levels updated: ${levels.length} left, holding ${track.describe(governor.level)}`);
+	const hold = governor.isEngaged
+		? `holding ${track.describe(governor.level)}`
+		: 'released to the engine: no level left that it can load';
+	log(`levels updated: ${levels.length} left, ${hold}`);
 	queueMicrotask(() => putBack(engine, governor, track, removal, log));
 }
 

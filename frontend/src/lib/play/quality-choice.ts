@@ -14,7 +14,7 @@ export function staleChoice(
 	playing: number | null
 ): QualityMove | null {
 	const held = governor.level;
-	const inForce = choice === 'auto' ? !governor.isPinned : governor.isPinned && held === choice;
+	const inForce = choice === 'auto' ? !governor.isPinned : governor.pinnedLevel === choice;
 	if (!inForce || playing === null || playing === held) return null;
 	return { level: held, from: playing, reason: choice === 'auto' ? 'auto' : 'pick', via: 'next' };
 }

@@ -12,7 +12,8 @@
  * still names the old list; `RemapWindow` reads it in the new one.
  */
 
-import { ladderOrder, neighbourLevel, survivorOf, targetLevel } from './quality-ladder';
+import { ladderOrder, survivorOf, targetLevel } from './quality-ladder';
+import { pinHolds, remapPin } from './quality-pinlevel';
 import type { LadderLevel, QualityTarget } from './quality-ladder';
 import type { QualityReport } from './quality-report';
 
@@ -53,10 +54,11 @@ export interface HoldState {
 
 /** The hold carried to the levels left. A ceiling removed is the
  *  setting's level among them. A held level removed re-seats at the
- *  nearest level below it that is left — never above a pin, nor above
- *  where trouble had stepped the hold — or, with none below, at the
- *  nearest above, where a pin can no longer be honoured and is
- *  released. Released control releases the pin too. */
+ *  nearest loadable level below it that is left — never above where
+ *  trouble had stepped the hold — or, with none below, at the nearest
+ *  above. A pin whose level was removed moves to the nearest loadable
+ *  survivor below it; a pin the hold had to seat above is let go. No
+ *  loadable seat at all, or released control, releases hold and pin. */
 export function remapHold(
 	state: HoldState,
 	mapping: readonly number[],
@@ -70,20 +72,14 @@ export function remapHold(
 	const ceiling = remapIndex(state.ceiling, mapping) ?? targetLevel(target, levels);
 	const kept = remapIndex(state.current, mapping);
 	const seat = kept === null ? survivorOf(state.ladder, mapping, state.current, unavailable) : null;
-	const current = nearestLoadable(ladder, unavailable, kept ?? seat?.level ?? ceiling);
-	const engaged = state.engaged && levels.length > 1;
-	// A pin holds only where the hold stayed or re-seated below it.
-	const pinned = state.pinLevel !== null && engaged && (kept !== null || seat?.above === false);
-	return { ladder, ceiling, current, unavailable, engaged, pinLevel: pinned ? current : null };
-}
-
-function nearestLoadable(ladder: number[], unavailable: Set<number>, level: number): number {
-	if (!unavailable.has(level)) return level;
-	return (
-		neighbourLevel(ladder, unavailable, level, -1) ??
-		neighbourLevel(ladder, unavailable, level, 1) ??
-		level
-	);
+	const current = kept ?? seat?.level ?? ceiling;
+	// A seat the engine cannot load — every level left has failed — is
+	// no hold: the choice is released, as a failure with nothing below
+	// releases it, and the pin with it.
+	const engaged = state.engaged && levels.length > 1 && !unavailable.has(current);
+	const pin = remapPin(state.pinLevel, mapping, state.ladder, unavailable);
+	const pinLevel = engaged && pinHolds(ladder, pin, current) ? pin : null;
+	return { ladder, ceiling, current, unavailable, engaged, pinLevel };
 }
 
 /** A removal, for the rest of its dispatch. hls.js removes levels one

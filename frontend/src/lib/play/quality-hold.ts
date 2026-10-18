@@ -14,7 +14,7 @@ import {
 	type QualityPinChoice,
 	type QualityTarget
 } from './quality-ladder';
-import { startPin } from './quality-pinlevel';
+import { demotePin, startPin } from './quality-pinlevel';
 import { remapHold } from './quality-remap';
 
 /** Why the level changed, for the log. */
@@ -67,7 +67,13 @@ export abstract class QualityHold {
 		return this.current;
 	}
 
-	/** Whether the viewer pinned the level. */
+	/** The level the viewer pinned — the choice in force, which the hold
+	 *  may sit below after a failure — or null while the choice is Auto. */
+	get pinnedLevel(): number | null {
+		return this.pinLevel;
+	}
+
+	/** Whether the viewer pinned a level. */
 	get isPinned(): boolean {
 		return this.pinLevel !== null;
 	}
@@ -116,12 +122,14 @@ export abstract class QualityHold {
 	 *  the lowest. */
 	levelFailed(level: number, now?: number): QualityMove | null {
 		this.unavailable.add(level);
+		// A pin on a level that cannot load moves down to one that can;
+		// with none, it is let go.
+		this.pinLevel = demotePin(this.ladder, this.unavailable, this.pinLevel);
 		if (!this.engaged || level !== this.current) return null;
-		const lower = this.neighbour(level, -1);
-		const next = lower ?? this.neighbour(level, 1);
+		// The nearest loadable level below, else above — which is at most
+		// the pin, since the pin is loadable and above the hold.
+		const next = this.neighbour(level, -1) ?? this.neighbour(level, 1);
 		if (next === null) return this.release();
-		// Only a level above is left: a pin cannot be honoured there.
-		if (lower === null) this.pinLevel = null;
 		this.settled(now);
 		return this.move(next, 'level-failed', 'load');
 	}
@@ -161,8 +169,6 @@ export abstract class QualityHold {
 	protected move(level: number, reason: QualityReason, via: QualityMove['via']): QualityMove {
 		const from = this.current;
 		this.current = level;
-		// The pin moves with the hold.
-		if (this.pinLevel !== null) this.pinLevel = level;
 		return { level, from, reason, via };
 	}
 

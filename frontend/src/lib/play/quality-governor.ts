@@ -17,16 +17,17 @@
  * the window doubling with every step down, so a level that cannot
  * be held is retried less and less often rather than in a loop.
  *
- * A level the viewer picks is pinned: stalls do not move it, and only
- * a level the engine cannot load moves it down. "Auto" hands the
- * choice back.
+ * A level the viewer picks is pinned: stalls do not move it; a failure
+ * moves the play below it, and healthy playback brings the play back
+ * up to it, never above; only a level the engine cannot load moves the
+ * pin itself down. "Auto" hands the choice back.
  *
  * What the governor holds and the moves that need no clock live in
  * `quality-hold.ts`; how often it may move, in `quality-pace.ts`.
  */
 
 import { QualityHold, type QualityMove, type QualityReason } from './quality-hold';
-import { isAbove } from './quality-ladder';
+import { followedPin } from './quality-pinlevel';
 import { QualityPace } from './quality-pace';
 
 export type { QualityMove, QualityReason } from './quality-hold';
@@ -72,12 +73,12 @@ export class QualityGovernor extends QualityHold {
 
 	/** A segment of the main rendition was buffered. */
 	healthy(now: number, bufferAheadS: number): QualityMove | null {
-		if (!this.engaged || this.pinLevel !== null || !this.pace.mayClimb(now, bufferAheadS))
-			return null;
+		if (!this.engaged || !this.pace.mayClimb(now, bufferAheadS)) return null;
 		const higher = this.neighbour(this.current, 1);
-		if (higher === null || this.ladder.indexOf(higher) > this.ladder.indexOf(this.ceiling)) {
-			return null;
-		}
+		// Never above the setting's level — nor above the pin, which a
+		// pinned play climbs back to after a fall.
+		const cap = this.pinLevel ?? this.ceiling;
+		if (higher === null || this.ladder.indexOf(higher) > this.ladder.indexOf(cap)) return null;
 		this.pace.climbed(now);
 		return this.move(higher, 'healthy', 'load');
 	}
@@ -96,8 +97,9 @@ export class QualityGovernor extends QualityHold {
 		// `blame` false: the level held was not the one the engine left —
 		// a removal re-seated the hold on a level that never played.
 		if (blame) this.unavailable.add(this.current);
-		// The engine moved above the pin: it can no longer be honoured.
-		if (this.pinLevel !== null && isAbove(this.ladder, level, this.current)) this.pinLevel = null;
+		// A pin on the level left moves down past it; one the engine moved
+		// above can no longer be honoured and is let go.
+		this.pinLevel = followedPin(this.ladder, this.unavailable, this.pinLevel, level);
 		this.settled(now);
 		return this.move(level, 'followed', 'load');
 	}
