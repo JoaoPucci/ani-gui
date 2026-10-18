@@ -196,14 +196,14 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
         [(210, 1, 18), (149_939, 19, 161)]
     );
     let key = map_key(ProviderKind::AniList, "186", Some((210, Some(18))));
-    assert_eq!(key, "tracker-map:v1:anilist:k186:e210:t18");
+    assert_eq!(key, "tracker-map:v2:anilist:k186:e210:t18");
     assert_eq!(
         map_key(ProviderKind::MyAnimeList, "49244", None),
-        "tracker-map:v1:mal:k49244:unresolved"
+        "tracker-map:v2:mal:k49244:unresolved"
     );
     assert_eq!(
         map_key(ProviderKind::MyAnimeList, "7", Some((70, None))),
-        "tracker-map:v1:mal:k7:e70:t"
+        "tracker-map:v2:mal:k7:e70:t"
     );
     assert_eq!(ttl_of(&state, &key), TRACKER_MAP_TTL.as_secs());
 
@@ -1040,4 +1040,19 @@ async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
     let map = episode_map_for(&ask, "1633", ProviderMediaId(1816), Some(52)).await;
     assert_eq!(map.shape, Shape::Chain);
     assert_eq!(map.segments[1].entry, 129_610);
+}
+
+#[test]
+fn a_map_built_before_the_chain_rule_read_kitsu_s_episode_dates_is_never_served() {
+    // #264 wrote its maps under v1, with a chain rule that refused every
+    // segment outside Kitsu's start and end dates: a row it wrote for
+    // Sonic X says identity. The rule that can place that chain reads
+    // under a key no v1 row is under.
+    let ours = map_key(ProviderKind::AniList, "1633", Some((1816, Some(52))));
+    let before = "tracker-map:v1:anilist:k1633:e1816:t52";
+    assert_ne!(ours, before);
+    assert_eq!(
+        ours.replacen("tracker-map:v2:", "tracker-map:v1:", 1),
+        before
+    );
 }
