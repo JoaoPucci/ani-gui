@@ -125,7 +125,8 @@ export interface CapGateProbeDeps {
 	 *  count belongs in here: the show, because both routes reuse one
 	 *  component across titles, and the audio mode, because the provider
 	 *  catalogues sub and dub separately and settings arrive after the
-	 *  page does. */
+	 *  page does. The pages also put in whatever means nobody is left
+	 *  to act on it: the page gone, or a navigation started since. */
 	currentContext: () => string;
 	/** The fresh count reaches the episode — apply the refresh and
 	 *  play. `count` is the same number as `refresh.count`, passed

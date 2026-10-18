@@ -8,7 +8,10 @@
  * and asks the claim before it navigates.
  *
  * The page is the adapter: it reports each navigation that starts
- * (SvelteKit's `beforeNavigate`) and its own destruction.
+ * (SvelteKit's `beforeNavigate`) and its own destruction. Every
+ * navigation counts, the page's own included — a claim cannot tell
+ * one the viewer asked for from one the page made — so an action that
+ * must survive the page's own navigations does not claim.
  */
 
 export interface NavigationClaims {

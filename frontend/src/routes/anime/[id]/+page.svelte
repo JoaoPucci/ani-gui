@@ -168,8 +168,10 @@
 	 *
 	 * It BLOCKS, like every other long action here. `actionBusy`
 	 * raises the same overlay a play click does, so there is no window
-	 * in which a second tile can be clicked, the route can change, or
-	 * the episode page can move under the lookup. A cleared count
+	 * in which a second tile can be clicked. The route can still change
+	 * under it — Back, or a link outside the overlay — and the context
+	 * the answer is checked against says so: another show, a page left,
+	 * or a navigation started (`navigationClaims`). A cleared count
 	 * falls straight through into startPlay, which holds the overlay
 	 * up — the caption just changes from checking to the usual play
 	 * progress.
@@ -194,8 +196,8 @@
 	 * they left. Nothing about the question changed; there is simply
 	 * nobody left asking.
 	 *
-	 * Cannot collide with a real context, which always carries the
-	 * `id:mode` separator.
+	 * Cannot collide with a real context, which always carries `:`
+	 * separators between its parts.
 	 */
 	/**
 	 * Which visit to this route the answer belongs to.
@@ -234,6 +236,15 @@
 	 * they asked for with its own `goto`. Actions that end in a play
 	 * claim navigation as they start, and their re-checks carry the
 	 * epoch in their context ($lib/navigation/claims).
+	 *
+	 * Every navigation counts, the page's own included: `beforeNavigate`
+	 * reports them all. The page starts none while one of these
+	 * actions is out — the overlay holds it — except the episode
+	 * pager's, which a keyboard can still reach under the overlay, and
+	 * a link to the URL already on screen. Either ends the pending
+	 * action quietly, and a re-check superseded this way drops what it
+	 * learned about the show, as one superseded by a move to another
+	 * show does.
 	 */
 	const navigationClaims = createNavigationClaims();
 	beforeNavigate(() => navigationClaims.started());
