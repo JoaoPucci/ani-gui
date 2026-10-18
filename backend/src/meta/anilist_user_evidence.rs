@@ -19,16 +19,19 @@ pub(super) const MEDIA_EVIDENCE_GQL: &str = "query Evidence($mediaId: Int!) { \
     }";
 
 /// AniList's fuzzy date as `YYYY-MM-DD`, or as much of it as is known
-/// (`YYYY-MM`, `YYYY`); `None` without a year.
+/// (`YYYY-MM`, `YYYY`); `None` without a year, or where the month or day
+/// names no real calendar date — an impossible date is no date, never
+/// one carried into a neighbouring month.
 fn fuzzy_date(year: Option<u32>, month: Option<u32>, day: Option<u32>) -> Option<String> {
-    let mut out = format!("{:04}", year?);
-    if let Some(month) = month {
-        out.push_str(&format!("-{month:02}"));
-        if let Some(day) = day {
-            out.push_str(&format!("-{day:02}"));
-        }
-    }
-    Some(out)
+    let year = format!("{:04}", year?);
+    let Some(month) = month else {
+        return (year.len() == 4).then_some(year);
+    };
+    let out = match day {
+        Some(day) => format!("{year}-{month:02}-{day:02}"),
+        None => format!("{year}-{month:02}"),
+    };
+    crate::account::episode_map_calendar::parse_date(&out).map(|_| out)
 }
 
 /// The number a streaming-episode title carries — `"Episode 6.5 -

@@ -931,3 +931,22 @@ fn the_kitsu_episodes_a_chain_needs_dated_are_its_unplaced_bounds() {
         std::collections::BTreeSet::from([2])
     );
 }
+
+#[test]
+fn a_chain_whose_dates_name_no_real_day_or_month_is_refused() {
+    for bad in [
+        "1989-04-31",
+        "1989-13-01",
+        "1989-00-15",
+        "1989-04-xx",
+        "1989-13",
+    ] {
+        let mut ev = ranma();
+        ev.entry.start = Some(bad.into());
+        assert_eq!(map_show(&ev), identity(Identity::Unexplained), "{bad}");
+    }
+    // A month a source knows without its day is still a date.
+    let mut ev = ranma();
+    ev.entry.start = Some("1989-04".into());
+    assert_eq!(map_show(&ev).shape, Shape::Chain);
+}
