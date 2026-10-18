@@ -123,6 +123,7 @@
 	} from '$lib/play/watch-position';
 	import { followPlayed } from '$lib/play/played-episode';
 	import { refreshedRows } from '$lib/history/row-number';
+	import { latestReads } from '$lib/history/latest-call';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -229,12 +230,15 @@
 	 * whichever half is wrong.
 	 */
 	// A row read again once its probe answered, as it reads now.
+	// A card reads its row again for each answer that can put it right,
+	// and those reads can answer out of order: the latest asked counts.
+	const rowNumberNow = latestReads(historyNumber);
 	async function readRowAgain(id: string) {
 		const kitsuId = historyMatches[id]?.id;
 		const next = await refreshedRows(
 			id,
 			() => history,
-			historyNumber,
+			rowNumberNow,
 			kitsuId ? (from, to) => movePosition(kitsuId, from, to) : undefined
 		);
 		if (!next) return;

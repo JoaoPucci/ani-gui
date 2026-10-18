@@ -10,5 +10,11 @@
 export function latestReads<T>(
 	read: (key: string) => Promise<T | null>
 ): (key: string) => Promise<T | null> {
-	return read;
+	const asked = new Map<string, number>();
+	return async (key) => {
+		const call = (asked.get(key) ?? 0) + 1;
+		asked.set(key, call);
+		const answer = await read(key);
+		return asked.get(key) === call ? answer : null;
+	};
 }
