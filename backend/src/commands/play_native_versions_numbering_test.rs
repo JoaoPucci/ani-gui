@@ -163,12 +163,11 @@ async fn a_probe_puts_every_copys_stamp_right() {
         .await
         .expect("answered");
     assert_eq!(probed.versions.len(), 2, "the probe sees both copies");
-    let plain = crate::commands::numbering_offset::display_stamp(&state, &key(PLAIN));
-    let uncut = crate::commands::numbering_offset::display_stamp(&state, &key(UNCUT));
-    assert_ne!(
-        uncut,
-        Some((1, "12.5".to_string())),
-        "the played copy is put right"
-    );
-    assert_eq!(plain, uncut, "the other copy is put right the same way");
+    for slug in [UNCUT, PLAIN] {
+        assert_eq!(
+            crate::commands::numbering_offset::display_stamp(&state, &key(slug)),
+            Some((1, "12.5".to_string())),
+            "{slug}: the stamp names the recap by its tag now"
+        );
+    }
 }
