@@ -69,13 +69,26 @@ export function levelsUpdated(
 	track.remap(levels);
 	if (!governor) return;
 	const wasPinned = governor.isPinned;
+	const wasEngaged = governor.isEngaged;
 	governor.remap(mapping, track.declared());
 	repinAfterReplacement(governor, mapping, wasPinned, track.declared());
-	const hold = governor.isEngaged
-		? `holding ${track.describe(governor.level)}`
-		: 'released to the engine: no level left that it can load';
-	log(`levels updated: ${levels.length} left, ${hold}`);
+	log(`levels updated: ${levels.length} left, ${holdAfterRemoval(governor, track, wasEngaged)}`);
 	queueMicrotask(() => putBack(engine, governor, track, removal, log));
+}
+
+/** How the log names the hold after a removal: the level held, or why
+ *  there is none — not held before, one level left, or every level
+ *  left having failed. */
+function holdAfterRemoval(
+	governor: QualityGovernor,
+	track: QualityTrack,
+	wasEngaged: boolean
+): string {
+	if (governor.isEngaged) return `holding ${track.describe(governor.level)}`;
+	if (!wasEngaged) return 'not held';
+	return track.declared().length > 1
+		? 'released to the engine: every level left has failed'
+		: 'released to the engine: one level, nothing to choose';
 }
 
 function putBack(

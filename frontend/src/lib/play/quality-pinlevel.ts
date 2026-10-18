@@ -39,17 +39,23 @@ export function demotePin(
 	return isLoadable(ladder, unavailable, pin) ? pin : neighbourLevel(ladder, unavailable, pin, -1);
 }
 
-/** The pin after the engine was followed to `level` over a side
- *  rendition: demoted past the level it left, and let go when the
- *  engine moved above it, where it cannot be honoured. */
+/** The pin after the engine was followed from `left` to `level` over a
+ *  side rendition. Let go when the engine moved above it, where it
+ *  cannot be honoured. Moved to `level` when the level left was the pin
+ *  itself: hls.js skips every level sharing the failing rendition's
+ *  group, so the levels between would fail the same way. Kept
+ *  otherwise — the pinned level's own rendition was not judged, and
+ *  the play climbs back to it — demoted past a level that cannot load. */
 export function followedPin(
 	ladder: readonly number[],
 	unavailable: ReadonlySet<number>,
 	pin: number | null,
+	left: number,
 	level: number
 ): number | null {
 	const kept = demotePin(ladder, unavailable, pin);
-	return kept !== null && isAbove(ladder, level, kept) ? null : kept;
+	if (kept === null || isAbove(ladder, level, kept)) return null;
+	return left === pin ? level : kept;
 }
 
 /** The pin carried across hls.js removing levels: its own level's new

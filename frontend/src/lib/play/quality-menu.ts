@@ -69,7 +69,18 @@ export function qualityMenu(view: QualityView | null): QualityMenu | null {
 		{ key: 'auto', label: m.play_quality_auto(), checked: pinned === null },
 		...offered.map((i) => ({ key: i, label: levelLabel(levels, i), checked: pinned === i }))
 	];
-	if (pinned !== null) return { items, current: levelLabel(levels, pinned) };
+	if (pinned !== null) {
+		// The pin is the choice in force; what plays is named beside it
+		// while the play sits below the pin after a fall.
+		const below = playing !== null && playing !== pinned;
+		const current = below
+			? m.play_quality_pinned_playing({
+					pinned: levelLabel(levels, pinned),
+					quality: levelLabel(levels, playing)
+				})
+			: levelLabel(levels, pinned);
+		return { items, current };
+	}
 	const plays = playing !== null && playing < levels.length;
 	const current = plays
 		? m.play_quality_auto_playing({ quality: levelLabel(levels, playing) })

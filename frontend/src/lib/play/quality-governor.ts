@@ -92,15 +92,19 @@ export class QualityGovernor extends QualityHold {
 	 *  a level's load errors once one of its video segments buffers, so
 	 *  a climb back would fail the same audio and repeat the switch. A
 	 *  level that failed, or the one held, is no move. */
-	follow(level: number, now?: number, blame = true): QualityMove | null {
+	follow(level: number, now: number, blame = true): QualityMove | null {
 		if (!this.engaged || level === this.current || this.unavailable.has(level)) return null;
 		// `blame` false: the level held was not the one the engine left —
 		// a removal re-seated the hold on a level that never played.
 		if (blame) this.unavailable.add(this.current);
-		// A pin on the level left moves down past it; one the engine moved
-		// above can no longer be honoured and is let go.
-		this.pinLevel = followedPin(this.ladder, this.unavailable, this.pinLevel, level);
-		this.settled(now);
+		// A pin on the level left moves to where the engine went; one the
+		// engine moved above can no longer be honoured and is let go.
+		this.pinLevel = followedPin(this.ladder, this.unavailable, this.pinLevel, this.current, level);
+		// Left below a pin it can return to, the play is in a fall: the
+		// climb window opens and widens, as after a step down. An Auto
+		// play has nothing to return to that the engine did not judge.
+		if (this.pinLevel !== null && this.pinLevel !== level) this.pace.steppedDown(now);
+		else this.settled(now);
 		return this.move(level, 'followed', 'load');
 	}
 
