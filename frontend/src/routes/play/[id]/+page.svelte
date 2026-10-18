@@ -1688,11 +1688,14 @@
 			// can fire before detail/config land, in which case we surface
 			// the overlay (whose Reload button will pick up the work
 			// once the metadata is in) instead of burning the budget on
-			// a recovery that would silently bail.
+			// a recovery that would silently bail. Nor does it start for
+			// an episode no play can reach, or while the airing lookup is
+			// out: the switch would decline it ($lib/play/reload-offer).
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
 				canRecoverFromStaleStream({ detail, switchBusy }) &&
-				reloadEnd === null
+				reloadEnd === null &&
+				!airingIsPending
 			) {
 				hasAutoRetried = true;
 				void recoverFromStaleStream(`video ${reason}`);
@@ -1802,7 +1805,8 @@
 				if (
 					action.act === 'recover' &&
 					canRecoverFromStaleStream({ detail, switchBusy }) &&
-					reloadEnd === null
+					reloadEnd === null &&
+					!airingIsPending
 				) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
