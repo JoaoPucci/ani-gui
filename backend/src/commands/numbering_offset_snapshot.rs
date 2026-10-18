@@ -17,6 +17,13 @@ impl Numbering {
         Self(parse(&read_store(history_path)))
     }
 
+    /// The store as `body` writes it, for a case that needs no file.
+    #[cfg(test)]
+    #[must_use]
+    pub fn from_body(body: &str) -> Self {
+        Self(parse(body))
+    }
+
     fn row(&self, slug: &str) -> Option<&Row> {
         self.0.iter().find(|r| r.slug == slug)
     }

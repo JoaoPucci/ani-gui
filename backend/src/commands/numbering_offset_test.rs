@@ -287,6 +287,29 @@ proptest::proptest! {
         );
     }
 
+    /// A listing-less write of the episode a stamp names stores its
+    /// slot, and the slot reads back as that episode, from one read of
+    /// the store whatever its offset; any other row reads by the offset.
+    #[test]
+    fn a_stamped_episode_writes_as_its_slot_and_reads_back_as_itself(
+        episode in 1u32..=10_000,
+        frac in 1u32..10,
+        offset in 0u32..=5_000,
+        slot in 1u32..=20_000,
+        other in 1u32..=20_000,
+    ) {
+        let per_entry = format!("{episode}.{frac}");
+        let tag = provider_ep_no(&per_entry, offset);
+        let store = Numbering::from_body(&format!("the-show\t{offset}\t{slot}\t{tag}\n"));
+        proptest::prop_assert_eq!(store.write_ep_no("the-show", &per_entry), slot.to_string());
+        proptest::prop_assert_eq!(store.read_ep_no("the-show", &slot.to_string()), per_entry);
+        proptest::prop_assume!(other != slot);
+        proptest::prop_assert_eq!(
+            store.read_ep_no("the-show", &other.to_string()),
+            kitsu_ep_no(&other.to_string(), offset)
+        );
+    }
+
     /// Fractional tags round-trip the same way the integers do.
     #[test]
     fn fractional_translation_round_trips(

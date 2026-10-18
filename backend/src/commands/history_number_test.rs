@@ -172,3 +172,37 @@ fn a_list_read_while_the_offset_and_stamp_move_reads_one_of_them() {
         );
     }
 }
+
+#[test]
+fn a_resume_read_while_the_offset_and_stamp_move_reads_one_of_them() {
+    // The detail page's resume row, read by its Kitsu entry, reads the
+    // store as the list does: both from before ("2.5") or both from
+    // after ("3.5").
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for n in 1..=3 {
+        crate::history::upsert_and_write(
+            &state.history_path,
+            crate::history::HistoryEntry {
+                ep_no: "2".into(),
+                id: SHOW.into(),
+                title: "Stitched Show".into(),
+                watched_at: None,
+                kitsu_id: Some("77".into()),
+            },
+        )
+        .expect("row");
+        crate::commands::numbering_offset::put_display(&state, SHOW, 0, 2, "2.5");
+        let writing = state.clone();
+        crate::commands::numbering_offset::read_tap::before_read(n, move || {
+            crate::commands::numbering_offset::put_display(&writing, SHOW, 1, 2, "4.5");
+        });
+        let read = crate::commands::history::history_by_kitsu(&state, "77").expect("read");
+        crate::commands::numbering_offset::read_tap::clear();
+        let ep = read.expect("the row").ep_no;
+        assert!(
+            ep == "2.5" || ep == "3.5",
+            "a write before read {n} gave {ep}"
+        );
+    }
+}
