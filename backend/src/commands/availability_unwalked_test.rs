@@ -30,6 +30,7 @@ fn walked() -> Arc<TableProvider> {
             number: n,
             number2: None,
             former_tag: None,
+            title: None,
         })
         .collect();
     let mut table = TableProvider::new()

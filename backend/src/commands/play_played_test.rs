@@ -475,6 +475,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
             year: Some(2026),
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -647,6 +648,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             year: Some(2026),
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |_| {},
     )

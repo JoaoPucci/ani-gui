@@ -36,6 +36,7 @@ async fn run(
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |p| events.push(p),
     )
@@ -143,18 +144,21 @@ fn detail_refusing() -> TableProvider {
                     number: 1,
                     number2: None,
                     former_tag: None,
+                    title: None,
                 },
                 EpisodeRef {
                     id: 702,
                     number: 2,
                     number2: None,
                     former_tag: None,
+                    title: None,
                 },
                 EpisodeRef {
                     id: 703,
                     number: 3,
                     number2: None,
                     former_tag: None,
+                    title: None,
                 },
             ],
         )
@@ -182,6 +186,7 @@ async fn a_detail_refusal_stops_the_alias_walk() {
             year: Some(2026),
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut sink,
     )
@@ -277,6 +282,7 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut sink,
     )
@@ -319,6 +325,7 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut sink,
     )
@@ -374,6 +381,7 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut sink,
     )
@@ -473,12 +481,14 @@ fn chain_fails(make: impl Fn() -> AniError + Send + Sync + 'static) -> TableProv
                     number: 1,
                     number2: None,
                     former_tag: None,
+                    title: None,
                 },
                 EpisodeRef {
                     id: 702,
                     number: 2,
                     number2: None,
                     former_tag: None,
+                    title: None,
                 },
             ],
         )
@@ -498,6 +508,7 @@ async fn run_chain(fate: &TableProvider) -> std::result::Result<NativeResolved, 
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -536,6 +547,7 @@ async fn the_transient_verdict_carries_the_failing_attempts_instant() {
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -596,6 +608,7 @@ async fn a_transport_dead_pick_leaves_a_transient_verdict() {
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -913,6 +926,7 @@ async fn a_stalled_provider_cannot_outlive_the_resolve_deadline() {
             year: None,
             subtype: None,
             stamps_beside: None,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -964,6 +978,7 @@ impl crate::scraper::provider::Provider for RefererProvider {
             number: 1,
             number2: None,
             former_tag: None,
+            title: None,
         }])
     }
     async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
@@ -1008,6 +1023,7 @@ async fn a_resolved_play_carries_the_sources_referer() {
         year: None,
         subtype: None,
         stamps_beside: None,
+        tail: None,
     };
     let native = resolve_native(
         &RefererProvider(crate::scraper::provider::ProviderId::TestA),
@@ -1060,6 +1076,7 @@ impl crate::scraper::provider::Provider for ListingProvider {
             number: 1,
             number2: None,
             former_tag: None,
+            title: None,
         }])
     }
     async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
@@ -1107,6 +1124,7 @@ fn listing_request() -> NativeResolveRequest<'static> {
         year: None,
         subtype: None,
         stamps_beside: None,
+        tail: None,
     }
 }
 
@@ -1181,6 +1199,7 @@ async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
         year: None,
         subtype: None,
         stamps_beside: None,
+        tail: None,
     };
     for provider in [
         crate::scraper::provider::ProviderId::Hianime,
@@ -1252,6 +1271,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
             number: 1,
             number2: None,
             former_tag: None,
+            title: None,
         }],
     }
 }

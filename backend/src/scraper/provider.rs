@@ -150,6 +150,10 @@ pub struct EpisodeRef {
     /// cumulatively numbered part an earlier version tagged one part
     /// later. A request for it still finds the row.
     pub former_tag: Option<String>,
+    /// The episode's title as the provider lists it, when it lists
+    /// one: the evidence that tells an extra the provider appends
+    /// after a show's last episode from an episode of the show.
+    pub title: Option<String>,
 }
 
 pub use super::show_key::{slug_numeric_id, slug_search_term, slug_words, ShowKey};

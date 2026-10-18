@@ -613,14 +613,49 @@ fn an_episode_listing_reads_number_and_id_off_each_ep_item() {
                 number: 1,
                 number2: None,
                 former_tag: None,
+                title: Some("Episode 1".into()),
             },
             EpisodeRef {
                 id: 21419,
                 number: 2,
                 number2: None,
                 former_tag: None,
+                title: Some("Episode 2".into()),
             },
         ]
+    );
+}
+
+/// The recorded Noragami listing: twelve episodes, then the two OADs
+/// hianime appends as rows 13 and 14. Every row carries the title the
+/// site gives it, entities decoded — the evidence that tells the OADs
+/// from episodes of the show.
+#[test]
+fn an_episode_row_carries_the_title_the_site_lists_it_under() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .join("tests/fixtures/hianime/appended/episode-list-916.json");
+    let body = std::fs::read_to_string(path).expect("recorded listing");
+    let eps = parse_episode_list(&body).expect("listing");
+    let titles: Vec<Option<&str>> = eps.iter().map(|e| e.title.as_deref()).collect();
+    assert_eq!(eps.len(), 14);
+    assert_eq!(titles[0], Some("A Housecat, a Stray God, and a Tail"));
+    assert_eq!(titles[6], Some("Uncertainty & Destiny"));
+    assert_eq!(titles[11], Some("Scrap of a Memory"));
+    assert_eq!(titles[12], Some("OAD 01: God's Possession, God's Curse"));
+    assert_eq!(titles[13], Some("OAD 02: A Promise in Spring"));
+    assert!(eps.iter().all(|e| e.number2.is_none()), "{eps:?}");
+}
+
+/// A row whose title attribute is missing or blank carries none.
+#[test]
+fn a_row_without_a_title_carries_none() {
+    let listing = r#"{"status":true,"html":"<div class=\"ss-list\"><a title=\"  \" class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"7\"></a><a class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"8\"></a></div>"}"#;
+    let eps = parse_episode_list(listing).expect("listing");
+    assert_eq!(
+        eps.iter().map(|e| e.title.clone()).collect::<Vec<_>>(),
+        vec![None, None]
     );
 }
 
@@ -748,12 +783,14 @@ fn an_episode_row_reads_the_same_whatever_order_its_attributes_come_in() {
             number: 1,
             number2: None,
             former_tag: None,
+            title: None,
         },
         EpisodeRef {
             id: 21419,
             number: 2,
             number2: None,
             former_tag: None,
+            title: None,
         },
     ];
     assert_eq!(parse_episode_list(reversed).expect("listing"), expected);
@@ -764,6 +801,7 @@ fn an_episode_row_reads_the_same_whatever_order_its_attributes_come_in() {
         number: 3,
         number2: None,
         former_tag: None,
+        title: None,
     });
     assert_eq!(parse_episode_list(mixed).expect("listing"), expected);
 }
@@ -813,6 +851,7 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
             number: 8,
             number2: Some("7.5".into()),
             former_tag: None,
+            title: None,
         }
     );
     assert_eq!(
@@ -822,6 +861,7 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
             number: 9,
             number2: Some("8".into()),
             former_tag: None,
+            title: None,
         }
     );
     assert_eq!(
@@ -830,7 +870,8 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
             id: 21419,
             number: 7,
             number2: None,
-            former_tag: None
+            former_tag: None,
+            title: None,
         }
     );
     assert_eq!(numbering_offset(&eps), 0);
@@ -845,13 +886,15 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
                 id: 21418,
                 number: 1,
                 number2: None,
-                former_tag: None
+                former_tag: None,
+                title: None,
             },
             EpisodeRef {
                 id: 21419,
                 number: 2,
                 number2: Some("OVA".into()),
                 former_tag: None,
+                title: None,
             },
         ],
         "a nonnumeric number is a tag"

@@ -82,6 +82,7 @@ fn episode_row(index: usize, number: &str, id: u64) -> EpisodeRef {
         number: slot,
         number2: (number != slot.to_string()).then(|| number.to_string()),
         former_tag: None,
+        title: None,
     }
 }
 

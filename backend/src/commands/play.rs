@@ -321,6 +321,7 @@ where
     // bounded probing, episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
@@ -331,6 +332,9 @@ where
         year: args.year,
         subtype: args.subtype.as_deref(),
         stamps_beside: Some(&state.history_path),
+        tail: tail
+            .as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
     };
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider

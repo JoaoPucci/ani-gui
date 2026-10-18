@@ -98,6 +98,7 @@
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
+	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
 	import { joinResumeRefresh, refreshedResume } from '$lib/detail/resume-refresh';
 	import { settledWithin } from '$lib/detail/resume-join';
@@ -2089,7 +2090,11 @@
 											<span class="ep-foot">
 												<span class="ep-title">
 													{ep.canonical_title ??
-														m.detail_episode_title_fallback({ num: String(num ?? '') })}
+														fallbackTileTitle(
+															num,
+															(n) => m.detail_episode_title_fallback({ num: n }),
+															(n) => m.detail_episode_extra_title_fallback({ num: n })
+														)}
 												</span>
 												<span class="ep-meta">
 													{#if air.unaired && thumb}

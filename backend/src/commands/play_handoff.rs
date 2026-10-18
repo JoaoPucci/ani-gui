@@ -46,6 +46,7 @@ pub async fn resolve_launch_args(
     let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
@@ -56,6 +57,9 @@ pub async fn resolve_launch_args(
         year: args.year,
         subtype: args.subtype.as_deref(),
         stamps_beside: Some(&state.history_path),
+        tail: tail
+            .as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
     };
     let at_start = crate::commands::availability::RowAtStart::read(
         state,

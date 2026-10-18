@@ -108,6 +108,7 @@ pub(crate) fn merge_parts(parts: &[&[EpisodeRef]]) -> Vec<EpisodeRef> {
                 number: slot,
                 number2: (shown != slot.to_string()).then_some(shown),
                 former_tag,
+                title: e.title.clone(),
             });
         }
         shift = shift.saturating_add(kitsu_episode_cap(part).unwrap_or(0));

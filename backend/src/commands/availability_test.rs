@@ -32,6 +32,7 @@ fn numbered(ids: &[u64]) -> Vec<EpisodeRef> {
             number,
             number2: None,
             former_tag: None,
+            title: None,
         })
         .collect()
 }
@@ -1418,24 +1419,28 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
                         number: 1,
                         number2: None,
                         former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 312,
                         number: 2,
                         number2: None,
                         former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 313,
                         number: 3,
                         number2: Some("2.5".into()),
                         former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 314,
                         number: 4,
                         number2: Some("3".into()),
                         former_tag: None,
+                        title: None,
                     },
                 ],
             )
@@ -1653,12 +1658,14 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
                         number: 41,
                         number2: None,
                         former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 942,
                         number: 42,
                         number2: None,
                         former_tag: None,
+                        title: None,
                     },
                 ],
             )
@@ -2122,6 +2129,19 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 fn cache_key_is_versioned_per_mode() {
     assert_eq!(cache_key("kid-1", "sub"), "availability:v20:kid-1:sub");
     assert_eq!(cache_key("kid-1", "dub"), "availability:v20:kid-1:dub");
+}
+
+/// A verdict stamped before the extras a provider appends after a
+/// show's last episode were read as extras is not served: Noragami's
+/// row can hold the listing's fourteen as its cap, the two OADs as
+/// episodes 13 and 14.
+#[test]
+fn a_verdict_stamped_before_appended_extras_were_extras_is_not_read() {
+    let current = cache_key("7881", "sub");
+    assert!(
+        !current.starts_with("availability:v19:"),
+        "the key must have moved past v19: {current}"
+    );
 }
 
 /// A verdict the picker stamped before a dated entry with a count

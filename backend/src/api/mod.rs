@@ -3152,6 +3152,7 @@ mod tests {
                 number: n,
                 number2: None,
                 former_tag: None,
+                title: None,
             })
             .collect();
         state.providers.set_stub(Arc::new(

@@ -20,6 +20,7 @@
 	"episode_placeholder_meta": "—",
 	"episode_placeholder_title": "Эпизод {num}",
 	"episode_title_fallback": "Эпизод {num}",
+	"episode_extra_title_fallback": "Доп. эпизод {num}",
 	"episodes_error_message": "Метаданные эпизодов из Kitsu недоступны — выше показан запасной список.",
 	"episodes_heading": "Эпизоды",
 	"episodes_jump_label": "перейти",

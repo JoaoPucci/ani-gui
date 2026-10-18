@@ -38,6 +38,9 @@ struct RangeStartAttempt<'r> {
     args: &'r DownloadArgs,
     first: u32,
     quality: &'r str,
+    /// The evidence about the entry's last episodes, when the range
+    /// knows the entry.
+    tail: Option<&'r dyn super::play_native_appended::TailSource>,
     /// The provider whose miss the walk returned — set by the walk,
     /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
@@ -58,6 +61,7 @@ impl Attempt for RangeStartAttempt<'_> {
             self.args.episode_count,
             self.args.year,
             self.args.subtype.as_deref(),
+            self.tail,
         )
         .await?;
         let first = resolve_episode(
@@ -110,10 +114,14 @@ where
     let at_start =
         super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode).await;
     let remembered = at_start.remembered();
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let mut attempt = RangeStartAttempt {
         args,
         first,
         quality,
+        tail: tail
+            .as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
         answered_by: None,
     };
     let attempted = match super::providers::run_from(state, remembered, prio, &mut attempt).await {

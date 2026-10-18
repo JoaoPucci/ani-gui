@@ -132,6 +132,10 @@ pub struct NativeResolveRequest<'a> {
     /// (slot, tag) display stamp — what a request from the user's
     /// history names a row by. `None` asks nothing of it.
     pub stamps_beside: Option<&'a std::path::Path>,
+    /// Where the evidence about the entry's last episodes comes from,
+    /// when the caller knows the entry
+    /// ([`super::play_native_appended`]).
+    pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -229,6 +233,12 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = super::play_native_appended::fit_appended(
+                            picked,
+                            req.expected_count,
+                            req.tail,
+                        )
+                        .await;
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });

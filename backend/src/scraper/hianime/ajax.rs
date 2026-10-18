@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::error::{AniError, Result};
 use crate::scraper::provider::EpisodeRef;
 
-use super::markup::attr;
+use super::markup::{attr, decode_entities};
 
 #[derive(Deserialize)]
 struct Envelope {
@@ -299,11 +299,16 @@ fn episode_row(index: usize, item: &str) -> Option<EpisodeRef> {
         return None;
     }
     let id = attr(item, "data-id=\"")?.trim().parse().ok()?;
+    // The row's own name, when it carries one: blank is none.
+    let title = attr(item, "title=\"")
+        .map(|t| decode_entities(t.trim()))
+        .filter(|t| !t.is_empty());
     Some(EpisodeRef {
         id,
         number,
         number2: (tag != number.to_string()).then(|| tag.to_string()),
         former_tag: None,
+        title,
     })
 }
 

@@ -160,7 +160,12 @@ use crate::proxy::MediaKind;
 // pick. A v19 row for such an entry can hold a same-year show's stream
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-// v21: a stitched recap before a cumulatively numbered part is tagged
+// v21: the extras a provider appends after a show's last episode are
+// read as extras beside it. A v20 row for such a show's episode 13
+// holds an OAD's stream under a whole episode's number (Noragami's
+// first OAD), and a HEAD-passing hit would keep playing and recording
+// it as that episode; bumping re-resolves.
+// v21 (also): a stitched recap before a cumulatively numbered part is tagged
 // a part earlier ("12.5", not "24.5"), and a second recap between the
 // same episodes has a tag of its own ("12.75"). A v20 row replays
 // without the resolve that puts a history row's stamp from then right,

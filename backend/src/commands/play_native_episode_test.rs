@@ -18,6 +18,7 @@ fn ep(id: u64, number: u32, tag: Option<&str>) -> EpisodeRef {
         number,
         number2: tag.map(str::to_string),
         former_tag: None,
+        title: None,
     }
 }
 

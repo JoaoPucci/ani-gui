@@ -27,6 +27,9 @@ pub(crate) mod external_ids;
 pub mod numbering_offset;
 
 #[cfg(test)]
+#[path = "appended_extras_flow_test.rs"]
+mod appended_extras_flow_test;
+#[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
 mod download_pacing;
@@ -50,6 +53,7 @@ pub mod kitsu;
 pub(crate) mod kitsu_gone;
 pub(crate) mod kitsu_played;
 pub(crate) mod kitsu_search;
+pub mod kitsu_tail;
 pub(crate) mod kitsu_title_words;
 pub mod kitsu_warm;
 pub mod play;
@@ -65,6 +69,7 @@ mod play_handoff_prop_test;
 #[path = "play_handoff_test.rs"]
 mod play_handoff_test;
 pub mod play_native;
+pub mod play_native_appended;
 mod play_native_choice;
 mod play_native_count_alone;
 mod play_native_countless;
