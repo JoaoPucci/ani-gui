@@ -664,3 +664,26 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     recording.abort();
     assert_eq!(read, "0.5");
 }
+
+#[tokio::test]
+async fn a_fresh_play_of_a_stamped_recap_keeps_the_tag_the_stamp_replaced() {
+    // The row from before holds slot 2, stamped (2, "2.5") — the
+    // stitched recap's former tag. Its fresh play puts the stamp right,
+    // (2, "1.5"), and keeps "2.5" beside it: a position kept under the
+    // former number is found by it.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let row = crate::history::parse(&format!("2\t{}\tStitched Show\n", stitched_key()))
+        .pop()
+        .expect("a row");
+    crate::history::upsert_and_write(&state.history_path, row).expect("write");
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 2, "2.5");
+    play_with_progress(&state, &args("2.5"), |_| {})
+        .await
+        .expect("plays the recap");
+    assert_eq!(listed_as(&state), "1.5");
+    assert_eq!(
+        crate::commands::numbering_offset::former_stamp(&state, &stitched_key()),
+        Some((2, "2.5".to_string()))
+    );
+}
