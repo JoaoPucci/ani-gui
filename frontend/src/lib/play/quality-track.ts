@@ -78,7 +78,10 @@ export class QualityTrack {
 
 	/** A segment started playing; true when its level is a change. */
 	notePlaying(frag: { type?: unknown; level: number }): boolean {
-		if (!isMain(frag) || frag.level === this.playing) return false;
+		// A level outside the stream's — hls.js marks a removed current
+		// level's segments -1 — names nothing.
+		const known = frag.level >= 0 && frag.level < this.playlist.length;
+		if (!isMain(frag) || !known || frag.level === this.playing) return false;
 		this.playing = frag.level;
 		return true;
 	}
