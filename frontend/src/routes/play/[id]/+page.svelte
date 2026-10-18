@@ -958,9 +958,8 @@
 	 *
 	 * Only a navigation that leaves this page counts: another path,
 	 * which includes another show, or out of the app. A switch's own
-	 * `goto` changes only the episode query, so it ends no pending
-	 * action; the poster link back to the show's page leaves, and
-	 * does. A re-check superseded by a
+	 * `goto` changes only the query, so it ends no pending action; the
+	 * poster link back to the show's page leaves, and does. A re-check superseded by a
 	 * navigation that leaves drops what it learned about the show, as
 	 * one superseded by a move to another show does.
 	 */
@@ -1950,6 +1949,10 @@
 		}
 	});
 
+	/** Switches started on this page, so a recovery can tell whether
+	 *  one started while its eviction was out (recoverFromStaleStream). */
+	let switchesStarted = 0;
+
 	async function switchToEpisode(targetEp: number) {
 		if (!detail || switchBusy) return;
 		// Single choke point for every navigation path — tile clicks,
@@ -1999,6 +2002,7 @@
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
 		markStarted(owner.showId, targetEp, undefined, row);
+		switchesStarted += 1;
 		switchBusy = true;
 		switchProgress = null;
 		playerError = null;
@@ -2106,11 +2110,17 @@
 		if (!detail) return;
 		// The visit this recovery is for ($lib/play/owned-play): a page
 		// moved on while the eviction was out must not resolve afresh.
+		// Nor must one a switch overtook. The recovery does not hold the
+		// switch lock while it evicts. A switch that started meanwhile,
+		// landed or still resolving, brings its own session, which
+		// clearing the cache would abort or throw away. A re-check that
+		// holds the lock will end in a switch of its own.
 		const here = navigationClaims.claim();
+		const atSwitch = switchesStarted;
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone || !here()
+			() => gone || !here() || switchesStarted !== atSwitch || switchBusy
 		);
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
@@ -2153,7 +2163,8 @@
 		// sibling prefetches are warming work; losing them costs only
 		// the next slow play, which is acceptable for the retry.
 		// The viewer left while the eviction was out: a fresh resolve
-		// would only navigate them back.
+		// would only navigate them back. Or a switch overtook it, and its
+		// session is the one on its way.
 		if (!owner.isCurrent()) return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
