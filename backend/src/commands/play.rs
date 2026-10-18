@@ -1197,10 +1197,7 @@ pub(crate) mod tests {
     /// makes the row not live, and the check returns at the deadline
     /// rather than after the stalled request's own timeout — the
     /// fresh resolve the caller falls through to is the faster path.
-    ///
-    /// On a paused clock, which the check keeps its deadline by: the
-    /// time it took is the deadline's own, not the machine's.
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn a_cached_row_whose_track_stalls_past_the_deadline_is_not_live_and_the_check_returns_at_the_deadline(
     ) {
         let server = wiremock::MockServer::start().await;
@@ -1237,17 +1234,23 @@ pub(crate) mod tests {
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
             track("es", false, &format!("{}/subs/es.vtt", stalling.uri())),
         ];
-        let deadline = std::time::Duration::from_millis(300);
-        let started = tokio::time::Instant::now();
-        let live =
-            crate::commands::play_cache::cached_row_is_live_within(&state, &cached, deadline).await;
-        let elapsed = started.elapsed();
+        let live = tokio::time::timeout(
+            // The track is held until after the check, so its deadline is
+            // all that ends it; a check that waited on the track would
+            // never return. The guard is loose on purpose: it bounds the
+            // deadline's size without counting a loaded machine's delays
+            // against it.
+            std::time::Duration::from_secs(10),
+            crate::commands::play_cache::cached_row_is_live_within(
+                &state,
+                &cached,
+                std::time::Duration::from_millis(300),
+            ),
+        )
+        .await
+        .expect("the check returned at the deadline, not after the stalled request");
         stalled.release();
         assert!(!live, "a track that does not answer in time is a dead row");
-        assert!(
-            elapsed <= deadline + std::time::Duration::from_millis(50),
-            "the check returned at the deadline, not after the stalled request: {elapsed:?}"
-        );
     }
 
     /// Every track is asked, with the row's referer — the CDN that

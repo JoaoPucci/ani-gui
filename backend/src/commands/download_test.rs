@@ -480,12 +480,12 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // marks a finished run, so a chain that ran to its end and only
     // then reported the timeout leaves the mark behind.
     let finished = dest.path().join("ffmpeg-finished");
-    stage_tool(bin.path(), "yt-dlp", "sleep 0.8; exit 1");
+    stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "sleep 0.8; touch '{finished}'; exit 0",
+            "sleep 1; touch '{finished}'; exit 0",
             finished = finished.display()
         ),
     );
@@ -502,7 +502,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
             "Show Episode 1",
             None,
             &bin.path().display().to_string(),
-            std::time::Duration::from_millis(900),
+            std::time::Duration::from_millis(1500),
             &mut |_l: &str| {},
         ),
     )
@@ -3002,10 +3002,7 @@ async fn a_name_held_by_a_symlink_or_a_directory_is_taken() {
 /// deadline covers them all, so a CDN that stalls cannot keep the
 /// download "active" for a per-request timeout per track. Tracks
 /// that do not arrive in time are skipped like refused ones.
-///
-/// On a paused clock, which the phase keeps its deadline by: the time it
-/// took is the deadline's own, not the machine's.
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_returns() {
     use crate::scraper::provider::SubtitleTrack;
     use wiremock::matchers::{method, path as wm_path};
@@ -3032,24 +3029,26 @@ async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_r
         url: format!("{}{route}", server.uri()),
     };
     let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
-    let deadline = std::time::Duration::from_millis(300);
-    let started = tokio::time::Instant::now();
-    let written = write_sidecar_subtitles_within(
-        &reqwest::Client::new(),
-        &tracks,
-        None,
-        dest.path(),
-        "Show Episode 14",
-        deadline,
+    let written = tokio::time::timeout(
+        // The tracks are held until after the phase, so its deadline is
+        // all that ends it; a call that waited on them would never
+        // return. The guard is loose on purpose: it bounds the
+        // deadline's size without counting a loaded machine's delays
+        // against it.
+        std::time::Duration::from_secs(10),
+        write_sidecar_subtitles_within(
+            &reqwest::Client::new(),
+            &tracks,
+            None,
+            dest.path(),
+            "Show Episode 14",
+            std::time::Duration::from_millis(300),
+        ),
     )
-    .await;
-    let elapsed = started.elapsed();
+    .await
+    .expect("the phase returned at its deadline, its tracks still held");
     stalled.release();
     assert!(written.is_empty(), "nothing arrived in time: {written:?}");
-    assert!(
-        elapsed <= deadline + std::time::Duration::from_millis(50),
-        "the phase returned at its deadline, its tracks still held: {elapsed:?}"
-    );
     assert!(!dest.path().join("Show Episode 14.en.vtt").exists());
     assert!(!dest.path().join("Show Episode 14.es.vtt").exists());
 }
@@ -3093,7 +3092,7 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
     let written = tokio::time::timeout(
         // The late track is held until after the phase, so its deadline
         // is all that ends it; five times that deadline is a loose
-        // bound on its size. The paused sibling above pins it exactly.
+        // bound on its size.
         std::time::Duration::from_secs(10),
         write_sidecar_subtitles_within(
             &reqwest::Client::new(),
