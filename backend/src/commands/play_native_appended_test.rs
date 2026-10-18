@@ -59,8 +59,7 @@ fn recorded_tail(kitsu: u32) -> EntryTail {
 }
 
 /// The entries Kitsu relates `kitsu` to, as recorded, each TV sequel
-/// carrying its first episode page's titles where that page is
-/// recorded too.
+/// carrying its first episode page where that page is recorded too.
 fn recorded_related(kitsu: u32) -> Vec<Related> {
     let doc: serde_json::Value =
         serde_json::from_slice(&fixture(&format!("kitsu-relations-{kitsu}.json")))
@@ -93,11 +92,16 @@ fn recorded_related(kitsu: u32) -> Vec<Related> {
                 episode_count: attrs["episodeCount"]
                     .as_u64()
                     .and_then(|n| u32::try_from(n).ok()),
-                episode_titles: sequel_tv.then(|| {
+                first_episodes: sequel_tv.then(|| {
                     crate::meta::kitsu::parse_episodes_response(&fixture(&page))
                         .expect("sequel page")
                         .into_iter()
-                        .filter_map(|e| e.canonical_title)
+                        .filter_map(|e| {
+                            Some(SequelEpisode {
+                                number: e.number?,
+                                title: e.canonical_title,
+                            })
+                        })
                         .collect()
                 }),
             }
@@ -347,7 +351,7 @@ fn a_count_of_one_reads_its_one_episode() {
             subtype: Some("special".into()),
             status: Some("finished".into()),
             episode_count: Some(1),
-            episode_titles: None,
+            first_episodes: None,
         }],
         related_complete: true,
     };
@@ -363,7 +367,7 @@ type KitsuRow = (Option<u32>, Option<String>, Option<String>);
 
 /// One entry Kitsu relates a show to, as the corpus records it: role,
 /// type, id, subtype, status, episode count, and a TV sequel's first
-/// page of episode titles where it was read.
+/// page of episode titles where it was read, in Kitsu's order.
 type RelatedRow = (
     String,
     String,
@@ -484,9 +488,18 @@ impl CorpusShow {
                 subtype: subtype.clone(),
                 status: status.clone(),
                 episode_count: *count,
-                episode_titles: titles
-                    .as_ref()
-                    .map(|t| t.iter().flatten().cloned().collect()),
+                // The corpus records the page's rows in order, so a
+                // row's position is its number; Kitsu's empty title is
+                // no title.
+                first_episodes: titles.as_ref().map(|t| {
+                    t.iter()
+                        .zip(1u32..)
+                        .map(|(title, number)| SequelEpisode {
+                            number,
+                            title: title.clone().filter(|t| !t.trim().is_empty()),
+                        })
+                        .collect()
+                }),
             })
             .collect();
         tail.related_complete = self.related_complete;
@@ -540,7 +553,7 @@ fn explaining() -> Related {
         subtype: Some("OVA".into()),
         status: Some("finished".into()),
         episode_count: Some(2),
-        episode_titles: None,
+        first_episodes: None,
     }
 }
 
@@ -609,7 +622,7 @@ fn a_sequel_still_airing_keeps_the_listing() {
         subtype: Some("TV".into()),
         status: Some("current".into()),
         episode_count: None,
-        episode_titles: Some(Vec::new()),
+        first_episodes: Some(Vec::new()),
     });
     assert_eq!(appended_extras(&rows, 12, &tail), None);
 }
@@ -621,7 +634,7 @@ fn a_tv_sequel_whose_episodes_were_not_read_keeps_the_listing() {
     let (rows, mut tail) = noragami();
     for r in &mut tail.related {
         if r.role == "sequel" {
-            r.episode_titles = None;
+            r.first_episodes = None;
         }
     }
     assert_eq!(appended_extras(&rows, 12, &tail), None);
@@ -859,7 +872,7 @@ fn a_sequel_only_announced_keeps_the_reading() {
             subtype: Some("TV".into()),
             status: Some(status.into()),
             episode_count: None,
-            episode_titles: Some(Vec::new()),
+            first_episodes: Some(Vec::new()),
         });
         assert!(appended_extras(&rows, 12, &tail).is_some(), "{status}");
     }
@@ -885,7 +898,7 @@ fn a_sequel_kitsu_has_not_titled_keeps_the_listing() {
         .collect();
     for r in &mut tail.related {
         if r.role == "sequel" {
-            r.episode_titles = Some(Vec::new());
+            r.first_episodes = Some(Vec::new());
         }
     }
     assert_eq!(appended_extras(&rows, count, &tail), None);

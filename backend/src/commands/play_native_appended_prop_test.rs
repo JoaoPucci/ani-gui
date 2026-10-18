@@ -56,7 +56,7 @@ fn conclusive(count: u32, past: u32) -> EntryTail {
             subtype: Some("OVA".into()),
             status: Some("finished".into()),
             episode_count: Some(past),
-            episode_titles: None,
+            first_episodes: None,
         }],
         related_complete: true,
     }
@@ -132,7 +132,7 @@ fn broken(count: u32, past: u32, b: &Break) -> (Vec<EpisodeRef>, EntryTail) {
             subtype: Some("TV".into()),
             status: Some("current".into()),
             episode_count: None,
-            episode_titles: Some(Vec::new()),
+            first_episodes: Some(Vec::new()),
         }),
         Break::RelationsInPart => tail.related_complete = false,
     }

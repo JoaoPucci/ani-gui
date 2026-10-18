@@ -3,7 +3,9 @@
 //! bar.
 
 use super::{KitsuTail, KITSU_PAGE};
-use crate::commands::play_native_appended::{EntryTail, Related, TailEpisode, ALIGNED};
+use crate::commands::play_native_appended::{
+    EntryTail, Related, SequelEpisode, TailEpisode, ALIGNED,
+};
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::{KitsuEpisode, KitsuRelation};
 
@@ -64,15 +66,28 @@ fn is_tv_sequel(r: &KitsuRelation) -> bool {
     r.kind == "anime" && r.role == "sequel" && r.subtype.as_deref() == Some("TV")
 }
 
+/// A related entry's page of episodes as the evidence reads it: each
+/// row with a number, by that number, with the title Kitsu gives it.
+fn sequel_episodes(page: Vec<KitsuEpisode>) -> Vec<SequelEpisode> {
+    page.into_iter()
+        .filter_map(|e| {
+            Some(SequelEpisode {
+                number: e.number?,
+                title: e.canonical_title,
+            })
+        })
+        .collect()
+}
+
 /// A relation as the evidence reads it.
-fn related(r: KitsuRelation, episode_titles: Option<Vec<String>>) -> Related {
+fn related(r: KitsuRelation, first_episodes: Option<Vec<SequelEpisode>>) -> Related {
     Related {
         anime: r.kind == "anime",
         role: r.role,
         subtype: r.subtype,
         status: r.status,
         episode_count: r.episode_count,
-        episode_titles,
+        first_episodes,
     }
 }
 
@@ -104,22 +119,22 @@ impl KitsuTail<'_> {
     }
 
     /// The entries Kitsu relates the show to, each TV sequel with its
-    /// first page of titles, and whether they are all of them.
+    /// first page of episodes, and whether they are all of them.
     pub(super) async fn read_related(&self) -> Option<(Vec<Related>, bool)> {
         let relations = crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
             .await
             .ok()?;
         let mut out = Vec::new();
         for r in relations.entries {
-            let episode_titles = if is_tv_sequel(&r) {
+            let first_episodes = if is_tv_sequel(&r) {
                 let page = crate::commands::kitsu::kitsu_episode_page(self.state, &r.id, 1)
                     .await
                     .ok()?;
-                Some(page.into_iter().filter_map(|e| e.canonical_title).collect())
+                Some(sequel_episodes(page))
             } else {
                 None
             };
-            out.push(related(r, episode_titles));
+            out.push(related(r, first_episodes));
         }
         Some((out, relations.complete))
     }

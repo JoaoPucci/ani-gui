@@ -4,7 +4,7 @@
 //! none.
 
 use super::*;
-use crate::commands::play_native_appended::TailEpisode;
+use crate::commands::play_native_appended::{SequelEpisode, TailEpisode};
 use crate::meta::anilist_airing::AiringStatus;
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -279,15 +279,24 @@ async fn noragami_s_tail_carries_its_relations_and_its_sequel_s_titles() {
         .find(|r| r.subtype.as_deref() == Some("OVA"))
         .expect("the OVA");
     assert_eq!((ova.anime, ova.episode_count), (true, Some(2)));
-    assert_eq!(ova.episode_titles, None);
+    assert_eq!(ova.first_episodes, None);
     let sequel = tail
         .related
         .iter()
         .find(|r| r.role == "sequel")
         .expect("the sequel");
-    let titles = sequel.episode_titles.as_ref().expect("the sequel's titles");
-    assert_eq!(titles.len(), 13);
-    assert_eq!(titles[0], "Bearing a Posthumous Name");
+    let episodes = sequel
+        .first_episodes
+        .as_ref()
+        .expect("the sequel's episodes");
+    assert_eq!(episodes.len(), 13);
+    assert_eq!(
+        episodes[0],
+        SequelEpisode {
+            number: 1,
+            title: Some("Bearing a Posthumous Name".into()),
+        }
+    );
     assert!(
         tail.related.iter().any(|r| !r.anime),
         "the manga is related too"

@@ -2,7 +2,7 @@
 //! related entry that explains them ([`super`]).
 
 use super::titles::{is_generic, same_title};
-use super::{EntryTail, Related};
+use super::{EntryTail, Related, SequelEpisode};
 use crate::scraper::provider::EpisodeRef;
 
 /// Whether every row past the count has a name of its own: one that is
@@ -18,11 +18,11 @@ pub(super) fn own_names(past: &[EpisodeRef], tail: &EntryTail) -> bool {
         .filter(|r| is_tv_sequel(r) && !announced(r));
     let Some(sequel_titles) = aired
         .map(|r| {
-            r.episode_titles
+            r.first_episodes
                 .as_deref()
-                .filter(|t| t.iter().filter(|s| !s.trim().is_empty()).count() >= past.len())
+                .filter(|eps| eps.iter().filter(|e| titled(e)).count() >= past.len())
         })
-        .collect::<Option<Vec<&[String]>>>()
+        .collect::<Option<Vec<&[SequelEpisode]>>>()
     else {
         return false;
     };
@@ -30,13 +30,23 @@ pub(super) fn own_names(past: &[EpisodeRef], tail: &EntryTail) -> bool {
         .episodes
         .iter()
         .filter_map(|e| e.title.as_deref())
-        .chain(sequel_titles.into_iter().flatten().map(String::as_str))
+        .chain(
+            sequel_titles
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.title.as_deref()),
+        )
         .collect();
     past.iter().all(|row| {
         row.title
             .as_deref()
             .is_some_and(|t| !is_generic(t) && !taken.iter().any(|k| same_title(k, t)))
     })
+}
+
+/// Whether Kitsu gives the episode a title.
+fn titled(e: &SequelEpisode) -> bool {
+    e.title.as_deref().is_some_and(|t| !t.trim().is_empty())
 }
 
 /// Whether Kitsu has `r` only announced: no episode of it has aired.

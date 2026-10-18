@@ -76,8 +76,18 @@ pub struct Related {
     pub status: Option<String>,
     /// Its episode count.
     pub episode_count: Option<u32>,
-    /// The titles on its first page of episodes, where they were read.
-    pub episode_titles: Option<Vec<String>>,
+    /// Its first page of episodes as Kitsu lists them, where it was
+    /// read: each by its number, with the title Kitsu gives it.
+    pub first_episodes: Option<Vec<SequelEpisode>>,
+}
+
+/// One of a related entry's episodes, as the evidence reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequelEpisode {
+    /// Kitsu's episode number.
+    pub number: u32,
+    /// Kitsu's canonical title for it, when it has one.
+    pub title: Option<String>,
 }
 
 /// A reading the evidence once proved, kept so a request whose
