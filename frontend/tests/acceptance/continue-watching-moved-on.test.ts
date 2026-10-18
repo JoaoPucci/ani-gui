@@ -31,6 +31,7 @@ import HomePage from '../../src/routes/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
+import { m } from '../../src/lib/paraglide/messages';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -58,6 +59,8 @@ const SHOW = 'Cowboy Bebop';
 let target: HTMLElement;
 let numberHeld: Promise<void> | null = null;
 let numberAsked = false;
+let batchHeld: Promise<void> | null = null;
+let batchAsked = false;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
@@ -69,10 +72,19 @@ beforeEach(() => {
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	numberHeld = null;
+	batchHeld = null;
+	batchAsked = false;
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
 			// A row read again waits while a scenario holds it: the click
 			// reads its row before it asks for a session.
+			// The cache the failure message is worded from: the other
+			// audio's answer for the show.
+			http.post(`${API_BASE}/api/availability/batch`, async () => {
+				batchAsked = true;
+				if (batchHeld) await batchHeld;
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			}),
 			http.get(`${API_BASE}/api/history/:id/number`, async () => {
 				if (numberHeld) {
 					numberAsked = true;
@@ -203,5 +215,42 @@ describe('a Continue click the viewer moved on from before its session was asked
 		expect(FakeEventSource.instances).toEqual([]);
 		expect(goto).not.toHaveBeenCalled();
 		expect(overlay()).toBeNull();
+	});
+});
+
+// A failed resume is worded after a cache lookup, and the viewer can
+// move on while it is out. The message is about a click they left
+// behind, and showing it would cover the page they are going to.
+describe('a Continue click that fails while the viewer moves on', () => {
+	it('shows no failure once a navigation started while it was worded', async () => {
+		let release!: () => void;
+		batchHeld = new Promise<void>((r) => (release = r));
+		app = mount(HomePage, { target });
+		const stream = await clickAndHoldTheSession();
+		stream.dispatch(
+			'error',
+			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+		);
+		await until(() => batchAsked, 'the failure to be worded from the cache');
+
+		startNavigation();
+		release();
+		await new Promise((r) => setTimeout(r, 100));
+
+		expect(target.textContent).not.toContain(m.play_play_failure_episode_unavailable());
+		expect(overlay()).toBeNull();
+	});
+
+	it('shows the failure while the viewer stays', async () => {
+		app = mount(HomePage, { target });
+		const stream = await clickAndHoldTheSession();
+		stream.dispatch(
+			'error',
+			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+		);
+		await until(
+			() => (target.textContent ?? '').includes(m.play_play_failure_episode_unavailable()),
+			'the failure message'
+		);
 	});
 });

@@ -655,6 +655,40 @@ describe('makeStartResume (moved on before the session was asked for)', () => {
 	});
 });
 
+describe('makeStartResume (moved on before its provider work)', () => {
+	it('asks no interactive cap lookup once the claim lapsed during settings', async () => {
+		let holds = true;
+		const h = makeHarness({
+			claimNavigation: () => () => holds,
+			getSettings: vi.fn().mockImplementation(async () => {
+				holds = false;
+				return { mode: 'sub' as const, quality: 'best' };
+			})
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.fetchInteractiveCount).not.toHaveBeenCalled();
+		expect(h.busyLog).toEqual(['k1', null]);
+	});
+
+	it('warms nothing once the claim lapsed while the row was read', async () => {
+		// The cap is unmeasured and the row reads as a fractional
+		// episode: the click would warm it to put the row right.
+		let holds = true;
+		const h = makeHarness({
+			claimNavigation: () => () => holds,
+			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
+			currentNumber: vi.fn().mockImplementation(async () => {
+				holds = false;
+				return { ep_no: '24.5' };
+			}),
+			warm: vi.fn().mockResolvedValue(undefined)
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(h.deps.warm).not.toHaveBeenCalled();
+		expect(h.deps.resolvePlay).not.toHaveBeenCalled();
+	});
+});
+
 describe('makeStartResume (moved on while a failure is worded)', () => {
 	// The page words a failure after a cache lookup, and the viewer can
 	// move on during it: the failure surface is told whether the click
