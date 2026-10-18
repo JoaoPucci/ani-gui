@@ -27,11 +27,18 @@ pub(crate) use guard::{Tree, TreeKillChild};
 #[cfg(unix)]
 pub(crate) fn kill_process_tree(pid: u32) {
     #[cfg(test)]
-    if let Some(probe) = tree_kill_probe() {
-        let _ = std::process::Command::new(probe)
-            .arg(pid.to_string())
-            .status();
-        return;
+    {
+        // Held for the probe's whole run, not only the read: the case
+        // that registered it withdraws it and removes the script as it
+        // ends, and a script gone between this read and its exec is a
+        // kill nobody sends.
+        let probe = TREE_KILL_PROBE.lock().expect("probe lock");
+        if let Some(probe) = probe.as_deref() {
+            let _ = std::process::Command::new(probe)
+                .arg(pid.to_string())
+                .status();
+            return;
+        }
     }
     let (prog, args) = tree_kill_args(pid);
     let _ = std::process::Command::new(prog).args(&args).output();
@@ -40,7 +47,9 @@ pub(crate) fn kill_process_tree(pid: u32) {
 /// Test seam: when a probe is registered, the teardown runs it (child
 /// pid as its argument) INSTEAD of the real tree-kill command, so a
 /// case can decide when a kill lands — later than asked, say. The
-/// probe takes over the cleanup duty too.
+/// probe takes over the cleanup duty too. A teardown holds this lock
+/// while the probe runs, so withdrawing it waits for any run in
+/// flight to end.
 #[cfg(all(test, unix))]
 pub(crate) static TREE_KILL_PROBE: std::sync::Mutex<Option<std::path::PathBuf>> =
     std::sync::Mutex::new(None);
@@ -49,14 +58,12 @@ pub(crate) static TREE_KILL_PROBE: std::sync::Mutex<Option<std::path::PathBuf>> 
 /// so redirects every teardown in the process) and a test that needs
 /// the REAL teardown to run must not overlap — a no-op probe held by
 /// one would silently swallow the other's kill. Held for the whole
-/// test either way.
+/// test either way. Most cases with a real teardown do not take it,
+/// so a registered probe serves their trees too: it may delay another
+/// case's kill only well inside [`TREE_EXIT_CEILING`], and may withhold
+/// a kill or stretch it past the ceiling only for its own case's trees.
 #[cfg(all(test, unix))]
 pub(crate) static TREE_KILL_PROBE_SCOPE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-#[cfg(all(test, unix))]
-fn tree_kill_probe() -> Option<std::path::PathBuf> {
-    TREE_KILL_PROBE.lock().expect("probe lock").clone()
-}
 
 /// The command that takes down a spawned downloader's process group:
 /// `kill -9 -- -PID` — the negative pid addresses the group created at
