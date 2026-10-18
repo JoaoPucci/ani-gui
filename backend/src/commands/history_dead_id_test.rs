@@ -253,13 +253,29 @@ async fn deleting_a_show_keeps_a_gone_mark_another_row_claims() {
 const OTHER: &str = "hianime:trigun-3";
 
 /// A history of two rows, `SHOW` recording 999 and `OTHER` recording
-/// 555, with Kitsu answering `/anime/999` with a 404 only after a
-/// pause long enough to remove history while the read waits.
-async fn two_rows_with_a_slow_404() -> (tempfile::TempDir, MockServer, AppState) {
+/// 555, with Kitsu answering `/anime/999` with a 404.
+async fn two_rows_with_a_404() -> (tempfile::TempDir, MockServer, AppState) {
+    two_rows_answering_999(ResponseTemplate::new(404)).await
+}
+
+/// [`two_rows_with_a_404`], the 404 held until the returned gate is
+/// released ([`crate::held`]), so history can be removed while the read
+/// waits on Kitsu.
+async fn two_rows_with_a_held_404() -> (tempfile::TempDir, MockServer, AppState, crate::held::Gate)
+{
+    let (hold, gate) = crate::held::gate();
+    let (tmp, mock, state) =
+        two_rows_answering_999(crate::held::Held::new(hold, ResponseTemplate::new(404))).await;
+    (tmp, mock, state, gate)
+}
+
+async fn two_rows_answering_999(
+    answer: impl wiremock::Respond + 'static,
+) -> (tempfile::TempDir, MockServer, AppState) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/anime/999"))
-        .respond_with(ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(400)))
+        .respond_with(answer)
         .mount(&mock)
         .await;
     let tmp = tempfile::tempdir().unwrap();
@@ -277,29 +293,29 @@ async fn two_rows_with_a_slow_404() -> (tempfile::TempDir, MockServer, AppState)
 }
 
 /// Read `/anime/999`, running `removal` once Kitsu has the request and
-/// before it answers.
-async fn read_999_while(state: &AppState, mock: &MockServer, removal: impl FnOnce(&AppState)) {
+/// before it answers: the answer is held on `kitsu` until the removal
+/// is done.
+async fn read_999_while(
+    state: &AppState,
+    kitsu: &crate::held::Gate,
+    removal: impl FnOnce(&AppState),
+) {
     let read = kitsu_anime_detail_fails(state, "999");
-    let remove = async {
-        while mock
-            .received_requests()
-            .await
-            .unwrap_or_default()
-            .is_empty()
-        {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
-        removal(state);
-    };
-    let (failed, ()) = tokio::join!(read, remove);
-    assert!(failed);
+    tokio::pin!(read);
+    tokio::select! {
+        () = kitsu.asked() => {}
+        failed = &mut read => panic!("the read ended without asking Kitsu: failed={failed}"),
+    }
+    removal(state);
+    kitsu.release();
+    assert!(read.await);
 }
 
 #[tokio::test]
 async fn a_404_that_arrives_after_the_show_was_deleted_marks_nothing() {
-    let (_tmp, mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state, kitsu) = two_rows_with_a_held_404().await;
 
-    read_999_while(&state, &mock, |state| {
+    read_999_while(&state, &kitsu, |state| {
         assert!(history_delete(state, SHOW).expect("delete"));
     })
     .await;
@@ -309,18 +325,18 @@ async fn a_404_that_arrives_after_the_show_was_deleted_marks_nothing() {
 
 #[tokio::test]
 async fn a_404_that_arrives_after_the_history_was_cleared_marks_nothing() {
-    let (_tmp, mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state, kitsu) = two_rows_with_a_held_404().await;
 
-    read_999_while(&state, &mock, |state| history_clear(state).expect("clear")).await;
+    read_999_while(&state, &kitsu, |state| history_clear(state).expect("clear")).await;
 
     assert!(!marked(&state, "999"));
 }
 
 #[tokio::test]
 async fn a_404_that_arrives_after_another_show_was_deleted_still_marks() {
-    let (_tmp, mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state, kitsu) = two_rows_with_a_held_404().await;
 
-    read_999_while(&state, &mock, |state| {
+    read_999_while(&state, &kitsu, |state| {
         assert!(history_delete(state, OTHER).expect("delete"));
     })
     .await;
@@ -330,7 +346,7 @@ async fn a_404_that_arrives_after_another_show_was_deleted_still_marks() {
 
 #[tokio::test]
 async fn a_read_begun_after_the_removal_marks_as_any_does() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
     assert!(history_delete(&state, SHOW).expect("delete"));
 
     assert!(kitsu_anime_detail_fails(&state, "999").await);
@@ -345,7 +361,7 @@ async fn a_read_begun_after_the_removal_marks_as_any_does() {
 
 #[tokio::test]
 async fn a_404_after_a_deletion_between_the_cache_read_and_kitsu_marks_nothing() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
 
     let read = crate::commands::kitsu::anime_detail_past_cache(&state, "999", |state| {
         assert!(history_delete(state, SHOW).expect("delete"));
@@ -363,7 +379,7 @@ async fn a_404_after_a_deletion_between_the_cache_read_and_kitsu_marks_nothing()
 
 #[tokio::test]
 async fn a_404_after_the_id_was_served_since_the_read_began_marks_nothing() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
 
     let read = crate::commands::kitsu::anime_detail_past_cache(&state, "999", |state| {
         crate::commands::kitsu::warm_anime_detail_cache(state, &served("999"));
@@ -380,7 +396,7 @@ async fn a_404_after_the_id_was_served_since_the_read_began_marks_nothing() {
 
 #[tokio::test]
 async fn a_404_begun_after_a_success_was_noted_keeps_its_mark() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
 
     crate::commands::kitsu_gone::note_served_then(&state, "999", |state| {
         let begun = crate::history::guard::epoch(&state.history_path);
@@ -395,7 +411,7 @@ async fn a_404_begun_after_a_success_was_noted_keeps_its_mark() {
 /// answers takes a mark left beside it.
 #[tokio::test]
 async fn a_cached_detail_takes_a_stale_gone_mark() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
     crate::commands::kitsu::warm_anime_detail_cache(&state, &served("999"));
     crate::cache::meta_cache_put(&state.cache_pool, "kitsu:dead:999", "1", 3600).unwrap();
 
@@ -429,19 +445,19 @@ fn a_404_now(state: &AppState, id: &str) {
 #[tokio::test]
 async fn a_success_still_finishing_leaves_a_newer_404_standing() {
     let mock = MockServer::start().await;
-    // The banner backfill asks Kitsu's mappings first; a pause there
+    // The banner backfill asks Kitsu's mappings first; holding it there
     // holds the served read between Kitsu's answer and its cache write.
+    let (hold, mappings) = crate::held::gate();
     Mock::given(method("GET"))
         .and(path("/anime/999"))
         .and(query_param("include", "mappings"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "data": { "id": "999", "type": "anime", "attributes": {} },
-                    "included": [],
-                }))
-                .set_delay(std::time::Duration::from_millis(400)),
-        )
+        .respond_with(crate::held::Held::new(
+            hold,
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "id": "999", "type": "anime", "attributes": {} },
+                "included": [],
+            })),
+        ))
         .with_priority(1)
         .mount(&mock)
         .await;
@@ -460,23 +476,14 @@ async fn a_success_still_finishing_leaves_a_newer_404_standing() {
     let state = state_at(tmp.path().join("history"), &mock.uri());
 
     let read = crate::commands::kitsu::kitsu_anime_detail(&state, "999");
-    let newer_404 = async {
-        while !mock
-            .received_requests()
-            .await
-            .unwrap_or_default()
-            .iter()
-            .any(|r| {
-                r.url
-                    .query()
-                    .is_some_and(|q| q.contains("include=mappings"))
-            })
-        {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
-        a_404_now(&state, "999");
-    };
-    let (served, ()) = tokio::join!(read, newer_404);
+    tokio::pin!(read);
+    tokio::select! {
+        () = mappings.asked() => {}
+        served = &mut read => panic!("the read ended before the backfill asked: {served:?}"),
+    }
+    a_404_now(&state, "999");
+    mappings.release();
+    let served = read.await;
 
     assert!(
         served
@@ -490,7 +497,7 @@ async fn a_success_still_finishing_leaves_a_newer_404_standing() {
 
 #[tokio::test]
 async fn a_404_takes_the_detail_row_beside_it() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
     crate::commands::kitsu::warm_anime_detail_cache(&state, &served("999"));
 
     a_404_now(&state, "999");
@@ -542,7 +549,7 @@ async fn a_served_read_whose_mark_cannot_be_taken_fails() {
 
 #[tokio::test]
 async fn a_cached_read_whose_mark_cannot_be_taken_fails() {
-    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    let (_tmp, _mock, state) = two_rows_with_a_404().await;
     crate::commands::kitsu::warm_anime_detail_cache(&state, &served("999"));
     crate::cache::meta_cache_put(&state.cache_pool, "kitsu:dead:999", "1", 3600).unwrap();
     refuse_mark_deletes(&state);
