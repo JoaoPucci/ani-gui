@@ -802,9 +802,9 @@ fn a_segment_outside_kitsu_s_run_is_admitted_where_kitsu_s_own_episodes_date_it(
 
 #[test]
 fn kitsu_s_dates_for_a_segment_must_meet_its_run_at_both_ends() {
-    // The third season starts inside Kitsu's run (after its start); it
-    // is the end that needs Kitsu's own date. Only the start dated: the
-    // end is not vouched for.
+    // The third season lies wholly past Kitsu's end, so both its bounds
+    // need Kitsu's own dates. Only the start dated: the end is not
+    // vouched for.
     let mut ev = sonic_x();
     ev.kitsu_airdates = airdates(&[(53, "2005-09-10")]);
     assert_eq!(map_show(&ev), identity(Identity::Unexplained));

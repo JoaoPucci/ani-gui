@@ -114,8 +114,9 @@ def slack(earlier, later):
     import datetime
 
     try:
-        a = datetime.date.fromisoformat(earlier) if earlier and len(earlier) == 10 else None
-        b = datetime.date.fromisoformat(later) if later and len(later) == 10 else None
+        full = re.compile(r"\d{4}-\d{2}-\d{2}")
+        a = datetime.date.fromisoformat(earlier) if earlier and full.fullmatch(earlier) else None
+        b = datetime.date.fromisoformat(later) if later and full.fullmatch(later) else None
     except ValueError:
         return False
     return bool(a and b and (b - a).days <= 2)
