@@ -685,7 +685,8 @@ async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_befor
         52_684,
         r#"{"data":[{"id":"m1","type":"mappings","relationships":{"item":{"data":{"type":"anime","id":"46552"}}}}],
             "included":[{"id":"46552","type":"anime","attributes":{"canonicalTitle":"Shen Yin Wangzuo 2",
-              "episodeCount":130,"startDate":"2022-11-10","endDate":"2025-04-23","subtype":"ONA"}}]}"#,
+              "episodeCount":130,"startDate":"2022-11-10","endDate":"2025-04-23","subtype":"ONA"}}],
+            "meta":{"count":1}}"#,
     )
     .await;
     let anilist_server = MockServer::start().await;
@@ -751,9 +752,10 @@ fn mapped_body(ids: &[&str]) -> String {
         .map(|id| format!(r#"{{"id":"{id}","type":"anime","attributes":{{"canonicalTitle":"Show {id}","episodeCount":12,"startDate":"2020-0{}-01","subtype":"TV"}}}}"#, id.len()))
         .collect();
     format!(
-        r#"{{"data":[{}],"included":[{}]}}"#,
+        r#"{{"data":[{}],"included":[{}],"meta":{{"count":{}}}}}"#,
         data.join(","),
-        included.join(",")
+        included.join(","),
+        ids.len()
     )
 }
 
@@ -921,4 +923,33 @@ fn a_map_with_an_entry_still_airing_is_kept_for_the_short_window() {
     let mut done = airing.clone();
     done.segments[0].entry_finished = true;
     assert_eq!(map_ttl(&done), TRACKER_MAP_TTL);
+}
+
+#[tokio::test]
+async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_with_none() {
+    let kitsu = MockServer::start().await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        6,
+        r#"{"data":[{"id":"m1","type":"mappings","relationships":{"item":{"data":{"type":"anime","id":"60"}}}}],
+            "included":[{"id":"60","type":"anime","attributes":{"episodeCount":12,"startDate":"2020-01-01"}}],
+            "meta":{"count":25}}"#,
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let entry = TrackerShow {
+        id: 6,
+        ..Default::default()
+    };
+    let got = super::kitsu_side::sharing_on_kitsu(&state, ProviderKind::MyAnimeList, &entry)
+        .await
+        .expect("read");
+    assert!(got.is_empty(), "{got:?}");
+    // It is still claimed: some Kitsu entry maps to it.
+    assert!(
+        super::kitsu_side::claimed_on_kitsu(&state, ProviderKind::MyAnimeList, &entry)
+            .await
+            .expect("read")
+    );
 }

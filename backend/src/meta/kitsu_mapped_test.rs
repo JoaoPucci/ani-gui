@@ -19,6 +19,7 @@ async fn every_kitsu_entry_mapped_to_a_tracker_id_is_returned_with_its_count_and
         .and(query_param("filter[externalId]", "51535"))
         .and(query_param("include", "item"))
         .and(query_param("fields[anime]", ANIME_FIELDS))
+        .and(query_param("page[limit]", "20"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(FINAL_CHAPTERS_MAPPED))
         .expect(1)
         .mount(&server)
@@ -28,6 +29,7 @@ async fn every_kitsu_entry_mapped_to_a_tracker_id_is_returned_with_its_count_and
         .anime_by_external_id("myanimelist/anime", 51_535)
         .await
         .expect("ok");
+    assert!(got.complete);
     assert_eq!(
         got.entries
             .iter()
@@ -69,6 +71,7 @@ async fn one_mapped_entry_and_none_read_as_they_are() {
         .await
         .expect("ok");
     assert!(none.entries.is_empty());
+    assert!(none.complete);
 }
 
 #[tokio::test]
@@ -90,4 +93,17 @@ async fn an_upstream_failure_and_a_body_that_is_not_json_api_are_reported() {
         parse_mapped_anime_response(b"nope").unwrap_err(),
         AniError::ParseFailed { .. }
     ));
+}
+
+#[test]
+fn a_page_holding_fewer_mappings_than_kitsu_counts_is_not_complete() {
+    let body = br#"{"data":[{"id":"m1","type":"mappings","relationships":{"item":{"data":{"type":"anime","id":"1"}}}}],
+        "included":[{"id":"1","type":"anime","attributes":{"canonicalTitle":"One","episodeCount":12}}],
+        "meta":{"count":21}}"#;
+    let got = parse_mapped_anime_response(body).expect("parsed");
+    assert_eq!(got.entries.len(), 1);
+    assert!(!got.complete);
+    // No count at all says nothing of what is past the page.
+    let bare = br#"{"data":[],"included":[]}"#;
+    assert!(!parse_mapped_anime_response(bare).expect("parsed").complete);
 }
