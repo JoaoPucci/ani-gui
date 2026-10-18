@@ -22,7 +22,22 @@ use crate::app::AppState;
 
 #[path = "numbering_offset_store.rs"]
 mod numbering_offset_store;
-use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
+use numbering_offset_store::{merge_row, remove_rows};
+
+#[cfg(test)]
+#[path = "numbering_offset_read_tap.rs"]
+pub mod read_tap;
+
+#[path = "numbering_offset_snapshot.rs"]
+mod snapshot;
+pub use snapshot::Numbering;
+
+#[path = "numbering_offset_former.rs"]
+mod former;
+pub use former::{
+    former_stamp, put_watched_display, retag_display, retag_from_listing, retag_from_resolve,
+    stamp_beside,
+};
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
@@ -53,47 +68,20 @@ pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> st
 
 /// The slug's stamped (slot, display tag) pair, when one exists.
 pub fn display_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body).into_iter().find(|r| r.slug == slug)?.display
+    Numbering::read(&state.history_path).display(slug)
 }
 
 /// The slug's stamped numbering offset; 0 on a missing row or an
 /// unreadable file — the no-shift case.
 pub fn get(state: &AppState, slug: &str) -> u32 {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body)
-        .into_iter()
-        .find(|r| r.slug == slug)
-        .map_or(0, |r| r.offset)
-}
-
-/// The ep_no a listing-less writer (mark-watched, cache-hit) should
-/// store for `episode`: the offset translation, except when the
-/// provider-space value names the stamped display tag — by numeric
-/// identity, since the frontend normalizes — in which case the slot
-/// is written instead, because that is what a resume looks the row up
-/// by in the provider listing.
-pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
-    let provider = provider_ep_no(episode, offset);
-    if let Some((slot, tag)) = display_stamp(state, slug) {
-        if super::play_native_episode::tag_matches(&tag, &provider) {
-            return slot.to_string();
-        }
-    }
-    provider
+    Numbering::read(&state.history_path).offset(slug)
 }
 
 /// The per-entry (Kitsu-space) reading of a stored row: the stamped
 /// slot presents as its display tag translated per-entry; everything
 /// else keeps the plain offset translation.
 pub fn read_ep_no(state: &AppState, slug: &str, ep_no: &str) -> String {
-    let offset = get(state, slug);
-    if let Some((slot, tag)) = display_stamp(state, slug) {
-        if ep_no.trim() == slot.to_string() {
-            return kitsu_ep_no(&tag, offset);
-        }
-    }
-    kitsu_ep_no(ep_no, offset)
+    Numbering::read(&state.history_path).read_ep_no(slug, ep_no)
 }
 
 /// Kitsu-relative episode → the provider's number, for history
@@ -118,8 +106,8 @@ pub fn kitsu_ep_no(ep_no: &str, offset: u32) -> String {
     match ep_no.trim().parse::<u32>() {
         Ok(n) if n > offset => (n - offset).to_string(),
         Ok(_) => ep_no.to_string(),
-        // per_entry_fraction keeps its own at-or-below-offset
-        // pass-through, mirroring the integer rule.
+        // per_entry_fraction passes a fraction below the offset
+        // through; one at the offset is the recap before episode 1.
         Err(_) => super::play_native_numbering::per_entry_fraction(ep_no.trim(), offset),
     }
 }

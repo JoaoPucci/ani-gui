@@ -33,6 +33,7 @@ fn listing(count: u32, past: u32) -> Vec<EpisodeRef> {
             number: n,
             number2: None,
             title: Some(format!("Story {n}")),
+            former_tag: None,
         })
         .collect()
 }
