@@ -259,6 +259,7 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
         versions: both_versions(),
         version: Some(VersionKind::Uncensored),
         former_tags: Vec::new(),
+        other_copies: Vec::new(),
     };
     let mut resp = crate::commands::session::CreateSessionResponse {
         session_id: "s".into(),

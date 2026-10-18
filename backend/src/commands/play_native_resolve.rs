@@ -77,6 +77,11 @@ pub struct NativeResolved {
     /// recap before a cumulatively numbered part. Empty for any other
     /// listing.
     pub former_tags: Vec<(u32, String, String)>,
+    /// The pick's other versions, each as its show key and its listing:
+    /// a stamp a copy's history row reads through is put right from its
+    /// own listing, whichever copy played. Empty for a pick with one
+    /// version.
+    pub other_copies: Vec<(String, Vec<crate::scraper::provider::EpisodeRef>)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -301,6 +306,17 @@ where
                         on_progress(ProgressLine::LinksFetched {
                             provider: client.label().into(),
                         });
+                        let other_copies = picked
+                            .copies()
+                            .into_iter()
+                            .filter(|(hit, _)| hit.slug != picked.hit.slug)
+                            .map(|(hit, episodes)| {
+                                (
+                                    ShowKey::new(client.id(), hit.slug.clone()).to_string(),
+                                    episodes.to_vec(),
+                                )
+                            })
+                            .collect();
                         let episode_cap = kitsu_episode_cap(&picked.episodes);
                         let offset = numbering_offset(&picked.episodes);
                         let extra_tags = extra_episode_tags(&picked.episodes);
@@ -321,6 +337,7 @@ where
                             versions,
                             version,
                             former_tags: former_tags_of(&picked.episodes),
+                            other_copies,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS

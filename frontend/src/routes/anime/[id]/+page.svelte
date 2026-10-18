@@ -869,7 +869,11 @@
 			mode: playMode(config),
 			quality: playQuality(config),
 			show: d,
-			kitsuId: d.id
+			kitsuId: d.id,
+			// The version a click on the row would play: its warm puts
+			// that copy's numbering right and keeps its stream under the
+			// key the click reads.
+			version: versionChoice
 		});
 		return playStream({ ...args, prefetch: true }, () => {});
 	}
