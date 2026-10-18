@@ -5939,8 +5939,14 @@ async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
         .await;
         (staged, std::time::Instant::now())
     };
+    // Queued first: the track is waiting at the budget before the
+    // player's request arrives. Until then a player's request taken
+    // first proves nothing about which waits for which.
     let player = async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        crate::held::until("the track waiting at the budget", || {
+            budget.background_waiting(&key)
+        })
+        .await;
         budget.admit(&key).await;
         std::time::Instant::now()
     };

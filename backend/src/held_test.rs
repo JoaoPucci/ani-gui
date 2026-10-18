@@ -144,6 +144,22 @@ impl wiremock::Respond for Held {
     }
 }
 
+/// Returns once `reached` holds: a state the subject reaches that the
+/// test can read but not await, polled.
+///
+/// # Panics
+/// When it has not within [`QUEUE_DEADLINE`].
+pub(crate) async fn until(what: &str, reached: impl Fn() -> bool) {
+    let deadline = tokio::time::Instant::now() + QUEUE_DEADLINE;
+    while !reached() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "never reached: {what}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+}
+
 /// Returns once `lock` has more than `handles` handles on it.
 ///
 /// A lock handed out as an `Arc` from a map — a row's, a show's — is
