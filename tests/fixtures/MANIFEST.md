@@ -18,6 +18,7 @@ git-LFS is not configured.
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry. |
 | `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. And a master playlist the quality-selection tests read, as plain text: written by hand in the shape of anidb.app's, and moved here from `anidb/` when that client was removed. |
 | `title-words/` | Shared vectors for the title-word rule the frontend's Continue resolution and the backend's show-id resolve both apply to a Kitsu search hit: pairs of a show's titles with its Kitsu entry, the unrelated hits Kitsu returned for the provider's Seitokai ni mo Ana wa Aru! title, and the rule's edges, sequel markers among them. |
+| `tracker-map/` | Recorded cases for the episode map that files a Kitsu episode under a tracker's entry (`backend/src/account/episode_map_rules.rs`): one file per show and tracker, holding the evidence as the readers return it — Kitsu's entry, the tracker's entry, its sequel chain, the Kitsu entries sharing or chained under it, the numbers its episode list carries — and the map the documented rules answer for it. `wire/` holds the bodies AniList, MyAnimeList and Kitsu served for the shows the evidence readers are checked against, captured with the production queries. |
 | `arch/` | Stand-in checks the bats harness under `tests/bash/arch/` drives: a check a stray environment can redirect. |
 
 ## Keeping manifests true

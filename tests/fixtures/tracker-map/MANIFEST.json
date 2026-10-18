@@ -1,0 +1,5 @@
+{
+  "$comment": "Recorded cases for the episode map (backend/src/account/episode_map_rules.rs): one file per show and tracker, holding the evidence as the readers return it and the map the docs' rules answer. wire/ holds the bodies the readers are checked against.",
+  "captured_at": "2026-10-18",
+  "fixtures": {}
+}
