@@ -28,8 +28,10 @@ impl DeadListings {
     /// Note a candidate titled `title` whose listing answered
     /// not-found; `could_win` is what the name rules say of it.
     pub(super) fn note(&mut self, entry: EntryTitles<'_>, title: &str, could_win: bool) {
-        let admitted = entry.admits(title);
-        let another = admitted && entry.another_entry(title);
+        // Read past a version tag, as every reader of a probed
+        // candidate's divisions reads: the listing was probed.
+        let admitted = entry.admits_as_read(title);
+        let another = admitted && entry.another_entry_as_read(title);
         let stands = could_win && admitted;
         self.could_win |= stands && !another;
         self.refused |= !(another || stands);
