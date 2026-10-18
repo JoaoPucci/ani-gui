@@ -184,15 +184,18 @@ async fn a_mode_no_version_carries_is_absent() {
 }
 
 /// Master keys availability rows `availability:v20:` for the
-/// appended-extras reading, whose picker names no versions, so this
-/// key is past that one.
+/// appended-extras reading and `availability:v21:` for the recaps a
+/// continuation's offset renumbered, neither of whose pickers names
+/// versions, so this key is past both.
 #[test]
-fn a_row_keyed_v20_elsewhere_is_not_read() {
+fn a_row_keyed_before_versions_elsewhere_is_not_read() {
     let current = cache_key("7158", "sub");
-    assert!(
-        !current.starts_with("availability:v20:"),
-        "the key must have moved past v20: {current}"
-    );
+    for before in ["availability:v20:", "availability:v21:"] {
+        assert!(
+            !current.starts_with(before),
+            "the key must have moved past {before}: {current}"
+        );
+    }
 }
 
 /// [`two_copies`] with the plain copy's sub rows answering as

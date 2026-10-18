@@ -31,6 +31,7 @@ fn numbered(ids: &[u64]) -> Vec<EpisodeRef> {
             id: *id,
             number,
             number2: None,
+            former_tag: None,
             title: None,
         })
         .collect()
@@ -1421,24 +1422,28 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
                         id: 311,
                         number: 1,
                         number2: None,
+                        former_tag: None,
                         title: None,
                     },
                     EpisodeRef {
                         id: 312,
                         number: 2,
                         number2: None,
+                        former_tag: None,
                         title: None,
                     },
                     EpisodeRef {
                         id: 313,
                         number: 3,
                         number2: Some("2.5".into()),
+                        former_tag: None,
                         title: None,
                     },
                     EpisodeRef {
                         id: 314,
                         number: 4,
                         number2: Some("3".into()),
+                        former_tag: None,
                         title: None,
                     },
                 ],
@@ -1656,12 +1661,14 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
                         id: 941,
                         number: 41,
                         number2: None,
+                        former_tag: None,
                         title: None,
                     },
                     EpisodeRef {
                         id: 942,
                         number: 42,
                         number2: None,
+                        former_tag: None,
                         title: None,
                     },
                 ],
@@ -2126,8 +2133,8 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v21:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v21:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v22:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v22:kid-1:dub");
 }
 
 /// A verdict stamped before the extras a provider appends after a
@@ -2766,4 +2773,19 @@ fn a_legacy_row_without_the_flag_parses_as_exact() {
     .expect("parse");
     assert!(!parsed.episode_count_approximate);
     assert!(cache_hit_is_usable(&state, &parsed));
+}
+
+/// A verdict stamped before a continuation's offset recap, and a
+/// stitched recap before a cumulatively numbered part, were advertised
+/// as the entry's 0.5 and 12.5 is not served: master's v20 rows carry
+/// the old extras ("12.5" and "24.5"), and the probe that replaces them
+/// is what puts a history row's stamp from then right. The key sits
+/// above the one master moved to for the appended extras.
+#[test]
+fn a_verdict_stamped_before_offset_recaps_were_renumbered_is_not_read() {
+    let current = cache_key("7881", "sub");
+    assert!(
+        !current.starts_with("availability:v20:"),
+        "the key must have moved past master's v20: {current}"
+    );
 }

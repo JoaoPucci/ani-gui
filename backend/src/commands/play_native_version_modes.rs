@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::scraper::provider::Provider;
 
 use super::play_native::PickedShow;
-use super::play_native_episode::{resolve_episode, ResolvedEpisode};
+use super::play_native_episode::ResolvedEpisode;
 use super::play_native_resolve::NativeError;
 use super::play_native_versions::VersionKind;
 
@@ -42,27 +42,61 @@ fn others(picked: &PickedShow) -> Vec<PickedShow> {
 /// costs its own episode chain, asked only after the one before it
 /// dead-ended; a block, a gate refusal or weather ends the search with
 /// that version's error.
+///
+/// With `stamps_beside`, each version's chain asks for the episode as
+/// that version's own display stamp names it
+/// ([`super::play_native_episode::resolve_episode_stamped`]): a version
+/// is a show key of its own, with stamps of its own.
 pub(crate) async fn resolve_in_any_version<P: Provider + ?Sized>(
     client: &P,
     picked: PickedShow,
     episode: &str,
+    stamps_beside: Option<&std::path::Path>,
     mode: &str,
     quality: &str,
 ) -> (
     PickedShow,
     std::result::Result<ResolvedEpisode, NativeError>,
 ) {
-    let mut tried = resolve_episode(client, &picked, episode, mode, quality).await;
+    let mut tried = resolve_stamped(client, &picked, episode, stamps_beside, mode, quality).await;
     let mut playing = picked;
     for next in others(&playing) {
         match &tried {
             Err(ne) if dead_end(ne) => {}
             _ => break,
         }
-        tried = resolve_episode(client, &next, episode, mode, quality).await;
+        tried = resolve_stamped(client, &next, episode, stamps_beside, mode, quality).await;
         playing = next;
     }
     (playing, tried)
+}
+
+/// `episode` from the version `picked` plays, read through the display
+/// stamp kept beside `stamps_beside` for that version's show key.
+async fn resolve_stamped<P: Provider + ?Sized>(
+    client: &P,
+    picked: &PickedShow,
+    episode: &str,
+    stamps_beside: Option<&std::path::Path>,
+    mode: &str,
+    quality: &str,
+) -> std::result::Result<ResolvedEpisode, NativeError> {
+    let stamp = stamps_beside.and_then(|history| {
+        crate::commands::numbering_offset::stamp_beside(
+            history,
+            &crate::scraper::provider::ShowKey::new(client.id(), picked.hit.slug.clone())
+                .to_string(),
+        )
+    });
+    super::play_native_episode::resolve_episode_stamped(
+        client,
+        picked,
+        episode,
+        stamp.as_ref(),
+        mode,
+        quality,
+    )
+    .await
 }
 
 /// Whether each of the pick's versions carries `mode`, in the

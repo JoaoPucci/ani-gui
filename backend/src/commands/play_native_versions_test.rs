@@ -168,6 +168,7 @@ async fn a_copy_numbered_otherwise_is_no_version() {
                 number: n + 12,
                 number2: None,
                 title: None,
+                former_tag: None,
             })
             .collect::<Vec<_>>(),
     );

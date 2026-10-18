@@ -32,6 +32,8 @@ fn cached_launch_args_lead_with_the_providers_default_track() {
         kitsu_id: None,
         versions: Vec::new(),
         version: None,
+        played: None,
+        former_episode: None,
     };
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
         serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub" }),
@@ -459,6 +461,8 @@ fn a_cached_watch_prefers_the_rows_own_slot() {
         kitsu_id: None,
         versions: Vec::new(),
         version: None,
+        played: None,
+        former_episode: None,
     };
     let stamped = super::cached_watch(&state, &row(Some(5)), "4");
     assert_eq!(
@@ -513,6 +517,8 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
             kitsu_id: None,
             versions: Vec::new(),
             version: None,
+            played: None,
+            former_episode: None,
         },
     );
     let cfg = crate::config::Config {
@@ -596,6 +602,8 @@ fn seed_cached_row(
             kitsu_id: None,
             versions: Vec::new(),
             version: None,
+            played: None,
+            former_episode: None,
         },
     );
 }
@@ -726,6 +734,8 @@ mod row_provider_props {
             kitsu_id: None,
             versions: Vec::new(),
             version: None,
+            played: None,
+            former_episode: None,
         }
     }
 
@@ -796,6 +806,8 @@ async fn row_redirecting_elsewhere(
             kitsu_id: None,
             versions: Vec::new(),
             version: None,
+            played: None,
+            former_episode: None,
         },
     );
     (mock, elsewhere)
@@ -908,6 +920,8 @@ fn seed_versioned_row(
             kitsu_id: None,
             versions: two_versions(),
             version: Some(crate::commands::play_native_versions::VersionKind::Uncensored),
+            played: None,
+            former_episode: None,
         },
     );
 }

@@ -167,6 +167,8 @@ fn launch_args_carry_the_resolves_sidecar_tracks() {
         }],
         versions: Vec::new(),
         version: None,
+        former_tags: Vec::new(),
+        other_copies: Vec::new(),
     };
     let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
     assert_eq!(
@@ -192,6 +194,8 @@ fn launch_args_carry_the_resolves_referer() {
         subtitles: Vec::new(),
         versions: Vec::new(),
         version: None,
+        former_tags: Vec::new(),
+        other_copies: Vec::new(),
     };
     let with = super::play_handoff::launch_args_for(
         native(Some("https://embed.example/")),
@@ -231,6 +235,8 @@ fn launch_args_lead_with_the_providers_default_track() {
         subtitles: vec![track("ar", false), track("en", true), track("es", false)],
         versions: Vec::new(),
         version: None,
+        former_tags: Vec::new(),
+        other_copies: Vec::new(),
     };
     let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
     assert_eq!(
