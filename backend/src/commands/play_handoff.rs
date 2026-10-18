@@ -17,10 +17,10 @@ use crate::error::Result;
 /// A handoff is always a click, never a prefetch, so the walk runs at
 /// interactive priority against the providers in order, and each
 /// breaker hears its attempt's outcome under the same mapping the
-/// embedded path uses. The resolve stamps the offset and former tags
-/// it learned, and hands back the watch to record — the history row,
-/// the display pair it reads through and the watched-at stamp — which
-/// the command writes once the player has started: the spawn is the watch, and a player that fails to start
+/// embedded path uses. The resolve stamps the numbering it learned
+/// and hands back the watch to record — the history row and the
+/// watched-at stamp — which the command writes once the player has
+/// started: the spawn is the watch, and a player that fails to start
 /// leaves nothing behind. Both paths go through
 /// [`crate::commands::play_native_record`] so they cannot disagree
 /// about what a row's number means.
@@ -82,8 +82,6 @@ pub async fn resolve_launch_args(
         Ok(attempted) => {
             // The numbering is put right before the row a probe
             // would take instead of the listing that repairs it.
-            // The display pair rides on the watch: the record
-            // writes it with the row once the player has started.
             crate::commands::play_native_record::stamp_numbering(state, &attempted.value, asked);
             crate::commands::availability::stamp_after_native(
                 state,

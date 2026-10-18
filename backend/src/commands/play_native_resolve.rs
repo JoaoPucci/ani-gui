@@ -63,9 +63,10 @@ pub struct NativeResolved {
     /// listing. Cached with the resolution; no history writer stores it
     /// now, since rows record the app's own number.
     pub resolved_slot: u32,
-    /// The matched row's display tag, when it carries one. Display
-    /// stamps are no longer written from it; kept for the log and the
-    /// tests that describe a listing.
+    /// The matched row's display tag, when it carries one: with the
+    /// slot, what the app's own number for the episode is read from
+    /// ([`crate::commands::play_native_record::matched_episode`]).
+    /// Display stamps are no longer written from it.
     pub resolved_tag: Option<String>,
     /// Rows of the picked listing an earlier version tagged otherwise:
     /// (slot, the tag it had then, the tag it has now) — a stitched

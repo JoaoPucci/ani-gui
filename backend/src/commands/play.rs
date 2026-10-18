@@ -375,8 +375,7 @@ where
             return Err(ne.error);
         }
     };
-    // Only a play that records its watch moves the display stamp, and
-    // prefetches stay out of the user's history. Both put the numbering
+    // Prefetches stay out of the user's history. Both put the numbering
     // right before the rows this play caches: a probe that takes the fresh
     // availability row fetches no listing to repair it from.
     if args.prefetch {
