@@ -16,8 +16,10 @@
  *   reports through onFailure. A click whose navigation claim lapsed
  *   meanwhile (claimNavigation) neither navigates nor reports, and
  *   clears busy; one that lapsed before its play was asked for asks
- *   for none, and records nothing. onFailure gets the claim, to ask
- *   once the failure is worded.
+ *   for none, and records nothing — and one that lapsed while
+ *   settings loaded sends no cap lookup either, while the row was read
+ *   warms nothing. onFailure gets the claim, to ask once the failure
+ *   is worded.
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
@@ -146,6 +148,12 @@ export function makeStartResume(
 		deps.onProgress(null);
 
 		const { mode, quality } = await deps.getSettings();
+		// The viewer moved on while settings loaded: nothing of the
+		// click's provider work, the cap lookup included, is theirs.
+		if (!stillHere()) {
+			deps.onBusy(null);
+			return;
+		}
 		const lastWatchedRaw = parseHistoryEpisode(entry.ep_no) ?? NaN;
 		const resolved = await resolveResumeEpisode(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
@@ -168,13 +176,20 @@ export function makeStartResume(
 		// read it before. A position kept under what it read as moves.
 		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
 		const guess = deps.isGuess?.(entry.id) ?? false;
-		const now = await settledRow(deps, entry.id, card, count === null || approximate, {
-			match,
-			title,
-			mode,
-			quality,
-			guess
-		});
+		const now = await settledRow(
+			deps,
+			entry.id,
+			card,
+			count === null || approximate,
+			{
+				match,
+				title,
+				mode,
+				quality,
+				guess
+			},
+			stillHere
+		);
 		if (now.former !== null && now.last !== null) {
 			deps.movePosition?.(match.id, now.former, now.last);
 		}

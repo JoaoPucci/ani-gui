@@ -35,16 +35,19 @@ async function rowNow(
  *  listing stands behind the cap (`unmeasured`) and the row reads as a
  *  fractional episode — the one kind a renumbering leaves under a
  *  number it no longer has. The warm resolves the listing, which puts
- *  the row right, and records no watch. */
+ *  the row right, and records no watch. A click the viewer moved on
+ *  from while the row was read (`stillHere`) warms nothing. */
 export async function settledRow(
 	deps: SettledRowDeps,
 	entryId: string,
 	card: number | null,
 	unmeasured: boolean,
-	play: Omit<ResumePlayArgs, 'episode'>
+	play: Omit<ResumePlayArgs, 'episode'>,
+	stillHere: () => boolean
 ): Promise<{ last: number | null; former: number | null }> {
 	const now = await rowNow(deps, entryId, card);
 	if (!unmeasured || !deps.warm || now.last === null || Number.isInteger(now.last)) return now;
+	if (!stillHere()) return now;
 	try {
 		await deps.warm({ ...play, episode: now.last });
 	} catch {
