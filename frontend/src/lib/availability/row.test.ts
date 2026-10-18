@@ -100,6 +100,12 @@ describe('rowFor — an answer is about the show and audio it was asked for', ()
 		expect(rowFor(mergeRow(refusedInSub, DUB, { count: 6 }), DUB).refused).toBe(false);
 	});
 
+	it('an empty patch under another key leaves the row alone', () => {
+		// An answer owned elsewhere writes nothing, whichever key it
+		// came with; it does not cost the stored audio its verdict.
+		expect(mergeRow(delistedInSub, DUB, {})).toBe(delistedInSub);
+	});
+
 	it('a settled answer in the new audio is that audio’s verdict', () => {
 		const listed = mergeRow(delistedInSub, DUB, { available: true, count: 12, extraEpisodes: [] });
 		expect(rowFor(listed, DUB)).toMatchObject({ listed: true, count: 12 });
