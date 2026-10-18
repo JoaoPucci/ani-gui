@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CreateSessionResponse, PlayProgress } from '$lib/api';
-import { __resetPlayCacheForTests, clearForShow, getOrFire, makeKey } from './play-cache';
+import {
+	__resetPlayCacheForTests,
+	clearBackgroundForShow,
+	clearForShow,
+	getOrFire,
+	makeKey
+} from './play-cache';
 
 function fakeResp(seed: string): CreateSessionResponse {
 	return {
@@ -389,6 +395,57 @@ describe('clearForShow — abort in-flight', () => {
 		clearForShow('show-x');
 		expect(receivedSignal!.aborted).toBe(true);
 		await expect(promise).rejects.toThrow('aborted');
+	});
+});
+
+describe('clearBackgroundForShow', () => {
+	/** A fire that never answers and reports whether it was aborted. */
+	function heldFire() {
+		const seen: { signal?: AbortSignal } = {};
+		const fire = (_emit: (p: PlayProgress) => void, signal: AbortSignal) => {
+			seen.signal = signal;
+			return new Promise<CreateSessionResponse>((_resolve, reject) => {
+				signal.addEventListener('abort', () => reject(new Error('aborted')));
+			});
+		};
+		return { fire, seen };
+	}
+
+	it("aborts the show's warms, running or queued, and forgets them", async () => {
+		const running = heldFire();
+		const alsoRunning = heldFire();
+		const queued = heldFire();
+		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best'), running.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best'), alsoRunning.fire);
+		const c = getOrFire(makeKey('show-1', 3, 'sub', 'best'), queued.fire);
+		for (const p of [a, b, c]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForShow('show-1');
+		expect(running.seen.signal?.aborted).toBe(true);
+		expect(alsoRunning.seen.signal?.aborted).toBe(true);
+		await new Promise((r) => setTimeout(r, 0));
+		// The queued one never ran.
+		expect(queued.seen.signal).toBeUndefined();
+		const again = vi.fn(() => Promise.resolve(fakeResp('fresh')));
+		await getOrFire(makeKey('show-1', 1, 'sub', 'best'), again);
+		expect(again).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves a click's own play, another show's warms and an answered warm", async () => {
+		const click = heldFire();
+		const other = heldFire();
+		const answered = vi.fn(() => Promise.resolve(fakeResp('done')));
+		await getOrFire(makeKey('show-1', 5, 'sub', 'best'), answered);
+		const p = getOrFire(makeKey('show-1', 1, 'sub', 'best'), click.fire, () => {});
+		const q = getOrFire(makeKey('show-2', 1, 'sub', 'best'), other.fire);
+		for (const x of [p, q]) x.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForShow('show-1');
+		expect(click.seen.signal?.aborted).toBe(false);
+		expect(other.seen.signal?.aborted).toBe(false);
+		const reuse = vi.fn(() => Promise.resolve(fakeResp('again')));
+		expect(await getOrFire(makeKey('show-1', 5, 'sub', 'best'), reuse)).toEqual(fakeResp('done'));
+		expect(reuse).not.toHaveBeenCalled();
 	});
 });
 
