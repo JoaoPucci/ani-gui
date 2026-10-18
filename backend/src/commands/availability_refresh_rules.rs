@@ -48,8 +48,8 @@ pub fn may_write_cache(
 /// availability row goes through it. The lookup is not the only one:
 /// a play resolution stamps the row on success and on a confirmed
 /// miss, and it too holds an answer from before it started writing. A writer
-/// outside this function is a writer
-/// that can put a stale cap back for the row's whole TTL.
+/// outside this function is a writer that can put a stale cap back for the
+/// row's whole TTL.
 pub async fn hold_if_still_ours(
     refreshes: &AvailabilityRefreshes,
     key: &str,

@@ -521,7 +521,7 @@
 		return () => window.removeEventListener('scroll', onScroll);
 	});
 
-	// Watch Later rail (plan §6.6). Reactive on accountStore.byProvider so:
+	// Watch Later rail. Reactive on accountStore.byProvider so:
 	//  - on cold launch directly to `/`, the rail loads as soon as the
 	//    layout's hydrate() populates the store;
 	//  - sign-in / disconnect / token-refresh events during the session
@@ -1255,7 +1255,7 @@
 	onCancel={cancelClear}
 />
 
-<!-- Watch Later rail (plan §6.6) — between Continue Watching and
+<!-- Watch Later rail — between Continue Watching and
      Trending. Hidden when:
        - watchLater === null  → boot, accountStore not hydrated yet
        - watchLater.length === 0 → no provider connected, or every

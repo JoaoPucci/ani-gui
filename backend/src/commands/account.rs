@@ -204,12 +204,11 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
 }
 
 /// Drop every cached row for `kind` regardless of `user_id`. The renderer's
-/// safeStorage-orphan-disconnect path has
-/// no `user_id` to pass — the token file existed but the keychain
-/// couldn't decrypt it on hydrate — so we can't run the per-user
-/// clear. The API boundary still gates this on the renderer-only
-/// internal secret so a cross-origin tab can't wipe a stranger's
-/// cache by guessing nothing.
+/// safeStorage-orphan-disconnect path has no `user_id` to pass — the token file
+/// existed but the keychain couldn't decrypt it on hydrate — so we can't run
+/// the per-user clear. The API boundary still gates this on the renderer-only
+/// internal secret so a cross-origin tab can't wipe a stranger's cache by
+/// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
     crate::account::cache::clear_provider(&state.cache_pool, kind)
 }
@@ -313,7 +312,7 @@ const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 
 /// Bridge a list of MAL ids to Kitsu refs, preserving input order
 /// and dropping ids Kitsu can't map. Used by the home page's Watch
-/// Later rail (plan §6.6) so cached `user_list_cache` rows render
+/// Later rail so cached `user_list_cache` rows render
 /// with the same Kitsu metadata + availability filter as the rest
 /// of the home.
 ///
@@ -683,11 +682,10 @@ pub fn reconcile_monotonic(
         }
     }
     // Preserve a rewatching/repeating row at the finale: the fan-out sends
-    // Completed when a finished series'
-    // last episode is watched, but completing a row that's mid-rewatch
-    // would clear AniList REPEATING / MAL is_rewatching. Drop the
-    // Completed status so the rewatch state survives; any advancing
-    // progress field still flows below.
+    // Completed when a finished series' last episode is watched, but completing
+    // a row that's mid-rewatch would clear AniList REPEATING / MAL
+    // is_rewatching. Drop the Completed status so the rewatch state survives;
+    // any advancing progress field still flows below.
     if update.status == Some(ListStatus::Completed)
         && current.map(|c| c.status) == Some(ListStatus::Rewatching)
     {

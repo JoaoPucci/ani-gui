@@ -192,8 +192,8 @@ pub trait UserListProvider: Send + Sync {
     /// watched count), or `None` when the show isn't on their list yet.
     /// Bearer-scoped single read. Drives the write-back reconcile: keep
     /// progress monotonic so a replay never regresses it, and read the status
-    /// so a progress write can promote
-    /// a planning row to watching while preserving rewatching/completed.
+    /// so a progress write can promote a planning row to watching while
+    /// preserving rewatching/completed.
     async fn current_entry(
         &self,
         tokens: &Tokens,

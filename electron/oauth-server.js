@@ -78,11 +78,10 @@ const ERROR_PAGE = `<!doctype html>
  *     consent page in the OS browser).
  */
 // Loopback families the callback server binds. `server.listen(port,
-// "localhost")` resolves to a single address via
-// Node's `dns.lookup()` — usually the OS-preferred family — but the
-// browser's redirect to `localhost:53682` can choose the OTHER family
-// on dual-stack systems, leaving the callback refused. Bind both
-// literals so either family routes home.
+// "localhost")` resolves to a single address via Node's `dns.lookup()` —
+// usually the OS-preferred family — but the browser's redirect to
+// `localhost:53682` can choose the OTHER family on dual-stack systems, leaving
+// the callback refused. Bind both literals so either family routes home.
 const LOOPBACK_HOSTS = ["127.0.0.1", "::1"];
 
 // errno codes that mean "this loopback family isn't configured on this

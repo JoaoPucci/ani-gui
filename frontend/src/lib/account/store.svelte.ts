@@ -58,11 +58,10 @@ class AccountStore {
 	/**
 	 * Signal that an async account mutation (e.g. disconnect) is starting
 	 * for `provider`, so an in-flight token refresh is superseded before
-	 * the mutation's async clear updates `byProvider`. Also marks the
-	 * provider as changing until the next
-	 * resolved state transition, so a refresh entering the disconnect
-	 * window (byProvider still `connected`) is held off. Synchronous and
-	 * side-effect-free beyond those flags.
+	 * the mutation's async clear updates `byProvider`. Also marks the provider
+	 * as changing until the next resolved state transition, so a refresh
+	 * entering the disconnect window (byProvider still `connected`) is held
+	 * off. Synchronous and side-effect-free beyond those flags.
 	 */
 	beginAccountChange(provider: Provider): void {
 		this.bumpGeneration(provider);

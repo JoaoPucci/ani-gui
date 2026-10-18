@@ -1,5 +1,5 @@
 /**
- * Watch Later rail loader (plan §6.6).
+ * Watch Later rail loader.
  *
  * Orchestrates the three async steps the home rail needs:
  *   1. Fetch each connected provider's cached Plan-to-Watch via

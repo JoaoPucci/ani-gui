@@ -5,9 +5,8 @@
  * A connected token within the proactive-refresh skew of expiry is
  * refreshed (re-persisted + the store flipped to the rotated tokens)
  * before it's handed out, so a session left open past MAL's ~1h
- * access-token lifetime never sends a just-expired bearer. Non-connected
- * states return whatever bearer they carry
- * (or null), unchanged.
+ * access-token lifetime never sends a just-expired bearer. Non-connected states
+ * return whatever bearer they carry (or null), unchanged.
  *
  * Kept as a free function reading `accountStore` directly — mirroring
  * `push-watched`'s `syncWatchedToTrackers` — rather than a store method,
@@ -29,10 +28,9 @@ import { bearerFor } from './state-helpers';
  * reach `freshBearer` with the same snapshot and start independent
  * refresh-token exchanges; with rotating refresh tokens that races two
  * rotations to disk while only one survives in memory. Sharing the promise
- * means concurrent callers get the
- * same rotated account from a single exchange. Cleared once it settles
- * so a later call (e.g. after the token drifts back toward expiry)
- * starts a fresh one.
+ * means concurrent callers get the same rotated account from a single exchange.
+ * Cleared once it settles so a later call (e.g. after the token drifts back
+ * toward expiry) starts a fresh one.
  *
  * The entry is tagged with the `accountGeneration` captured when it
  * started. A caller only reuses it while that generation still matches:

@@ -1,8 +1,8 @@
 //! AniList concrete [`UserListProvider`] implementation — OAuth +
 //! `Viewer` profile + `MediaListCollection` user-list fetch.
 //!
-//! Reads (`me`, `list_all`) and write-back (`update_entry`,
-//! `delete_entry`).
+//! Implements the reads (`me`, `list_all`) and the write-back
+//! (`update_entry`, `delete_entry`).
 //!
 //! AniList specifics worth keeping next to the code:
 //!
@@ -769,11 +769,10 @@ const ANILIST_FALLBACK_EXPIRY_S: i64 = 31_536_000;
 /// trait carries it as `Option<String>` so MAL's real refresh tokens
 /// fit the same struct.
 ///
-/// `expires_in` is documented but inconsistently present. When absent we try
-/// to decode the JWT `exp` claim from
-/// the access_token (no signature verification — we only trust the
-/// issuer-stated wall-clock window for the local hydrate gate); if
-/// that fails too, we fall back to [`ANILIST_FALLBACK_EXPIRY_S`].
+/// `expires_in` is documented but inconsistently present. When absent we try to
+/// decode the JWT `exp` claim from the access_token (no signature verification
+/// — we only trust the issuer-stated wall-clock window for the local hydrate
+/// gate); if that fails too, we fall back to [`ANILIST_FALLBACK_EXPIRY_S`].
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the response isn't the

@@ -116,8 +116,8 @@ export async function refreshAccount(
  * Seconds before a token's expiry at which a still-valid token is
  * proactively refreshed, so a long-lived session never hands a
  * just-expired bearer to a write-back or list refresh. MAL access tokens last
- * ~1h; a two-minute skew refreshes
- * comfortably ahead of the boundary without churning on every call.
+ * ~1h; a two-minute skew refreshes comfortably ahead of the boundary without
+ * churning on every call.
  */
 export const REFRESH_SKEW_SECONDS = 120;
 
