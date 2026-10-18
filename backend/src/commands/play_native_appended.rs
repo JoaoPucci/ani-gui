@@ -4,8 +4,8 @@
 //! whole-numbered rows after the last episode Kitsu counts — Noragami
 //! lists its two OADs as episodes 13 and 14 of a twelve-episode show.
 //! Read as whole episodes they become tiles 13 and 14, raise the cap
-//! past the show's end, and send the trackers progress for episodes
-//! they do not count. When Kitsu and AniList agree conclusively that the
+//! past the show's end, and move the trackers' progress for rows they
+//! do not count. When Kitsu and AniList agree conclusively that the
 //! show ended at its count, and the listing's own titles line up with
 //! Kitsu's up to that count, the rows past it are read as extras of
 //! their own instead: tagged `12.1`, `12.2` beside episode 12, as a
