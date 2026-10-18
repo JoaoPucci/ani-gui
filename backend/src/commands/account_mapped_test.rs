@@ -483,3 +483,96 @@ async fn a_status_only_write_goes_to_the_resolved_entry_as_it_did() {
     push(&state, &tracker, "186", Some(210), update).await;
     assert_eq!(tracker.writes(), [(210, Some(ListStatus::Paused), None)]);
 }
+
+/// Runs `push` while the entry lock for `entry` is held, releasing it
+/// after a pause, and answers how many writes the tracker had received
+/// by the release, and the push's result.
+async fn push_behind_entry_lock(
+    state: &Arc<AppState>,
+    tracker: &Tracker,
+    entry: u32,
+    kitsu_id: &str,
+    native: Option<u32>,
+    update: EntryUpdate,
+) -> (usize, Option<ListEntry>) {
+    let lock = state
+        .account_write_locks
+        .for_entry(ProviderKind::AniList, ProviderMediaId(entry));
+    let guard = lock.lock().await;
+    let release = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let before = tracker.writes().len();
+        drop(guard);
+        before
+    };
+    let (got, before) = tokio::join!(push(state, tracker, kitsu_id, native, update), release);
+    (before, got)
+}
+
+#[tokio::test]
+async fn a_part_s_write_waits_for_another_kitsu_entry_s_write_to_the_same_tracker_entry() {
+    // Koubou-sen (49244) and season 2 (46312) are both filed under
+    // AniList's 153406, each Kitsu entry with its own show lock: the
+    // entry's own lock is what keeps one's read-then-write from
+    // landing between the other's.
+    let state = state();
+    seed(
+        &state,
+        "49244",
+        &EpisodeMap {
+            shape: Shape::SplitParts,
+            segments: vec![segment(153_406, 26, 1, 13, 13, &[])],
+        },
+    );
+    let tracker = Tracker::with(&[(153_406, 26)], &[(153_406, Watching, 13)]);
+    let (before, got) =
+        push_behind_entry_lock(&state, &tracker, 153_406, "49244", None, watched(1)).await;
+    assert_eq!(before, 0, "the write waited for the entry's lock");
+    assert_eq!(got.map(|e| e.progress_episodes), Some(14));
+}
+
+#[tokio::test]
+async fn an_identity_write_waits_for_its_entry_s_lock() {
+    let state = state();
+    seed(&state, "1", &EpisodeMap::identity(Identity::CountsAgree));
+    let tracker = Tracker::with(&[(21, 12)], &[(21, Watching, 3)]);
+    let (before, got) =
+        push_behind_entry_lock(&state, &tracker, 21, "1", Some(21), watched(4)).await;
+    assert_eq!(before, 0);
+    assert!(got.is_some());
+    // The status-only write too.
+    let update = EntryUpdate {
+        status: Some(ListStatus::Paused),
+        ..Default::default()
+    };
+    let (before, got) = push_behind_entry_lock(&state, &tracker, 21, "1", Some(21), update).await;
+    assert_eq!(before, 1);
+    assert!(got.is_some());
+}
+
+#[tokio::test]
+async fn an_earlier_segment_s_write_waits_for_its_entry_s_lock() {
+    let state = state();
+    seed(&state, "186", &ranma_map());
+    let tracker = Tracker::with(&[(210, 18), (149_939, 143)], &[(210, Watching, 15)]);
+    let (before, _) =
+        push_behind_entry_lock(&state, &tracker, 210, "186", Some(210), watched(19)).await;
+    assert_eq!(before, 0);
+    assert_eq!(tracker.writes().len(), 2);
+}
+
+#[test]
+fn an_entry_s_lock_is_one_per_tracker_entry_and_apart_from_the_show_locks() {
+    let locks = crate::commands::account::AccountWriteLocks::new();
+    let a = locks.for_entry(ProviderKind::AniList, ProviderMediaId(7));
+    let b = locks.for_entry(ProviderKind::AniList, ProviderMediaId(7));
+    assert!(Arc::ptr_eq(&a, &b));
+    assert!(!Arc::ptr_eq(
+        &a,
+        &locks.for_entry(ProviderKind::MyAnimeList, ProviderMediaId(7))
+    ));
+    assert!(!Arc::ptr_eq(
+        &a,
+        &locks.for_show(ProviderKind::AniList, "7")
+    ));
+}

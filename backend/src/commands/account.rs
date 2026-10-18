@@ -82,6 +82,13 @@ impl AccountWriteLocks {
         let mut map = self.inner.lock().expect("account write-lock map poisoned");
         Arc::clone(map.entry((kind, kitsu_id.to_owned())).or_default())
     }
+
+    /// The lock guarding read-then-write on one tracker entry. A mapped
+    /// write reaches an entry from several Kitsu ids, each with its own
+    /// show lock, so the entry's read and write are held under this one.
+    pub(crate) fn for_entry(&self, kind: ProviderKind, _entry: ProviderMediaId) -> ShowLock {
+        self.for_show(kind, "unused-entry-lock")
+    }
 }
 
 /// Build a [`UserListProvider`] for the requested provider kind. Used

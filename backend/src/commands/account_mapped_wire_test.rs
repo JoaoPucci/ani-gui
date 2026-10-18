@@ -120,7 +120,10 @@ async fn anilist_ranma_s_nineteenth_episode_completes_210_then_starts_nettou_hen
         .respond_with(ResponseTemplate::new(200).set_body_string(
             r#"{"data":{"Media":{"episodes":18,"mediaListEntry":{"status":"CURRENT","progress":16}}}}"#,
         ))
-        .expect(1)
+        // Once for the total the map is checked against, once more under
+        // its own lock when it is brought to 18: each entry is read where
+        // it is written.
+        .expect(2)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
@@ -130,7 +133,9 @@ async fn anilist_ranma_s_nineteenth_episode_completes_210_then_starts_nettou_hen
             ResponseTemplate::new(200)
                 .set_body_string(r#"{"data":{"Media":{"episodes":143,"mediaListEntry":null}}}"#),
         )
-        .expect(1)
+        // Read to see the write starts its segment, and again after the
+        // entry before it is brought up.
+        .expect(2)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
