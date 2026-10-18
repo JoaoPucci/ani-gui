@@ -227,8 +227,7 @@ describe('accountStore.hydrate', () => {
 	});
 
 	it('seeds error state when keychain read fails with decrypt_error', () => {
-		// Corrupted token file (e.g., partial write, or the basic_text
-		// backend refused on a fresh start) — same orphan-cleanup
+		// Corrupted token file (e.g., a partial write) — same orphan-cleanup
 		// path as encryption_unavailable.
 		stubBridgeWithReadError('anilist', 'decrypt_error');
 		accountStore.hydrate();

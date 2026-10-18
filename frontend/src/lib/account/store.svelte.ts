@@ -6,8 +6,8 @@
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
- *   - PR #2 home Watch Later rail — gate render on hasAny
- *   - PR #2 AccountChip — avatar + amber dot
+ *   - home Watch Later rail — gate render on hasAny
+ *   - AccountChip — avatar + amber dot
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
@@ -58,9 +58,11 @@ class AccountStore {
 	/**
 	 * Signal that an async account mutation (e.g. disconnect) is starting
 	 * for `provider`, so an in-flight token refresh is superseded before
-	 * the mutation's async clear updates `byProvider`. Also marks the provider as changing until the next
+	 * the mutation's async clear updates `byProvider`. Also marks the
+	 * provider as changing until the next
 	 * resolved state transition, so a refresh entering the disconnect
-	 * window (byProvider still `connected`) is held off. Synchronous and side-effect-free beyond those flags.
+	 * window (byProvider still `connected`) is held off. Synchronous and
+	 * side-effect-free beyond those flags.
 	 */
 	beginAccountChange(provider: Provider): void {
 		this.bumpGeneration(provider);
@@ -93,7 +95,8 @@ class AccountStore {
 			}
 			// The token file is on disk but the
 			// keychain is unreachable (libsecret/Keychain outage,
-			// decrypt failure, the basic_text backend refused).
+			// decrypt failure, or a token refused because safeStorage
+			// fell back to basic_text).
 			// Surface as error with no account; the page's error-no-
 			// account branch now exposes Disconnect so the user can
 			// call clearToken and remove the orphan file before

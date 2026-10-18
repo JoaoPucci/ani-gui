@@ -1125,7 +1125,7 @@ pub(crate) fn cached_provider(
     row.available.then_some(row.provider).flatten()
 }
 
-/// Persist a known availability result./// Persist a known availability result. Public so the play and
+/// Persist a known availability result. Public so the play and
 /// download paths can update the cache from their own success /
 /// NoResults outcomes — clicks from any tile end up populating the
 /// cache without an extra network round-trip. Episode count is

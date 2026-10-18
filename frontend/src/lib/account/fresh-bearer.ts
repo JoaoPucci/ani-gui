@@ -5,7 +5,8 @@
  * A connected token within the proactive-refresh skew of expiry is
  * refreshed (re-persisted + the store flipped to the rotated tokens)
  * before it's handed out, so a session left open past MAL's ~1h
- * access-token lifetime never sends a just-expired bearer. Non-connected states return whatever bearer they carry
+ * access-token lifetime never sends a just-expired bearer. Non-connected
+ * states return whatever bearer they carry
  * (or null), unchanged.
  *
  * Kept as a free function reading `accountStore` directly — mirroring
@@ -27,7 +28,8 @@ import { bearerFor } from './state-helpers';
  * same near-expiry connected provider at once, both would otherwise
  * reach `freshBearer` with the same snapshot and start independent
  * refresh-token exchanges; with rotating refresh tokens that races two
- * rotations to disk while only one survives in memory. Sharing the promise means concurrent callers get the
+ * rotations to disk while only one survives in memory. Sharing the promise
+ * means concurrent callers get the
  * same rotated account from a single exchange. Cleared once it settles
  * so a later call (e.g. after the token drifts back toward expiry)
  * starts a fresh one.
@@ -50,7 +52,8 @@ export function freshBearerFor(provider: Provider): Promise<string | null> {
 	// A disconnect/account-change is mid-flight: beginAccountChange ran but
 	// byProvider is still `connected` until the async clear finishes. Don't
 	// start a refresh — its persist could land after the disconnect's clear
-	// in the per-provider FIFO and resurrect the removed token. Hand back the current bearer; no rotation, no write.
+	// in the per-provider FIFO and resurrect the removed token. Hand back the
+	// current bearer; no rotation, no write.
 	if (accountStore.accountChanging[provider]) return Promise.resolve(state.account.access_token);
 	const generation = accountStore.accountGeneration[provider];
 	const pending = inFlight[provider];

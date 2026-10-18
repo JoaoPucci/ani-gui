@@ -77,7 +77,8 @@ const ERROR_PAGE = `<!doctype html>
  *   - `stop()`: cancel before a callback lands (e.g. user closes the
  *     consent page in the OS browser).
  */
-// Loopback families the callback server binds. `server.listen(port, "localhost")` resolves to a single address via
+// Loopback families the callback server binds. `server.listen(port,
+// "localhost")` resolves to a single address via
 // Node's `dns.lookup()` — usually the OS-preferred family — but the
 // browser's redirect to `localhost:53682` can choose the OTHER family
 // on dual-stack systems, leaving the callback refused. Bind both

@@ -1,7 +1,6 @@
 /**
  * Merge the per-provider Plan-to-Watch cache rows into a single
- * deduped list for the home page's Watch Later rail (PR #2, plan
- * §6.6). Pure helper so the rail's data path is unit-testable
+ * deduped list for the home page's Watch Later rail. Pure helper so the rail's data path is unit-testable
  * without any HTTP / store mocking.
  *
  * Order: most recently touched on the tracker first, so the rail

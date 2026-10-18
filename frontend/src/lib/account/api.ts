@@ -129,7 +129,8 @@ export function updateProgress(
 
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
 	// No user_id in the body — the backend derives the cache owner
-	// from the bearer by calling me() internally. A renderer-supplied user_id could be used to poison another
+	// from the bearer by calling me() internally. A renderer-supplied user_id
+	// could be used to poison another
 	// user's local cache under permissive CORS.
 	return postJson<ListEntry[]>(`/api/account/list/${provider}`, {}, bearer);
 }
@@ -139,11 +140,12 @@ export async function fetchCachedList(
 	bearer: string,
 	fallbackUserId?: string
 ): Promise<ListEntry[]> {
-	// Backend resolves identity from a live `me()` call (A renderer-supplied user_id alone is forgeable
-	// under permissive CORS). When that round-trip fails (offline,
+	// Backend resolves identity from a live `me()` call (a
+	// renderer-supplied user_id alone is forgeable under permissive
+	// CORS). When that round-trip fails (offline,
 	// 401, 5xx) the backend falls through to `fallbackUserId` gated
-	// by the renderer-only internal secret — The cached endpoint must keep serving local rows during
-	// upstream outages, which is exactly when the cache earns its
+	// by the renderer-only internal secret: the cached endpoint must
+	// keep serving local rows during upstream outages, which is exactly when the cache earns its
 	// keep. Send the fallback always; the backend ignores it when
 	// me() succeeds.
 	const base = await apiBase();
@@ -162,7 +164,8 @@ export async function fetchCachedList(
 }
 
 /**
- * Provider-wide cache wipe — no bearer, no user_id. The orphan-token disconnect path (hydrate found the
+ * Provider-wide cache wipe — no bearer, no user_id. The orphan-token
+ * disconnect path (hydrate found the
  * file unreadable, so the store has no account) can't run
  * dropListCache because it has no bearer and no user_id. This
  * fallback hits the renderer-only `…/cache/all` endpoint gated by

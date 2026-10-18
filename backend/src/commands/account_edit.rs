@@ -54,7 +54,8 @@ async fn get_entry_via(
     // native id, so the seed read serializes with a mark-watched write
     // (which takes the same lock before its own resolve) across the entire
     // resolve→read — the read can't slip in during the write's resolve
-    // window and observe a value the write is about to change. A later explicit Save would otherwise
+    // window and observe a value the write is about to change. A later
+    // explicit Save would otherwise
     // force-write that stale value over the just-synced higher one.
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _read_guard = show_lock.lock().await;

@@ -97,7 +97,8 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
 /// per-user cache rows. Tries the bearer-derived `me()` identity
 /// first (the only one upstream can vouch for), and on offline /
 /// 401 / 5xx falls back to the renderer-supplied id gated by the
-/// internal secret. Used by both the cached-read path and the disconnect-delete path so a single helper enforces the security gate.
+/// internal secret. Used by both the cached-read path and the
+/// disconnect-delete path so a single helper enforces the security gate.
 async fn resolve_owner_user_id(
     state: &Arc<AppState>,
     kind: ProviderKind,

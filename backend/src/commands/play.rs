@@ -592,7 +592,7 @@ pub(crate) mod tests {
         }
     }
 
-    /// The gap: when no availability row exists — the
+    /// The gap this closes: when no availability row exists — the
     /// mount-time probe failed, or the show was never probed — a
     /// successful play stamped extra_episodes: [], hiding every
     /// decimal episode for the row's whole TTL. The resolve already

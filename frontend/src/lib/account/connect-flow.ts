@@ -148,7 +148,7 @@ export interface DisconnectFlowDeps {
  * the user they're disconnected in that state is a lie, so surface
  * the failure to the caller.
  *
- * Order changed from clear-then-drop (PR #1 v1) to drop-then-clear
+ * The order is drop-then-clear, not clear-then-drop,
  * because the cache DELETE now requires the bearer; running it after
  * the safeStorage purge means the renderer has already forgotten it.
  */

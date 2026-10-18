@@ -113,7 +113,8 @@ pub struct UpdateProgressRequest {
     pub score: Option<u8>,
 }
 
-/// Renderer-supplied fallback identity for the cache DELETE path. Consulted ONLY when the bearer's `me()` call
+/// Renderer-supplied fallback identity for the cache DELETE path. Consulted
+/// ONLY when the bearer's `me()` call
 /// fails with `InvalidToken` — disconnect-after-expiry needs to clear
 /// the cache but the bearer is no longer trusted upstream. Trusting
 /// this in the live-bearer path would re-enable the cross-origin

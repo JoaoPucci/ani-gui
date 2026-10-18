@@ -147,7 +147,8 @@ export async function retryApproximateCaps(
 	// every probe, refused or not, so a refusing pacer is backed off
 	// from rather than hammered. `attempts` is the budget of real
 	// ANSWERS the row is allowed, which a refusal does not spend
-	// because nobody answered. Sharing one counter froze the ladder; leaving `waits` unbounded would replace
+	// because nobody answered. Sharing one counter froze the ladder; leaving
+	// `waits` unbounded would replace
 	// the hot loop with a slow immortal one, so it caps too.
 	const maxWaits = maxAttempts + backoff.length;
 	const queue = rows.map((row) => ({ row, attempts: 0, waits: 0 }));

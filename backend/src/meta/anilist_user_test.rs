@@ -181,8 +181,8 @@ async fn exchange_code_falls_back_to_jwt_exp_when_expires_in_missing() {
 
 /// Defensive fallback: when AniList ever returns a non-JWT access
 /// token AND omits `expires_in`, the parser uses a 1-year sentinel
-/// rather than failing the exchange. Without it the user
-/// would otherwise be stuck on a stale connect flow on every retry
+/// rather than failing the exchange. Without it the user would be
+/// stuck on a stale connect flow on every retry
 /// even though the token itself is fine.
 #[tokio::test]
 async fn exchange_code_falls_back_to_one_year_sentinel_when_jwt_decode_fails() {

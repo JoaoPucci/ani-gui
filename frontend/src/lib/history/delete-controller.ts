@@ -57,7 +57,8 @@ export interface ConfirmDeleteResult {
  *   2. Serialize the backend `historyDelete` calls — each
  *      read-modify-writes the history file with an atomic rename.
  *      When this was written nothing made two of them take turns, so
- *      a parallel `Promise.all` could leave a sibling behind; the backend now holds the file across each
+ * a parallel `Promise.all` could leave a sibling behind; the backend now
+ * holds the file across each
  *      delete, and the calls stay in sequence because nothing is
  *      gained by racing them.
  *

@@ -90,7 +90,7 @@ impl AccountWriteLocks {
 /// handlers each build their own `MalProvider` with its own mutex and
 /// both POST the same stale refresh token.
 ///
-/// PR #4+ (in-house) eventually adds the third branch. Today InHouse
+/// An in-house provider would add the third branch. Today InHouse
 /// returns `None` — the routes that dispatch by slug guard against
 /// unsupported kinds at the slug-parse step, but defending here too
 /// keeps the dispatcher honest.
@@ -188,7 +188,7 @@ pub async fn list_all_and_cache(
     Ok(entries)
 }
 
-/// Read the cached list. Used by PR #2's home Watch Later rail to
+/// Read the cached list. Used by the home Watch Later rail to
 /// avoid an upstream round-trip on every paint.
 pub fn cached_list(
     state: &Arc<AppState>,
@@ -203,7 +203,8 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
     crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
 }
 
-/// Drop every cached row for `kind` regardless of `user_id`. The renderer's safeStorage-orphan-disconnect path has
+/// Drop every cached row for `kind` regardless of `user_id`. The renderer's
+/// safeStorage-orphan-disconnect path has
 /// no `user_id` to pass — the token file existed but the keychain
 /// couldn't decrypt it on hydrate — so we can't run the per-user
 /// clear. The API boundary still gates this on the renderer-only
@@ -223,7 +224,8 @@ fn write_through_cache(
 }
 
 /// Write a single just-synced entry back into the cache so the local
-/// snapshot reflects the change without a full resync. Leaves the rest of the user's cached list intact.
+/// snapshot reflects the change without a full resync. Leaves the rest of the
+/// user's cached list intact.
 pub fn upsert_cached_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -237,7 +239,7 @@ pub fn upsert_cached_entry(
 /// [`Tokens`] envelope. `expires_at_epoch_s` is zero because the
 /// header doesn't carry expiry — that's tracked in the renderer's
 /// token store and acted on (refresh / reauth) before the handler is
-/// called. PR #4 adds a richer header that round-trips the expiry.
+/// called.
 #[must_use]
 pub fn tokens_from_bearer(bearer: &str) -> Tokens {
     Tokens {
@@ -457,7 +459,7 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         phase1.into_iter().map(|(card, _)| card).collect();
     // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
     // titles) — resolve ALL of them to AniList ids in one batched
-    // Page(idMal_in:) query per 50-chunk (The
+    // Page(idMal_in:) query per 50-chunk (a
     // per-miss Media(idMal:) call could burn AniList's 30 req/min
     // budget on a single big rail load), then look each up under
     // Kitsu's anilist/anime mapping. Same gap resolve_native_media_id
@@ -680,7 +682,8 @@ pub fn reconcile_monotonic(
             update.status = None;
         }
     }
-    // Preserve a rewatching/repeating row at the finale: the fan-out sends Completed when a finished series'
+    // Preserve a rewatching/repeating row at the finale: the fan-out sends
+    // Completed when a finished series'
     // last episode is watched, but completing a row that's mid-rewatch
     // would clear AniList REPEATING / MAL is_rewatching. Drop the
     // Completed status so the rewatch state survives; any advancing
@@ -691,7 +694,7 @@ pub fn reconcile_monotonic(
         update.status = None;
     }
     // Promote a planning / not-yet-listed row to Watching on ANY watch
-    // event, advancing or not (A planning row
+    // event, advancing or not (a planning row
     // already at the same/higher count must still leave Watch Later),
     // but leave every other status untouched — preserving
     // rewatching/paused/completed.

@@ -125,8 +125,8 @@
 		if (r.kind === 'connected') {
 			accountStore.setConnected(provider, r.account);
 			// Seed user_list_cache for the rails +
-			// account stats that read from it (Watch Later in PR #2,
-			// progress/score in PR #4). The bearer is good and the token
+			// account stats that read from it (Watch Later,
+			// progress/score). The bearer is good and the token
 			// is already persisted; if this errors the connection is
 			// still valid — we just leave the cache empty and the next
 			// rail/sync mount will warm it. Best-effort, not fatal.
@@ -201,7 +201,7 @@
 		// and the prior `disconnected` state is restored via the
 		// existing restoreAfterFailedConnect path. (The OAuth server
 		// is process-singleton across providers, so we don't need a
-		// provider arg — MAL in PR #3 reuses the same server.)
+		// provider arg — MAL reuses the same server.)
 		await cancelOAuth();
 	}
 
