@@ -62,12 +62,24 @@ fn writes_map_a_stamped_display_back_to_its_slot() {
     // up. Everything else keeps the offset translation.
     let state = make_state();
     put_display(&state, "the-show-77", 0, 4, "3.50");
-    assert_eq!(write_ep_no(&state, "the-show-77", "3.5", 0), "4");
-    assert_eq!(write_ep_no(&state, "the-show-77", "2", 0), "2");
+    assert_eq!(
+        Numbering::read(&state.history_path).write_ep_no("the-show-77", "3.5"),
+        "4"
+    );
+    assert_eq!(
+        Numbering::read(&state.history_path).write_ep_no("the-show-77", "2"),
+        "2"
+    );
     let cont = make_state();
     put_display(&cont, "the-sequel-88", 40, 2, "41.5");
-    assert_eq!(write_ep_no(&cont, "the-sequel-88", "1.5", 40), "2");
-    assert_eq!(write_ep_no(&cont, "the-sequel-88", "1", 40), "41");
+    assert_eq!(
+        Numbering::read(&cont.history_path).write_ep_no("the-sequel-88", "1.5"),
+        "2"
+    );
+    assert_eq!(
+        Numbering::read(&cont.history_path).write_ep_no("the-sequel-88", "1"),
+        "41"
+    );
 }
 
 #[test]

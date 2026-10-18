@@ -77,16 +77,6 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
     Numbering::read(&state.history_path).offset(slug)
 }
 
-/// The ep_no a listing-less writer (mark-watched, cache-hit) should
-/// store for `episode`: the offset translation, except when the
-/// provider-space value names the stamped display tag — by numeric
-/// identity, since the frontend normalizes — in which case the slot
-/// is written instead, because that is what a resume looks the row up
-/// by in the provider listing.
-pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
-    Numbering::read(&state.history_path).write_ep_no_at(slug, episode, offset)
-}
-
 /// The per-entry (Kitsu-space) reading of a stored row: the stamped
 /// slot presents as its display tag translated per-entry; everything
 /// else keeps the plain offset translation.
