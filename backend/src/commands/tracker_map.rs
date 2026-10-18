@@ -43,8 +43,9 @@ mod parts_walk;
 /// Cache key for one show's map on one tracker: the Kitsu id, and what
 /// the map was built against — the entry Kitsu's mappings resolve the
 /// show to with the total the write read for it, or that it resolves to
-/// nothing. A remapped show or a recounted entry is a new key, so a map
-/// never answers for evidence it was not built from.
+/// nothing. A remapped show or a recount of the resolved entry is a new
+/// key; a show resolving to nothing is kept only for the short window,
+/// since its key names no entry.
 #[must_use]
 pub(crate) fn map_key(
     kind: ProviderKind,
