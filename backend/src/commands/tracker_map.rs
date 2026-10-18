@@ -17,9 +17,10 @@
 //!
 //! Nothing here runs on a write whose map is cached, and a cached
 //! identity map costs the write one cache read. The evidence is
-//! gathered — one tracker read for the entry, one per sequel hop, one
-//! Kitsu read per mapping or relationship asked — only on a miss, once
-//! per show per window ([`evidence`] has the walks).
+//! gathered — one tracker read for the entry and one per sequel it names
+//! at each hop, one Kitsu read per mapping or relationship asked, and the
+//! id translations a part's resolution makes — only on a miss, once per
+//! show per window ([`evidence`] has the walks).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -150,7 +151,8 @@ pub(crate) async fn episode_map_for_unresolved(ask: &MapAsk<'_>, kitsu_id: &str)
 }
 
 /// Kitsu's entry as the map reads it, from the detail row the detail
-/// page already cached (a cold read asks Kitsu once).
+/// page caches; a cold row is read as any detail read is — from Kitsu,
+/// and AniList's banner for a show Kitsu has no cover for.
 async fn kitsu_show(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<KitsuShow> {
     let detail =
         super::kitsu::kitsu_anime_detail_with_anilist_base(ask.state, kitsu_id, ask.anilist_base)

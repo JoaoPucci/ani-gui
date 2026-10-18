@@ -29,6 +29,16 @@ entry (`backend/src/account/episode_map_rules.rs`, and `target` in
 Nothing here reads the app's source. When the app and the model
 disagree, one of them is wrong about the document.
 
+What the model does not reach: it models the rules — the map from
+evidence, and each episode's write under the map — and nothing around
+them. How the evidence is gathered (which requests, through which
+caches, a page Kitsu did not list whole), the write path's reads,
+locks, rewatch and monotonic rules, and the cache's keys and windows
+are checked by the Rust tests beside them (`tracker_map_test.rs`,
+`account_mapped_test.rs`, `account_mapped_wire_test.rs`), not here. A
+green comparison says the rules agree with the document; it says
+nothing about those.
+
 ## Running it
 
 From the repository root, with `python3` and the Rust toolchain:
