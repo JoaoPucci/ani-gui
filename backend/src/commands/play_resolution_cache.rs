@@ -165,13 +165,13 @@ use crate::proxy::MediaKind;
 // holds an OAD's stream under a whole episode's number (Noragami's
 // first OAD), and a HEAD-passing hit would keep playing and recording
 // it as that episode; bumping re-resolves.
-// v21 (also): a stitched recap before a cumulatively numbered part is tagged
+// v22: a stitched recap before a cumulatively numbered part is tagged
 // a part earlier ("12.5", not "24.5"), and a second recap between the
-// same episodes has a tag of its own ("12.75"). A v20 row replays
-// without the resolve that puts a history row's stamp from then right,
-// and records no `played` episode for the session to name; bumping
-// makes the first play of each episode a fresh resolve.
-const SCHEMA: &str = "v21";
+// same episodes has a tag of its own ("12.75"). A row from before
+// replays without the resolve that puts a history row's stamp from
+// then right, and records no `played` episode for the session to name;
+// bumping makes the first play of each episode a fresh resolve.
+const SCHEMA: &str = "v22";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

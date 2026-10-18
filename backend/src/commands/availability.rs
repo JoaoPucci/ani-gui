@@ -625,11 +625,11 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
-    // v20: a recap tagged at a continuation's offset ("12.5" under
+    // v21: a recap tagged at a continuation's offset ("12.5" under
     //      offset 12) advertises as the entry's 0.5, and a stitched
     //      split's such recap as the tag between its parts ("12.5",
     //      not "24.5"), a second recap between the same episodes with
-    //      a tag of its own ("12.75"); rows from v19 carry the old
+    //      a tag of its own ("12.75"); rows from before carry the old
     //      extras, and the probe that replaces them puts a history
     //      row's stamp from then right.
     // v20: the extras a provider appends after a show's last episode
@@ -753,7 +753,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v20:{kitsu_id}:{m}")
+    format!("availability:v21:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
