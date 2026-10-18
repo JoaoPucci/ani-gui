@@ -4099,6 +4099,18 @@ async fn until_log(
     }
 }
 
+/// Returns once a transfer has queued behind the lane `queue` watches.
+/// A second spawn in `log` first is the lane let through while held.
+#[cfg(unix)]
+async fn queued_behind_the_lane(queue: &crate::held::Queue, log: &std::path::Path) {
+    tokio::select! {
+        () = queue.joined() => {}
+        lines = until_log(log, "a second spawn", |l| {
+            l.iter().filter(|l| !l.starts_with("done")).count() > 1
+        }) => panic!("a second transfer spawned while the lane was held: {lines:?}"),
+    }
+}
+
 /// The byte-rate limit a logged spawn carries, if any.
 #[cfg(unix)]
 fn rate_limit_of(line: &str) -> Option<&str> {
@@ -4766,6 +4778,9 @@ async fn paced_downloads_take_the_lane_one_at_a_time() {
     let live = std::sync::atomic::AtomicBool::new(true);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -4804,7 +4819,7 @@ async fn paced_downloads_take_the_lane_one_at_a_time() {
     let drive = async {
         let one = until_log(&log, "the first spawn", |l| l.len() == 1).await;
         assert_eq!(concurrency_of(&one[0]), Some("1"), "paced: {one:?}");
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        queued_behind_the_lane(&queue, &log).await;
         let still = std::fs::read_to_string(&log).expect("log");
         assert_eq!(
             still.lines().count(),
@@ -4957,6 +4972,9 @@ async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
     let live = std::sync::atomic::AtomicBool::new(true);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -4994,7 +5012,7 @@ async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
     );
     let drive = async {
         until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        queued_behind_the_lane(&queue, &log).await;
         let still = std::fs::read_to_string(&log).expect("log");
         assert_eq!(
             still.lines().count(),
@@ -5044,6 +5062,9 @@ async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_star
     let live = std::sync::atomic::AtomicBool::new(false);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -5084,7 +5105,7 @@ async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_star
             &pacing,
         );
         let release = async {
-            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            queued_behind_the_lane(&queue, &log).await;
             let still = std::fs::read_to_string(&log).expect("log");
             assert_eq!(
                 still.lines().count(),
@@ -5135,6 +5156,9 @@ async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
     let live = std::sync::atomic::AtomicBool::new(false);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -5172,7 +5196,7 @@ async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
     );
     let drive = async {
         until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        queued_behind_the_lane(&queue, &log).await;
         let still = std::fs::read_to_string(&log).expect("log");
         assert_eq!(
             still.lines().count(),
