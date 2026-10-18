@@ -303,11 +303,15 @@ describe('createCapGateProbe', () => {
 		expect(h.refreshes).toEqual([]);
 		expect(h.superseded).toEqual([5]);
 		expect(h.gate.isProbing(6)).toBe(true);
+		// The sub answer settling leaves the dub lookup the one a later
+		// dub click joins.
+		h.gate.request(4);
+		expect(asked).toEqual(['sub', 'dub']);
 
 		// The dub answer is the one episode 6 is judged against.
 		answers[1](answer(4));
 		await flush();
-		expect(h.cleared).toEqual([]);
+		expect(h.cleared).toEqual([{ episode: 4, count: 4 }]);
 		expect(h.stillGated).toEqual([6]);
 		expect(h.stillGatedCounts).toEqual([4]);
 	});
