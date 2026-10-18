@@ -5,6 +5,7 @@
 use serde::Serialize;
 
 use crate::app::AppState;
+use crate::commands::numbering_offset::Numbering;
 use crate::error::Result;
 
 /// A history row's episode as the read boundary presents it now, and
@@ -27,16 +28,20 @@ pub struct HistoryNumber {
 pub fn history_number(state: &AppState, id: &str) -> Result<Option<HistoryNumber>> {
     // One hold for the row, the pair it reads through and the former
     // tag kept beside the pair: what a writer puts together is read
-    // together.
+    // together. The numbering store is read once, and the row's
+    // number and its former one both come from that read: a repair
+    // takes no history guard, and one landing between two reads would
+    // answer the row's old number as its own former one.
     crate::history::guard::hold(&state.history_path, |_| {
-        let Some(row) = super::history::history_list_held(state)?
+        let numbering = Numbering::read(&state.history_path);
+        let Some(row) = super::history::history_list_through(state, &numbering)?
             .into_iter()
             .find(|e| e.id == id)
         else {
             return Ok(None);
         };
         Ok(Some(HistoryNumber {
-            former_ep_no: former_number(state, id, &row.ep_no),
+            former_ep_no: former_number(&numbering, id, &row.ep_no),
             ep_no: row.ep_no,
         }))
     })
@@ -44,11 +49,11 @@ pub fn history_number(state: &AppState, id: &str) -> Result<Option<HistoryNumber
 
 /// The number a row reading `ep_no` read as before its show's stamp
 /// was put right — while the stamp's row is the episode it reads.
-fn former_number(state: &AppState, slug: &str, ep_no: &str) -> Option<String> {
-    use crate::commands::numbering_offset::{display_stamp, former_stamp, get, kitsu_ep_no};
-    let (_, now) = display_stamp(state, slug)?;
-    let (_, former) = former_stamp(state, slug)?;
-    let offset = get(state, slug);
+fn former_number(numbering: &Numbering, slug: &str, ep_no: &str) -> Option<String> {
+    use crate::commands::numbering_offset::kitsu_ep_no;
+    let (_, now) = numbering.display(slug)?;
+    let (_, former) = numbering.former(slug)?;
+    let offset = numbering.offset(slug);
     let same = |a: &str, b: &str| match (a.parse::<f64>(), b.parse::<f64>()) {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,

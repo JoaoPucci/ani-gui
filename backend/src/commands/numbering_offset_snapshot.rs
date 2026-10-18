@@ -42,4 +42,19 @@ impl Numbering {
         let (slot, _) = row.display.as_ref()?;
         row.former.clone().filter(|(was, _)| was == slot)
     }
+
+    /// The per-entry (Kitsu-space) reading of a stored row: the
+    /// stamped slot presents as its display tag, translated per entry;
+    /// everything else translates by the offset. Offset and stamp come
+    /// from this one read.
+    #[must_use]
+    pub fn read_ep_no(&self, slug: &str, ep_no: &str) -> String {
+        let offset = self.offset(slug);
+        if let Some((slot, tag)) = self.display(slug) {
+            if ep_no.trim() == slot.to_string() {
+                return super::kitsu_ep_no(&tag, offset);
+            }
+        }
+        super::kitsu_ep_no(ep_no, offset)
+    }
 }

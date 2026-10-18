@@ -97,13 +97,7 @@ pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> 
 /// slot presents as its display tag translated per-entry; everything
 /// else keeps the plain offset translation.
 pub fn read_ep_no(state: &AppState, slug: &str, ep_no: &str) -> String {
-    let offset = get(state, slug);
-    if let Some((slot, tag)) = display_stamp(state, slug) {
-        if ep_no.trim() == slot.to_string() {
-            return kitsu_ep_no(&tag, offset);
-        }
-    }
-    kitsu_ep_no(ep_no, offset)
+    Numbering::read(&state.history_path).read_ep_no(slug, ep_no)
 }
 
 /// Kitsu-relative episode → the provider's number, for history
