@@ -99,7 +99,14 @@ export class QualityGovernor extends QualityHold {
 		if (blame) this.unavailable.add(this.current);
 		// A pin on the level left moves to where the engine went; one the
 		// engine moved above can no longer be honoured and is let go.
-		this.pinLevel = followedPin(this.ladder, this.unavailable, this.pinLevel, this.current, level);
+		this.pinLevel = followedPin(
+			this.ladder,
+			this.unavailable,
+			this.pinLevel,
+			this.current,
+			level,
+			blame
+		);
 		// Left below a pin it can return to, the play is in a fall: the
 		// climb window opens and widens, as after a step down. An Auto
 		// play has nothing to return to that the engine did not judge.
