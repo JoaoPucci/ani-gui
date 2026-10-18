@@ -15,7 +15,9 @@
  *   success — navigation unmounts the page; failure clears busy and
  *   reports through onFailure. A click whose navigation claim lapsed
  *   meanwhile (claimNavigation) neither navigates nor reports, and
- *   clears busy.
+ *   clears busy; one that lapsed before its play was asked for asks
+ *   for none, and records nothing. onFailure gets the claim, to ask
+ *   once the failure is worded.
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
@@ -193,6 +195,13 @@ export function makeStartResume(
 		}
 
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
+		// The viewer moved on while the click was still settling what to
+		// play: no play has begun, so none is resolved, started or
+		// recorded.
+		if (!stillHere()) {
+			deps.onBusy(null);
+			return;
+		}
 		deps.markStarted?.(match.id, episode, entry.id);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
@@ -227,7 +236,7 @@ export function makeStartResume(
 			// after a cache lookup, and a card left idle meanwhile would
 			// take a second click whose play the late message then covers.
 			try {
-				await deps.onFailure(title, e, args);
+				await deps.onFailure(title, e, args, stillHere);
 			} finally {
 				deps.onBusy(null);
 			}

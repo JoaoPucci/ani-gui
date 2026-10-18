@@ -1513,7 +1513,10 @@
 	 *  click still belongs to this visit after. */
 	async function resumeRowSettled(): Promise<boolean> {
 		const atVisit = visit;
-		const current = () => visit === atVisit && !gone;
+		// A navigation started during the wait leaves the click behind
+		// too: the play claims afresh after it, too late to notice.
+		const here = navigationClaims.claim();
+		const current = () => visit === atVisit && !gone && here();
 		resumeWaiting = true;
 		try {
 			await settledWithin(resumeRefresh, RESUME_WAIT_MS, current);
