@@ -57,4 +57,23 @@ impl Numbering {
         }
         super::kitsu_ep_no(ep_no, offset)
     }
+
+    /// The ep_no a listing-less writer stores for `episode`
+    /// ([`super::write_ep_no`]), under the offset this read carries.
+    #[must_use]
+    pub fn write_ep_no(&self, slug: &str, episode: &str) -> String {
+        self.write_ep_no_at(slug, episode, self.offset(slug))
+    }
+
+    /// [`Self::write_ep_no`] under an offset the caller names.
+    #[must_use]
+    pub fn write_ep_no_at(&self, slug: &str, episode: &str, offset: u32) -> String {
+        let provider = super::provider_ep_no(episode, offset);
+        if let Some((slot, tag)) = self.display(slug) {
+            if super::super::play_native_episode::tag_matches(&tag, &provider) {
+                return slot.to_string();
+            }
+        }
+        provider
+    }
 }

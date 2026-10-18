@@ -84,13 +84,7 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
 /// is written instead, because that is what a resume looks the row up
 /// by in the provider listing.
 pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
-    let provider = provider_ep_no(episode, offset);
-    if let Some((slot, tag)) = display_stamp(state, slug) {
-        if super::play_native_episode::tag_matches(&tag, &provider) {
-            return slot.to_string();
-        }
-    }
-    provider
+    Numbering::read(&state.history_path).write_ep_no_at(slug, episode, offset)
 }
 
 /// The per-entry (Kitsu-space) reading of a stored row: the stamped

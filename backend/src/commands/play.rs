@@ -130,18 +130,14 @@ fn write_history_on_cache_hit(
     }
     // the history file speaks the provider's numbering; the offset was
     // stamped by the fresh resolve that wrote this cache row.
-    let offset = crate::commands::numbering_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The row's own slot when it carries one; older rows fall
-        // back to the stamp-aware translation.
+        // back to the stamp-aware translation, offset and stamp from
+        // one read of the store.
         ep_no: cached.resolved_slot.map_or_else(
             || {
-                crate::commands::numbering_offset::write_ep_no(
-                    state,
-                    &cached.show_id,
-                    &args.episode,
-                    offset,
-                )
+                crate::commands::numbering_offset::Numbering::read(&state.history_path)
+                    .write_ep_no(&cached.show_id, &args.episode)
             },
             |slot| slot.to_string(),
         ),
