@@ -144,6 +144,27 @@ impl wiremock::Respond for Held {
     }
 }
 
+/// Returns once `lock` has more than `handles` handles on it.
+///
+/// A lock handed out as an `Arc` from a map — a row's, a show's — is
+/// cloned by whoever waits for it and kept for the wait, so a handle
+/// over the ones the map and the test keep is a waiter at the lock, or
+/// its holder. For a test that holds the lock, that is a waiter behind
+/// it, with no step left before the wait that could let it through.
+///
+/// # Panics
+/// When no waiter has come within [`QUEUE_DEADLINE`].
+pub(crate) async fn shared<T>(lock: &Arc<T>, handles: usize) {
+    let deadline = tokio::time::Instant::now() + QUEUE_DEADLINE;
+    while Arc::strong_count(lock) <= handles {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "nothing came to the lock"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+}
+
 /// Waits that found their lock taken, counted by what the lock is
 /// known by ([`queued`]).
 ///
@@ -303,4 +324,18 @@ fn a_lock_in_memory_is_known_by_where_it_is() {
     let (a, b) = (Mutex::new(()), Mutex::new(()));
     assert_eq!(lock_key(&a), lock_key(&a));
     assert_ne!(lock_key(&a), lock_key(&b));
+}
+
+#[tokio::test]
+async fn a_waiter_for_a_shared_lock_is_seen_at_it() {
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    let held = lock.lock().await;
+    let waiter = {
+        let lock = Arc::clone(&lock);
+        tokio::spawn(async move { drop(lock.lock().await) })
+    };
+    shared(&lock, 1).await;
+    assert!(!waiter.is_finished(), "behind the lock");
+    drop(held);
+    waiter.await.expect("let through");
 }

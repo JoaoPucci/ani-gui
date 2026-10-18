@@ -2484,17 +2484,9 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
     // ours, which only a waiter for it, or its holder, keeps. Nothing
     // may be in the row: the decision about it is not this lookup's
     // to make yet.
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-    while Arc::strong_count(&held) < 3 {
-        assert!(
-            !bg.is_finished(),
-            "the lookup ended without waiting for the row"
-        );
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the lookup never came to the row"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    tokio::select! {
+        () = crate::held::shared(&held, 2) => {}
+        ended = &mut bg => panic!("the lookup ended without waiting for the row: {ended:?}"),
     }
     assert!(
         meta_cache_get(&state.cache_pool, &row)
