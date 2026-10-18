@@ -2005,6 +2005,9 @@
 		switchesStarted += 1;
 		switchBusy = true;
 		switchProgress = null;
+		// Cleared for the stream the switch brings; kept to put back if
+		// the switch fails and the failed stream stays on screen.
+		const errorBefore = playerError;
 		playerError = null;
 		try {
 			// Hits the play-cache: ep+1 was prefetched on mount, so the
@@ -2030,6 +2033,9 @@
 			// failure says nothing: it is about a visit the viewer left.
 			if (outcome.kind === 'failed') {
 				playFailure = { episode: targetEp, message: outcome.message };
+				// Nothing replaced the stream on screen: its error, and the
+				// Reload with it, still stand.
+				playerError ??= errorBefore;
 				return;
 			}
 			if (outcome.kind === 'abandoned') return;
