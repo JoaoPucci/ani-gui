@@ -20,6 +20,7 @@
 	"episode_placeholder_meta": "—",
 	"episode_placeholder_title": "Episode {num}",
 	"episode_title_fallback": "Episode {num}",
+	"episode_extra_title_fallback": "Extra {num}",
 	"episodes_error_message": "Episode metadata unavailable from Kitsu — playable list above is a fallback.",
 	"episodes_heading": "Episodes",
 	"episodes_jump_label": "jump",

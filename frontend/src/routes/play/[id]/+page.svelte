@@ -121,11 +121,14 @@
 	import {
 		extraOnPage,
 		nextEpisode,
+		extraNumbers,
+		stepAllowed,
 		parseEpisodeNumber,
 		previousEpisode,
 		stripColumns,
 		wholeEpisodeCount
 	} from '$lib/play/episode-number';
+	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
 	import {
@@ -1254,10 +1257,11 @@
 	// so the next arrow and auto-play-next can't walk into a greyed
 	// tile. Unknown airing passes the cap through untouched.
 	const totalEpisodes = $derived(airedCap(episodeCap, airing));
-	const prevEpisodeNum = $derived(previousEpisode(episodeNum));
-	const nextEpisodeNum = $derived(nextEpisode(episodeNum));
+	const extraNums = $derived(extraNumbers(extraEpisodes));
+	const prevEpisodeNum = $derived(previousEpisode(episodeNum, extraNums));
+	const nextEpisodeNum = $derived(nextEpisode(episodeNum, extraNums));
 	const hasPrev = $derived(prevEpisodeNum >= 1);
-	const hasNext = $derived(totalEpisodes === null || nextEpisodeNum <= totalEpisodes);
+	const hasNext = $derived(stepAllowed(nextEpisodeNum, totalEpisodes, extraNums));
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the
@@ -2177,7 +2181,8 @@
 		const decision = decideAutoPlayNext({
 			enabled: autoPlayNext,
 			episodeNum,
-			totalEpisodes
+			totalEpisodes,
+			extras: extraNums
 		});
 		if (decision.advance) {
 			void switchToEpisode(decision.target);
@@ -3543,7 +3548,12 @@
 											{/if}
 										</span>
 										<span class="ep-card-foot-title">
-											{ep.canonical_title ?? m.play_episode_card_title_fallback({ num: String(n) })}
+											{ep.canonical_title ??
+												fallbackTileTitle(
+													n,
+													(x) => m.play_episode_card_title_fallback({ num: x }),
+													(x) => m.play_episode_card_extra_title_fallback({ num: x })
+												)}
 										</span>
 									</span>
 								</button>

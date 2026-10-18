@@ -60,6 +60,7 @@ fn fallback_with_one_episode() -> Arc<TableProvider> {
                     id: 7001,
                     number: 1,
                     number2: None,
+                    title: None,
                 }],
             ),
     )

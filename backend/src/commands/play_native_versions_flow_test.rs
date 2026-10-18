@@ -58,6 +58,7 @@ async fn resolve(
             year: Some(YEAR),
             subtype: Some("TV"),
             version,
+            tail: None,
         },
         &mut |_| {},
     )
@@ -120,7 +121,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
     .expect("play args");
     assert_eq!(play.version, Some(VersionKind::Standard));
     assert_eq!(
-        play.native_request("best").version,
+        play.native_request("best", None).version,
         Some(VersionKind::Standard)
     );
     let download: crate::commands::download::DownloadArgs =
@@ -129,7 +130,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
         }))
         .expect("download args");
     assert_eq!(
-        download.native_request("best").version,
+        download.native_request("best", None).version,
         Some(VersionKind::Uncensored)
     );
 }
@@ -297,6 +298,7 @@ async fn resolve_in(
             year: Some(YEAR),
             subtype: Some("TV"),
             version,
+            tail: None,
         },
         &mut |_| {},
     )

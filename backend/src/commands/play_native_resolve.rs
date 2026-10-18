@@ -131,6 +131,10 @@ pub struct NativeResolveRequest<'a> {
     /// The version to play when the pick has several; `None` plays
     /// the pick's default.
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// Where the evidence about the entry's last episodes comes from,
+    /// when the caller knows the entry
+    /// ([`super::play_native_appended`]).
+    pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -228,7 +232,15 @@ where
                 .await
                 {
                     Ok(picked) => {
-                        let picked = picked.choose(req.version);
+                        // The version asked for first, so the listing
+                        // the appended-extras rule reads is the one that
+                        // plays.
+                        let picked = super::play_native_appended::fit_appended(
+                            picked.choose(req.version),
+                            req.expected_count,
+                            req.tail,
+                        )
+                        .await;
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });

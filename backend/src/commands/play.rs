@@ -134,7 +134,11 @@ impl PlayArgs {
 
     /// The native resolve this play asks for, at `quality`.
     #[must_use]
-    pub fn native_request<'a>(&'a self, quality: &'a str) -> NativeResolveRequest<'a> {
+    pub fn native_request<'a>(
+        &'a self,
+        quality: &'a str,
+        tail: Option<&'a dyn super::play_native_appended::TailSource>,
+    ) -> NativeResolveRequest<'a> {
         NativeResolveRequest {
             title: &self.title,
             alt_titles: &self.alt_titles,
@@ -145,6 +149,7 @@ impl PlayArgs {
             year: self.year,
             subtype: self.subtype.as_deref(),
             version: self.version,
+            tail,
         }
     }
 }
@@ -353,7 +358,12 @@ where
     // bounded probing, episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
-    let request = args.native_request(quality);
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let request = args.native_request(
+        quality,
+        tail.as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
+    );
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
     // that accepts connections but stalls every request must not
