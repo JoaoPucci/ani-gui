@@ -399,10 +399,11 @@ describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 		g.start();
 		expect(g.fragmentsFailed(1, 1_000)?.level).toBe(0);
 		expect(g.isPinned).toBe(true);
-		// A stall under a pin steps nothing further down.
+		// A stall under a pin steps nothing further down, but it is
+		// trouble: the healthy window runs from it.
 		expect(g.stall(5_000)).toBeNull();
-		expect(g.healthy(1_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
-		expect(g.healthy(1_000 + HEALTHY_WINDOWS_MS[0], FULL)).toEqual({
+		expect(g.healthy(5_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(g.healthy(5_000 + HEALTHY_WINDOWS_MS[0], FULL)).toEqual({
 			level: 1,
 			from: 0,
 			reason: 'healthy',
@@ -494,6 +495,40 @@ describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 		const t1 = 1_000 + HEALTHY_WINDOWS_MS[0];
 		expect(g.healthy(t1, FULL)?.level).toBe(1);
 		expect(g.healthy(t1 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
+	});
+
+	it('a stall under a pin steps nothing down but restarts the climb window, as for Auto', () => {
+		const g = governor(BEST, 1080);
+		g.start();
+		g.fragmentsFailed(2, 1_000);
+		const stalledAt = 1_000 + HEALTHY_WINDOWS_MS[0] - 5_000;
+		expect(g.stall(stalledAt)).toBeNull();
+		expect(g.level).toBe(1);
+		// The window runs from the stall, not from the fall.
+		expect(g.healthy(1_000 + HEALTHY_WINDOWS_MS[0], FULL)).toBeNull();
+		expect(g.healthy(stalledAt + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(g.healthy(stalledAt + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
+		// At the pin, a stall moves nothing either.
+		expect(g.stall(10_000_000)).toBeNull();
+		expect(g.level).toBe(2);
+	});
+
+	it('a removal that re-seats the hold restarts the climb window, pinned or not', () => {
+		const auto = governor();
+		auto.start();
+		auto.stall(10_000);
+		auto.remap([0, -1, 1], [MASTER[0], MASTER[2]], 50_000);
+		expect(auto.level).toBe(0);
+		expect(auto.healthy(50_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(auto.healthy(50_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(1);
+		const pinned = governor(BEST, 1080);
+		pinned.start();
+		pinned.fragmentsFailed(2, 10_000);
+		pinned.remap([0, -1, 1], [MASTER[0], MASTER[2]], 50_000);
+		expect(pinned.level).toBe(0);
+		expect(pinned.pinnedLevel).toBe(1);
+		expect(pinned.healthy(50_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(pinned.healthy(50_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(1);
 	});
 
 	it('an Auto play the engine moved down over its audio does not climb', () => {

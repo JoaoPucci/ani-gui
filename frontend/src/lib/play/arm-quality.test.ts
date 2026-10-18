@@ -787,6 +787,24 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.lastView()?.pinned).toBe(0);
 	});
 
+	it('a removal that re-seats the hold restarts the climb window', () => {
+		const s = armObjects();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.at(50_000);
+		s.remove(1);
+		const before = s.engine.loads.length;
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(50_000 + HEALTHY_WINDOWS_MS[0] - 1);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
+		expect(s.engine.loads.length).toBe(before);
+		s.at(50_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
+		// 1080p is level 1 of the two left.
+		expect(s.engine.loads.slice(before)).toEqual([1]);
+	});
+
 	it('a removal leaving only levels that failed releases the choice rather than forcing one', async () => {
 		const s = armObjects();
 		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: true, level: 0 });
