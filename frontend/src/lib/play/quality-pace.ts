@@ -12,7 +12,7 @@
  * |--------------------------------|------------------------|---------------------------------------|-----------------------------|
  * | Stall outside a seek's grace   | steps down, or stays   | stays                                 | step: widens; stay: restarts|
  * | Stall inside a seek's grace    | ignored                | ignored                               | —                           |
- * | Segments fail (the hold)       | steps down / release   | steps down / release                  | widens                      |
+ * | Segments fail (the hold)       | steps down / release   | steps down / release                  | step: widens; release: —    |
  * | Playlist fails (the hold)      | nearest loadable level | same; a pin on it moves down          | restarts                    |
  * | Switch over a side rendition   | follows                | follows; pin kept above: a fall       | restarts; that fall: widens |
  * | Removal re-seats the hold      | nearest survivor       | nearest survivor, pin carried         | restarts (kept level: no)   |
