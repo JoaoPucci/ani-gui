@@ -1070,10 +1070,10 @@ fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() 
 }
 
 #[test]
-fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
-    // A watch's writes go in under the history guard. A reader that
-    // starts between two of them waits for both: it never reads the
-    // row half-written.
+fn a_list_read_while_a_writer_holds_the_guard_waits_for_it() {
+    // A list read takes the guard every writer holds: one that starts
+    // inside a writer's hold waits for the hold to end, and reads what
+    // the writer left, however many writes the hold makes.
     let td = tempfile::tempdir().expect("td");
     let state = make_state(td.path().join("history"));
     let show = "hianime:stitched-show-4";
