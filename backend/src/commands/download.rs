@@ -262,6 +262,10 @@ where
     let resolved =
         match crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await {
             Ok(attempted) => {
+                // As a play does: a stamp an earlier version wrote with
+                // a stitched row's former tag reads right — before the
+                // row a probe would take instead of the listing.
+                crate::commands::numbering_offset::retag_from_resolve(state, &attempted.value);
                 // A served stream is a positive availability fact naming
                 // the provider that served it — the next operation for
                 // the show starts there, not from a primary whose clean
@@ -295,9 +299,6 @@ where
             }
         };
 
-    // As a play does: a stamp an earlier version wrote with a stitched
-    // row's former tag reads right.
-    crate::commands::numbering_offset::retag_from_resolve(state, &resolved);
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,

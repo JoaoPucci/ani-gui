@@ -387,6 +387,20 @@ where
             return Err(ne.error);
         }
     };
+    // Only a play that records its watch moves the display stamp, and
+    // prefetches stay out of the user's history. Both put the numbering
+    // right before anything is cached: a probe that takes the fresh
+    // availability row fetches no listing to repair it from.
+    if args.prefetch {
+        crate::commands::play_native_record::stamp_numbering(state, &native, asked);
+    } else {
+        crate::commands::play_native_record::record_fresh_watch(
+            state,
+            &native,
+            &args.episode,
+            asked,
+        );
+    }
     // A successful resolve is a positive availability fact, same
     // guard — carrying the episode cap the native episodes list
     // already paid for.
@@ -400,18 +414,6 @@ where
         &native.extra_tags,
     )
     .await;
-    // Only a play that records its watch moves the display stamp, and
-    // prefetches stay out of the user's history.
-    if args.prefetch {
-        crate::commands::play_native_record::stamp_numbering(state, &native, asked);
-    } else {
-        crate::commands::play_native_record::record_fresh_watch(
-            state,
-            &native,
-            &args.episode,
-            asked,
-        );
-    }
 
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
         detail: format!("upstream_url: {} is not a valid URL", native.master_url),
