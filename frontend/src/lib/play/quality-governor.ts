@@ -48,11 +48,13 @@ export class QualityGovernor extends QualityHold {
 
 	/** Playback stalled with nothing buffered. */
 	stall(now: number): QualityMove | null {
-		if (!this.engaged || this.pinLevel !== null || this.pace.inSeekGrace(now)) return null;
-		const lower = this.pace.coolingDown(now) ? null : this.neighbour(this.current, -1);
-		// A stall that moves nothing — at the lowest level, or inside the
-		// cooldown — is trouble all the same: the climb waits for a
-		// window without any.
+		if (!this.engaged || this.pace.inSeekGrace(now)) return null;
+		// A pin is never stepped down for a stall.
+		const held = this.pinLevel !== null || this.pace.coolingDown(now);
+		const lower = held ? null : this.neighbour(this.current, -1);
+		// A stall that moves nothing — under a pin, at the lowest level,
+		// or inside the cooldown — is trouble all the same: the climb
+		// waits for a window without any.
 		if (lower === null) {
 			this.pace.troubled(now);
 			return null;

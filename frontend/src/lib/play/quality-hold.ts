@@ -93,7 +93,6 @@ export abstract class QualityHold {
 	/** hls.js removed levels: every index held is carried to the levels
 	 *  left (`quality-remap.ts`). */
 	remap(mapping: readonly number[], levels: readonly LadderLevel[], now: number): void {
-		void now;
 		const held = {
 			ladder: this.ladder,
 			ceiling: this.ceiling,
@@ -109,6 +108,9 @@ export abstract class QualityHold {
 		this.engaged = next.engaged;
 		this.pinLevel = next.pinLevel;
 		this.unavailable = next.unavailable;
+		// A hold re-seated on a level that has proven nothing restarts the
+		// climb window, as any other move to one does.
+		if (next.current !== held.current) this.settled(now);
 	}
 
 	/** The level to start at. */

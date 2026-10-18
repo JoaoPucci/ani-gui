@@ -3,6 +3,23 @@
  * seek gets, the cooldown between steps down, and the healthy window
  * before a step back up, which doubles with every step down so a
  * level that cannot be held is retried less and less often.
+ *
+ * The window restarts on every sign of trouble and on every move to a
+ * level that has proven nothing yet, for an Auto play and a pinned
+ * play alike — the two paths differ only in what moves the level:
+ *
+ * | Event                              | Auto                 | Pinned                          | Window      |
+ * |------------------------------------|----------------------|---------------------------------|-------------|
+ * | Stall outside a seek's grace       | steps down, or stays | stays                           | restarts    |
+ * | Stall inside a seek's grace        | ignored              | ignored                         | —           |
+ * | Segments fail (the hold)           | steps down / release | steps down / release            | step: widen |
+ * | Playlist fails (the hold)          | nearest level        | nearest level, pin demoted      | restarts    |
+ * | Switch over a side rendition       | follows, no climb    | follows; pin kept: a fall       | pinned: widen |
+ * | Removal re-seats the hold          | nearest survivor     | nearest survivor, pin carried   | restarts    |
+ * | Healthy climb                      | one level, to ceiling| one level, to the pin           | restarts    |
+ * | Pick / Auto                        | Auto: fresh start    | pin = pick, no window           | Auto: reset |
+ *
+ * "Widen" counts a fall: the next window is the next longer one.
  */
 
 /** A stall this soon after a seek is the seek's own wait for media,
