@@ -42,3 +42,11 @@ export function createNavigationClaims(): NavigationClaims {
 		}
 	};
 }
+
+/** The claim `claim` takes now; with no claim to take, one that always
+ *  holds. For an action whose page may not report navigation. */
+export function claimOrHold(claim: (() => () => boolean) | undefined): () => boolean {
+	return claim ? claim() : holds;
+}
+
+const holds = () => true;

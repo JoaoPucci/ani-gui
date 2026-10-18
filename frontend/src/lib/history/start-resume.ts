@@ -22,6 +22,7 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
 import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
+import { claimOrHold } from '$lib/navigation/claims';
 
 export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
@@ -130,7 +131,7 @@ export function makeStartResume(
 		if (deps.isBusy()) return;
 		const title = match.canonical_title;
 		if (!title) return;
-		const stillHere = deps.claimNavigation?.() ?? (() => true);
+		const stillHere = claimOrHold(deps.claimNavigation);
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNavigationClaims } from './claims';
+import { claimOrHold, createNavigationClaims } from './claims';
 
 describe('createNavigationClaims', () => {
 	it('holds a claim while the viewer stays', () => {
@@ -41,5 +41,18 @@ describe('createNavigationClaims', () => {
 		claims.started();
 		claims.started();
 		expect(claims.epoch).toBe(before + 2);
+	});
+});
+
+describe('claimOrHold', () => {
+	it('takes the claim it is given', () => {
+		const claims = createNavigationClaims();
+		const here = claimOrHold(() => claims.claim());
+		claims.started();
+		expect(here()).toBe(false);
+	});
+
+	it('holds when there is no claim to take', () => {
+		expect(claimOrHold(undefined)()).toBe(true);
 	});
 });
