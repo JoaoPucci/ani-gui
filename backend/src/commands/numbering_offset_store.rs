@@ -107,7 +107,17 @@ pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> s
             .truncate(false)
             .write(true)
             .open(lock_path(&path))?;
-        fs4::FileExt::lock(&lock_file)?;
+        match fs4::FileExt::try_lock(&lock_file) {
+            Ok(()) => {}
+            Err(fs4::TryLockError::WouldBlock) => {
+                // Taken: say so to a test holding it, which can then
+                // tell this wait from a put still on its way.
+                #[cfg(test)]
+                crate::held::queued(&lock_path(&path).display().to_string());
+                fs4::FileExt::lock(&lock_file)?;
+            }
+            Err(fs4::TryLockError::Error(e)) => return Err(e),
+        }
         // A missing store is an empty one. Any other read failure ends
         // the rewrite: a store that exists but cannot be read rewritten
         // from nothing would lose every show's offset.
