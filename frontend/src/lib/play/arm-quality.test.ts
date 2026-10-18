@@ -805,6 +805,20 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.engine.loads.slice(before)).toEqual([1]);
 	});
 
+	it('a removal that keeps the held level under a new index leaves the climb window running', () => {
+		const s = armObjects();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.at(20_000);
+		s.remove(0);
+		const before = s.engine.loads.length;
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(10_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
+		expect(s.engine.loads.slice(before)).toEqual([1]);
+	});
+
 	it('a removal leaving only levels that failed releases the choice rather than forcing one', async () => {
 		const s = armObjects();
 		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: true, level: 0 });

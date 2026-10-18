@@ -531,6 +531,51 @@ describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 		expect(pinned.healthy(50_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(1);
 	});
 
+	it('a re-seat is a re-seat whatever index it lands on, and a kept level is no re-seat', () => {
+		// The lowest level removed with the hold on it: the hold re-seats
+		// above, at 720p, whose new index equals the old one. A re-seat.
+		const above = governor();
+		above.start();
+		above.stall(10_000);
+		above.stall(18_000);
+		expect(above.level).toBe(0);
+		above.remap([-1, 0, 1], [MASTER[1], MASTER[2]], 50_000);
+		expect(above.level).toBe(0);
+		expect(above.healthy(50_000 + HEALTHY_WINDOWS_MS[1] - 1, FULL)).toBeNull();
+		expect(above.healthy(50_000 + HEALTHY_WINDOWS_MS[1], FULL)?.level).toBe(1);
+		// The same under a pin carried above the hold.
+		const pinned = governor(BEST, 1080);
+		pinned.start();
+		pinned.fragmentsFailed(2, 1_000);
+		pinned.fragmentsFailed(1, 2_000);
+		pinned.remap([-1, 0, 1], [MASTER[1], MASTER[2]], 50_000);
+		expect(pinned.pinnedLevel).toBe(1);
+		expect(pinned.healthy(50_000 + HEALTHY_WINDOWS_MS[1] - 1, FULL)).toBeNull();
+		expect(pinned.healthy(50_000 + HEALTHY_WINDOWS_MS[1], FULL)?.level).toBe(1);
+		// The lowest level removed with the hold on 720p: the hold keeps its
+		// level under a new index. No re-seat: the window runs on.
+		const kept = governor();
+		kept.start();
+		kept.stall(10_000);
+		kept.remap([-1, 0, 1], [MASTER[1], MASTER[2]], 20_000);
+		expect(kept.level).toBe(0);
+		expect(kept.healthy(10_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(1);
+		// A master listed highest first: the survivor below has the index
+		// the hold had. A re-seat.
+		const descending = [
+			{ height: 1080, bitrate: 5_000_000 },
+			{ height: 720, bitrate: 2_500_000 },
+			{ height: 360, bitrate: 800_000 }
+		];
+		const down = new QualityGovernor(descending, BEST, null);
+		down.start();
+		expect(down.stall(10_000)?.level).toBe(1);
+		down.remap([0, -1, 1], [descending[0], descending[2]], 20_000);
+		expect(down.level).toBe(1);
+		expect(down.healthy(20_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(down.healthy(20_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(0);
+	});
+
 	it('an Auto play the engine moved down over its audio does not climb', () => {
 		const g = governor();
 		g.start();
