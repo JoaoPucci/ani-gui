@@ -273,6 +273,45 @@ describe('createCapGateProbe', () => {
 		expect(superseded).toEqual([5]);
 	});
 
+	it('does not hand a click in dub the sub lookup still out', async () => {
+		// A click in sub sends the lookup; settings land on dub while it
+		// is out, and a click there asks about dub. Joining the sub
+		// lookup would answer that click with the sub count — and its
+		// context check would pass, since the context is dub's again by
+		// the time the answer lands.
+		const answers: ((a: CapGateAnswer | null) => void)[] = [];
+		const asked: string[] = [];
+		const h = harness(() => {
+			asked.push(h.showing.mode);
+			return new Promise<CapGateAnswer | null>((r) => answers.push(r));
+		});
+		h.gate.request(5);
+		h.showing.mode = 'dub';
+		h.gate.request(6);
+		expect(asked).toEqual(['sub', 'dub']);
+
+		const answer = (count: number) => ({
+			count,
+			approximate: false,
+			available: true,
+			extraEpisodes: []
+		});
+		// The sub answer reaches episode 6, and lands while the page is in dub.
+		answers[0](answer(12));
+		await flush();
+		expect(h.cleared).toEqual([]);
+		expect(h.refreshes).toEqual([]);
+		expect(h.superseded).toEqual([5]);
+		expect(h.gate.isProbing(6)).toBe(true);
+
+		// The dub answer is the one episode 6 is judged against.
+		answers[1](answer(4));
+		await flush();
+		expect(h.cleared).toEqual([]);
+		expect(h.stillGated).toEqual([6]);
+		expect(h.stillGatedCounts).toEqual([4]);
+	});
+
 	it('hands back a confirmed short count so the strip can correct itself', async () => {
 		const d = deferredProbe();
 		const { gate, stillGated, stillGatedCounts } = harness(d.probe);
