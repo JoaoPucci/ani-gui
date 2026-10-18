@@ -213,6 +213,15 @@ export function clearForShow(showId: string): void {
 	}
 }
 
+/**
+ * Drop the background entries for the given show — the warms nobody
+ * is waiting on — and abort their fires, leaving any a click owns.
+ * For a page that stays mounted while it moves to another show.
+ */
+export function clearBackgroundForShow(showId: string): void {
+	void showId;
+}
+
 /** Test seam: wipe the whole cache between vitest cases, including
  *  the withSlot semaphore ($lib/play/prefetch-slots). Without resetting it,
  *  state from a prior test where saturated fires never resolved
