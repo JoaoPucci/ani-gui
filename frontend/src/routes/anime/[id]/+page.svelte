@@ -91,6 +91,7 @@
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { createShowReleases } from '$lib/play/show-release';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -990,9 +991,9 @@
 	// abandoned resolves from holding provider slots after the
 	// user navigates away — clearForShow aborts each entry's signal
 	// which closes the SSE EventSource and rejects the promise.
-	onDestroy(() => {
-		if (id) clearForShow(id);
-	});
+	const showReleases = createShowReleases(clearForShow);
+	showReleases.showing(() => id);
+	onDestroy(showReleases.leave);
 
 	// Re-fetch detail + similar when the URL `id` changes. SvelteKit
 	// reuses this component for /anime/[a] → /anime/[b] navigations

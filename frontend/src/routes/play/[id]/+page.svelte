@@ -92,6 +92,7 @@
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { createShowReleases } from '$lib/play/show-release';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
@@ -1777,6 +1778,8 @@
 		}
 	});
 
+	const showReleases = createShowReleases(clearForShow);
+	showReleases.showing(() => id);
 	onDestroy(() => {
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
@@ -1786,7 +1789,7 @@
 		sourceScope.flush();
 		teardown();
 		releasePlayerVideo(ownVideo);
-		if (id) clearForShow(id);
+		showReleases.leave();
 	});
 
 	// describeError / describePlayFailure live in $lib/play/error-copy
