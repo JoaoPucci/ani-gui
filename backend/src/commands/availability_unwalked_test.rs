@@ -29,6 +29,7 @@ fn walked() -> Arc<TableProvider> {
             id: 7000 + u64::from(n),
             number: n,
             number2: None,
+            former_tag: None,
             title: None,
         })
         .collect();

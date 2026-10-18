@@ -33,6 +33,24 @@ pub(crate) fn portable_name(tag: &str) -> Option<String> {
     }
 }
 
+/// The name an episode's download takes in `dest`: `"{title} Episode
+/// {episode}"`, or the one an earlier version gave it, numbered
+/// `former`, when a file under that name is already there — that file
+/// is the episode.
+#[must_use]
+pub(crate) fn episode_stem(
+    dest: &std::path::Path,
+    title: &str,
+    episode: &str,
+    former: Option<&str>,
+) -> String {
+    let stem = |n: &str| format!("{title} Episode {n}");
+    former
+        .map(stem)
+        .filter(|s| std::fs::symlink_metadata(dest.join(format!("{s}.mp4"))).is_ok())
+        .unwrap_or_else(|| stem(episode))
+}
+
 #[cfg(test)]
 #[path = "download_names_test.rs"]
 mod tests;

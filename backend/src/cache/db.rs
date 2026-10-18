@@ -164,6 +164,8 @@ pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>
 /// # Errors
 /// [`AniError::Cache`] on write failure.
 pub fn meta_cache_put(pool: &SqlitePool, key: &str, body: &str, ttl_seconds: u64) -> Result<()> {
+    #[cfg(test)]
+    super::put_observer::saw(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let ttl_i64 = i64::try_from(ttl_seconds).unwrap_or(i64::MAX);
     conn.execute(

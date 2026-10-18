@@ -20,6 +20,7 @@ import {
 	historyClear,
 	historyDelete,
 	historyList,
+	historyNumber,
 	imageCacheClear,
 	imageProxyUrl,
 	kitsuAnimeBySlug,
@@ -1379,6 +1380,16 @@ describe('apiBase resolution', () => {
 // load-bearing contract — a stray `?episode_count=undefined` or a
 // missing `kitsu_id` segment surfaces as a 4xx the user never gets a
 // good error for. Pinning the URL prevents that drift.
+
+describe('historyNumber', () => {
+	it('GETs /api/history/<id>/number and returns what the row reads as', async () => {
+		const fetchMock = mockFetchOnce({ ep_no: '12.5', former_ep_no: '24.5' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await historyNumber('hianime:show-4');
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/history/hianime%3Ashow-4/number`);
+		expect(got).toEqual({ ep_no: '12.5', former_ep_no: '24.5' });
+	});
+});
 
 describe('historyByKitsu', () => {
 	it('GETs /api/history/by-kitsu/<id> and returns the parsed entry', async () => {

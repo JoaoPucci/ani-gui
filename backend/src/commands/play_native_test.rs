@@ -130,6 +130,7 @@ fn tagged_episodes() -> TableProvider {
             id: 900 + i as u64,
             number: 13 + i as u32,
             number2: Some((*tag).to_string()),
+            former_tag: None,
             title: None,
         });
     }

@@ -37,6 +37,7 @@ fn listing(n: u64) -> Vec<EpisodeRef> {
             id: i,
             number: u32::try_from(i).expect("small"),
             number2: None,
+            former_tag: None,
             title: None,
         })
         .collect()

@@ -66,6 +66,17 @@ pub struct CreateSessionResponse {
     /// The version that played, when there are several.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The app's own number for the episode the play resolved to —
+    /// the request, unless the request named the row by a tag it no
+    /// longer carries ("24.5" for the recap that is "12.5" now). The
+    /// session plays this episode, and the player numbers it so.
+    /// Absent where the play layer does not know it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<String>,
+    /// The number an earlier version gave the same episode, when it
+    /// gave another: what a position kept from then is keyed by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub former_episode: Option<String>,
 }
 
 /// Validate the inputs and register a new [`StreamSession`] in
@@ -141,6 +152,9 @@ fn create_session_inner(
         subtitles,
         versions: Vec::new(),
         version: None,
+        // The play layer names the episode it resolved.
+        episode: None,
+        former_episode: None,
     })
 }
 
@@ -299,6 +313,8 @@ mod tests {
             subtitles: Vec::new(),
             versions: Vec::new(),
             version: None,
+            episode: None,
+            former_episode: None,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));

@@ -1,0 +1,807 @@
+//! The session a play opens names the episode it plays.
+
+use super::*;
+use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
+
+fn state(td: &tempfile::TempDir) -> AppState {
+    let mut state = super::tests::state_with_proxy_origin();
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(stitched_recap()));
+    state.config_path = td.path().join("config.toml");
+    state.history_path = td.path().join("history");
+    state
+}
+
+fn args(episode: &str) -> PlayArgs {
+    serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": episode,
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "kitsu_id": "77",
+    }))
+    .expect("args")
+}
+
+#[tokio::test]
+async fn a_request_by_a_former_tag_opens_a_session_named_for_the_episode_it_plays() {
+    // A history row from before names the stitched recap "2.5"; it is
+    // "1.5" now. The session plays the recap, and says so — the player
+    // numbers it, steps from it and keeps its position by "1.5" — and
+    // says what it was called, which a position kept then is under.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let resp = play_with_progress(&state, &args("2.5"), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(resp.episode.as_deref(), Some("1.5"));
+    assert_eq!(resp.former_episode.as_deref(), Some("2.5"));
+}
+
+#[tokio::test]
+async fn a_request_by_a_rows_number_now_opens_a_session_named_for_it() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let resp = play_with_progress(&state, &args("5"), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(resp.episode.as_deref(), Some("5"));
+    assert_eq!(resp.former_episode, None);
+}
+
+#[tokio::test]
+async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
+    // A cached resolution records that its resolve played "1.5" — here
+    // a row an earlier build kept under the request "2.5" — and the
+    // replay's session names that.
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let asked = args("2.5");
+    let key = play_resolution_cache::cache_key(
+        &asked.title,
+        &asked.mode,
+        "best",
+        &asked.episode,
+        asked.year,
+        asked.episode_count,
+        asked.subtype.as_deref(),
+    );
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &CachedResolution {
+            upstream_url: format!("{}/x/master.m3u8", upstream.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: crate::scraper::provider::ShowKey::new(
+                crate::provider_set::ProviderSet::TEST_DEFAULT,
+                STITCHED_SLUG,
+            )
+            .to_string(),
+            show_title: STITCHED.into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("1.5".into()),
+            former_episode: None,
+            versions: Vec::new(),
+            version: None,
+        },
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(resp.episode.as_deref(), Some("1.5"));
+}
+
+#[tokio::test]
+async fn a_session_names_no_former_number_another_row_carries_now() {
+    // The opening recap was "2.5" before; the listing tags another
+    // recap "2.5" now. A position kept under "2.5" may be that one's,
+    // so the session names no former number for the opening recap.
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::stitched_shared_former(),
+    ));
+    let resp = play_with_progress(&state, &args("1.5"), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(resp.episode.as_deref(), Some("1.5"));
+    assert_eq!(resp.former_episode, None);
+}
+
+fn key_for(asked: &PlayArgs, episode: &str) -> String {
+    play_resolution_cache::cache_key(
+        &asked.title,
+        &asked.mode,
+        "best",
+        episode,
+        asked.year,
+        asked.episode_count,
+        asked.subtype.as_deref(),
+    )
+}
+
+#[tokio::test]
+async fn a_resolve_by_a_former_tag_is_kept_under_the_episode_it_played() {
+    // Kept under the request "2.5", the recap's stream would answer a
+    // later request for "2.5" — another row's, should the listing tag
+    // one so — for as long as the row lives. It is the episode "1.5".
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let asked = args("2.5");
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let under = |ep: &str| {
+        play_resolution_cache::get(&state.cache_pool, &key_for(&asked, ep)).expect("readable")
+    };
+    assert!(under("2.5").is_none(), "nothing under the former tag");
+    let kept = under("1.5").expect("kept under the episode played");
+    assert_eq!(kept.played.as_deref(), Some("1.5"));
+}
+
+#[tokio::test]
+async fn a_cumulative_listings_opening_recap_asked_for_by_its_former_number_plays_as_itself() {
+    // An earlier version advertised the opening recap as "12.5"; it is
+    // "0.5" now. A request by the old number plays the recap, and the
+    // session names "0.5" and the "12.5" a position from then is under.
+    use crate::commands::play_native_test_provider::{cumulative_opening_recap, CUMULATIVE};
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let asked: PlayArgs = serde_json::from_value(serde_json::json!({
+        "title": CUMULATIVE,
+        "episode": "12.5",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "kitsu_id": "88",
+    }))
+    .expect("args");
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays the recap");
+    assert_eq!(resp.episode.as_deref(), Some("0.5"));
+    assert_eq!(resp.former_episode.as_deref(), Some("12.5"));
+}
+
+/// The stitched show's key under the test provider.
+fn stitched_key() -> String {
+    crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        STITCHED_SLUG,
+    )
+    .to_string()
+}
+
+/// The cached resolution a fresh play of the first of two recaps left:
+/// slot 13, played as "12.5".
+fn first_recap_row(upstream: &str) -> CachedResolution {
+    CachedResolution {
+        upstream_url: format!("{upstream}/x/master.m3u8"),
+        referer: String::new(),
+        media_kind: MediaKind::Hls,
+        show_id: stitched_key(),
+        show_title: STITCHED.into(),
+        resolved_slot: Some(13),
+        subtitles: Vec::new(),
+        kitsu_id: None,
+        played: Some("12.5".into()),
+        former_episode: None,
+        versions: Vec::new(),
+        version: None,
+    }
+}
+
+fn listed_as(state: &AppState) -> String {
+    crate::commands::history::history_list(state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == stitched_key())
+        .expect("row")
+        .ep_no
+}
+
+#[tokio::test]
+async fn a_replay_of_one_recap_after_another_reads_back_as_the_one_replayed() {
+    // Two recaps sit between episodes 12 and 13: slot 13 ("12.5") and
+    // slot 14 ("12.75"). The second was played last, so the show's one
+    // display stamp names slot 14. Replaying the first from the cache
+    // writes slot 13; it must read back as "12.5", not as the slot.
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
+    let asked = args("12.5");
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &key_for(&asked, "12.5"),
+        &first_recap_row(&upstream.uri()),
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(listed_as(&state), "12.5");
+}
+
+#[tokio::test]
+async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
+    let cached = first_recap_row("http://x");
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
+    crate::commands::play_native_record::record_watch(&state, &watch, None).await;
+    assert_eq!(listed_as(&state), "12.5");
+}
+
+#[tokio::test]
+async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_stamp() {
+    // A mark-watched of the cached slot-13 recap began before the
+    // slot-14 recap ("12.75") was watched: it records nothing, and
+    // moves no stamp off the row that watch left.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let begun = crate::history::guard::epoch(&state.history_path);
+    let later = crate::commands::play_native_record::Watch {
+        show_id: stitched_key(),
+        title: "Stitched Show".into(),
+        ep_no: "14".into(),
+        display: Some(crate::commands::play_native_record::WatchedDisplay {
+            slug: stitched_key(),
+            offset: 0,
+            slot: 14,
+            tag: "12.75".into(),
+        }),
+    };
+    crate::commands::play_native_record::record_watch(&state, &later, None).await;
+    let cached = first_recap_row("http://x");
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
+    crate::commands::play_native_record::record_watch_requested_at(&state, &watch, None, begun)
+        .await;
+    assert_eq!(listed_as(&state), "12.75");
+}
+
+#[tokio::test]
+async fn a_resolve_keeps_the_former_number_with_its_cached_row() {
+    // A prefetch's session is never opened, so its former number has to
+    // outlive it for the replay that the click is.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let mut asked = args("1.5");
+    asked.prefetch = true;
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let kept = play_resolution_cache::get(&state.cache_pool, &key_for(&asked, "1.5"))
+        .expect("readable")
+        .expect("kept");
+    assert_eq!(kept.former_episode.as_deref(), Some("2.5"));
+}
+
+#[tokio::test]
+async fn a_replay_names_the_former_number_its_row_keeps() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let asked = args("12.5");
+    let mut row = first_recap_row(&upstream.uri());
+    row.former_episode = Some("24.5".into());
+    play_resolution_cache::put(&state.cache_pool, &key_for(&asked, "12.5"), &row);
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(resp.former_episode.as_deref(), Some("24.5"));
+}
+
+#[tokio::test]
+async fn a_prefetch_after_a_watched_recap_leaves_the_row_reading_as_the_recap() {
+    // The recap is watched — the row holds its slot, the stamp names it
+    // "0.5" — then the player prefetches episode 1, a displaced row of
+    // its own. The prefetch records no watch, and the row still reads
+    // as the recap.
+    use crate::commands::play_native_test_provider::{
+        cumulative_opening_recap, CUMULATIVE, CUMULATIVE_SLUG,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let ask = |episode: &str, prefetch: bool| -> PlayArgs {
+        serde_json::from_value(serde_json::json!({
+            "title": CUMULATIVE,
+            "episode": episode,
+            "mode": "sub",
+            "episode_count": 2,
+            "year": 2026,
+            "prefetch": prefetch,
+        }))
+        .expect("args")
+    };
+    play_with_progress(&state, &ask("0.5", false), |_| {})
+        .await
+        .expect("plays the recap");
+    play_with_progress(&state, &ask("1", true), |_| {})
+        .await
+        .expect("prefetches episode 1");
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        CUMULATIVE_SLUG,
+    )
+    .to_string();
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "0.5");
+}
+
+#[tokio::test]
+async fn a_watch_marked_on_a_prefetched_recap_reads_back_as_the_recap() {
+    // A click that shared the page's prefetch of the recap records its
+    // watch through mark-watched: the row then reads as the recap,
+    // though only the prefetch resolved it.
+    use crate::commands::play_native_test_provider::{
+        cumulative_opening_recap, CUMULATIVE, CUMULATIVE_SLUG,
+    };
+    use tower::ServiceExt as _;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let asked = serde_json::json!({
+        "title": CUMULATIVE,
+        "episode": "0.5",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+    });
+    let mut prefetch: PlayArgs = serde_json::from_value(asked.clone()).expect("args");
+    prefetch.prefetch = true;
+    play_with_progress(&state, &prefetch, |_| {})
+        .await
+        .expect("prefetches the recap");
+    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/play/mark-watched")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(&asked).expect("json"),
+                ))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(response.status().is_success());
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        CUMULATIVE_SLUG,
+    )
+    .to_string();
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "0.5");
+}
+
+fn cumulative_ask(episode: &str) -> PlayArgs {
+    serde_json::from_value(serde_json::json!({
+        "title": crate::commands::play_native_test_provider::CUMULATIVE,
+        "episode": episode,
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+    }))
+    .expect("args")
+}
+
+fn cumulative_listed(state: &AppState) -> String {
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        crate::commands::play_native_test_provider::CUMULATIVE_SLUG,
+    )
+    .to_string();
+    crate::commands::history::history_list(state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .expect("row")
+        .ep_no
+}
+
+#[tokio::test]
+async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
+    // The recap's resolve began before episode 1 was watched and lands
+    // after it: its row is refused, and so must its stamp be.
+    use crate::commands::play_native_test_provider::{cumulative_opening_recap, CUMULATIVE};
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    let table = cumulative_opening_recap();
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let begun_before = crate::history::guard::Asked::now(&state.history_path, None);
+    play_with_progress(&state, &cumulative_ask("1"), |_| {})
+        .await
+        .expect("plays episode 1");
+    // The player marks episode 1 watched: a watch the recap's resolve,
+    // begun before it, gives way to.
+    let cached = play_resolution_cache::get(&state.cache_pool, &key_for(&cumulative_ask("1"), "1"))
+        .expect("readable")
+        .expect("kept");
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "1");
+    crate::commands::play_native_record::record_watch(&state, &watch, None).await;
+    let recap = crate::commands::play_native_resolve::resolve_native(
+        &table,
+        crate::commands::play_native_resolve::NativeResolveRequest {
+            title: CUMULATIVE,
+            alt_titles: &[],
+            episode: "0.5",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(2),
+            year: Some(2026),
+            subtype: None,
+            version: None,
+            stamps_beside: None,
+            tail: None,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect("resolves the recap");
+    crate::commands::play_native_record::record_fresh_watch(&state, &recap, "0.5", begun_before);
+    assert_eq!(cumulative_listed(&state), "1");
+}
+
+#[tokio::test]
+async fn a_handoff_that_fails_to_start_leaves_the_watched_stamp() {
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::cumulative_opening_recap(),
+    ));
+    play_with_progress(&state, &cumulative_ask("0.5"), |_| {})
+        .await
+        .expect("plays the recap");
+    std::fs::write(
+        &state.config_path,
+        "external_player = \"/nonexistent/player\"\n",
+    )
+    .expect("config");
+    let failed =
+        crate::commands::play_external_command::play_external(&state, &cumulative_ask("1")).await;
+    assert!(failed.is_err(), "the player never started");
+    assert_eq!(cumulative_listed(&state), "0.5");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_handoff_whose_player_started_puts_the_pair_its_row_reads_through() {
+    use std::os::unix::fs::PermissionsExt;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::cumulative_opening_recap(),
+    ));
+    let player = td.path().join("player");
+    std::fs::write(&player, "#!/bin/sh\nexit 0\n").expect("stage player");
+    let mut perms = std::fs::metadata(&player).expect("meta").permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&player, perms).expect("chmod");
+    std::fs::write(
+        &state.config_path,
+        format!("external_player = \"{}\"\n", player.display()),
+    )
+    .expect("config");
+    crate::commands::play_external_command::play_external(&state, &cumulative_ask("0.5"))
+        .await
+        .expect("the player started");
+    assert_eq!(cumulative_listed(&state), "0.5");
+}
+
+use crate::commands::play_native_test_provider::{
+    cumulative_opening_recap_season, CUMULATIVE_S2, CUMULATIVE_S2_SLUG,
+};
+
+/// A Kitsu that never answers in time: every request waits twenty
+/// seconds, so a watch's mapping lookup is out for the whole test.
+async fn kitsu_that_hangs() -> wiremock::MockServer {
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::any())
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(20)),
+        )
+        .mount(&mock)
+        .await;
+    mock
+}
+
+/// What the row of the show `slug` keys reads as once it is there and
+/// reads as `want`, within three seconds; the last reading otherwise.
+async fn reads_within(state: &AppState, slug: &str, want: &str) -> String {
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        slug,
+    )
+    .to_string();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+    let mut last = String::from("<no row>");
+    while tokio::time::Instant::now() < deadline {
+        if let Some(row) = crate::commands::history::history_list(state)
+            .expect("list")
+            .into_iter()
+            .find(|e| e.id == key)
+        {
+            last = row.ep_no;
+            if last == want {
+                return last;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    last
+}
+
+#[tokio::test]
+async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
+    // The recap was resolved by a prefetch alone, so the show has no
+    // display stamp. The player marks it watched with the page's Kitsu
+    // id, and the mapping lookup that follows the row hangs: a Continue
+    // card loaded meanwhile reads the row — as the recap, not as the
+    // slot it holds.
+    use tower::ServiceExt as _;
+    let mock = kitsu_that_hangs().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::cumulative_opening_recap_season(),
+    ));
+    state.kitsu = crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), mock.uri());
+    let mut prefetch = cumulative_ask("0.5");
+    prefetch.title = CUMULATIVE_S2.into();
+    prefetch.prefetch = true;
+    play_with_progress(&state, &prefetch, |_| {})
+        .await
+        .expect("prefetches the recap");
+    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let body = serde_json::json!({
+        "title": CUMULATIVE_S2,
+        "episode": "0.5",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "kitsu_id": "77",
+    });
+    let marking = tokio::spawn(async move {
+        router
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_vec(&body).expect("json"),
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot")
+            .status()
+    });
+    let read = reads_within(&state, CUMULATIVE_S2_SLUG, "0.5").await;
+    assert!(!marking.is_finished(), "the lookup is still out");
+    marking.abort();
+    assert_eq!(read, "0.5");
+}
+
+#[tokio::test]
+async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
+    // The watch a handoff records from its fresh resolve, with the
+    // page's Kitsu id: the pair its row reads through goes in with the
+    // row, not after the lookup.
+    let mock = kitsu_that_hangs().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.kitsu = crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), mock.uri());
+    let table = cumulative_opening_recap_season();
+    let recap = crate::commands::play_native_resolve::resolve_native(
+        &table,
+        crate::commands::play_native_resolve::NativeResolveRequest {
+            title: CUMULATIVE_S2,
+            alt_titles: &[],
+            episode: "0.5",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(2),
+            year: Some(2026),
+            subtype: None,
+            version: None,
+            stamps_beside: None,
+            tail: None,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect("resolves the recap");
+    let watch = crate::commands::play_native_record::Watch::of(&recap);
+    let recording = {
+        let state = state.clone();
+        tokio::spawn(async move {
+            crate::commands::play_native_record::record_watch(&state, &watch, Some("77")).await;
+        })
+    };
+    let read = reads_within(&state, CUMULATIVE_S2_SLUG, "0.5").await;
+    assert!(!recording.is_finished(), "the lookup is still out");
+    recording.abort();
+    assert_eq!(read, "0.5");
+}
+
+#[tokio::test]
+async fn a_fresh_play_of_a_stamped_recap_keeps_the_tag_the_stamp_replaced() {
+    // The row from before holds slot 2, stamped (2, "2.5") — the
+    // stitched recap's former tag. Its fresh play puts the stamp right,
+    // (2, "1.5"), and keeps "2.5" beside it: a position kept under the
+    // former number is found by it.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let row = crate::history::parse(&format!("2\t{}\tStitched Show\n", stitched_key()))
+        .pop()
+        .expect("a row");
+    crate::history::upsert_and_write(&state.history_path, row).expect("write");
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 2, "2.5");
+    play_with_progress(&state, &args("2.5"), |_| {})
+        .await
+        .expect("plays the recap");
+    assert_eq!(listed_as(&state), "1.5");
+    assert_eq!(
+        crate::commands::numbering_offset::former_stamp(&state, &stitched_key()),
+        Some((2, "2.5".to_string()))
+    );
+}
+
+/// A play whose numbering repair stands behind the rows it caches.
+async fn rows_a_play_caches_behind_its_repair(prefetch: bool, stamp_after: (u32, &str)) {
+    // An upgraded profile: a history row's stamp names the stitched
+    // recap's slot 2 by its former tag "2.5". A play of episode 5 pays
+    // for the listing, which puts the stamp right — before the rows
+    // it caches land, or a probe taking the fresh availability row
+    // never fetches the listing that would repair it.
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 2, "2.5");
+    let mut asked = args("5");
+    asked.prefetch = prefetch;
+    let (_observing, seen) =
+        stamps_as_rows_land(&state, &stitched_key(), &["availability:", "play:"]);
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &stitched_key());
+    // A prefetch leaves the repaired stamp; a watch moves it on to the
+    // episode it records, slot 6, as the app numbers it "5".
+    assert_eq!(after, Some((stamp_after.0, stamp_after.1.to_string())));
+    assert_rows_landed_after_the_repair(&seen, &["availability:", "play:"], &after);
+}
+
+#[tokio::test]
+async fn a_play_puts_the_numbering_right_before_it_caches_its_rows() {
+    rows_a_play_caches_behind_its_repair(false, (6, "5")).await;
+}
+
+#[tokio::test]
+async fn a_prefetch_puts_the_numbering_right_before_it_caches_its_rows() {
+    rows_a_play_caches_behind_its_repair(true, (2, "1.5")).await;
+}
+
+#[tokio::test]
+async fn a_handoff_puts_the_numbering_right_before_it_caches_availability() {
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 2, "2.5");
+    let (_observing, seen) = stamps_as_rows_land(&state, &stitched_key(), &["availability:"]);
+    let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    crate::commands::play_handoff::resolve_launch_args(&state, &args("5"), asked)
+        .await
+        .expect("resolves");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &stitched_key());
+    assert_eq!(
+        after,
+        Some((2, "1.5".to_string())),
+        "the handoff repaired the stamp"
+    );
+    assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
+}
+
+/// A cached resolution from before the slot was cached: its watch is
+/// written through the store's offset and stamp.
+fn slotless_row() -> CachedResolution {
+    CachedResolution {
+        resolved_slot: None,
+        played: None,
+        ..first_recap_row("http://127.0.0.1:1")
+    }
+}
+
+/// The store as an earlier version left it, offset 0 and the recap's
+/// slot 2 stamped "2.5", and a write that moves both to offset 1 with
+/// the slot tagged "3.5". Either way episode "2.5" is slot 2.
+fn moving_stamp(state: &AppState, n: usize) {
+    crate::commands::numbering_offset::put_display(state, &stitched_key(), 0, 2, "2.5");
+    let writing = state.clone();
+    crate::commands::numbering_offset::read_tap::before_read(n, move || {
+        crate::commands::numbering_offset::put_display(&writing, &stitched_key(), 1, 2, "3.5");
+    });
+}
+
+#[test]
+fn a_cached_watch_writes_its_row_from_one_read_of_the_numbering() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for n in 1..=3 {
+        moving_stamp(&state, n);
+        let watch = crate::commands::play_cache::cached_watch(&state, &slotless_row(), "2.5");
+        crate::commands::numbering_offset::read_tap::clear();
+        assert_eq!(watch.ep_no, "2", "a write before read {n}");
+    }
+}
+
+#[test]
+fn a_cache_hit_writes_its_row_from_one_read_of_the_numbering() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for n in 1..=3 {
+        moving_stamp(&state, n);
+        let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+        write_history_on_cache_hit(&state, &args("2.5"), &slotless_row(), asked);
+        crate::commands::numbering_offset::read_tap::clear();
+        let row = crate::history::read_all(&state.history_path)
+            .expect("history")
+            .into_iter()
+            .find(|e| e.id == stitched_key())
+            .expect("row");
+        assert_eq!(row.ep_no, "2", "a write before read {n}");
+    }
+}

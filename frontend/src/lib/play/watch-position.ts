@@ -72,6 +72,35 @@ export function isFinishedAt(seconds: number, duration: number): boolean {
 	return Number.isFinite(duration) && duration - seconds <= FINISHED_REMAINING_S;
 }
 
+/** Keeps what was kept for `from` of `showId` under `to` instead — the
+ *  same episode under the number it has now. Whether a point now sits
+ *  under `to` that did not before. */
+export function movePosition(
+	showId: string,
+	from: number,
+	to: number,
+	storage: PositionStorage | null = defaultStorage()
+): boolean {
+	const fromKey = keyOf(showId, from);
+	const toKey = keyOf(showId, to);
+	const all = load(storage);
+	const moving = all.find(([k]) => k === fromKey);
+	if (!moving) return false;
+	const rest = all.filter(([k]) => k !== fromKey);
+	// A point already under the number it moves to was written since:
+	// it is the later one.
+	if (rest.some(([k]) => k === toKey)) {
+		store(storage, rest);
+		return false;
+	}
+	const [, seconds, row] = moving;
+	if (store(storage, [...rest, row ? [toKey, seconds, row] : [toKey, seconds]])) {
+		writes.note(storage, toKey);
+		return true;
+	}
+	return false;
+}
+
 /** Where `episode` of `showId` was left, or null. */
 export function readPosition(
 	showId: string,

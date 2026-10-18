@@ -96,6 +96,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/proxy-base-url", get(get_proxy_base_url))
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
+        .route("/api/history/:id/number", get(get_history_number))
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -200,6 +201,17 @@ async fn get_history_by_kitsu(
 ) -> Result<Json<Option<HistoryEntry>>, AniError> {
     let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     Ok(Json(h_inner::history_by_kitsu(&state, kitsu_id)?))
+}
+
+/// The episode one history row reads as now — `null` when no row is
+/// the show's ([`crate::commands::history_number`]).
+async fn get_history_number(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Option<crate::commands::history_number::HistoryNumber>>, AniError> {
+    Ok(Json(crate::commands::history_number::history_number(
+        &state, &id,
+    )?))
 }
 
 async fn post_external_player(
@@ -1598,6 +1610,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1646,6 +1660,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1713,6 +1729,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1768,6 +1786,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1827,6 +1847,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1884,6 +1906,8 @@ mod tests {
                     kitsu_id: None,
                     versions: Vec::new(),
                     version: None,
+                    played: None,
+                    former_episode: None,
                 },
             );
         }
@@ -1969,6 +1993,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -2073,6 +2099,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2166,6 +2194,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2270,6 +2300,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
 
@@ -2380,6 +2412,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2435,6 +2469,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2566,6 +2602,8 @@ mod tests {
                 kitsu_id: None,
                 versions: Vec::new(),
                 version: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -3121,6 +3159,7 @@ mod tests {
                 id: 7000 + u64::from(n),
                 number: n,
                 number2: None,
+                former_tag: None,
                 title: None,
             })
             .collect();

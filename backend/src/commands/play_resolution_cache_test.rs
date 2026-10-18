@@ -88,6 +88,8 @@ fn sample_resolution() -> CachedResolution {
         kitsu_id: None,
         versions: Vec::new(),
         version: None,
+        played: None,
+        former_episode: None,
     }
 }
 
@@ -204,6 +206,26 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
     assert!(k.starts_with("play:v22:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_offset_recaps_were_renumbered_is_not_served() {
+    // A stitched recap before a cumulatively numbered part was "24.5";
+    // it is "12.5" now, and a second recap between the same episodes
+    // "12.75". A row from before replays without the resolve that puts
+    // a history row's stamp from then right, and names no `played`
+    // episode for the session. Master moved to v21 for the appended
+    // extras; this schema sits above it.
+    let pool = pool();
+    let current = cache_key("Stitched Show", "sub", "best", "12.5", None, Some(24), None);
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v21:", 1);
+    assert_ne!(
+        previous, current,
+        "the schema must have moved past master's v21"
+    );
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }
 
 #[test]

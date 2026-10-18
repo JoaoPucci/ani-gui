@@ -58,6 +58,7 @@ async fn resolve(
             year: Some(YEAR),
             subtype: Some("TV"),
             version,
+            stamps_beside: None,
             tail: None,
         },
         &mut |_| {},
@@ -121,7 +122,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
     .expect("play args");
     assert_eq!(play.version, Some(VersionKind::Standard));
     assert_eq!(
-        play.native_request("best", None).version,
+        play.native_request("best", None, None).version,
         Some(VersionKind::Standard)
     );
     let download: crate::commands::download::DownloadArgs =
@@ -130,7 +131,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
         }))
         .expect("download args");
     assert_eq!(
-        download.native_request("best", None).version,
+        download.native_request("best", None, None).version,
         Some(VersionKind::Uncensored)
     );
 }
@@ -222,6 +223,8 @@ fn a_session_answer_names_versions_only_when_there_are_several() {
         subtitles: Vec::new(),
         versions: Vec::new(),
         version: None,
+        episode: None,
+        former_episode: None,
     };
     let plain = serde_json::to_value(&resp).expect("json");
     assert!(plain.get("versions").is_none() && plain.get("version").is_none());
@@ -254,6 +257,7 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
         resolved_tag: None,
         versions: both_versions(),
         version: Some(VersionKind::Uncensored),
+        former_tags: Vec::new(),
     };
     let mut resp = crate::commands::session::CreateSessionResponse {
         session_id: "s".into(),
@@ -263,6 +267,8 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
         subtitles: Vec::new(),
         versions: Vec::new(),
         version: None,
+        episode: None,
+        former_episode: None,
     };
     crate::commands::play::with_versions_of(&mut resp, &native.versions, native.version);
     assert_eq!(resp.versions, both_versions());
@@ -302,6 +308,7 @@ async fn resolve_in(
             year: Some(YEAR),
             subtype: Some("TV"),
             version,
+            stamps_beside: None,
             tail: None,
         },
         &mut |_| {},

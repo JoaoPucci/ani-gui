@@ -173,6 +173,12 @@ use crate::proxy::MediaKind;
 // version reads, and a HEAD-passing hit would keep serving it; bumping
 // re-resolves. Keyed past the v21 above, whose rows name no versions
 // either.
+// v22: a stitched recap before a cumulatively numbered part is tagged
+// a part earlier ("12.5", not "24.5"), and a second recap between the
+// same episodes has a tag of its own ("12.75"). A row from before
+// replays without the resolve that puts a history row's stamp from
+// then right, and records no `played` episode for the session to name;
+// bumping makes the first play of each episode a fresh resolve.
 const SCHEMA: &str = "v22";
 
 /// What the native resolve produced, frozen for replay. The session
@@ -206,6 +212,16 @@ pub struct CachedResolution {
     /// stamp-aware translation.
     #[serde(default)]
     pub resolved_slot: Option<u32>,
+    /// The app's own number for the episode the resolve matched, which
+    /// a replay records. `None` on rows from before the field, whose
+    /// replays record the request.
+    #[serde(default)]
+    pub played: Option<String>,
+    /// The number an earlier version gave that episode, where the
+    /// resolve's listing records one no row carries now — what a
+    /// position kept from then is under, which a replay's session names.
+    #[serde(default)]
+    pub former_episode: Option<String>,
     /// The sidecar subtitle tracks the resolve listed, so a replay
     /// offers the same tracks a fresh resolve did.
     #[serde(default)]

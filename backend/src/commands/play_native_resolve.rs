@@ -20,6 +20,7 @@ use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
 use super::play_native_episode::{classify_chain_failure, ChainOutcome};
+use super::play_native_merge::former_tags_of;
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
 use super::play_native_version_modes::resolve_in_any_version;
@@ -71,6 +72,11 @@ pub struct NativeResolved {
     pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
     /// The version that played, when the pick has several.
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// Rows of the picked listing an earlier version tagged otherwise:
+    /// (slot, the tag it had then, the tag it has now) — a stitched
+    /// recap before a cumulatively numbered part. Empty for any other
+    /// listing.
+    pub former_tags: Vec<(u32, String, String)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -131,6 +137,10 @@ pub struct NativeResolveRequest<'a> {
     /// The version to play when the pick has several; `None` plays
     /// the pick's default.
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The history file whose numbering sidecar keeps each show's
+    /// (slot, tag) display stamp — what a request from the user's
+    /// history names a row by. `None` asks nothing of it.
+    pub stamps_beside: Option<&'a std::path::Path>,
     /// Where the evidence about the entry's last episodes comes from,
     /// when the caller knows the entry
     /// ([`super::play_native_appended`]).
@@ -245,11 +255,13 @@ where
                             title: picked.hit.title.clone(),
                         });
                         // The version asked for, or the next that
-                        // carries the episode in the mode.
+                        // carries the episode in the mode, each read
+                        // through its own display stamp.
                         let (picked, resolved) = resolve_in_any_version(
                             client,
                             picked,
                             req.episode,
+                            req.stamps_beside,
                             req.mode,
                             req.quality,
                         )
@@ -308,6 +320,7 @@ where
                             resolved_tag: resolved.tag,
                             versions,
                             version,
+                            former_tags: former_tags_of(&picked.episodes),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS

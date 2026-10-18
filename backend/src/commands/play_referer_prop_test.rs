@@ -37,6 +37,7 @@ proptest::proptest! {
             provider: crate::scraper::provider::ProviderId::TestA,
             versions: Vec::new(),
             version: None,
+            former_tags: Vec::new(),
         };
         let row = cached_resolution_for(&resolved);
         proptest::prop_assert_eq!(row.upstream_url, master_url);

@@ -15,6 +15,8 @@
 
 pub mod db;
 mod played_marks;
+#[cfg(test)]
+pub mod put_observer;
 pub mod schema;
 pub mod ttl;
 

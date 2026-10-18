@@ -12,6 +12,15 @@
 //! half-way through a store while it runs. What only takes away — an
 //! eviction, a cache clear — does not ask for the file.
 //!
+//! The reads that resolve a row's number hold it too — the history
+//! list, a show's rows by its Kitsu id, a row's number — because a
+//! watch writes its row and the display pair the row reads through as
+//! two writes, and a reader between them would read the row by its
+//! slot. Repairing a show's display stamp to the tag a fresh listing
+//! or resolve gives it does not ask for the file: it rewrites one
+//! stamp under the numbering store's own lock, in one atomic write,
+//! so a reader sees the pair from before it or after it.
+//!
 //! Holding the file is not enough for work that waits on the network
 //! between its writes: a watch records its row, waits on Kitsu, then
 //! stores the show's mapping, and a removal can run in between. So a
@@ -119,8 +128,8 @@ struct Removals {
 /// few cache rows.
 static HISTORIES: Mutex<BTreeMap<PathBuf, Removals>> = Mutex::new(BTreeMap::new());
 
-/// A history file, held: no other writer of it, and no removal, runs
-/// until the work it was handed to returns.
+/// A history file, held: no other writer of it, no read that holds
+/// it, and no removal runs until the work it was handed to returns.
 pub struct Held<'a> {
     path: &'a Path,
     removals: &'a mut Removals,
