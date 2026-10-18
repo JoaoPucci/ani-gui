@@ -507,3 +507,147 @@ fn two_explanations_of_one_difference_are_no_explanation() {
     assert_eq!(map, identity(Identity::Conflict));
     assert!(!map.conclusive());
 }
+
+// --- episodes the tracker counts that Kitsu does not list (Unlimited
+// Blade Works on AniList) ---------------------------------------------------
+
+fn listed(numbers: &[&str]) -> Option<Vec<String>> {
+    Some(numbers.iter().map(|n| (*n).to_string()).collect())
+}
+
+/// AniList 19603 counts 13 episodes of Unlimited Blade Works' first
+/// season, its list opening on "Episode 0 - Prologue"; Kitsu's 7882
+/// numbers 12. (The list also runs on through the second season.)
+fn ubw() -> Evidence {
+    let mut numbers: Vec<String> = vec!["0".into()];
+    numbers.extend((1..=25).map(|n| n.to_string()));
+    Evidence {
+        kitsu: kitsu("7882", Some(12), "2014-10-12", "2014-12-28"),
+        entry: show(19_603, Some(13), true, "2014-10-05", "2014-12-28"),
+        listed: Some(numbers),
+        sharing: vec![kitsu("7882", Some(12), "2014-10-12", "2014-12-28")],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_prologue_the_tracker_counts_shifts_every_episode_by_one() {
+    let map = map_show(&ubw());
+    assert_eq!(map.shape, Shape::Extras);
+    assert_eq!(
+        map.segments,
+        vec![Segment {
+            entry: 19_603,
+            entry_total: 13,
+            entry_finished: true,
+            kitsu_from: 1,
+            kitsu_to: 12,
+            lead: 0,
+            extras_after: vec![0],
+        }]
+    );
+    assert_eq!(map.target(1), mapped(19_603, 2, false, &[]));
+    assert_eq!(map.target(11), mapped(19_603, 12, false, &[]));
+    // Kitsu's last episode is the entry's: it sends the total, complete.
+    assert_eq!(map.target(12), mapped(19_603, 13, true, &[]));
+}
+
+#[test]
+fn several_recaps_the_tracker_counts_shift_the_episodes_after_each() {
+    // A long show whose tracker counts a prologue and three half
+    // episodes: 24 of Kitsu's against 28.
+    let mut numbers: Vec<String> = (1..=24).map(|n| n.to_string()).collect();
+    numbers.extend(["0", "6.5", "12.5", "18.5"].map(String::from));
+    let ev = Evidence {
+        kitsu: kitsu("1", Some(24), "2020-01-05", "2020-06-28"),
+        entry: show(2, Some(28), true, "2020-01-05", "2020-06-28"),
+        listed: Some(numbers),
+        ..Default::default()
+    };
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::Extras);
+    assert_eq!(map.segments[0].extras_after, vec![0, 6, 12, 18]);
+    assert_eq!(map.target(1), mapped(2, 2, false, &[]));
+    assert_eq!(map.target(6), mapped(2, 7, false, &[]));
+    assert_eq!(map.target(7), mapped(2, 9, false, &[]));
+    assert_eq!(map.target(13), mapped(2, 16, false, &[]));
+    assert_eq!(map.target(19), mapped(2, 23, false, &[]));
+    assert_eq!(map.target(24), mapped(2, 28, true, &[]));
+}
+
+#[test]
+fn an_extra_after_kitsu_s_last_episode_is_counted_by_that_episode() {
+    let ev = Evidence {
+        kitsu: kitsu("1", Some(12), "2020-01-05", "2020-03-28"),
+        entry: show(2, Some(13), true, "2020-01-05", "2020-03-28"),
+        listed: listed(&[
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "12.5",
+        ]),
+        ..Default::default()
+    };
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::Extras);
+    assert_eq!(map.target(11), mapped(2, 11, false, &[]));
+    assert_eq!(map.target(12), mapped(2, 13, true, &[]));
+}
+
+#[test]
+fn an_extra_listed_once_per_track_counts_once() {
+    // AniList lists an episode's subbed and dubbed tracks separately.
+    let mut ev = ubw();
+    ev.listed = listed(&["0", "0", "1", "1", "2", "2"]);
+    assert_eq!(map_show(&ev).shape, Shape::Extras);
+}
+
+#[test]
+fn extras_that_do_not_account_for_the_whole_surplus_explain_nothing() {
+    // Seikaisuru Kado: 13 against 12, but the list carries both an
+    // "Episode 0" and a "6.5" — two extras for one surplus episode.
+    let mut two_for_one = ubw();
+    two_for_one.listed = listed(&["0", "1", "2", "3", "4", "5", "6", "6.5", "7"]);
+    assert_eq!(map_show(&two_for_one), identity(Identity::Unexplained));
+    // To Be Heroine: 12 against 7, one "4.5" listed.
+    let mut one_for_five = ubw();
+    one_for_five.entry.episodes = Some(17);
+    one_for_five.listed = listed(&["1", "2", "3", "4", "4.5", "5"]);
+    assert_eq!(map_show(&one_for_five), identity(Identity::Unexplained));
+    // No list at all (MyAnimeList, or an entry AniList lists nothing
+    // for): the surplus is unexplained.
+    let mut unlisted = ubw();
+    unlisted.listed = None;
+    assert_eq!(map_show(&unlisted), identity(Identity::Unexplained));
+    let mut whole_only = ubw();
+    whole_only.listed = listed(&["1", "2", "3"]);
+    assert_eq!(map_show(&whole_only), identity(Identity::Unexplained));
+}
+
+#[test]
+fn an_extra_past_kitsu_s_count_is_not_inside_the_entry() {
+    let mut ev = ubw();
+    ev.listed = listed(&["1", "2", "3", "13.5"]);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_number_the_list_cannot_be_read_as_is_ignored() {
+    let mut ev = ubw();
+    ev.listed = listed(&["0", "1", "Prologue", "", "2.x", "3"]);
+    assert_eq!(map_show(&ev).shape, Shape::Extras);
+}
+
+#[test]
+fn extras_and_parts_explaining_the_same_surplus_conflict() {
+    // Kamitsubaki on AniList: 13 against 12, with an "Episode 0" listed
+    // and a one-episode Kitsu sequel with no AniList entry.
+    let ev = Evidence {
+        kitsu: kitsu("49900", Some(12), "2025-07-09", "2025-09-25"),
+        entry: show(173_335, Some(13), true, "2025-07-03", "2025-09-25"),
+        listed: listed(&["0", "1", "2", "3", "4"]),
+        parts: vec![
+            kitsu("49900", Some(12), "2025-07-09", "2025-09-25"),
+            kitsu("50027", Some(1), "2025-10-02", "2025-10-02"),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev), identity(Identity::Conflict));
+}
