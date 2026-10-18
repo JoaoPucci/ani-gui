@@ -92,7 +92,8 @@ export abstract class QualityHold {
 
 	/** hls.js removed levels: every index held is carried to the levels
 	 *  left (`quality-remap.ts`). */
-	remap(mapping: readonly number[], levels: readonly LadderLevel[]): void {
+	remap(mapping: readonly number[], levels: readonly LadderLevel[], now: number): void {
+		void now;
 		const held = {
 			ladder: this.ladder,
 			ceiling: this.ceiling,

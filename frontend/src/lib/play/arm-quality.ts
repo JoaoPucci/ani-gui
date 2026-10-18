@@ -131,7 +131,7 @@ export function armQuality(input: {
 	// hls.js removed levels it cannot play: every index held moves to
 	// the levels left before any is used again.
 	engine.on(events.LEVELS_UPDATED, (_event, data) => {
-		levelsUpdated(engine, governor, track, data.levels, removal, log);
+		levelsUpdated(engine, governor, track, data.levels, removal, now(), log);
 		if (governor) publish(governor);
 	});
 

@@ -485,7 +485,7 @@ describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 		];
 		const g = new QualityGovernor(ladder, BEST, 720);
 		g.start();
-		g.remap([0, 1, 2, -1], ladder.slice(0, 3));
+		g.remap([0, 1, 2, -1], ladder.slice(0, 3), 500);
 		expect(g.level).toBe(2);
 		expect(g.pinnedLevel).toBe(2);
 		expect(g.follow(0, 1_000, false)?.level).toBe(0);

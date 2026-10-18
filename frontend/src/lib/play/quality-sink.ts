@@ -58,6 +58,7 @@ export function levelsUpdated(
 	track: QualityTrack,
 	levels: readonly LadderLevel[],
 	removal: RemapWindow,
+	now: number,
 	log: (message: string) => void
 ): void {
 	const mapping = levelMapping(track.engineLevels, levels);
@@ -70,7 +71,7 @@ export function levelsUpdated(
 	if (!governor) return;
 	const wasPinned = governor.isPinned;
 	const wasEngaged = governor.isEngaged;
-	governor.remap(mapping, track.declared());
+	governor.remap(mapping, track.declared(), now);
 	repinAfterReplacement(governor, mapping, wasPinned, track.declared());
 	log(`levels updated: ${levels.length} left, ${holdAfterRemoval(governor, track, wasEngaged)}`);
 	queueMicrotask(() => putBack(engine, governor, track, removal, log));
