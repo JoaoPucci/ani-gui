@@ -1953,7 +1953,9 @@
 	 *  one started while its eviction was out (recoverFromStaleStream). */
 	let switchesStarted = 0;
 
-	async function switchToEpisode(targetEp: number) {
+	/** `errorOnFailure` is the playback error to show if the switch
+	 *  fails, when the caller has already cleared it (a recovery). */
+	async function switchToEpisode(targetEp: number, errorOnFailure: string | null = null) {
 		if (!detail || switchBusy) return;
 		// Single choke point for every navigation path — tile clicks,
 		// prev/next, auto-play-next: an unaired target is a doomed
@@ -2007,7 +2009,7 @@
 		switchProgress = null;
 		// Cleared for the stream the switch brings; kept to put back if
 		// the switch fails and the failed stream stays on screen.
-		const errorBefore = playerError;
+		const errorBefore = playerError ?? errorOnFailure;
 		playerError = null;
 		try {
 			// Hits the play-cache: ep+1 was prefetched on mount, so the
@@ -2188,7 +2190,12 @@
 			playerError = shownError ?? m.play_error_playback_technical({ detail: reason });
 		if (turn !== 'resolve') return;
 		clearForShow(id);
-		await switchToEpisode(episodeNum);
+		// The error went off screen as the recovery began; a fresh
+		// resolve that fails leaves the failed stream, so it comes back.
+		await switchToEpisode(
+			episodeNum,
+			shownError ?? m.play_error_playback_technical({ detail: reason })
+		);
 	}
 
 	/** Wired to the Reload button on the player-error overlay. Bypasses
