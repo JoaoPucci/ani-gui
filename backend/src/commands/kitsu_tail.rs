@@ -2,8 +2,8 @@
 //! ([`super::play_native_appended`]), from what a detail page visit
 //! already caches: Kitsu's entry, the Kitsu episode pages holding the
 //! count's last episodes, and AniList's airing answer — and, past
-//! those, the entries Kitsu relates the show to, with a TV sequel's
-//! first episode page. Each is read
+//! those, the entries Kitsu relates the show to, with each aired TV
+//! entry's first episode page. Each is read
 //! from the cache first and fetched only when it is missing.
 
 use super::play_native_appended::{EntryTail, Remembered, TailSource};

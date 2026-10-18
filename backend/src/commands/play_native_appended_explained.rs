@@ -5,8 +5,11 @@ use super::{EntryTail, Related};
 
 /// Whether Kitsu's relations, read whole, name what the `past` rows
 /// are — a finished OVA, ONA or special exactly that long, whatever
-/// Kitsu calls its relation — and no sequel airing now, which the rows
-/// could be the start of. A sequel only announced has aired nothing.
+/// Kitsu calls its relation — and no entry airing now, which the rows
+/// could be the start of, whatever Kitsu calls the relation and
+/// whatever its format: a non-TV entry's page is never read, so
+/// nothing but its airing tells its cour from extras. A music video
+/// is no cour, and an entry only announced has aired nothing.
 pub(super) fn explained(past: usize, tail: &EntryTail) -> bool {
     let finished = |r: &Related| r.status.as_deref() == Some("finished");
     let length = u32::try_from(past).ok();
@@ -16,9 +19,8 @@ pub(super) fn explained(past: usize, tail: &EntryTail) -> bool {
             && matches!(r.subtype.as_deref(), Some("OVA" | "ONA" | "special"))
             && r.episode_count == length
     };
-    let airing_sequel =
-        |r: &Related| r.anime && r.role == "sequel" && r.status.as_deref() == Some("current");
-    tail.related_complete
-        && tail.related.iter().any(extra)
-        && !tail.related.iter().any(airing_sequel)
+    let airing = |r: &Related| {
+        r.anime && r.subtype.as_deref() != Some("music") && r.status.as_deref() == Some("current")
+    };
+    tail.related_complete && tail.related.iter().any(extra) && !tail.related.iter().any(airing)
 }

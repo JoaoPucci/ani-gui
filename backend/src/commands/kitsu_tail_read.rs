@@ -60,10 +60,11 @@ pub fn entry_tail(
     }
 }
 
-/// Whether Kitsu relates `r` as a TV sequel: the entry whose first
-/// episodes the rows past the count are checked against.
-fn is_tv_sequel(r: &KitsuRelation) -> bool {
-    r.kind == "anime" && r.role == "sequel" && r.subtype.as_deref() == Some("TV")
+/// Whether `r` is a TV entry, in whatever role Kitsu relates it: an
+/// entry whose first episodes the rows past the count are checked
+/// against.
+fn is_tv(r: &KitsuRelation) -> bool {
+    r.kind == "anime" && r.subtype.as_deref() == Some("TV")
 }
 
 /// A related entry's page of episodes as the evidence reads it: each
@@ -118,11 +119,11 @@ impl KitsuTail<'_> {
             .ok()
     }
 
-    /// The entries Kitsu relates the show to, each TV sequel that has
-    /// aired with its first page of episodes, and whether they are all
-    /// of them. A sequel only announced has aired nothing, and the rule
-    /// passes it over: its page is not asked for, since an answer the
-    /// read does not need could still fail it.
+    /// The entries Kitsu relates the show to, each TV entry that has
+    /// aired — whatever the role — with its first page of episodes, and
+    /// whether they are all of them. An entry only announced has aired
+    /// nothing, and the rule passes it over: its page is not asked for,
+    /// since an answer the read does not need could still fail it.
     pub(super) async fn read_related(&self) -> Option<(Vec<Related>, bool)> {
         let relations = crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
             .await
@@ -130,7 +131,7 @@ impl KitsuTail<'_> {
         let mut out = Vec::new();
         for r in relations.entries {
             let aired = !crate::commands::play_native_appended::is_announced(r.status.as_deref());
-            let first_episodes = if is_tv_sequel(&r) && aired {
+            let first_episodes = if is_tv(&r) && aired {
                 let page = crate::commands::kitsu::kitsu_episode_page(self.state, &r.id, 1)
                     .await
                     .ok()?;
