@@ -5,14 +5,14 @@
     "anilist.json": {
       "request": "Kitsu's whole catalogue (GET /anime?sort=id&include=mappings, 22,504 entries) against AniList (Page { media(idMal_in / id_in) } with relations, then streamingEpisodes for every longer entry) — one case per Kitsu entry whose count the AniList entry the app resolves it to disagrees with, plus each later Kitsu part of a split; Kitsu's media-relationships for each, two hops out.",
       "notes": "Each case: id, kitsu_title, scan_class (the shape the scan classified: A, A-relaxed, A-claimed, B, B?, B', D, D-ambiguous, E, U), the evidence as the app's readers return it, the shape the documented rules answer (expect), and a note where the case is pinned or the scan and the app part ways.",
-      "size": 232903,
-      "sha256": "433b9a1b534a3ea1d07d7aa3f2fd480b3d76c475f4db77d61aa0bee2c2ac5c6f"
+      "size": 232014,
+      "sha256": "2a61a075ac4a4054f7a0bba9d11876e1a79c4329841fe0b9119cc8c1ca744d52"
     },
     "mal.json": {
       "request": "Kitsu's whole catalogue against MyAnimeList (GET /v2/anime/ranking?ranking_type=all|bypopularity&fields=num_episodes,start_date,end_date,media_type,status, then GET /v2/anime/{id}?fields=…,related_anime for every mismatch and its sequels) — one case per Kitsu entry whose count the MyAnimeList entry disagrees with, plus each later Kitsu part of a split.",
       "notes": "Same shape as anilist.json; MyAnimeList carries no episode list the app reads, so no case lists one.",
-      "size": 223954,
-      "sha256": "60fe1f2f5eceb994d9b9a796b566a5e3b197901518619573a1b6f7e241335f79"
+      "size": 223866,
+      "sha256": "4b3f3890f8be681a2aad4c5edacfb73de5eb068744e74cde60393aba000c890c"
     }
   }
 }

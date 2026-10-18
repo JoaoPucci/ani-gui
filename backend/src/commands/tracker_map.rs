@@ -33,6 +33,8 @@ use crate::cache::ttl::TRACKER_MAP_TTL;
 use crate::cache::ttl::TRACKER_MAP_UNSETTLED_TTL;
 use crate::error::Result;
 
+#[path = "tracker_map_airdates.rs"]
+mod airdates;
 #[path = "tracker_map_cache.rs"]
 mod cache;
 #[path = "tracker_map_evidence.rs"]
