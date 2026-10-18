@@ -326,7 +326,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 		release();
 	});
 
-	it('does not let the page-load lookup overwrite a re-ask that already answered', async () => {
+	it('does not gate a card on the count of the audio settings replaced', async () => {
 		let releaseSettings!: () => void;
 		const settingsHeld = new Promise<void>((r) => {
 			releaseSettings = r;
@@ -335,12 +335,11 @@ describe('play route — clicking a dimmed aired episode', () => {
 		const modeLookupHeld = new Promise<void>((r) => {
 			releaseModeLookup = r;
 		});
-		let ordinaryLookups = 0;
+		const lookups: string[] = [];
 
 		server.use(
 			// Settings land after the page does and flip the mode, which
-			// restarts the availability lookup. That restart is what
-			// puts an ordinary request in flight beside a re-ask.
+			// restarts the availability lookup in the new audio.
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await settingsHeld;
 				return HttpResponse.json({ ...appConfig(), mode: 'dub' });
@@ -359,64 +358,42 @@ describe('play route — clicking a dimmed aired episode', () => {
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
-				const body = (await request.json()) as { bypass_cache?: boolean };
-				if (body.bypass_cache) {
-					// The user's re-ask. Authoritative and newest.
-					return HttpResponse.json({
-						available: true,
-						episode_count: CACHED_COUNT,
-						extra_episodes: ['4.5'],
-						episode_count_approximate: false
-					});
-				}
-				ordinaryLookups += 1;
-				if (ordinaryLookups === 1) {
-					return HttpResponse.json({
-						available: true,
-						episode_count: CACHED_COUNT,
-						extra_episodes: [],
-						episode_count_approximate: false
-					});
-				}
-				// The mode change's lookup, held until after the re-ask
-				// has landed — and unconfirmed, so its empty specials
-				// list is "could not look" rather than "there are none".
-				await modeLookupHeld;
+				const body = (await request.json()) as { mode: string };
+				lookups.push(body.mode);
+				// The dub lookup is held until the card has been read.
+				if (body.mode === 'dub') await modeLookupHeld;
 				return HttpResponse.json({
 					available: true,
-					episode_count: 2,
+					episode_count: CACHED_COUNT,
 					extra_episodes: [],
-					episode_count_approximate: true
+					episode_count_approximate: false
 				});
-			})
+			}),
+			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 		);
 
 		app = mount(PlayPage, { target });
-		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
-		await until(() => ordinaryLookups === 1, 'the first availability lookup');
-
-		// Mode flips; its lookup goes out and stays out.
-		releaseSettings();
-		await until(() => ordinaryLookups === 2, 'the mode change to restart the lookup');
-
-		card(AIRED)!.click();
 		await until(
-			() => target.querySelector('li[data-ep-num="4.5"]') !== null,
-			'the re-ask to land and add the special'
+			() => card(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
+			`episode ${AIRED} to be gated by the sub count`
 		);
 
+		// Mode flips; its lookup goes out and stays out. The sub count
+		// says nothing about the dub catalogue, so until the dub answer
+		// is in nothing gates the card on a count.
+		releaseSettings();
+		await until(() => lookups.includes('dub'), 'the mode change to restart the lookup');
+		await until(
+			() => card(AIRED)?.getAttribute('title') !== m.detail_ep_recheck_idle(),
+			`episode ${AIRED} to be free of the sub count`
+		);
+
+		// The dub count gates it again once it is in.
 		releaseModeLookup();
-
-		// Bounded, and sound for the same reason as elsewhere: the
-		// write happens on the microtask after the response resolves,
-		// so anything that was going to clobber has by now.
-		await new Promise((r) => setTimeout(r, 300));
-
-		// Both halves of the clobber. The older answer is staler AND
-		// unconfirmed, so letting it win would delete a special that
-		// exists and roll the cap back to a number nobody confirmed.
-		expect(target.querySelector('li[data-ep-num="4.5"]')).not.toBeNull();
-		expect(card(4)?.getAttribute('title')).not.toBe(m.detail_ep_recheck_idle());
+		await until(
+			() => card(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
+			`episode ${AIRED} to be gated by the dub count`
+		);
 	});
 
 	it('presents the dimmed card as something to click, not as refused', async () => {
