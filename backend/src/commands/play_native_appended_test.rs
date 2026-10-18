@@ -1029,9 +1029,9 @@ fn a_sequel_whose_first_episodes_kitsu_has_not_titled_keeps_the_listing() {
 /// The shapes a sequel's page can take, over Noragami's two rows past
 /// twelve: a first episode missing from the page (a placeholder Kitsu
 /// listed with neither title nor date, which the reader drops) or
-/// titled with nothing but spaces refuses; one titled but undated
-/// counts as titled; a title missing past the rows under question does
-/// not matter; and every aired TV sequel has to pass, not one of them.
+/// titled with nothing but spaces refuses; a title missing past the
+/// rows under question does not matter, nor does the page's order; and
+/// every aired TV sequel has to pass, not one of them.
 #[test]
 fn a_sequel_page_is_read_by_episode_number() {
     let (rows, proved) = noragami();

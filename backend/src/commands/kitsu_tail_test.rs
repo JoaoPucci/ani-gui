@@ -539,10 +539,10 @@ async fn a_count_that_ends_a_page_reads_no_page_past_the_look_ahead() {
 }
 
 /// A sequel's page is read by episode number, holes and all: an episode
-/// Kitsu dated but did not title is there without a title, and one it
+/// Kitsu dated but did not title is there without a title, one it
 /// listed with neither — a placeholder the parser drops — is not there
-/// at all. Compacting the titles would read episode 2's title as the
-/// first.
+/// at all, and one it titled but did not date is there with its title.
+/// Compacting the titles would read episode 2's title as the first.
 #[tokio::test]
 async fn a_sequel_page_keeps_which_episodes_lack_titles() {
     use wiremock::matchers::{method, path, query_param};
@@ -569,14 +569,16 @@ async fn a_sequel_page_keeps_which_episodes_lack_titles() {
             .mount(&kitsu)
             .await;
     }
-    // Aragoto's page as Kitsu gives many a second season: episode 1
-    // dated but untitled, episode 2 titled, episode 3 a placeholder.
+    // Aragoto's page in every shape a row of Kitsu's takes: episode 1
+    // dated but untitled, episode 2 titled and dated, episode 3 a
+    // placeholder with neither, episode 4 titled but undated.
     Mock::given(method("GET"))
         .and(path("/anime/10800/episodes"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": [
             {"id": "1", "type": "episodes", "attributes": {"number": 1, "canonicalTitle": null, "airdate": "2015-10-03"}},
             {"id": "2", "type": "episodes", "attributes": {"number": 2, "canonicalTitle": "One of Her Memories", "airdate": "2015-10-10"}},
             {"id": "3", "type": "episodes", "attributes": {"number": 3, "canonicalTitle": null, "airdate": null}},
+            {"id": "4", "type": "episodes", "attributes": {"number": 4, "canonicalTitle": "Wish", "airdate": null}},
         ]})))
         .mount(&kitsu)
         .await;
@@ -612,6 +614,10 @@ async fn a_sequel_page_keeps_which_episodes_lack_titles() {
             SequelEpisode {
                 number: 2,
                 title: Some("One of Her Memories".into()),
+            },
+            SequelEpisode {
+                number: 4,
+                title: Some("Wish".into()),
             },
         ])
     );
