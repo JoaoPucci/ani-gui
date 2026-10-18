@@ -19,7 +19,8 @@
 //!     the cached row's show key names, and the versions it holds
 //!     with the one that served marked as carrying the mode, are
 //!     stamped on the request's row, as a fresh resolve would have
-//!     stamped them.
+//!     stamped them; where one stands, only the served version's mode
+//!     is merged into it, its window and the rest kept.
 //!
 //! The readers a row's check is made of — the stream's HEAD ping,
 //! the WebVTT prefix, the track's GET — live in
@@ -58,7 +59,9 @@ pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderI
 /// versions it holds, the one that served marked as carrying the mode,
 /// for the request's own show and mode — the embedded player's replay
 /// and the handoff's alike, so the affinity a fresh resolve would have
-/// written survives the resolution cache outliving the row.
+/// written survives the resolution cache outliving the row. Where a
+/// positive row stands, only the served version's mode is merged into
+/// it, the row's window and every other field kept.
 ///
 /// `at_start` is the row as the caller read it BEFORE the liveness
 /// check went out — the same ordering a fresh resolve keeps — so a
