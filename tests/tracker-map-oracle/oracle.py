@@ -74,11 +74,41 @@ def chain_rule(ev, count, total):
     ks, ke = month(ev["kitsu"]["start"]), month(ev["kitsu"]["end"])
     if not ks or not ke:
         return None
-    for show in shows:
+    for show, seg in zip(shows, segs):
         s, e = month(show["start"]), month(show["end"])
-        if not s or not e or s < ks or e > ke:
+        if not s or not e:
+            return None
+        start_ok = (
+            s >= ks
+            or slack(show["start"], ev["kitsu"]["start"])
+            or aired_in(ev, seg["kitsu_from"], show["start"])
+        )
+        end_ok = (
+            e <= ke
+            or slack(ev["kitsu"]["end"], show["end"])
+            or aired_in(ev, seg["kitsu_to"], show["end"])
+        )
+        if not (start_ok and end_ok):
             return None
     return segs
+
+
+def slack(earlier, later):
+    """Whether `later` is at most two days after `earlier`, both full dates."""
+    import datetime
+
+    try:
+        a = datetime.date.fromisoformat(earlier) if earlier and len(earlier) == 10 else None
+        b = datetime.date.fromisoformat(later) if later and len(later) == 10 else None
+    except ValueError:
+        return False
+    return bool(a and b and (b - a).days <= 2)
+
+
+def aired_in(ev, number, bound):
+    """Whether Kitsu's own episode `number` is dated in `bound`'s month."""
+    aired = (ev.get("kitsu_airdates") or {}).get(str(number))
+    return bool(month(aired) and month(aired) == month(bound))
 
 
 def place(parts, ours, total):
@@ -225,7 +255,7 @@ def kitsu(i, n, start="2010-01-05", end="2010-12-20"):
 
 
 def evidence(k, entry, **kw):
-    ev = {"kitsu": k, "entry": entry, "chain": [], "claimed": [], "listed": None, "sharing": [], "parts": []}
+    ev = {"kitsu": k, "entry": entry, "chain": [], "claimed": [], "listed": None, "sharing": [], "parts": [], "kitsu_airdates": {}}
     ev.update(kw)
     return ev
 
@@ -407,6 +437,34 @@ def borrowed_family(rng):
     return out
 
 
+def dated_family(rng):
+    """A chain past Kitsu's run that Kitsu's own episodes date, at one end,
+    both, the wrong month, or none; and runs a day or more past it."""
+    out = []
+    for _ in range(150):
+        a, b = rng.randint(2, 40), rng.randint(2, 40)
+        k = kitsu(80, a + b, "2010-01-04", "2010-12-27")
+        first = show(81, a, True, "2010-01-04", "2010-12-27")
+        late = show(82, b, True, "2012-04-07", "2012-09-29")
+        tweak = rng.choice(["both", "both", "start_only", "end_only", "wrong_month", "none"])
+        dates = {
+            "both": {str(a + 1): "2012-04-07", str(a + b): "2012-09-29"},
+            "start_only": {str(a + 1): "2012-04-07"},
+            "end_only": {str(a + b): "2012-09-29"},
+            "wrong_month": {str(a + b): "2012-08-30"},
+            "none": {},
+        }[tweak]
+        out.append(("chain-dated-" + tweak, evidence(k, first, chain=[late], kitsu_airdates=dates)))
+    for _ in range(80):
+        a, b = rng.randint(2, 40), rng.randint(2, 40)
+        over = rng.choice([1, 2, 3, 5])
+        k = kitsu(83, a + b, "2018-08-10", "2020-09-30")
+        first = show(84, a, True, "2018-08-12", "2019-10-15")
+        late = show(85, b, True, "2020-04-15", "2020-10-%02d" % over)
+        out.append(("chain-slack-%d" % over, evidence(k, first, chain=[late])))
+    return out
+
+
 def plain_family(rng):
     out = []
     for _ in range(100):
@@ -430,7 +488,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, dated_family, plain_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:

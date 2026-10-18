@@ -2,6 +2,7 @@
 //! entries. Split from [`super`] so each file stays inside the CRAP
 //! gate's per-file bar.
 
+use super::dates::inside_kitsu_run;
 use crate::account::episode_map::{Evidence, Segment, TrackerShow};
 
 /// A segment filing Kitsu's `from..=to` under the whole of `show`.
@@ -17,24 +18,9 @@ fn whole_entry(show: &TrackerShow, total: u32, from: u32, to: u32) -> Segment {
     }
 }
 
-/// `YYYY-MM` of a date, `None` when the date is unknown or names no
-/// month. Runs are compared by month: the sources disagree by a day
-/// about the same broadcast often enough that a day would refuse
-/// chains that are plainly right.
-fn month(date: Option<&str>) -> Option<&str> {
-    let date = date?;
-    let month = date.get(..7)?;
-    let (year, mm) = month.split_at(4);
-    (year.chars().all(|c| c.is_ascii_digit())
-        && mm.len() == 3
-        && mm.starts_with('-')
-        && mm[1..].chars().all(|c| c.is_ascii_digit()))
-    .then_some(month)
-}
-
 /// The chain rule: `entry` and its sequels, in the order the tracker
 /// chains them, sum exactly to Kitsu's count, every segment's run lies
-/// inside Kitsu's run by month, and no segment past the first is a
+/// inside Kitsu's run ([`inside_kitsu_run`]), and no segment past the first is a
 /// Kitsu entry's own. Each segment then takes the Kitsu episodes it
 /// counts, in order.
 pub(super) fn chain(
@@ -68,14 +54,9 @@ pub(super) fn chain(
     {
         return None;
     }
-    let kitsu_start = month(evidence.kitsu.start.as_deref())?;
-    let kitsu_end = month(evidence.kitsu.end.as_deref())?;
-    for show in shows {
-        let start = month(show.start.as_deref())?;
-        let end = month(show.end.as_deref())?;
-        if start < kitsu_start || end > kitsu_end {
-            return None;
-        }
-    }
-    Some(segments)
+    shows
+        .iter()
+        .zip(&segments)
+        .all(|(show, segment)| inside_kitsu_run(evidence, show, segment))
+        .then_some(segments)
 }

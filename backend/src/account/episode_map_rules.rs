@@ -10,6 +10,8 @@ use super::episode_map::{EpisodeMap, Evidence, Identity, Segment, Shape};
 
 #[path = "episode_map_chain.rs"]
 mod chain_rule;
+#[path = "episode_map_dates.rs"]
+mod dates;
 #[path = "episode_map_extras.rs"]
 mod extras_rule;
 #[path = "episode_map_parts.rs"]

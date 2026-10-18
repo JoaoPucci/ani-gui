@@ -46,6 +46,28 @@ class CaseTable(unittest.TestCase):
         ev["chain"][0]["end"] = "1993-01-01"
         self.assertEqual(predict(ev)["why"], "unexplained")
 
+    def test_a_segment_past_kitsu_s_run_is_inside_where_kitsu_s_episodes_date_it(self):
+        ev = evidence(
+            kitsu(1633, 78, "2003-04-06", "2004-03-28"),
+            show(1816, 52, True, "2003-04-06", "2004-03-28"),
+            chain=[show(129610, 26, True, "2005-09-10", "2006-05-06")],
+        )
+        self.assertEqual(predict(ev)["why"], "unexplained")
+        ev["kitsu_airdates"] = {"53": "2005-09-10", "78": "2006-05-06"}
+        self.assertEqual(predict(ev)["shape"], "chain")
+        ev["kitsu_airdates"] = {"53": "2005-09-10"}
+        self.assertEqual(predict(ev)["why"], "unexplained")
+
+    def test_a_run_two_days_past_kitsu_s_is_inside_and_three_is_not(self):
+        def ev(end):
+            return evidence(
+                kitsu(1, 36, "2018-08-10", "2020-09-30"),
+                show(2, 24, True, "2018-08-12", "2019-10-15"),
+                chain=[show(3, 12, True, "2020-04-15", end)],
+            )
+        self.assertEqual(predict(ev("2020-10-02"))["shape"], "chain")
+        self.assertEqual(predict(ev("2020-10-03"))["why"], "unexplained")
+
     def test_a_claimed_segment_is_identity(self):
         ev = ranma()
         ev["claimed"] = [149939]
@@ -141,6 +163,9 @@ class Generation(unittest.TestCase):
         families = {c["family"].split("-")[0] for c in cases}
         for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed"):
             self.assertIn(f, families)
+        full = {c["family"] for c in cases}
+        for f in ("chain-dated-both", "chain-dated-start_only", "chain-slack-1", "chain-slack-3"):
+            self.assertIn(f, full)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
         self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})
         self.assertTrue(any(c["family"] == "extras-multi-ok" for c in cases))
