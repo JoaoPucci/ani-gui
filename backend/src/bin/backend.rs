@@ -130,7 +130,7 @@ fn main() -> std::process::ExitCode {
         // The handshake: the URL the Electron main process is waiting
         // for, then serve until stopped.
         //
-        // Codex P2 #3370011855: the renderer-only secret goes out on
+        // The renderer-only secret goes out on
         // the same channel so Electron's main process can parse it and
         // thread it through preload into `window.aniGui.
         // internalSecret`. The renderer attaches it as the

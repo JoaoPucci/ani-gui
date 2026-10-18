@@ -41,9 +41,8 @@ function envelopeOf(e: unknown): unknown {
  * Mirror of the backend's
  * `commands::account::WATCH_LATER_BRIDGE_MAX_IDS`. Keep in sync —
  * if these drift the loader will fire requests the backend rejects
- * and the rail blanks (Codex P2 #3373907898 caught the original
- * unbounded version doing exactly that for users with 501+ planned
- * titles).
+ * and the rail blanks (an unbounded loader did exactly that for
+ * users with 501+ planned titles).
  */
 export const WATCH_LATER_BRIDGE_MAX_IDS = 500;
 
@@ -76,7 +75,7 @@ export interface WatchLaterDeps {
  * provider's fetch fails, the loader rejects rather than resolving
  * `[]`: a total failure is distinct from a genuinely empty list, and
  * the caller surfaces a retry state for it instead of "nothing
- * planned" (Codex P2 #3415603155). The rejection is the first
+ * planned". The rejection is the first
  * provider failure, as the backend's error envelope when its body
  * carried one, so the caller can word it by its `key` and `kind`.
  */

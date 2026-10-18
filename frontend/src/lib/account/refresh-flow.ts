@@ -1,5 +1,5 @@
 /**
- * Token-refresh flow for hydrate (Codex P2 #3412673586).
+ * Token-refresh flow for hydrate.
  *
  * MAL access tokens expire after ~1h while their refresh token stays
  * valid for far longer. Without this, `hydrate()` would mark the
@@ -34,8 +34,7 @@ export interface RefreshFlowDeps {
 	 *  at the start of an async disconnect. Captured before the refresh
 	 *  await and re-checked after: if it moved, a disconnect or re-auth
 	 *  raced the refresh and the write is superseded — even when the
-	 *  store's account snapshot hasn't caught up yet (Codex P2
-	 *  #3416616176, #3416668470). */
+	 *  store's account snapshot hasn't caught up yet. */
 	generation(provider: Provider): number;
 }
 
@@ -82,7 +81,7 @@ export async function refreshAccount(
 	// don't persist the refreshed-from snapshot back (which would
 	// resurrect a removed token or clobber a newer session). The counter
 	// catches a disconnect even during the window before its async clear
-	// updates the store (Codex P2 #3416616176, #3416668470).
+	// updates the store.
 	if (deps.generation(provider) !== generationAtStart) {
 		return { kind: 'superseded' };
 	}
@@ -95,8 +94,7 @@ export async function refreshAccount(
 	// persistAccount routes through the token-write queue, which preserves
 	// a rejected write for the caller (e.g. a safeStorage/IPC error). Treat
 	// a rejection the same as a resolved {ok:false}: a failed refresh, not
-	// an exception that escapes to abort the caller's best-effort flow
-	// (Codex P2 #3421439995).
+	// an exception that escapes to abort the caller's best-effort flow.
 	let persisted;
 	try {
 		persisted = await deps.persistAccount(provider, refreshed);
@@ -107,8 +105,7 @@ export async function refreshAccount(
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
 	// safeStorage write completing. If the generation moved, don't report
-	// 'refreshed' — the caller must not reconnect the superseded account
-	// (Codex P2 #3416732381).
+	// 'refreshed' — the caller must not reconnect the superseded account.
 	if (deps.generation(provider) !== generationAtStart) {
 		return { kind: 'superseded' };
 	}
@@ -118,8 +115,7 @@ export async function refreshAccount(
 /**
  * Seconds before a token's expiry at which a still-valid token is
  * proactively refreshed, so a long-lived session never hands a
- * just-expired bearer to a write-back or list refresh (Codex P2
- * #3416883107). MAL access tokens last ~1h; a two-minute skew refreshes
+ * just-expired bearer to a write-back or list refresh. MAL access tokens last ~1h; a two-minute skew refreshes
  * comfortably ahead of the boundary without churning on every call.
  */
 export const REFRESH_SKEW_SECONDS = 120;
@@ -151,8 +147,7 @@ export interface FreshBearerDeps extends RefreshFlowDeps {
  * (refresh threw, persist failed, or a disconnect/re-auth superseded
  * the refresh) falls back to the current bearer — best-effort, the
  * caller's request may still 401 exactly as it did before, but a
- * refreshable token is never left to rot for the life of the session
- * (Codex P2 #3416883107).
+ * refreshable token is never left to rot for the life of the session.
  */
 export async function freshBearer(
 	deps: FreshBearerDeps,
@@ -176,7 +171,7 @@ export interface RefreshExpiredDeps extends RefreshFlowDeps {
 	onRefreshed(provider: Provider, account: PersistedAccount): void;
 	/** True while an account change (e.g. disconnect) is in progress for
 	 *  the provider — such a provider is skipped, mirroring the gate in
-	 *  `freshBearer` (Codex P2 #3421609159). */
+	 *  `freshBearer`. */
 	changing(provider: Provider): boolean;
 }
 
@@ -187,7 +182,7 @@ export interface RefreshExpiredDeps extends RefreshFlowDeps {
  * whose account change is in progress is skipped: a disconnect could
  * have bumped the generation and queued its `clearToken` already, so
  * starting a refresh risks the queued persist landing after the clear
- * and resurrecting the removed token (Codex P2 #3421609159).
+ * and resurrecting the removed token.
  */
 export async function refreshExpiredAccounts(deps: RefreshExpiredDeps): Promise<void> {
 	const snapshot = deps.byProvider();

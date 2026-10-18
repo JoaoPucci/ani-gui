@@ -83,7 +83,7 @@ pub struct AppState {
     pub state_dir: PathBuf,
     /// Per-process random secret renderer-only paths require as the
     /// `x-ani-gui-internal-secret` header. Currently used to gate the
-    /// disconnect-after-expiry cache wipe (Codex P2 #3370011855) so a
+    /// disconnect-after-expiry cache wipe so a
     /// cross-origin tab under the permissive CORS layer can't poison
     /// another user's local cache.
     pub internal_secret: InternalSecret,
@@ -91,13 +91,12 @@ pub struct AppState {
     /// every `MalProvider` the `provider_for_kind` dispatcher
     /// constructs clones the cheap `Arc` so concurrent refresh
     /// handlers serialize on the same mutex and reuse the same
-    /// rotation cache (Codex P2 #3379969316).
+    /// rotation cache.
     pub mal_refresh: MalRefreshState,
     /// Per-(provider, show) write serialization for tracker write-back.
     /// The un-awaited fan-out can fire overlapping writes for the same
     /// show; this makes the read-then-upsert monotonic guard atomic so a
-    /// later-landing lower write can't regress progress (Codex P2
-    /// #3387237642). Process-wide; cloned `Arc` is cheap.
+    /// later-landing lower write can't regress progress. Process-wide; cloned `Arc` is cheap.
     pub account_write_locks: AccountWriteLocks,
     /// Per-(kitsu_id, mode) write ordering for the availability cache.
     /// A user's cache-bypassing re-ask and the page-load lookup can be

@@ -19,7 +19,7 @@ use crate::error::Result;
 
 /// Which provider an instance belongs to.
 ///
-/// Codex P2 #3369980190: serde rename targets match `slug()` exactly,
+/// Serde rename targets match `slug()` exactly,
 /// so a `ProviderKind::AniList` field on a serialized `UserProfile` /
 /// `ListEntry` round-trips through the renderer's `Provider` type
 /// (`'anilist' | 'mal' | 'inhouse'`). The default snake_case derive
@@ -139,7 +139,7 @@ pub struct ListEntry {
     pub title: String,
 }
 
-/// Update payload for write-back (PR #4).
+/// Update payload for write-back.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryUpdate {
     /// New status — leave `None` to keep current.
@@ -197,10 +197,8 @@ pub trait UserListProvider: Send + Sync {
     /// The authenticated user's current list entry for `id` (status +
     /// watched count), or `None` when the show isn't on their list yet.
     /// Bearer-scoped single read. Drives the write-back reconcile: keep
-    /// progress monotonic so a replay never regresses it (Codex P1
-    /// #3386909281), and read the status so a progress write can promote
-    /// a planning row to watching while preserving rewatching/completed
-    /// (Codex P2 #3387319861 / #3387383171).
+    /// progress monotonic so a replay never regresses it, and read the status so a progress write can promote
+    /// a planning row to watching while preserving rewatching/completed.
     async fn current_entry(
         &self,
         tokens: &Tokens,

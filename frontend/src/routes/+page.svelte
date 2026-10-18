@@ -23,7 +23,7 @@
 	// different buckets so a shifted-survivor that gets
 	// dedupe-removed by a background callback during the gate's
 	// open window can't piggyback on the flip allowlist and trigger
-	// a spurious scale-out (Codex P2 #3369281412). cwOutScale only
+	// a spurious scale-out. cwOutScale only
 	// animates ids the user explicitly deleted; cwFlip animates the
 	// survivors that physically shift to close the gap.
 	const deleteAnimationGate = createAnimationGate();
@@ -152,8 +152,7 @@
 	let watchLater = $state<KitsuAnimeRef[] | null>(null);
 	// True when the most recent rail load failed (bridge/availability),
 	// as opposed to succeeding with an empty list — so a connected user
-	// sees a retry affordance instead of a false "nothing planned"
-	// (Codex PR #71).
+	// sees a retry affordance instead of a false "nothing planned".
 	let watchLaterFailed = $state(false);
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
@@ -161,7 +160,7 @@
 	// Monotonic load token. Every rail load (mount effect + refresh)
 	// captures the next value and only writes its result if still the
 	// latest — so a slow initial load can't clobber a newer refresh, and
-	// vice versa (Codex PR #71).
+	// vice versa.
 	let watchLaterLoadSeq = 0;
 	// Watch Later refresh: in-flight guard for the manual button, and a
 	// one-shot latch so the TTL auto-refresh fires at most once per mount
@@ -295,7 +294,7 @@
 		deleteBusy = true;
 		try {
 			// Decision + transition logic lives in the helper per
-			// AGENTS.md §2 (Codex P2 #3369181727): group expansion +
+			// AGENTS.md §2: group expansion +
 			// serialized backend deletes + filtered-history compute,
 			// all unit-covered in delete-controller.test.ts. The
 			// component stays as modal/busy glue.
@@ -524,7 +523,7 @@
 
 	// Watch Later rail (plan §6.6). Reactive on accountStore.byProvider so:
 	//  - on cold launch directly to `/`, the rail loads as soon as the
-	//    layout's hydrate() populates the store (Codex P2 #3373736854);
+	//    layout's hydrate() populates the store;
 	//  - sign-in / disconnect / token-refresh events during the session
 	//    trigger a re-load without a route navigation.
 	// `cfg.mode` participates too — toggling sub/dub re-runs the
@@ -620,8 +619,7 @@
 			// Refresh-path reload failed (bridge / availability). Flag it
 			// rather than blanking the rail or leaking an unhandled
 			// rejection: a populated rail keeps showing its cards (the
-			// length>0 branch wins), an empty one shows the retry state
-			// (Codex PR #71).
+			// length>0 branch wins), an empty one shows the retry state.
 			if (seq !== watchLaterLoadSeq) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
@@ -644,7 +642,7 @@
 					if (!cred) return;
 					// Authoritative tracker pull (no secret-gated fallback): refresh
 					// a near-expiry token first so a long-open session's refresh
-					// doesn't 401 against the provider API (Codex P2 #3416883107).
+					// doesn't 401 against the provider API.
 					const bearer = (await freshBearerFor(p)) ?? cred.bearer;
 					try {
 						await fetchAndCacheList(p, bearer);
@@ -669,7 +667,7 @@
 		// Don't burn the one-shot latch on the pre-hydrate run (no
 		// providers yet) — otherwise the real run with connected
 		// providers short-circuits and the cold-launch TTL refresh never
-		// fires (Codex PR #71). Latch only once there's something to check.
+		// fires. Latch only once there's something to check.
 		if (providers.length === 0) return;
 		watchLaterAutoChecked = true;
 		const now = Date.now();
@@ -1068,8 +1066,7 @@
 			     - match === undefined : the per-row loader hasn't
 			       fired onRowReady yet. Render as a non-interactive
 			       div so a click during the probe window doesn't
-			       mis-route the user to /search (Codex P2
-			       #3348970892).
+			       mis-route the user to /search.
 			     - match === null : resolution definitively failed;
 			       the row falls through to a search for its title. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
@@ -1290,7 +1287,7 @@
 {:else if accountStore.hasAny && watchLaterFailed}
 	<!-- Connected but the last load failed (bridge/availability down). Show
 	     a retry affordance rather than a false "nothing planned" — an empty
-	     list and a failed fetch are different states (Codex PR #71). -->
+	     list and a failed fetch are different states. -->
 	<Strip
 		eyebrow={m.account_watch_later_title()}
 		caption={m.account_watch_later_failed()}
@@ -1303,7 +1300,7 @@
 {:else if accountStore.hasAny && watchLater !== null}
 	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
 	     surface the header + refresh so newly-added tracker titles can be
-	     pulled in before the TTL (Codex PR #71). -->
+	     pulled in before the TTL. -->
 	<Strip
 		eyebrow={m.account_watch_later_title()}
 		caption={m.account_watch_later_empty()}

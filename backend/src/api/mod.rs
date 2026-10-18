@@ -301,7 +301,7 @@ struct KitsuByMalIdsBody {
     mal_ids: Vec<u32>,
 }
 
-/// Codex P1 #3373789621: this route lives under the API router's
+/// This route lives under the API router's
 /// permissive CORS layer, so any cross-origin page on the user's
 /// machine could otherwise POST a giant `mal_ids` array and burn N
 /// concurrent Kitsu requests per call. Two gates protect it:
@@ -2868,7 +2868,7 @@ mod tests {
         }
     }
 
-    /// Codex P1 #3373789621: the renderer-only secret gate must
+    /// The renderer-only secret gate must
     /// reject calls from anything that isn't Electron's preload.
     /// Without the header, the handler bails before reaching the
     /// Kitsu fan-out so a cross-origin tab can't trigger the DoS
@@ -2895,7 +2895,7 @@ mod tests {
         );
     }
 
-    /// Same Codex P1: belt-and-suspenders cap on the batch size so
+    /// Same gate: belt-and-suspenders cap on the batch size so
     /// an internal caller who somehow held the secret still can't
     /// burn unbounded Kitsu lookups.
     #[tokio::test]

@@ -17,7 +17,7 @@ function deps(overrides: Partial<Parameters<typeof pushWatchedToTrackers>[0]> = 
 
 describe('pushWatchedToTrackers', () => {
 	it('fans out to every connected provider with kitsu_id + progress and no status override', async () => {
-		// Codex P2 #3387319861: a normal progress update sends no status,
+		// A normal progress update sends no status,
 		// so it never downgrades a rewatching/paused tracker row.
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 7);
@@ -63,7 +63,7 @@ describe('pushWatchedToTrackers', () => {
 
 describe('pushWatchedToTrackers finale status', () => {
 	it('marks completed on the finale of a finished finite series', async () => {
-		// Codex P2 #3386988961: episode N of an N-episode show should
+		// Episode N of an N-episode show should
 		// move the tracker to completed. Gated on the series being
 		// finished, and the only case that sends a status at all.
 		const { d, calls } = deps();
@@ -72,7 +72,7 @@ describe('pushWatchedToTrackers finale status', () => {
 	});
 
 	it('sends no status at the latest episode of a still-airing series', async () => {
-		// Codex P2 #3387184082: the playable cap for an airing show is
+		// The playable cap for an airing show is
 		// the latest released episode, so episode >= cap is true — but a
 		// non-finished series must not be completed (progress only).
 		const { d, calls } = deps();

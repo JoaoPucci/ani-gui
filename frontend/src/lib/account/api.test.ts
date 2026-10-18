@@ -181,7 +181,7 @@ describe('fetchAndCacheList', () => {
 		await fetchAndCacheList('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist');
-		// Codex P2 #3369972493: no user_id in the body; backend
+		// No user_id in the body; backend
 		// derives the cache-write owner from the bearer.
 		expect(String((init as RequestInit).body)).not.toContain('user_id');
 		const headers = (init as RequestInit).headers as Record<string, string>;
@@ -200,7 +200,7 @@ describe('fetchCachedList', () => {
 		expect(headers.authorization).toBe('Bearer tok');
 	});
 
-	it('appends fallback_user_id + internal-secret header for offline reads (Codex P2 #3372942241)', async () => {
+	it('appends fallback_user_id + internal-secret header for offline reads', async () => {
 		// Backend gate: the renderer-only secret authenticates us as
 		// the Electron preload before the fallback id is trusted.
 		(globalThis as { window?: unknown }).window = {
@@ -227,12 +227,12 @@ describe('dropListCache', () => {
 		await dropListCache('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist/cache');
-		expect(String(url)).not.toContain('user_id'); // backend derives from bearer (Codex P1)
+		expect(String(url)).not.toContain('user_id'); // backend derives from bearer
 		expect((init as RequestInit).method).toBe('DELETE');
 	});
 
 	it('threads the fallback user_id into the query when provided', async () => {
-		// Codex P2 #3369997650: disconnect-after-expiry path. The
+		// Disconnect-after-expiry path. The
 		// renderer hands the safeStorage-persisted user_id back as
 		// `?fallback_user_id=` so the backend can still clear the
 		// cache when me() 401s.
@@ -243,7 +243,7 @@ describe('dropListCache', () => {
 	});
 
 	it('attaches the internal-secret header when present on window.aniGui', async () => {
-		// Codex P2 #3370011855: the renderer-only header gates the
+		// The renderer-only header gates the
 		// backend's fallback path so a cross-origin tab can't wipe
 		// another user's cache by guessing the user_id.
 		(globalThis as { window?: unknown }).window = {
@@ -271,7 +271,7 @@ describe('dropListCache', () => {
 });
 
 describe('dropProviderCache', () => {
-	// Codex P2 #3371658227: provider-wide clear used by the orphan-
+	// Provider-wide clear used by the orphan-
 	// token disconnect path (no bearer, no user_id). Backend gates on
 	// the internal_secret header so a cross-origin tab can't trigger.
 	it('DELETEs the provider-wide cache endpoint with the internal-secret header', async () => {
@@ -346,7 +346,7 @@ describe('readPersistedAccount', () => {
 	});
 
 	it('returns unreadable when the bridge surfaces encryption_unavailable', () => {
-		// Codex P2 #3371530183: keychain outage → file is on disk but
+		// Keychain outage → file is on disk but
 		// can't be decrypted. Callers must NOT collapse this to "no
 		// account" — the orphan file needs an in-app cleanup path.
 		stubBridge({ getToken: () => ({ ok: false, kind: 'encryption_unavailable' }) });
@@ -377,7 +377,7 @@ describe('persistAccount', () => {
 		}
 	});
 
-	// Codex P2 #3372942245: Linux without a usable keyring trips this
+	// Linux without a usable keyring trips this
 	// path. The page needs the specific kind to render "install your OS
 	// keyring" instead of the generic sign-in error.
 	it('threads encryption_unavailable through verbatim', async () => {

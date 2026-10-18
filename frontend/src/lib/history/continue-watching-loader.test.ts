@@ -40,7 +40,7 @@ const subMode = () => Promise.resolve<'sub' | 'dub'>('sub');
 
 describe('loadContinueWatchingState', () => {
 	it('emits onRowReady per row as each row resolves, independent of other rows', async () => {
-		// Codex P2 #3348386932 — per-card releases: a slow row must
+		// Per-card releases: a slow row must
 		// not gate a fast row. Before this fix the loader awaited
 		// Promise.all on every match before firing the batch, so any
 		// one slow Kitsu resolution held every card in its
@@ -131,7 +131,7 @@ describe('loadContinueWatchingState', () => {
 	});
 
 	it('caps concurrent probes at the configured pool size', async () => {
-		// Codex P2 #3348430790 — bounded probe concurrency: a sizable
+		// Bounded probe concurrency: a sizable
 		// CLI-imported history with many cache-miss rows shouldn't
 		// fire N concurrent the provider probes. The backend's `warm`
 		// path spaces equivalent probes by 500ms; the search filter
@@ -177,7 +177,7 @@ describe('loadContinueWatchingState', () => {
 	});
 
 	it('restarts workers when a row queues after the pool drained', async () => {
-		// Codex P2 #3348906718 — worker-pool restart race. When all
+		// Worker-pool restart race. When all
 		// workers exit their while-loop on the same tick (every
 		// in-flight probe just returned), each worker's .finally is
 		// queued AFTER any matchPromise.then that resolves in the same

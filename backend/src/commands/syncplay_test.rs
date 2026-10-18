@@ -196,7 +196,7 @@ fn launch_args_decode_without_referer_for_back_compat() {
 #[test]
 fn argv_for_vlc_uses_http_referrer() {
     // VLC's flag for the Referer header is `--http-referrer=`,
-    // not mpv's `--referrer=`. Codex flagged on PR #12 that a
+    // not mpv's `--referrer=`. With the mpv flag, a
     // Syncplay→VLC user gets either an "unknown option" error
     // or a silent fall-through to no-Referer with the mpv flag,
     // breaking fast4speed.rsvp streams that play fine under

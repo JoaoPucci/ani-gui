@@ -96,8 +96,7 @@ pub fn clear_user(pool: &SqlitePool, kind: ProviderKind, user_id: &str) -> Resul
     Ok(())
 }
 
-/// Delete every row for `provider` regardless of `user_id`. Codex P2
-/// #3371658227: when `hydrate()` puts the provider in the unreadable-
+/// Delete every row for `provider` regardless of `user_id`. When `hydrate()` puts the provider in the unreadable-
 /// token error state (orphan token file, no decoded account), the
 /// renderer's safeStorage has no `user_id` to scope the per-user
 /// clear, so the standard delete-cache path can't run. The frontend

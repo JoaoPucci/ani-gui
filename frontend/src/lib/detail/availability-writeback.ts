@@ -13,7 +13,7 @@
  * nothing about the cap. Treating that as a whole answer discards the
  * ordinary lookup wholesale, confirmed count and all, and leaves the
  * page on the count the row held before — which after a mode change
- * belongs to the other catalogue (Codex P2 #3674622194).
+ * belongs to the other catalogue.
  *
  * So ownership is per field. A re-ask claims the verdict always and the
  * count only when it confirmed one; whatever it left open, a lookup

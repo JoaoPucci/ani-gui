@@ -129,8 +129,7 @@ export function updateProgress(
 
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
 	// No user_id in the body — the backend derives the cache owner
-	// from the bearer by calling me() internally. Codex P2 #3369972493:
-	// a renderer-supplied user_id could be used to poison another
+	// from the bearer by calling me() internally. A renderer-supplied user_id could be used to poison another
 	// user's local cache under permissive CORS.
 	return postJson<ListEntry[]>(`/api/account/list/${provider}`, {}, bearer);
 }
@@ -140,12 +139,10 @@ export async function fetchCachedList(
 	bearer: string,
 	fallbackUserId?: string
 ): Promise<ListEntry[]> {
-	// Backend resolves identity from a live `me()` call (Codex P1
-	// #3369956138: a renderer-supplied user_id alone is forgeable
+	// Backend resolves identity from a live `me()` call (A renderer-supplied user_id alone is forgeable
 	// under permissive CORS). When that round-trip fails (offline,
 	// 401, 5xx) the backend falls through to `fallbackUserId` gated
-	// by the renderer-only internal secret — Codex P2 #3372942241:
-	// the cached endpoint must keep serving local rows during
+	// by the renderer-only internal secret — The cached endpoint must keep serving local rows during
 	// upstream outages, which is exactly when the cache earns its
 	// keep. Send the fallback always; the backend ignores it when
 	// me() succeeds.
@@ -165,8 +162,7 @@ export async function fetchCachedList(
 }
 
 /**
- * Provider-wide cache wipe — no bearer, no user_id. Codex P2
- * #3371658227: the orphan-token disconnect path (hydrate found the
+ * Provider-wide cache wipe — no bearer, no user_id. The orphan-token disconnect path (hydrate found the
  * file unreadable, so the store has no account) can't run
  * dropListCache because it has no bearer and no user_id. This
  * fallback hits the renderer-only `…/cache/all` endpoint gated by
@@ -191,12 +187,12 @@ export function dropListCache(
 	fallbackUserId?: string
 ): Promise<void> {
 	// Backend derives the cache-owner user_id from a live `me()` call.
-	// When the bearer has expired or been revoked (disconnect path,
-	// Codex P2 #3369997650), the call 401s; pass the safeStorage-
+	// When the bearer has expired or been revoked (disconnect path),
+	// the call 401s; pass the safeStorage-
 	// persisted user_id as `?fallback_user_id=` so the backend can
 	// still clear the cache instead of leaving orphan rows behind.
 	//
-	// Codex P2 #3370011855: the fallback alone is exploitable under
+	// The fallback alone is exploitable under
 	// permissive CORS — a cross-origin tab can send `Bearer garbage`
 	// plus a guessed user_id and wipe another user's cache. Send the
 	// per-process renderer-only secret so the backend can require

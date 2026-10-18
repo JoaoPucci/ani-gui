@@ -37,8 +37,7 @@ declare global {
 			 *  startup and threaded through Electron's preload. Sent as
 			 *  the `x-ani-gui-internal-secret` header on the few backend
 			 *  paths that need a renderer-only gate beyond the bearer —
-			 *  specifically the disconnect-after-expiry cache wipe
-			 *  (Codex P2 #3370011855). Absent in browser-only dev. */
+			 *  specifically the disconnect-after-expiry cache wipe. Absent in browser-only dev. */
 			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
@@ -1036,7 +1035,7 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
  *
  *  Sends the renderer-only internal-secret header — backend gates
  *  the route on it so a cross-origin page under permissive CORS
- *  can't reach the handler (Codex P1 #3373789621). Also enforces
+ *  can't reach the handler. Also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
 export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {

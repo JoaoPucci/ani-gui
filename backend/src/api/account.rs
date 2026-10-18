@@ -74,8 +74,8 @@ use account_wire::{
 
 /// When the disconnect-path `me()` call fails, decide whether to fall
 /// through to the renderer-supplied identity (still gated by the
-/// internal secret). Codex P2 #3370011855 opened the path for
-/// `InvalidToken`; Codex P2 #3370096596 extends it to `Network` and
+/// internal secret). The path is open for `InvalidToken`, and for
+/// `Network` and
 /// `Upstream` so an offline disconnect can still clear the local cache
 /// rows the docs/PRIVACY.md promise to drop. A tracker's rate limit
 /// (`RateLimited`, its HTTP 429) is an answer of the same kind as a
@@ -97,9 +97,7 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
 /// per-user cache rows. Tries the bearer-derived `me()` identity
 /// first (the only one upstream can vouch for), and on offline /
 /// 401 / 5xx falls back to the renderer-supplied id gated by the
-/// internal secret. Used by both the cached-read path (Codex P2
-/// #3372942241) and the disconnect-delete path (Codex P2 #3370011855
-/// + #3370096596) so a single helper enforces the security gate.
+/// internal secret. Used by both the cached-read path and the disconnect-delete path so a single helper enforces the security gate.
 async fn resolve_owner_user_id(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -161,13 +159,12 @@ async fn post_update(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    // Reject empty / typo'd payloads before they reach the upsert
-    // (Codex P2 #3381617932).
+    // Reject empty / typo'd payloads before they reach the upsert.
     let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
     let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
     // push_progress writes the cache through under its per-show lock
-    // (Codex P2 #3412673593 reflects a started title; #3423108941 keeps
-    // it under the lock so a stale write can't clobber an explicit edit).
+    // so the cached list reflects a started title, and keeps it under
+    // the lock so a stale write can't clobber an explicit edit.
     let entry = account::push_progress(&state, kind, &tokens, kitsu_id, update).await?;
     Ok(Json(entry))
 }
@@ -290,7 +287,7 @@ async fn post_list(
     Path(provider): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
-    // Codex P2 #3369972493: previously this accepted `user_id` from
+    // Previously this accepted `user_id` from
     // the request body and used it as the cache-write owner. A
     // cross-origin page with its own valid bearer could choose any
     // other user_id and poison that target's local cache. Like the
@@ -311,13 +308,13 @@ async fn get_cached_list(
     headers: HeaderMap,
     Query(q): Query<DisconnectFallbackQuery>,
 ) -> Result<Json<Vec<ListEntry>>, AniError> {
-    // Codex P2 #3372942241: previously this required a live `me()` to
+    // Previously this required a live `me()` to
     // succeed, which defeated the local cache the moment the user went
     // offline or AniList threw 5xx — exactly when the cached read is
     // most useful. Resolve through the shared helper so the bearer-
     // validated identity wins when reachable, with the renderer-only
-    // internal-secret-gated fallback covering outage paths. Codex P1
-    // #3369956138 (no caller-supplied user_id in the trusted path) is
+    // internal-secret-gated fallback covering outage paths. The rule
+    // that the trusted path takes no caller-supplied user_id is
     // still honoured: the fallback id is only consulted after me()
     // fails for offline/401/5xx AND the renderer secret authenticates
     // the request as coming from the Electron preload.
@@ -336,7 +333,7 @@ async fn delete_list_cache(
     headers: HeaderMap,
     Query(q): Query<DisconnectFallbackQuery>,
 ) -> Result<StatusCode, AniError> {
-    // Codex P2 #3370011855 + #3370096596 + #3372942241: shared resolver
+    // Shared resolver
     // so the same security gate covers the disconnect-delete and the
     // cached-read paths. Bearer-validated me() wins when reachable;
     // offline / 401 / 5xx falls through to the renderer-supplied id
@@ -351,7 +348,7 @@ async fn delete_list_cache(
 }
 
 /// Provider-wide cache wipe — no bearer, no user_id, just the
-/// renderer-only internal secret. Codex P2 #3371658227: the
+/// renderer-only internal secret. The
 /// orphan-token disconnect path (hydrate found the token file
 /// unreadable, so the store has no account) has no `user_id` to pass
 /// to the per-user delete and no live bearer to authenticate one.

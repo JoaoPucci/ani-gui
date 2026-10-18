@@ -1511,7 +1511,7 @@ describe('kitsuByMalIds', () => {
 		expect(got).toEqual(list);
 	});
 
-	it('omits the secret header in browser-only dev (Codex P1 #3373789621 gate is server-side)', async () => {
+	it('omits the secret header in browser-only dev (the gate is server-side)', async () => {
 		// Backend rejects without the header; client just doesn't forge
 		// a value it doesn't have. Dev-time misconfigs surface as 4xx
 		// rather than silent success.

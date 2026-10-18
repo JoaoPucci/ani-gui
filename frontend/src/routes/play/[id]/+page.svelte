@@ -933,7 +933,7 @@
 	 * and a click abandoned two navigations ago finds the context it
 	 * left behind and acts on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
-	 * asked it (Codex P2 #3674767163).
+	 * asked it.
 	 *
 	 * Derived from the route param rather than the loaded detail: the
 	 * detail is briefly null on any load, and treating that as a
@@ -1097,7 +1097,7 @@
 	// True once the availability probe settled (result or error). The
 	// strip warm waits on it — until then the playable cap is null and
 	// beyondPlayable reads it as unbounded, so the warm would resolve
-	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+	// aired-but-uncatalogued padded tiles.
 	let availabilityResolved = $state(false);
 	// The current lookup's own verdict, for the warm: null while the
 	// question is open or after it failed, never one retained from an
@@ -1121,7 +1121,7 @@
 	// Probe the provider for the playable episode count IN THE PLAYBACK
 	// MODE — dub catalogues lag sub, so a sub-mode probe would cap a
 	// dub session too high and Download All could request undubbed
-	// episodes (Codex P2 #3566111944). Re-runs when the mode flips
+	// episodes. Re-runs when the mode flips
 	// (config landing, sub/dub toggle), resetting the resolved flag so
 	// the warm holds during the refetch. The cache stamp from the play
 	// handler that brought us here is usually in place, so this is
@@ -1935,7 +1935,7 @@
 		if (airingIsPending) return;
 		// ...and for the availability probe, or the null playable cap
 		// reads as unbounded and the warm resolves padded tiles
-		// the provider hasn't catalogued (Codex P2 #3566100686).
+		// the provider hasn't catalogued.
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
@@ -1980,7 +1980,7 @@
 		// prev/next, auto-play-next: an unaired target is a doomed
 		// resolution, no matter who asked. While the airing lookup is
 		// in flight everything reads as aired (airing is null), so
-		// switches hold until the answer lands (Codex P2 #3565988145);
+		// switches hold until the answer lands;
 		// aired-but-uncatalogued targets above the provider's count are
 		// equally doomed (catalog lag), and so is any episode of a
 		// delisted show ($lib/play/reload-offer). Every path lands here,
@@ -2052,8 +2052,7 @@
 			// distinct session-classes, so each gets its own shot.
 			// Resetting on a same-episode landing (the auto-recovery path,
 			// and the manual Reload path) would let chronically expired CDN
-			// URLs loop unbounded through eviction + resolve. See Codex P1
-			// #3366915811.
+			// URLs loop unbounded through eviction + resolve.
 			if (
 				outcome.current &&
 				shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })
