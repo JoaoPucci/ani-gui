@@ -1778,8 +1778,11 @@
 		}
 	});
 
+	// Every show this page showed, recorded as the route names it: by
+	// the time the page is destroyed the route names where the viewer
+	// went ($lib/play/show-release).
 	const showReleases = createShowReleases(clearForShow);
-	showReleases.showing(() => id);
+	$effect.pre(() => showReleases.showing(() => id));
 	onDestroy(() => {
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,

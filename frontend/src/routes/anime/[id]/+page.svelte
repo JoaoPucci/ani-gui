@@ -987,12 +987,15 @@
 		{ key: 'worst', label: m.app_quality_worst }
 	];
 
-	// Cancel in-flight prefetches for this show on unmount. Prevents
-	// abandoned resolves from holding provider slots after the
-	// user navigates away — clearForShow aborts each entry's signal
-	// which closes the SSE EventSource and rejects the promise.
+	// Cancel in-flight prefetches for every show this page showed on
+	// unmount. Prevents abandoned resolves from holding provider slots
+	// after the user navigates away — clearForShow aborts each entry's
+	// signal which closes the SSE EventSource and rejects the promise.
+	// Each show is recorded as the route names it: by the time the
+	// page is destroyed the route names where the user went
+	// ($lib/play/show-release).
 	const showReleases = createShowReleases(clearForShow);
-	showReleases.showing(() => id);
+	$effect.pre(() => showReleases.showing(() => id));
 	onDestroy(showReleases.leave);
 
 	// Re-fetch detail + similar when the URL `id` changes. SvelteKit
