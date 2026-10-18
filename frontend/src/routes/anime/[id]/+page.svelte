@@ -90,7 +90,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
-	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -1093,6 +1093,13 @@
 				if (id !== currentId) return;
 				error = { headline: m.detail_error_load_headline(), detail: describeError(e) };
 			});
+		// The component outlives a move to another show, so the show
+		// left drops its warms here — nobody is waiting on them. A
+		// click's own play runs on and records its show's watch. Only
+		// when the id moved: this effect also re-runs on the same show.
+		return () => {
+			if (id !== currentId) clearBackgroundForShow(currentId);
+		};
 	});
 
 	onMount(() => {

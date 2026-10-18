@@ -125,7 +125,13 @@ export function getOrFire(
 			for (const s of subscribers) s(p);
 		};
 		const fireRef = { current: fire };
-		const slot = withSlot(() => fireRef.current(emit, abortController.signal));
+		// An entry cleared while it waited for its slot never fires: it
+		// rejects as its aborted stream would have.
+		const slot = withSlot(() =>
+			abortController.signal.aborted
+				? Promise.reject(new Error('playStream: aborted'))
+				: fireRef.current(emit, abortController.signal)
+		);
 		newEntry.promise = slot.promise;
 		newEntry.startNow = slot.startNow;
 		newEntry.hasStarted = slot.hasStarted;
@@ -219,7 +225,12 @@ export function clearForShow(showId: string): void {
  * For a page that stays mounted while it moves to another show.
  */
 export function clearBackgroundForShow(showId: string): void {
-	void showId;
+	const prefix = `${showId}|`;
+	for (const [key, entry] of cached) {
+		if (!key.startsWith(prefix) || !entry.createdInBackground) continue;
+		entry.abortController.abort();
+		cached.delete(key);
+	}
 }
 
 /** Test seam: wipe the whole cache between vitest cases, including
