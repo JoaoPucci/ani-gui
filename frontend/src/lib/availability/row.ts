@@ -1,12 +1,13 @@
 /**
- * What the player knows about the provider's row for the show: whether
- * it lists the show, whether that is a refusal by name, the playable
- * count and the extra episodes it streams.
+ * What a page knows about the provider's row for the show: whether it
+ * lists the show, whether that is a refusal by name, the playable count
+ * and the extra episodes it streams.
  *
- * The page writes every availability answer it accepts here — the
- * page-load lookup's and a cap-gate re-ask's — through `mergeRow`, and
- * reads the row back through `rowFor`. Each answer is stamped with the
- * show and audio it was asked for (`audioKey`).
+ * The detail page and the player write every availability answer they
+ * accept here — the page-load lookup's and a cap-gate re-ask's —
+ * through `mergeRow`, and read the row back through `rowFor`. Each
+ * answer is stamped with the show and audio it was asked for
+ * (`audioKey`).
  *
  * A patch writes only the fields it carries
  * ($lib/detail/availability-writeback): absent keys belong to someone
@@ -17,15 +18,16 @@
  * An answer is about one show in one audio: the provider catalogues
  * sub and dub separately, and a show it dropped in one audio can be
  * listed in the other, at another count. So the row is read only for
- * the key its answers were for. Asked for any other — settings landing
- * with dub after the default sub question answered, while the dub one
- * is out, or after it failed or came back unsettled — it reads as
- * nothing known, which is how the page reads availability before any
- * answer: no play is refused for the show being delisted or for an
- * episode past a count, and the player-error overlay keeps its Reload
- * ($lib/play/reload-offer). The first answer about a new key starts
- * from nothing known as well, so a patch carrying only some fields
- * does not inherit the others from another audio.
+ * the key its answers were for. Asked for any other — the audio
+ * switched, or settings landing with dub after the default sub
+ * question answered, while the new question is out, or after it failed
+ * or came back unsettled — it reads as nothing known, which is how a
+ * page reads availability before any answer: no play is refused for
+ * the show being delisted or for an episode past a count, and the
+ * player-error overlay keeps its Reload ($lib/play/reload-offer). The
+ * first answer about a new key starts from nothing known as well, so a
+ * patch carrying only some fields does not inherit the others from
+ * another audio.
  */
 
 import type { AvailabilityPatch } from '$lib/detail/availability-writeback';

@@ -96,7 +96,7 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
-	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/play/availability-row';
+	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
 	import { fallbackTileTitle } from '$lib/play/tile-title';
@@ -142,7 +142,7 @@
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
 	//
 	// It is one field of the provider's row for the show
-	// ($lib/play/availability-row), which every accepted answer writes
+	// ($lib/availability/row), which every accepted answer writes
 	// and which is read for the show and audio on screen: an answer
 	// about one audio says nothing about the other. A music title is
 	// unavailable in both by this page's own rule, asked or not.

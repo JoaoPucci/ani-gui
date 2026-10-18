@@ -163,7 +163,7 @@
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { breadcrumb } from '$lib/breadcrumb';
-	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/play/availability-row';
+	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -893,7 +893,7 @@
 	// for ongoing shows. Falls back to Kitsu's count when null.
 	//
 	// It is one field of the provider's row for the show
-	// ($lib/play/availability-row), which every accepted answer writes
+	// ($lib/availability/row), which every accepted answer writes
 	// and which is read for the show and audio on screen.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
 	const rowKey = $derived(audioKey(detail?.id, playMode(config)));

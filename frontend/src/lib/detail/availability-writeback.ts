@@ -14,7 +14,7 @@
  * ordinary lookup wholesale, confirmed count and all, and leaves the
  * page on whatever count the row held before — an older one, or none
  * at all after a mode change, since a count from the other catalogue
- * is not this one's ($lib/play/availability-row).
+ * is not this one's ($lib/availability/row).
  *
  * So ownership is per field. A re-ask claims the verdict always and the
  * count only when it confirmed one; whatever it left open, a lookup

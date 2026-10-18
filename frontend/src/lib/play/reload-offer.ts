@@ -31,7 +31,7 @@
  * stream), and a failure while the page has not yet heard whether
  * the provider lists the show in the chosen audio (the switch may well
  * take it) — an answer about the other audio says nothing about this
- * one ($lib/play/availability-row). A webview
+ * one ($lib/availability/row). A webview
  * without HLS keeps it too, though only because nothing known refuses
  * the switch: a fresh resolve has no reason to land on another kind of
  * stream.

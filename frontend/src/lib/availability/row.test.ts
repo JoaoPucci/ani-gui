@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { audioKey, mergeRow, rowFor, UNKNOWN_ROW } from './availability-row';
-import { deadEnd } from './reload-offer';
+import { audioKey, mergeRow, rowFor, UNKNOWN_ROW } from './row';
+import { deadEnd } from '$lib/play/reload-offer';
 
 const SUB = audioKey('42', 'sub');
 
