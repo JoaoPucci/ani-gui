@@ -86,8 +86,12 @@ async fn a_range_starts_from_the_version_it_names() {
             answered_by: None,
             tail: None,
         };
-        let (picked, _) = attempt.run(&provider).await.expect("started");
+        let (picked, served, _) = attempt.run(&provider).await.expect("started");
         assert_eq!(picked.hit.slug, slug, "{version:?}");
+        assert_eq!(
+            served.hit.slug, slug,
+            "{version:?}: the version named served"
+        );
     }
 }
 
@@ -135,9 +139,11 @@ async fn a_range_in_a_mode_only_the_plain_copy_carries_starts_from_it() {
         answered_by: None,
         tail: None,
     };
-    let (picked, first) = attempt.run(&provider).await.expect("started");
-    // The first episode streams from the copy that carries the dub; the
-    // range keeps the version it names for the episodes after it.
+    let (picked, served, first) = attempt.run(&provider).await.expect("started");
+    // The first episode streams from the copy that carries the dub,
+    // which the start names as the version that served it; the range
+    // keeps the version it names for the episodes after it.
     assert_eq!(first.master_url, "https://cdn.example/plain/master.m3u8");
+    assert_eq!(served.hit.slug, "the-show-1");
     assert_eq!(picked.hit.slug, "the-show-2");
 }
