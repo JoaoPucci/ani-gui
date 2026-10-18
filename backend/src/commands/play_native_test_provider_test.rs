@@ -187,3 +187,25 @@ pub(crate) fn cumulative_opening_recap() -> TableProvider {
     }
     table
 }
+
+/// [`cumulative_opening_recap`] as a show whose title carries cour
+/// evidence, "2nd Season": a watch of it with a Kitsu id asks Kitsu
+/// whether the pairing holds before it stores the mapping.
+pub(crate) const CUMULATIVE_S2: &str = "Cumulative Show 2nd Season";
+pub(crate) const CUMULATIVE_S2_SLUG: &str = "cumulative-show-2nd-season-67";
+
+pub(crate) fn cumulative_opening_recap_season() -> TableProvider {
+    let rows = vec![
+        row(6701, 1, Some("12.5")),
+        row(6702, 2, Some("13")),
+        row(6703, 3, Some("14")),
+    ];
+    let mut table = TableProvider::new()
+        .hits(CUMULATIVE_S2, hits(&[(CUMULATIVE_S2_SLUG, CUMULATIVE_S2)]))
+        .listing(67, rows)
+        .year(67, Some(2026));
+    for id in [6701, 6702, 6703] {
+        table = table.stream(id, "sub", MASTER).mode(id, "sub", true);
+    }
+    table
+}
