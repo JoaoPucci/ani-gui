@@ -259,3 +259,7 @@ mod prop_tests;
 #[cfg(test)]
 #[path = "episode_map_fixture_test.rs"]
 mod fixture_tests;
+
+#[cfg(test)]
+#[path = "episode_map_oracle_test.rs"]
+mod oracle;
