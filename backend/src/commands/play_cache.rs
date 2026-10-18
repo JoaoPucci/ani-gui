@@ -1,5 +1,5 @@
 //! Cache-shaped helpers extracted from `commands::play` so that
-//! file's cyclomatic complexity stays under the CRAP ratchet. Three
+//! file's cyclomatic complexity stays under the CRAP ratchet. Four
 //! related helpers live here:
 //!
 //!   • `cached_row_is_live` — the check both replays share: the
@@ -15,15 +15,17 @@
 //!     [`LaunchArgs`] (or `None`) so `play_external` can hand mpv a
 //!     cached URL without resolving again.
 //!   • `stamp_availability_on_cache_hit` — the availability refresh
-//!     both replays owe: the provider the cached row's show key
-//!     names is stamped on the request's row, as a fresh resolve
-//!     would have stamped it.
+//!     both replays owe: where no positive row stands, the provider
+//!     the cached row's show key names, and the versions it holds
+//!     with the one that served marked as carrying the mode, are
+//!     stamped on the request's row, as a fresh resolve would have
+//!     stamped them.
 //!
 //! The readers a row's check is made of — the stream's HEAD ping,
 //! the WebVTT prefix, the track's GET — live in
 //! `commands::play_cache_tracks` and are re-exported here.
 //!
-//! All three are async and depend on `AppState`'s reqwest client +
+//! The replays are async and depend on `AppState`'s reqwest client +
 //! cache pool, so the fixtures in play.rs's test module
 //! (`state_with_proxy_origin`, `cached_blank`, `seed_play_cache`)
 //! are still used to drive them via wiremock.
@@ -51,11 +53,12 @@ pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderI
     ShowKey::parse(&cached.show_id).provider
 }
 
-/// Refresh the availability row a served replay stands on with the
-/// provider the cached row names, for the request's own show and
-/// mode — the embedded player's replay and the handoff's alike, so
-/// the affinity a fresh resolve would have written survives the
-/// resolution cache outliving the row.
+/// Refresh the availability row a served replay stands on, where no
+/// positive row stands, with the provider the cached row names and the
+/// versions it holds, the one that served marked as carrying the mode,
+/// for the request's own show and mode — the embedded player's replay
+/// and the handoff's alike, so the affinity a fresh resolve would have
+/// written survives the resolution cache outliving the row.
 ///
 /// `at_start` is the row as the caller read it BEFORE the liveness
 /// check went out — the same ordering a fresh resolve keeps — so a
@@ -78,6 +81,7 @@ pub(crate) async fn stamp_availability_on_cache_hit(
         at_start,
         provider,
         &cached.versions,
+        cached.version,
     )
     .await;
 }

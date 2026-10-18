@@ -624,6 +624,11 @@ fn with_modes_kept(
 /// own. The row itself, and its lifetime, are untouched. Under the
 /// same refresh guard as a resolve's stamp.
 ///
+/// `played` is the version the cached resolution served: the replay
+/// has just proved a stream of it in this mode, so where the replay
+/// writes the row it says that version carries the mode, as a fresh
+/// play's stamp does.
+///
 /// The row is read inside the lock, not on the way to it. A native
 /// resolve stamping the same row is not a cache-bypassing refresh
 /// and leaves the generation where it was, so a replay behind it
@@ -638,6 +643,7 @@ pub async fn stamp_after_cache_hit(
     at_start: &RowAtStart,
     provider: crate::scraper::provider::ProviderId,
     versions: &[crate::commands::play_native_versions::VersionInfo],
+    played: Option<crate::commands::play_native_versions::VersionKind>,
 ) {
     let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
         return;
@@ -658,7 +664,7 @@ pub async fn stamp_after_cache_hit(
                     mode,
                     true,
                     Some(provider),
-                    with_modes_kept(state, &row, versions, None),
+                    with_modes_kept(state, &row, versions, played),
                 );
             }
         },

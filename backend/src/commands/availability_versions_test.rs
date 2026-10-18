@@ -367,6 +367,7 @@ async fn a_replays_stamp_names_the_versions_it_replayed() {
         &at_start,
         crate::provider_set::ProviderSet::TEST_DEFAULT,
         &both_versions(),
+        None,
     )
     .await;
     assert_eq!(row_of(&state, "sub").versions, both_versions());
