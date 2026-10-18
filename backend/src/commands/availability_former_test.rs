@@ -71,3 +71,37 @@ async fn a_probe_puts_the_numbering_right_before_it_caches_its_verdict() {
     assert_eq!(after, Some((2, "1.5".to_string())));
     assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
 }
+
+#[tokio::test]
+async fn a_probe_that_finds_the_show_without_the_mode_still_puts_the_stamp_right() {
+    // A probe in a mode the show does not carry still pays for its
+    // listing, and caches the absence it heard: the next probe in that
+    // mode takes the cached row and fetches no listing. So the stamp is
+    // put right from this one, before the row lands.
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let state = super::tests::cache_only_state(&td);
+    let mut table = stitched_recap();
+    for id in std::iter::once(4001).chain((1..=12).map(|n| 10_465_000 + n)) {
+        table = table.mode(id, "dub", false);
+    }
+    let table = std::sync::Arc::new(table);
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::scraper::provider::Provider::id(table.as_ref()),
+        STITCHED_SLUG,
+    )
+    .to_string();
+    crate::commands::numbering_offset::put_display(&state, &key, 0, 2, "2.5");
+    let (_observing, seen) = stamps_as_rows_land(&state, &key, &["availability:"]);
+    let mut dub = args();
+    dub.mode = "dub".into();
+    let got = super::tests::check_with(&state, &dub, &table)
+        .await
+        .expect("probed");
+    assert!(!got.available, "the show carries no dub");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &key);
+    assert_eq!(after, Some((2, "1.5".to_string())));
+    assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
+}
