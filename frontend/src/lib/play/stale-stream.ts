@@ -187,20 +187,16 @@ export interface RecoveryAfterEviction {
 	left: boolean;
 	/** A switch started since the recovery began. */
 	switchedSince: boolean;
-	/** A switch or re-check held the switch lock as the recovery began.
-	 *  The player starts no recovery under the lock, and passes none. */
-	switchBusyAtStart?: boolean;
 	/** A switch or re-check holds the switch lock now. */
 	switchBusyNow: boolean;
 }
 
 /** What a stale-stream recovery does once its eviction has answered.
- *  The recovery does not hold the switch lock while it evicts, so the
- *  lock can change hands meanwhile.
+ *  A recovery starts only while the switch lock is free, and does not
+ *  hold it while it evicts, so the lock can be taken meanwhile.
  *
  *  - A page left: stand down; nobody is watching.
- *  - A switch started meanwhile, or under way as the recovery began
- *    (Reload offered mid-switch): stand down. That switch replaces the
+ *  - A switch started meanwhile: stand down. That switch replaces the
  *    stream, and resolving the episode on screen once it has landed
  *    would throw its session away, or abort it while it resolves.
  *  - A re-check holding the lock: offer Reload again. It switches only
@@ -210,6 +206,6 @@ export interface RecoveryAfterEviction {
 export function recoveryAfterEviction(
 	s: RecoveryAfterEviction
 ): 'resolve' | 'stand-down' | 'offer-reload' {
-	if (s.left || s.switchedSince || s.switchBusyAtStart) return 'stand-down';
+	if (s.left || s.switchedSince) return 'stand-down';
 	return s.switchBusyNow ? 'offer-reload' : 'resolve';
 }

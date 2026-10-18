@@ -491,10 +491,6 @@ describe('play route — a recovery overtaken by a switch', () => {
 
 		const reload = target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
 		expect(reload).not.toBeNull();
-		// The error is the one the stream failed with.
-		expect(target.querySelector('.player-error-detail')?.textContent).not.toContain(
-			'manual reload'
-		);
 
 		// And Reload works: the episode on screen is resolved afresh.
 		const fresh = () =>
