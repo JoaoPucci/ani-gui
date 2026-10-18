@@ -959,9 +959,9 @@
 	 * Only a navigation that leaves this page counts: another path,
 	 * which includes another show, or out of the app. A switch's own
 	 * `goto` changes only the query, so it ends no pending action; the
-	 * poster link back to the show's page leaves, and does. A re-check superseded by a
-	 * navigation that leaves drops what it learned about the show, as
-	 * one superseded by a move to another show does.
+	 * poster link back to the show's page leaves, and does. A re-check
+	 * superseded by a navigation that leaves drops what it learned
+	 * about the show, as one superseded by a move to another show does.
 	 */
 	const navigationClaims = createNavigationClaims();
 	beforeNavigate((nav) => navigationClaims.started(nav));
@@ -2170,6 +2170,9 @@
 			switchBusyAtStart,
 			switchBusyNow: switchBusy
 		});
+		// A re-check holds the lock and may not switch: the stale stream
+		// is still on screen, so Reload is offered again.
+		if (turn === 'offer-reload') playerError = m.play_error_playback_technical({ detail: reason });
 		if (turn !== 'resolve') return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
