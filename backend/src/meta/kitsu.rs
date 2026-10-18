@@ -885,6 +885,10 @@ impl KitsuClient {
     }
 }
 
+#[path = "kitsu_relations.rs"]
+mod relations;
+pub use relations::KitsuRelation;
+
 #[cfg(test)]
 mod tests {
     use super::*;
