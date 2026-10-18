@@ -549,3 +549,85 @@ describe('makeStartResume (what the watch records)', () => {
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ episode: 12.5 }));
 	});
 });
+
+// A click awaits its settings, its cap and its session before it
+// navigates, and the viewer can move on meanwhile — Back, another
+// link. Navigating then would pull them into the player from
+// wherever they went.
+describe('makeStartResume (after the viewer moved on)', () => {
+	function claimed() {
+		let holds = true;
+		const claims: string[] = [];
+		return {
+			lapse: () => {
+				holds = false;
+			},
+			claims,
+			claimNavigation: () => {
+				claims.push('claim');
+				return () => holds;
+			}
+		};
+	}
+
+	it('claims navigation as the click starts, before anything is awaited', async () => {
+		const c = claimed();
+		const h = makeHarness({
+			claimNavigation: () => {
+				h.log.push('claim');
+				return c.claimNavigation();
+			}
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.log.indexOf('claim')).toBeLessThan(h.log.indexOf('settings'));
+		expect(c.claims).toEqual(['claim']);
+	});
+
+	it('opens no player once the claim lapsed, and lets the card go', async () => {
+		const c = claimed();
+		const h = makeHarness({
+			claimNavigation: c.claimNavigation,
+			resolvePlay: vi.fn().mockImplementation(async () => {
+				c.lapse();
+				return { session_id: 's1' };
+			})
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.navigateToSession).not.toHaveBeenCalled();
+		expect(h.busyLog).toEqual(['k1', null]);
+	});
+
+	it('still records the watch the session played once the claim lapsed', async () => {
+		const c = claimed();
+		const h = makeHarness({
+			claimNavigation: c.claimNavigation,
+			resolvePlay: vi.fn().mockImplementation(async () => {
+				c.lapse();
+				return { session_id: 's1' };
+			})
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ episode: 4 }));
+	});
+
+	it('shows no failure once the claim lapsed, and lets the card go', async () => {
+		const c = claimed();
+		const h = makeHarness({
+			claimNavigation: c.claimNavigation,
+			resolvePlay: vi.fn().mockImplementation(async () => {
+				c.lapse();
+				throw new Error('no session');
+			})
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.failures).toEqual([]);
+		expect(h.busyLog).toEqual(['k1', null]);
+	});
+
+	it('navigates as before while the claim holds', async () => {
+		const c = claimed();
+		const h = makeHarness({ claimNavigation: c.claimNavigation });
+		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.navigateToSession).toHaveBeenCalledTimes(1);
+	});
+});

@@ -82,6 +82,11 @@ export interface StartResumeDeps {
 		guess?: boolean,
 		row?: string
 	) => void;
+	/** Claims navigation as the click starts ($lib/navigation/claims).
+	 *  A click whose claim lapsed while it worked — its page left, or a
+	 *  newer navigation started — opens no player and shows no failure:
+	 *  the viewer has moved on. Omitted, no claim lapses. */
+	claimNavigation?: () => () => boolean;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept. Omitted, nothing was. */
 	leftPartWay?: (kitsuId: string, episode: number) => boolean;
