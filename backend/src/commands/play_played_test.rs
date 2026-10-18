@@ -689,3 +689,64 @@ async fn a_fresh_play_of_a_stamped_recap_keeps_the_tag_the_stamp_replaced() {
         Some((2, "2.5".to_string()))
     );
 }
+
+/// A play whose numbering repair stands behind the rows it caches.
+async fn rows_a_play_caches_behind_its_repair(prefetch: bool) {
+    // An upgraded profile: a history row's stamp names the stitched
+    // recap's slot 2 by its former tag "2.5". A play of episode 5 pays
+    // for the listing, which puts the stamp right — before the rows
+    // it caches land, or a probe taking the fresh availability row
+    // never fetches the listing that would repair it.
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 2, "2.5");
+    let mut asked = args("5");
+    asked.prefetch = prefetch;
+    let (_observing, seen) =
+        stamps_as_rows_land(&state, &stitched_key(), &["availability:", "play:"]);
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &stitched_key());
+    assert_ne!(
+        after,
+        Some((2, "2.5".to_string())),
+        "the play repaired the stamp"
+    );
+    assert_rows_landed_after_the_repair(&seen, &["availability:", "play:"], &after);
+}
+
+#[tokio::test]
+async fn a_play_puts_the_numbering_right_before_it_caches_its_rows() {
+    rows_a_play_caches_behind_its_repair(false).await;
+}
+
+#[tokio::test]
+async fn a_prefetch_puts_the_numbering_right_before_it_caches_its_rows() {
+    rows_a_play_caches_behind_its_repair(true).await;
+}
+
+#[tokio::test]
+async fn a_handoff_puts_the_numbering_right_before_it_caches_availability() {
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 2, "2.5");
+    let (_observing, seen) = stamps_as_rows_land(&state, &stitched_key(), &["availability:"]);
+    let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    crate::commands::play_handoff::resolve_launch_args(&state, &args("5"), asked)
+        .await
+        .expect("resolves");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &stitched_key());
+    assert_eq!(
+        after,
+        Some((2, "1.5".to_string())),
+        "the handoff repaired the stamp"
+    );
+    assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
+}

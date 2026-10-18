@@ -46,3 +46,28 @@ async fn a_probe_of_a_stitched_show_puts_its_former_tag_stamp_right() {
         Some((2, "2.5".to_string()))
     );
 }
+
+#[tokio::test]
+async fn a_probe_puts_the_numbering_right_before_it_caches_its_verdict() {
+    // The verdict a probe caches is what the next probe takes instead
+    // of fetching the listing: it lands after the stamp is put right.
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let state = super::tests::cache_only_state(&td);
+    let table = std::sync::Arc::new(stitched_recap());
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::scraper::provider::Provider::id(table.as_ref()),
+        STITCHED_SLUG,
+    )
+    .to_string();
+    crate::commands::numbering_offset::put_display(&state, &key, 0, 2, "2.5");
+    let (_observing, seen) = stamps_as_rows_land(&state, &key, &["availability:"]);
+    super::tests::check_with(&state, &args(), &table)
+        .await
+        .expect("probed");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &key);
+    assert_eq!(after, Some((2, "1.5".to_string())));
+    assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
+}

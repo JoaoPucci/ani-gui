@@ -210,3 +210,48 @@ pub(crate) fn cumulative_opening_recap_season() -> TableProvider {
     }
     table
 }
+
+/// What a cache row landing saw of a show's display stamp.
+pub(crate) type StampsSeen = std::rc::Rc<std::cell::RefCell<Vec<(String, Option<(u32, String)>)>>>;
+
+/// The show's display stamp as each cache row whose key starts with
+/// one of `prefixes` was stored, for as long as the guard lives: a row
+/// that lands before the stamp is put right is a row a reader can
+/// take while the stamp still names a former tag.
+pub(crate) fn stamps_as_rows_land(
+    state: &crate::app::AppState,
+    show: &str,
+    prefixes: &'static [&'static str],
+) -> (crate::cache::put_observer::Observing, StampsSeen) {
+    let seen = StampsSeen::default();
+    let (state, show, into) = (state.clone(), show.to_string(), std::rc::Rc::clone(&seen));
+    let guard = crate::cache::put_observer::observe_puts(move |key| {
+        if prefixes.iter().any(|p| key.starts_with(p)) {
+            let stamp = crate::commands::numbering_offset::display_stamp(&state, &show);
+            into.borrow_mut().push((key.to_string(), stamp));
+        }
+    });
+    (guard, seen)
+}
+
+/// Every row in `seen` landed with the stamp as the work left it, and
+/// one row of each prefix landed.
+pub(crate) fn assert_rows_landed_after_the_repair(
+    seen: &StampsSeen,
+    prefixes: &[&str],
+    stamp_after: &Option<(u32, String)>,
+) {
+    let seen = seen.borrow();
+    for p in prefixes {
+        assert!(
+            seen.iter().any(|(k, _)| k.starts_with(p)),
+            "a `{p}` row is stored: {seen:?}"
+        );
+    }
+    for (key, stamp) in seen.iter() {
+        assert_eq!(
+            stamp, stamp_after,
+            "`{key}` was stored before the display stamp was put right"
+        );
+    }
+}

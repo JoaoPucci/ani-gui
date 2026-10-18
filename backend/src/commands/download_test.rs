@@ -7514,3 +7514,64 @@ async fn a_file_under_a_former_number_another_row_carries_now_is_not_the_episode
         .expect("downloaded");
     assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
 }
+
+/// A download whose numbering repair stands behind the availability
+/// row it caches: a probe that takes the fresh row fetches no listing,
+/// so a stamp still naming a former tag would stay as it is.
+#[cfg(unix)]
+async fn a_download_caches_availability_behind_its_repair(episode: &str) {
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land, stitched_recap, STITCHED,
+        STITCHED_SLUG,
+    };
+    let server = std::sync::Arc::new(stitched_recap());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::scraper::provider::Provider::id(server.as_ref()),
+        STITCHED_SLUG,
+    )
+    .to_string();
+    crate::commands::numbering_offset::put_display(&state, &key, 0, 2, "2.5");
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": episode,
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "kitsu_id": "77",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let (_observing, seen) = stamps_as_rows_land(&state, &key, &["availability:"]);
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &key);
+    assert_eq!(
+        after,
+        Some((2, "1.5".to_string())),
+        "the download repaired the stamp"
+    );
+    assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_puts_the_numbering_right_before_it_caches_availability() {
+    a_download_caches_availability_behind_its_repair("5").await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_puts_the_numbering_right_before_it_caches_availability() {
+    a_download_caches_availability_behind_its_repair("4-5").await;
+}
