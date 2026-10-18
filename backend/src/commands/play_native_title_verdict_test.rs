@@ -131,7 +131,7 @@ proptest! {
             }
             Err(e) => {
                 prop_assert!(!any_pickable && any_refused, "refused a pool with a hit to pick: {:?}", e);
-                prop_assert!(matches!(e, crate::error::AniError::Upstream { status: 404 }), "{:?}", e);
+                prop_assert!(matches!(e, crate::error::AniError::RefusedByName), "{:?}", e);
             }
         }
     }
