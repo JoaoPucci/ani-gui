@@ -1334,3 +1334,55 @@ fn the_explaining_entry_s_own_titles_are_not_held_against_the_rows() {
     }
     assert!(appended_extras(&rows, 12, &tail).is_some());
 }
+
+// ── stitched listings ──────────────────────────────────────────────
+
+/// A listing the split chain stitches from parts numbered from 1 comes
+/// out untagged and numbered by position, exactly as a single listing
+/// does — Steel Ball Run's premiere and its 2nd Stage stitch into rows
+/// 1, 2, 3, … — so its shape says nothing about how it was made. The
+/// chain stitches parts whose sum fits the count within the tolerance,
+/// so the stitched listing can run a row or two past the count, and
+/// those rows are the later part's own episodes, which Kitsu has not
+/// counted yet. They are never read as extras, whatever the evidence:
+/// here Noragami's listing as a one-episode premiere and a thirteen-row
+/// second part, with Noragami's recorded evidence and its two-episode
+/// OVA there to explain two rows.
+#[tokio::test]
+async fn a_stitched_listing_is_never_read_for_appended_extras() {
+    let (rows, tail) = noragami();
+    let renumbered = |part: &[EpisodeRef]| -> Vec<EpisodeRef> {
+        part.iter()
+            .zip(1u32..)
+            .map(|(e, n)| EpisodeRef {
+                number: n,
+                ..e.clone()
+            })
+            .collect()
+    };
+    let premiere = renumbered(&rows[..1]);
+    let second = renumbered(&rows[1..]);
+    let merged =
+        crate::commands::play_native_merge::merge_parts(&[premiere.as_slice(), second.as_slice()]);
+    assert!(merged.iter().all(|e| e.number2.is_none()), "{merged:?}");
+    assert_eq!(
+        appended_count(&merged, Some(12)),
+        Some(12),
+        "the shape asks"
+    );
+    assert!(
+        appended_extras(&merged, 12, &tail).is_some(),
+        "the evidence alone would read them"
+    );
+    let source = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(None),
+    };
+    let stitched = PickedShow {
+        stitched: true,
+        ..picked(merged.clone())
+    };
+    let got = fit_appended(stitched, Some(12), Some(&source)).await;
+    assert_eq!(got.episodes, merged);
+    assert_eq!(source.remembered(), None, "nothing kept for it");
+}

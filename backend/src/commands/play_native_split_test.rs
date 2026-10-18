@@ -491,3 +491,30 @@ fn a_chain_is_never_led_by_a_candidate_the_entry_s_titles_refuse() {
     let entry = crate::commands::play_native_title_marker::EntryTitles::bare("X");
     assert!(stitched(&probed, 24, UNFIT, entry).is_none());
 }
+
+/// The pick the chain stitches says so, which the appended-extras
+/// reading needs: stitched rows are untagged and numbered by position
+/// like a single listing's.
+#[test]
+fn a_stitched_pick_says_it_was_stitched() {
+    let rows = |base: u64, n: u32| -> Vec<EpisodeRef> {
+        (1..=n).map(|k| row(base + u64::from(k), k, None)).collect()
+    };
+    let hit = |slug: &str, title: &str| crate::scraper::provider::BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    let lead = "Steel Ball Run: JoJo's Bizarre Adventure";
+    let second = "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage";
+    let (a, b) = (hit("sbr-1", lead), hit("sbr-2", second));
+    // Distances from Kitsu's twelve: 11 and 10.
+    let probed = vec![(&a, rows(100, 1), 11, true), (&b, rows(200, 2), 10, true)];
+    let titles = [lead];
+    let entry = crate::commands::play_native_title_marker::EntryTitles::new(&titles);
+    let picked = stitched(&probed, 12, 10, entry).expect("stitched");
+    assert!(picked.stitched);
+    assert_eq!(picked.episodes.len(), 3);
+    assert!(picked.episodes.iter().all(|e| e.number2.is_none()));
+}
