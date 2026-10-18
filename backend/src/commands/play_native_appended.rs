@@ -176,7 +176,13 @@ pub async fn fit_appended(
         _ => (source.remembered() == Some(reading)).then(|| tag_past(&picked.episodes, count)),
     };
     match fitted {
-        Some(episodes) => PickedShow { episodes, ..picked },
+        // Every version is the same episodes under its own ids: the
+        // reading holds for each of them.
+        Some(episodes) => PickedShow {
+            versions: super::play_native_versions::fitted_versions(&picked.versions, &episodes),
+            episodes,
+            ..picked
+        },
         None => picked,
     }
 }
