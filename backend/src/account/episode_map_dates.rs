@@ -77,3 +77,7 @@ pub(super) fn inside_kitsu_run(evidence: &Evidence, show: &TrackerShow, segment:
     let end_ok = e <= ke || within_slack(k_end, end) || dated_in(evidence, segment.kitsu_to, end);
     start_ok && end_ok
 }
+
+#[cfg(test)]
+#[path = "episode_map_dates_test.rs"]
+mod tests;
