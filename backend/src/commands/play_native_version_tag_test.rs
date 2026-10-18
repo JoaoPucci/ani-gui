@@ -47,7 +47,7 @@ async fn a_tagged_later_season_alone_is_refused_by_title() {
             .await
             .expect_err(tagged);
             assert!(
-                matches!(err, AniError::Upstream { status: 404 }),
+                matches!(err, AniError::RefusedByName),
                 "{tagged} {year:?}: {err:?}"
             );
         }
@@ -108,7 +108,7 @@ async fn a_countless_pick_passes_over_a_tagged_later_season() {
     )
     .await
     .expect_err("not the entry");
-    assert!(matches!(err, AniError::Upstream { status: 404 }), "{err:?}");
+    assert!(matches!(err, AniError::RefusedByName), "{err:?}");
 }
 
 #[tokio::test]

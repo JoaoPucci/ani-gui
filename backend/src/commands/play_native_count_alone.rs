@@ -34,26 +34,6 @@ pub(crate) fn count_stands_alone(expected: u32, year: Option<u32>) -> bool {
     expected > 1 && year.is_none()
 }
 
-/// Whether the rules that read a count with nothing beside it leave a
-/// candidate titled `title` able to be picked: they read only an entry
-/// whose count stands alone ([`count_stands_alone`]) or one video long,
-/// and there take a candidate whose own year matched (`confirmed`),
-/// that is the title searched, or that the entry names — what
-/// [`score_out_unvouched`] keeps. Asked of a candidate whose probe
-/// died, which those rules never saw.
-#[must_use]
-pub(crate) fn count_vouches(
-    title: &str,
-    needle: &str,
-    entry: EntryTitles<'_>,
-    expected: u32,
-    year: Option<u32>,
-    confirmed: bool,
-) -> bool {
-    let read = count_stands_alone(expected, year) || expected == 1;
-    !read || confirmed || normalized(title) == needle || entry.names(title)
-}
-
 /// For an entry whose count stands alone ([`count_stands_alone`]),
 /// scores [`UNFIT`] every probed candidate that carries no identity
 /// beyond its count: not the title searched, and not named as one of
@@ -78,6 +58,18 @@ pub(super) fn unvouched_counted(
     score_out_unvouched(probed, ep_count_threshold(expected), needle, entry)
 }
 
+/// Whether something beyond its count vouches for a candidate titled
+/// `title`: its own year matched the entry's (`confirmed`), it is the
+/// title searched (`needle`, normalized), or the entry names it.
+pub(super) fn vouched_beyond_count(
+    title: &str,
+    needle: &str,
+    entry: EntryTitles<'_>,
+    confirmed: bool,
+) -> bool {
+    confirmed || normalized(title) == needle || entry.names(title)
+}
+
 /// Scores [`UNFIT`] every probed candidate nothing but its count
 /// vouches for: not the title searched, not named as one of the
 /// entry's titles ([`EntryTitles::names`]), and without its own year
@@ -96,8 +88,7 @@ pub(super) fn score_out_unvouched(
 ) -> bool {
     let mut refused_a_fit = false;
     for (h, _, distance, confirmed) in probed.iter_mut() {
-        let vouched = *confirmed || normalized(&h.title) == needle || entry.names(&h.title);
-        if vouched || *distance == UNFIT {
+        if vouched_beyond_count(&h.title, needle, entry, *confirmed) || *distance == UNFIT {
             continue;
         }
         refused_a_fit |= *distance <= tolerance;

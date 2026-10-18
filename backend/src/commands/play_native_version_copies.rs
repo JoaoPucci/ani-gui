@@ -79,23 +79,18 @@ pub(crate) fn copy_died(dead: &[&BrowseHit], winner: &BrowseHit) -> bool {
 }
 
 /// Note a candidate whose probe died in transport among `dead` when it
-/// could have been picked — `could_win` by the dated-name rule,
-/// `vouched` by the rules that read a count alone
-/// (`play_native_count_alone::count_vouches`), admitted by the entry's
-/// titles and not another entry of the same show — so a winner's copy
+/// could have been picked — `could_win` by the name rule that reads the
+/// entry (`play_native_dated_name::may_win`), admitted by the entry's
+/// titles and not another entry of the same show
+/// ([`super::play_native_choice::could_have_won`]) — so a winner's copy
 /// among them leaves the pick unheard ([`copy_died`]).
 pub(crate) fn note_dead<'h>(
     dead: &mut Vec<&'h BrowseHit>,
     hit: &'h BrowseHit,
     could_win: bool,
-    vouched: bool,
     entry: EntryTitles<'_>,
 ) {
-    if could_win
-        && vouched
-        && entry.admits_as_read(&hit.title)
-        && !entry.another_entry_as_read(&hit.title)
-    {
+    if super::play_native_choice::could_have_won(entry, &hit.title, could_win) {
         dead.push(hit);
     }
 }

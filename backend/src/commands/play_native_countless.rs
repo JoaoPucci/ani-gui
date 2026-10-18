@@ -29,6 +29,13 @@ use super::play_native_title_marker::EntryTitles;
 /// pool with no such hit is rejected so the next alias gets its
 /// chance. The single probe still runs so the caller gets the episode
 /// list it needs.
+///
+/// When a candidate it took answered its listing not-found, and no
+/// later one served, the miss is the answered dead end on a dead
+/// listing, `Upstream { status: 404 }`: the dead listing may have been
+/// the entry's, so it is neither the clean miss nor — when the title
+/// rule narrowed the head — the refusal by name the caller would read
+/// the plain miss as.
 pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     client: &P,
     head: &[(&BrowseHit, bool)],
@@ -75,6 +82,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     // listing answers 404 is a stale slug, not the pool's verdict —
     // the next eligible candidate may carry the live listing.
     let mut seen: Vec<&str> = Vec::new();
+    let mut dead = false;
     for chosen in exact.chain(positional) {
         if seen.contains(&chosen.slug.as_str()) {
             continue;
@@ -91,14 +99,19 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
             Err(e) if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) => {
                 return Err(e);
             }
-            Err(crate::error::AniError::Upstream { .. }) => {}
+            Err(crate::error::AniError::Upstream { .. }) => dead = true,
             Err(e) => return Err(e),
         }
     }
-    if refused {
-        return Err(super::play_native_title_verdict::refused_by_title());
-    }
-    Err(crate::error::AniError::NoResults)
+    // A dead listing may have been the entry's, whatever the title
+    // rule passed over beside it: the dead end on it comes first.
+    Err(if dead {
+        crate::error::AniError::Upstream { status: 404 }
+    } else if refused {
+        super::play_native_title_verdict::refused_by_title()
+    } else {
+        crate::error::AniError::NoResults
+    })
 }
 
 #[cfg(test)]

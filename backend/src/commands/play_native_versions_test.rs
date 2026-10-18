@@ -268,7 +268,7 @@ async fn a_tag_after_a_season_the_entry_does_not_name_hides_nothing() {
     let err = pick(&client, &hits, Some(12), &["The Show"])
         .await
         .expect_err("neither copy is the entry");
-    assert!(matches!(err, AniError::Upstream { status: 404 }), "{err:?}");
+    assert!(matches!(err, AniError::RefusedByName), "{err:?}");
 }
 
 #[tokio::test]

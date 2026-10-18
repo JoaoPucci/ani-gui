@@ -263,7 +263,11 @@ async fn an_absence_one_version_never_answered_is_not_settled() {
     ))
     .await
     .expect("answered");
-    assert!(got.unsettled, "the plain copy never answered: {got:?}");
+    assert_eq!(
+        got.unsettled,
+        Some(UnsettledReason::Unanswered),
+        "the plain copy never answered: {got:?}"
+    );
 }
 
 #[tokio::test]
@@ -291,5 +295,118 @@ async fn a_plays_stamp_keeps_what_the_probe_said_of_each_version() {
     assert_eq!(
         row.versions, probed.versions,
         "the probe's per-version answers stand"
+    );
+}
+
+/// The row standing for `(777, mode)`.
+fn row_of(state: &AppState, mode: &str) -> AvailabilityResponse {
+    let body = crate::cache::meta_cache_get(&state.cache_pool, &cache_key("777", mode))
+        .expect("read")
+        .expect("a row");
+    serde_json::from_str(&body).expect("row")
+}
+
+#[tokio::test]
+async fn a_dubbed_plays_stamp_keeps_the_versions_and_their_modes() {
+    // A dub resolve stamps the boolean row — its cap is no evidence of
+    // the dubbed count — but the versions and what the probe said of
+    // each one's dub stand.
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(dubbed_plain_copy());
+    let dub = AvailabilityArgs {
+        mode: "dub".into(),
+        ..args()
+    };
+    let probed = check_availability(&state, &dub).await.expect("answered");
+    assert_eq!(probed.versions.len(), 2);
+    let at_start = RowAtStart::read(&state, Some("777"), "dub").await;
+    let versions = both_versions();
+    stamp_after_native(
+        &state,
+        Some("777"),
+        "dub",
+        &at_start,
+        ResolveVerdict::served(crate::provider_set::ProviderSet::TEST_DEFAULT, Some(3), &[])
+            .with_versions(&versions),
+    )
+    .await;
+    let row = row_of(&state, "dub");
+    assert!(row.available);
+    assert_eq!(row.versions, probed.versions);
+}
+
+#[tokio::test]
+async fn a_count_less_plays_stamp_keeps_the_versions() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    let at_start = RowAtStart::read(&state, Some("777"), "sub").await;
+    let versions = both_versions();
+    stamp_after_native(
+        &state,
+        Some("777"),
+        "sub",
+        &at_start,
+        ResolveVerdict::served(crate::provider_set::ProviderSet::TEST_DEFAULT, None, &[])
+            .with_versions(&versions),
+    )
+    .await;
+    assert_eq!(row_of(&state, "sub").versions, both_versions());
+}
+
+#[tokio::test]
+async fn a_replays_stamp_names_the_versions_it_replayed() {
+    // Where no positive row stands, a replay writes the boolean
+    // positive — with the versions its cached resolution holds.
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    let at_start = RowAtStart::read(&state, Some("777"), "sub").await;
+    stamp_after_cache_hit(
+        &state,
+        Some("777"),
+        "sub",
+        &at_start,
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        &both_versions(),
+    )
+    .await;
+    assert_eq!(row_of(&state, "sub").versions, both_versions());
+}
+
+#[tokio::test]
+async fn the_version_that_served_carries_the_mode_in_the_row() {
+    // The probe sampled the uncensored copy's dub rows and found none;
+    // a dub play then served from it. The stamp says it carries dub.
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(dubbed_plain_copy());
+    let dub = AvailabilityArgs {
+        mode: "dub".into(),
+        ..args()
+    };
+    check_availability(&state, &dub).await.expect("answered");
+    let at_start = RowAtStart::read(&state, Some("777"), "dub").await;
+    let versions = both_versions();
+    stamp_after_native(
+        &state,
+        Some("777"),
+        "dub",
+        &at_start,
+        ResolveVerdict::served(crate::provider_set::ProviderSet::TEST_DEFAULT, Some(3), &[])
+            .with_versions(&versions)
+            .with_played(Some(VersionKind::Uncensored)),
+    )
+    .await;
+    let modes: Vec<(VersionKind, Option<bool>)> = row_of(&state, "dub")
+        .versions
+        .iter()
+        .map(|v| (v.kind, v.has_mode))
+        .collect();
+    assert_eq!(
+        modes,
+        vec![
+            (VersionKind::Standard, Some(true)),
+            (VersionKind::Uncensored, Some(true)),
+        ]
     );
 }
