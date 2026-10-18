@@ -694,3 +694,49 @@ fn a_later_part_is_not_filed_where_its_first_part_s_map_would_conflict() {
     plain.listed = listed(&["1", "2", "3"]);
     assert_eq!(map_show(&plain).target(1), mapped(173_335, 13, true, &[]));
 }
+
+#[test]
+fn extras_are_read_only_for_an_entry_s_one_kitsu_entry() {
+    // A second season with no AniList entry of its own, filed through
+    // its prequel's: AniList's entry is 13 with an Episode 0, the first
+    // season Kitsu's 12. The surplus is over the first season, not the
+    // second — the second season's episodes are not the entry's.
+    let s1 = kitsu("1", Some(12), "2020-01-05", "2020-03-29");
+    let s2 = kitsu("2", Some(12), "2020-07-05", "2020-09-27");
+    let unresolved = Evidence {
+        kitsu: s2.clone(),
+        entry: show(500, Some(13), true, "2019-12-29", "2020-03-29"),
+        listed: listed(&["0", "1", "2"]),
+        sharing: vec![s1.clone()],
+        parts: vec![s1.clone(), s2.clone()],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&unresolved), identity(Identity::Unexplained));
+    // Kitsu maps both seasons to the one entry: the same.
+    let mut shared = unresolved.clone();
+    shared.sharing = vec![s1.clone(), s2.clone()];
+    shared.parts = vec![s2];
+    assert_eq!(map_show(&shared), identity(Identity::Unexplained));
+    // The first season alone under the entry is the extras rule's case.
+    let alone = Evidence {
+        kitsu: s1.clone(),
+        sharing: vec![s1.clone()],
+        parts: vec![s1],
+        ..unresolved
+    };
+    assert_eq!(map_show(&alone).shape, Shape::Extras);
+}
+
+#[test]
+fn distinct_fractions_after_one_episode_are_distinct_extras() {
+    // "6.1" and "6.2" are two extras; with "0" that is three for a
+    // surplus of two, so the list does not account for it.
+    let mut ev = ubw();
+    ev.entry.episodes = Some(14);
+    ev.listed = listed(&["0", "1", "6.1", "6.2", "6.2"]);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    ev.entry.episodes = Some(15);
+    let map = map_show(&ev);
+    assert_eq!(map.segments[0].extras_after, vec![0, 6, 6]);
+    assert_eq!(map.target(7), mapped(19_603, 10, false, &[]));
+}
