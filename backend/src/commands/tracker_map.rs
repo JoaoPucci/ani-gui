@@ -18,8 +18,10 @@
 //! Nothing here runs on a write whose map is cached, and a cached
 //! identity map costs the write one cache read. The evidence is
 //! gathered — one tracker read for the entry and one per sequel it names
-//! at each hop, one Kitsu read per mapping or relationship asked, and the
-//! id translations a part's resolution makes — only on a miss, once per
+//! at each hop, one Kitsu read per mapping or relationship asked, the id
+//! translations a part's resolution makes, and the pages of Kitsu's
+//! episode list an exact chain's unplaced bounds need (with the
+//! thumbnail backfill a cold page brings) — only on a miss, once per
 //! show per window ([`evidence`] has the walks).
 
 use std::sync::Arc;
