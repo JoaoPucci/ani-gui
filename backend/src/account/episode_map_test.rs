@@ -311,3 +311,199 @@ fn a_difference_nothing_explains_is_identity_for_now() {
     assert_eq!(map, identity(Identity::Unexplained));
     assert!(!map.conclusive());
 }
+
+// --- Kitsu entries sharing one tracker entry (Attack on Titan's Final
+// Chapters, Fei Ren Zai 2 on MyAnimeList) ---------------------------------
+
+/// MAL 51535 is both Final Chapters specials, 2 episodes; Kitsu files
+/// them as 46038 (2023-03-03) and 47132 (2023-11-04), one episode each,
+/// both mapped to 51535.
+fn final_chapters(ours: &str) -> Evidence {
+    Evidence {
+        kitsu: kitsu(ours, Some(1), "", ""),
+        entry: show(51_535, Some(2), true, "2023-03-04", "2023-11-05"),
+        sharing: vec![
+            kitsu("47132", Some(1), "2023-11-04", "2023-11-04"),
+            kitsu("46038", Some(1), "2023-03-03", "2023-03-03"),
+        ],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn kitsu_entries_sharing_an_entry_take_it_in_date_order() {
+    let first = map_show(&final_chapters("46038"));
+    assert_eq!(first.shape, Shape::SharedEntry);
+    assert_eq!(
+        first.segments,
+        vec![Segment {
+            entry: 51_535,
+            entry_total: 2,
+            entry_finished: true,
+            kitsu_from: 1,
+            kitsu_to: 1,
+            lead: 0,
+            extras_after: vec![],
+        }]
+    );
+    // The first part's last episode is not the entry's: progress alone.
+    assert_eq!(first.target(1), mapped(51_535, 1, false, &[]));
+    let second = map_show(&final_chapters("47132"));
+    assert_eq!(second.shape, Shape::SharedEntry);
+    assert_eq!(second.segments[0].lead, 1);
+    // The last part's last episode is the entry's: it completes it.
+    assert_eq!(second.target(1), mapped(51_535, 2, true, &[]));
+}
+
+#[test]
+fn a_shared_entry_s_parts_may_differ_in_length() {
+    // Fei Ren Zai 2 on MyAnimeList: 52523 is 48 episodes; Kitsu's
+    // 50507 (12), 50508 (12) and 50509 (24) all map to it.
+    let ev = Evidence {
+        kitsu: kitsu("50509", Some(24), "2024-09-30", "2024-10-22"),
+        entry: show(52_523, Some(48), true, "2022-08-10", "2024-10-22"),
+        sharing: vec![
+            kitsu("50507", Some(12), "2022-08-10", "2022-10-12"),
+            kitsu("50508", Some(12), "2023-01-18", "2023-03-22"),
+            kitsu("50509", Some(24), "2024-09-30", "2024-10-22"),
+        ],
+        ..Default::default()
+    };
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::SharedEntry);
+    assert_eq!(map.target(1), mapped(52_523, 25, false, &[]));
+    assert_eq!(map.target(24), mapped(52_523, 48, true, &[]));
+}
+
+#[test]
+fn a_shared_entry_whose_parts_do_not_sum_to_it_explains_nothing() {
+    // Yamato 2202's OVAs beside the full series: three Kitsu entries
+    // mapped to one 26-episode entry, 2 + 2 + 26.
+    let ev = Evidence {
+        kitsu: kitsu("12017", Some(2), "2017-02-25", "2017-02-25"),
+        entry: show(33_064, Some(26), true, "2017-02-25", "2019-03-01"),
+        sharing: vec![
+            kitsu("12017", Some(2), "2017-02-25", "2017-02-25"),
+            kitsu("41287", Some(2), "2017-02-25", "2019-03-01"),
+            kitsu("43641", Some(26), "2017-02-25", "2019-03-01"),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_shared_entry_needs_distinct_known_start_dates_to_order_its_parts() {
+    let mut same_day = final_chapters("46038");
+    same_day.sharing[0].start = Some("2023-03-03".into());
+    assert_eq!(map_show(&same_day), identity(Identity::Unexplained));
+    let mut undated = final_chapters("46038");
+    undated.sharing[1].start = None;
+    assert_eq!(map_show(&undated), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_shared_entry_s_parts_must_include_the_show_being_mapped() {
+    let mut ev = final_chapters("46038");
+    ev.sharing[1].id = "99999".into();
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    let mut alone = final_chapters("46038");
+    alone.sharing.truncate(1);
+    alone.sharing[0].id = "46038".into();
+    assert_eq!(map_show(&alone), identity(Identity::Unexplained));
+}
+
+// --- Kitsu parts filed under one entry, the later ones with no entry of
+// their own on the tracker (Tower of God's second season on AniList) ----
+
+/// AniList 153406 is Tower of God season 2, 26 episodes. Kitsu files
+/// it as 46312 (13) and its sequel 49244, Koubou-sen (13), which has a
+/// MyAnimeList id AniList does not know, so no AniList entry.
+fn tower_of_god(ours: &str, ours_count: u32) -> Evidence {
+    Evidence {
+        kitsu: kitsu(ours, Some(ours_count), "", ""),
+        entry: show(153_406, Some(26), true, "2024-07-07", "2024-12-29"),
+        sharing: vec![kitsu("46312", Some(13), "2024-07-07", "2024-09-29")],
+        parts: vec![
+            kitsu("46312", Some(13), "2024-07-07", "2024-09-29"),
+            kitsu("49244", Some(13), "2024-10-06", "2024-12-29"),
+        ],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn kitsu_parts_filed_under_one_entry_take_it_in_order() {
+    let first = map_show(&tower_of_god("46312", 13));
+    assert_eq!(first.shape, Shape::SplitParts);
+    assert_eq!(first.segments[0].lead, 0);
+    assert_eq!(first.target(13), mapped(153_406, 13, false, &[]));
+    let second = map_show(&tower_of_god("49244", 13));
+    assert_eq!(second.shape, Shape::SplitParts);
+    assert_eq!(
+        second.segments,
+        vec![Segment {
+            entry: 153_406,
+            entry_total: 26,
+            entry_finished: true,
+            kitsu_from: 1,
+            kitsu_to: 13,
+            lead: 13,
+            extras_after: vec![],
+        }]
+    );
+    assert_eq!(second.target(1), mapped(153_406, 14, false, &[]));
+    assert_eq!(second.target(13), mapped(153_406, 26, true, &[]));
+}
+
+#[test]
+fn the_parts_are_read_as_far_as_the_sum_and_no_further() {
+    // PriPara on MyAnimeList: 23135 is 140 episodes; Kitsu's 8555 (38),
+    // 10209 (51) and 12683 (51) are filed under it, and 12683's own
+    // sequel follows in the chain the fetcher walked.
+    let ev = Evidence {
+        kitsu: kitsu("12683", Some(51), "", ""),
+        entry: show(23_135, Some(140), true, "2014-07-05", "2017-03-28"),
+        parts: vec![
+            kitsu("8555", Some(38), "2014-07-05", "2015-03-31"),
+            kitsu("10209", Some(51), "2015-04-07", "2016-03-29"),
+            kitsu("12683", Some(51), "2016-04-05", "2017-03-28"),
+            kitsu("13000", Some(51), "2017-04-04", "2018-03-27"),
+        ],
+        ..Default::default()
+    };
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::SplitParts);
+    assert_eq!(map.segments[0].lead, 89);
+    assert_eq!(map.target(51), mapped(23_135, 140, true, &[]));
+    // A part past the sum is not under the entry.
+    let mut past = ev.clone();
+    past.kitsu = kitsu("13000", Some(51), "", "");
+    assert_eq!(map_show(&past), identity(Identity::Unexplained));
+}
+
+#[test]
+fn parts_that_do_not_sum_to_the_entry_explain_nothing() {
+    let mut ev = tower_of_god("49244", 13);
+    ev.parts[1].episodes = Some(12);
+    ev.kitsu.episodes = Some(12);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    let mut unknown = tower_of_god("46312", 13);
+    unknown.parts[1].episodes = None;
+    assert_eq!(map_show(&unknown), identity(Identity::Unexplained));
+    let mut alone = tower_of_god("46312", 13);
+    alone.parts.truncate(1);
+    assert_eq!(map_show(&alone), identity(Identity::Unexplained));
+}
+
+#[test]
+fn two_explanations_of_one_difference_are_no_explanation() {
+    // Both rules fire: the entry is shared with another mapped Kitsu
+    // entry AND followed by an unmapped Kitsu part, each summing to it.
+    let mut ev = tower_of_god("46312", 13);
+    ev.sharing
+        .push(kitsu("55555", Some(13), "2024-10-06", "2024-12-29"));
+    let map = map_show(&ev);
+    assert_eq!(map, identity(Identity::Conflict));
+    assert!(!map.conclusive());
+}
