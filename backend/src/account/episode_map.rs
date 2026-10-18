@@ -74,6 +74,11 @@ pub struct Evidence {
     /// Every Kitsu entry mapped to `entry`, `kitsu` among them.
     #[serde(default)]
     pub sharing: Vec<KitsuShow>,
+    /// The air dates Kitsu's own episode list gives the show's episodes,
+    /// by number — read for the first and last episode of each segment of
+    /// a chain whose counts sum to Kitsu's.
+    #[serde(default)]
+    pub kitsu_airdates: std::collections::BTreeMap<u32, String>,
     /// Kitsu's chain of parts filed under `entry`: the entry that maps
     /// to it first, then each single sequel with no entry of its own on
     /// this tracker, as far as it was followed; `kitsu` is one of them.
