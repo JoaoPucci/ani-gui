@@ -1242,7 +1242,7 @@ pub(crate) fn cached_provider(
     row.available.then_some(row.provider).flatten()
 }
 
-/// Persist a known availability result./// Persist a boolean availability row with no count and no versions:
+/// Persist a boolean availability row with no count and no versions:
 /// what a resolve's clean miss stamps ([`stamp_after_native`]). A
 /// positive a resolve or a replay stamps without a count goes through
 /// [`write_boolean_row`], which keeps the show's versions. Public for

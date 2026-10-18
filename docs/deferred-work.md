@@ -241,6 +241,7 @@ starting it, and delete it when you find it done.
   read a catalogue tag, which moves the probe head of the recorded
   JoJo pools and wants them re-recorded — then the model and the
   picker follow.
+
 - **The CRAP ratchet can disagree between CI and local.** Coverage
   attribution differs between the runner's toolchain and local ones,
   and once put the high-risk count at 26 in one and 25 in the other.

@@ -294,6 +294,7 @@ When the pick by count has its winner, every candidate that could be picked at t
 | Only the plain copy probed, the tagged one past the probe head (or the other way round) | one pick, as before |
 | The airing rescue, the countless pick, a stitched pick, a cut broad listing with every copy heard | one pick, as before |
 | A copy whose probe died unheard, one every rule would have let be picked — the pick by count, a cut broad listing included | the pick is transient, as when a stronger candidate dies: playing one copy now and the other once the dead one answers would split the show's history across two keys on the strength of weather |
+| A copy whose listing answered not-found | positively gone, a dead listing like any other: one pick, as before |
 | A dead copy no rule would pick — for an entry with a count and no year, or one video long and no year, a tagged copy the entry's titles do not name | blocks nothing: one pick, as before |
 
 Every other rule reads a tagged title as it did: the tag is bracketed words, not a catalogue tag, and only this rule sets it aside. The probe head is not widened for copies: every recorded JoJo season's first answering pool holds both copies inside the head, a copy past it costs nothing but the choice — the pick plays as before — and widening the head would cost probes on every pool for listings that are rare.
