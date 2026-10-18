@@ -400,6 +400,21 @@ starting it, and delete it when you find it done.
   and because the layout of listeners is also where the content
   security policy deferred below will name its origins; the two are
   better decided together.
+- **The player's delisted verdict can outlive the audio it was for.**
+  The play page keeps the provider's last "does it list this show"
+  answer (`showListed`) across a lookup that fails, by design, and
+  does not clear it when the audio changes. Settings landing after the
+  default sub lookup answered can therefore leave a sub verdict
+  standing while the page asks about dub: the switch refuses dub plays
+  on it, and the player-error overlay shows its delisted copy, with no
+  Reload, for dub until the dub answer lands. The window is
+  short, since the only audio change on that page is settings arriving.
+  Clearing the verdict on an audio change would let a failed lookup
+  open the switch to a show the provider dropped, which is why the
+  verdict is retained; the fix wants the verdict to carry the audio it
+  answered for, so both readers can tell whose answer it is. It waited
+  because it changes the switch's gate, not just the overlay that
+  reads it.
 
 ## Interface
 
