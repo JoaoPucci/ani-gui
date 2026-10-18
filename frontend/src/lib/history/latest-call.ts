@@ -6,7 +6,8 @@
  */
 
 /** `read`, keyed: an answer to a call a later call for the same key
- *  has superseded resolves to null, as a row that cannot be read does. */
+ *  has superseded resolves to null, as a row that cannot be read does;
+ *  a call that fails rejects as `read` did, superseded or not. */
 export function latestReads<T>(
 	read: (key: string) => Promise<T | null>
 ): (key: string) => Promise<T | null> {

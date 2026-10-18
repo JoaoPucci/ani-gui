@@ -221,17 +221,9 @@
 		leftPartWay
 	});
 
-	/**
-	 * Publishes a cap the background side learned — the loader's first
-	 * pass and `retryApproximateCaps`' later re-probe both land here.
-	 * The count and its provenance resolve as ONE value through the
-	 * cap authority: a pinned number with a fresh flag beside it is a
-	 * cap that contradicts itself, and the next click acts on
-	 * whichever half is wrong.
-	 */
-	// A row read again once its probe answered, as it reads now.
-	// A card reads its row again for each answer that can put it right,
-	// and those reads can answer out of order: the latest asked counts.
+	// A card's row, read again for each answer that can put it right —
+	// its match, its probe, a retried probe. Those reads can answer out
+	// of order: the latest asked counts.
 	const rowNumberNow = latestReads(historyNumber);
 	async function readRowAgain(id: string) {
 		const kitsuId = historyMatches[id]?.id;
@@ -248,6 +240,14 @@
 		const m = historyMatches[id];
 		if (m) rowReady(id, m, historyPlayableCounts[id] ?? null);
 	}
+	/**
+	 * Publishes a cap the background side learned — the loader's first
+	 * pass and `retryApproximateCaps`' later re-probe both land here.
+	 * The count and its provenance resolve as ONE value through the
+	 * cap authority: a pinned number with a fresh flag beside it is a
+	 * cap that contradicts itself, and the next click acts on
+	 * whichever half is wrong.
+	 */
 	const publishLoaderCap = (
 		id: string,
 		match: KitsuAnimeRef | null,
