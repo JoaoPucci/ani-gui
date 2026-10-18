@@ -56,6 +56,7 @@ backend/
 frontend/
 ├── src/                   # *.test.ts colocated with units
 ├── tests/acceptance/      # vitest + MSW
+├── tests/acceptance-guard/ # the acceptance guard over fixture scenarios; runs in `pnpm test`
 └── e2e/                   # Playwright (planned)
 ```
 

@@ -105,14 +105,20 @@ export const server = setupServer(
 // timer, promise and fetch it starts inherits, however late they run,
 // and every DOM event listener it adds is bound to: a request sent
 // from those carries its scenario across the boundary into the next
-// one. A scenario fails on:
+// one. A scenario's own teardown fails it, all at once, on:
 //
-// - a request of its own that no handler answered: one that reached
-//   the final catch-all, or one whose handler threw;
-// - a request of its own sent, or still unanswered, after its
-//   teardown unmounted its page;
-// - such a late request from an earlier scenario, or one sent outside
-//   any scenario, seen while it ran — named as such.
+// - a request of its own that no handler answered — one that reached
+//   the final catch-all — or one whose handler threw;
+// - a request of its own still unanswered once its page unmounted,
+//   unless the page aborted it — answered late or never, it outlives
+//   the page, and nothing waits for it;
+// - a request of its own sent in the turn after its page unmounted.
+//
+// Nothing of a scenario's is left for another to fail on. A request
+// it sends after its teardown, and one sent outside any scenario, fail
+// the file at its end instead, naming the scenario that sent it; a
+// request its teardown already charged it for is charged nothing more,
+// however it ends.
 //
 // What it cannot see, or gets wrong:
 //
@@ -141,14 +147,33 @@ interface Scenario {
 	name: string;
 	/** The scenario's teardown has unmounted its page. */
 	ended: boolean;
+	/** Its teardown has reported what it found: anything later of its
+	 *  own is named at the file's end instead. */
+	reported: boolean;
+}
+
+interface InFlight {
+	request: Request;
+	sender: Scenario | undefined;
+	/** Sent outside any scenario or after its own ended, and named for
+	 *  that already. */
+	late: boolean;
+	/** Accounted for: charged as undescribed, or still in flight when
+	 *  its sender's teardown reported — charged for that, or aborted by
+	 *  its page. Nothing it does later is charged again. */
+	settled: boolean;
 }
 
 const owner = new AsyncLocalStorage<Scenario>();
-/** The scenario each request in flight was sent by, by request id. */
-const senders = new Map<string, Scenario | undefined>();
-/** Requests a scenario sent that nothing answered, by scenario. */
-const undescribed = new Map<Scenario, string[]>();
-/** Requests sent by a scenario that had ended, or outside any. */
+/** Every request MSW has seen start, by request id, until it ends. One
+ *  that never ends — nothing answered it, or its handler threw, which
+ *  MSW ends with no `request:end` — stays, settled, for the file. */
+const inFlight = new Map<string, InFlight>();
+/** What each scenario is failed on by its own teardown. */
+const failures = new Map<Scenario, string[]>();
+/** What no scenario's teardown could report — a request sent outside
+ *  any, or after its sender's teardown had reported — named at the
+ *  file's end, so it fails no scenario that did not send it. */
 const strays: string[] = [];
 
 /** How long the file's teardown waits for a late request before MSW
@@ -158,29 +183,31 @@ const LATE_REQUEST_GRACE_MS = 100;
 
 const label = (request: Request) => `${request.method} ${request.url}`;
 
-function stray(request: Request, sender: Scenario | undefined, when: string) {
-	strays.push(
-		sender === undefined
-			? `${label(request)} — sent outside any scenario`
-			: `${label(request)} — ${when} "${sender.name}" had unmounted its page`
-	);
+/** Charges `line` to `sender`: to its teardown while that is still to
+ *  report, otherwise to the file's end, naming the sender. */
+function charge(sender: Scenario | undefined, line: string) {
+	if (sender === undefined) strays.push(`${line}, outside any scenario`);
+	else if (sender.reported) strays.push(`${line}, for "${sender.name}" after its teardown`);
+	else failures.set(sender, [...(failures.get(sender) ?? []), line]);
 }
 
-function undescribedRequest(request: Request, requestId: string) {
-	const sender = senders.has(requestId) ? senders.get(requestId) : owner.getStore();
-	if (sender === undefined || sender.ended) {
-		stray(request, sender, 'unanswered after');
-		return;
-	}
-	const seen = undescribed.get(sender) ?? [];
-	seen.push(label(request));
-	undescribed.set(sender, seen);
+function undescribedRequest(request: Request, requestId: string, why = 'no handler answered') {
+	const entry = inFlight.get(requestId);
+	// Accounted for already: named when it was sent, or settled.
+	if (entry?.late || entry?.settled) return;
+	if (entry) entry.settled = true;
+	const sender = entry ? entry.sender : owner.getStore();
+	charge(sender, `${label(request)} — ${why}`);
 }
 
 server.events.on('request:start', ({ request, requestId }) => {
 	const sender = owner.getStore();
-	senders.set(requestId, sender);
-	if (sender === undefined || sender.ended) stray(request, sender, 'sent after');
+	const late = sender === undefined || sender.ended;
+	inFlight.set(requestId, { request, sender, late, settled: false });
+	if (sender === undefined) strays.push(`${label(request)} — sent outside any scenario`);
+	else if (sender.reported)
+		strays.push(`${label(request)} — sent after "${sender.name}" had unmounted its page`);
+	else if (late) charge(sender, `${label(request)} — sent after its page unmounted`);
 });
 // `passthrough()` sends the request on to the network.
 server.events.on('response:bypass', ({ request, requestId }) =>
@@ -189,11 +216,31 @@ server.events.on('response:bypass', ({ request, requestId }) =>
 // A handler that throws answers with a 500, which reads as the
 // backend's own; it is the scenario's error, not the backend's.
 server.events.on('unhandledException', ({ request, requestId }) =>
-	undescribedRequest(request, requestId)
+	undescribedRequest(request, requestId, 'its handler threw')
 );
 server.events.on('request:end', ({ requestId }) => {
-	senders.delete(requestId);
+	inFlight.delete(requestId);
 });
+
+/**
+ * Closes `scenario`'s account: each request it sent while it ran and
+ * that is still in flight is charged to it, unless its page aborted
+ * it, and marked so that whatever it does later is charged to no one.
+ * Returns everything the scenario is failed on, and forgets it.
+ */
+function closeAccount(scenario: Scenario): string[] {
+	for (const entry of inFlight.values()) {
+		if (entry.sender !== scenario || entry.late || entry.settled) continue;
+		entry.settled = true;
+		if (!entry.request.signal.aborted) {
+			charge(scenario, `${label(entry.request)} — still unanswered after its page unmounted`);
+		}
+	}
+	scenario.reported = true;
+	const lines = failures.get(scenario) ?? [];
+	failures.delete(scenario);
+	return lines;
+}
 
 /**
  * Binds every DOM event listener to the scenario that last added it,
@@ -275,9 +322,9 @@ function bindListenersToTheirScenario() {
 }
 bindListenersToTheirScenario();
 
-function failOn(seen: string[] | undefined, what: string) {
-	if (seen === undefined || seen.length === 0) return;
-	throw new Error(`${what}:\n${seen.splice(0).join('\n')}`);
+function failOn(seen: string[], what: string) {
+	if (seen.length === 0) return;
+	throw new Error(`${what}:\n${seen.join('\n')}`);
 }
 
 beforeAll(() => {
@@ -289,7 +336,7 @@ beforeAll(() => {
 });
 
 aroundEach(async (runScenario, context) => {
-	await owner.run({ name: context.task.name, ended: false }, runScenario);
+	await owner.run({ name: context.task.name, ended: false, reported: false }, runScenario);
 });
 
 // Registered before every scenario's own hooks, so this `afterEach`
@@ -301,21 +348,15 @@ afterEach(async () => {
 	// One turn for what the unmount set off.
 	await new Promise((r) => setTimeout(r, 0));
 	server.resetHandlers();
-	try {
-		failOn(
-			scenario && undescribed.get(scenario),
-			'requests no handler answered during this scenario'
-		);
-	} finally {
-		if (scenario) undescribed.delete(scenario);
-	}
-	failOn(strays, 'requests sent by no live scenario');
+	// Everything is collected before anything throws, so nothing of
+	// this scenario's is left to fail another.
+	if (scenario) failOn(closeAccount(scenario), 'requests this scenario did not account for');
 });
 
 afterAll(async () => {
 	await new Promise((r) => setTimeout(r, LATE_REQUEST_GRACE_MS));
 	try {
-		failOn(strays, "requests sent by no live scenario, after this file's last one ended");
+		failOn(strays.splice(0), 'requests no running scenario sent');
 	} finally {
 		server.close();
 	}
