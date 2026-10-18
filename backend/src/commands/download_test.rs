@@ -475,30 +475,46 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // as one.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "sleep 0.6; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "sleep 0.6; exit 0");
-    let started = std::time::Instant::now();
-    let got = spawn_download_tool(
-        &StreamSource {
-            master_url: "https://cdn.example/x/master.m3u8".into(),
-            referer: None,
-            subtitles: Vec::new(),
-        },
-        dest.path(),
-        "Show Episode 1",
-        None,
-        &bin.path().display().to_string(),
-        std::time::Duration::from_millis(900),
-        &mut |_l: &str| {},
+    // Each tool fits inside the deadline on its own, so a deadline per
+    // tool lets the chain succeed; the two together do not. ffmpeg
+    // marks a finished run, so a chain that ran to its end and only
+    // then reported the timeout leaves the mark behind.
+    let finished = dest.path().join("ffmpeg-finished");
+    stage_tool(bin.path(), "yt-dlp", "sleep 0.8; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "sleep 0.8; touch '{finished}'; exit 0",
+            finished = finished.display()
+        ),
+    );
+    let got = tokio::time::timeout(
+        // Only a guard against hanging the suite.
+        std::time::Duration::from_secs(30),
+        spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_millis(900),
+            &mut |_l: &str| {},
+        ),
     )
-    .await;
+    .await
+    .expect("the chain returned");
     assert!(
         matches!(got, Err(AniError::Timeout)),
         "the fallback runs against what is left of the deadline: {got:?}"
     );
     assert!(
-        started.elapsed() < std::time::Duration::from_millis(1_600),
-        "and the whole chain ends at the deadline, not at one per tool"
+        !finished.exists(),
+        "and the whole chain ends at the deadline: ffmpeg was cut off, not run to its end"
     );
 }
 
@@ -1262,13 +1278,17 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
         })
     };
     // The first call has reached the tool before the duplicate arrives.
-    while !ran.exists() {
-        assert!(
-            !held.is_finished(),
-            "the first call ended before its tool ran"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !ran.exists() {
+            assert!(
+                !held.is_finished(),
+                "the first call ended before its tool ran"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the first call reached its tool");
 
     let mut sink = |_l: &str| {};
     let queued = tokio::time::timeout(
@@ -2982,7 +3002,10 @@ async fn a_name_held_by_a_symlink_or_a_directory_is_taken() {
 /// deadline covers them all, so a CDN that stalls cannot keep the
 /// download "active" for a per-request timeout per track. Tracks
 /// that do not arrive in time are skipped like refused ones.
-#[tokio::test]
+///
+/// On a paused clock, which the phase keeps its deadline by: the time it
+/// took is the deadline's own, not the machine's.
+#[tokio::test(start_paused = true)]
 async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_returns() {
     use crate::scraper::provider::SubtitleTrack;
     use wiremock::matchers::{method, path as wm_path};
@@ -3009,23 +3032,24 @@ async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_r
         url: format!("{}{route}", server.uri()),
     };
     let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
-    let written = tokio::time::timeout(
-        // Only a guard against hanging the suite: the tracks are held
-        // until after the phase, so its deadline is all that ends it.
-        std::time::Duration::from_secs(60),
-        write_sidecar_subtitles_within(
-            &reqwest::Client::new(),
-            &tracks,
-            None,
-            dest.path(),
-            "Show Episode 14",
-            std::time::Duration::from_millis(300),
-        ),
+    let deadline = std::time::Duration::from_millis(300);
+    let started = tokio::time::Instant::now();
+    let written = write_sidecar_subtitles_within(
+        &reqwest::Client::new(),
+        &tracks,
+        None,
+        dest.path(),
+        "Show Episode 14",
+        deadline,
     )
-    .await
-    .expect("the phase returned at its deadline, its tracks still held");
+    .await;
+    let elapsed = started.elapsed();
     stalled.release();
     assert!(written.is_empty(), "nothing arrived in time: {written:?}");
+    assert!(
+        elapsed <= deadline + std::time::Duration::from_millis(50),
+        "the phase returned at its deadline, its tracks still held: {elapsed:?}"
+    );
     assert!(!dest.path().join("Show Episode 14.en.vtt").exists());
     assert!(!dest.path().join("Show Episode 14.es.vtt").exists());
 }
@@ -3067,10 +3091,10 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
         track("es", &stalling, "/subs/es.vtt"),
     ];
     let written = tokio::time::timeout(
-        // Only a guard against hanging the suite: the late track is
-        // held until after the phase, so its deadline is all that ends
-        // it.
-        std::time::Duration::from_secs(60),
+        // The late track is held until after the phase, so its deadline
+        // is all that ends it; five times that deadline is a loose
+        // bound on its size. The paused sibling above pins it exactly.
+        std::time::Duration::from_secs(10),
         write_sidecar_subtitles_within(
             &reqwest::Client::new(),
             &tracks,

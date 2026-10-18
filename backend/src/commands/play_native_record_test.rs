@@ -174,6 +174,13 @@ async fn a_refused_id_is_never_on_the_row() {
         tokio::spawn(async move { record_watch(&state, &watch, Some("44294")).await })
     };
     guard_reading_kitsu(&gate, &mut recording).await;
+    assert!(
+        crate::history::read_all(&state.history_path)
+            .expect("rows")
+            .iter()
+            .any(|r| r.id == watch.show_id),
+        "the row is on disk while the guard waits"
+    );
     assert_eq!(
         row_id(&state, &watch.show_id),
         None,

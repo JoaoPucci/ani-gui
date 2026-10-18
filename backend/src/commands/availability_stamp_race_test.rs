@@ -19,10 +19,6 @@ use super::*;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
 use crate::scraper::table_provider::TableProvider;
 
-/// A state that walks both test providers, primary first — the walk
-/// every scenario here fails over along. A row is weighed only on the
-/// word of a provider the state walks, so the fallback's rows these
-/// races write must come from one it does.
 /// Returns once `probe` has its search out on `search`; fails the
 /// test if the probe finishes without searching.
 async fn probe_searching<T: std::fmt::Debug>(
@@ -35,6 +31,10 @@ async fn probe_searching<T: std::fmt::Debug>(
     }
 }
 
+/// A state that walks both test providers, primary first — the walk
+/// every scenario here fails over along. A row is weighed only on the
+/// word of a provider the state walks, so the fallback's rows these
+/// races write must come from one it does.
 fn walking_both(td: &tempfile::TempDir) -> AppState {
     let mut state = cache_only_state(td);
     state

@@ -789,7 +789,12 @@ async fn a_held_requests_hops_share_one_deadline() {
         .mount(&server)
         .await;
     let req = FetchRequest::get(format!("{}/hop0", server.uri())).held_to_origin();
-    let got = curl.fetch(&req).await;
+    // Loose by design: it catches a call that stops the chain and then
+    // lingers far past the deadline, and keeps a hung curl from hanging
+    // the suite. The hop count below is what pins the deadline itself.
+    let got = tokio::time::timeout(std::time::Duration::from_secs(10), curl.fetch(&req))
+        .await
+        .expect("the call returned soon after its deadline");
     // A deadline per hop never runs out — each hop answers well inside
     // one — and the chain arrives.
     assert!(matches!(got, Err(AniError::Timeout)), "{got:?}");
