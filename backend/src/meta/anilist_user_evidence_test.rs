@@ -146,3 +146,35 @@ async fn a_body_that_is_not_the_media_envelope_is_a_parse_failure() {
         .expect_err("no Media");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
+
+#[tokio::test]
+async fn a_year_alone_is_kept_as_the_year_and_a_body_that_is_not_json_fails() {
+    let crafted = r#"{"data":{"Media":{"id":8,"idMal":null,"episodes":4,"status":"FINISHED","format":"OVA",
+        "startDate":{"year":1991,"month":null,"day":null},"endDate":{"year":1991,"month":5,"day":null},
+        "relations":null,"streamingEpisodes":null}}}"#;
+    let got = evidence_for(8, crafted).await;
+    assert_eq!(got.show.start, Some("1991".into()));
+    assert_eq!(got.show.end, Some("1991-05".into()));
+    assert!(got.sequels.is_empty());
+    assert_eq!(got.listed, None);
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<html>"))
+        .mount(&server)
+        .await;
+    let provider = AniListProvider::with_bases(
+        reqwest::Client::new(),
+        server.uri(),
+        "http://unused-token".to_string(),
+    );
+    let tokens = Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let err = provider
+        .media_evidence(&tokens, ProviderMediaId(8))
+        .await
+        .expect_err("not JSON");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}

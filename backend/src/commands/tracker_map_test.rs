@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
-use crate::account::episode_map::{Identity, Shape};
+use crate::account::episode_map::{Identity, Shape, TrackerShow};
 use crate::cache::{meta_cache_get, meta_cache_row};
 use crate::meta::kitsu::ANIME_FIELDS;
 use wiremock::matchers::{body_string_contains, method, path, query_param};
@@ -721,4 +721,131 @@ async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_befor
     let map = episode_map_for(&ask, "46552", ProviderMediaId(52_684), Some(182)).await;
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments[0].lead, 0);
+}
+
+/// A Kitsu `/mappings` body mapping the given Kitsu ids.
+fn mapped_body(ids: &[&str]) -> String {
+    let data: Vec<String> = ids
+        .iter()
+        .map(|id| format!(r#"{{"id":"m{id}","type":"mappings","relationships":{{"item":{{"data":{{"type":"anime","id":"{id}"}}}}}}}}"#))
+        .collect();
+    let included: Vec<String> = ids
+        .iter()
+        .map(|id| format!(r#"{{"id":"{id}","type":"anime","attributes":{{"canonicalTitle":"Show {id}","episodeCount":12,"startDate":"2020-0{}-01","subtype":"TV"}}}}"#, id.len()))
+        .collect();
+    format!(
+        r#"{{"data":[{}],"included":[{}]}}"#,
+        data.join(","),
+        included.join(",")
+    )
+}
+
+#[tokio::test]
+async fn kitsu_claims_an_anilist_entry_by_its_own_id_or_by_the_mal_id_it_records() {
+    let kitsu = MockServer::start().await;
+    kitsu_mapped(&kitsu, "anilist/anime", 1, &mapped_body(&["10"])).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 2, EMPTY_PAGE).await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 20, &mapped_body(&["11"])).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 3, EMPTY_PAGE).await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 30, EMPTY_PAGE).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let show = |id: u32, id_mal: Option<u32>| TrackerShow {
+        id,
+        id_mal,
+        ..Default::default()
+    };
+    let claimed = |s: TrackerShow| {
+        let state = state.clone();
+        async move {
+            super::kitsu_side::claimed_on_kitsu(&state, ProviderKind::AniList, &s)
+                .await
+                .expect("read")
+        }
+    };
+    assert!(claimed(show(1, None)).await);
+    assert!(claimed(show(2, Some(20))).await);
+    assert!(!claimed(show(3, Some(30))).await);
+    assert!(!claimed(show(3, None)).await);
+}
+
+#[tokio::test]
+async fn the_entries_sharing_an_anilist_entry_include_those_mapped_by_its_mal_id_once_each() {
+    let kitsu = MockServer::start().await;
+    kitsu_mapped(&kitsu, "anilist/anime", 5, &mapped_body(&["40"])).await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        50,
+        &mapped_body(&["40", "411"]),
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let entry = TrackerShow {
+        id: 5,
+        id_mal: Some(50),
+        ..Default::default()
+    };
+    let got = super::kitsu_side::sharing_on_kitsu(&state, ProviderKind::AniList, &entry)
+        .await
+        .expect("read");
+    assert_eq!(
+        got.iter().map(|k| k.id.as_str()).collect::<Vec<_>>(),
+        ["40", "411"]
+    );
+}
+
+#[tokio::test]
+async fn a_relation_is_single_only_on_a_whole_page_with_one_of_its_role() {
+    let kitsu = MockServer::start().await;
+    let page = |count: usize, sequels: &[&str]| {
+        let data: Vec<String> = sequels
+            .iter()
+            .map(|id| format!(r#"{{"id":"r{id}","type":"mediaRelationships","attributes":{{"role":"sequel"}},"relationships":{{"destination":{{"data":{{"type":"anime","id":"{id}"}}}}}}}}"#))
+            .collect();
+        let included: Vec<String> = sequels
+            .iter()
+            .map(|id| {
+                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"episodeCount":12}}}}"#)
+            })
+            .collect();
+        format!(
+            r#"{{"data":[{}],"included":[{}],"meta":{{"count":{count}}}}}"#,
+            data.join(","),
+            included.join(",")
+        )
+    };
+    for (id, body) in [
+        ("1", page(1, &["9"])),
+        ("2", page(25, &["9"])),
+        ("3", page(2, &["8", "9"])),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("/anime/{id}/media-relationships")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+    let single = |id: &'static str| {
+        let state = state.clone();
+        async move {
+            super::kitsu_side::single_relation(&state, id, "sequel")
+                .await
+                .expect("read")
+                .map(|k| (k.id, k.episodes))
+        }
+    };
+    assert_eq!(single("1").await, Some(("9".to_string(), Some(12))));
+    // A page holding fewer relations than Kitsu counts may hide another.
+    assert_eq!(single("2").await, None);
+    assert_eq!(single("3").await, None);
+}
+
+#[test]
+fn the_in_house_tracker_has_no_kitsu_mapping_site() {
+    assert!(super::kitsu_side::site(ProviderKind::InHouse).is_err());
+    assert_eq!(
+        super::kitsu_side::site(ProviderKind::AniList).expect("site"),
+        "anilist/anime"
+    );
 }
