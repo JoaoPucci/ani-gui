@@ -192,3 +192,25 @@ async fn a_play_puts_every_copys_stamp_right() {
         Some((1, "12.5".to_string()))
     );
 }
+
+#[tokio::test]
+async fn a_handoff_puts_the_other_copys_stamp_right() {
+    // The external player's resolve repairs the stamps as the embedded
+    // player's does: the other copy's too.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for slug in [PLAIN, UNCUT] {
+        crate::commands::numbering_offset::put_display(&state, &key(slug), 12, 1, "24.5");
+    }
+    crate::commands::play_handoff::resolve_launch_args(
+        &state,
+        &ask("1", None),
+        crate::history::guard::Asked::now(&state.history_path, None),
+    )
+    .await
+    .expect("resolves");
+    assert_eq!(
+        crate::commands::numbering_offset::display_stamp(&state, &key(PLAIN)),
+        Some((1, "12.5".to_string()))
+    );
+}
