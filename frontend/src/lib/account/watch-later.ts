@@ -25,10 +25,10 @@
 import type { ListEntry, Provider } from './types';
 
 /**
- * AniList first (richer metadata via Kitsu's
- * mappings), then MAL. `inhouse` isn't in scope for the rail —
- * it's reserved for the future native provider that doesn't have
- * an off-app library to mirror.
+ * AniList first (richer metadata via Kitsu's mappings), then MAL.
+ * `inhouse` isn't in scope for the rail — it's reserved for the
+ * future native provider that doesn't have an off-app library to
+ * mirror.
  */
 const MERGE_ORDER: ReadonlyArray<Provider> = ['anilist', 'mal'];
 

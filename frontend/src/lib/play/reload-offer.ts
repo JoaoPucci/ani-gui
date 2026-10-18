@@ -36,8 +36,10 @@
  *
  * The switch also holds while the airing lookup is out. That is not a
  * dead end — the lookup settles on its own — so the Reload stays on
- * screen, held until the lookup lands, and the automatic recovery
- * waits: started then, either would be declined.
+ * screen, disabled until the lookup lands, and the automatic recovery
+ * is not started then, since the switch would decline either. Nothing
+ * re-arms the automatic recovery afterwards: once the lookup lands,
+ * the Reload is what recovers.
  */
 
 import { availabilityBatch } from '$lib/api';

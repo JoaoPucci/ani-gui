@@ -312,9 +312,8 @@ const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 
 /// Bridge a list of MAL ids to Kitsu refs, preserving input order
 /// and dropping ids Kitsu can't map. Used by the home page's Watch
-/// Later rail so cached `user_list_cache` rows render
-/// with the same Kitsu metadata + availability filter as the rest
-/// of the home.
+/// Later rail so cached `user_list_cache` rows render with the same
+/// Kitsu metadata + availability filter as the rest of the home.
 ///
 /// Concurrency is capped at [`WATCH_LATER_BRIDGE_CONCURRENCY`] via
 /// `buffered(N)` so we don't queue up to 500 outbound Kitsu

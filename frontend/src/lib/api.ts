@@ -1028,9 +1028,9 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
  *  Order is preserved; ids Kitsu can't map drop out of the response.
- *  Used by the home Watch Later rail to render the
- *  merged Plan-to-Watch list with Kitsu metadata + availability
- *  filtering matching the rest of the home. Empty input → empty
+ *  Used by the home Watch Later rail to render the merged
+ *  Plan-to-Watch list with Kitsu metadata + availability filtering
+ *  matching the rest of the home. Empty input → empty
  *  output (no round-trip needed).
  *
  *  Sends the renderer-only internal-secret header — backend gates
