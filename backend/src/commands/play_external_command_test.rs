@@ -498,9 +498,8 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
 async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
     let mock = MockServer::start().await;
     // Hold the resolve on its first request.
-    let provider = Arc::new(
-        stub_provider(&mock, "the show").delaying_searches(std::time::Duration::from_millis(700)),
-    );
+    let (hold, gate) = crate::held::gate();
+    let provider = Arc::new(stub_provider(&mock, "the show").holding_searches(hold));
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
     let state = std::sync::Arc::new(state_for(dir.path(), &provider));
@@ -521,15 +520,19 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
     )
     .expect("seed row");
 
-    let play = {
+    let mut play = {
         let state = std::sync::Arc::clone(&state);
         tokio::spawn(async move { play_external(&state, &play_args()).await })
     };
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    tokio::select! {
+        () = gate.asked() => {}
+        ended = &mut play => panic!("the handoff ended before it was held: {ended:?}"),
+    }
     assert!(
         crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
             .expect("delete")
     );
+    gate.release();
     play.await.expect("join").expect("plays");
     wait_for(&argv_file).await;
 
@@ -554,10 +557,11 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
 #[tokio::test]
 async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_no_numbering() {
     let mock = MockServer::start().await;
-    // The cached stream is dead, and says so slowly.
+    // The cached stream is dead, and says so once the removal is in.
+    let (hold, gate) = crate::held::gate();
     Mock::given(method("HEAD"))
         .and(path("/cached/master.m3u8"))
-        .respond_with(ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(700)))
+        .respond_with(crate::held::Held::new(hold, ResponseTemplate::new(404)))
         .mount(&mock)
         .await;
     let provider = Arc::new(stub_provider(&mock, "the show"));
@@ -610,15 +614,19 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
     )
     .expect("seed row");
 
-    let play = {
+    let mut play = {
         let state = std::sync::Arc::clone(&state);
         tokio::spawn(async move { play_external(&state, &play_args()).await })
     };
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    tokio::select! {
+        () = gate.asked() => {}
+        ended = &mut play => panic!("the handoff ended before it was held: {ended:?}"),
+    }
     assert!(
         crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
             .expect("delete")
     );
+    gate.release();
     play.await.expect("join").expect("plays");
     let argv = wait_for(&argv_file).await;
 

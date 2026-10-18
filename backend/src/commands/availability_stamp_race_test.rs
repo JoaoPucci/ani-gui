@@ -23,6 +23,18 @@ use crate::scraper::table_provider::TableProvider;
 /// every scenario here fails over along. A row is weighed only on the
 /// word of a provider the state walks, so the fallback's rows these
 /// races write must come from one it does.
+/// Returns once `probe` has its search out on `search`; fails the
+/// test if the probe finishes without searching.
+async fn probe_searching<T: std::fmt::Debug>(
+    search: &crate::held::Gate,
+    probe: &mut tokio::task::JoinHandle<T>,
+) {
+    tokio::select! {
+        () = search.asked() => {}
+        got = &mut *probe => panic!("the probe finished without searching: {got:?}"),
+    }
+}
+
 fn walking_both(td: &tempfile::TempDir) -> AppState {
     let mut state = cache_only_state(td);
     state
@@ -253,12 +265,13 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
 /// just proven playable for the negative's whole lifetime.
 #[tokio::test]
 async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
-    // The primary's search answers a clean miss, slowly enough for a
-    // stamp to land while the probe waits on it.
+    // The primary's search answers a clean miss, held for a stamp to
+    // land while the probe waits on it.
+    let (hold, search) = crate::held::gate();
     let primary = std::sync::Arc::new(
         TableProvider::new()
             .answering_as(ProviderId::TestA)
-            .delaying_searches(std::time::Duration::from_millis(300)),
+            .holding_searches(hold),
     );
     let td = tempfile::tempdir().expect("td");
     let state = walking_both(&td);
@@ -272,13 +285,13 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
     .expect("args");
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    let probe = tokio::spawn({
+    let mut probe = tokio::spawn({
         let state = state.clone();
         let primary = std::sync::Arc::clone(&primary);
         async move { check_with(&state, &args, &primary).await }
     });
     // The resolve lands while the probe waits on the primary.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    probe_searching(&search, &mut probe).await;
     stamp_after_native(
         &state,
         Some(ID),
@@ -287,6 +300,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
+    search.release();
     let got = probe.await.expect("the probe finishes");
 
     assert!(
@@ -521,12 +535,13 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_sto
 /// row that changed: the row was proven again after the walk began.
 #[tokio::test]
 async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_while_it_was_out() {
-    // The primary's search answers a clean miss, slowly enough for a
-    // stamp to land while the probe waits on it.
+    // The primary's search answers a clean miss, held for a stamp to
+    // land while the probe waits on it.
+    let (hold, search) = crate::held::gate();
     let primary = std::sync::Arc::new(
         TableProvider::new()
             .answering_as(ProviderId::TestA)
-            .delaying_searches(std::time::Duration::from_millis(300)),
+            .holding_searches(hold),
     );
     let td = tempfile::tempdir().expect("td");
     let state = walking_both(&td);
@@ -542,13 +557,13 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
     .expect("args");
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    let probe = tokio::spawn({
+    let mut probe = tokio::spawn({
         let state = state.clone();
         let primary = std::sync::Arc::clone(&primary);
         async move { check_with(&state, &args, &primary).await }
     });
     // The resolve lands while the probe waits on the primary.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    probe_searching(&search, &mut probe).await;
     stamp_after_native(
         &state,
         Some(ID),
@@ -557,6 +572,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
         ResolveVerdict::served(ProviderId::TestA, Some(12), &[]),
     )
     .await;
+    search.release();
     let got = probe.await.expect("the probe finishes");
 
     assert!(
@@ -703,10 +719,11 @@ async fn a_later_native_success_does_not_overwrite_a_positive_row_written_after_
     assert_eq!(row.episode_count, Some(24));
 }
 
-/// One show whose search answers late, so a stamp can land while the
-/// probe waits on it: every search finds `probe-show-5`, whose
-/// listing carries `count` episodes.
-fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
+/// One show whose search is held on the returned gate, so a stamp can
+/// land while the probe waits on it: every search finds
+/// `probe-show-5`, whose listing carries `count` episodes.
+fn stub_one_show_held(count: u32) -> (std::sync::Arc<TableProvider>, crate::held::Gate) {
+    let (hold, search) = crate::held::gate();
     let rows: Vec<EpisodeRef> = (1..=count)
         .map(|n| EpisodeRef {
             id: 5000 + u64::from(n),
@@ -717,7 +734,7 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
         })
         .collect();
     let last = 5000 + u64::from(count);
-    std::sync::Arc::new(
+    let primary = std::sync::Arc::new(
         TableProvider::new()
             .answering_as(ProviderId::TestA)
             .search_default(vec![BrowseHit {
@@ -729,8 +746,9 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
             .listing(5, rows)
             .mode(last, "sub", true)
             .mode(last, "dub", false)
-            .delaying_searches(std::time::Duration::from_millis(300)),
-    )
+            .holding_searches(hold),
+    );
+    (primary, search)
 }
 
 /// The probe's side of the same case: a probe with no row to remember
@@ -743,7 +761,7 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
 /// and stands.
 #[tokio::test]
 async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
-    let primary = stub_one_show_slowly(7);
+    let (primary, search) = stub_one_show_held(7);
     let td = tempfile::tempdir().expect("td");
     let state = walking_both(&td);
     let state = std::sync::Arc::new(state);
@@ -757,12 +775,12 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
     .expect("args");
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    let probe = tokio::spawn({
+    let mut probe = tokio::spawn({
         let state = state.clone();
         let primary = std::sync::Arc::clone(&primary);
         async move { check_with(&state, &args, &primary).await }
     });
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    probe_searching(&search, &mut probe).await;
     stamp_after_native(
         &state,
         Some(ID),
@@ -771,6 +789,7 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
         ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
+    search.release();
     let got = probe
         .await
         .expect("the probe finishes")
@@ -794,6 +813,7 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
 #[tokio::test]
 async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
     // A count and no year: "Other" fits and nothing names it.
+    let (hold, search) = crate::held::gate();
     let primary = std::sync::Arc::new(
         TableProvider::new()
             .answering_as(ProviderId::TestA)
@@ -815,7 +835,7 @@ async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
                     })
                     .collect::<Vec<_>>(),
             )
-            .delaying_searches(std::time::Duration::from_millis(300)),
+            .holding_searches(hold),
     );
     let td = tempfile::tempdir().expect("td");
     let state = std::sync::Arc::new(walking_both(&td));
@@ -827,12 +847,12 @@ async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
     }))
     .expect("args");
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
-    let probe = tokio::spawn({
+    let mut probe = tokio::spawn({
         let state = state.clone();
         let primary = std::sync::Arc::clone(&primary);
         async move { check_with(&state, &args, &primary).await }
     });
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    probe_searching(&search, &mut probe).await;
     stamp_after_native(
         &state,
         Some(ID),
@@ -841,6 +861,7 @@ async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
         ResolveVerdict::served(ProviderId::TestA, Some(12), &[]),
     )
     .await;
+    search.release();
     let got = probe.await.expect("the probe finishes");
     assert_eq!(
         super::tests::unsettled_reason(&got).as_deref(),
