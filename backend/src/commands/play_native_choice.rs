@@ -48,7 +48,7 @@ pub(super) fn could_have_won(entry: EntryTitles<'_>, title: &str, could_win: boo
 /// The strongest transport-dead candidate so far, by [`entry_rank`]
 /// and then provider position, with the candidate that just died at
 /// `pos` weighed in. A candidate the entry's titles refuse, or another
-/// entry of the same show ([`EntryTitles::another_entry`]), could
+/// entry of the same show ([`EntryTitles::another_entry_as_read`]), could
 /// never have won, so its death blocks no winner, and neither does one
 /// the name rule that applies would have refused (`could_win` false:
 /// `play_native_dated_name::may_win`); it still leaves the pool

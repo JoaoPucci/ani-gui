@@ -60,7 +60,7 @@ pub(super) fn fit_to_entry(
         .map(|(h, _, _, _)| entry.admits_as_read(&h.title))
         .collect();
     // Pickable: admitted, and not another entry of the same show
-    // ([`EntryTitles::another_entry`]) — which still counts as admitted
+    // ([`EntryTitles::another_entry_as_read`]) — which still counts as admitted
     // when the pool is read for a broad listing.
     let pickable: Vec<bool> = probed
         .iter()
