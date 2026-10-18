@@ -375,6 +375,39 @@ async fn the_final_chapters_second_special_on_mal_shares_the_entry_after_the_fir
     )
     .await;
     kitsu_mapped(&kitsu, "myanimelist/anime", 51_535, FINAL_CHAPTERS_MAPPED).await;
+    // Both specials map to the one MAL entry, so Kitsu's chain of them
+    // explains the entry the same way the shared mapping does.
+    Mock::given(method("GET"))
+        .and(path("/anime/46038"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(mappings(
+            "46038",
+            Some(51_535),
+            None,
+        )))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/46038/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(relationship(
+            "sequel",
+            "47132",
+            1,
+            "2023-11-04",
+            "2023-11-04",
+        )))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/47132"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(mappings(
+            "47132",
+            Some(51_535),
+            None,
+        )))
+        .mount(&kitsu)
+        .await;
     // Kitsu chains the second special after the first, nothing after it.
     Mock::given(method("GET"))
         .and(path("/anime/47132/media-relationships"))
@@ -653,7 +686,7 @@ async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_befor
             r#"{"id":52684,"num_episodes":182,"status":"finished_airing","media_type":"ona",
                 "start_date":"2022-11-10","end_date":"2026-04-23","related_anime":[]}"#,
         ))
-        .expect(1)
+        .expect(2)
         .mount(&mal_server)
         .await;
     let state = state_with_kitsu(&kitsu.uri());

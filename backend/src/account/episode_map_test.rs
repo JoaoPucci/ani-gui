@@ -498,11 +498,12 @@ fn parts_that_do_not_sum_to_the_entry_explain_nothing() {
 
 #[test]
 fn two_explanations_of_one_difference_are_no_explanation() {
-    // Both rules fire: the entry is shared with another mapped Kitsu
-    // entry AND followed by an unmapped Kitsu part, each summing to it.
+    // Both rules fire and disagree: the entry is shared with another
+    // mapped Kitsu entry dated before ours (ours its 14th–26th), AND
+    // ours is followed by an unmapped Kitsu part (ours its 1st–13th).
     let mut ev = tower_of_god("46312", 13);
     ev.sharing
-        .push(kitsu("55555", Some(13), "2024-10-06", "2024-12-29"));
+        .push(kitsu("55555", Some(13), "2024-01-07", "2024-03-29"));
     let map = map_show(&ev);
     assert_eq!(map, identity(Identity::Conflict));
     assert!(!map.conclusive());
@@ -649,5 +650,23 @@ fn extras_and_parts_explaining_the_same_surplus_conflict() {
         ],
         ..Default::default()
     };
+    assert_eq!(map_show(&ev), identity(Identity::Conflict));
+}
+
+#[test]
+fn two_rules_filing_the_episodes_the_same_way_are_one_explanation() {
+    // The Final Chapters specials: both Kitsu entries map to MAL 51535
+    // and Kitsu chains the second after the first, so the shared-entry
+    // and split-parts rules each file the second at the entry's 2nd.
+    let mut ev = final_chapters("47132");
+    ev.parts = vec![
+        kitsu("46038", Some(1), "2023-03-03", "2023-03-03"),
+        kitsu("47132", Some(1), "2023-11-04", "2023-11-04"),
+    ];
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::SharedEntry);
+    assert_eq!(map.target(1), mapped(51_535, 2, true, &[]));
+    // Filing them differently is still a conflict.
+    ev.parts.reverse();
     assert_eq!(map_show(&ev), identity(Identity::Conflict));
 }
