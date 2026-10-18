@@ -517,6 +517,10 @@ async fn at_target_settled(path: &std::path::Path) -> AtTarget {
         if seen != AtTarget::LiveClaim || tokio::time::Instant::now() >= until {
             return seen;
         }
+        // Claimed: say so to a test holding the claim, which can then
+        // let it go knowing the wait is what it tests.
+        #[cfg(test)]
+        crate::held::queued(&path.display().to_string());
         tokio::time::sleep(CLAIM_POLL).await;
     }
 }
@@ -2038,6 +2042,8 @@ where
     // In its tree before it runs — its own process group on Unix, its
     // jobs on Windows — so cancellation can address the tool's whole
     // tree: yt-dlp spawns helpers kill_on_drop cannot reach.
+    #[cfg(test)]
+    let program = std::path::PathBuf::from(cmd.as_std().get_program());
     let mut cmd = crate::spawn::GuardedCommand::new(cmd);
     let mut child = loop {
         // The retry lives before the child exists, so the wait below
@@ -2054,6 +2060,10 @@ where
             // written executables — retry instead of failing the
             // whole download over it.
             Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                // Busy: say so to a test holding it, which can then let
+                // it go knowing the retry is what it tests.
+                #[cfg(test)]
+                crate::held::queued(&program.display().to_string());
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
             Err(_) => {

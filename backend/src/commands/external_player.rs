@@ -145,6 +145,14 @@ pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result
         match cmd.spawn() {
             Ok(_) => return Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                // Busy: say so to a test holding it, which can then let
+                // it go knowing the retry is what it tests.
+                #[cfg(test)]
+                crate::held::queued(
+                    &std::path::Path::new(cmd.get_program())
+                        .display()
+                        .to_string(),
+                );
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
             Err(e) => return Err(e),
