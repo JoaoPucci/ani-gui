@@ -1105,8 +1105,8 @@
 	let availabilityResolved = $state(false);
 	// The current lookup's own verdict, for the warm: null while the
 	// question is open or after it failed, never one retained from an
-	// earlier lookup — `showListed` keeps what the page had on failure,
-	// and the warm must not read the other mode's answer as this one's.
+	// earlier lookup — `showListed` keeps an earlier answer in the same
+	// audio on failure, and the warm acts only on what this lookup said.
 	let warmListed = $state<boolean | null>(null);
 	/** Whether the provider has the show at all, as the detail page tracks
 	 *  it. null until the first answer. Separate from the cap: a

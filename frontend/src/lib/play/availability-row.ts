@@ -12,7 +12,20 @@
  * ($lib/detail/availability-writeback): absent keys belong to someone
  * else, and the row keeps what it had for them. A lookup that fails or
  * comes back unsettled writes nothing, so the row keeps its verdict
- * then too.
+ * then too — for the audio that verdict was about.
+ *
+ * An answer is about one show in one audio: the provider catalogues
+ * sub and dub separately, and a show it dropped in one audio can be
+ * listed in the other, at another count. So the row is read only for
+ * the key its answers were for. Asked for any other — settings landing
+ * with dub after the default sub question answered, while the dub one
+ * is out, or after it failed or came back unsettled — it reads as
+ * nothing known, which is how the page reads availability before any
+ * answer: no play is refused for the show being delisted or for an
+ * episode past a count, and the player-error overlay keeps its Reload
+ * ($lib/play/reload-offer). The first answer about a new key starts
+ * from nothing known as well, so a patch carrying only some fields
+ * does not inherit the others from another audio.
  */
 
 import type { AvailabilityPatch } from '$lib/detail/availability-writeback';
@@ -58,7 +71,7 @@ export function mergeRow(
 	patch: AvailabilityPatch
 ): AvailabilityRow | null {
 	if (key === null) return row;
-	const next: AvailabilityRow = { ...(row ?? UNKNOWN_ROW), key };
+	const next: AvailabilityRow = { ...(row?.key === key ? row : UNKNOWN_ROW), key };
 	if (patch.available !== undefined) {
 		next.listed = patch.available;
 		// Whether that verdict is a refusal by name travels with it.
@@ -69,9 +82,8 @@ export function mergeRow(
 	return next;
 }
 
-/** What the page knows about the row for `key`: the last answer it
- *  accepted, whichever show and audio that answer was for. */
+/** What the page knows about the row for `key`: nothing, unless its
+ *  answers were about that show in that audio. */
 export function rowFor(row: AvailabilityRow | null, key: string | null): RowView {
-	void key;
-	return row ?? UNKNOWN_ROW;
+	return row !== null && row.key === key ? row : UNKNOWN_ROW;
 }
