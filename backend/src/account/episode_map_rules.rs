@@ -48,17 +48,32 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
         if let Some(segments) = shared_entry(evidence, tracker_total) {
             explanations.push((Shape::SharedEntry, segments));
         }
+        // The extras rule reads a surplus over the show's own count, so it
+        // explains the entry only where no other Kitsu entry is filed
+        // under it; beside Kitsu parts it is only ever a rival to them.
+        let ours = evidence.kitsu.id.as_str();
+        let sole = evidence
+            .sharing
+            .iter()
+            .chain(&evidence.parts)
+            .all(|k| k.id == ours);
         if let Some(segments) = split_parts(evidence, tracker_total) {
             explanations.push((Shape::SplitParts, segments));
-            // A later part is filed only where its first part's view
-            // agrees: the entry's list explaining the surplus over the
-            // first part is a rival explanation of the same episodes.
-            if let Some(rival) = first_part_extras(evidence, tracker_total) {
+            // The entry's list explaining the surplus over the first part
+            // is a rival explanation of the same episodes.
+            let rival = if evidence.parts.first().is_some_and(|p| p.id == ours) {
+                extras(evidence, kitsu_count, tracker_total)
+            } else {
+                first_part_extras(evidence, tracker_total)
+            };
+            if let Some(rival) = rival {
                 explanations.push((Shape::Extras, rival));
             }
         }
-        if let Some(segments) = extras(evidence, kitsu_count, tracker_total) {
-            explanations.push((Shape::Extras, segments));
+        if sole {
+            if let Some(segments) = extras(evidence, kitsu_count, tracker_total) {
+                explanations.push((Shape::Extras, segments));
+            }
         }
     }
     // Two rules filing the episodes the same way are one explanation.

@@ -5,11 +5,11 @@
 use super::parts_rule::part_of_entry;
 use crate::account::episode_map::{Evidence, Segment};
 
-/// A number from the tracker's episode list as `(whole, fractional)`:
-/// `"7"` is `(7, false)`, `"6.5"` is `(6, true)`, `"0"` is `(0, false)`.
-/// Anything else — a title with no number, an empty string, letters —
-/// is `None` and ignored.
-pub(super) fn listed_number(text: &str) -> Option<(u32, bool)> {
+/// A number from the tracker's episode list as its whole part and its
+/// fraction's digits: `"7"` is `(7, None)`, `"6.5"` is `(6, Some("5"))`,
+/// `"0"` is `(0, None)`. Anything else — a title with no number, an
+/// empty string, letters — is `None` and ignored.
+pub(super) fn listed_number(text: &str) -> Option<(u32, Option<&str>)> {
     let (whole, fraction) = match text.split_once('.') {
         Some((whole, fraction)) => (whole, Some(fraction)),
         None => (text, None),
@@ -20,7 +20,7 @@ pub(super) fn listed_number(text: &str) -> Option<(u32, bool)> {
     if fraction.is_some_and(|f| f.is_empty() || !f.chars().all(|c| c.is_ascii_digit())) {
         return None;
     }
-    Some((whole.parse().ok()?, fraction.is_some()))
+    Some((whole.parse().ok()?, fraction))
 }
 
 /// The extras rule: the tracker's own episode list carries exactly as
@@ -35,10 +35,10 @@ pub(super) fn extras(
     tracker_total: u32,
 ) -> Option<Vec<Segment>> {
     let listed = evidence.listed.as_ref()?;
-    let mut extras: Vec<(u32, bool)> = listed
+    let mut extras: Vec<(u32, Option<&str>)> = listed
         .iter()
         .filter_map(|n| listed_number(n))
-        .filter(|(whole, fractional)| *whole == 0 || *fractional)
+        .filter(|(whole, fraction)| *whole == 0 || fraction.is_some())
         .collect();
     extras.sort_unstable();
     extras.dedup();

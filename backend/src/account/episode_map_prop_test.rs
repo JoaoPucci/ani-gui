@@ -217,7 +217,7 @@ proptest! {
     #[test]
     fn a_listed_number_reads_back_as_it_was_written(whole in 0u32..10_000, half in any::<bool>()) {
         let text = if half { format!("{whole}.5") } else { whole.to_string() };
-        prop_assert_eq!(listed_number(&text), Some((whole, half)));
+        prop_assert_eq!(listed_number(&text), Some((whole, half.then_some("5"))));
     }
 
     #[test]

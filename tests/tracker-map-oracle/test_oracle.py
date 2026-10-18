@@ -109,6 +109,20 @@ class CaseTable(unittest.TestCase):
         later["listed"] = ["1", "2"]
         self.assertEqual(predict(later)["shape"], "split_parts")
 
+    def test_a_later_entry_never_takes_its_prequel_s_extras(self):
+        s1, s2 = kitsu(1, 12, "2020-01-05", ""), kitsu(2, 12, "2020-07-05", "")
+        listed = ["0", "1", "2"]
+        through = evidence(s2, show(500, 13), listed=listed, sharing=[s1], parts=[s1, s2])
+        self.assertEqual(predict(through)["why"], "unexplained")
+        mapped = evidence(s2, show(500, 13), listed=listed, sharing=[s1, s2], parts=[s2])
+        self.assertEqual(predict(mapped)["why"], "unexplained")
+
+    def test_distinct_fractions_are_distinct_extras(self):
+        listed = ["0", "1", "6.1", "6.2", "6.2"]
+        self.assertEqual(predict(evidence(kitsu(1, 12), show(2, 14), listed=listed))["why"], "unexplained")
+        m = predict(evidence(kitsu(1, 12), show(2, 15), listed=listed))
+        self.assertEqual(m["segments"][0]["extras_after"], [0, 6, 6])
+
     def test_an_unfinished_entry_is_not_completed(self):
         ev = ranma()
         ev["chain"][0]["finished"] = False
@@ -125,7 +139,7 @@ class Generation(unittest.TestCase):
     def test_every_family_is_generated_and_every_shape_predicted(self):
         cases = oracle.gen()
         families = {c["family"].split("-")[0] for c in cases}
-        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing"):
+        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed"):
             self.assertIn(f, families)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
         self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})

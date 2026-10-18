@@ -123,23 +123,24 @@ def split_rule(ev, total):
 
 
 def listed_number(text):
+    """A listed number as (whole, fraction digits or None)."""
     m = re.fullmatch(r"(\d+)(?:\.(\d+))?", text)
     if not m:
         return None
-    return int(m.group(1)), m.group(2) is not None
+    return int(m.group(1)), m.group(2)
 
 
 def extras_rule(ev, count, total):
     if ev["listed"] is None:
         return None
     extras = sorted(
-        {n for n in map(listed_number, ev["listed"]) if n and (n[0] == 0 or n[1])}
+        {n for n in map(listed_number, ev["listed"]) if n and (n[0] == 0 or n[1] is not None)}
     )
     if len(extras) != total - count:
         return None
     if any(w > count for w, _ in extras):
         return None
-    return [segment(ev["entry"], total, 1, count, 0, [w for w, _ in extras])]
+    return [segment(ev["entry"], total, 1, count, 0, [w for w, _ in sorted(extras, key=lambda e: (e[0], e[1] or ""))])]
 
 
 def predict(ev):
@@ -155,12 +156,14 @@ def predict(ev):
         if c:
             found.append(("chain", c))
     else:
+        ours = ev["kitsu"]["id"]
+        # The list explains a surplus over the show's own count only where
+        # no other Kitsu entry is filed under the entry; beside Kitsu parts
+        # it is a rival to them, read from the first part's count.
+        sole = all(k["id"] == ours for k in ev["sharing"] + ev["parts"])
         split = split_rule(ev, total)
         rival = None
-        if split and ev["parts"] and ev["parts"][0]["id"] != ev["kitsu"]["id"]:
-            # A later part is filed only where its first part's view
-            # agrees: the list explaining the surplus over the first part
-            # is a rival explanation.
+        if split and ev["parts"]:
             first = ev["parts"][0]["episodes"]
             if first and first < total:
                 rival = extras_rule(ev, first, total)
@@ -168,7 +171,7 @@ def predict(ev):
             ("shared_entry", shared_rule(ev, total)),
             ("split_parts", split),
             ("extras", rival),
-            ("extras", extras_rule(ev, count, total)),
+            ("extras", extras_rule(ev, count, total) if sole else None),
         ):
             if segs and not any(segs == f[1] for f in found):
                 found.append((shape, segs))
@@ -378,6 +381,31 @@ def conflict_family(rng):
     return out
 
 
+def borrowed_family(rng):
+    """A later Kitsu entry reaching an entry whose list explains a
+    surplus over the first entry's count, filed through it or mapped to
+    it beside the first: never the extras rule's case."""
+    out = []
+    for _ in range(100):
+        first, ours = rng.randint(2, 26), rng.randint(2, 26)
+        listed = ["0"] + [str(i) for i in range(1, first + 1)]
+        s1, s2 = kitsu(70, first, "2020-01-05", ""), kitsu(71, ours, "2020-07-05", "")
+        shape = rng.choice(["through", "mapped"])
+        if shape == "through":
+            ev = evidence(s2, show(72, first + 1), listed=listed, sharing=[s1], parts=[s1, s2])
+        else:
+            ev = evidence(s2, show(72, first + 1), listed=listed, sharing=[s1, s2], parts=[s2])
+        out.append(("borrowed-" + shape, ev))
+    for _ in range(60):
+        count = rng.randint(8, 30)
+        after = rng.randint(1, count - 1)
+        fracs = rng.sample(["1", "2", "3", "5"], rng.randint(2, 3))
+        listed = [str(i) for i in range(1, count + 1)] + [f"{after}.{f}" for f in fracs]
+        total = count + len(fracs) + rng.choice([0, 0, -1])
+        out.append(("extras-fractions", evidence(kitsu(73, count), show(74, total), listed=listed)))
+    return out
+
+
 def plain_family(rng):
     out = []
     for _ in range(100):
@@ -401,7 +429,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, plain_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:
