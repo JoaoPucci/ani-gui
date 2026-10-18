@@ -759,13 +759,22 @@ async fn push_progress_with_anilist_base(
     // upsert since providers only upsert (no compare-and-set).
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _write_guard = show_lock.lock().await;
-    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
-        return Ok(None);
-    };
+    let native = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await?;
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
-    push_progress_via(state, kind, provider.as_ref(), tokens, native, update).await
+    // Read through the show's episode map: an episode the tracker files
+    // under another entry, or under another number, goes there; a show
+    // Kitsu resolves to nothing writes only where the map files it
+    // under an entry a prequel resolves to.
+    let ask = super::tracker_map::MapAsk {
+        state,
+        kind,
+        provider: provider.as_ref(),
+        tokens,
+        anilist_base,
+    };
+    super::account_mapped::push_progress_mapped(&ask, kitsu_id, native, update).await
 }
 
 /// The monotonic write-back with the provider injected, so tests drive
@@ -792,32 +801,60 @@ pub(crate) async fn push_progress_via(
     // progress costs one bearer-scoped GET per write — only when the
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
-    let update = if update.progress_episodes.is_some() {
-        // The same read carries the tracker's own episode total, so the
-        // count is fitted to it — nothing exceeds a shorter entry, and a
-        // finale completes only where the total is unknown or equals the
-        // episode — before the monotonic reconcile, at no extra request.
-        let media = provider.tracked_media(tokens, native).await?;
-        let update = fit_to_tracker_total(update, media.episodes);
-        match reconcile_monotonic(update, media.entry) {
-            Some(reconciled) => reconciled,
-            None => return Ok(None),
-        }
-    } else {
-        update
+    if update.progress_episodes.is_none() {
+        return write_through(state, kind, provider, tokens, native, update)
+            .await
+            .map(Some);
+    }
+    let media = provider.tracked_media(tokens, native).await?;
+    push_progress_read(state, kind, provider, tokens, native, update, media).await
+}
+
+/// [`push_progress_via`] with the tracker's media already read: the
+/// count is fitted to the tracker's own total — nothing exceeds a
+/// shorter entry, and a finale completes only where the total is
+/// unknown or equals the episode — then reconciled to stay monotonic,
+/// then written.
+pub(crate) async fn push_progress_read(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+    media: crate::account::provider::TrackedMedia,
+) -> Result<Option<ListEntry>> {
+    let update = fit_to_tracker_total(update, media.episodes);
+    let Some(update) = reconcile_monotonic(update, media.entry) else {
+        return Ok(None);
     };
+    write_through(state, kind, provider, tokens, native, update)
+        .await
+        .map(Some)
+}
+
+/// Write `update` to `native` and the cache through.
+///
+/// The cache is written HERE, under the per-show lock — not in the
+/// route afterwards. Deferring it released the lock first, so a stale
+/// mark-watched write-through could land after an explicit downward
+/// correction and clobber it (Codex P2 #3423108941 / #3423044438).
+/// Inside the lock it's serialized with the explicit editor's
+/// force-upsert, so no stale write lingers; the monotonic upsert still
+/// guards two racing mark-watched writes. Best-effort.
+pub(crate) async fn write_through(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+) -> Result<ListEntry> {
     let entry = provider.update_entry(tokens, native, update).await?;
-    // Write the cache through HERE, under the per-show lock — not in the
-    // route afterwards. Deferring it released the lock first, so a stale
-    // mark-watched write-through could land after an explicit downward
-    // correction and clobber it (Codex P2 #3423108941 / #3423044438).
-    // Inside the lock it's serialized with the explicit editor's
-    // force-upsert, so no stale write lingers; the monotonic upsert still
-    // guards two racing mark-watched writes. Best-effort.
     if let Ok(profile) = provider.me(tokens).await {
         let _ = upsert_cached_entry(state, kind, &profile.user_id, &entry);
     }
-    Ok(Some(entry))
+    Ok(entry)
 }
 
 #[cfg(test)]
