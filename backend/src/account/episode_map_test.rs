@@ -783,3 +783,14 @@ fn a_chain_whose_dates_name_no_real_day_or_month_is_refused() {
     ev.entry.start = Some("1989-04".into());
     assert_eq!(map_show(&ev).shape, Shape::Chain);
 }
+
+#[test]
+fn shared_parts_are_ordered_only_by_real_full_start_dates() {
+    // A start short of a day, or naming no real day, cannot order the
+    // parts: "2023-03" against "2023-03-03", "2023-3-3", "2023-02-31".
+    for bad in ["2023-03", "2023-3-3", "2023-02-31", "2023-13-01"] {
+        let mut ev = final_chapters("47132");
+        ev.sharing[1].start = Some(bad.into());
+        assert_eq!(map_show(&ev), identity(Identity::Unexplained), "{bad}");
+    }
+}
