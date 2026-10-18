@@ -46,7 +46,11 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
-	import { unavailableMessage, watchOtherAudio } from '$lib/detail/unavailable-copy';
+	import {
+		asksOtherAudio,
+		unavailableMessage,
+		watchOtherAudio
+	} from '$lib/detail/unavailable-copy';
 	import type { OtherAudio } from '$lib/play/error-copy';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
@@ -92,6 +96,7 @@
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
+	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { markStarted, readPosition } from '$lib/play/watch-position';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -240,6 +245,9 @@
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
 		if (patch.available !== undefined) {
 			availability = patch.available;
+			// Whether that verdict is a refusal by name travels with it
+			// ($lib/detail/availability-writeback).
+			availabilityRefused = patch.refused === true;
 			// A patch that carries the verdict is the current lookup's
 			// or a re-ask's that won it — either way the warm's too.
 			warmListed = patch.available;
@@ -268,9 +276,10 @@
 				// being questioned and never reaches the provider.
 				bypass_cache: true
 			});
-			// The whole row, not one field of it — and an unsettled
-			// answer as none. The controller decides which parts of a
-			// fresh answer are safe to write back.
+			// The whole row, not one field of it — an unsettled answer
+			// as none, a refusal by name as the show unavailable. The
+			// controller decides which parts of a fresh answer are safe
+			// to write back.
 			return capGateAnswerFrom(r);
 		},
 		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
@@ -467,13 +476,21 @@
 	// title ($lib/detail/unavailable-copy). Re-asked when the title or
 	// the audio changes; a late answer to an old question is dropped.
 	let noticeOtherAudio = $state<OtherAudio>(null);
+	// Whether `availability`'s verdict is the provider refusing the
+	// title by name: written with the verdict, by whoever owns it
+	// ($lib/detail/availability-writeback).
+	let availabilityRefused = $state(false);
 	// A music title is unavailable in both audios by this page's own
 	// rule, so it never names the other one, whatever the cache holds.
 	$effect(() => {
 		const q = { kitsuId: id, mode: availabilityMode };
-		const unavailable = cta === 'unavailable' && !isMusicSubtype(detail?.subtype ?? null);
+		const asks = asksOtherAudio({
+			unavailable: cta === 'unavailable',
+			music: isMusicSubtype(detail?.subtype ?? null),
+			refused: availabilityRefused
+		});
 		noticeOtherAudio = null;
-		if (!unavailable) return;
+		if (!asks) return;
 		return watchOtherAudio(q, (answer) => (noticeOtherAudio = answer));
 	});
 
@@ -935,6 +952,7 @@
 		similar = null;
 		error = null;
 		availability = null;
+		availabilityRefused = false;
 		availabilityResolved = false;
 		warmListed = null;
 		playableEpisodeCount = null;
@@ -1968,7 +1986,11 @@
 											<span class="ep-foot">
 												<span class="ep-title">
 													{ep.canonical_title ??
-														m.detail_episode_title_fallback({ num: String(num ?? '') })}
+														fallbackTileTitle(
+															num,
+															(n) => m.detail_episode_title_fallback({ num: n }),
+															(n) => m.detail_episode_extra_title_fallback({ num: n })
+														)}
 												</span>
 												<span class="ep-meta">
 													{#if air.unaired && thumb}

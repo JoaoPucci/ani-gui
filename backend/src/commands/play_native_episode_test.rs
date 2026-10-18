@@ -17,6 +17,7 @@ fn ep(id: u64, number: u32, tag: Option<&str>) -> EpisodeRef {
         id,
         number,
         number2: tag.map(str::to_string),
+        title: None,
     }
 }
 
@@ -535,6 +536,7 @@ proptest::proptest! {
             error,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         };
         match classify_chain_failure(ne) {
             ChainOutcome::Stop(kept) => {

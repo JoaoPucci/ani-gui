@@ -229,3 +229,61 @@ fn a_windows_guarded_command_is_suspended_until_its_jobs_and_ends_them_on_close(
     assert!(guarded.wraps::<process_wrap::tokio::KillOnDrop>());
     assert!(guarded.wraps_outer_job());
 }
+
+/// A case that registers a probe withdraws it as it ends and removes
+/// the script with its directory. A teardown elsewhere in the run may
+/// be running that probe in that moment — read before the withdrawal,
+/// executed after it — and a script gone between the two is a kill
+/// that never happens: the tree it stood in for, another case's,
+/// outlives its teardown. The withdrawal waits for a probe run in
+/// flight to end.
+#[cfg(unix)]
+#[test]
+fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
+    use std::os::unix::fs::PermissionsExt;
+    let _scope = TREE_KILL_PROBE_SCOPE.blocking_lock();
+    let dir = tempfile::tempdir().expect("probe dir");
+    let started = dir.path().join("started");
+    let release = dir.path().join("release");
+    let probe = dir.path().join("probe");
+    // Every case's teardown in the binary is served by whatever probe
+    // is registered, so this one kills any tree but the placeholder's
+    // at once, as a real teardown would. Bounded, so a red run leaves
+    // nothing behind.
+    std::fs::write(
+        &probe,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" != 4000000 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > '{started}'\ni=0\nwhile [ ! -f '{release}' ] && [ \"$i\" -lt 1000 ]; do sleep 0.01; i=$((i+1)); done\nexit 0\n",
+            started = started.display(),
+            release = release.display(),
+        ),
+    )
+    .expect("write probe");
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
+    // The pid is only the probe's argument: this probe signals nothing.
+    let teardown = std::thread::spawn(|| kill_process_tree(4_000_000));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !started.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the teardown never ran the probe"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let (withdrawn, on_withdrawn) = std::sync::mpsc::channel();
+    let withdraw = std::thread::spawn(move || {
+        *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+        let _ = withdrawn.send(());
+    });
+    let early = on_withdrawn.recv_timeout(std::time::Duration::from_millis(300));
+    std::fs::write(&release, b"").expect("release");
+    let late = on_withdrawn.recv_timeout(std::time::Duration::from_secs(10));
+    teardown.join().expect("teardown");
+    withdraw.join().expect("withdraw");
+    assert!(
+        early.is_err(),
+        "the probe was withdrawn while a teardown was running it"
+    );
+    assert!(late.is_ok(), "and is withdrawn once the run has ended");
+}

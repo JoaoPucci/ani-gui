@@ -88,6 +88,13 @@ pub struct NativeError {
     /// the breaker tells a stall the walk kept from the deadline's
     /// `Timeout` by this stamp.
     pub failed_at: Option<tokio::time::Instant>,
+    /// True when the verdict is the answered dead end and every pool
+    /// behind it was refused on how its hits are named
+    /// ([`AniError::RefusedByName`]): the catalogue answered, and lists
+    /// nothing named for the entry. Set by the availability walk
+    /// ([`super::play_native_walk::pick_native_walk`]); false on every
+    /// other verdict, a dead end on dead listings included.
+    pub refused_by_name: bool,
 }
 
 /// What a native resolution is asked for — the play-relevant slice
@@ -115,6 +122,10 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// Where the evidence about the entry's last episodes comes from,
+    /// when the caller knows the entry
+    /// ([`super::play_native_appended`]).
+    pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -148,6 +159,7 @@ where
             error: AniError::Timeout,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         }),
     }
 }
@@ -211,6 +223,12 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = super::play_native_appended::fit_appended(
+                            picked,
+                            req.expected_count,
+                            req.tail,
+                        )
+                        .await;
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
@@ -283,13 +301,15 @@ where
                             error: e,
                             clean_miss: false,
                             failed_at: None,
+                            refused_by_name: false,
                         });
                     }
-                    // An all-answered-not-found pool: dead candidates
-                    // on a healthy provider. The walk moves on, and
-                    // the verdict stays answered — the breaker must
-                    // not open on a provider that answered.
-                    Err(AniError::Upstream { .. }) => {
+                    // An all-answered-not-found pool — dead candidates
+                    // on a healthy provider — or one refused on how
+                    // its hits are named. The walk moves on, and the
+                    // verdict stays answered — the breaker must not
+                    // open on a provider that answered.
+                    Err(AniError::Upstream { .. } | AniError::RefusedByName) => {
                         any_answered_dead_end = true;
                     }
                     Err(e) => {
@@ -304,6 +324,7 @@ where
                     error: AniError::Upstream { status },
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             // The gate refused this chain: every subsequent fetch
@@ -314,6 +335,7 @@ where
                     error: AniError::GateRefused,
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(e) => {
@@ -342,12 +364,14 @@ where
             },
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         });
     }
     Err(NativeError {
         error: AniError::NoResults,
         clean_miss: true,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 

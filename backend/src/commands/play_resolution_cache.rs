@@ -160,7 +160,12 @@ use crate::proxy::MediaKind;
 // pick. A v19 row for such an entry can hold a same-year show's stream
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v20";
+// v21: the extras a provider appends after a show's last episode are
+// read as extras beside it. A v20 row for such a show's episode 13
+// holds an OAD's stream under a whole episode's number (Noragami's
+// first OAD), and a HEAD-passing hit would keep playing and recording
+// it as that episode; bumping re-resolves.
+const SCHEMA: &str = "v21";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

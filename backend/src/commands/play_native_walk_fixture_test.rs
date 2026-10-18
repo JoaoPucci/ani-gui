@@ -128,6 +128,7 @@ impl Provider for Recorded {
                 id: *id,
                 number: *number,
                 number2: number2.clone(),
+                title: None,
             })
             .collect())
     }
@@ -175,6 +176,7 @@ async fn walk_over(site: Recorded) -> std::result::Result<PickedShow, NativeErro
         e.episode_count,
         e.year,
         e.subtype.as_deref(),
+        None,
     )
     .await
 }
@@ -2786,6 +2788,7 @@ async fn walk_under_anilist_year(id: &str) -> std::result::Result<PickedShow, Na
         e.episode_count,
         Some(year),
         e.subtype.as_deref(),
+        None,
     )
     .await
 }
@@ -2859,6 +2862,9 @@ async fn assert_refused_unpersisted(ids: &[&str]) {
             }
             Err(e) if !matches!(e.error, crate::error::AniError::NoResults) => {
                 wrong.push(format!("{id}: {:?}", e.error));
+            }
+            Err(e) if !e.refused_by_name => {
+                wrong.push(format!("{id}: not reported as a refusal by name"));
             }
             Err(_) => {}
         }

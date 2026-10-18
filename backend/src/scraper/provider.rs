@@ -144,6 +144,10 @@ pub struct EpisodeRef {
     /// recaps and specials stream under decimal tags ("1061.5"),
     /// and a decimal play request matches this field verbatim.
     pub number2: Option<String>,
+    /// The episode's title as the provider lists it, when it lists
+    /// one: the evidence that tells an extra the provider appends
+    /// after a show's last episode from an episode of the show.
+    pub title: Option<String>,
 }
 
 pub use super::show_key::{slug_numeric_id, slug_search_term, slug_words, ShowKey};

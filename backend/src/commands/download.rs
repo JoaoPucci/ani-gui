@@ -205,6 +205,7 @@ where
     // Downloads are always a user waiting at the dock — interactive
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
@@ -214,6 +215,9 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        tail: tail
+            .as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
     };
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
