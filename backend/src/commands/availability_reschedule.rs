@@ -74,10 +74,24 @@ pub(crate) fn cut_seen_row(
     } else {
         rescheduled_negative_ttl(row.ttl_seconds, age, next_airing_at, now)
     };
-    if let Some(ttl) = cut {
-        // Conditional on the row being the one read: a rewrite
-        // in between keeps the window its own write gave it.
-        let _ = meta_cache_shorten(pool, key, row, ttl);
+    let Some(ttl) = cut else {
+        return;
+    };
+    // Conditional on the row being the one read: a rewrite in between
+    // keeps the window its own write gave it.
+    if meta_cache_shorten(pool, key, row, ttl).unwrap_or(true) {
+        return;
+    }
+    // A replay's merge of a version's mode changes the body and keeps
+    // the window: the row is still the one the cut was for, so the cut
+    // is applied to it as it now stands. A changed window is a rewrite,
+    // which keeps its own.
+    if let Ok(Some(now_row)) = meta_cache_row(pool, key) {
+        if now_row.body != row.body
+            && (now_row.fetched_at, now_row.ttl_seconds) == (row.fetched_at, row.ttl_seconds)
+        {
+            cut_seen_row(pool, key, &now_row, next_airing_at, aired, now);
+        }
     }
 }
 
