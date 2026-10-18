@@ -249,3 +249,7 @@ fn extras(evidence: &Evidence, kitsu_count: u32, tracker_total: u32) -> Option<V
 #[cfg(test)]
 #[path = "episode_map_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "episode_map_prop_test.rs"]
+mod prop_tests;
