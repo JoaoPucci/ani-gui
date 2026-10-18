@@ -22,6 +22,8 @@ pub(super) fn store_path(history_path: &Path) -> PathBuf {
 /// The store's body as it is now; empty when it is missing or
 /// unreadable.
 pub(super) fn read_store(history_path: &Path) -> String {
+    #[cfg(test)]
+    super::read_tap::reading();
     std::fs::read_to_string(store_path(history_path)).unwrap_or_default()
 }
 

@@ -24,6 +24,10 @@ use crate::app::AppState;
 mod numbering_offset_store;
 use numbering_offset_store::{merge_row, remove_rows};
 
+#[cfg(test)]
+#[path = "numbering_offset_read_tap.rs"]
+pub mod read_tap;
+
 #[path = "numbering_offset_snapshot.rs"]
 mod snapshot;
 pub use snapshot::Numbering;

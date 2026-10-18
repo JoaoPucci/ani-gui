@@ -109,3 +109,66 @@ async fn the_route_answers_with_the_rows_number() {
         serde_json::json!({ "ep_no": "1.5", "former_ep_no": "2.5" })
     );
 }
+
+/// What [`history_number`] answers when `write` lands just before its
+/// `n`th read of the numbering store.
+fn number_with_a_write_before_read(
+    n: usize,
+    write: impl FnOnce(&AppState) + 'static,
+) -> Option<HistoryNumber> {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    let writing = state.clone();
+    crate::commands::numbering_offset::read_tap::before_read(n, move || write(&writing));
+    let got = history_number(&state, SHOW).expect("read");
+    crate::commands::numbering_offset::read_tap::clear();
+    got
+}
+
+#[test]
+fn a_number_read_while_a_repair_lands_is_the_row_before_it_or_after_it() {
+    // A probe or a download repairs the stamp without the history
+    // guard. Wherever the repair lands among the number read's reads,
+    // the answer is the row as it was before the repair — "2.5", no
+    // former number — or as it is after — "1.5", formerly "2.5" —
+    // never one read of each.
+    let before = Some(HistoryNumber {
+        ep_no: "2.5".into(),
+        former_ep_no: None,
+    });
+    let after = Some(HistoryNumber {
+        ep_no: "1.5".into(),
+        former_ep_no: Some("2.5".into()),
+    });
+    for n in 1..=6 {
+        let got = number_with_a_write_before_read(n, repair);
+        assert!(
+            got == before || got == after,
+            "a repair before read {n} gave {got:?}"
+        );
+    }
+}
+
+#[test]
+fn a_list_read_while_the_offset_and_stamp_move_reads_one_of_them() {
+    // The offset and the stamp move together in one write. A row read
+    // across it reads both from before (episode "2.5") or both from
+    // after (offset 1, slot 2 tagged "4.5": episode "3.5").
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for n in 1..=3 {
+        seed_former_recap_row(&state);
+        let writing = state.clone();
+        crate::commands::numbering_offset::read_tap::before_read(n, move || {
+            crate::commands::numbering_offset::put_display(&writing, SHOW, 1, 2, "4.5");
+        });
+        let read = crate::commands::history::history_list(&state).expect("list");
+        crate::commands::numbering_offset::read_tap::clear();
+        let ep = read.into_iter().find(|e| e.id == SHOW).expect("row").ep_no;
+        assert!(
+            ep == "2.5" || ep == "3.5",
+            "a write before read {n} gave {ep}"
+        );
+    }
+}
