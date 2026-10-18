@@ -7474,6 +7474,7 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
         "episode_count": 2,
         "year": 2020,
         "subtype": "TV",
+        "kitsu_id": "777",
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
@@ -7502,4 +7503,21 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
             .exists(),
         "episode 2 named for the uncensored copy that served it"
     );
+    // The show's availability row says the copy that served the first
+    // episode carries the dub, as a play's and a single download's do.
+    let row: crate::commands::availability::AvailabilityResponse = serde_json::from_str(
+        &crate::cache::meta_cache_get(
+            &state.cache_pool,
+            &crate::commands::availability::cache_key("777", "dub"),
+        )
+        .expect("read")
+        .expect("a row"),
+    )
+    .expect("row");
+    let standard = row
+        .versions
+        .iter()
+        .find(|v| v.kind == crate::commands::play_native_versions::VersionKind::Standard)
+        .expect("the plain copy among the versions");
+    assert_eq!(standard.has_mode, Some(true));
 }
