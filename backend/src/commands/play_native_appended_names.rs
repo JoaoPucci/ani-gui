@@ -1,5 +1,6 @@
-//! What the rows past the count are: names of their own, and the
-//! related entry that explains them ([`super`]).
+//! Whether the rows past the count have names of their own, read
+//! against the entry's episodes and an aired TV sequel's first ones
+//! ([`super`]).
 
 use super::titles::{is_generic, same_title};
 use super::{EntryTail, Related, SequelEpisode};
@@ -75,24 +76,4 @@ pub fn is_announced(status: Option<&str>) -> bool {
 
 fn is_tv_sequel(r: &Related) -> bool {
     r.anime && r.role == "sequel" && r.subtype.as_deref() == Some("TV")
-}
-
-/// Whether Kitsu's relations, read whole, name what the `past` rows
-/// are — a finished OVA, ONA or special exactly that long, whatever
-/// Kitsu calls its relation — and no sequel airing now, which the rows
-/// could be the start of. A sequel only announced has aired nothing.
-pub(super) fn explained(past: usize, tail: &EntryTail) -> bool {
-    let finished = |r: &Related| r.status.as_deref() == Some("finished");
-    let length = u32::try_from(past).ok();
-    let extra = |r: &Related| {
-        r.anime
-            && finished(r)
-            && matches!(r.subtype.as_deref(), Some("OVA" | "ONA" | "special"))
-            && r.episode_count == length
-    };
-    let airing_sequel =
-        |r: &Related| r.anime && r.role == "sequel" && r.status.as_deref() == Some("current");
-    tail.related_complete
-        && tail.related.iter().any(extra)
-        && !tail.related.iter().any(airing_sequel)
 }

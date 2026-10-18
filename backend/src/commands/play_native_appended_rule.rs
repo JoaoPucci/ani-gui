@@ -2,7 +2,8 @@
 //! ([`super`]), split from it so each file stays inside the
 //! complexity bar.
 
-use super::names::{explained, own_names};
+use super::explained::explained;
+use super::names::own_names;
 use super::titles::{is_generic, same_title};
 use super::{appended_count, tag_past, EntryTail};
 use crate::scraper::provider::EpisodeRef;
