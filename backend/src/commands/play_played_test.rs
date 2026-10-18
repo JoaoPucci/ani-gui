@@ -748,3 +748,54 @@ async fn a_handoff_puts_the_numbering_right_before_it_caches_availability() {
     );
     assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
 }
+
+/// A cached resolution from before the slot was cached: its watch is
+/// written through the store's offset and stamp.
+fn slotless_row() -> CachedResolution {
+    CachedResolution {
+        resolved_slot: None,
+        played: None,
+        ..first_recap_row("http://127.0.0.1:1")
+    }
+}
+
+/// The store as an earlier version left it, offset 0 and the recap's
+/// slot 2 stamped "2.5", and a write that moves both to offset 1 with
+/// the slot tagged "3.5". Either way episode "2.5" is slot 2.
+fn moving_stamp(state: &AppState, n: usize) {
+    crate::commands::numbering_offset::put_display(state, &stitched_key(), 0, 2, "2.5");
+    let writing = state.clone();
+    crate::commands::numbering_offset::read_tap::before_read(n, move || {
+        crate::commands::numbering_offset::put_display(&writing, &stitched_key(), 1, 2, "3.5");
+    });
+}
+
+#[test]
+fn a_cached_watch_writes_its_row_from_one_read_of_the_numbering() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for n in 1..=3 {
+        moving_stamp(&state, n);
+        let watch = crate::commands::play_cache::cached_watch(&state, &slotless_row(), "2.5");
+        crate::commands::numbering_offset::read_tap::clear();
+        assert_eq!(watch.ep_no, "2", "a write before read {n}");
+    }
+}
+
+#[test]
+fn a_cache_hit_writes_its_row_from_one_read_of_the_numbering() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for n in 1..=3 {
+        moving_stamp(&state, n);
+        let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+        write_history_on_cache_hit(&state, &args("2.5"), &slotless_row(), asked);
+        crate::commands::numbering_offset::read_tap::clear();
+        let row = crate::history::read_all(&state.history_path)
+            .expect("history")
+            .into_iter()
+            .find(|e| e.id == stitched_key())
+            .expect("row");
+        assert_eq!(row.ep_no, "2", "a write before read {n}");
+    }
+}
