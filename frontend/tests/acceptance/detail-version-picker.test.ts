@@ -303,4 +303,61 @@ describe('detail route — the versions of a show listed twice', () => {
 			setItem.mockRestore();
 		}
 	});
+
+	it('offers the versions a cap-gated recheck finds', async () => {
+		// The page loaded on a cached row that named one version and a
+		// count short of an aired episode; clicking that episode asks the
+		// provider again past the cache, and the fresh row names two
+		// versions. The choice appears without a reload, Uncensored
+		// selected, since nothing was chosen for the show.
+		const AIRED = 5;
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				return HttpResponse.json(
+					body.bypass_cache
+						? {
+								available: true,
+								episode_count: AIRED + 2,
+								extra_episodes: [],
+								episode_count_approximate: false,
+								versions: TWO_VERSIONS
+							}
+						: {
+								available: true,
+								episode_count: AIRED - 1,
+								extra_episodes: [],
+								episode_count_approximate: false
+							}
+				);
+			}),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
+		);
+		app = mount(DetailPage, { target });
+		const tile = () =>
+			target.querySelector(`li[data-ep-num="${AIRED}"] button`) as HTMLButtonElement | null;
+		await until(() => tile() !== null, `the tile for episode ${AIRED}`);
+		await until(() => playAction() !== null, 'the play action to render');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(versionGroup()).toBeNull();
+
+		tile()!.click();
+		await until(() => versionGroup() !== null, 'the version choice the recheck found');
+		expect(checked(m.detail_version_uncensored())).toBe('true');
+	});
 });

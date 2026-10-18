@@ -14,7 +14,7 @@
  * this side, where it can be driven directly.
  */
 
-import type { AvailabilityArgs, AvailabilityResponse, VersionInfo } from '$lib/api';
+import type { AvailabilityArgs, AvailabilityResponse } from '$lib/api';
 import type { AvailabilityAnswer, AvailabilityPatch } from './availability-writeback';
 import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
 
@@ -50,12 +50,6 @@ export interface AvailabilityLookupDeps {
 	 *  nothing is published here — the page's own handling of the
 	 *  re-ask's patch is what sets it then. */
 	setListed: (listed: boolean | null) => void;
-	/** The show's versions from a settled answer — empty when it has
-	 *  one — with the mode it was asked in, which what they say of each
-	 *  version's mode is about. Not called while the question is open,
-	 *  nor when it fails or settles nothing: the page keeps the versions
-	 *  it had. */
-	setVersions?: (versions: VersionInfo[], mode: 'sub' | 'dub') => void;
 }
 
 /**
@@ -95,15 +89,17 @@ export function startAvailabilityLookup(
 			// Whatever a re-ask has since established is the re-ask's —
 			// it is newer and it bypassed the cache. Anything it left
 			// unanswered is still this lookup's to fill.
+			// The show's versions travel in the patch, owned with the
+			// count: a refused pool has no pick, so a refusal names none.
 			const patch = settle({
 				available,
 				count: r.episode_count,
 				extraEpisodes: r.extra_episodes,
+				versions: r.versions ?? [],
 				...(refusedByName(r) ? { refused: true } : {})
 			});
 			if (patch.available !== undefined) deps.setListed(patch.available);
 			deps.apply(patch);
-			deps.setVersions?.(r.versions ?? [], mode);
 		})
 		.catch(() => {
 			// Nothing established. The page keeps what it had, and the
