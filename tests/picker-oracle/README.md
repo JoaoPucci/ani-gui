@@ -45,7 +45,7 @@ From the repository root, with `python3` (3.12 or later) and the Rust
 toolchain:
 
 ```sh
-# The model against the docs' tables (about six minutes)
+# The model against the docs' tables (about five minutes)
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 
 # The picker against the model: generate, run, compare
