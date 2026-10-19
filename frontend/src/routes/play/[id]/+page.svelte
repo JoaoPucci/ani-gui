@@ -112,6 +112,9 @@
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
+	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
+	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -543,16 +546,39 @@
 	let pcMenuOpen = $state(false);
 	let pcMenuAnchor = $state<HTMLButtonElement | null>(null);
 	let pcSpeedExpanded = $state(false);
+	let pcQualityExpanded = $state(false);
 	let playbackRate = $state(1);
 	const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 	function togglePcMenu() {
 		pcMenuOpen = !pcMenuOpen;
-		if (!pcMenuOpen) pcSpeedExpanded = false;
+		if (!pcMenuOpen) {
+			pcSpeedExpanded = false;
+			pcQualityExpanded = false;
+		}
 	}
 	function closePcMenu() {
 		pcMenuOpen = false;
 		pcSpeedExpanded = false;
+		pcQualityExpanded = false;
+	}
+	// The stream's levels and the choice in force, as the attached
+	// stream's quality control publishes them ($lib/play/arm-quality);
+	// the menu is its pure model ($lib/play/quality-menu).
+	let qualityView = $state<QualityView | null>(null);
+	// The quality setting as the settings answer it, once: a stream's
+	// start level waits for it rather than reading a setting not yet
+	// loaded as `best`. Failing settings answer `undefined`, read as
+	// `best` like everywhere else.
+	let answerQualitySetting: (quality: string | undefined) => void = () => {};
+	const qualitySetting = new Promise<string | undefined>((resolve) => {
+		answerQualitySetting = resolve;
+	});
+	let qualityControl: QualityControl | null = null;
+	const qualityMenuModel = $derived(qualityMenu(qualityView));
+	function pickQuality(choice: 'auto' | number) {
+		qualityControl?.pick(choice);
+		closePcMenu();
 	}
 	$effect(() => {
 		if (!pcMenuOpen) return;
@@ -1672,12 +1698,36 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			hls = new Hls({ lowLatencyMode: false, ...HLS_STALL_LOAD_POLICY });
+			// The quality control starts the engine once it has chosen the
+			// start level, which waits for the settings ($lib/play/arm-quality).
+			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
 			sourceScope.add(() => {
 				engine.destroy();
+			});
+			// The level the stream plays is the app's choice, not the
+			// engine's bandwidth estimate: the setting's level from the
+			// start, down a level when playback stalls, back up once it
+			// runs healthy, or the one the viewer picks from the menu.
+			const quality = armQuality({
+				engine,
+				events: Hls.Events,
+				video: videoEl,
+				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
+				holdsStart: true,
+				onView: (view) => {
+					qualityView = view;
+					// A stream retiring takes its levels with it; the next
+					// one's menu opens on the main list.
+					if (!view) pcQualityExpanded = false;
+				}
+			});
+			qualityControl = quality;
+			sourceScope.add(() => {
+				quality.dispose();
+				if (qualityControl === quality) qualityControl = null;
 			});
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
@@ -1846,9 +1896,13 @@
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
 		void settingsGet()
-			.then((c) => (config = c))
+			.then((c) => {
+				config = c;
+				answerQualitySetting(c.quality);
+			})
 			.catch(() => {
 				config = null;
+				answerQualitySetting(undefined);
 			});
 	});
 
@@ -2847,6 +2901,40 @@
 												>
 											</button>
 										{/each}
+									{:else if pcQualityExpanded && qualityMenuModel}
+										<button
+											type="button"
+											class="pc-menu-item pc-menu-back"
+											role="menuitem"
+											onclick={() => (pcQualityExpanded = false)}
+										>
+											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+												<path
+													d="M15 6l-6 6 6 6"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+												/>
+											</svg>
+											<span>{m.play_controls_menu_quality_label()}</span>
+										</button>
+										{#each qualityMenuModel.items as item (item.key)}
+											<button
+												type="button"
+												class="pc-menu-item pc-menu-speed-row pc-menu-quality-row"
+												class:pc-menu-active={item.checked}
+												role="menuitemradio"
+												aria-checked={item.checked}
+												onclick={() => pickQuality(item.key)}
+											>
+												<span class="pc-menu-check" aria-hidden="true">
+													{#if item.checked}✓{/if}
+												</span>
+												<span>{item.label}</span>
+											</button>
+										{/each}
 									{:else}
 										<button
 											type="button"
@@ -2916,6 +3004,61 @@
 												/>
 											</svg>
 										</button>
+										{#if qualityMenuModel}
+											<button
+												type="button"
+												class="pc-menu-item pc-menu-row-arrow"
+												role="menuitem"
+												aria-haspopup="menu"
+												onclick={() => (pcQualityExpanded = true)}
+											>
+												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+													<path
+														d="M4 7h9m4 0h3M4 17h3m4 0h9"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+													/>
+													<circle
+														cx="15"
+														cy="7"
+														r="2"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+													/>
+													<circle
+														cx="9"
+														cy="17"
+														r="2"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+													/>
+												</svg>
+												<span>{m.play_controls_menu_quality_label()}</span>
+												<span class="pc-menu-current pc-menu-quality-current">
+													{qualityMenuModel.current}
+												</span>
+												<svg
+													class="pc-menu-arrow"
+													viewBox="0 0 24 24"
+													width="18"
+													height="18"
+													aria-hidden="true"
+												>
+													<path
+														d="M9 6l6 6-6 6"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+													/>
+												</svg>
+											</button>
+										{/if}
 										<button type="button" class="pc-menu-item" role="menuitem" onclick={onPip}>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<rect
@@ -4417,6 +4560,12 @@
 	.pc-menu-speed-row {
 		gap: 0.6rem;
 		padding-inline-start: 0.5rem;
+	}
+	/* Heights line up down the list: tabular figures, so 1080p and
+	   720p share a column edge rather than wobbling with digit width. */
+	.pc-menu-quality-row,
+	.pc-menu-quality-current {
+		font-variant-numeric: tabular-nums;
 	}
 	.pc-menu-check {
 		display: inline-flex;
