@@ -111,3 +111,36 @@ proptest! {
         prop_assert_eq!(EntryTitles::new(&titles).before_entry(name_of), !first, "{}", title);
     }
 }
+
+/// A word ordinal inside a name ("The Seventh Son") is a word of the
+/// name, not a division the title reads as: the title reads as nothing,
+/// so the entry "The Seventh Son Part 2" has it as the entry before.
+#[test]
+fn a_word_ordinal_inside_the_name_is_no_division_of_the_reading() {
+    assert!(reading("The Seventh Son").is_empty());
+    assert_eq!(reading("The Seventh Son Season 2"), vec![2]);
+    assert_eq!(reading("Show Seventh"), vec![7]);
+    let titles = ["The Seventh Son Part 2"];
+    assert!(EntryTitles::new(&titles).before_entry("The Seventh Son"));
+    let titles = ["The Seventh Son: 第2クール"];
+    assert!(EntryTitles::new(&titles).before_entry("The Seventh Son"));
+}
+
+proptest! {
+    /// What a word holds before a Japanese division glued to it is read
+    /// as a word of its own: "Fourth第十二部" is the season "Fourth" and
+    /// the part 第十二部, as "Fourth・第十二部" is, so the two titles read
+    /// alike and one names the other.
+    #[test]
+    fn a_word_glued_before_a_japanese_division_is_read_as_its_own(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        (ordinal, n) in proptest::sample::select(vec![("Fourth", 4u32), ("2nd", 2), ("III", 3)]),
+    ) {
+        let glued = format!("{name_of} {ordinal}第十二部");
+        let apart = format!("{name_of}: {ordinal}・第十二部");
+        prop_assert_eq!(reading(&glued), vec![n, 12]);
+        prop_assert_eq!(reading(&apart), vec![n, 12]);
+        let titles = [apart.as_str()];
+        prop_assert!(EntryTitles::new(&titles).names(&glued), "{}", glued);
+    }
+}

@@ -1516,10 +1516,11 @@ def gen():
         shapes.append((t + " Season 3", "cut") if t != "Show" else (t + " Season 2", "cut"))
         if ends_digit:
             jp = t.endswith("２")
-            # "Lucky 2 2nd Season" reads [2, 2]: L. "ショー２第2期": the ２ is inside a word,
-            # as 怪獣８号's ８ is, so it reads [2] as the entry does and carries W's stem
-            # opening a division: O.
-            shapes.append((t + ("第2期" if jp else " 2nd Season"), "O" if jp else "cut"))
+            # "Lucky 2 2nd Season" reads [2, 2]: L. So does "ショー２第2期": the ２ glued
+            # to the end of a Japanese word stands as a number before the division
+            # glued to it — not inside a word, as 怪獣８号's ８ is — so it reads
+            # [2, 2] and opens what follows W's stem with a later season: L.
+            shapes.append((t + ("第2期" if jp else " 2nd Season"), "cut"))
             for g in ["０", "１"] if jp else ["0", "1"]:
                 shapes.append((t + g, "nothing"))  # no digit glued to a digit-ending stem; refused
             if jp:

@@ -7,5 +7,8 @@
  {"id": "fuzz/glued-before-jp", "titles": ["Zzyzx Alias", "86第４部"], "count": null, "entry_year": 2020, "rows": [["x", "86☆", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
  {"id": "fuzz/glued-latin-end", "titles": ["Show: Arc2"], "count": 12, "entry_year": 2020, "rows": [["x", "Show: Arc: 2", 12]], "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/glued-latin-tagged", "titles": ["Gintama4 [OVA]"], "count": 12, "entry_year": 2020, "rows": [["x", "Gintama~ 4", 13]], "expect": null, "family": "fuzz-found"},
- {"id": "fuzz/glued-span", "titles": ["推しの子Part ４+5", "推しの子"], "count": null, "entry_year": 2020, "rows": [["x", "推しの子 Part ４+5", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"}
+ {"id": "fuzz/glued-span", "titles": ["推しの子Part ４+5", "推しの子"], "count": null, "entry_year": 2020, "rows": [["x", "推しの子 Part ４+5", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/ordinal-in-name-span", "titles": ["The Seventh Son Part 0+1"], "count": 12, "entry_year": 2020, "rows": [["x", "The Seventh Son", 11]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/ordinal-in-name-cour", "titles": ["The Seventh Son: 第2クール・０"], "count": 12, "entry_year": 2020, "rows": [["x", "The Seventh Son", 12]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/glued-head-season", "titles": ["推しの子: Fourth・第十二部"], "count": null, "entry_year": null, "rows": [["x", "推しの子 Fourth第十二部♪", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"}
 ]
