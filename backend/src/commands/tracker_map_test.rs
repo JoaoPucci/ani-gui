@@ -1040,6 +1040,14 @@ async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
     let map = episode_map_for(&ask, "1633", ProviderMediaId(1816), Some(52)).await;
     assert_eq!(map.shape, Shape::Chain);
     assert_eq!(map.segments[1].entry, 129_610);
+    // The map reads Kitsu's own rows: none of these pages has a
+    // thumbnail, and reading their dates asks AniList for none — no
+    // lookup is made, so none is cached.
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k1633")
+            .expect("cache read"),
+        None
+    );
 }
 
 #[test]
