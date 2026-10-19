@@ -488,7 +488,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "touch '{started}'; sleep 1; touch '{finished}'; exit 0",
+            "touch '{started}'; sleep 2.5; touch '{finished}'; exit 0",
             started = started.display(),
             finished = finished.display()
         ),
@@ -506,7 +506,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
             "Show Episode 1",
             None,
             &bin.path().display().to_string(),
-            std::time::Duration::from_millis(1500),
+            std::time::Duration::from_secs(3),
             &mut |_l: &str| {},
         ),
     )
