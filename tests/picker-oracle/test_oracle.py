@@ -329,6 +329,23 @@ class TheModelReadsTheDocs(unittest.TestCase):
         self.assertEqual(oracle.predict(pool(["Show"], E, [("p", "Show", E), ("u", "Show (Uncenſored)", E)])), pick("p"))
         self.assertTrue(any(c["family"] == "not-a-tag" for c in oracle.gen()))
 
+    def test_letters_and_spaces_are_the_picker_s(self):
+        # the picker's letters and digits: char::is_alphanumeric, a combining
+        # mark of a letter included, and ・ or _ none
+        for c in ("é", "²", "٢", "ा", "Ⓢ", "ー", "々"):
+            self.assertTrue(oracle._alnum(c), c)
+        for c in ("・", "_", "゛", " ", "-"):
+            self.assertFalse(oracle._alnum(c), c)
+        self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Showा Season 1", E)])), pick("x"))
+        self.assertIsNone(oracle.predict(pool(["ショー・2"], E, [("x", "ショー", E)])))
+        # a Roman numeral is a whole word, not letters inside one
+        self.assertEqual(oracle.named(["Show éii"]), oracle.named(["Show"]))
+        # U+001C to U+001F are marks, not spaces, as Rust's trim reads them
+        self.assertEqual(oracle.version_of("Show (\x1fUncensored)")[1], "standard")
+        self.assertEqual(oracle.version_of("Show ( Uncensored )")[1], "uncensored")
+        # an empty name: the title read past it whole
+        self.assertIsNone(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])))
+
     def test_the_generated_set_spells_tags_in_mixed_widths(self):
         def mixed(text):
             return any(

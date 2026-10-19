@@ -46,7 +46,68 @@ LISTING_YEAR = 2020
 #: listing, a one-video entry. Those pools are tabled, not computed.
 NOT_MODELLED = object()
 
-JP = r"぀-ヿ一-鿿"
+def _load_alphanumeric():
+    """The characters Rust's `char::is_alphanumeric` accepts, as inclusive
+    ranges of code points: the letters and digits the picker's readers
+    split a title's words on (alphanumeric.txt)."""
+    out = []
+    with open(os.path.join(HERE, "alphanumeric.txt"), encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                a, _, b = line.partition("-")
+                out.append((int(a, 16), int(b or a, 16)))
+    return out
+
+
+_ALNUM_RANGES = _load_alphanumeric()
+_ALNUM_STARTS = [a for a, _ in _ALNUM_RANGES]
+
+#: The Japanese blocks: the iteration and closing marks (々〆〇), hiragana
+#: and katakana, the CJK ideographs and their first extension, and
+#: half-width katakana. A Japanese character is a letter of these.
+_JP_BLOCKS = [(0x3005, 0x3007), (0x3040, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xFF66, 0xFF9F)]
+
+
+def _intersect(ranges, blocks):
+    return [(max(a, c), min(b, d)) for a, b in ranges for c, d in blocks if max(a, c) <= min(b, d)]
+
+
+def _subtract(ranges, blocks):
+    out = []
+    for a, b in ranges:
+        pieces = [(a, b)]
+        for c, d in blocks:
+            pieces = [q for x, y in pieces for q in ((x, min(y, c - 1)), (max(x, d + 1), y)) if q[0] <= q[1]]
+        out += pieces
+    return out
+
+
+def _class_body(ranges):
+    return "".join(f"\\U{a:08x}" if a == b else f"\\U{a:08x}-\\U{b:08x}" for a, b in ranges)
+
+
+def _alnum(c):
+    """`c` is a letter or digit to the picker (`char::is_alphanumeric`)."""
+    import bisect
+
+    i = bisect.bisect_right(_ALNUM_STARTS, ord(c)) - 1
+    return i >= 0 and ord(c) <= _ALNUM_RANGES[i][1]
+
+
+#: The body of a character class of the Japanese letters, as the picker's
+#: words hold them: ・, ゠ and the sound marks split a word, as any mark does.
+JP = _class_body(_intersect(_ALNUM_RANGES, _JP_BLOCKS))
+
+#: Rust's whitespace is Python's but for U+001C to U+001F, which Python
+#: splits and strips as space and Rust reads as marks. A title is read
+#: with those four as private-use marks, so every split, strip and `\s`
+#: below reads whitespace as the picker does.
+_RUST_MARKS = {c: 0xE000 + c - 0x1C for c in range(0x1C, 0x20)}
+
+
+def _as_rust(t):
+    return t.translate(_RUST_MARKS)
 
 #: The digits a title's numbers are written in: ASCII and full-width, as
 #: the picker reads them. Other scripts' digits are letters to it.
@@ -60,11 +121,14 @@ def _digits(s):
 
 #: A letter or digit outside Japanese, as the picker reads a word: any
 #: Unicode letter or digit ("é", "²", "٢"), not only ASCII.
-ALNUM = r"[^\W_" + JP + r"]"
-#: A character a word is made of: a letter or digit, or Japanese.
-WORD = r"(?:[^\W_]|[" + JP + r"])"
+ALNUM = "[" + _class_body(_subtract(_ALNUM_RANGES, _JP_BLOCKS)) + "]"
+#: A character a word is made of: a letter or digit, Japanese included.
+WORD = "[" + _class_body(_ALNUM_RANGES) + "]"
 #: A character no word is made of.
-NOT_WORD = r"(?:[^\w" + JP + r"]|_)"
+NOT_WORD = "[^" + _class_body(_ALNUM_RANGES) + "]"
+#: A word starts here / ends here: the picker's words, not Python's `\b`.
+BS = "(?<!" + WORD + ")"
+BE = "(?!" + WORD + ")"
 
 
 def _either_width(word):
@@ -109,12 +173,13 @@ VTAG = re.compile(r"[\(\[（［【]\s*" + _any_case_either_width("uncensored") +
 def version_of(t):
     """A title read for its version: the title without its version tag,
     compared as written, and the version the tag names."""
+    t = _as_rust(t)
     kind = "uncensored" if VTAG.search(t) else "standard"
     return written(VTAG.sub(" ", t)), kind
 
 
 def _past_vtag(cand):
-    return " ".join(VTAG.sub(" ", cand).split())
+    return " ".join(VTAG.sub(" ", _as_rust(cand)).split())
 
 
 def admitted_as_read(titles, cand):
@@ -154,7 +219,7 @@ def _ascii(s):
 def written(t):
     """Two titles compared as written: the text without tags, with the set
     of tags it carries, wherever they stand."""
-    low = t.lower()
+    low = _as_rust(t).lower()
     tags = sorted(_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low))
     return " ".join(CTAG.sub(" ", low).split() + tags)
 
@@ -162,7 +227,7 @@ def written(t):
 def norm(t):
     """Every reader reads a title lowercased and without its catalogue
     tags, full-width digits read as ASCII."""
-    t = CTAG.sub(" ", t.lower())
+    t = CTAG.sub(" ", _as_rust(t).lower())
     t = " ".join(t.split())
     return "".join(chr(ord(c) - 0xFF10 + 0x30) if "０" <= c <= "９" else c for c in t)
 
@@ -222,10 +287,33 @@ def _jp_ordinal(s):
 MARKER = r"(?:season|part|cour|stage)"
 
 
+# Patterns built from the picker's character classes are compiled once:
+# the classes are long, and a pattern rebuilt on every call is rehashed
+# by the regular-expression cache on every call too.
+_CARDINAL_RX = re.compile(BS + r"(" + MARKER + r")\s+(" + "|".join(CARD) + r")" + BE)
+_WORD_ORD_RX = re.compile(BS + r"(" + "|".join(WORD_ORD) + r")\s+(" + MARKER + r"|half)" + BE)
+_SUFFIXED_MARKER_RX = re.compile(BS + r"([0-9０-９]+)(?:st|nd|rd|th)\s+" + MARKER)
+_SMALL_NUMBER_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?!" + ALNUM + r")")
+_SMALL_SUFFIXED_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?:st|nd|rd|th)(?!" + ALNUM + r")")
+_WORDS_RX = re.compile(WORD + "+")
+_BARE_NUMBER_RX = re.compile(r"(?:^|" + NOT_WORD + r")([0-9０-９]{1,2})$")
+_NOT_WORD_RX = re.compile(NOT_WORD)
+_NOT_WORDS_RX = re.compile(NOT_WORD + "+")
+_NAME_END_RX = re.compile(
+    r"([0-9０-９]|第|" + BS + r"(?:ii|iii|iv|vi|vii|viii|ix|first|second|third|season|part|cour|stage)" + BE + ")"
+)
+_ROMAN_RX = re.compile(BS + r"(ii|iii|iv|v|vi|vii|viii|ix)" + BE)
+_LEAD_RX = re.compile(r"^([0-9]{1,2})" + BE)
+_JP_CHAR_RX = re.compile(r"[" + JP + r"]")
+_JP_GLUED_RX = re.compile(r"^([" + JP + r"]+)([0-9０-９]{1,2})$")
+_JP_BEFORE_NUMBER_RX = re.compile(r"(?<=[" + JP + r"])([0-9０-９]{1,2})$")
+_PRIME_END_RX = re.compile(r"(?<=" + WORD + r")['’′](?!" + WORD + r")")
+_PRIME_OPEN_RX = re.compile(r"(?<!" + WORD + r")['’′](?=" + WORD + r")")
+
+
 def _cardinals(t):
     """A word cardinal after a marker word, one to twenty, is that ordinal."""
-    return re.sub(
-        r"\b(" + MARKER + r")\s+(" + "|".join(CARD) + r")\b",
+    return _CARDINAL_RX.sub(
         lambda m: f"{m.group(1)} {CARD[m.group(2)]}",
         norm(t),
     )
@@ -234,8 +322,7 @@ def _cardinals(t):
 def _word_ordinals(t):
     """A word ordinal before a marker word, first to twentieth, is that
     ordinal with its suffix."""
-    return re.sub(
-        r"\b(" + "|".join(WORD_ORD) + r")\s+(" + MARKER + r"|half)\b",
+    return _WORD_ORD_RX.sub(
         lambda m: f"{WORD_ORD[m.group(1)]}th {m.group(2)}",
         _cardinals(t),
     )
@@ -250,7 +337,7 @@ def named(titles):
         n = _word_ordinals(t)
         for m in re.finditer(MARKER + r"\s+([0-9０-９]+)", n):
             out.add(int(m.group(1)))
-        for m in re.finditer(r"\b([0-9０-９]+)(?:st|nd|rd|th)\s+" + MARKER, n):
+        for m in _SUFFIXED_MARKER_RX.finditer(n):
             out.add(int(m.group(1)))
         for m in re.finditer(r"第([0-9]+|[〇零一二三四五六七八九十百]+)", n):
             k = _jp_ordinal(m.group(1))
@@ -260,11 +347,11 @@ def named(titles):
             k = _jp_ordinal(m.group(1))
             if k is not None:
                 out.add(k)
-        for m in re.finditer(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?!" + ALNUM + r")", n):
+        for m in _SMALL_NUMBER_RX.finditer(n):
             out.add(int(m.group(1)))
-        for m in re.finditer(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?:st|nd|rd|th)(?!" + ALNUM + r")", n):
+        for m in _SMALL_SUFFIXED_RX.finditer(n):
             out.add(int(m.group(1)))
-        for w in re.findall(r"[a-z]+", n):
+        for w in _WORDS_RX.findall(n):
             if w in ROMAN:
                 out.add(ROMAN[w])
             elif w in WORD_ORD:
@@ -273,8 +360,8 @@ def named(titles):
 
 
 TRAIL = [
-    re.compile(r"\s*\b" + MARKER + r"\s+([0-9０-９]+(?:\+[0-9０-９]+)*)$"),
-    re.compile(r"\s*\b([0-9０-９]+)(?:st|nd|rd|th)\s+" + MARKER + r"$"),
+    re.compile(r"\s*" + BS + MARKER + r"\s+([0-9０-９]+(?:\+[0-9０-９]+)*)$"),
+    re.compile(r"\s*" + BS + r"([0-9０-９]+)(?:st|nd|rd|th)\s+" + MARKER + r"$"),
     re.compile(r"\s*第([0-9]+|[〇零一二三四五六七八九十百]+)(?:期|部|クール)$"),
     re.compile(r"\s+(ii|iii|iv|v|vi|vii|viii|ix)$"),
 ]
@@ -309,9 +396,7 @@ def strip_trailing(n):
 def bare_number(stem):
     """A bare number of one or two digits a stem ends on — "Show 2", the
     ２ glued to "ショー２"."""
-    m = re.search(r"(?:^|" + NOT_WORD + r")([0-9０-９]{1,2})$", stem) or re.search(
-        r"(?<=[" + JP + r"])([0-9０-９]{1,2})$", stem
-    )
+    m = _BARE_NUMBER_RX.search(stem) or _JP_BEFORE_NUMBER_RX.search(stem)
     return int(m.group(1)) if m else None
 
 
@@ -338,7 +423,7 @@ def first_number(t):
     m = re.search(r"[0-9０-９]+", n)
     if not m:
         return None
-    return (re.sub(NOT_WORD, "", n[: m.start()]), m.group(0))
+    return (_NOT_WORD_RX.sub("", n[: m.start()]), m.group(0))
 
 
 def continues(c, t):
@@ -376,14 +461,12 @@ def admitted(titles, cand):
 # --- the entry before this one
 
 def _clean(t):
-    return re.sub(NOT_WORD + "+", " ", norm(t)).strip()
+    return _NOT_WORDS_RX.sub(" ", norm(t)).strip()
 
 
 def _name(t):
     c = _clean(_word_ordinals(t))
-    m = re.search(
-        r"([0-9０-９]|第|\b(?:ii|iii|iv|vi|vii|viii|ix|first|second|third|season|part|cour|stage)\b)", c
-    )
+    m = _NAME_END_RX.search(c)
     return (c[: m.start()] if m else c).strip()
 
 
@@ -400,7 +483,7 @@ def _tokens_end(text, nm_words):
             nxt = text[end : end + 1]
             if (
                 not nxt
-                or not nxt.isalnum()
+                or not _alnum(nxt)
                 or nxt == "第"
                 or (_digits(nxt) and not _digits(nm_words[-1][-1]))
             ):
@@ -411,7 +494,7 @@ def _tokens_end(text, nm_words):
 def _marks(text, end):
     out = ""
     for ch in text[end:]:
-        if ch.isalnum():
+        if _alnum(ch):
             break
         if not ch.isspace() and ch not in SEPS:
             out += ch
@@ -469,7 +552,7 @@ def _seasons(text):
         for k in (_jp_ordinal(m) for m in re.findall(r"第([0-9]+|[〇零一二三四五六七八九十百]+)期", t))
         if k is not None
     ]
-    out += [ROMAN[m] for m in re.findall(r"\b(ii|iii|iv|v|vi|vii|viii|ix)\b", t)]
+    out += [ROMAN[m] for m in _ROMAN_RX.findall(t)]
     # an ordinal standing alone after a part stays as it is read: "Show
     # Season 3 Part 1 Second Half" names a season 2, before the 3
     out += [int(m) for m in re.findall(r"part\s+[0-9０-９]+\s+([0-9０-９]+)(?:st|nd|rd|th)\s+half", t)]
@@ -484,11 +567,13 @@ def _past_name(cand, t):
     nm = _name(t).split()
     c = _clean(cand).split()
     if not nm or c[: len(nm)] != nm:
+        # an empty name (a title that is nothing but a division) is read
+        # past as the picker reads past an empty stem
         cc, nn = _clean(cand), _name(t)
-        if not nn or not cc.startswith(nn):
+        if not cc.startswith(nn):
             return None
         nxt = cc[len(nn) : len(nn) + 1]
-        glued = nxt == "第" or (nxt in "0123456789" and nxt != "" and not _digits(nn[-1]))
+        glued = nxt == "第" or (nxt in "0123456789" and nxt != "" and not (nn and _digits(nn[-1])))
         return cc[len(nn) :] if glued else None
     return " ".join(c[len(nm) :])
 
@@ -498,7 +583,7 @@ def _glued_to_latin(cand, t):
     letter outside Japanese ("Show2" for "Show")."""
     cc, nn = _clean(cand), _name(t)
     nxt = cc[len(nn) : len(nn) + 1] if nn and cc.startswith(nn) else ""
-    return nxt in "0123456789" and nxt != "" and not re.match(r"[" + JP + r"]", nn[-1])
+    return nxt in "0123456789" and nxt != "" and not _JP_CHAR_RX.match(nn[-1])
 
 
 def season_before_entry(titles, cand):
@@ -508,12 +593,13 @@ def season_before_entry(titles, cand):
     if any(written(t) == written(cand) for t in titles):
         return False
     for t in titles:
-        rest_t = _past_name(t, t)
+        # a title is read past its own name whole when the name is empty
+        rest_t = _past_name(t, t) if _name(t) else _clean(t)
         rest_c = _past_name(cand, t)
         if rest_t is None or rest_c is None:
             continue
-        lead_t = re.match(r"^([0-9]{1,2})\b", rest_t)
-        lead_c = re.match(r"^([0-9]{1,2})\b", rest_c)
+        lead_t = _LEAD_RX.match(rest_t)
+        lead_c = _LEAD_RX.match(rest_c)
         if lead_t and lead_c and int(lead_c.group(1)) < int(lead_t.group(1)):
             # the candidate's stem must end on that number, written as a
             # word of its own or glued to a Japanese word ("ショー２"):
@@ -556,7 +642,7 @@ def part_after(title, stem):
     if not n.startswith(stem) or len(n) == len(stem):
         return None
     tail = n[len(stem) :]
-    if tail[0].isalnum() and tail[0] != "第":
+    if _alnum(tail[0]) and tail[0] != "第":
         return None
     m = _ONE_MARKER.match(tail.lstrip(" :-–—~,.・、"))
     if not m:
@@ -609,7 +695,7 @@ def _tokenize(n):
     out = []
     for m in _WORD.finditer(n):
         w = m.group(0)
-        if not re.match(r"[" + JP + r"]", w):
+        if not _JP_CHAR_RX.match(w):
             out.append(w)
             continue
         pos = 0
@@ -623,7 +709,7 @@ def _tokenize(n):
     # a one- or two-digit number glued to the end of a Japanese word
     split = []
     for w in out:
-        m = re.match(r"^([" + JP + r"]+)([0-9０-９]{1,2})$", w)
+        m = _JP_GLUED_RX.match(w)
         if m:
             split += [m.group(1), m.group(2)]
         else:
@@ -742,12 +828,12 @@ class Reading:
                 if ords[0] != 1:
                     self.ords.append(ords[0] if len(ords) == 1 else tuple(ords))
             i += width
-        low = title.lower()
+        low = _as_rust(title).lower()
         tags = [_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low)]
         years = [t for t in tags if _digits(t)]
         self.year = years[0] if years else None
-        ends = len(re.findall(r"(?<=" + WORD + r")['’′](?!" + WORD + r")", low))
-        opens = len(re.findall(r"(?<!" + WORD + r")['’′](?=" + WORD + r")", low))
+        ends = len(_PRIME_END_RX.findall(low))
+        opens = len(_PRIME_OPEN_RX.findall(low))
         self.primes = max(0, ends - opens)
 
     def same_show(self, other):
@@ -798,8 +884,8 @@ def names(titles, cand):
 # --- choosing among candidates
 
 PARTS = (
-    re.compile(r"\s*\bpart\s+([0-9０-９]+)$"),
-    re.compile(r"\s*\b([0-9０-９]+)(?:st|nd|rd|th)\s+part$"),
+    re.compile(r"\s*" + BS + r"part\s+([0-9０-９]+)$"),
+    re.compile(r"\s*" + BS + r"([0-9０-９]+)(?:st|nd|rd|th)\s+part$"),
     re.compile(r"\s*第([0-9]+|[〇零一二三四五六七八九十百]+)部$"),
 )
 
@@ -987,7 +1073,7 @@ def _opens_past_stem(title, stem):
     if not n.startswith(stem) or len(n) == len(stem):
         return n == stem
     nxt = n[len(stem)]
-    if nxt == "第" or not nxt.isalnum():
+    if nxt == "第" or not _alnum(nxt):
         return True
     return _digits(nxt) and not _digits(stem[-1])
 
@@ -1526,6 +1612,8 @@ def gen():
         ("Show 2", None, [("x", "Show 1 (Uncenſored)", E)]),
         ("Show", E, [("x", "Show Season 2 (Uncenſored)", E)]),
         ("Show 2", E, [("x", "Show 1 (ｕncensor)", E)]),
+        # U+001F is a mark to the picker, not a space inside the bracket
+        ("Show", E, [("p", "Show", E), ("u", "Show (\x1fUncensored)", E)]),
     ]:
         case = dict(titles=[entry], count=cnt, entry_year=LISTING_YEAR, rows=[list(r) for r in rows])
         add([entry], cnt, LISTING_YEAR, rows, predict(case), "not-a-tag")
@@ -1543,6 +1631,14 @@ def gen():
         ("Show 3", "Show2 Part 2"),
         ("Show 2", "Show 1 Shin"),
         ("Show 2 Season 3", "Show 1 Shin Season 1"),
+        # a letter is what the picker's words hold: a combining mark of a
+        # letter is one, ・ is none, and a Roman numeral is a whole word
+        ("Show 2", "Showा Season 1"),
+        ("ショー・2", "ショー"),
+        ("Show Èv", "Show Season 5"),
+        ("Show éii", "Show Season 2"),
+        # a title that is nothing but a division has an empty name
+        ("Season 2", "1st Season"),
         ("Show", "Show ٢"),
         ("Show", "Show Season ٢"),
         ("Show", "Show ۲ Part ٢"),
