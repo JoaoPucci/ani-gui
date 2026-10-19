@@ -251,6 +251,46 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # after the entry's own season, it admits as before
         self.assertEqual(oracle.predict(pool(["Show 2nd Season"], E, [("x", "Show 2nd Season [Uncensored]", E)])), pick("x"))
 
+    def test_a_tag_is_read_a_character_at_a_time(self):
+        # each character of a tag in ASCII or full-width on its own: a tag
+        # mixing the two is the tag, a catalogue tag and a version tag alike
+        for mixed, ascii in [
+            ("(ｔv)", "tv"),
+            ("（Ｏna）", "ona"),
+            ("[oＶａ]", "ova"),
+            ("（２0２0）", "2020"),
+            ("【２０2４】", "2024"),
+        ]:
+            self.assertEqual(oracle.written(f"Show {mixed}"), f"show {ascii}", mixed)
+            self.assertEqual(oracle.norm(f"Show {mixed} Season 2"), "show season 2", mixed)
+        for mixed in ("(ｕncensored)", "［ＵＮＣＥＮsored］", "（Uncenｓｏｒｅｄ）", "【uＮＣＥＮＳＯＲＥＤ】"):
+            self.assertEqual(oracle.version_of(f"Show {mixed}"), ("show", "uncensored"), mixed)
+        # a word that is not the tag in either width is no tag, whatever its widths
+        self.assertEqual(oracle.version_of("Show (ｕncensor)"), (oracle.written("Show (ｕncensor)"), "standard"))
+        self.assertEqual(oracle.written("Show (ｔvx)"), "show (ｔvx)")
+        # the docs' consequence: the entry's mixed-width tag is the listing's ASCII one
+        rows = [("t", "Show (TV)", E), ("o", "Other", E)]
+        self.assertEqual(oracle.predict(pool(["Show (ｔv)"], E, rows, year=None)), pick("t"))
+        both = [("p", "Show", E), ("u", "Show (ｕncensored)", E)]
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, both)),
+            {"pick": "u", "count": E, "versions": [["p", "standard"], ["u", "uncensored"]]},
+        )
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("x", "Show Season 2 [ｕncensored]", E)])))
+
+    def test_the_generated_set_spells_tags_in_mixed_widths(self):
+        def mixed(text):
+            return any(
+                "！" <= a <= "～" and "!" <= b <= "~" or "!" <= a <= "~" and "！" <= b <= "～"
+                for a, b in zip(text, text[1:])
+            )
+
+        cases = oracle.gen()
+        rows = [(c, r[1]) for c in cases for r in c["rows"]]
+        self.assertTrue(any(mixed(m.group(0)[1:-1]) for _, t in rows for m in [oracle.VTAG.search(t.lower())] if m))
+        self.assertTrue(any(mixed(m.group(0)[1:-1]) for _, t in rows for m in [oracle.CTAG.search(t.lower())] if m))
+        self.assertTrue(any(mixed(m.group(0)[1:-1]) for c in cases for t in c["titles"] for m in [oracle.CTAG.search(t.lower())] if m))
+
     def test_the_countless_pick_takes_only_what_something_vouches_for(self):
         # with the entry's year, every listing's page year (the driver writes
         # 2020 on each) vouches for it: part agreement, then provider order

@@ -350,3 +350,60 @@ async fn a_tagged_broad_listing_beside_a_dead_sibling_answers_as_its_plain_copy(
         );
     }
 }
+
+// ── a tag read a character at a time ────────────────────────────────
+
+/// `word` with each character, chosen by a bit of `wide`, in its
+/// full-width form, and each, chosen by a bit of `upper`, in upper case.
+fn spelled(word: &str, wide: u32, upper: u32) -> String {
+    word.chars()
+        .enumerate()
+        .map(|(i, c)| {
+            let c = if (upper >> i) & 1 == 1 {
+                c.to_ascii_uppercase()
+            } else {
+                c
+            };
+            if (wide >> i) & 1 == 1 {
+                char::from_u32(c as u32 + 0xFEE0).unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+const OPENS: [char; 5] = ['(', '[', '（', '［', '【'];
+const CLOSES: [char; 5] = [')', ']', '）', '］', '】'];
+const PLAIN: [&str; 4] = [
+    "Show",
+    "Show Season 2",
+    "Show 2nd Season Part 2",
+    "ショー第2期",
+];
+
+proptest::proptest! {
+    /// Each character of a version tag is read in its ASCII form on its
+    /// own, so a tag mixing widths ("(ｕncensored)") is the tag as one
+    /// written all in either width is.
+    #[test]
+    fn a_version_tag_mixing_widths_is_the_tag(
+        wide in 0u32..1024,
+        upper in 0u32..1024,
+        open in 0..OPENS.len(),
+        close in 0..CLOSES.len(),
+        t in 0..PLAIN.len(),
+    ) {
+        use super::{version_of, without_version_tag};
+        use crate::commands::play_native_title_grammar::normalized;
+        use crate::commands::play_native_versions::VersionKind;
+        let plain = PLAIN[t];
+        let tag = spelled("uncensored", wide, upper);
+        let tagged = format!("{plain} {}{tag}{}", OPENS[open], CLOSES[close]);
+        proptest::prop_assert_eq!(version_of(&tagged), (normalized(plain), VersionKind::Uncensored), "{}", tagged);
+        proptest::prop_assert_eq!(without_version_tag(&tagged), plain, "{}", tagged);
+        // a word that is not the tag in either width is no tag in any mix
+        let other = format!("{plain} ({})", spelled("uncensor", wide, upper));
+        proptest::prop_assert_eq!(version_of(&other).1, VersionKind::Standard, "{}", other);
+    }
+}
