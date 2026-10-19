@@ -2430,6 +2430,8 @@ async fn a_separator_does_not_hide_the_entry_before() {
         ("Steins;Gate 0", "Steins Gate"),
         ("ショー第2期", "ショー：第1期"),
         ("[Oshi no Ko] 2nd Season", "Oshi no Ko"),
+        ("［Oshi no Ko］ 2nd Season", "Oshi no Ko"),
+        ("［Show］ 2", "Show"),
     ] {
         let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
         if let Ok(p) = walk_over(site).await {
