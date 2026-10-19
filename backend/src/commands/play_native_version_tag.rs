@@ -12,7 +12,8 @@ const UNCENSORED: &str = "uncensored";
 
 /// `title` read for its version: the title without a bracketed
 /// version tag — "(Uncensored)", "[UNCENSORED]", in ASCII or
-/// full-width brackets, any case — compared as written
+/// full-width brackets, any case, each character of the tag read in its
+/// ASCII form on its own, so "(ｕncensored)" too — compared as written
 /// ([`normalized`]: case and spacing aside, catalogue tags kept), and
 /// which version the tag names.
 pub(crate) fn version_of(title: &str) -> (String, VersionKind) {
