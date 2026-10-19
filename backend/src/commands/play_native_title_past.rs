@@ -60,8 +60,13 @@ pub(crate) fn leading_number(rest: &str) -> Option<(u32, String)> {
 /// What follows `own` at the start of `text`, when `own` ends there
 /// at a word's end or with a digit or 第 glued to it. A digit glued to
 /// an `own` that itself ends in one continues that number rather than
-/// following it: "Show 20" does not start with "Show 2".
+/// following it: "Show 20" does not start with "Show 2". An empty
+/// `own` — the stem of a title that is nothing but a division — is no
+/// stem, and nothing is read past it, whatever opens the text.
 pub(crate) fn rest_after(text: &str, own: &str) -> Option<String> {
+    if own.is_empty() {
+        return None;
+    }
     let rest = text.strip_prefix(own)?;
     let numbered = own.chars().last().is_some_and(|c| c.is_ascii_digit());
     rest.chars()
