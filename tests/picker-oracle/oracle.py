@@ -1637,6 +1637,18 @@ def gen():
         ("ショー・2", "ショー"),
         ("Show Èv", "Show Season 5"),
         ("Show éii", "Show Season 2"),
+        # a number glued to a word is a number only after a Japanese letter
+        ("ＳＨＯＷ３", "ＳＨＯＷ２"),
+        ("ＳＨＯＷ", "ＳＨＯＷ２"),
+        ("Show 3", "ＳＨＯＷ２"),
+        ("Café3", "Café2"),
+        ("Café3", "Café"),
+        ("Шоу3", "Шоу2"),
+        ("나혼자만레벨업3", "나혼자만레벨업2"),
+        ("Show²3", "Show²2"),
+        ("Show 3", "Show ²2"),
+        ("ｼｮｰ3", "ｼｮｰ2"),
+        ("時々3", "時々2"),
         # a title that is nothing but a division has an empty name
         ("Season 2", "1st Season"),
         ("Show", "Show ٢"),
