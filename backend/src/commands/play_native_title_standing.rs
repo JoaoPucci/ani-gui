@@ -35,7 +35,13 @@ pub(crate) fn standing_numbers(word: &str) -> Vec<u32> {
         };
         let left = start == 0 || apart(chars.get(start - 1));
         if left && end.is_some_and(|e| apart(chars.get(e))) {
-            out.extend(small_number(&digits));
+            // a suffixed ordinal is read up to three digits, a bare
+            // number up to two
+            out.extend(if end == Some(i) {
+                small_number(&digits)
+            } else {
+                number(&digits)
+            });
         }
     }
     out
