@@ -250,7 +250,9 @@ jobs:
     #   python3 -I tests/picker-oracle/oracle.py fuzz SEED 20000 cases.json
     # The budget is a fraction of the two-minute one the README names
     # for a local run; the generated pools are not committed, and every
-    # shape a run has found is pinned in cases/fuzz-found.json.
+    # shape a run has found is pinned in cases/fuzz-found.json. The
+    # comparison takes no allowlist: its entries name generated pools by
+    # id, and a disagreement the fuzzer finds is resolved, not accepted.
     runs-on: ubuntu-latest
     env:
       FUZZ_SEED: ${{ github.run_number }}
@@ -288,7 +290,7 @@ jobs:
         run: |
           python3 -I tests/picker-oracle/oracle.py cmp "$RUNNER_TEMP/fuzz.json" "$RUNNER_TEMP/fuzz-out.json" || {
             echo "::error::the picker and the model disagree on fuzz seed $FUZZ_SEED ($FUZZ_POOLS pools)"
-            echo "reproduce: python3 -I tests/picker-oracle/oracle.py fuzz $FUZZ_SEED $FUZZ_POOLS cases.json"
+            echo "reproduce at ${{ github.sha }}: python3 -I tests/picker-oracle/oracle.py fuzz $FUZZ_SEED $FUZZ_POOLS cases.json"
             exit 1
           }
 
