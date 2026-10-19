@@ -361,7 +361,7 @@ def _name(t):
 
 FIRSTS = {"season", "part", "cour", "stage", "first", "1", "half"}
 
-SEPS = set(":-–—~,.・、：－～，．]）)】」』")
+SEPS = set(":-–—~,.・、：－～，．]］）)】」』")
 
 
 def _tokens_end(text, nm_words):
@@ -1268,6 +1268,9 @@ def gen():
         ("Show: Season 2", "Show Season 1"),
         ("Steins;Gate 0", "Steins Gate"),
         ("Show 2", "Show - Season 1"),
+        # a closing bracket around the name, in either width
+        ("［Oshi no Ko］ 2nd Season", "Oshi no Ko"),
+        ("［Show］ 2", "Show"),
     ]:
         add([t], E, LISTING_YEAR, [("x", c, E)], None, "name-and-first-divisions")
     # a bracketed year or format tag is no word to the entry before; other bracketed words are

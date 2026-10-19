@@ -292,6 +292,11 @@ class TheModelReadsTheDocs(unittest.TestCase):
         )
         self.assertTrue(any(c["family"] == "nested-tag" for c in oracle.gen()))
 
+    def test_a_closing_bracket_around_the_name_is_a_separator_in_either_width(self):
+        for entry in ("[Oshi no Ko] 2nd Season", "［Oshi no Ko］ 2nd Season"):
+            self.assertIsNone(oracle.predict(pool([entry], E, [("x", "Oshi no Ko", E)])), entry)
+        self.assertIsNone(oracle.predict(pool(["［Show］ 2"], E, [("x", "Show", E)])))
+
     def test_the_generated_set_spells_tags_in_mixed_widths(self):
         def mixed(text):
             return any(
