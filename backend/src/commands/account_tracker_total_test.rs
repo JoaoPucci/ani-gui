@@ -138,8 +138,10 @@ async fn mal_an_unknown_total_sends_the_episode_as_is() {
 }
 
 // The rows the play page reaches and cannot decide: what reaches each
-// tracker depends on that tracker's total and row, which only this
-// path reads. The renderer's half — which episode, and whether it
+// tracker depends on that tracker's total and row, which only the
+// backend reads: this path for an identity write, `account_mapped`
+// (`account_mapped_test.rs`, `account_mapped_wire_test.rs`) for a
+// mapped one. The renderer's half — which episode, and whether it
 // carries `completed` — is pinned through the real play page in
 // `frontend/tests/acceptance/play-tracker-sync.test.ts`.
 

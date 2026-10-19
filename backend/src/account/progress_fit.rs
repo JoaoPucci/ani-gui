@@ -1,4 +1,5 @@
-//! Fit a mark-watched progress write to the tracker's own episode total.
+//! Fit an identity mark-watched progress write — one the show's episode
+//! map leaves as Kitsu numbers it — to the tracker's own episode total.
 //!
 //! The app numbers a show's episodes by Kitsu's list; a tracker can count
 //! the same show differently. This is the seam where the count the
@@ -13,10 +14,11 @@ use crate::account::status::ListStatus;
 /// `tracker_episodes`.
 ///
 /// The count is sent as its own number, but never past the tracker's
-/// total: where the tracker's entry is shorter than Kitsu's show
-/// (AniList splits Ranma ½'s 161 episodes into an 18-episode entry and
-/// its sequel) the count
-/// stops at the entry's end, and the monotonic reconcile then drops the
+/// total: where the tracker's entry is shorter than Kitsu's show and
+/// the show's episode map does not explain it (an AniList entry of 18
+/// for Kitsu's 161 with no sequel the chain rule follows; Ranma ½'s
+/// own two AniList entries are a chain the map does explain, written
+/// by `account_mapped`) the count stops at the entry's end, and the monotonic reconcile then drops the
 /// repeated value.
 ///
 /// On the progress route a `Completed` status is the fan-out's signal
