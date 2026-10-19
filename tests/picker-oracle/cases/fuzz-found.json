@@ -13,5 +13,9 @@
  {"id": "fuzz/glued-head-season", "titles": ["推しの子: Fourth・第十二部"], "count": null, "entry_year": null, "rows": [["x", "推しの子 Fourth第十二部♪", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
  {"id": "fuzz/tail-third-stage", "titles": ["86, Third Stage: 2"], "count": 12, "entry_year": 2020, "rows": [["x", "86: Third ［2011］ Stage 2", 13]], "expect": {"pick": "x", "count": 13}, "family": "fuzz-found"},
  {"id": "fuzz/tail-seventh-part", "titles": ["ＳＨＯＷ - Seventh Part, ０", "ショウ ゼータ"], "count": 12, "entry_year": null, "rows": [["x", "ＳＨＯＷ・Seventh Part - ０", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
- {"id": "fuzz/tail-cour-3rd", "titles": ["Zzyzx Alias", "Other Show・１２th Cour - 3rd"], "count": 12, "entry_year": null, "rows": [["x", "Other Show １２th Cour 3rd ［ 2011 ］", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"}
+ {"id": "fuzz/tail-cour-3rd", "titles": ["Zzyzx Alias", "Other Show・１２th Cour - 3rd"], "count": 12, "entry_year": null, "rows": [["x", "Other Show １２th Cour 3rd ［ 2011 ］", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
+ {"id": "fuzz/past-stem-ordinal-in-name", "titles": ["Spy x Family, 3"], "count": null, "entry_year": 2020, "rows": [["x", "Spy x Family. Second Half12♪", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/past-stem-ordinal-in-name-dated", "titles": ["Show: Arc - IX"], "count": 12, "entry_year": 2020, "rows": [["a", "Show: Arc", 12], ["x", "Show: Arc - Seventh CourSecond Part", 12]], "jnames": {}, "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/number-after-division", "titles": ["Other Show・第〇期 １０", "Other Show 1st'"], "count": 12, "entry_year": null, "rows": [["x", "Other Show, (OAD) 第〇期１０ Recap", 13]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/number-after-division-named", "titles": ["Kaiju No. 8 - 第3部 - 12 【OＮA】"], "count": 12, "entry_year": null, "rows": [["w", "Kaiju No. 8 第20期", 40], ["x", "Kaiju No. 8!! 第3部12", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"}
 ]

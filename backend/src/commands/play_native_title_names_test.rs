@@ -144,3 +144,37 @@ proptest! {
         prop_assert!(EntryTitles::new(&titles).names(&glued), "{}", glued);
     }
 }
+
+/// What a candidate names past an entry title's stem is read as the
+/// reader reads it: a word ordinal inside a name names no season
+/// there either, so "Second" with a word after it is no season before
+/// "Spy x Family, 3".
+#[test]
+fn past_the_stem_a_word_ordinal_inside_a_name_names_no_season() {
+    let titles = ["Spy x Family, 3"];
+    assert!(!EntryTitles::new(&titles).another_entry("Spy x Family. Second Half12"));
+    let titles = ["Show: Arc - IX"];
+    assert!(!EntryTitles::new(&titles).another_entry("Show: Arc - Seventh CourSecond Part"));
+    // a division still is one: "Second Half" names a season 2
+    let titles = ["Show 3"];
+    assert!(EntryTitles::new(&titles).another_entry("Show Second Half"));
+}
+
+proptest! {
+    /// A number glued to the end of a Japanese division is read after
+    /// that division, as it is after any Japanese word: "第3部12" is the
+    /// part 3 and a 12, and "第〇期10" names its season 0 — a season
+    /// before an entry's first.
+    #[test]
+    fn a_number_glued_after_a_japanese_division_is_read_after_it(
+        n in 0u32..100,
+        k in 1u32..10,
+    ) {
+        // a division whose ordinal is 1 is the whole, and left out
+        let want: Vec<u32> = [k, n].into_iter().filter(|&x| x != 1).collect();
+        prop_assert_eq!(reading(&format!("Show 第{k}部{n}")), want);
+        let titles = ["Other Show 1st"];
+        let candidate = format!("Other Show 第〇期{n} Recap");
+        prop_assert!(EntryTitles::new(&titles).another_entry(&candidate), "{}", candidate);
+    }
+}
