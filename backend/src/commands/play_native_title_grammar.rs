@@ -75,50 +75,41 @@ pub(super) fn marker_of(first: &str, second: &str) -> Option<Marker> {
     })
 }
 
-/// The marker the words end on and how many words it takes: a pair
-/// ([`marker_of`]), or an ordinal standing alone that is spelled as
-/// one ("Overlord II", "X 2nd") — a sequel's number, read as its
-/// season. A bare number alone is no marker.
-fn last_marker(words: &[String]) -> Option<(Marker, usize)> {
-    let n = words.len();
-    if n >= 2 {
-        if let Some(m) = marker_of(&words[n - 2], &words[n - 1]) {
-            return Some((m, 2));
-        }
+/// The markers `words` end on, last first, and the words before them.
+/// The words are read once, first to last, as the reader reads them
+/// ([`division_at`]) — a spelled or suffixed ordinal pairs with the
+/// marker after it, so "Third Stage 2" is a third stage and a bare 2 —
+/// each word holding Japanese divisions glued to its end read as what
+/// it holds before them and each division ([`apart_glued`]); the
+/// markers are what that one reading ends on: a marker pair ("Season
+/// 2", "2nd Season"), a Japanese division (第N期, 第N部, 第Nクール), or
+/// an ordinal spelled as one standing alone ("Overlord II", "X 2nd") —
+/// a sequel's number, read as its season. A bare number ends no marker
+/// run: it stays in the stem.
+///
+/// [`division_at`]: super::play_native_title_reading::division_at
+fn split_markers(words: Vec<String>) -> (Vec<String>, Vec<Marker>) {
+    let words = apart_glued(words);
+    let mut items: Vec<(usize, Option<Marker>)> = Vec::new();
+    let mut i = 0;
+    while i < words.len() {
+        let found = super::play_native_title_reading::division_at(&words, i);
+        let taken = found.as_ref().map_or(1, |(_, taken)| *taken);
+        let marker = found.and_then(|(m, taken)| {
+            let w = &words[i];
+            (taken == 2 || japanese_trailing(w).is_some() || spelled_ordinal(w).is_some())
+                .then_some(m)
+        });
+        items.push((i, marker));
+        i += taken;
     }
-    let n = spelled_ordinal(words.last()?)?;
-    Some((
-        Marker {
-            kind: Kind::Season,
-            ordinals: vec![n],
-        },
-        1,
-    ))
-}
-
-/// The markers `words` end on, last first, and the words before them:
-/// English markers ([`last_marker`]) and Japanese divisions (第N期,
-/// 第N部, 第Nクール — a word of their own or glued to the word before),
-/// in any number and order.
-fn split_markers(mut words: Vec<String>) -> (Vec<String>, Vec<Marker>) {
     let mut out = Vec::new();
-    loop {
-        if let Some((marker, before)) = words
-            .last()
-            .and_then(|w| japanese_trailing(w).map(|(m, before)| (m, before.to_string())))
-        {
-            out.push(marker);
-            words.pop();
-            if !before.is_empty() {
-                words.push(before);
-            }
-        } else if let Some((marker, taken)) = last_marker(&words) {
-            out.push(marker);
-            words.truncate(words.len() - taken);
-        } else {
-            return (words, out);
-        }
+    let mut cut = words.len();
+    while let Some((start, Some(marker))) = items.pop() {
+        out.push(marker);
+        cut = start;
     }
+    (words[..cut].to_vec(), out)
 }
 
 /// A title's tail parsed: the words before the markers it ends on,

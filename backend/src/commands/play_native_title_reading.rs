@@ -46,20 +46,7 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 /// before them and each division in turn: "Fourth第十二部" is "fourth"
 /// and "第十二部", "ショー第2期第2部" is "ショー", "第2期" and "第2部".
 pub(crate) fn read_words(title: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for w in words(title) {
-        let mut glued = Vec::new();
-        let mut head = w.as_str();
-        while let Some((_, before)) = japanese_trailing(head) {
-            glued.push(head[before.len()..].to_string());
-            head = before;
-        }
-        if !head.is_empty() {
-            out.push(head.to_string());
-        }
-        out.extend(glued.into_iter().rev());
-    }
-    out
+    super::play_native_title_grammar::apart_glued(words(title))
 }
 
 /// Every division `words` name, first word to last: a marker pair, a
@@ -104,7 +91,7 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
 /// (a word of its own or glued to the end of one); or an ordinal
 /// standing alone — spelled, bare, or a number glued to a Japanese
 /// word.
-fn division_at(words: &[String], i: usize) -> Option<(Marker, usize)> {
+pub(crate) fn division_at(words: &[String], i: usize) -> Option<(Marker, usize)> {
     let w = &words[i];
     let numeral = small_number(w).is_some()
         || (w.chars().all(|c| "ivx".contains(c)) && spelled_ordinal(w).is_some());

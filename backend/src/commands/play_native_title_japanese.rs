@@ -29,3 +29,24 @@ pub(crate) fn japanese_trailing(title: &str) -> Option<(Marker, &str)> {
 pub(crate) fn japanese_number(text: &str) -> Option<u32> {
     number(text).or_else(|| kanji_number(text))
 }
+
+/// Each of `words` that holds Japanese divisions glued to its end, read
+/// as what it holds before them and each division in turn:
+/// "fourth第十二部" is "fourth" and "第十二部", "ショー第2期第2部" is
+/// "ショー", "第2期" and "第2部".
+pub(crate) fn apart_glued(words: Vec<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for w in words {
+        let mut glued = Vec::new();
+        let mut head = w.as_str();
+        while let Some((_, before)) = japanese_trailing(head) {
+            glued.push(head[before.len()..].to_string());
+            head = before;
+        }
+        if !head.is_empty() {
+            out.push(head.to_string());
+        }
+        out.extend(glued.into_iter().rev());
+    }
+    out
+}
