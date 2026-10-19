@@ -418,6 +418,9 @@ const CATALOGUE_TAGS: &[&str] = &[
     "(ｔv)",
     "（２0２0）",
     "[Ｏva]",
+    // full-width square brackets, as round and lenticular ones are
+    "［ＴＶ］",
+    "［2020］",
 ];
 
 proptest::proptest! {
