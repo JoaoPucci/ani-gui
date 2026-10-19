@@ -354,8 +354,13 @@ class TheModelReadsTheDocs(unittest.TestCase):
         self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Show 1é Season 1", E)])), pick("x"))
         self.assertEqual(oracle._opening("1é season 1"), "")
         self.assertEqual(oracle._opening("season 1 arc"), "season 1")
-        # an empty name: the title read past it whole
-        self.assertIsNone(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])))
+        # an empty name is no name: nothing is read past it
+        self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])), pick("x"))
+        self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "Season 1", E)])), pick("x"))
+        self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "First Half", E)])), pick("x"))
+        # a marker is read off a title that is nothing but one: "2nd Season"
+        # names a 2 "Season 3" does not, and is refused by title
+        self.assertEqual(oracle.refusal_expected(pool(["Season 3"], E, [("x", "2nd Season", E)])), ("NoResults", False))
 
     def test_the_generated_set_spells_tags_in_mixed_widths(self):
         def mixed(text):

@@ -2470,6 +2470,35 @@ async fn digits_before_a_letter_outside_japanese_are_no_number_in_the_stem_s_pla
     }
 }
 
+/// An entry title that is nothing but a division has an empty stem,
+/// which is no stem: nothing is read past it, so "1st Season" names no
+/// season before "Season 2" any more than "Season 1" does, and both are
+/// picked. "2nd Season" for "Season 3" names a 2 the entry does not, and
+/// is refused by title as "Show 2nd Season" is for "Show Season 3".
+#[tokio::test]
+async fn nothing_is_read_past_an_empty_stem() {
+    for count in [Some(12), None] {
+        for (entry, listing) in [("Season 2", "Season 1"), ("Season 2", "1st Season")] {
+            let site = pool_of(&[entry], count, 2020, entry, &[("x", listing, 12)]);
+            match walk_over(site).await {
+                Ok(p) => assert_eq!(p.hit.slug, "x", "{entry}, {listing}, {count:?}"),
+                Err(e) => panic!("{entry}, {listing}, {count:?}: refused: {e:?}"),
+            }
+        }
+        let site = pool_of(
+            &["Season 3"],
+            count,
+            2020,
+            "Season 3",
+            &[("x", "2nd Season", 12)],
+        );
+        match walk_over(site).await {
+            Err(e) => assert!(e.refused_by_name && !e.clean_miss, "{count:?}: {e:?}"),
+            Ok(p) => panic!("{count:?}: picked 2nd Season ({})", p.hit.slug),
+        }
+    }
+}
+
 /// A separator between the name and its first divisions is no mark of
 /// its own, and the name is compared word by word: each of these is
 /// the entry before the entry, never picked.
