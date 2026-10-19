@@ -584,3 +584,21 @@ fn a_half_ends_no_marker_run() {
     assert!(trailing_markers("Show Second Half").is_empty());
     assert_eq!(stem("Show Second Half"), vec!["show", "second", "half"]);
 }
+
+/// A catalogue tag written with no space either side parts the words it
+/// stands between, as any bracket would: "Show(TV)2" is "Show 2", so it
+/// ends on its 2, and "Kaiju（ＴＶ）No. 8" is "Kaiju No. 8".
+#[test]
+fn a_tag_glued_between_words_parts_them() {
+    use super::super::play_native_title_grammar::words;
+    assert_eq!(words("Show(TV)2"), vec!["show", "2"]);
+    assert!(!entry(&["Show"]).admits("Show(TV)2"));
+    assert!(!entry(&["Show"]).admits("Show Cour［ＯＮＡ］3"));
+    assert!(entry(&["Kaiju No. 8"]).names("Kaiju（ＴＶ）No. 8"));
+    assert!(entry(&["Spy x Family"]).names("Spy[ONA]x Family"));
+    // compared as written, the tag still counts wherever it stands
+    assert_eq!(
+        super::super::play_native_title_grammar::normalized("Show(2011)Season 2"),
+        super::super::play_native_title_grammar::normalized("Show Season 2 (2011)")
+    );
+}
