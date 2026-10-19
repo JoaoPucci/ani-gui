@@ -414,6 +414,10 @@ const CATALOGUE_TAGS: &[&str] = &[
     "（ＯＮＡ）",
     "【OAD】",
     "（２０２０）",
+    // each character of a tag in ASCII or full-width on its own
+    "(ｔv)",
+    "（２0２0）",
+    "[Ｏva]",
 ];
 
 proptest::proptest! {
