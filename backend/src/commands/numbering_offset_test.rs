@@ -1,5 +1,16 @@
 use super::*;
 
+/// The provider's number for a Kitsu-relative episode under `offset`:
+/// what a row from before the own-number marker holds for it, which
+/// the read boundary ([`kitsu_ep_no`]) translates back. Non-numeric
+/// input passes through unchanged.
+fn provider_ep_no(episode: &str, offset: u32) -> String {
+    match episode.trim().parse::<u32>() {
+        Ok(n) => n.saturating_add(offset).to_string(),
+        Err(_) => crate::commands::play_native_numbering::provider_fraction(episode.trim(), offset),
+    }
+}
+
 fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
     crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
@@ -51,35 +62,6 @@ fn display_stamps_round_trip_and_survive_offset_puts() {
         "an offset put must preserve the display stamp"
     );
     assert_eq!(display_stamp(&state, "unstamped"), None);
-}
-
-#[test]
-fn writes_map_a_stamped_display_back_to_its_slot() {
-    // The mark-watched and cache-hit writers have no listing at
-    // hand: when the requested episode names the stamped display
-    // tag — by numeric identity, since the frontend normalizes
-    // "3.50" to "3.5" — the stored row gets the slot a resume looks
-    // up. Everything else keeps the offset translation.
-    let state = make_state();
-    put_display(&state, "the-show-77", 0, 4, "3.50");
-    assert_eq!(
-        Numbering::read(&state.history_path).write_ep_no("the-show-77", "3.5"),
-        "4"
-    );
-    assert_eq!(
-        Numbering::read(&state.history_path).write_ep_no("the-show-77", "2"),
-        "2"
-    );
-    let cont = make_state();
-    put_display(&cont, "the-sequel-88", 40, 2, "41.5");
-    assert_eq!(
-        Numbering::read(&cont.history_path).write_ep_no("the-sequel-88", "1.5"),
-        "2"
-    );
-    assert_eq!(
-        Numbering::read(&cont.history_path).write_ep_no("the-sequel-88", "1"),
-        "41"
-    );
 }
 
 #[test]
@@ -287,11 +269,11 @@ proptest::proptest! {
         );
     }
 
-    /// A listing-less write of the episode a stamp names stores its
-    /// slot, and the slot reads back as that episode, from one read of
-    /// the store whatever its offset; any other row reads by the offset.
+    /// A stamped slot reads back as the episode its tag names, from
+    /// one read of the store whatever its offset; any other row reads
+    /// by the offset.
     #[test]
-    fn a_stamped_episode_writes_as_its_slot_and_reads_back_as_itself(
+    fn a_stamped_slot_reads_back_as_its_episode(
         episode in 1u32..=10_000,
         frac in 1u32..10,
         offset in 0u32..=5_000,
@@ -301,7 +283,6 @@ proptest::proptest! {
         let per_entry = format!("{episode}.{frac}");
         let tag = provider_ep_no(&per_entry, offset);
         let store = Numbering::from_body(&format!("the-show\t{offset}\t{slot}\t{tag}\n"));
-        proptest::prop_assert_eq!(store.write_ep_no("the-show", &per_entry), slot.to_string());
         proptest::prop_assert_eq!(store.read_ep_no("the-show", &slot.to_string()), per_entry);
         proptest::prop_assume!(other != slot);
         proptest::prop_assert_eq!(

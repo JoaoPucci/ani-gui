@@ -284,6 +284,7 @@ async fn a_history_row_from_anidb_plays_on_hianime_and_keeps_its_place() {
             title: "test".into(),
             watched_at: Some(1_700_000_000_000),
             kitsu_id: Some("777".into()),
+            own_number: false,
         }],
     )
     .expect("seed history");

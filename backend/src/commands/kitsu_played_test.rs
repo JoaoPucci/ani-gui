@@ -17,6 +17,7 @@ fn listed_state(tmp: &tempfile::TempDir) -> AppState {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .unwrap();
