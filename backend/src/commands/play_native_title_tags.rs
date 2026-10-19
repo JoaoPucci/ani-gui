@@ -45,6 +45,11 @@ pub(crate) fn split_tags(title: &str) -> (String, Vec<String>) {
         tags.push(inner);
         let closer = after[close..].chars().next().map_or(1, char::len_utf8);
         rest = &after[close + closer..];
+        // The tag read away still parts the words either side of it.
+        let spaced = |c: Option<char>| c.is_none_or(char::is_whitespace);
+        if !spaced(out.chars().last()) && !spaced(rest.chars().next()) {
+            out.push(' ');
+        }
     }
     out.push_str(rest);
     tags.sort();
