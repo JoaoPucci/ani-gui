@@ -51,7 +51,7 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
                 None => break,
             },
         };
-        i += taken.max(1);
+        i += taken.max(1) + if taken == 1 { half_after(words, i) } else { 0 };
         for m in found {
             let divides = after_season && taken == 1 && m.kind == Kind::Season;
             // Only the division right before an ordinal decides

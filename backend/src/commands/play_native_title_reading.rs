@@ -74,7 +74,7 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
         match division_at(words, i).filter(|_| !inside_the_name(words, i)) {
             Some((m, taken)) => {
                 out.push(m);
-                i += taken;
+                i += taken + if taken == 1 { half_after(words, i) } else { 0 };
             }
             None if leading => break,
             None => i += 1,
