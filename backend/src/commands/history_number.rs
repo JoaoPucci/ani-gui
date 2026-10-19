@@ -26,12 +26,10 @@ pub struct HistoryNumber {
 /// # Errors
 /// As [`super::history::history_list`].
 pub fn history_number(state: &AppState, id: &str) -> Result<Option<HistoryNumber>> {
-    // One hold for the row, the pair it reads through and the former
-    // tag kept beside the pair: what a writer puts together is read
-    // together. The numbering store is read once, and the row's
-    // number and its former one both come from that read: a repair
-    // takes no history guard, and one landing between two reads would
-    // answer the row's old number as its own former one.
+    // One hold, as the list takes. The numbering store is read once,
+    // and the row's number and its former one both come from that read:
+    // a repair takes no history guard, and one landing between two
+    // reads would answer the row's old number as its own former one.
     crate::history::guard::hold(&state.history_path, |_| {
         let numbering = Numbering::read(&state.history_path);
         let Some(row) = super::history::history_list_through(state, &numbering)?
