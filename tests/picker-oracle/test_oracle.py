@@ -531,7 +531,26 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # the lead, and a first part completes no bare title: both pools are
         # decided by the rules the predicates read
         self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show 2", 6), ("b", "Show 2 Part 2", 6)])))
-        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])))
+        # with no year the bare title is short of the count and nothing
+        # else is read; with the entry's year it is an airing part, and the
+        # rescue takes it alone
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)], year=None)))
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])),
+            {"pick": "a", "count": 6},
+        )
+
+    def test_the_airing_rescue_takes_a_short_part_of_the_entry_s_year(self):
+        # "Airing rescue (confirmed, short of E) | distance, exact title,
+        # part agreement": only a hit whose year is the entry's, and only
+        # when nothing fits
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("x", "Show", 5)])), {"pick": "x", "count": 5})
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("x", "Show", 5)], year=None)))
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, [("a", "Show Arc", 4), ("b", "Show", 7)])),
+            {"pick": "b", "count": 7},
+        )
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("x", "Show", 5), ("y", "Show", 11)])), {"pick": "y", "count": 11})
 
     def test_a_half_names_its_ordinal_and_is_no_sequel_guard_marker(self):
         self.assertTrue(oracle.admitted(["Show 2nd Half"], "Show Season 2"))
