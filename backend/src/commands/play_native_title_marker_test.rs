@@ -460,3 +460,29 @@ proptest::proptest! {
         proptest::prop_assert_eq!(e.admits(&tagged), e.admits(plain), "Show admits {}", tagged);
     }
 }
+
+// ── a number glued to a word ────────────────────────────────────────
+
+/// Words a number may be glued to, ending on a Japanese letter: kana,
+/// a kanji, the iteration mark, half-width katakana.
+const JAPANESE_HEADS: &[&str] = &["ショー", "怪獣", "時々", "ｼｮｰ", "しょう"];
+
+/// Words ending on a letter outside Japanese, ASCII or not: a Latin
+/// word, an accented one, a full-width Latin one, Cyrillic, Hangul.
+const OTHER_HEADS: &[&str] = &["show", "café", "ｓｈｏｗ", "шоу", "나혼자만레벨업"];
+
+proptest::proptest! {
+    /// A number glued to the end of a word is a number only after a
+    /// Japanese letter, as Japanese writes one ("ショー2"); after any
+    /// other letter it is the word's own ("Show2", "ＳＨＯＷ２").
+    #[test]
+    fn a_number_is_glued_only_to_a_japanese_word(
+        h in 0..JAPANESE_HEADS.len(),
+        o in 0..OTHER_HEADS.len(),
+        n in 0u32..100,
+    ) {
+        use super::super::play_native_title_grammar::glued_number;
+        proptest::prop_assert_eq!(glued_number(&format!("{}{n}", JAPANESE_HEADS[h])), Some(n));
+        proptest::prop_assert_eq!(glued_number(&format!("{}{n}", OTHER_HEADS[o])), None);
+    }
+}
