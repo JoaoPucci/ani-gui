@@ -2,7 +2,8 @@
 //! total: what `push_progress_via` reads, and what it writes, when the
 //! tracker counts a prologue Kitsu does not (Air on AniList: 13 against 12), when
 //! the totals agree, when the tracker's entry is shorter than Kitsu's
-//! show (Ranma ½ on AniList: 18 against 161), and when the total is unknown;
+//! show (Ranma ½'s AniList shape, 18 against 161, served by the MAL
+//! mock only), and when the total is unknown;
 //! and, on both trackers, an episode past Kitsu's finale, a rewatch's
 //! finale and a replay behind the row.
 //!

@@ -18,8 +18,8 @@ use crate::account::status::ListStatus;
 /// the show's episode map does not explain it (an AniList entry of 18
 /// for Kitsu's 161 with no sequel the chain rule follows; Ranma ½'s
 /// own two AniList entries are a chain the map does explain, written
-/// by `account_mapped`) the count stops at the entry's end, and the monotonic reconcile then drops the
-/// repeated value.
+/// by `account_mapped`) the count stops at the entry's end, and the
+/// monotonic reconcile then drops the repeated value.
 ///
 /// On the progress route a `Completed` status is the fan-out's signal
 /// that the user finished Kitsu's last episode of a finished show (the

@@ -10,7 +10,7 @@
 // tracker's own row — its episode total, a rewatch, progress already
 // past the episode — is decided by the backend behind that route. A
 // show whose episode map leaves it as Kitsu numbers it is covered
-// against MAL and AniList in
+// against MAL and AniList (a shorter entry against MAL only) in
 // `backend/src/commands/account_tracker_total_test.rs`. A show the map
 // files under other entries or numbers is written by
 // `backend/src/commands/account_mapped.rs`, which decides each entry's
