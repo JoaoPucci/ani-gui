@@ -348,6 +348,12 @@ class TheModelReadsTheDocs(unittest.TestCase):
             self.assertEqual(oracle.predict(pool([entry], E, [("x", cand, E)])), pick("x"), entry)
         for entry, cand in [("ショー３", "ショー２"), ("ｼｮｰ3", "ｼｮｰ2"), ("時々3", "時々2")]:
             self.assertIsNone(oracle.predict(pool([entry], E, [("x", cand, E)])), entry)
+        # digits before a letter outside Japanese are a word: "1é" is no
+        # number in the stem's place, and names no division, so nothing
+        # after it names a season before the entry
+        self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Show 1é Season 1", E)])), pick("x"))
+        self.assertEqual(oracle._opening("1é season 1"), "")
+        self.assertEqual(oracle._opening("season 1 arc"), "season 1")
         # an empty name: the title read past it whole
         self.assertIsNone(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])))
 
