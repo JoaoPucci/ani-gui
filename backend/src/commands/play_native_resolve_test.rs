@@ -849,10 +849,10 @@ async fn an_answered_upstream_status_in_the_episode_chain_survives_alias_exhaust
 
 #[tokio::test]
 async fn the_resolve_names_the_matched_rows_slot_and_tag() {
-    // A resume looks up slot numbers — the integer `number` field
-    // the provider's episode list is built from — so the history
-    // writer needs the matched row's slot, and the sidecar stamp
-    // needs its display tag.
+    // The resolve names the matched row by its slot — the integer
+    // `number` field the provider's episode list is built from — and
+    // its display tag: the history writer reads the app's own number
+    // for the episode from the two.
     let provider = scripted(&[("the show", THE_SHOW)]);
     let (got, _) = run(&provider, "the show", &[], "2.5", Some(3)).await;
     let resolved = got.expect("resolved");

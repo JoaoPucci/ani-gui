@@ -52,20 +52,24 @@ pub struct NativeResolved {
     pub episode_cap: Option<u32>,
     /// The shift between the provider's episode numbers and the
     /// per-entry numbers the request used ([`numbering_offset`]).
-    /// The history writers add it — the history file speaks the
-    /// provider's numbering — and the offset store persists it for
-    /// the cache-hit and mark-watched writers and the read boundary.
+    /// The offset store persists it for the read boundary, which
+    /// translates history rows from before rows recorded the app's own
+    /// number.
     pub numbering_offset: u32,
     /// The listing's fractional display tags
     /// ([`extra_episode_tags`]) — the availability stamp's
     /// `extra_episodes`, also already paid for.
     pub extra_tags: Vec<String>,
-    /// The matched row's slot — the integer a resume looks up in
-    /// the provider's listing, and what the fresh-resolve writer
-    /// stores.
+    /// The matched row's slot — its position in the provider's
+    /// listing. Cached with the resolution; a history row records the
+    /// app's own number read from the row's tag, or from the slot when
+    /// it has none, under the offset
+    /// ([`crate::commands::play_native_record::matched_episode`]).
     pub resolved_slot: u32,
-    /// The matched row's display tag, stamped beside the offset when
-    /// it differs from the slot so the read boundary can translate.
+    /// The matched row's display tag, when it carries one: with the
+    /// slot, what the app's own number for the episode is read from
+    /// ([`crate::commands::play_native_record::matched_episode`]).
+    /// Display stamps are no longer written from it.
     pub resolved_tag: Option<String>,
     /// The pick's versions, in the provider's order — empty when it
     /// has one.
