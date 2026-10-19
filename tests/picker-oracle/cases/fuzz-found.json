@@ -10,5 +10,8 @@
  {"id": "fuzz/glued-span", "titles": ["推しの子Part ４+5", "推しの子"], "count": null, "entry_year": 2020, "rows": [["x", "推しの子 Part ４+5", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
  {"id": "fuzz/ordinal-in-name-span", "titles": ["The Seventh Son Part 0+1"], "count": 12, "entry_year": 2020, "rows": [["x", "The Seventh Son", 11]], "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/ordinal-in-name-cour", "titles": ["The Seventh Son: 第2クール・０"], "count": 12, "entry_year": 2020, "rows": [["x", "The Seventh Son", 12]], "expect": null, "family": "fuzz-found"},
- {"id": "fuzz/glued-head-season", "titles": ["推しの子: Fourth・第十二部"], "count": null, "entry_year": null, "rows": [["x", "推しの子 Fourth第十二部♪", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"}
+ {"id": "fuzz/glued-head-season", "titles": ["推しの子: Fourth・第十二部"], "count": null, "entry_year": null, "rows": [["x", "推しの子 Fourth第十二部♪", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/tail-third-stage", "titles": ["86, Third Stage: 2"], "count": 12, "entry_year": 2020, "rows": [["x", "86: Third ［2011］ Stage 2", 13]], "expect": {"pick": "x", "count": 13}, "family": "fuzz-found"},
+ {"id": "fuzz/tail-seventh-part", "titles": ["ＳＨＯＷ - Seventh Part, ０", "ショウ ゼータ"], "count": 12, "entry_year": null, "rows": [["x", "ＳＨＯＷ・Seventh Part - ０", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
+ {"id": "fuzz/tail-cour-3rd", "titles": ["Zzyzx Alias", "Other Show・１２th Cour - 3rd"], "count": 12, "entry_year": null, "rows": [["x", "Other Show １２th Cour 3rd ［ 2011 ］", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"}
 ]

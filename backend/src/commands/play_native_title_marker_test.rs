@@ -543,3 +543,44 @@ fn admission_reads_a_number_glued_only_as_japanese_writes_one() {
     // numbers stand apart, "+" between them
     assert!(entry(&["推しの子Part ４+5"]).admits("推しの子 Part ４+5"));
 }
+
+/// Spelled and suffixed ordinals that pair with the marker word after
+/// them ("Third Stage", "12th Cour").
+const PAIRED: &[(&str, u32)] = &[("Third", 3), ("Seventh", 7), ("12th", 12), ("4th", 4)];
+
+proptest::proptest! {
+    /// A title's tail is one reading of it, first word to last: a
+    /// spelled or suffixed ordinal pairs with the marker after it, so
+    /// "Third Stage 2" is a third stage and then a bare 2 — the title
+    /// ends on that number, not on a "Stage 2" — and "12th Cour 3rd" a
+    /// twelfth cour and then a third season standing alone. The stem
+    /// and the markers are what that one reading ends on.
+    #[test]
+    fn the_tail_is_the_reading_s_own_parse(
+        p in 0..PAIRED.len(),
+        n in 0u32..10,
+    ) {
+        use super::super::play_native_title_grammar::{stem_number, trailing_markers};
+        let (ordinal, k) = PAIRED[p];
+        let numbered = format!("Show {ordinal} Stage {n}");
+        proptest::prop_assert!(trailing_markers(&numbered).is_empty(), "{}", numbered);
+        proptest::prop_assert_eq!(stem_number(&numbered), Some(n));
+        let spelled = format!("Show {ordinal} Cour 3rd");
+        let got: Vec<(Kind, Vec<u32>)> = trailing_markers(&spelled).into_iter().map(|m| (m.kind, m.ordinals)).collect();
+        proptest::prop_assert_eq!(got, vec![(Kind::Season, vec![3]), (Kind::Part, vec![k])]);
+        // the entry known by such a title has its own words, retagged, for
+        // its own listing, never for the season before it
+        let titles = [numbered.as_str()];
+        let tagged = format!("Show {ordinal} (2011) Stage {n}");
+        proptest::prop_assert!(!entry(&titles).another_entry(&tagged), "{}", tagged);
+    }
+}
+
+/// A "Half" is no marker word: "Show Second Half" ends on no marker,
+/// and its stem is the whole title.
+#[test]
+fn a_half_ends_no_marker_run() {
+    use super::super::play_native_title_grammar::trailing_markers;
+    assert!(trailing_markers("Show Second Half").is_empty());
+    assert_eq!(stem("Show Second Half"), vec!["show", "second", "half"]);
+}
