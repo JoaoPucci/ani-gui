@@ -98,10 +98,10 @@ async fn counting_kitsu() -> (String, Arc<Mutex<Vec<SocketAddr>>>) {
 /// only task left on the runtime: every task a route spawned has ended,
 /// and whatever it connected is in the stand-in's queue. Work a route
 /// handed to the blocking pool is not a task and is not waited for; no
-/// route asks Kitsu from there. Then the count
-/// connects once itself and waits to see that connection accepted, which
-/// the queue does after every connection made before it. What the
-/// stand-in saw ahead of it is what the routes made.
+/// route asks Kitsu from there. Then the count connects once itself and
+/// waits to see that connection accepted, which the queue does after
+/// every connection made before it. What the stand-in saw ahead of it
+/// is what the routes made.
 async fn connections(kitsu: &str, peers: &Mutex<Vec<SocketAddr>>) -> usize {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     while tokio::runtime::Handle::current()

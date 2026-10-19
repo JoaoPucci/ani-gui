@@ -25,10 +25,10 @@
 //! waiter at a lock handed out as an `Arc`, and [`until`] polls a state
 //! the subject reaches that the test can read but not await.
 //!
-//! Their deadlines are on tokio's clock, and on a paused clock that
-//! clock jumps ahead whenever the runtime is idle — while a subject
-//! works on a thread of its own, say — so they are for tests on the
-//! real clock.
+//! The async waits' deadlines (`until`, `shared`, `Queue::joined`) are
+//! on tokio's clock, and on a paused clock that clock jumps ahead
+//! whenever the runtime is idle — while a subject works on a thread of
+//! its own, say — so those are for tests on the real clock.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};

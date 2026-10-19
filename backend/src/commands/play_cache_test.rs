@@ -149,6 +149,12 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     // is longer than an idle one's.
     let moment =
         (took.as_secs_f64() / crate::proxy::host_budget::SEGMENT_REFILL.as_secs_f64()).max(0.01);
+    // Past half a token, two taken could no longer be told from one or
+    // three, and the case would say nothing.
+    assert!(
+        moment < 0.5,
+        "the check took too long to tell two tokens from one or three: {took:?}"
+    );
     let left = state.host_budget.on_hand(&host).expect("spent");
     assert!(
         left > burst - 2.0 - 0.01 && left < burst - 2.0 + moment,
