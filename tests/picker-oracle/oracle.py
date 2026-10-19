@@ -100,14 +100,24 @@ def _alnum(c):
 JP = _class_body(_intersect(_ALNUM_RANGES, _JP_BLOCKS))
 
 #: Rust's whitespace is Python's but for U+001C to U+001F, which Python
-#: splits and strips as space and Rust reads as marks. A title is read
-#: with those four as private-use marks, so every split, strip and `\s`
-#: below reads whitespace as the picker does.
+#: splits and strips as space and Rust's `trim` keeps. Where that decides
+#: something — whether a bracket's words are the version tag, trimmed —
+#: the title is read with those four as private-use marks and given back
+#: after. Everywhere else they stay Python's spaces, which is how the
+#: picker's word readers take them too (any character that is no letter
+#: or digit splits a word); a comparison of two titles as written, which
+#: Rust splits on whitespace alone, is the one place the model still
+#: reads them otherwise, and no generated pool writes one there.
 _RUST_MARKS = {c: 0xE000 + c - 0x1C for c in range(0x1C, 0x20)}
+_PY_SPACES = {v: k for k, v in _RUST_MARKS.items()}
 
 
 def _as_rust(t):
     return t.translate(_RUST_MARKS)
+
+
+def _from_rust(t):
+    return t.translate(_PY_SPACES)
 
 #: The digits a title's numbers are written in: ASCII and full-width, as
 #: the picker reads them. Other scripts' digits are letters to it.
@@ -175,11 +185,11 @@ def version_of(t):
     compared as written, and the version the tag names."""
     t = _as_rust(t)
     kind = "uncensored" if VTAG.search(t) else "standard"
-    return written(VTAG.sub(" ", t)), kind
+    return written(_from_rust(VTAG.sub(" ", t))), kind
 
 
 def _past_vtag(cand):
-    return " ".join(VTAG.sub(" ", _as_rust(cand)).split())
+    return " ".join(_from_rust(VTAG.sub(" ", _as_rust(cand))).split())
 
 
 def admitted_as_read(titles, cand):
@@ -219,7 +229,7 @@ def _ascii(s):
 def written(t):
     """Two titles compared as written: the text without tags, with the set
     of tags it carries, wherever they stand."""
-    low = _as_rust(t).lower()
+    low = t.lower()
     tags = sorted(_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low))
     return " ".join(CTAG.sub(" ", low).split() + tags)
 
@@ -227,7 +237,7 @@ def written(t):
 def norm(t):
     """Every reader reads a title lowercased and without its catalogue
     tags, full-width digits read as ASCII."""
-    t = CTAG.sub(" ", _as_rust(t).lower())
+    t = CTAG.sub(" ", t.lower())
     t = " ".join(t.split())
     return "".join(chr(ord(c) - 0xFF10 + 0x30) if "０" <= c <= "９" else c for c in t)
 
@@ -379,7 +389,7 @@ def strip_trailing(n):
         n = _BRACKETED_MARKER.sub(r" \1", n)
         for r in TRAIL:
             m = r.search(n)
-            if m and n[: m.start()].strip():
+            if m:
                 span = []
                 for g in m.group(1).split("+"):
                     k = ROMAN.get(g, None)
@@ -567,13 +577,13 @@ def _past_name(cand, t):
     nm = _name(t).split()
     c = _clean(cand).split()
     if not nm or c[: len(nm)] != nm:
-        # an empty name (a title that is nothing but a division) is read
-        # past as the picker reads past an empty stem
+        # an empty name (a title that is nothing but a division) is no
+        # name: nothing is read past it
         cc, nn = _clean(cand), _name(t)
-        if not cc.startswith(nn):
+        if not nn or not cc.startswith(nn):
             return None
         nxt = cc[len(nn) : len(nn) + 1]
-        glued = nxt == "第" or (nxt in "0123456789" and nxt != "" and not (nn and _digits(nn[-1])))
+        glued = nxt == "第" or (nxt in "0123456789" and nxt != "" and not _digits(nn[-1]))
         return cc[len(nn) :] if glued else None
     return " ".join(c[len(nm) :])
 
@@ -616,8 +626,7 @@ def season_before_entry(titles, cand):
     if any(written(t) == written(cand) for t in titles):
         return False
     for t in titles:
-        # a title is read past its own name whole when the name is empty
-        rest_t = _past_name(t, t) if _name(t) else _clean(t)
+        rest_t = _past_name(t, t)
         rest_c = _past_name(cand, t)
         if rest_t is None or rest_c is None:
             continue
@@ -851,7 +860,7 @@ class Reading:
                 if ords[0] != 1:
                     self.ords.append(ords[0] if len(ords) == 1 else tuple(ords))
             i += width
-        low = _as_rust(title).lower()
+        low = title.lower()
         tags = [_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low)]
         years = [t for t in tags if _digits(t)]
         self.year = years[0] if years else None
@@ -921,7 +930,7 @@ def parts_of(t):
     while True:
         for r in PARTS:
             m = r.search(n)
-            if m and n[: m.start()].strip():
+            if m:
                 k = _jp_ordinal(m.group(1))
                 if k is not None:
                     out.add(k)
@@ -930,7 +939,7 @@ def parts_of(t):
         else:
             for r in TRAIL:
                 m = r.search(n)
-                if m and n[: m.start()].strip():
+                if m:
                     n = n[: m.start()].rstrip(" :-")
                     break
             else:
@@ -1093,6 +1102,9 @@ def _opens_past_stem(title, stem):
     """`title` starts with `stem` at a word's end, or with a digit or 第
     glued to it (no digit when the stem itself ends in one)."""
     n = norm(title)
+    if not stem:
+        # an empty stem is no stem: nothing is read past it
+        return False
     if not n.startswith(stem) or len(n) == len(stem):
         return n == stem
     nxt = n[len(stem)]
@@ -1625,6 +1637,14 @@ def gen():
             if want is NOT_MODELLED:
                 continue
             add(c["titles"], c["count"], c["entry_year"], rows, want, f"versions/{fam}/{how}", names=names)
+    # a broad listing whose stem is empty is cut by nothing: nothing is read
+    # past an empty stem
+    for wide, sib in [("Season 2", "3rd Season"), ("Season 2", "3"), ("Season 3", "Season 3 Part 2")]:
+        rows = [("w", wide, 22), ("s", sib, 10)]
+        case = dict(titles=[wide], count=E, entry_year=LISTING_YEAR, rows=[list(r) for r in rows])
+        want = predict(case)
+        if want is not NOT_MODELLED:
+            add([wide], E, LISTING_YEAR, rows, want, "empty-stem")
     # a version tag is its letters in ASCII or full-width and in either
     # case, and nothing else: "ſ" is no "s" to the picker, so "(Uncenſored)"
     # is bracketed words, as "(Uncensor)" is
@@ -1680,6 +1700,16 @@ def gen():
         ("ショー２", "ショー２０第1期"),
         # a title that is nothing but a division has an empty name
         ("Season 2", "1st Season"),
+        ("Season 2", "Season 1"),
+        ("Season 3", "2nd Season"),
+        ("Season 2", "First Half"),
+        ("Season 2", "Second Half"),
+        # U+001C to U+001F end a title as any mark does
+        ("Show", "Show 2\x1e"),
+        ("Show 3", "Show 2\x1e"),
+        ("Show", "Season 2\x1f"),
+        ("Season 2", "Season 2 Part 2"),
+        ("Season 2", "Other Show"),
         ("Show", "Show ٢"),
         ("Show", "Show Season ٢"),
         ("Show", "Show ۲ Part ٢"),
