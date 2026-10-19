@@ -404,6 +404,7 @@ async fn an_oad_an_earlier_version_recorded_as_episode_13_reads_back_as_12_1() {
         title: "Noragami".into(),
         watched_at: None,
         kitsu_id: Some(KITSU.into()),
+        own_number: false,
     };
     crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
     let read = |state: &crate::app::AppState| {
@@ -433,6 +434,7 @@ async fn a_row_older_than_the_recorded_id_reads_back_as_12_1_through_its_mapping
         title: "Noragami".into(),
         watched_at: None,
         kitsu_id: None,
+        own_number: false,
     };
     crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
     crate::commands::kitsu::allmanga_kitsu_put(&state, &row.id, KITSU).expect("mapping");
@@ -479,6 +481,7 @@ async fn a_recount_that_takes_the_rows_in_forgets_the_reading() {
         title: "Noragami".into(),
         watched_at: None,
         kitsu_id: Some(KITSU.into()),
+        own_number: false,
     };
     crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
     assert_eq!(

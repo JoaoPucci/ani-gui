@@ -40,10 +40,6 @@ use crate::commands::session::{
 };
 use crate::scraper::provider::{ProviderId, ShowKey};
 
-#[path = "play_cache_restamp.rs"]
-mod restamp;
-pub(crate) use restamp::cached_display;
-
 /// The provider a cached row was resolved through: the one its show
 /// key names. A bare key — anidb.app's, written before its removal —
 /// names none, and so does the empty key of a row from before the
@@ -254,35 +250,25 @@ pub(crate) async fn try_launch_args_from_cache(
         "play_external: cache hit (stream and tracks live), launching mpv from cached URL",
     );
     stamp_availability_on_cache_hit(state, args, &cached, &at_start).await;
-    let watch = cached_watch(state, &cached, &args.episode);
+    let watch = cached_watch(&cached, &args.episode);
     Some((cached_launch_args(cached, args, cfg), watch))
 }
 
 /// The watch a cached resolution describes, for the command to
-/// record once the player has started. The history file speaks the
-/// provider's numbering: the row's own slot when it carries one —
-/// the display number translated through the single display stamp
-/// can point at a recap once a later resolve has moved the stamp —
-/// and the stamp-aware translation only for a row from before the
-/// field, as the embedded player's cache-hit path does.
+/// record once the player has started: the episode played, as the app
+/// numbers it — the row records it marked as such, so neither the
+/// cached slot nor the sidecar's stamps decide what it reads back as.
 pub(crate) fn cached_watch(
-    state: &AppState,
     cached: &play_resolution_cache::CachedResolution,
     episode: &str,
 ) -> super::play_native_record::Watch {
-    let ep_no = cached.resolved_slot.map_or_else(
-        || {
-            // Offset and stamp from one read of the store.
-            super::numbering_offset::Numbering::read(&state.history_path)
-                .write_ep_no(&cached.show_id, episode)
-        },
-        |slot| slot.to_string(),
-    );
     super::play_native_record::Watch {
         show_id: cached.show_id.clone(),
         title: cached.show_title.clone(),
-        ep_no,
-        display: cached_display(state, cached),
+        ep_no: cached
+            .played
+            .clone()
+            .unwrap_or_else(|| episode.trim().to_string()),
     }
 }
 
