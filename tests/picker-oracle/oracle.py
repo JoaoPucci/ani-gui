@@ -910,7 +910,7 @@ def _ordinal_of(w):
     """A word read as an ordinal where one may stand alone: a suffixed
     number, a spelled ordinal, a Roman numeral, a bare number of one or
     two digits (a zero included), a Japanese division."""
-    m = re.fullmatch(r"([0-9０-９]+)(?:st|nd|rd|th)", w)
+    m = re.fullmatch(r"([0-9０-９]{1,3})(?:st|nd|rd|th)", w)
     if m:
         return [int(m.group(1))]
     if w in WORD_ORD:
@@ -949,7 +949,7 @@ def _division_items(tokens):
                 items.append(([int(k) for k in nxt.split("+")], 2, kind, False))
                 i += 2
                 continue
-            if _digits(nxt):
+            if _digits(nxt) and len(nxt) <= 3:
                 items.append(([int(nxt)], 2, kind, False))
                 i += 2
                 continue
@@ -959,11 +959,11 @@ def _division_items(tokens):
                 continue
             # the ordinal after a marker word, spelled, suffixed or Roman
             # ("Season Second", "Season 2nd", "Season II")
-            if re.fullmatch(r"[0-9０-９]+(?:st|nd|rd|th)", nxt) or nxt in WORD_ORD or nxt in ROMAN:
+            if re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", nxt) or nxt in WORD_ORD or nxt in ROMAN:
                 items.append((_ordinal_of(nxt), 2, kind, False))
                 i += 2
                 continue
-        if (re.fullmatch(r"[0-9０-９]+(?:st|nd|rd|th)", w) or w in WORD_ORD) and nxt is not None and (
+        if (re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", w) or w in WORD_ORD) and nxt is not None and (
             _is_marker(nxt) or nxt == "half"
         ):
             if nxt == "half":
@@ -975,8 +975,7 @@ def _division_items(tokens):
         if w in WORD_ORD:
             # a word ordinal standing alone ends the name only where
             # nothing but divisions follows it
-            rest = tokens[i + 1 :]
-            if all(_ordinal_of(r) is not None or _is_marker(r) or r == "half" for r in rest):
+            if all(o is not None for o, _, _, _ in _division_items(tokens[i + 1 :])):
                 items.append(([WORD_ORD[w]], 1, "season", True))
             else:
                 items.append((None, 1, None, False))
@@ -1247,9 +1246,19 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
         return best, [best]
     best = min(abs(r[2] - count) for r in fits)
     tied = [r for r in fits if abs(r[2] - count) == best]
+    # beside a broad listing W of the entry's year, an O — here, one of
+    # the entry's own titles, read past its tag, listing exactly E —
+    # scores every other exact fit one behind it, whatever W is
+    broad = entry_year == LISTING_YEAR and any(r[2] > count and admitted_as_read(titles, r[1]) for r in rows)
+    own = {written(t) for t in titles}
+
+    def is_o(r):
+        return broad and r[2] == count and written(_past_vtag(r[1])) in own
+
     return sorted(
         tied,
         key=lambda r: (
+            0 if is_o(r) else 1,
             0 if written(r[1]) == written(searched) else 1,
             0 if part_agrees(titles, r[1]) else 1,
         ),
@@ -1296,8 +1305,11 @@ def _cut_kin(r, w, count):
     past = past_stem(a, b)
     if past is None:
         return False
-    items = _opening_items(past[0])
-    first = bool(items) and all(all(o == 1 for o in ords) for ords, _, _, _ in items)
+    own = [(list(o), k) for o, k in past[1]]
+    items = [i for i in _opening_items(past[0]) if (list(i[0]), i[2]) not in own]
+    # first divisions alone: each division's first ordinal is 1, a span
+    # through the first ("Part 1+2") reading as the whole
+    first = bool(items) and all(ords[0] == 1 for ords, _, _, _ in items)
     return first or names_earlier_season(a, b)
 
 
