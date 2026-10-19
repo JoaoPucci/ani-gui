@@ -1704,6 +1704,11 @@ def gen():
         ("Season 3", "2nd Season"),
         ("Season 2", "First Half"),
         ("Season 2", "Second Half"),
+        # an entry title opening on a mark before an empty name
+        ("・第2期", "・第1期"),
+        ("- Season 2", "- Season 1"),
+        (": Season 2", ": Season 1"),
+        ("- Season 2", "- 1st Season"),
         # U+001C to U+001F end a title as any mark does
         ("Show", "Show 2\x1e"),
         ("Show 3", "Show 2\x1e"),

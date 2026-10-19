@@ -2499,6 +2499,26 @@ async fn nothing_is_read_past_an_empty_stem() {
     }
 }
 
+/// An empty name is no name for the entry before either, whatever marks
+/// open the title: "・第1期" is not the entry before "・第2期", nor
+/// "- Season 1" before "- Season 2"; each is picked.
+#[tokio::test]
+async fn an_empty_name_names_no_entry_before() {
+    for (entry, listing) in [
+        ("・第2期", "・第1期"),
+        ("- Season 2", "- Season 1"),
+        (": Season 2", ": Season 1"),
+    ] {
+        for count in [Some(12), None] {
+            let site = pool_of(&[entry], count, 2020, entry, &[("x", listing, 12)]);
+            match walk_over(site).await {
+                Ok(p) => assert_eq!(p.hit.slug, "x", "{entry}, {count:?}"),
+                Err(e) => panic!("{entry}, {listing}, {count:?}: refused: {e:?}"),
+            }
+        }
+    }
+}
+
 /// A separator between the name and its first divisions is no mark of
 /// its own, and the name is compared word by word: each of these is
 /// the entry before the entry, never picked.
