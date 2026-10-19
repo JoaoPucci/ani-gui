@@ -359,7 +359,8 @@ def named(titles):
     Japanese counter."""
     out = set()
     for t in titles:
-        n = _word_ordinals(t)
+        # read in its words read apart: "VII第三部" is VII and 第三部
+        n = _word_ordinals(" ".join(_tokenize(norm(t))))
         for m in _MARKER_NUMBER_RX.finditer(n):
             out.add(int(m.group(1)))
         for m in _SUFFIXED_MARKER_RX.finditer(n):
