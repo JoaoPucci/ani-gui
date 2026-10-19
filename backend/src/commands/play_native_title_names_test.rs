@@ -178,3 +178,19 @@ proptest! {
         prop_assert!(EntryTitles::new(&titles).another_entry(&candidate), "{}", candidate);
     }
 }
+
+/// A word ordinal past a division with a word after it is a word of
+/// what follows the name, as it would be of the name itself: "Show 2:
+/// Second Arc" carries "Second Arc" past its name, and is not named by
+/// a title carrying "Arc" alone.
+#[test]
+fn a_word_ordinal_past_a_division_is_a_word_of_the_rest() {
+    assert_eq!(undivided_rest("Show 2: Second Arc"), vec!["second", "arc"]);
+    assert_eq!(
+        undivided_rest("Show 2nd Season: Seventh Son"),
+        vec!["seventh", "son"]
+    );
+    let titles = ["Show 2: Second Arc"];
+    assert!(!EntryTitles::new(&titles).names("Show 2 Arc"));
+    assert!(EntryTitles::new(&titles).names("Show 2 - Second Arc"));
+}
