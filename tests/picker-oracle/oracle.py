@@ -211,7 +211,15 @@ def pickable_as_read(titles, cand):
     """A probed candidate the selectors choose among: `pickable`, read past
     a bracketed version tag — so "Show 1 [Uncensored]" is the entry before
     "Show 2" as "Show 1" is."""
-    return pickable(titles, _past_vtag(cand))
+    read = _past_vtag(cand)
+    # the sequel guard drops a hit before it is probed, on its title as
+    # written: the tag hides a later part from it as from the probe head
+    return (
+        admitted(titles, read)
+        and not before_entry(titles, read)
+        and not season_before_entry(titles, read)
+        and not later_part_of(titles, cand)
+    )
 
 
 def versions_of(winner, tied):
@@ -317,7 +325,7 @@ _NOT_WORDS_LEAD_RX = re.compile("^" + SEP + "+")
 _SMALL_NUMBER_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?!" + ALNUM + r")")
 _SMALL_SUFFIXED_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?:st|nd|rd|th)(?!" + ALNUM + r")")
 _WORDS_RX = re.compile(WORD + "+")
-_BARE_NUMBER_RX = re.compile(r"(?:^|" + NOT_WORD + r")([0-9０-９]{1,2})$")
+_BARE_NUMBER_RX = re.compile(r"(?:^|" + "[^" + _class_body(_ALNUM_RANGES) + "+]" + r")([0-9０-９]{1,2})$")
 _NOT_WORD_RX = re.compile(NOT_WORD)
 _NOT_WORDS_RX = re.compile(NOT_WORD + "+")
 _NAME_END_RX = re.compile(
@@ -402,35 +410,43 @@ _KIND = {"season": "season", "part": "part", "cour": "part", "stage": "part", "�
 _BRACKETED_MARKER = re.compile(r"\s*[\(\[]\s*(" + MARKER + r"\s+[0-9０-９]+(?:\+[0-9０-９]+)*)\s*[\)\]]$")
 
 
+def _tail_split(tokens):
+    """Where the markers a title ends on start, among its words, and those
+    markers, innermost first, each as its kind and the ordinals it names.
+    The words are read once, first to last, as the reader reads them — a
+    spelled or suffixed ordinal pairs with the marker after it, so "Third
+    Stage 2" is a third stage and a bare 2 — and the markers are what that
+    one reading ends on: a marker pair, a Japanese division, an ordinal
+    spelled as one standing alone. A bare number ends no marker run (it
+    stays in the stem), nor does a "Half", which is no marker word."""
+    items = _division_items(tokens)
+    starts, at = [], 0
+    for _, width, _, _ in items:
+        starts.append(at)
+        at += width
+    out = []
+    end = len(items)
+    while end > 0:
+        ords, width, kind, alone = items[end - 1]
+        token = tokens[starts[end - 1]]
+        last = tokens[starts[end - 1] + width - 1]
+        if ords is None or last == "half" or (alone and re.fullmatch(r"[0-9]+", token)):
+            break
+        out.append((kind, tuple(ords)))
+        end -= 1
+    return (starts[end] if end < len(items) else len(tokens)), out
+
+
 def strip_trailing_kinds(n):
     """The markers a title ends on, innermost first, each as its kind and
-    the ordinals it names, and what is left. A span ("Part 1+2") is every
-    part in it; brackets around a marker ("(Part 1+2)") are not the
-    marker's, and marks after a title's last word are no word of it
-    ("Show 2!" ends on its 2)."""
-    out = []
-    while True:
-        n = _BRACKETED_MARKER.sub(r" \1", n)
-        n = _TAIL_MARKS_RX.sub("", n)
-        for r, kind in TRAIL:
-            m = r.search(n)
-            if m:
-                groups = [g for g in m.groups() if g is not None]
-                number = groups[1] if r is TRAIL[0][0] else groups[0]
-                word = kind or _KIND[groups[0] if r is TRAIL[0][0] else groups[1]]
-                span = []
-                for g in number.split("+"):
-                    k = ROMAN.get(g, WORD_ORD.get(g))
-                    if k is None:
-                        k = _jp_ordinal(g)
-                    span.append(k)
-                if None in span:
-                    continue
-                out.append((word, tuple(span)))
-                n = n[: m.start()]
-                break
-        else:
-            return n, out
+    the ordinals it names, and what is left — the title's words before
+    them, joined by spaces ("Show Season 3 Part 2" → "show", [part 2,
+    season 3]). A span ("Part 1+2") is every part in it; brackets around a
+    marker ("(Part 1+2)") are not the marker's, and marks after a title's
+    last word are no word of it ("Show 2!" ends on its 2)."""
+    tokens = _tokenize(norm(n))
+    cut, out = _tail_split(tokens)
+    return " ".join(tokens[:cut]), out
 
 
 def strip_trailing(n):
@@ -564,8 +580,10 @@ def _name_and_first_divisions(cand, t):
     ce, te = _tokens_end(c, nm), _tokens_end(tt, nm)
     if ce is None or te is None or _marks(c, ce) != _marks(tt, te):
         return False
-    toks = _clean(c[ce:]).split()
-    return all(w in FIRSTS or re.fullmatch(r"1(st|nd|rd|th)|第[1１一][期部]", w) for w in toks)
+    # first divisions alone, as the reader reads them ("Season One",
+    # "1st Season", "First Half", 第1期), or nothing at all
+    items = _division_items(_tokenize(norm(c[ce:])))
+    return all(o is not None and all(x == 1 for x in o) for o, _, _, _ in items)
 
 
 def before_entry(titles, cand):
@@ -1036,19 +1054,8 @@ def _stem_tokens(tokens):
     """The title with every marker and Japanese division it ends on
     removed — an ordinal spelled as one standing alone ("Show Seventh",
     "Show 20th") is one — while a bare or glued number it ends on
-    stays."""
-    items = _divisions(tokens)
-    end = len(items)
-    while end > 0:
-        ords, width = items[end - 1]
-        token = tokens[sum(w for _, w in items[: end - 1])]
-        # every marker it ends on: a pair, a Japanese division, an ordinal
-        # spelled as one standing alone — never a bare number
-        if ords is not None and not re.fullmatch(r"[0-9]+", token):
-            end -= 1
-            continue
-        break
-    return tokens[: sum(w for _, w in items[:end])]
+    stays (`_tail_split`)."""
+    return tokens[: _tail_split(tokens)[0]]
 
 
 def names(titles, cand):
@@ -1270,16 +1277,28 @@ def predict(case):
             short = re.sub(r"\s*(?<![0-9０-９])[0-9０-９]{1,2}$", "", stem)
             stems = {stem, short} if short.strip() else {stem}
             kin = [r for r in rows if r is not w and any(_opens_past_stem(r[1], s) for s in stems)]
+            # the spanning cut reads a probed candidate past its version
+            # tag, so a tagged sibling is kin as its plain copy is
+            kin += [r for r in rows if r is not w and past_stem(_past_vtag(r[1]), _past_vtag(w[1])) is not None]
             # a broad listing a sibling could complete: the spanning cut
-            if w[2] > count and admitted(titles, w[1]) and kin:
+            if w[2] > count and admitted_as_read(titles, w[1]) and kin:
                 return NOT_MODELLED
             # an admitted bare title beside later parts of it — the title
             # followed by one short part marker — whose counts could
             # together explain the entry's, within the tolerance or short
             # of it: stitching. A refused lead heads no chain, and a first
             # part completes none.
-            parts = [r for r in rows if r is not w and (part_after(r[1], _word_ordinals(w[1])) or 0) >= 2]
-            if admitted(titles, w[1]) and parts and w[2] + min(r[2] for r in parts) <= count + tol:
+            parts = [
+                r
+                for r in rows
+                if r is not w
+                and max(
+                    part_after(r[1], _word_ordinals(w[1])) or 0,
+                    part_after(_past_vtag(r[1]), _word_ordinals(_past_vtag(w[1]))) or 0,
+                )
+                >= 2
+            ]
+            if admitted_as_read(titles, w[1]) and parts and w[2] + min(r[2] for r in parts) <= count + tol:
                 return NOT_MODELLED
     for searched in titles:
         if count is None:
@@ -1307,7 +1326,8 @@ def clean_miss_expected(case):
         return not late and not any(not admitted(titles, r[1]) for r in rows)
     taken, evidence = head(titles, rows, True)
     tol = max(3, count // 10)
-    if any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence):
+    # evidence is probed too, and read past its version tag once probed
+    if any(abs(r[2] - count) <= tol and not admitted_as_read(titles, r[1]) for r in evidence):
         return False
     if any(abs(r[2] - count) <= tol and not admitted_as_read(titles, r[1]) for r in taken):
         return False
