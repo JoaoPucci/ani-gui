@@ -343,6 +343,11 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # U+001C to U+001F are marks, not spaces, as Rust's trim reads them
         self.assertEqual(oracle.version_of("Show (\x1fUncensored)")[1], "standard")
         self.assertEqual(oracle.version_of("Show ( Uncensored )")[1], "uncensored")
+        # a number glued to a word is a number only after a Japanese letter
+        for entry, cand in [("ＳＨＯＷ３", "ＳＨＯＷ２"), ("Café3", "Café2"), ("Шоу3", "Шоу2"), ("나혼자만레벨업3", "나혼자만레벨업2")]:
+            self.assertEqual(oracle.predict(pool([entry], E, [("x", cand, E)])), pick("x"), entry)
+        for entry, cand in [("ショー３", "ショー２"), ("ｼｮｰ3", "ｼｮｰ2"), ("時々3", "時々2")]:
+            self.assertIsNone(oracle.predict(pool([entry], E, [("x", cand, E)])), entry)
         # an empty name: the title read past it whole
         self.assertIsNone(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])))
 
