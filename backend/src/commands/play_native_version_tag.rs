@@ -29,7 +29,9 @@ pub(crate) fn without_version_tag(title: &str) -> String {
 }
 
 /// `title` split into its text without a bracketed version tag and the
-/// version the tag names ([`version_of`]).
+/// version the tag names ([`version_of`]). A bracket that holds no tag
+/// is read past its opener only, as the catalogue-tag reader reads one,
+/// so a tag inside other bracketed words is still found.
 fn split_version_tag(title: &str) -> (String, VersionKind) {
     let mut rest = title;
     let mut out = String::new();
@@ -37,27 +39,34 @@ fn split_version_tag(title: &str) -> (String, VersionKind) {
     while let Some(open) = rest.find(['(', '[', '（', '［', '【']) {
         let after = &rest[open..];
         let inner_start = after.chars().next().map_or(1, char::len_utf8);
-        let Some(close) = after.find([')', ']', '）', '］', '】']) else {
-            break;
+        let tag_close = after
+            .find([')', ']', '）', '］', '】'])
+            .filter(|&close| is_version_tag(&after[inner_start..close]));
+        let Some(close) = tag_close else {
+            out.push_str(&rest[..open + inner_start]);
+            rest = &rest[open + inner_start..];
+            continue;
         };
-        let inner: String = after[inner_start..close]
-            .trim()
-            .chars()
-            .map(|c| match c {
-                '！'..='～' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
-                _ => c,
-            })
-            .collect();
+        kind = VersionKind::Uncensored;
+        out.push_str(&rest[..open]);
+        out.push(' ');
         let closer = after[close..].chars().next().map_or(1, char::len_utf8);
-        if inner.eq_ignore_ascii_case(UNCENSORED) {
-            kind = VersionKind::Uncensored;
-            out.push_str(&rest[..open]);
-            out.push(' ');
-        } else {
-            out.push_str(&rest[..open + close + closer]);
-        }
         rest = &after[close + closer..];
     }
     out.push_str(rest);
     (out, kind)
+}
+
+/// Whether the words a bracket holds are the version tag: each character
+/// read in its ASCII form on its own, in any case.
+fn is_version_tag(inner: &str) -> bool {
+    let inner: String = inner
+        .trim()
+        .chars()
+        .map(|c| match c {
+            '！'..='～' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+            _ => c,
+        })
+        .collect();
+    inner.eq_ignore_ascii_case(UNCENSORED)
 }
