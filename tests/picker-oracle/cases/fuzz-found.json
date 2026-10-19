@@ -22,5 +22,8 @@
  {"id": "fuzz/sequel-guard-full-width", "titles": ["Show: Arc, 1st Season Two"], "count": 12, "entry_year": 2020, "rows": [["x", "Show: Arc, １st", 12]], "jnames": {}, "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/glued-tag-cour", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Cour［ＯＮＡ］3", 12]], "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/glued-tag-name", "titles": ["Kaiju No. 8"], "count": 12, "entry_year": null, "rows": [["x", "Kaiju（ＴＶ）No. 8", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
- {"id": "fuzz/glued-tag-number", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["x", "Show(TV)2", 12]], "expect": null, "family": "fuzz-found"}
+ {"id": "fuzz/glued-tag-number", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["x", "Show(TV)2", 12]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/half-past-stem", "titles": ["怪獣８号, First Half 0th 【TV】", "怪獣８号"], "count": null, "entry_year": null, "rows": [["x", "怪獣８号 - First Half 0th", 13]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/span-reading", "titles": ["Pokémon・Part 2 III [ＯＶＡ]"], "count": null, "entry_year": null, "rows": [["x", "Pokémon 【ＯＶＡ】 Part ２+3", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
+ {"id": "fuzz/beside-repeated-season", "titles": ["Show ［TV］ Other 第一期1st"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Other 第一期・1st 【2011】", 5], ["w", "Show Other 第一期, 1st", 40]], "expect": null, "family": "fuzz-found"}
 ]

@@ -194,3 +194,16 @@ fn a_word_ordinal_past_a_division_is_a_word_of_the_rest() {
     assert!(!EntryTitles::new(&titles).names("Show 2 Arc"));
     assert!(EntryTitles::new(&titles).names("Show 2 - Second Arc"));
 }
+
+/// The divisions a title opens what follows a stem with are read on
+/// past an ordinal's "Half", which is one division with it: "Show First
+/// Half Season 2" names a season 2 past "Show Season 3"'s stem, the
+/// season before it, and "怪獣８号 - First Half 0th" a season 0 past
+/// "怪獣８号".
+#[test]
+fn past_the_stem_a_half_is_read_with_its_ordinal() {
+    let titles = ["Show Season 3"];
+    assert!(EntryTitles::new(&titles).another_entry("Show First Half Season 2"));
+    let titles = ["怪獣８号"];
+    assert!(EntryTitles::new(&titles).another_entry("怪獣８号 - First Half 0th"));
+}
