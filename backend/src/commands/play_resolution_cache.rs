@@ -197,11 +197,10 @@ pub struct CachedResolution {
     /// Provider title of the chosen candidate. Empty on legacy rows.
     #[serde(default)]
     pub show_title: String,
-    /// The resolved row's provider slot — what the cache-hit history
-    /// writer stores so a replay never depends on the sidecar's
-    /// single display stamp still describing this episode. `None` on
-    /// rows written before the field existed; those fall back to the
-    /// stamp-aware translation.
+    /// The resolved row's provider slot. History no longer reads it —
+    /// every writer records the app's own number for the episode — and
+    /// it stays so rows read and written by earlier versions keep the
+    /// same shape. `None` on rows written before the field existed.
     #[serde(default)]
     pub resolved_slot: Option<u32>,
     /// The app's own number for the episode the resolve matched, which

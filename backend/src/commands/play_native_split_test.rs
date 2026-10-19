@@ -228,9 +228,10 @@ proptest::proptest! {
 fn stitched_slots_stay_unique_when_a_part_carries_a_recap() {
     // A part that lists a recap between two regular episodes: "3.5" in
     // slot 4, episode "4" in slot 5. Every merged row needs a slot of
-    // its own — the slot is what history stores and what the display
-    // stamp maps back to a tag, so two rows sharing one would show a
-    // real episode as the recap on resume.
+    // its own — the slot is what a row from before the own-number
+    // marker holds and what its display stamp maps back to a tag, so
+    // two rows sharing one would show a real episode as the recap on
+    // resume.
     let first = listing(100, 2);
     let second = vec![
         row(201, 1, None),
