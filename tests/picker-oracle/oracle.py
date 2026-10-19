@@ -586,6 +586,29 @@ def _glued_to_latin(cand, t):
     return nxt in "0123456789" and nxt != "" and not _JP_CHAR_RX.match(nn[-1])
 
 
+def _after_stem(rest, t):
+    """`rest`, read past `t`'s name, read past the rest of `t`'s stem too
+    when it carries it ("100" of "Mob Psycho 100 II"): the picker reads a
+    candidate's divisions from where the stem ends, not the name."""
+    tail = _clean(_stem_text(t))[len(_name(t)) :].strip()
+    if tail and (rest == tail or rest.startswith(tail + " ")):
+        return rest[len(tail) :]
+    return rest
+
+
+def _opening(rest):
+    """The divisions `rest` opens with, up to the first word that names
+    none: what a sibling names right after a stem ("arc season 1" names
+    none, "season 1 arc" a season 1)."""
+    tokens = _tokenize(rest)
+    taken = 0
+    for ords, width in _divisions(tokens):
+        if ords is None:
+            break
+        taken += width
+    return " ".join(tokens[:taken])
+
+
 def season_before_entry(titles, cand):
     """A candidate naming a season before the one an entry title carries,
     read past its stem, or whose stem ends on a lower number after the
@@ -613,13 +636,13 @@ def season_before_entry(titles, cand):
             # the bare number the entry's stem ends on is the season it
             # carries for a candidate read past the stem without it
             season = max([int(lead_t.group(1))] + _seasons(rest_t[len(lead_t.group(0)) :]))
-            if any(x < season for x in _seasons(rest_c)):
+            if any(x < season for x in _seasons(_opening(rest_c))):
                 return True
             continue
         same_lead = lead_t and lead_c and lead_c.group(1) == lead_t.group(1)
         ts = _seasons(rest_t[len(lead_t.group(0)) :] if same_lead else rest_t)
         season = max(ts) if ts else 1
-        cs = _seasons(rest_c[len(lead_c.group(0)) :] if lead_c else rest_c)
+        cs = _seasons(_opening(rest_c[len(lead_c.group(0)) :] if lead_c else _after_stem(rest_c, t)))
         if any(x < season for x in cs):
             return True
     return False
@@ -1649,6 +1672,12 @@ def gen():
         ("Show 3", "Show ²2"),
         ("ｼｮｰ3", "ｼｮｰ2"),
         ("時々3", "時々2"),
+        # digits standing before a letter glued to them, in a stem's place
+        ("Show 2", "Show 20é Season 1"),
+        ("Show 2", "Show 1é Season 1"),
+        ("Show 2", "Show 3é"),
+        ("Show 2", "Show 20第1期"),
+        ("ショー２", "ショー２０第1期"),
         # a title that is nothing but a division has an empty name
         ("Season 2", "1st Season"),
         ("Show", "Show ٢"),

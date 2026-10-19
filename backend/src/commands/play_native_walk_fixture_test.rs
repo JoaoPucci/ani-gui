@@ -2449,6 +2449,27 @@ async fn a_number_glued_to_a_word_outside_japanese_is_the_word_s() {
     }
 }
 
+/// Digits glued before a letter outside Japanese are a word, not a
+/// number in the stem's place: "Show 1é Season 1" opens past "Show"
+/// on the word "1é", which names no division, so it names no season
+/// before "Show 2" and is picked, as "Show Arc Season 1" would be read.
+#[tokio::test]
+async fn digits_before_a_letter_outside_japanese_are_no_number_in_the_stem_s_place() {
+    for count in [Some(12), None] {
+        let site = pool_of(
+            &["Show 2"],
+            count,
+            2020,
+            "Show 2",
+            &[("x", "Show 1é Season 1", 12)],
+        );
+        match walk_over(site).await {
+            Ok(p) => assert_eq!(p.hit.slug, "x", "{count:?}"),
+            Err(e) => panic!("{count:?}: refused: {e:?}"),
+        }
+    }
+}
+
 /// A separator between the name and its first divisions is no mark of
 /// its own, and the name is compared word by word: each of these is
 /// the entry before the entry, never picked.
