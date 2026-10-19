@@ -22,7 +22,9 @@ pub(crate) fn undivided_rest(title: &str) -> Vec<String> {
             continue;
         }
         match division_at(&words, i) {
-            Some((_, taken)) => i += taken,
+            Some((_, taken)) => {
+                i += taken + if taken == 1 { half_after(&words, i) } else { 0 };
+            }
             None => {
                 rest.push(words[i].clone());
                 i += 1;

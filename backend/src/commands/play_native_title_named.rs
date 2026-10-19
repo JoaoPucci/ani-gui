@@ -34,6 +34,9 @@ pub(crate) fn named_ordinals(title: &str) -> BTreeSet<u32> {
             .iter()
             .filter_map(|w| small_number(w).or_else(|| spelled_ordinal(w))),
     );
+    // Japanese writes a number glued to the word beside it, with no
+    // space to make it a word of its own ("…生活２", "86第4部").
+    out.extend(words.iter().flat_map(|w| standing_numbers(w)));
     let half = with_kanji_numbers(
         &untagged(title)
             .trim_end()
@@ -41,14 +44,6 @@ pub(crate) fn named_ordinals(title: &str) -> BTreeSet<u32> {
             .map(half_width)
             .collect::<String>(),
     );
-    // Japanese writes a season's number straight after the title, with
-    // no space to make it a word of its own ("怪獣８号", "…生活２").
-    let tail: String = half
-        .chars()
-        .rev()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    out.extend(small_number(&tail.chars().rev().collect::<String>()));
     out.extend(counted_numbers(&half));
     for (_, after) in half
         .match_indices('第')
@@ -56,6 +51,43 @@ pub(crate) fn named_ordinals(title: &str) -> BTreeSet<u32> {
     {
         let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
         out.extend(number(&digits));
+    }
+    out
+}
+
+/// Every number of one or two digits `word` writes standing as a
+/// number — each run of digits with nothing but a Japanese letter, or
+/// the "+" of a span, glued to it on either side ("ショー2", "86第4部",
+/// "4+5"), a suffixed one ("ショー2nd") included — and never one glued
+/// to any other letter, which is that word's own ("Arc2", "Café2").
+pub(crate) fn standing_numbers(word: &str) -> Vec<u32> {
+    let chars: Vec<char> = word.chars().collect();
+    let apart = |c: Option<&char>| c.is_none_or(|&c| c == '+' || is_japanese(c));
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if !chars[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && chars[i].is_ascii_digit() {
+            i += 1;
+        }
+        let digits: String = chars[start..i].iter().collect();
+        let suffixed = ["st", "nd", "rd", "th"].iter().find_map(|s| {
+            let s: Vec<char> = s.chars().collect();
+            (chars.get(i..i + 2) == Some(&s[..])).then_some(i + 2)
+        });
+        let end = if apart(chars.get(i)) {
+            Some(i)
+        } else {
+            suffixed
+        };
+        let left = start == 0 || apart(chars.get(start - 1));
+        if left && end.is_some_and(|e| apart(chars.get(e))) {
+            out.extend(small_number(&digits));
+        }
     }
     out
 }
