@@ -23,6 +23,10 @@ pub(crate) use title_japanese::*;
 mod title_named;
 pub(crate) use title_named::*;
 
+#[path = "play_native_title_standing.rs"]
+mod title_standing;
+pub(crate) use title_standing::*;
+
 /// Which kind of division a marker word names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {

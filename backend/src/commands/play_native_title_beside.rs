@@ -35,15 +35,6 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
     let mut after_season = false;
     let mut i = 0;
     while i < words.len() {
-        if let Some(n) = number_after_wide_season(&words[i], &wide_season) {
-            named.push(Marker {
-                kind: Kind::Part,
-                ordinals: vec![n],
-            });
-            after_season = false;
-            i += 1;
-            continue;
-        }
         let (found, taken) = match glued_divisions(&words[i]) {
             Some((glued, _)) => (glued, 0),
             None => match division_at(words, i).filter(|_| !inside_the_name(words, i)) {
@@ -68,13 +59,4 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
         }
     }
     named
-}
-
-/// The number glued right after one of `wide`'s own seasons written
-/// in Japanese, in one word, with no other division between: the ２ of "第3期２" beside "ショー第3期".
-fn number_after_wide_season(word: &str, wide_season: &impl Fn(&Marker) -> bool) -> Option<u32> {
-    let head = word.trim_end_matches(|c: char| c.is_ascii_digit());
-    let n = small_number(&word[head.len()..])?;
-    let (glued, _) = glued_divisions(head)?;
-    glued.last().is_some_and(wide_season).then_some(n)
 }
