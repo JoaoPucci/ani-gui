@@ -407,3 +407,43 @@ proptest::proptest! {
         proptest::prop_assert_eq!(version_of(&other).1, VersionKind::Standard, "{}", other);
     }
 }
+
+// ── a tag inside other bracketed words ──────────────────────────────
+
+/// Bracketed words left open before a tag, as a provider might write a
+/// subtitle it never closes.
+const UNCLOSED: [&str; 4] = ["(Shin", "[Extra", "（Ｘ", "【Kai"];
+
+proptest::proptest! {
+    /// A bracket that holds no tag is read past its opener only, as the
+    /// catalogue-tag reader reads it, so a tag inside other bracketed
+    /// words is still the tag: "Show (Shin (Uncensored)" is "Show (Shin"
+    /// under the tag.
+    #[test]
+    fn a_version_tag_inside_other_bracketed_words_is_the_tag(
+        pre in 0..UNCLOSED.len(),
+        open in 0..OPENS.len(),
+        close in 0..CLOSES.len(),
+        t in 0..PLAIN.len(),
+    ) {
+        use super::{version_of, without_version_tag};
+        use crate::commands::play_native_title_grammar::normalized;
+        use crate::commands::play_native_versions::VersionKind;
+        let plain = format!("{} {}", PLAIN[t], UNCLOSED[pre]);
+        let tagged = format!("{plain} {}Uncensored{}", OPENS[open], CLOSES[close]);
+        proptest::prop_assert_eq!(version_of(&tagged), (normalized(&plain), VersionKind::Uncensored), "{}", tagged);
+        proptest::prop_assert_eq!(without_version_tag(&tagged), plain, "{}", tagged);
+    }
+}
+
+#[test]
+fn a_version_tag_inside_a_closed_bracket_is_the_tag_as_a_catalogue_tag_is() {
+    use super::version_of;
+    use crate::commands::play_native_title_grammar::untagged;
+    use crate::commands::play_native_versions::VersionKind;
+    // the two readers move past "[Extra " alike and find the tag inside
+    assert_eq!(untagged("Show [Extra (TV)]"), "show [extra ]");
+    let (title, kind) = version_of("Show [Extra (Uncensored)]");
+    assert_eq!(kind, VersionKind::Uncensored);
+    assert_eq!(title, "show [extra ]");
+}

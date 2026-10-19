@@ -280,6 +280,18 @@ class TheModelReadsTheDocs(unittest.TestCase):
         )
         self.assertIsNone(oracle.predict(pool(["Show"], E, [("x", "Show Season 2 [ｕncensored]", E)])))
 
+    def test_a_tag_inside_other_bracketed_words_is_the_tag(self):
+        # a bracket holding no tag is read past its opener, so the tag
+        # inside it is found, by both readers alike
+        self.assertEqual(oracle.version_of("Show (Shin (Uncensored)"), ("show (shin", "uncensored"))
+        self.assertEqual(oracle.written("Show [Extra (TV)]"), "show [extra ] tv")
+        rows = [("p", "Show (Shin", E), ("u", "Show (Shin (Uncensored)", E)]
+        self.assertEqual(
+            oracle.predict(pool(["Show (Shin"], E, rows)),
+            {"pick": "u", "count": E, "versions": [["p", "standard"], ["u", "uncensored"]]},
+        )
+        self.assertTrue(any(c["family"] == "nested-tag" for c in oracle.gen()))
+
     def test_the_generated_set_spells_tags_in_mixed_widths(self):
         def mixed(text):
             return any(

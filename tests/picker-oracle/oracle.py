@@ -1460,6 +1460,14 @@ def gen():
             if want is NOT_MODELLED:
                 continue
             add(c["titles"], c["count"], c["entry_year"], rows, want, f"versions/{fam}/{how}", names=names)
+    # a version tag inside other bracketed words is the tag: a bracket that
+    # holds no tag is read past its opener (Versions of one pick)
+    for plain in ("Show (Shin", "Show [Extra", "Show （Ｘ"):
+        for tag in ("(Uncensored)", "［ＵＮＣＥＮsored］"):
+            copy = ("u", f"{plain} {tag}", E)
+            for rows in ([("p", plain, E), copy], [copy, ("p", plain, E)]):
+                case = dict(titles=[plain], count=E, entry_year=LISTING_YEAR, rows=[list(r) for r in rows])
+                add([plain], E, LISTING_YEAR, rows, predict(case), "nested-tag")
     # every reader reads a title without its catalogue tags — every family again, tagged
     tags = ["(TV)", "(2024)", "[OVA]", "（ＯＮＡ）", "【OAD】", "（２０２０）", "(ｔv)", "（２0２0）", "[Ｏva]", "［ＯＶＡ］", "［2020］"]
     tagged = []
