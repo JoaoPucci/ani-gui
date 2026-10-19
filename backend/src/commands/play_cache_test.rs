@@ -488,6 +488,8 @@ fn a_cached_watch_records_the_episode_the_resolve_matched() {
         kitsu_id: None,
         played: played.map(str::to_owned),
         former_episode: None,
+        versions: Vec::new(),
+        version: None,
     };
     assert_eq!(
         super::cached_watch(&row(Some("12.5")), "24.5").ep_no,

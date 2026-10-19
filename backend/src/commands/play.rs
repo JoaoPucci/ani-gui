@@ -1568,6 +1568,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
