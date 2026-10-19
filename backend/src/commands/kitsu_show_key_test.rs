@@ -24,6 +24,7 @@ pub(super) fn listing(mut state: AppState, dir: &std::path::Path, show_id: &str)
             title: "One Piece".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");

@@ -73,8 +73,8 @@ fn chain_from(cands: &[PartCandidate<'_>], lead: usize) -> Vec<usize> {
 /// Whether candidate `lead` may head a chain at all.
 ///
 /// Never when it is numbered cumulatively: played alone, its key holds
-/// that offset and its history rows speak those numbers, and a stitched
-/// play would restamp the key at zero and misread them.
+/// that offset, and its rows from before rows recorded the app's own
+/// number speak those numbers through it.
 ///
 /// Nor, where some single candidate fits (`single_fits`), when the lead
 /// is itself one inside the tolerance: a bare title that fits is the

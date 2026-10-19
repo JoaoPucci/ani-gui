@@ -3,7 +3,7 @@
 //! is now — and putting them right. Split from [`super`] for the
 //! per-file complexity bar.
 
-use super::numbering_offset_store::{merge_row, rewrite, Row};
+use super::numbering_offset_store::{rewrite, Row};
 use super::{display_stamp, AppState};
 
 #[path = "numbering_offset_former_read.rs"]
@@ -103,12 +103,6 @@ pub fn retag_from_listing(
         &crate::commands::play_native_merge::former_tags_of(episodes),
         &shared,
     );
-}
-
-/// Put the (slot, tag) display pair a watch's row reads through, with
-/// the show's offset — what a watch that recorded its slot leaves.
-pub fn put_watched_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
-    merge_row(state, slug, offset, Some((slot, tag.to_string())));
 }
 
 #[cfg(test)]

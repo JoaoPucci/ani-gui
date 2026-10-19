@@ -287,6 +287,7 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -391,6 +392,7 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");

@@ -440,16 +440,12 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
     }
 }
 
-/// The history file speaks the provider's numbering, and a cached
-/// row carries the slot its resolve landed on. A replay records that
-/// slot — the display number translated through the single display
-/// stamp can point at a recap once a later resolve has moved the
-/// stamp — and only a row from before the field falls back to the
-/// translation.
+/// A replay records the episode played — the app's own number — and
+/// not the slot the cached row carries: a slot read back through the
+/// numbering sidecar named another episode once a later resolve moved
+/// its one stamp. A row from before the slot field records the same.
 #[test]
-fn a_cached_watch_prefers_the_rows_own_slot() {
-    let td = tempfile::tempdir().expect("td");
-    let state = state_in(&td);
+fn a_cached_watch_records_the_episode_played() {
     let row = |slot: Option<u32>| CachedResolution {
         upstream_url: "https://cdn.example/x/master.m3u8".into(),
         referer: String::new(),
@@ -464,18 +460,42 @@ fn a_cached_watch_prefers_the_rows_own_slot() {
         played: None,
         former_episode: None,
     };
-    let stamped = super::cached_watch(&state, &row(Some(5)), "4");
+    let stamped = super::cached_watch(&row(Some(5)), "4");
     assert_eq!(
-        stamped.ep_no, "5",
-        "the row's own slot, not the display number"
+        stamped.ep_no, "4",
+        "the episode played, not the cached slot"
     );
     assert_eq!(stamped.show_id, "show-1");
     assert_eq!(stamped.title, "Show");
-    let legacy = super::cached_watch(&state, &row(None), "4");
+    let legacy = super::cached_watch(&row(None), "4");
+    assert_eq!(legacy.ep_no, "4", "a row without a slot records it too");
+}
+
+/// A cached row records the episode its resolve matched, and a replay
+/// records that: a request that found a stitched recap by a tag an
+/// earlier version gave it ("24.5", the row "12.5" now) replays as
+/// "12.5". A row from before the field records the request.
+#[test]
+fn a_cached_watch_records_the_episode_the_resolve_matched() {
+    let row = |played: Option<&str>| CachedResolution {
+        upstream_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: String::new(),
+        media_kind: MediaKind::Hls,
+        show_id: "show-1".into(),
+        show_title: "Show".into(),
+        resolved_slot: Some(13),
+        subtitles: Vec::new(),
+        kitsu_id: None,
+        played: played.map(str::to_owned),
+        former_episode: None,
+        versions: Vec::new(),
+        version: None,
+    };
     assert_eq!(
-        legacy.ep_no, "4",
-        "a row without a slot translates the display number"
+        super::cached_watch(&row(Some("12.5")), "24.5").ep_no,
+        "12.5"
     );
+    assert_eq!(super::cached_watch(&row(None), "24.5").ep_no, "24.5");
 }
 
 /// The handoff's cache hit stands on the same row the embedded
