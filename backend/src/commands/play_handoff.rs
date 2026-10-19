@@ -56,6 +56,7 @@ pub async fn resolve_launch_args(
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        stamps_beside: Some(&state.history_path),
         tail: tail
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -75,39 +76,42 @@ pub async fn resolve_launch_args(
     // The verdict is stamped as the embedded player stamps its own:
     // a served stream names the provider that served it, a clean
     // miss the provider whose miss it is.
-    let native =
-        match crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await {
-            Ok(attempted) => {
+    let native = match crate::commands::providers::run_from(state, remembered, prio, &mut attempt)
+        .await
+    {
+        Ok(attempted) => {
+            // The numbering is put right before the row a probe
+            // would take instead of the listing that repairs it.
+            crate::commands::play_native_record::stamp_numbering(state, &attempted.value, asked);
+            crate::commands::availability::stamp_after_native(
+                state,
+                args.kitsu_id.as_deref(),
+                &args.mode,
+                &at_start,
+                crate::commands::availability::ResolveVerdict::served(
+                    attempted.provider,
+                    attempted.value.episode_cap,
+                    &attempted.value.extra_tags,
+                ),
+            )
+            .await;
+            attempted.value
+        }
+        Err(ne) => {
+            if ne.clean_miss {
                 crate::commands::availability::stamp_after_native(
                     state,
                     args.kitsu_id.as_deref(),
                     &args.mode,
                     &at_start,
-                    crate::commands::availability::ResolveVerdict::served(
-                        attempted.provider,
-                        attempted.value.episode_cap,
-                        &attempted.value.extra_tags,
-                    ),
+                    crate::commands::availability::ResolveVerdict::missed(attempt.answered_by),
                 )
                 .await;
-                attempted.value
             }
-            Err(ne) => {
-                if ne.clean_miss {
-                    crate::commands::availability::stamp_after_native(
-                        state,
-                        args.kitsu_id.as_deref(),
-                        &args.mode,
-                        &at_start,
-                        crate::commands::availability::ResolveVerdict::missed(attempt.answered_by),
-                    )
-                    .await;
-                }
-                return Err(ne.error);
-            }
-        };
-    crate::commands::play_native_record::stamp_numbering(state, &native, asked);
-    let watch = crate::commands::play_native_record::Watch::of(&native);
+            return Err(ne.error);
+        }
+    };
+    let watch = crate::commands::play_native_record::Watch::of(&native, &args.episode);
     Ok((launch_args_for(native, args, &cfg), watch))
 }
 

@@ -76,7 +76,7 @@ pub fn select_variant<'a>(
 
 /// The stream URL a quality setting selects from a master playlist,
 /// mirroring the script's `select_quality`. `best` keeps the adaptive
-/// master URL (hls.js picks levels itself) after one validating
+/// master URL (the player chooses among its levels) after one validating
 /// fetch; any other setting parses its variants and returns the
 /// matching height's URI resolved against the master's URL. Soft only
 /// on a SERVED playlist that misses — an unserved height, an

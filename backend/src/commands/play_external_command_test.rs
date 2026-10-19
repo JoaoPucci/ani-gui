@@ -22,18 +22,15 @@ fn stub_provider(mock: &MockServer, query: &str) -> TableProvider {
 /// A listing whose provider slots and display tags diverge:
 /// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
 /// slot 5. Requesting display episode 4 must resolve slot 5, and the
-/// history row has to carry the slot rather than the tag.
-///
-/// The reader that cares is this app's own resume path: it takes the
-/// stored number back to the provider's listing, where 4 is the
-/// recap. Storing the display tag would resume the wrong episode.
-/// The offset store is what translates between the two when the
-/// strip needs a number to show.
+/// history row records the episode played, 4, as the app's own
+/// number, marked as such: neither the slot nor the sidecar decides
+/// what it reads back as.
 fn stub_provider_with_a_recap(mock: &MockServer, query: &str) -> TableProvider {
     let row = |id: u64, number: u32, tag: Option<&str>| EpisodeRef {
         id,
         number,
         number2: tag.map(str::to_string),
+        former_tag: None,
         title: None,
     };
     TableProvider::new()
@@ -186,12 +183,11 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
 }
 
 #[tokio::test]
-async fn an_external_play_records_the_provider_slot_not_the_display_number() {
-    // The history file speaks the provider's numbering: the script's
-    // reader greps the stored number against the show's own listing.
-    // On a show with a recap, display episode 4 is slot 5 — storing
-    // the display number points the row at the recap instead, and
-    // the rail then offers to resume "3.5".
+async fn an_external_play_records_the_episode_the_user_played() {
+    // On a show with a recap, episode 4 is slot 5. The row records the
+    // app's own number, 4, marked as such: a slot read back through the
+    // numbering sidecar named another episode once a later resolve
+    // moved its one stamp.
     let mock = MockServer::start().await;
     let provider = Arc::new(stub_provider_with_a_recap(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
@@ -211,9 +207,10 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
 
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     let ep_no = hsts.split_whitespace().next().expect("a history row");
-    assert_eq!(
-        ep_no, "5",
-        "the row must carry the resolved provider slot, not the display tag: {hsts}"
+    assert_eq!(ep_no, "4", "the row carries the episode played: {hsts}");
+    assert!(
+        hsts.contains("\tThe Show\tep:own"),
+        "and marks it as the app's own number: {hsts}"
     );
 }
 
@@ -299,6 +296,8 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
+            former_episode: None,
         },
     );
     let before = std::time::SystemTime::now()
@@ -408,6 +407,8 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
+            former_episode: None,
         },
     );
 
@@ -510,6 +511,7 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -587,6 +589,8 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
+            former_episode: None,
         },
     );
     crate::history::upsert_and_write(
@@ -597,6 +601,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -625,4 +630,111 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             .is_empty(),
         "and no row"
     );
+}
+
+/// A stitched show whose two recaps between episodes 12 and 13 sit in
+/// slots 13 ("12.5") and 14 ("12.75"), the second watched last.
+fn two_recaps(state: &crate::app::AppState, upstream: &str, args: &PlayArgs) -> String {
+    let show = walked_key("stitched-show-4");
+    crate::commands::numbering_offset::put_display(state, &show, 0, 14, "12.75");
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{upstream}/cached/master.m3u8"),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: show.clone(),
+            show_title: "Stitched Show".into(),
+            resolved_slot: Some(13),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("12.5".into()),
+            former_episode: None,
+        },
+    );
+    show
+}
+
+#[tokio::test]
+async fn a_cached_external_play_of_one_recap_after_another_reads_back_as_the_one_played() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\ncache_resolutions = true\n",
+            player.display()
+        ),
+    )
+    .expect("write config");
+    let mut args = play_args();
+    args.episode = "12.5".into();
+    let show = two_recaps(&state, &mock.uri(), &args);
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+    wait_for(&argv_file).await;
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == show)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}
+
+#[tokio::test]
+async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched() {
+    // Through the route the player calls.
+    use tower::ServiceExt as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    let mut args = play_args();
+    args.episode = "12.5".into();
+    let show = two_recaps(&state, "http://127.0.0.1:1", &args);
+    let router = crate::api::build_api_router(Arc::new(state.clone()));
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/play/mark-watched")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "title": args.title,
+                        "episode": args.episode,
+                        "mode": args.mode,
+                        "episode_count": args.episode_count,
+                    }))
+                    .expect("json"),
+                ))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(response.status().is_success());
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == show)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
 }

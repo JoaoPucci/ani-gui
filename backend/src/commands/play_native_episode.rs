@@ -76,6 +76,10 @@ pub(super) fn episode_verdict(error: AniError) -> AniError {
     }
 }
 
+#[path = "play_native_episode_stamped.rs"]
+mod stamped;
+pub use stamped::resolve_episode_stamped;
+
 /// Resolve the requested episode within a picked show down to the
 /// master URL. Split from the walk for the per-file complexity bar
 /// and because the orchestrator's cache-hit path may someday reuse
@@ -128,12 +132,22 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         // back ([`provider_fraction`]).
         Err(_) => provider_fraction(episode.trim(), offset),
     };
+    // A row's tag now wins; failing one, a row an earlier version
+    // tagged so (a stitched recap it placed a part later) — a history
+    // row from then may still ask for it.
     let ep = picked
         .episodes
         .iter()
         .find(|e| match e.number2.as_deref() {
             Some(tag) => tag_matches(tag, &target),
             None => tag_matches(&e.number.to_string(), &target),
+        })
+        .or_else(|| {
+            picked.episodes.iter().find(|e| {
+                e.former_tag
+                    .as_deref()
+                    .is_some_and(|t| tag_matches(t, &target))
+            })
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
     // One step, validated by the provider: the master answered and
@@ -160,8 +174,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
 }
 
 /// A resolved episode: the playable URL plus the matched row's slot
-/// and display tag — the slot is what a resume looks the row up by in
-/// the provider listing, the tag what the GUI displays.
+/// (its position in the provider's listing) and display tag.
 #[derive(Debug)]
 pub struct ResolvedEpisode {
     /// The validated master-playlist URL.
@@ -172,7 +185,7 @@ pub struct ResolvedEpisode {
     /// The sidecar subtitle tracks the provider listed beside it.
     pub subtitles: Vec<SubtitleTrack>,
     /// The row's integer `number` — the provider's own position for
-    /// it, which is how a later resume finds this row again.
+    /// it.
     pub slot: u32,
     /// The row's display tag, when it carries one.
     pub tag: Option<String>,

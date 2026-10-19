@@ -612,12 +612,14 @@ fn an_episode_listing_reads_number_and_id_off_each_ep_item() {
                 id: 21418,
                 number: 1,
                 number2: None,
+                former_tag: None,
                 title: Some("Episode 1".into()),
             },
             EpisodeRef {
                 id: 21419,
                 number: 2,
                 number2: None,
+                former_tag: None,
                 title: Some("Episode 2".into()),
             },
         ]
@@ -780,12 +782,14 @@ fn an_episode_row_reads_the_same_whatever_order_its_attributes_come_in() {
             id: 21418,
             number: 1,
             number2: None,
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 21419,
             number: 2,
             number2: None,
+            former_tag: None,
             title: None,
         },
     ];
@@ -796,6 +800,7 @@ fn an_episode_row_reads_the_same_whatever_order_its_attributes_come_in() {
         id: 21420,
         number: 3,
         number2: None,
+        former_tag: None,
         title: None,
     });
     assert_eq!(parse_episode_list(mixed).expect("listing"), expected);
@@ -845,6 +850,7 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
             id: 21418,
             number: 8,
             number2: Some("7.5".into()),
+            former_tag: None,
             title: None,
         }
     );
@@ -854,6 +860,7 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
             id: 21420,
             number: 9,
             number2: Some("8".into()),
+            former_tag: None,
             title: None,
         }
     );
@@ -863,6 +870,7 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
             id: 21419,
             number: 7,
             number2: None,
+            former_tag: None,
             title: None,
         }
     );
@@ -878,12 +886,14 @@ fn a_fractional_row_keeps_its_position_as_slot_and_its_number_as_tag() {
                 id: 21418,
                 number: 1,
                 number2: None,
+                former_tag: None,
                 title: None,
             },
             EpisodeRef {
                 id: 21419,
                 number: 2,
                 number2: Some("OVA".into()),
+                former_tag: None,
                 title: None,
             },
         ],

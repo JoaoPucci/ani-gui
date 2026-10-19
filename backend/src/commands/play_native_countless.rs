@@ -73,10 +73,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
         seen.push(&chosen.slug);
         match client.episodes(&chosen.slug).await {
             Ok(episodes) => {
-                return Ok(PickedShow {
-                    hit: chosen.clone(),
-                    episodes,
-                });
+                return Ok(PickedShow::listed(chosen.clone(), episodes));
             }
             Err(e) if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) => {
                 return Err(e);

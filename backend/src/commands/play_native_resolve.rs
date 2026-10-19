@@ -19,7 +19,8 @@ use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 
 use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
-use super::play_native_episode::{classify_chain_failure, ChainOutcome};
+use super::play_native_episode::{classify_chain_failure, resolve_episode_stamped, ChainOutcome};
+use super::play_native_merge::former_tags_of;
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
 
@@ -50,21 +51,30 @@ pub struct NativeResolved {
     pub episode_cap: Option<u32>,
     /// The shift between the provider's episode numbers and the
     /// per-entry numbers the request used ([`numbering_offset`]).
-    /// The history writers add it — the history file speaks the
-    /// provider's numbering — and the offset store persists it for
-    /// the cache-hit and mark-watched writers and the read boundary.
+    /// The offset store persists it for the read boundary, which
+    /// translates history rows from before rows recorded the app's own
+    /// number.
     pub numbering_offset: u32,
     /// The listing's fractional display tags
     /// ([`extra_episode_tags`]) — the availability stamp's
     /// `extra_episodes`, also already paid for.
     pub extra_tags: Vec<String>,
-    /// The matched row's slot — the integer a resume looks up in
-    /// the provider's listing, and what the fresh-resolve writer
-    /// stores.
+    /// The matched row's slot — its position in the provider's
+    /// listing. Cached with the resolution; a history row records the
+    /// app's own number read from the row's tag, or from the slot when
+    /// it has none, under the offset
+    /// ([`crate::commands::play_native_record::matched_episode`]).
     pub resolved_slot: u32,
-    /// The matched row's display tag, stamped beside the offset when
-    /// it differs from the slot so the read boundary can translate.
+    /// The matched row's display tag, when it carries one: with the
+    /// slot, what the app's own number for the episode is read from
+    /// ([`crate::commands::play_native_record::matched_episode`]).
+    /// Display stamps are no longer written from it.
     pub resolved_tag: Option<String>,
+    /// Rows of the picked listing an earlier version tagged otherwise:
+    /// (slot, the tag it had then, the tag it has now) — a stitched
+    /// recap before a cumulatively numbered part. Empty for any other
+    /// listing.
+    pub former_tags: Vec<(u32, String, String)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -122,6 +132,10 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// The history file whose numbering sidecar keeps each show's
+    /// (slot, tag) display stamp — what a request from the user's
+    /// history names a row by. `None` asks nothing of it.
+    pub stamps_beside: Option<&'a std::path::Path>,
     /// Where the evidence about the entry's last episodes comes from,
     /// when the caller knows the entry
     /// ([`super::play_native_appended`]).
@@ -232,10 +246,17 @@ where
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let resolved = match resolve_episode(
+                        let stamp = req.stamps_beside.and_then(|history| {
+                            crate::commands::numbering_offset::stamp_beside(
+                                history,
+                                &ShowKey::new(client.id(), picked.hit.slug.clone()).to_string(),
+                            )
+                        });
+                        let resolved = match resolve_episode_stamped(
                             client,
                             &picked,
                             req.episode,
+                            stamp.as_ref(),
                             req.mode,
                             req.quality,
                         )
@@ -287,6 +308,7 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            former_tags: former_tags_of(&picked.episodes),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
