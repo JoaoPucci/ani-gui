@@ -13,6 +13,10 @@ the comparison says which pool.
     oracle.py gen CASES.json
         writes every pool with the pick the docs answer for it — the
         generated families and the hand-written sets under cases/
+    oracle.py fuzz SEED N CASES.json
+        writes N pools drawn from SEED by the differential fuzzer
+        (fuzz.py), each with the pick the model predicts, for the same
+        driver and the same comparison
     oracle.py cmp CASES.json OUT.json [--allowlist allowlist.json]
         reads the driver's outcomes for those pools and exits non-zero
         on a disagreement the allowlist does not carry, an allowlisted
@@ -1866,6 +1870,17 @@ def main(argv):
         with open(argv[2], "w", encoding="utf-8") as fh:
             json.dump(cases, fh, ensure_ascii=False)
         print(len(cases), "pools")
+        return 0
+    if len(argv) == 5 and argv[1] == "fuzz":
+        # run with -I, the script's directory is not on the path
+        sys.path.insert(0, HERE)
+        sys.modules.setdefault("oracle", sys.modules[__name__])
+        import fuzz
+
+        cases = fuzz.fuzz(int(argv[2]), int(argv[3]))
+        with open(argv[4], "w", encoding="utf-8") as fh:
+            json.dump(cases, fh, ensure_ascii=False)
+        print(len(cases), "pools from seed", argv[2])
         return 0
     if len(argv) >= 4 and argv[1] == "cmp":
         allowlist = None
