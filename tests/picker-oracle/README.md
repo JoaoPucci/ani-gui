@@ -37,9 +37,9 @@ says which pool.
 |---|---|
 | `oracle.py` | The model and the comparison. Standard library only. |
 | `fuzz.py` | The fuzzer's grammar: names in Latin, accented and Japanese script, numbers in ASCII and full-width digits, Roman numerals and spelled ordinals, the division words, catalogue and version tags in every bracket pair and width, punctuation, and words glued with no space. |
-| `test_fuzz.py` | The fuzzer's own tests: a seed decides its pools, every pool carries the model's prediction, the grammar reaches its whole vocabulary. |
+| `test_fuzz.py` | The fuzzer's own tests: a seed decides its pools, every pool carries the model's prediction, and a sample of each part of the grammar's vocabulary is reached. |
 | `test_oracle.py` | The model's own tests: rows transcribed from the docs' tables predict as the tables say; the generated set is reproducible; the comparison refuses what it must. |
-| `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for three rows the driver cannot express (below); `fuzz-found.json` is every shape the fuzzer found, each pinned once it was resolved; the others are the shapes that surfaced while reviewing picker changes. |
+| `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for three rows the driver cannot express (below); `fuzz-found.json` is every shape the fuzzer found, reduced by hand to the rows that decide it and pinned once it was resolved — one, `fuzz/beside-repeated-season`, is a broad-listing pool the model tables, so its expectation is written from the docs' table rather than predicted; the others are the shapes that surfaced while reviewing picker changes. |
 | `alphanumeric.txt` | The characters Rust's `char::is_alphanumeric` accepts, as ranges: the letters and digits the picker splits a title's words on, which the model reads instead of Python's narrower `str.isalnum`. A driver test holds it to the pinned toolchain and prints the table to write when a bump moves it. |
 | `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. |
 | `fixtures-golden.json` | Every recorded fixture's outcome, one show per line. |
@@ -91,9 +91,14 @@ generator's output beside the generator. The whole set runs on every
 relevant pull request.
 
 The fuzzer is separate from the generated set and leaves it as it is.
-A seed and a count decide its pools, byte for byte, and a longer run
-from a seed extends a shorter one, so a pool a CI run reports is drawn
-again from the seed the job prints. A pool the model does not compute
+A seed and a count decide its pools, byte for byte, at one commit of
+`fuzz.py` and `oracle.py` — a pool the model does not compute is drawn
+again, so a change to the model can change which pools a seed writes —
+and a longer run from a seed extends a shorter one, so a pool a CI run
+reports is drawn again from the seed and commit the job prints. The
+fuzz job compares without the allowlist: an entry names a pool of the
+generated set by its id, and a fuzz run's pools are other pools, so a
+disagreement the fuzzer finds is resolved, never accepted. A pool the model does not compute
 (`NOT_MODELLED`, below) is drawn again rather than written. Every
 disagreement it finds is resolved as any other is (below) — the picker
 fixed against the docs, or the model corrected, or the docs settled
