@@ -10,7 +10,7 @@ use super::*;
 /// "Show". A word ordinal inside the name stays in the name, as
 /// [`name`] reads it.
 pub(crate) fn undivided_rest(title: &str) -> Vec<String> {
-    let words = words(title);
+    let words = read_words(title);
     let start = (0..words.len())
         .find(|&i| division_at(&words, i).is_some() && !inside_the_name(&words, i))
         .unwrap_or(words.len());

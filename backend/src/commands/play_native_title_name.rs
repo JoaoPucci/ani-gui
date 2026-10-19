@@ -15,7 +15,7 @@ use super::*;
 /// "The Seventh Son" is named "The Seventh Son". A title that opens on
 /// a division ("86") is named by its stem.
 pub(crate) fn name(title: &str) -> Vec<String> {
-    let words = words(title);
+    let words = read_words(title);
     let mut out = Vec::new();
     for (i, w) in words.iter().enumerate() {
         if division_at(&words, i).is_none() || inside_the_name(&words, i) {

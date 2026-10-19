@@ -41,6 +41,27 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
     divisions_beside(sibling, wide).map_or_else(Vec::new, |(named, _)| named)
 }
 
+/// A title's words as the reader reads them ([`words`]), each word that
+/// holds Japanese divisions glued to its end read as what it holds
+/// before them and each division in turn: "Fourth第十二部" is "fourth"
+/// and "第十二部", "ショー第2期第2部" is "ショー", "第2期" and "第2部".
+pub(crate) fn read_words(title: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for w in words(title) {
+        let mut glued = Vec::new();
+        let mut head = w.as_str();
+        while let Some((_, before)) = japanese_trailing(head) {
+            glued.push(head[before.len()..].to_string());
+            head = before;
+        }
+        if !head.is_empty() {
+            out.push(head.to_string());
+        }
+        out.extend(glued.into_iter().rev());
+    }
+    out
+}
+
 /// Every division `words` name, first word to last: a marker pair, a
 /// Japanese division (apart or glued to the word before it), and an
 /// ordinal standing alone — spelled ("Second", "II"), bare ("2") or a
@@ -63,7 +84,7 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
             i += 1;
             continue;
         }
-        match division_at(words, i) {
+        match division_at(words, i).filter(|_| !inside_the_name(words, i)) {
             Some((m, taken)) => {
                 out.push(m);
                 i += taken;
@@ -135,7 +156,7 @@ fn glued_divisions(word: &str) -> Option<(Vec<Marker>, &str)> {
 /// "Show II Part 2: Arc" reads `[2, 2]`. What follows a division is
 /// read too, so "Show 2nd Season Recap" reads `[2]`.
 pub(super) fn reading(title: &str) -> Vec<u32> {
-    divisions(&words(title))
+    divisions(&read_words(title))
         .into_iter()
         .filter(|m| m.ordinals.first() != Some(&1))
         .flat_map(|m| m.ordinals)
