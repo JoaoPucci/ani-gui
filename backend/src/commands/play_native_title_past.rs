@@ -20,7 +20,7 @@ use super::*;
 /// read past it ([`leading_number`]); the same or a higher one is.
 pub(crate) fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
     let own = stem(wide);
-    let text = words(title).join(" ");
+    let text = read_words(title).join(" ");
     let mut wide_markers = trailing_markers(wide);
     if let Some(rest) = rest_after(&text, &own.join(" ")) {
         return Some((rest, wide_markers));

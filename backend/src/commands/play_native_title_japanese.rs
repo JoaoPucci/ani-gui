@@ -30,23 +30,35 @@ pub(crate) fn japanese_number(text: &str) -> Option<u32> {
     number(text).or_else(|| kanji_number(text))
 }
 
-/// Each of `words` that holds Japanese divisions glued to its end, read
-/// as what it holds before them and each division in turn:
-/// "fourth第十二部" is "fourth" and "第十二部", "ショー第2期第2部" is
-/// "ショー", "第2期" and "第2部".
+/// Each of `words` read apart ([`apart`]).
 pub(crate) fn apart_glued(words: Vec<String>) -> Vec<String> {
-    let mut out = Vec::new();
-    for w in words {
-        let mut glued = Vec::new();
-        let mut head = w.as_str();
-        while let Some((_, before)) = japanese_trailing(head) {
-            glued.push(head[before.len()..].to_string());
-            head = before;
-        }
-        if !head.is_empty() {
-            out.push(head.to_string());
-        }
-        out.extend(glued.into_iter().rev());
+    words.iter().flat_map(|w| apart(w)).collect()
+}
+
+/// One word read apart: what it holds before the Japanese divisions
+/// glued to its end and each division in turn, and a number glued to
+/// the end of a Japanese letter — a division's last letter included —
+/// as a word of its own after it: "fourth第十二部" is "fourth" and
+/// "第十二部", "ショー第2期第2部" is "ショー", "第2期" and "第2部",
+/// "第3期2" is "第3期" and "2", "ショー2" is "ショー" and "2".
+fn apart(word: &str) -> Vec<String> {
+    let mut glued = Vec::new();
+    let mut head = word;
+    while let Some((_, before)) = japanese_trailing(head) {
+        glued.push(head[before.len()..].to_string());
+        head = before;
     }
+    let digits = head.len() - head.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+    let (front, number) = head.split_at(head.len() - digits);
+    let mut out = if digits > 0 && front.chars().last().is_some_and(is_japanese) {
+        let mut out = apart(front);
+        out.push(number.to_string());
+        out
+    } else if head.is_empty() {
+        Vec::new()
+    } else {
+        vec![head.to_string()]
+    };
+    out.extend(glued.into_iter().rev());
     out
 }

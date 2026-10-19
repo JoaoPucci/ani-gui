@@ -43,7 +43,7 @@ pub(crate) fn name(title: &str) -> Vec<String> {
 /// start with the name of "Show Part 2"; "Other Show 2nd Season" and
 /// "Showtime 2" do not.
 pub(crate) fn starts_with_name_of(title: &str, other: &str) -> bool {
-    rest_after(&words(title).join(" "), &name(other).join(" ")).is_some()
+    rest_after(&read_words(title).join(" "), &name(other).join(" ")).is_some()
 }
 
 /// Whether `title` opens what follows `wide`'s stem ([`past_stem`])

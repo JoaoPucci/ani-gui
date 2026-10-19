@@ -20,7 +20,7 @@ pub(crate) fn divisions_beside(sibling: &str, wide: &str) -> Option<(Vec<Marker>
         .flat_map(|m| m.ordinals.iter().copied())
         .max()
         .unwrap_or(1);
-    Some((own_divisions(&words(&rest), &wide_markers), season))
+    Some((own_divisions(&read_words(&rest), &wide_markers), season))
 }
 
 /// The divisions `words` open with, up to the first word that names
@@ -46,7 +46,7 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
         }
         let (found, taken) = match glued_divisions(&words[i]) {
             Some((glued, _)) => (glued, 0),
-            None => match division_at(words, i) {
+            None => match division_at(words, i).filter(|_| !inside_the_name(words, i)) {
                 Some((m, taken)) => (vec![m], taken),
                 None => break,
             },
