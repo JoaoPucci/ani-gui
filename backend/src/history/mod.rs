@@ -1,14 +1,22 @@
 //! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
-//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>][\tkitsu:<kitsu_id>]
+//!     <ep_no>\t<id>\t<title>[\tep:own][\t<watched_at_ms>][\tkitsu:<kitsu_id>]
+//!
+//! Each bracketed column is optional and written only when the row
+//! has it, in that order, so none of them sits at a fixed position:
+//! the moment is the fourth column of a row without the marker and
+//! the fifth of one with it, and the Kitsu id, where there is one,
+//! is always the last. The reader takes them off the end of the line in the
+//! reverse order — the Kitsu id, then the moment, then the marker —
+//! and what remains after the second tab is the title.
 //!
 //! The first three columns are the ones the CLI's `update_history`
 //! used, and so are the atomic semantics: write to `path.new`, then
 //! rename. The tests below and the samples under
 //! `tests/fixtures/history/` pin that contract — including
 //! byte-identity against a fixture the script's writer produced. The
-//! fourth column is the app's own: the moment of the watch that
+//! moment column is the app's own: the moment of the watch that
 //! wrote the row, kept beside the row so the recency a resume ranks
 //! by is written in the same line as the row it ranks, whatever
 //! becomes of the cache's copy of the stamp. A row without a watch
@@ -24,24 +32,35 @@
 //! one title; `\t1700000000000` is a moment. The limit of that is
 //! written out at [`split_moment`], which holds the rule.
 //!
-//! The fifth column is the app's too: the Kitsu id of the show the
-//! user played, the page the play was started from, so the rows'
-//! surfaces read the show from it instead of matching the provider's
-//! title back to Kitsu. Unlike the moment it is marked, `kitsu:`
-//! followed by digits and nothing else, so a title reads as one only
-//! when its last tab-separated part is exactly that, which no provider
-//! title has been seen to be; a row without it — one from before the
-//! column, or a play no page stood behind — reads and writes as
-//! before.
+//! The Kitsu column, the row's last, is the app's too: the
+//! Kitsu id of the show the user played, the page the play was
+//! started from, so the rows' surfaces read the show from it instead
+//! of matching the provider's title back to Kitsu. Unlike the moment
+//! it is marked, `kitsu:` followed by digits and nothing else, so a
+//! title reads as one only when its last tab-separated part is
+//! exactly that, which no provider title has been seen to be; a row
+//! without it — one from before the column, or a play no page stood
+//! behind — reads and writes as before.
 //!
-//! A build from before the column reads a row that carries it as a
-//! three-column row: its moment split finds `kitsu:<id>` where it
-//! looks for the moment, so the title runs on to the end of the line,
-//! `<title>\t<moment>\tkitsu:<id>`. That build shows the moment and the
-//! mark as part of the title and ranks the row without its moment. It
-//! writes a line it did not touch back as it read it, which a build
-//! with the column reads back into its title, moment and id; a play it
-//! records rewrites the line in its own format, without the mark.
+//! The `ep:own` marker, right after the title, says the row's
+//! `ep_no` is the app's own number for the episode
+//! ([`HistoryEntry::own_number`]); a row without it holds a provider
+//! slot. It is read only when, once the moment is off, the last
+//! tab-separated part left is exactly `ep:own`. It sits there rather
+//! than last so that a build from before it, which takes the Kitsu id
+//! and the moment off the end, still reads both and carries the
+//! marker in its title ([`OWN_NUMBER_MARK`]).
+//!
+//! A build from before the Kitsu column reads a row that carries it
+//! as a three-column row: its moment split finds `kitsu:<id>` where
+//! it looks for the moment, so the title runs on to the end of the
+//! line, `<title>[\tep:own]\t<moment>\tkitsu:<id>`. That build shows
+//! the moment, the `kitsu:` mark and any `ep:own` marker as part of
+//! the title and ranks the row without its moment. It writes a line
+//! it did not touch back as it read it, which a build with both
+//! columns reads back into its title, marker, moment and id; a play
+//! it records rewrites the line in its own format, without the mark
+//! or the marker.
 //!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.
@@ -147,7 +166,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
         .collect()
 }
 
-/// The earliest moment the fourth column is read as a watch:
+/// The earliest moment the moment column is read as a watch:
 /// 2020-01-01T00:00:00Z in milliseconds. Nothing wrote the column
 /// before the app existed, so a smaller number at the end of a row
 /// is one the title ends with — a year, a season, a count a scraper
@@ -158,7 +177,7 @@ const WATCHED_AT_FLOOR_MS: i64 = 1_577_836_800_000;
 /// milliseconds. Nothing this app writes reaches it either.
 const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
 
-/// The marker the fifth column starts with.
+/// The marker the Kitsu column, the row's last, starts with.
 const KITSU_MARK: &str = "kitsu:";
 
 /// The column right after the title of a row whose episode is the
@@ -224,10 +243,12 @@ fn split_kitsu_id(rest: &str) -> (&str, Option<String>) {
     }
 }
 
-/// Split what follows the id into the title and, when the row
-/// carries one, the watch's moment.
+/// Split what is left of the row once its Kitsu id is off into what
+/// precedes the moment — the title and, on a row that has it, the
+/// own-number marker — and, when the row carries one, the watch's
+/// moment.
 ///
-/// The two are not marked apart. The fourth column was added to a
+/// The two are not marked apart. The moment column was added to a
 /// file whose rows the title already ran to the end of, tabs
 /// included, and a marker would have to be written into every
 /// existing row before it could be read out of one. Plausibility
@@ -435,7 +456,7 @@ mod tests {
     }
 
     /// Everything after the second tab was the title before the
-    /// fourth column existed, embedded tabs included, and titles
+    /// moment column existed, embedded tabs included, and titles
     /// end in numbers: a mecha series' year, a season count, a
     /// four-digit tail a scraper left behind. Reading any trailing
     /// number as the watch's moment takes such a title apart and

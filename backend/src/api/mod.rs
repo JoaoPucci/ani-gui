@@ -1696,8 +1696,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
-        // Format: ep_no\tid\ttitle\twatched_at_ms\n — the CLI's three
-        // columns, then the moment of the watch that wrote the row.
+        // Format: ep_no\tid\ttitle\tep:own\twatched_at_ms\n — the CLI's
+        // three columns, the marker that the episode is the app's own
+        // number, then the moment of the watch that wrote the row.
         let line = body
             .strip_suffix('\n')
             .expect("one line, newline-terminated");

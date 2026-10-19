@@ -1,4 +1,5 @@
-//! The fifth column: the Kitsu id of the show the user played.
+//! The Kitsu column, a row's last: the Kitsu id of the show the user
+//! played.
 
 use super::*;
 use proptest::prelude::*;
