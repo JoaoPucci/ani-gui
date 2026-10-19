@@ -49,6 +49,14 @@ NAMES = [
     "ショー",
     "怪獣８号",
     "推しの子",
+    "ショー２",
+    "Gintama'",
+    "Show²",
+    "Show ٢",
+    "Mob Psycho 1000",
+    # no name at all: a title that is nothing but its divisions ("II",
+    # "Second Half", "Season 2")
+    "",
 ]
 
 #: Names another show goes by: what a search answers with beside the
@@ -72,7 +80,7 @@ BRACKETS = [("(", ")"), ("[", "]"), ("（", "）"), ("［", "］"), ("【", "】
 JOINS = [" ", " ", " ", "", ": ", " - ", ", ", "・"]
 
 #: Marks a catalogue writes at a word's end or a title's end.
-MARKS = ["!", "?", "!!", ".", "☆", "'", "~", "♪"]
+MARKS = ["!", "?", "!!", ".", "☆", "'", "~", "♪", "’", "′", "´", "`", "＇", "‘"]
 
 
 def _wide(c):
@@ -145,16 +153,22 @@ def decorate(rng, title):
             i = rng.randrange(1, len(words))
             words.insert(i, tag(rng))
             title = " ".join(words)
+    elif roll < 0.47:
+        # a tag between words with no space either side ("Show(TV)2")
+        words = title.split(" ")
+        if len(words) > 1:
+            i = rng.randrange(1, len(words))
+            title = " ".join(words[: i - 1] + [words[i - 1] + tag(rng) + words[i]] + words[i + 1 :])
     return title
 
 
 def title_of(rng, name, divisions):
     """A name and the divisions after it, joined the ways catalogues join
-    them."""
+    them; with no name, the divisions alone."""
     out = name
     for d in divisions:
-        out += rng.choice(JOINS) + d
-    return decorate(rng, out)
+        out += (rng.choice(JOINS) if out else "") + d
+    return decorate(rng, out or division(rng))
 
 
 def entry_titles(rng, name):

@@ -336,8 +336,12 @@ _LEAD_RX = re.compile(r"^([0-9]{1,2})" + BE)
 _JP_CHAR_RX = re.compile(r"[" + JP + r"]")
 _JP_GLUED_RX = re.compile(r"^([" + JP + r"]+)([0-9０-９]{1,2})$")
 _JP_BEFORE_NUMBER_RX = re.compile(r"(?<=[" + JP + r"])([0-9０-９]{1,2})$")
-_PRIME_END_RX = re.compile(r"(?<=" + WORD + r")['’′](?!" + WORD + r")")
-_PRIME_OPEN_RX = re.compile(r"(?<!" + WORD + r")['’′](?=" + WORD + r")")
+#: An apostrophe, however it is written: ASCII, the typographic right
+#: and left single quotes, the prime, the acute accent, the grave accent
+#: and the full-width apostrophe.
+PRIMES = "'’‘′´`＇"
+_PRIME_END_RX = re.compile(r"(?<=" + WORD + r")[" + PRIMES + r"]+(?!" + WORD + r")")
+_PRIME_OPEN_RX = re.compile(r"(?<!" + WORD + r")[" + PRIMES + r"]+(?=" + WORD + r")")
 
 
 def _cardinals(t):
@@ -1039,8 +1043,9 @@ class Reading:
         tags = [_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low)]
         years = [t for t in tags if _digits(t)]
         self.year = years[0] if years else None
-        ends = len(_PRIME_END_RX.findall(low))
-        opens = len(_PRIME_OPEN_RX.findall(low))
+        # each run of apostrophes counts by its length
+        ends = sum(len(m) for m in _PRIME_END_RX.findall(low))
+        opens = sum(len(m) for m in _PRIME_OPEN_RX.findall(low))
         self.primes = max(0, ends - opens)
 
     def same_show(self, other):
