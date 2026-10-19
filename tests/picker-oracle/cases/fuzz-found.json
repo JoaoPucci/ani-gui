@@ -25,5 +25,10 @@
  {"id": "fuzz/glued-tag-number", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["x", "Show(TV)2", 12]], "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/half-past-stem", "titles": ["怪獣８号, First Half 0th 【TV】", "怪獣８号"], "count": null, "entry_year": null, "rows": [["x", "怪獣８号 - First Half 0th", 13]], "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/span-reading", "titles": ["Pokémon・Part 2 III [ＯＶＡ]"], "count": null, "entry_year": null, "rows": [["x", "Pokémon 【ＯＶＡ】 Part ２+3", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
- {"id": "fuzz/beside-repeated-season", "titles": ["Show ［TV］ Other 第一期1st"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Other 第一期・1st 【2011】", 5], ["w", "Show Other 第一期, 1st", 40]], "expect": null, "family": "fuzz-found"}
+ {"id": "fuzz/beside-repeated-season", "titles": ["Show ［TV］ Other 第一期1st"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Other 第一期・1st 【2011】", 5], ["w", "Show Other 第一期, 1st", 40]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/glued-suffixed-hundred", "titles": ["ショー100th"], "count": 12, "entry_year": 2020, "rows": [["x", "ショー・100th", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/four-digit-division", "titles": ["ＳＨＯＷ・第１２２０期~"], "count": 12, "entry_year": null, "rows": [["x", "ＳＨＯＷ第１２２０期", 13]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/roman-before-bare-marker", "titles": ["ショー 10th‘"], "count": null, "entry_year": 2020, "rows": [["x", "ショー・IX Part 1220", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/o-unpickable-beside-w", "titles": ["Show ٢ Second Half"], "count": 12, "entry_year": 2020, "rows": [["w", "Show (２０２０) ٢, Final Season", 13], ["s1", "Show ٢ - Second Half", 12], ["o", "Show （ＵＮＣＥＮSＯＲＥＤ） ٢ Second Half", 12]], "jnames": {}, "expect": {"pick": "w", "count": 13}, "family": "fuzz-found"},
+ {"id": "fuzz/no-w-without-a-stem", "titles": ["2"], "count": 12, "entry_year": 2020, "rows": [["a", "Zeta Thing 2nd!", 12], ["w", "１st", 13], ["b", "2 (UNCENSORED)", 12]], "expect": {"pick": "a", "count": 12}, "family": "fuzz-found"}
 ]

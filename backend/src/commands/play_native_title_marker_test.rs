@@ -602,3 +602,14 @@ fn a_tag_glued_between_words_parts_them() {
         super::super::play_native_title_grammar::normalized("Show Season 2 (2011)")
     );
 }
+
+/// A suffixed ordinal glued as Japanese glues one is named up to three
+/// digits, as the marker grammar reads a suffixed ordinal standing
+/// alone: "ショー100th" names 100, so it admits "ショー・100th".
+#[test]
+fn a_glued_suffixed_ordinal_is_named_up_to_three_digits() {
+    assert!(named_ordinals("ショー100th").contains(&100));
+    assert!(named_ordinals("86, 第一期100th").contains(&100));
+    assert!(entry(&["ショー100th"]).admits("ショー・100th"));
+    assert!(!named_ordinals("ショー1220th").contains(&1220));
+}
