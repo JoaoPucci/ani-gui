@@ -7,8 +7,9 @@
 /// tags the provider adds to a title — a four-digit
 /// year ("Gintama (2011)") or TV, ONA, OVA or OAD ("JoJo no Kimyou na
 /// Bouken (TV)", "[OVA]") in round, square or lenticular brackets,
-/// brackets and tag alike ASCII or full-width ("（ＴＶ）"). Other
-/// bracketed words are left as they are.
+/// brackets and tag alike ASCII or full-width ("（ＴＶ）", "［ＯＶＡ］"),
+/// each character of the tag read in its ASCII form on its own, so
+/// "(ｔv)" is the tag too. Other bracketed words are left as they are.
 pub(crate) fn untagged(title: &str) -> String {
     split_tags(title).0
 }
@@ -22,10 +23,10 @@ pub(crate) fn split_tags(title: &str) -> (String, Vec<String>) {
     let mut out = String::new();
     let mut tags = Vec::new();
     let mut rest = text.as_str();
-    while let Some(open) = rest.find(['(', '[', '（', '【']) {
+    while let Some(open) = rest.find(['(', '[', '（', '［', '【']) {
         let after = &rest[open..];
         let inner_start = after.chars().next().map_or(1, char::len_utf8);
-        let tag = after.find([')', ']', '）', '】']).and_then(|close| {
+        let tag = after.find([')', ']', '）', '］', '】']).and_then(|close| {
             let inner: String = after[inner_start..close]
                 .trim()
                 .chars()
