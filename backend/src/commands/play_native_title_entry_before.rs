@@ -57,7 +57,7 @@ fn marks_after(text: &str, end: usize) -> String {
 /// The marks that separate a name from what follows it rather than
 /// belong to it, full-width forms and a closing bracket around the
 /// name included.
-const SEPARATORS: &str = ":-–—~,.・、：－～，．]）)】」』";
+const SEPARATORS: &str = ":-–—~,.・、：－～，．]］）)】」』";
 
 /// Whether `words` are first divisions and nothing else, each read by
 /// `division_at`, with the "Half" a first half writes after its
