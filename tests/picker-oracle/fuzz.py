@@ -102,7 +102,7 @@ def _number(rng, k):
 
 
 def _ordinal(rng):
-    return rng.choice([0, 1, 1, 2, 2, 2, 3, 3, 4, 7, 10, 12, 20])
+    return rng.choice([0, 1, 1, 2, 2, 2, 3, 3, 4, 7, 10, 12, 20, 100, 1220])
 
 
 def division(rng, k=None):

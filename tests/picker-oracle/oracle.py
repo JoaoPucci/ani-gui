@@ -318,8 +318,8 @@ MARKER = r"(?:season|part|cour|stage)"
 # by the regular-expression cache on every call too.
 _CARDINAL_RX = re.compile(BS + r"(" + MARKER + r")" + SEP + r"+(" + "|".join(CARD) + r")" + BE)
 _WORD_ORD_RX = re.compile(BS + r"(" + "|".join(WORD_ORD) + r")" + SEP + r"+(" + MARKER + r"|half)" + BE)
-_SUFFIXED_MARKER_RX = re.compile(BS + r"([0-9０-９]+)(?:st|nd|rd|th)" + SEP + "+" + MARKER)
-_MARKER_NUMBER_RX = re.compile(MARKER + SEP + r"+([0-9０-９]+)(?!" + ALNUM + ")")
+_SUFFIXED_MARKER_RX = re.compile(BS + r"([0-9０-９]{1,3})(?:st|nd|rd|th)" + SEP + "+" + MARKER + BE)
+_MARKER_NUMBER_RX = re.compile(BS + MARKER + SEP + r"+([0-9０-９]{1,3})(?![0-9０-９+]|" + ALNUM + ")")
 _NOT_WORDS_LEAD_RX = re.compile("^" + SEP + "+")
 _SMALL_NUMBER_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?!" + ALNUM + r")")
 _SMALL_SUFFIXED_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,3})(?:st|nd|rd|th)(?!" + ALNUM + r")")
@@ -364,7 +364,7 @@ def named(titles):
             out.add(int(m.group(1)))
         for m in _SUFFIXED_MARKER_RX.finditer(n):
             out.add(int(m.group(1)))
-        for m in re.finditer(r"第([0-9]+|[〇零一二三四五六七八九十百]+)", n):
+        for m in re.finditer(r"第([0-9]{1,3}(?![0-9])|[〇零一二三四五六七八九十百]+)", n):
             k = _jp_ordinal(m.group(1))
             if k is not None:
                 out.add(k)
@@ -749,8 +749,8 @@ def pickable(titles, cand):
 #: A word: any run of letters and digits, in any script — "推しの子IX" is
 #: one word, as "Show2" is — with the "+" a span is written with.
 _WORD = re.compile("[" + _class_body(_ALNUM_RANGES) + "+]+")
-_JP_DIV = re.compile(r"第([0-9]+|[〇零一二三四五六七八九十百]+)(期|部|クール)")
-_JP_DIV_END = re.compile(r"第([0-9]+|[〇零一二三四五六七八九十百]+)(期|部|クール)$")
+_JP_DIV = re.compile(r"第([0-9]{1,3}|[〇零一二三四五六七八九十百]+)(期|部|クール)")
+_JP_DIV_END = re.compile(r"第([0-9]{1,3}|[〇零一二三四五六七八九十百]+)(期|部|クール)$")
 _JP_DIGITS_END = re.compile(r"^(.*[" + JP + r"])([0-9]+)$")
 #: A span: one- or two-digit numbers joined by "+" ("1+2"); "12+131"
 #: names no span.
@@ -821,6 +821,18 @@ def _divisions(tokens):
     return [(ords, width) for ords, width, _, _ in _division_items(tokens)]
 
 
+def _marker_ordinal(w):
+    """`w` is an ordinal a marker word can carry after it."""
+    return w is not None and bool(
+        (_digits(w) and len(w) <= 3)
+        or _SPAN.fullmatch(w)
+        or w in CARD
+        or re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", w)
+        or w in WORD_ORD
+        or w in ROMAN
+    )
+
+
 def _division_items(tokens):
     """`_divisions`, each division with the kind it names — a season, or
     a part (a part, a cour, a stage, 第N部, 第Nクール) — and whether it is
@@ -852,7 +864,12 @@ def _division_items(tokens):
                 items.append((_ordinal_of(nxt), 2, kind, False))
                 i += 2
                 continue
-        if (re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", w) or w in WORD_ORD) and nxt is not None and (
+        # a spelled, suffixed or Roman ordinal pairs with the marker word
+        # after it — a Roman numeral only where that marker carries no
+        # ordinal of its own ("II Part 2" is two divisions, "II Part" one)
+        after_next = tokens[i + 2] if i + 2 < len(tokens) else None
+        roman_pairs = w in ROMAN and nxt is not None and _is_marker(nxt) and not _marker_ordinal(after_next)
+        if roman_pairs or (re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", w) or w in WORD_ORD) and nxt is not None and (
             _is_marker(nxt) or nxt == "half"
         ):
             if nxt == "half":
@@ -1125,12 +1142,33 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
     count stands alone, only a hit the title searched or the entry's names
     vouch for can be picked; with a year beside the count, only a hit the
     title searched or a name of the show (`names_of`) vouches for."""
-    adm = [r for r in probed(titles, rows, True) if pickable_as_read(titles, r[1])]
+    taken = probed(titles, rows, True)
+    adm = [r for r in taken if pickable_as_read(titles, r[1])]
     if count_stands_alone(count, entry_year):
         adm = [r for r in adm if vouched_by_name(titles, searched, r[1])]
     if needs_a_name(count, entry_year):
         adm = [r for r in adm if vouched_dated(titles, searched, r[1], names_of(r[0]))]
     tol = max(3, count // 10)
+    # beside a broad listing W — admitted, from the entry's year, listing
+    # more than E, with a stem — an O, here one of the entry's own titles
+    # read past its tag and listing exactly E, scores every other exact
+    # fit one behind it, whatever W is, and whether or not the O itself
+    # can be picked
+    own = {written(t) for t in titles}
+
+    def is_o(r):
+        return r[2] == count and written(_past_vtag(r[1])) in own and admitted_as_read(titles, r[1])
+
+    broad = entry_year == LISTING_YEAR and any(
+        r[2] > count and admitted_as_read(titles, r[1]) and _stem_tokens(_tokenize(norm(_past_vtag(r[1]))))
+        for r in taken
+    )
+    behind = broad and any(is_o(r) for r in taken)
+
+    def dist(r):
+        d = abs(r[2] - count)
+        return d + 1 if behind and d == 0 and not is_o(r) else d
+
     fits = [r for r in adm if abs(r[2] - count) <= tol]
     if not fits:
         # the airing rescue: a candidate whose own year is the entry's,
@@ -1149,21 +1187,11 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
             ),
         )
         return best, [best]
-    best = min(abs(r[2] - count) for r in fits)
-    tied = [r for r in fits if abs(r[2] - count) == best]
-    # beside a broad listing W of the entry's year, an O — here, one of
-    # the entry's own titles, read past its tag, listing exactly E —
-    # scores every other exact fit one behind it, whatever W is
-    broad = entry_year == LISTING_YEAR and any(r[2] > count and admitted_as_read(titles, r[1]) for r in rows)
-    own = {written(t) for t in titles}
-
-    def is_o(r):
-        return broad and r[2] == count and written(_past_vtag(r[1])) in own
-
+    best = min(dist(r) for r in fits)
+    tied = [r for r in fits if dist(r) == best]
     return sorted(
         tied,
         key=lambda r: (
-            0 if is_o(r) else 1,
             0 if written(r[1]) == written(searched) else 1,
             0 if part_agrees(titles, r[1]) else 1,
         ),
