@@ -320,7 +320,6 @@ _CARDINAL_RX = re.compile(BS + r"(" + MARKER + r")" + SEP + r"+(" + "|".join(CAR
 _WORD_ORD_RX = re.compile(BS + r"(" + "|".join(WORD_ORD) + r")" + SEP + r"+(" + MARKER + r"|half)" + BE)
 _SUFFIXED_MARKER_RX = re.compile(BS + r"([0-9０-９]+)(?:st|nd|rd|th)" + SEP + "+" + MARKER)
 _MARKER_NUMBER_RX = re.compile(MARKER + SEP + r"+([0-9０-９]+)(?!" + ALNUM + ")")
-_TAIL_MARKS_RX = re.compile(SEP + "+$")
 _NOT_WORDS_LEAD_RX = re.compile("^" + SEP + "+")
 _SMALL_NUMBER_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?!" + ALNUM + r")")
 _SMALL_SUFFIXED_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,3})(?:st|nd|rd|th)(?!" + ALNUM + r")")
@@ -328,13 +327,6 @@ _WORDS_RX = re.compile(WORD + "+")
 _BARE_NUMBER_RX = re.compile(r"(?:^|" + "[^" + _class_body(_ALNUM_RANGES) + "+]" + r")([0-9０-９]{1,2})$")
 _NOT_WORD_RX = re.compile(NOT_WORD)
 _NOT_WORDS_RX = re.compile(NOT_WORD + "+")
-_NAME_END_RX = re.compile(
-    r"([0-9０-９]|第|" + BS + r"(?:ii|iii|iv|vi|vii|viii|ix|first|second|third|season|part|cour|stage)" + BE + ")"
-)
-_ROMAN_RX = re.compile(BS + r"(ii|iii|iv|v|vi|vii|viii|ix)" + BE)
-_LEAD_RX = re.compile(r"^([0-9]{1,2})" + BE)
-_JP_CHAR_RX = re.compile(r"[" + JP + r"]")
-_JP_GLUED_RX = re.compile(r"^([" + JP + r"]+)([0-9０-９]{1,2})$")
 _JP_BEFORE_NUMBER_RX = re.compile(r"(?<=[" + JP + r"])([0-9０-９]{1,2})$")
 #: An apostrophe, however it is written: ASCII, the typographic right
 #: and left single quotes, the prime, the acute accent, the grave accent
@@ -392,26 +384,8 @@ def named(titles):
     return out
 
 
-#: The markers a title can end on, each with the kind of division it
-#: names: a marker word and the ordinal after it, a spelled ordinal
-#: before one, a Japanese division, and an ordinal spelled as one
-#: standing alone — a Roman numeral, a word ordinal, a suffixed number
-#: ("Overlord III", "Show Second", "Show 2nd"), never a bare number.
-#: Words are parted by any mark, so "Show・Season 2" ends on its season
-#: as "Show Season 2" does.
-TRAIL = [
-    (re.compile(BS + r"(" + MARKER + r")" + SEP + r"+([0-9０-９]+(?:\+[0-9０-９]+)*)$"), None),
-    (re.compile(BS + r"([0-9０-９]+)(?:st|nd|rd|th)" + SEP + r"+(" + MARKER + r")$"), None),
-    (re.compile(r"第([0-9]+|[〇零一二三四五六七八九十百]+)(期|部|クール)$"), None),
-    (re.compile(BS + r"(ii|iii|iv|v|vi|vii|viii|ix|" + "|".join(WORD_ORD) + r")$"), "season"),
-    (re.compile(BS + r"([0-9０-９]+)(?:st|nd|rd|th)$"), "season"),
-]
-
 #: The kind of division a marker names: a season, or a part of one.
 _KIND = {"season": "season", "part": "part", "cour": "part", "stage": "part", "期": "season", "部": "part", "クール": "part"}
-
-
-_BRACKETED_MARKER = re.compile(r"\s*[\(\[]\s*(" + MARKER + r"\s+[0-9０-９]+(?:\+[0-9０-９]+)*)\s*[\)\]]$")
 
 
 def _tail_split(tokens):
@@ -531,14 +505,6 @@ def _clean(t):
     return _NOT_WORDS_RX.sub(" ", norm(t)).strip()
 
 
-def _name(t):
-    c = _clean(_word_ordinals(t))
-    m = _NAME_END_RX.search(c)
-    return (c[: m.start()] if m else c).strip()
-
-
-FIRSTS = {"season", "part", "cour", "stage", "first", "1", "half"}
-
 SEPS = set(":-–—~,.・、：－～，．]］）)】」』")
 
 
@@ -613,101 +579,11 @@ def before_entry(titles, cand):
     )
 
 
-def _seasons(text, own=()):
-    """Seasons a text names: every division of the season kind, however
-    written — a marker pair, 第N期, an ordinal standing alone (a Roman
-    numeral, a spelled or suffixed ordinal, a bare number). An ordinal
-    standing alone right after one of `own`'s seasons divides that season
-    and is a part ("Season 3 Second Half" beside a season 3); after a part
-    it stays as it is read, so "Show Season 3 Part 1 Second Half" names a
-    season 2, before the 3."""
-    out = []
-    after_own = False
-    for ords, _, kind, alone in _division_items(_tokenize(text)):
-        if ords is None:
-            after_own = False
-            continue
-        divides = after_own and alone
-        mine = kind == "season" and not divides and all(o in own for o in ords)
-        if kind == "season" and not divides and not mine:
-            # a season the entry title itself ends on is left out
-            out += ords
-        after_own = mine
-    return out
-
-
 def _name_tokens(t):
     """`t`'s name as the reader's words ("One reading of a title"): the
     words up to its first division — "怪獣８号" is one word, the ８ inside
     it no number."""
     return Reading(t).name
-
-
-def _glued_rest(cand, nm):
-    """What follows the name `nm` in `cand` when the name's last word has
-    a digit or 第 glued to it in `cand` — a digit only after a name that
-    does not end in one — as the glued text and the words after it, or
-    `None`."""
-    ct = _tokenize(norm(cand))
-    if len(ct) < len(nm) or ct[: len(nm) - 1] != nm[:-1]:
-        return None
-    word, last = ct[len(nm) - 1], nm[-1]
-    if not word.startswith(last) or len(word) == len(last):
-        return None
-    glued = word[len(last) :]
-    if glued[0] == "第" or (_digits(glued[0]) and not _digits(last[-1])):
-        return [glued] + ct[len(nm) :]
-    return None
-
-
-def _past_name(cand, t):
-    """What follows the name of `t` in `cand`: at a word's end, or with a
-    digit or 第 glued to it ("ショー２", "ショー第2期", "Show2") — a digit
-    only after a name that does not end in one. "Showtime 2" and "Show²"
-    do not start with "Show"."""
-    nm = _name_tokens(t)
-    if not nm:
-        # an empty name (a title that is nothing but a division) is no
-        # name: nothing is read past it
-        return None
-    ct = _tokenize(norm(cand))
-    if ct[: len(nm)] == nm:
-        return " ".join(ct[len(nm) :])
-    rest = _glued_rest(cand, nm)
-    return None if rest is None else " ".join(rest)
-
-
-def _glued_to_latin(cand, t):
-    """`cand` carries a digit glued to the last letter of `t`'s name, a
-    letter outside Japanese ("Show2" for "Show")."""
-    nm = _name_tokens(t)
-    rest = _glued_rest(cand, nm) if nm else None
-    return bool(rest) and _digits(rest[0][0]) and not _JP_CHAR_RX.match(nm[-1][-1])
-
-
-def _after_stem(rest, t):
-    """`rest`, read past `t`'s name, read past the rest of `t`'s stem too
-    when it carries it ("100" of "Mob Psycho 100 II"): the picker reads a
-    candidate's divisions from where the stem ends, not the name."""
-    nm = _name_tokens(t)
-    stem = _stem_tokens(_tokenize(norm(t)))
-    tail = " ".join(stem[len(nm) :]) if stem[: len(nm)] == nm else ""
-    if tail and (rest == tail or rest.startswith(tail + " ")):
-        return rest[len(tail) :]
-    return rest
-
-
-def _opening(rest):
-    """The divisions `rest` opens with, up to the first word that names
-    none: what a sibling names right after a stem ("arc season 1" names
-    none, "season 1 arc" a season 1)."""
-    tokens = _tokenize(rest)
-    taken = 0
-    for ords, width in _divisions(tokens):
-        if ords is None:
-            break
-        taken += width
-    return " ".join(tokens[:taken])
 
 
 def _rest_after(text, own):
@@ -1142,6 +1018,10 @@ def head(titles, rows, counted):
     be picked, up to the fifth that could."""
     picked, evidence = [], []
     for r in rows:
+        if later_part_of(titles, r[1]):
+            # the sequel guard drops it from the pool before probing: it is
+            # neither considered nor evidence
+            continue
         if pickable(titles, r[1]):
             picked.append(r)
             if len(picked) == 5:
@@ -1401,7 +1281,8 @@ def clean_miss_expected(case):
         # version tag is passed over, a refusal by title as a dropped one is
         taken, _ = head(titles, rows, False)
         late = any(not admitted_as_read(titles, r[1]) for r in taken)
-        return not late and not any(not admitted(titles, r[1]) for r in rows)
+        # a hit the sequel guard drops is another entry, no refusal
+        return not late and not any(not admitted(titles, r[1]) and not later_part_of(titles, r[1]) for r in rows)
     taken, evidence = head(titles, rows, True)
     tol = max(3, count // 10)
     # evidence is probed too, and read past its version tag once probed

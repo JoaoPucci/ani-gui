@@ -306,9 +306,9 @@ class TheModelReadsTheDocs(unittest.TestCase):
             self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", cand, E)])), pick("x"), cand)
         self.assertIsNone(oracle.predict(pool(["Pokémon 2"], E, [("x", "Pokémon", E)])))
         # read past a name only at a word's end or before a glued digit or 第
-        self.assertIsNone(oracle._past_name("Showtime Season 1", "Show 2"))
-        self.assertIsNone(oracle._past_name("Show² Season 1", "Show 2"))
-        self.assertEqual(oracle._past_name("Show2 Part 2", "Show 3"), "2 part 2")
+        self.assertIsNone(oracle.past_stem("Showtime Season 1", "Show 2"))
+        self.assertIsNone(oracle.past_stem("Show² Season 1", "Show 2"))
+        self.assertEqual(oracle.past_stem("Show2 Part 2", "Show"), ("2 part 2", []))
         # a digit glued to a Latin word is the word's: "Show2" is no "Show 2"
         self.assertEqual(oracle.predict(pool(["Show 3"], E, [("x", "Show2", E)])), pick("x"))
         self.assertIsNone(oracle.predict(pool(["ショー３"], E, [("x", "ショー２", E)])))
@@ -352,8 +352,8 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # number in the stem's place, and names no division, so nothing
         # after it names a season before the entry
         self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Show 1é Season 1", E)])), pick("x"))
-        self.assertEqual(oracle._opening("1é season 1"), "")
-        self.assertEqual(oracle._opening("season 1 arc"), "season 1")
+        self.assertEqual(oracle._opening_items("1é season 1"), [])
+        self.assertEqual([o for o, _, _, _ in oracle._opening_items("season 1 arc")], [[1]])
         # an empty name is no name: nothing is read past it
         self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])), pick("x"))
         self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "Season 1", E)])), pick("x"))
