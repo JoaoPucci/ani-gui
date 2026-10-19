@@ -656,10 +656,13 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
     // reached the file only after it was readable again would read it
     // whether it held the history or not, and prove nothing.
     let path = state.history_path.clone();
-    let queue = crate::held::queue(path.display().to_string());
     let (ready, held) = std::sync::mpsc::channel();
     let holder = std::thread::spawn(move || {
         crate::history::guard::hold(&path, |_| {
+            // Watched from inside the hold: a wait this holder met on
+            // the way in, the history being held by another case, is
+            // not the recording's.
+            let queue = crate::held::queue(path.display().to_string());
             let mode = |m| std::fs::set_permissions(&path, std::fs::Permissions::from_mode(m));
             mode(0o000).expect("unreadable");
             ready.send(()).expect("ready");

@@ -1058,8 +1058,11 @@ fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
     let td = tempfile::tempdir().expect("td");
     let state = make_state(td.path().join("history"));
     let show = "hianime:stitched-show-4";
-    let queue = crate::held::queue(state.history_path.display().to_string());
     let reader = crate::history::guard::hold(&state.history_path, |held| {
+        // Watched from inside the hold: a wait this case's own hold met
+        // on the way in, the history being held by another case, is not
+        // the reader's.
+        let queue = crate::held::queue(state.history_path.display().to_string());
         held.upsert(HistoryEntry {
             ep_no: "2".into(),
             id: show.into(),
