@@ -5,11 +5,12 @@
 //!
 //! Each bracketed column is optional and written only when the row
 //! has it, in that order, so none of them sits at a fixed position:
-//! the moment is the fourth column of a row without the marker and
-//! the fifth of one with it, and the Kitsu id, where there is one,
-//! is always the last. The reader takes them off the end of the line in the
-//! reverse order — the Kitsu id, then the moment, then the marker —
-//! and what remains after the second tab is the title.
+//! counting the title as one column, the moment is the fourth of a
+//! row without the marker and the fifth of one with it, and the
+//! Kitsu id, where there is one, is always the last. The reader
+//! takes them off the end of the line in the reverse order — the
+//! Kitsu id, then the moment, then the marker — and what remains
+//! after the second tab is the title.
 //!
 //! The first three columns are the ones the CLI's `update_history`
 //! used, and so are the atomic semantics: write to `path.new`, then
@@ -188,7 +189,8 @@ const KITSU_MARK: &str = "kitsu:";
 /// build's title, and the id and the moment still read.
 const OWN_NUMBER_MARK: &str = "ep:own";
 
-/// Split the own-number marker off what follows the id column.
+/// Split the own-number marker off what is left of the row once its
+/// Kitsu id and its moment are off.
 fn split_own_number(rest: &str) -> (&str, bool) {
     match rest.rsplit_once('\t') {
         Some((before, OWN_NUMBER_MARK)) => (before, true),
