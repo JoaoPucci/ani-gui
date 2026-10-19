@@ -45,7 +45,7 @@ From the repository root, with `python3` (3.12 or later) and the Rust
 toolchain:
 
 ```sh
-# The model against the docs' tables (about a minute)
+# The model against the docs' tables (about six minutes)
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 
 # The picker against the model: generate, run, compare
@@ -64,8 +64,8 @@ python3 -I tests/picker-oracle/oracle.py cmp \
 (cd backend && cargo test --lib write_the_fixture_golden -- --ignored)
 ```
 
-Generating the set takes about six seconds and writes some 65,000
-pools (18 MB); the picker walks them in about twenty seconds in the
+Generating the set takes about twenty seconds and writes some 65,000
+pools (18 MB); the picker walks them in about thirty-five seconds in the
 debug profile. The generated set is not committed: it is a deterministic
 function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
