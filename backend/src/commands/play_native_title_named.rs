@@ -23,7 +23,7 @@ pub(crate) fn sole_ordinal(rest: &str) -> Option<u32> {
 /// evidence of what an entry names, so reading too much only ever
 /// admits more.
 pub(crate) fn named_ordinals(title: &str) -> BTreeSet<u32> {
-    let words = words(title);
+    let words = apart_glued(words(title));
     let mut out: BTreeSet<u32> = words
         .windows(2)
         .filter_map(|w| marker_of(&w[0], &w[1]))
