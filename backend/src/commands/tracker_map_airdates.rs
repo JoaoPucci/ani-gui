@@ -12,7 +12,8 @@ use super::*;
 const KITSU_EPISODES_PAGE: u32 = crate::commands::kitsu::EPISODES_PAGE_LIMIT as u32;
 
 /// The air dates Kitsu's episode list gives `numbers`, read from the
-/// pages that hold them — through the episode pages' cache.
+/// pages that hold them — through the episode pages' cache, as Kitsu
+/// lists them: only the dates are read, so no thumbnail is backfilled.
 pub(super) async fn kitsu_airdates(
     ask: &MapAsk<'_>,
     kitsu_id: &str,
@@ -24,7 +25,8 @@ pub(super) async fn kitsu_airdates(
         .collect();
     let mut dates = BTreeMap::new();
     for page in pages {
-        for episode in crate::commands::kitsu::kitsu_episodes(ask.state, kitsu_id, page).await? {
+        for episode in crate::commands::kitsu::kitsu_episode_page(ask.state, kitsu_id, page).await?
+        {
             if let (Some(n), Some(aired)) = (episode.number, episode.airdate) {
                 if numbers.contains(&n) {
                     dates.insert(n, aired);

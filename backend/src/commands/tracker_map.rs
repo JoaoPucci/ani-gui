@@ -20,9 +20,8 @@
 //! gathered — one tracker read for the entry and one per sequel it names
 //! at each hop, one Kitsu read per mapping or relationship asked, the id
 //! translations a part's resolution makes, and the pages of Kitsu's
-//! episode list an exact chain's unplaced bounds need (with the
-//! thumbnail backfill a cold page brings) — only on a miss, once per
-//! show per window ([`evidence`] has the walks).
+//! episode list an exact chain's unplaced bounds need — only on a miss,
+//! once per show per window ([`evidence`] has the walks).
 
 use std::sync::Arc;
 
