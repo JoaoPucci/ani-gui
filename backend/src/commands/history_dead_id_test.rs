@@ -65,6 +65,7 @@ async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockS
             title: TITLE.into(),
             watched_at: None,
             kitsu_id: Some(recorded.into()),
+            own_number: false,
         }],
     )
     .unwrap();
@@ -154,6 +155,7 @@ async fn an_unreachable_kitsu_leaves_the_recorded_id_standing() {
             title: TITLE.into(),
             watched_at: None,
             kitsu_id: Some("999".into()),
+            own_number: false,
         }],
     )
     .unwrap();
@@ -235,6 +237,7 @@ async fn deleting_a_show_keeps_a_gone_mark_another_row_claims() {
         title: TITLE.into(),
         watched_at: None,
         kitsu_id: Some("999".into()),
+        own_number: false,
     });
     write_atomic(&state.history_path, &rows).unwrap();
     assert!(kitsu_anime_detail_fails(&state, "999").await);
@@ -270,6 +273,7 @@ async fn two_rows_with_a_slow_404() -> (tempfile::TempDir, MockServer, AppState)
         title: TITLE.into(),
         watched_at: None,
         kitsu_id: Some(kitsu_id.into()),
+        own_number: false,
     };
     write_atomic(&history, &[row(SHOW, "999"), row(OTHER, "555")]).unwrap();
     let state = state_at(history, &mock.uri());
