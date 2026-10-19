@@ -767,30 +767,39 @@ def _opening_items(rest):
     return out
 
 
-def names_earlier_season(cand, wide):
-    """`cand` names, among the divisions it opens what follows `wide`'s
-    stem with — any `wide` itself ends on left out — a season before the
-    one `wide` carries: the highest season among its own divisions, the
-    first when it carries none. An ordinal standing alone right after one
-    of `wide`'s own seasons divides that season, a part; after a part it
-    stays a season."""
+def _beside(cand, wide):
+    """The divisions `cand` opens what follows `wide`'s stem with, as
+    (ordinals, kind) — any `wide` itself ends on left out, an ordinal
+    standing alone right after one of `wide`'s own seasons dividing that
+    season (a part), and after a part staying a season — and the season
+    `wide` carries: the highest among its own divisions, the first when
+    it carries none. `None` when `cand` does not start with the stem."""
     past = past_stem(cand, wide)
     if past is None:
-        return False
+        return None
     rest, carried = past
     seasons = [o for ords, kind in carried if kind == "season" for o in ords]
-    season = max(seasons) if seasons else 1
     own = [(list(ords), kind) for ords, kind in carried]
+    named = []
     after_season = False
     for ords, _, kind, alone in _opening_items(rest):
         divides = after_season and alone
-        if (list(ords), kind) in own and not divides:
-            after_season = kind == "season"
-            continue
-        after_season = False
-        if kind == "season" and not divides and any(o < season for o in ords):
-            return True
-    return False
+        if divides:
+            named.append((list(ords), "part"))
+        elif (list(ords), kind) not in own:
+            named.append((list(ords), kind))
+        after_season = not divides and kind == "season" and (list(ords), kind) in own
+    return named, (max(seasons) if seasons else 1)
+
+
+def names_earlier_season(cand, wide):
+    """`cand` names, past `wide`'s stem (`_beside`), a season before the
+    one `wide` carries."""
+    beside = _beside(cand, wide)
+    if beside is None:
+        return False
+    named, season = beside
+    return any(kind == "season" and any(o < season for o in ords) for ords, kind in named)
 
 
 def _without_stem_number(t):
@@ -1027,8 +1036,8 @@ class Reading:
                     in_name = False
                     # read on from the stem's end
                     tail_items = _divisions(tokens[len(stem) :])
-                    self.ords = [o for o in _ordinals_of(_divisions(stem)) if o is not None]
-                    self.ords += [o for o in _ordinals_of(tail_items) if o is not None]
+                    self.ords = _flat(_ordinals_of(_divisions(stem)))
+                    self.ords += _flat(_ordinals_of(tail_items))
                     j = len(stem)
                     for t_ords, t_width in tail_items:
                         if t_ords is None:
@@ -1037,7 +1046,8 @@ class Reading:
                     break
                 in_name = False
                 if ords[0] != 1:
-                    self.ords.append(ords[0] if len(ords) == 1 else tuple(ords))
+                    # the ordinals a division names, a span's each in turn
+                    self.ords += ords
             i += width
         low = title.lower()
         tags = [_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low)]
@@ -1059,6 +1069,16 @@ class Reading:
             and self.primes == other.primes
             and not (self.year and other.year and self.year != other.year)
         )
+
+
+def _flat(ordinals):
+    """`_ordinals_of`'s divisions as the ordinals they name, in order —
+    a span's each in turn — the whole ones left out."""
+    out = []
+    for o in ordinals:
+        if o is not None:
+            out += list(o) if isinstance(o, tuple) else [o]
+    return out
 
 
 def _ordinals_of(items):
@@ -1307,14 +1327,12 @@ def _cut_kin(r, w, count):
     if r[2] in (count, w[2] - count):
         return True
     a, b = _past_vtag(r[1]), _past_vtag(w[1])
-    past = past_stem(a, b)
-    if past is None:
+    beside = _beside(a, b)
+    if beside is None:
         return False
-    own = [(list(o), k) for o, k in past[1]]
-    items = [i for i in _opening_items(past[0]) if (list(i[0]), i[2]) not in own]
     # first divisions alone: each division's first ordinal is 1, a span
     # through the first ("Part 1+2") reading as the whole
-    first = bool(items) and all(ords[0] == 1 for ords, _, _, _ in items)
+    first = bool(beside[0]) and all(ords[0] == 1 for ords, _ in beside[0])
     return first or names_earlier_season(a, b)
 
 
