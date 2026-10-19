@@ -18,5 +18,6 @@
  {"id": "fuzz/past-stem-ordinal-in-name-dated", "titles": ["Show: Arc - IX"], "count": 12, "entry_year": 2020, "rows": [["a", "Show: Arc", 12], ["x", "Show: Arc - Seventh CourSecond Part", 12]], "jnames": {}, "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
  {"id": "fuzz/number-after-division", "titles": ["Other Show・第〇期 １０", "Other Show 1st'"], "count": 12, "entry_year": null, "rows": [["x", "Other Show, (OAD) 第〇期１０ Recap", 13]], "expect": null, "family": "fuzz-found"},
  {"id": "fuzz/number-after-division-named", "titles": ["Kaiju No. 8 - 第3部 - 12 【OＮA】"], "count": 12, "entry_year": null, "rows": [["w", "Kaiju No. 8 第20期", 40], ["x", "Kaiju No. 8!! 第3部12", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
- {"id": "fuzz/rest-word-ordinal", "titles": ["推しの子, 20: Second［ UNCENSORED ］"], "count": 12, "entry_year": null, "rows": [["x", "推しの子 20 ［UNCENSORED］", 12]], "expect": null, "family": "fuzz-found"}
+ {"id": "fuzz/rest-word-ordinal", "titles": ["推しの子, 20: Second［ UNCENSORED ］"], "count": 12, "entry_year": null, "rows": [["x", "推しの子 20 ［UNCENSORED］", 12]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/sequel-guard-full-width", "titles": ["Show: Arc, 1st Season Two"], "count": 12, "entry_year": 2020, "rows": [["x", "Show: Arc, １st", 12]], "jnames": {}, "expect": null, "family": "fuzz-found"}
 ]
