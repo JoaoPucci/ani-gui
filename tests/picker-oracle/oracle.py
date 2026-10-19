@@ -63,9 +63,10 @@ def _load_alphanumeric():
 _ALNUM_RANGES = _load_alphanumeric()
 _ALNUM_STARTS = [a for a, _ in _ALNUM_RANGES]
 
-#: The Japanese blocks: the iteration and closing marks (々〆〇), hiragana
-#: and katakana, the CJK ideographs and their first extension, and
-#: half-width katakana. A Japanese character is a letter of these.
+#: The Japanese blocks: the iteration and closing marks (々〆〇), the
+#: Hiragana and Katakana blocks, the CJK ideographs' main block and its
+#: first extension, and half-width katakana. A Japanese letter is a letter
+#: of these, as the picker's `is_japanese` reads one.
 _JP_BLOCKS = [(0x3005, 0x3007), (0x3040, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xFF66, 0xFF9F)]
 
 

@@ -136,11 +136,12 @@ pub(crate) fn glued_number(word: &str) -> Option<u32> {
         .flatten()
 }
 
-/// Whether `c` is a Japanese letter: a letter of the kana blocks, of the
-/// CJK ideographs' main block or its first extension, the iteration and
-/// closing marks (々, 〆, 〇), or a letter of half-width katakana. The
-/// long-vowel mark ー is a letter; ・, ゠ and the combining sound marks
-/// ゛ and ゜ are none.
+/// Whether `c` is a Japanese letter: a letter of the Hiragana and
+/// Katakana blocks, of the CJK ideographs' main block or its first
+/// extension, the iteration and closing marks (々, 〆, 〇), or a letter
+/// of half-width katakana. The long-vowel marks ー and ｰ and the
+/// half-width sound marks ﾞ and ﾟ are letters; ・, ゠ and the spacing
+/// sound marks ゛ and ゜ are none.
 pub(crate) fn is_japanese(c: char) -> bool {
     matches!(
         c,
