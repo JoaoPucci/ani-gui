@@ -85,6 +85,9 @@ pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 mod admit;
 #[path = "host_budget_probe.rs"]
 mod probe;
+#[cfg(test)]
+#[path = "host_budget_seen_test.rs"]
+mod seen;
 #[path = "host_budget_unpaced.rs"]
 mod unpaced;
 use unpaced::Unpaced;
@@ -249,24 +252,6 @@ impl HostBudget {
             .unwrap_or_else(|e| e.into_inner())
             .get(host)
             .map(|state| state.bucket.tokens())
-    }
-
-    /// Whether a background request waits at `host` for its token, for
-    /// a test to see one has arrived before it asks beside it.
-    #[cfg(test)]
-    pub(crate) fn background_waiting(&self, host: &str) -> bool {
-        self.states
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(host)
-            .is_some_and(|state| state.turn.background_waiting)
-    }
-
-    /// Whether a cached row's probe waits at `host`, for a test to see
-    /// one has arrived before it asks beside it.
-    #[cfg(test)]
-    pub(crate) fn probe_waiting(&self, host: &str) -> bool {
-        self.probes_waiting(host)
     }
 
     /// The player fetched a segment of `stream` from `host`, buying
