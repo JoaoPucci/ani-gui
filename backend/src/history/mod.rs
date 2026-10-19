@@ -1,14 +1,23 @@
 //! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
-//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>][\tkitsu:<kitsu_id>]
+//!     <ep_no>\t<id>\t<title>[\tep:own][\t<watched_at_ms>][\tkitsu:<kitsu_id>]
+//!
+//! Each bracketed column is optional and written only when the row
+//! has it, in that order, so none of them sits at a fixed position:
+//! counting the title as one column, the moment is the fourth of a
+//! row without the marker and the fifth of one with it, and the
+//! Kitsu id, where there is one, is always the last. The reader
+//! takes them off the end of the line in the reverse order — the
+//! Kitsu id, then the moment, then the marker — and what remains
+//! after the second tab is the title.
 //!
 //! The first three columns are the ones the CLI's `update_history`
 //! used, and so are the atomic semantics: write to `path.new`, then
 //! rename. The tests below and the samples under
 //! `tests/fixtures/history/` pin that contract — including
 //! byte-identity against a fixture the script's writer produced. The
-//! fourth column is the app's own: the moment of the watch that
+//! moment column is the app's own: the moment of the watch that
 //! wrote the row, kept beside the row so the recency a resume ranks
 //! by is written in the same line as the row it ranks, whatever
 //! becomes of the cache's copy of the stamp. A row without a watch
@@ -24,24 +33,35 @@
 //! one title; `\t1700000000000` is a moment. The limit of that is
 //! written out at [`split_moment`], which holds the rule.
 //!
-//! The fifth column is the app's too: the Kitsu id of the show the
-//! user played, the page the play was started from, so the rows'
-//! surfaces read the show from it instead of matching the provider's
-//! title back to Kitsu. Unlike the moment it is marked, `kitsu:`
-//! followed by digits and nothing else, so a title reads as one only
-//! when its last tab-separated part is exactly that, which no provider
-//! title has been seen to be; a row without it — one from before the
-//! column, or a play no page stood behind — reads and writes as
-//! before.
+//! The Kitsu column, the row's last, is the app's too: the
+//! Kitsu id of the show the user played, the page the play was
+//! started from, so the rows' surfaces read the show from it instead
+//! of matching the provider's title back to Kitsu. Unlike the moment
+//! it is marked, `kitsu:` followed by digits and nothing else, so a
+//! title reads as one only when its last tab-separated part is
+//! exactly that, which no provider title has been seen to be; a row
+//! without it — one from before the column, or a play no page stood
+//! behind — reads and writes as before.
 //!
-//! A build from before the column reads a row that carries it as a
-//! three-column row: its moment split finds `kitsu:<id>` where it
-//! looks for the moment, so the title runs on to the end of the line,
-//! `<title>\t<moment>\tkitsu:<id>`. That build shows the moment and the
-//! mark as part of the title and ranks the row without its moment. It
-//! writes a line it did not touch back as it read it, which a build
-//! with the column reads back into its title, moment and id; a play it
-//! records rewrites the line in its own format, without the mark.
+//! The `ep:own` marker, right after the title, says the row's
+//! `ep_no` is the app's own number for the episode
+//! ([`HistoryEntry::own_number`]); a row without it holds a provider
+//! slot. It is read only when, once the moment is off, the last
+//! tab-separated part left is exactly `ep:own`. It sits there rather
+//! than last so that a build from before it, which takes the Kitsu id
+//! and the moment off the end, still reads both and carries the
+//! marker in its title ([`OWN_NUMBER_MARK`]).
+//!
+//! A build from before the Kitsu column reads a row that carries it
+//! as a three-column row: its moment split finds `kitsu:<id>` where
+//! it looks for the moment, so the title runs on to the end of the
+//! line, `<title>[\tep:own]\t<moment>\tkitsu:<id>`. That build shows
+//! the moment, the `kitsu:` mark and any `ep:own` marker as part of
+//! the title and ranks the row without its moment. It writes a line
+//! it did not touch back as it read it, which a build with both
+//! columns reads back into its title, marker, moment and id; a play
+//! it records rewrites the line in its own format, without the mark
+//! or the marker.
 //!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.
@@ -62,12 +82,15 @@ use crate::error::Result;
 /// One row of the history file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
-    /// Episode number the user last watched, in the provider's
-    /// numbering. Written after each play — by
-    /// `play_native_record::write_history` on a fresh resolve, and
-    /// directly by `play::write_history_on_cache_hit` when the
-    /// resolution came from cache — so on the next launch the
-    /// "Continue Watching" row knows where to resume.
+    /// Episode number the user last watched. Every write since rows
+    /// carried [`Self::own_number`] stores the app's own number for it
+    /// — the episode the play resolved to, "8" or "7.5" — by
+    /// `play_native_record::write_history` on a fresh resolve,
+    /// `play::write_history_on_cache_hit` on a cache hit, and the
+    /// watch a handoff or mark-watched records. A row from before holds
+    /// the provider's number for it — the slot it resolved to, or the
+    /// display number plus the offset where no listing was at hand —
+    /// which the read boundary translates through the numbering sidecar.
     pub ep_no: String,
     /// The provider's show id — a slug on every row written since the
     /// migration. Older rows carry the retired provider's opaque id
@@ -92,6 +115,13 @@ pub struct HistoryEntry {
     /// before the column, or a play no page stood behind, has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
+    /// Whether `ep_no` is the app's own number for the episode — the
+    /// tile's, "8" or "7.5" — rather than a provider slot the read
+    /// boundary translates back through the numbering sidecar. The file's
+    /// concern only: the read boundary has already applied it to what
+    /// the routes return, so it is not part of their JSON.
+    #[serde(default, skip_serializing)]
+    pub own_number: bool,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
@@ -123,19 +153,21 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
                 return None;
             }
             let (rest, kitsu_id) = split_kitsu_id(rest);
-            let (title, watched_at) = split_moment(rest);
+            let (rest, watched_at) = split_moment(rest);
+            let (title, own_number) = split_own_number(rest);
             Some(HistoryEntry {
                 ep_no,
                 id,
                 title: title.to_string(),
                 watched_at,
                 kitsu_id,
+                own_number,
             })
         })
         .collect()
 }
 
-/// The earliest moment the fourth column is read as a watch:
+/// The earliest moment the moment column is read as a watch:
 /// 2020-01-01T00:00:00Z in milliseconds. Nothing wrote the column
 /// before the app existed, so a smaller number at the end of a row
 /// is one the title ends with — a year, a season, a count a scraper
@@ -146,8 +178,25 @@ const WATCHED_AT_FLOOR_MS: i64 = 1_577_836_800_000;
 /// milliseconds. Nothing this app writes reaches it either.
 const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
 
-/// The marker the fifth column starts with.
+/// The marker the Kitsu column, the row's last, starts with.
 const KITSU_MARK: &str = "kitsu:";
+
+/// The column right after the title of a row whose episode is the
+/// app's own number ([`HistoryEntry::own_number`]); a row without it
+/// holds a provider slot. Placed there, not last, because a build from
+/// before it splits the Kitsu id and the moment off the end of the row
+/// and reads the rest as the title: the marker then rides in that
+/// build's title, and the id and the moment still read.
+const OWN_NUMBER_MARK: &str = "ep:own";
+
+/// Split the own-number marker off what is left of the row once its
+/// Kitsu id and its moment are off.
+fn split_own_number(rest: &str) -> (&str, bool) {
+    match rest.rsplit_once('\t') {
+        Some((before, OWN_NUMBER_MARK)) => (before, true),
+        _ => (rest, false),
+    }
+}
 
 /// A Kitsu id as the row may record it: digits and nothing else, once
 /// surrounding whitespace is trimmed. Anything else is not one.
@@ -196,10 +245,12 @@ fn split_kitsu_id(rest: &str) -> (&str, Option<String>) {
     }
 }
 
-/// Split what follows the id into the title and, when the row
-/// carries one, the watch's moment.
+/// Split what is left of the row once its Kitsu id is off into what
+/// precedes the moment — the title and, on a row that has it, the
+/// own-number marker — and, when the row carries one, the watch's
+/// moment.
 ///
-/// The two are not marked apart. The fourth column was added to a
+/// The two are not marked apart. The moment column was added to a
 /// file whose rows the title already ran to the end of, tabs
 /// included, and a marker would have to be written into every
 /// existing row before it could be read out of one. Plausibility
@@ -242,6 +293,10 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
         out.push_str(&e.id);
         out.push('\t');
         out.push_str(&e.title);
+        if e.own_number {
+            out.push('\t');
+            out.push_str(OWN_NUMBER_MARK);
+        }
         if let Some(at) = e.watched_at {
             out.push('\t');
             out.push_str(&at.to_string());
@@ -265,6 +320,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
     if let Some(existing) = entries.iter_mut().find(|e| e.id == new.id) {
         existing.ep_no = new.ep_no;
+        existing.own_number = new.own_number;
         existing.title = new.title;
         if new.watched_at.is_some() {
             existing.watched_at = new.watched_at;
@@ -348,6 +404,7 @@ mod tests {
             title: format!("Test ({id})"),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }
     }
 
@@ -401,7 +458,7 @@ mod tests {
     }
 
     /// Everything after the second tab was the title before the
-    /// fourth column existed, embedded tabs included, and titles
+    /// moment column existed, embedded tabs included, and titles
     /// end in numbers: a mecha series' year, a season count, a
     /// four-digit tail a scraper left behind. Reading any trailing
     /// number as the watch's moment takes such a title apart and
@@ -552,6 +609,7 @@ mod tests {
             title: "New Title".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         };
         upsert(&mut v, updated);
         assert_eq!(v.len(), 3);
@@ -608,6 +666,7 @@ mod tests {
                 title: "Attack on Titan (25 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -615,6 +674,7 @@ mod tests {
                 title: "Demon Slayer (26 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "1".into(),
@@ -622,6 +682,7 @@ mod tests {
                 title: "Spy x Family (12 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ];
         let our_bytes = serialize(&entries);
@@ -669,6 +730,7 @@ mod tests {
                 title: "Test (a)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         )
         .unwrap();
@@ -726,6 +788,7 @@ mod tests {
                 title,
                 watched_at,
                 kitsu_id: None,
+                own_number: false,
             })
     }
 
@@ -755,6 +818,7 @@ mod tests {
             id in tsv_field(1, 32),
             segments in proptest::collection::vec(tsv_field(0, 12), 1..4),
             watched_at in proptest::option::of(WINDOW_START_MS..WINDOW_END_MS),
+            own_number in proptest::bool::ANY,
         ) {
             let title = segments.join("\t");
             // A stampless row whose title already ends in something
@@ -762,7 +826,9 @@ mod tests {
             // window narrows but cannot close; it is not a claim
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
-            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None };
+            // Nor does it claim a title ending in the marker column.
+            prop_assume!(own_number || !title.ends_with("\tep:own"));
+            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None, own_number };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
         }
@@ -823,3 +889,7 @@ mod kitsu_column_tests;
 #[cfg(test)]
 #[path = "guard_test.rs"]
 mod guard_tests;
+
+#[cfg(test)]
+#[path = "own_number_test.rs"]
+mod own_number_tests;

@@ -218,6 +218,7 @@ mod tests {
                 title: "One Piece".into(),
                 watched_at: None,
                 kitsu_id: Some("12".into()),
+                own_number: false,
             },
         )
         .expect("seed row");
