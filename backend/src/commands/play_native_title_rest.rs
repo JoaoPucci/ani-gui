@@ -21,7 +21,7 @@ pub(crate) fn undivided_rest(title: &str) -> Vec<String> {
             i += 1;
             continue;
         }
-        match division_at(&words, i) {
+        match division_at(&words, i).filter(|_| !inside_the_name(&words, i)) {
             Some((_, taken)) => {
                 i += taken + if taken == 1 { half_after(&words, i) } else { 0 };
             }
