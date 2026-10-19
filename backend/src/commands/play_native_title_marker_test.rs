@@ -613,3 +613,13 @@ fn a_glued_suffixed_ordinal_is_named_up_to_three_digits() {
     assert!(entry(&["ショー100th"]).admits("ショー・100th"));
     assert!(!named_ordinals("ショー1220th").contains(&1220));
 }
+
+/// The marker an entry names is read in its words read apart: "Cour
+/// 100第三部" is a cour 100 and a part 3, so it names 100 as "Cour 100
+/// 第三部" does.
+#[test]
+fn an_entry_names_a_marker_read_apart_from_a_glued_division() {
+    assert!(named_ordinals("推しの子・Cour 100第三部").contains(&100));
+    assert!(named_ordinals("推しの子・Cour 100第三部").contains(&3));
+    assert!(entry(&["推しの子・Cour 100第三部(UNCENSORED)"]).admits("推しの子 Cour 100 第三部"));
+}
