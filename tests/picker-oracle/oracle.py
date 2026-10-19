@@ -87,24 +87,34 @@ CTAG = re.compile(
 
 # --- version tags: "a bracketed version tag ... in ASCII or full-width round,
 # square or lenticular brackets, in any case" (Versions of one pick), each
-# character of the tag ASCII or full-width
+# character of the tag ASCII or full-width, upper or lower case — and no
+# other character: the picker folds a full-width form to ASCII and then
+# ignores ASCII case alone, so no Unicode case folding ("ſ" for "s") applies
 
-VTAG = re.compile(r"[\(\[（［【]\s*" + _either_width("uncensored") + r"\s*[\)\]）］】]")
+
+def _any_case_either_width(word):
+    """`word` with each character in its ASCII or full-width form, in
+    either case, each on its own — exactly the characters the picker reads
+    as that letter, matched against the title as written."""
+
+    def wide(c):
+        return chr(ord(c) + 0xFEE0)
+
+    return "".join(f"[{c}{c.upper()}{wide(c)}{wide(c.upper())}]" for c in word)
+
+
+VTAG = re.compile(r"[\(\[（［【]\s*" + _any_case_either_width("uncensored") + r"\s*[\)\]）］】]")
 
 
 def version_of(t):
     """A title read for its version: the title without its version tag,
     compared as written, and the version the tag names."""
-    low = t.lower()
-    kind = "uncensored" if VTAG.search(low) else "standard"
-    return written(VTAG.sub(" ", low)), kind
-
-
-_VTAG_ANY = re.compile(VTAG.pattern, re.IGNORECASE)
+    kind = "uncensored" if VTAG.search(t) else "standard"
+    return written(VTAG.sub(" ", t)), kind
 
 
 def _past_vtag(cand):
-    return " ".join(_VTAG_ANY.sub(" ", cand).split())
+    return " ".join(VTAG.sub(" ", cand).split())
 
 
 def admitted_as_read(titles, cand):
@@ -505,10 +515,12 @@ def season_before_entry(titles, cand):
         lead_t = re.match(r"^([0-9]{1,2})\b", rest_t)
         lead_c = re.match(r"^([0-9]{1,2})\b", rest_c)
         if lead_t and lead_c and int(lead_c.group(1)) < int(lead_t.group(1)):
-            # a stem ends on a number written as a word of its own or glued
-            # to a Japanese word ("ショー２"); "Show2" is a word, and a lower
+            # the candidate's stem must end on that number, written as a
+            # word of its own or glued to a Japanese word ("ショー２"):
+            # "Show2" is a word, "Show 1 Shin" ends on "shin", and a lower
             # number in the stem's place is not read past
-            if _glued_to_latin(cand, t):
+            stem_rest = _past_name(_stem_text(cand), t)
+            if _glued_to_latin(cand, t) or stem_rest is None or stem_rest.strip() != lead_c.group(1):
                 continue
             return True
         if lead_t and not lead_c:
@@ -1041,6 +1053,7 @@ def clean_miss_expected(case):
     # nothing names, among the hits probed, leaves no clean miss
     if count_stands_alone(count, case["entry_year"]):
         adm, _ = head(titles, rows, True)
+        adm = [r for r in adm if pickable_as_read(titles, r[1])]
         return not any(abs(r[2] - count) <= tol for r in adm)
     # so is the dated-name refusal: a fitting hit no name vouches for —
     # under any title searched, since every title's search answers with
@@ -1050,6 +1063,7 @@ def clean_miss_expected(case):
     # shorter than the entry, as the airing rescue and the stitching take
     if needs_a_name(count, case["entry_year"]):
         adm, _ = head(titles, rows, True)
+        adm = [r for r in adm if pickable_as_read(titles, r[1])]
         confirmed = case["entry_year"] == LISTING_YEAR
         return not any(
             (abs(r[2] - count) <= tol or (confirmed and r[2] < count))
@@ -1502,6 +1516,19 @@ def gen():
             if want is NOT_MODELLED:
                 continue
             add(c["titles"], c["count"], c["entry_year"], rows, want, f"versions/{fam}/{how}", names=names)
+    # a version tag is its letters in ASCII or full-width and in either
+    # case, and nothing else: "ſ" is no "s" to the picker, so "(Uncenſored)"
+    # is bracketed words, as "(Uncensor)" is
+    for entry, cnt, rows in [
+        ("Show", E, [("p", "Show", E), ("u", "Show (Uncenſored)", E)]),
+        ("Show", E, [("u", "Show (Uncenſored)", E), ("p", "Show", E)]),
+        ("Show 2", E, [("x", "Show 1 (Uncenſored)", E)]),
+        ("Show 2", None, [("x", "Show 1 (Uncenſored)", E)]),
+        ("Show", E, [("x", "Show Season 2 (Uncenſored)", E)]),
+        ("Show 2", E, [("x", "Show 1 (ｕncensor)", E)]),
+    ]:
+        case = dict(titles=[entry], count=cnt, entry_year=LISTING_YEAR, rows=[list(r) for r in rows])
+        add([entry], cnt, LISTING_YEAR, rows, predict(case), "not-a-tag")
     # a word is any run of letters and digits, in any script; a number is
     # written in ASCII or full-width digits, so another script's digits or
     # a superscript are a word's letters, no number, to every reader
@@ -1514,6 +1541,8 @@ def gen():
         ("Show 2", "Showtime Season 1"),
         ("Show 3", "Show2"),
         ("Show 3", "Show2 Part 2"),
+        ("Show 2", "Show 1 Shin"),
+        ("Show 2 Season 3", "Show 1 Shin Season 1"),
         ("Show", "Show ٢"),
         ("Show", "Show Season ٢"),
         ("Show", "Show ۲ Part ٢"),

@@ -312,7 +312,22 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # a digit glued to a Latin word is the word's: "Show2" is no "Show 2"
         self.assertEqual(oracle.predict(pool(["Show 3"], E, [("x", "Show2", E)])), pick("x"))
         self.assertIsNone(oracle.predict(pool(["ショー３"], E, [("x", "ショー２", E)])))
+        # the season before by a lower number: the candidate's stem ends on it
+        self.assertFalse(oracle.season_before_entry(["Show 2"], "Show 1 Shin"))
+        self.assertFalse(oracle.season_before_entry(["Show 2 Season 3"], "Show 1 Shin Season 1"))
+        self.assertTrue(oracle.season_before_entry(["Show 3 Part 2"], "Show 2 Part 2"))
         self.assertTrue(any(c["family"] == "unicode-words" for c in oracle.gen()))
+
+    def test_a_version_tag_folds_as_the_picker_folds(self):
+        # ASCII or full-width, either case, each letter on its own — and no
+        # Unicode case folding: "ſ" is no "s"
+        for tag in ("(UNCENsored)", "（ＵＮＣＥＮsored）", "(ｕＮcensored)"):
+            self.assertEqual(oracle.version_of(f"Show {tag}"), ("show", "uncensored"), tag)
+            self.assertEqual(oracle._past_vtag(f"Show 1 {tag}"), "Show 1", tag)
+        self.assertEqual(oracle.version_of("Show (Uncenſored)")[1], "standard")
+        self.assertEqual(oracle._past_vtag("Show 1 (Uncenſored)"), "Show 1 (Uncenſored)")
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("p", "Show", E), ("u", "Show (Uncenſored)", E)])), pick("p"))
+        self.assertTrue(any(c["family"] == "not-a-tag" for c in oracle.gen()))
 
     def test_the_generated_set_spells_tags_in_mixed_widths(self):
         def mixed(text):
