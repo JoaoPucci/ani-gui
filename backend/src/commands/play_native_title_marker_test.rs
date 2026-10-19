@@ -508,3 +508,38 @@ proptest::proptest! {
         proptest::prop_assert_eq!(leading_number(&format!("{n}{} season 1", OTHER_AFTER[o])), None);
     }
 }
+
+proptest::proptest! {
+    /// An entry names a number its title writes the way Japanese glues
+    /// one — straight before a Japanese letter ("86第4部") or straight
+    /// after one ("ショー2") — and never digits glued to any other
+    /// letter, which are that word's own ("Arc2", "Café2"): a title the
+    /// entry carries only so does not admit a sequel numbered by them.
+    #[test]
+    fn an_entry_names_a_number_glued_only_as_japanese_writes_one(
+        h in 0..JAPANESE_HEADS.len(),
+        o in 0..OTHER_HEADS.len(),
+        n in 0u32..100,
+    ) {
+        let before = format!("{n}第4部");
+        proptest::prop_assert!(named_ordinals(&before).contains(&n), "{before}");
+        let after = format!("{}{n}", JAPANESE_HEADS[h]);
+        proptest::prop_assert!(named_ordinals(&after).contains(&n), "{after}");
+        let latin = format!("{}{n}", OTHER_HEADS[o]);
+        proptest::prop_assert!(!named_ordinals(&latin).contains(&n), "{latin}");
+    }
+}
+
+/// The admission those numbers decide: "86☆" ends on the 86 that
+/// "86第４部" names, while "Show: Arc: 2" ends on a 2 that "Show: Arc2"
+/// does not.
+#[test]
+fn admission_reads_a_number_glued_only_as_japanese_writes_one() {
+    assert!(entry(&["86第４部"]).admits("86☆"));
+    assert!(!entry(&["Show: Arc2"]).admits("Show: Arc: 2"));
+    assert!(!entry(&["Gintama4 [OVA]"]).admits("Gintama~ 4"));
+    assert!(entry(&["ショー２"]).admits("ショー: 2"));
+    // a span is a word of its own however it is glued before: its
+    // numbers stand apart, "+" between them
+    assert!(entry(&["推しの子Part ４+5"]).admits("推しの子 Part ４+5"));
+}

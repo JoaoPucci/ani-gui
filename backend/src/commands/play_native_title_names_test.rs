@@ -79,3 +79,35 @@ fn a_glued_japanese_division_is_read_past_to_the_subtitle() {
     assert!(entry.names("ショー 第2期 番外編"));
     assert!(!entry.names("ショー第2期"));
 }
+
+const ORDINALS: [(&str, bool); 5] = [
+    ("First", true),
+    ("Second", false),
+    ("Seventh", false),
+    ("2nd", false),
+    ("1st", true),
+];
+
+proptest! {
+    /// An ordinal written before "Half" is one division with it, as the
+    /// reader reads "First Half" and "Second Half": it ends the name
+    /// whatever follows, and leaves nothing past the name. So the entry
+    /// "Show" names "Show First Half", whose division is the whole, and
+    /// for the entry "Show Second Half" the bare "Show" is the entry
+    /// before.
+    #[test]
+    fn an_ordinal_before_half_is_a_division_that_ends_the_name(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        (ordinal, first) in proptest::sample::select(ORDINALS.to_vec()),
+    ) {
+        let title = format!("{name_of} {ordinal} Half");
+        let want: Vec<String> = name_of.split(' ').map(str::to_lowercase).collect();
+        prop_assert_eq!(name(&title), want.clone());
+        prop_assert!(undivided_rest(&title).is_empty(), "{}", title);
+        prop_assert_eq!(name(&format!("{title}: Arc")), want);
+        let bare = [name_of];
+        prop_assert_eq!(EntryTitles::new(&bare).names(&title), first, "{}", title);
+        let titles = [title.as_str()];
+        prop_assert_eq!(EntryTitles::new(&titles).before_entry(name_of), !first, "{}", title);
+    }
+}

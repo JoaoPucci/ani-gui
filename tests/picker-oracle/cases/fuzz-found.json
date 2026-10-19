@@ -1,0 +1,11 @@
+[
+ {"id": "fuzz/half-first", "titles": ["Show"], "count": 12, "entry_year": null, "rows": [["x", "Show First Half", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/half-first-entry", "titles": ["Show First Half"], "count": 12, "entry_year": null, "rows": [["x", "Show", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/half-seventh", "titles": ["Show Seventh Half"], "count": 12, "entry_year": null, "rows": [["x", "Show", 12]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/half-second-jp", "titles": ["推しの子 - Second Half"], "count": 12, "entry_year": null, "rows": [["x", "推しの子", 12]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/half-tagged", "titles": ["推しの子: First ［ONA］ Half"], "count": null, "entry_year": null, "rows": [["x", "推しの子", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"},
+ {"id": "fuzz/glued-before-jp", "titles": ["Zzyzx Alias", "86第４部"], "count": null, "entry_year": 2020, "rows": [["x", "86☆", 11]], "expect": {"pick": "x", "count": 11}, "family": "fuzz-found"},
+ {"id": "fuzz/glued-latin-end", "titles": ["Show: Arc2"], "count": 12, "entry_year": 2020, "rows": [["x", "Show: Arc: 2", 12]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/glued-latin-tagged", "titles": ["Gintama4 [OVA]"], "count": 12, "entry_year": 2020, "rows": [["x", "Gintama~ 4", 13]], "expect": null, "family": "fuzz-found"},
+ {"id": "fuzz/glued-span", "titles": ["推しの子Part ４+5", "推しの子"], "count": null, "entry_year": 2020, "rows": [["x", "推しの子 Part ４+5", 12]], "expect": {"pick": "x", "count": 12}, "family": "fuzz-found"}
+]
