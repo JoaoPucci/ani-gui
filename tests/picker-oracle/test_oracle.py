@@ -496,7 +496,9 @@ class TheModelReadsTheDocs(unittest.TestCase):
     def test_a_span_through_the_first_part_reads_as_the_whole(self):
         self.assertEqual(oracle.Reading("Haikyuu!!: To the Top (Part 1+2)").ords, [])
         self.assertTrue(oracle.names(["Haikyuu!!: To the Top"], "Haikyuu!!: To the Top (Part 1+2)"))
-        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [(2, 3)])
+        # a span's ordinals are read in turn, as "Show Part 2 III" reads
+        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [2, 3])
+        self.assertEqual(oracle.Reading("Show Part 2 III").ords, [2, 3])
 
     def test_a_marker_season_below_an_entry_s_bare_number_is_the_season_before(self):
         self.assertFalse(oracle.pickable(["Show 3 Part 2"], "Show Season 2 Part 2"))
