@@ -56,13 +56,14 @@ def _either_width(word):
     return "".join(f"[{c}{chr(ord(c) + 0xFEE0)}]" for c in word)
 
 
-# --- catalogue tags: "a release year or a format tag in brackets ... wherever
-# in the title it stands", each character of the tag ASCII or full-width
+# --- catalogue tags: "a release year or a format tag in brackets ... round,
+# square or lenticular ... brackets and tag alike ASCII or full-width ...
+# wherever in the title it stands", each character of the tag in either width
 
 CTAG = re.compile(
-    r"[\(\[（【]\s*(?:"
+    r"[\(\[（［【]\s*(?:"
     + "|".join(["[0-9０-９]{4}"] + [_either_width(w) for w in ("tv", "ona", "ova", "oad")])
-    + r")\s*[\)\]）】]"
+    + r")\s*[\)\]）］】]"
 )
 
 
@@ -1280,6 +1281,7 @@ def gen():
         ("Show （ONA）", None),
         ("Show (ｔv)", None),
         ("Show Season 1 （２0２0）", None),
+        ("Show ［ＴＶ］", None),
         ("Show (Shin Series)", {"pick": "x", "count": E}),
         ("Show (Movie)", {"pick": "x", "count": E}),
     ]:
@@ -1459,7 +1461,7 @@ def gen():
                 continue
             add(c["titles"], c["count"], c["entry_year"], rows, want, f"versions/{fam}/{how}", names=names)
     # every reader reads a title without its catalogue tags — every family again, tagged
-    tags = ["(TV)", "(2024)", "[OVA]", "（ＯＮＡ）", "【OAD】", "（２０２０）", "(ｔv)", "（２0２0）", "[Ｏva]"]
+    tags = ["(TV)", "(2024)", "[OVA]", "（ＯＮＡ）", "【OAD】", "（２０２０）", "(ｔv)", "（２0２0）", "[Ｏva]", "［ＯＶＡ］", "［2020］"]
     tagged = []
     for i, c in enumerate(list(cases)):
         if c["family"].startswith(("year-or-format-tag", "remake", "versions")):

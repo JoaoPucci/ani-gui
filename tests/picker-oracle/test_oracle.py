@@ -260,6 +260,8 @@ class TheModelReadsTheDocs(unittest.TestCase):
             ("[oＶａ]", "ova"),
             ("（２0２0）", "2020"),
             ("【２０2４】", "2024"),
+            ("［ＴＶ］", "tv"),
+            ("［2020］", "2020"),
         ]:
             self.assertEqual(oracle.written(f"Show {mixed}"), f"show {ascii}", mixed)
             self.assertEqual(oracle.norm(f"Show {mixed} Season 2"), "show season 2", mixed)
