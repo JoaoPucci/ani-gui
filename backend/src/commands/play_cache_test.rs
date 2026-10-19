@@ -139,14 +139,20 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     )
     .await;
     let state = state_with_proxy_origin();
+    let checking = std::time::Instant::now();
     assert!(try_serve_cached(&state, &cached).await.is_some());
+    let took = checking.elapsed();
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
-    // Two tokens taken a moment apart: the second tops up by the moment.
+    // Two tokens taken a moment apart: the second tops up by the moment,
+    // which is no longer than the check took — a loaded runner's moment
+    // is longer than an idle one's.
+    let moment =
+        (took.as_secs_f64() / crate::proxy::host_budget::SEGMENT_REFILL.as_secs_f64()).max(0.01);
     let left = state.host_budget.on_hand(&host).expect("spent");
     assert!(
-        (left - (burst - 2.0)).abs() < 0.01,
-        "the stream's ping and the track's read: {left}"
+        left > burst - 2.0 - 0.01 && left < burst - 2.0 + moment,
+        "the stream's ping and the track's read: {left}, check took {took:?}"
     );
 }
 
