@@ -45,14 +45,14 @@ pub(crate) fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)
 
 /// The number `rest` opens on, and its digits: a run of digits
 /// standing as a number — ending the text, before a space, or before a
-/// non-ASCII character glued to it, as a Japanese one is ("20第2部") —
-/// not an ordinal's ("2nd"). Compared as a number against W's, so a
+/// Japanese letter glued to it ("20第2部") — not an ordinal's ("2nd")
+/// nor a word's ("1é"). Compared as a number against W's, so a
 /// zero-padded "02" is the number 2.
 pub(crate) fn leading_number(rest: &str) -> Option<(u32, String)> {
     let rest = rest.trim_start();
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
     let after = rest[digits.len()..].chars().next();
-    (!digits.is_empty() && after.is_none_or(|c| c == ' ' || !c.is_ascii()))
+    (!digits.is_empty() && after.is_none_or(|c| c == ' ' || is_japanese(c)))
         .then(|| digits.parse().ok().map(|m| (m, digits)))
         .flatten()
 }
