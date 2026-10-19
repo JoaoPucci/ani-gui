@@ -297,6 +297,23 @@ class TheModelReadsTheDocs(unittest.TestCase):
             self.assertIsNone(oracle.predict(pool([entry], E, [("x", "Oshi no Ko", E)])), entry)
         self.assertIsNone(oracle.predict(pool(["［Show］ 2"], E, [("x", "Show", E)])))
 
+    def test_a_word_is_letters_and_digits_in_any_script(self):
+        # a number is ASCII or full-width digits; any other letter or digit
+        # is a word's, so "Show²" and "Show ٢" add a word to "Show"
+        self.assertEqual(oracle._tokenize(oracle.norm("Pokémon Season 2")), ["pokémon", "season", "2"])
+        self.assertEqual(oracle._tokenize(oracle.norm("Show² Season 1")), ["show²", "season", "1"])
+        for cand in ("Show ٢", "Show² Season 1", "Show ١"):
+            self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", cand, E)])), pick("x"), cand)
+        self.assertIsNone(oracle.predict(pool(["Pokémon 2"], E, [("x", "Pokémon", E)])))
+        # read past a name only at a word's end or before a glued digit or 第
+        self.assertIsNone(oracle._past_name("Showtime Season 1", "Show 2"))
+        self.assertIsNone(oracle._past_name("Show² Season 1", "Show 2"))
+        self.assertEqual(oracle._past_name("Show2 Part 2", "Show 3"), "2 part 2")
+        # a digit glued to a Latin word is the word's: "Show2" is no "Show 2"
+        self.assertEqual(oracle.predict(pool(["Show 3"], E, [("x", "Show2", E)])), pick("x"))
+        self.assertIsNone(oracle.predict(pool(["ショー３"], E, [("x", "ショー２", E)])))
+        self.assertTrue(any(c["family"] == "unicode-words" for c in oracle.gen()))
+
     def test_the_generated_set_spells_tags_in_mixed_widths(self):
         def mixed(text):
             return any(
