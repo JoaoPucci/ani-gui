@@ -30,6 +30,7 @@ says which pool.
 | `oracle.py` | The model and the comparison. Standard library only. |
 | `test_oracle.py` | The model's own tests: rows transcribed from the docs' tables predict as the tables say; the generated set is reproducible; the comparison refuses what it must. |
 | `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for three rows the driver cannot express (below); the others are the shapes that surfaced while reviewing picker changes. |
+| `alphanumeric.txt` | The characters Rust's `char::is_alphanumeric` accepts, as ranges: the letters and digits the picker splits a title's words on, which the model reads instead of Python's narrower `str.isalnum`. A driver test holds it to the pinned toolchain and prints the table to write when a bump moves it. |
 | `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. |
 | `fixtures-golden.json` | Every recorded fixture's outcome, one show per line. |
 
