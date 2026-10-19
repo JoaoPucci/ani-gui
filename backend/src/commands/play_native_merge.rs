@@ -85,8 +85,7 @@ fn own_fraction(tag: String, taken: &[f64]) -> String {
 ///
 /// Slots are numbered the way a single listing numbers them — the
 /// row's position, here across every part — so each row has one of
-/// its own: history stores the slot, and the display stamp maps it
-/// back to a tag. The row's identity rides in the tag wherever it
+/// its own, as the resolve's episode step expects. The row's identity rides in the tag wherever it
 /// differs from the slot, which is where the episode step, the cap
 /// and the extras already read it.
 #[must_use]

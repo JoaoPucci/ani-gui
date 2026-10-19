@@ -69,7 +69,6 @@ fn part_two() -> Watch {
         show_id: "hianime:stone-ocean-part-2-100".into(),
         title: "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2".into(),
         ep_no: "1".into(),
-        display: None,
     }
 }
 
@@ -216,6 +215,7 @@ async fn a_refused_play_clears_a_stale_id_the_title_disagrees_with() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: Some("44294".into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -246,6 +246,7 @@ async fn a_refused_play_keeps_an_id_the_title_agrees_with() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: Some("45412".into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -257,8 +258,9 @@ async fn a_refused_play_keeps_an_id_the_title_agrees_with() {
 
 // — a removal while a watch is still being recorded ————————————————
 //
-// A recorded watch writes its row and stamp at once and the rest after
-// the cour guard has read Kitsu: the mapping, and the id on the row.
+// A recorded watch writes its row and watched-at stamp at once and the
+// rest after the cour guard has read Kitsu: the mapping, and the id on
+// the row.
 // The frontend does not wait for it, so the user can be back on the
 // home page deleting the row while that read is still out. A removal
 // wins over what a watch begun before it was still going to write.
@@ -361,6 +363,7 @@ async fn removing_another_show_leaves_a_pending_recording_whole() {
             title: "One Piece".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed another row");
@@ -420,6 +423,7 @@ async fn a_handoff_whose_show_was_removed_under_another_key_records_nothing() {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: Some("77".into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -432,7 +436,6 @@ async fn a_handoff_whose_show_was_removed_under_another_key_records_nothing() {
         show_id: "the-show-77".into(),
         title: "The Show".into(),
         ep_no: "1".into(),
-        display: None,
     };
     record_watch_requested_at(&state, &watch, Some("77"), requested).await;
 
@@ -539,7 +542,6 @@ async fn an_earlier_request_does_not_replace_a_later_watch() {
     let requested = crate::history::guard::epoch(&state.history_path);
     let b = Watch {
         ep_no: "5".into(),
-        display: None,
         ..part_two()
     };
     record_watch(&state, &b, None).await;
@@ -548,7 +550,6 @@ async fn an_earlier_request_does_not_replace_a_later_watch() {
 
     let a = Watch {
         ep_no: "3".into(),
-        display: None,
         ..part_two()
     };
     record_watch_requested_at(&state, &a, None, requested).await;
@@ -577,7 +578,6 @@ async fn a_resolve_written_while_a_watch_waits_does_not_drop_it() {
     let requested = crate::history::guard::epoch(&state.history_path);
     let watch = Watch {
         ep_no: "3".into(),
-        display: None,
         ..part_two()
     };
     crate::history::upsert_and_write(
@@ -588,6 +588,7 @@ async fn a_resolve_written_while_a_watch_waits_does_not_drop_it() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("resolve row");
@@ -629,6 +630,7 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: Some("45412".into()),
+            own_number: false,
         },
     )
     .expect("seed row");

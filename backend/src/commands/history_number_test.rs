@@ -189,6 +189,7 @@ fn a_resume_read_while_the_offset_and_stamp_move_reads_one_of_them() {
                 title: "Stitched Show".into(),
                 watched_at: None,
                 kitsu_id: Some("77".into()),
+                own_number: false,
             },
         )
         .expect("row");
@@ -205,4 +206,36 @@ fn a_resume_read_while_the_offset_and_stamp_move_reads_one_of_them() {
             "a write before read {n} gave {ep}"
         );
     }
+}
+
+#[test]
+fn an_own_numbered_row_on_a_repaired_stamps_episode_names_the_former_number() {
+    // A row this version wrote records the recap as "1.5" itself. Where
+    // the show's stamp, from a row an earlier version wrote, was put
+    // right from "2.5" to "1.5", the row is the episode that stamp
+    // names, so the number it went by then still names it: a position
+    // an earlier version kept under "2.5" is the same episode's.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1.5".into(),
+            id: SHOW.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        },
+    )
+    .expect("row");
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: Some("2.5".into()),
+        })
+    );
 }
