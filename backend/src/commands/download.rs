@@ -2039,11 +2039,11 @@ where
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(test)]
+    let program = std::path::PathBuf::from(cmd.as_std().get_program());
     // In its tree before it runs — its own process group on Unix, its
     // jobs on Windows — so cancellation can address the tool's whole
     // tree: yt-dlp spawns helpers kill_on_drop cannot reach.
-    #[cfg(test)]
-    let program = std::path::PathBuf::from(cmd.as_std().get_program());
     let mut cmd = crate::spawn::GuardedCommand::new(cmd);
     let mut child = loop {
         // The retry lives before the child exists, so the wait below
