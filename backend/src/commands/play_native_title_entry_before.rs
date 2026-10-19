@@ -15,6 +15,11 @@ use super::*;
 pub(crate) fn is_name_and_first_divisions(candidate: &str, title: &str) -> bool {
     let (candidate, title) = (untagged_normalized(candidate), untagged_normalized(title));
     let named = name(&title);
+    // An empty name — a title that is nothing but a division — is no
+    // name, and nothing is read past it.
+    if named.is_empty() {
+        return false;
+    }
     let (Some(c), Some(t)) = (name_end(&candidate, &named), name_end(&title, &named)) else {
         return false;
     };
