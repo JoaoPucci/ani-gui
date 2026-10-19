@@ -273,7 +273,11 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
     }
     // The withdrawal says whether it found the probe held before it
     // waits for it: a withdrawal still on its way has not withdrawn
-    // anything either, and proves nothing.
+    // anything either, and proves nothing. Held is not held by this
+    // teardown alone: every case's teardown takes the probe's lock for
+    // a moment, so a teardown that let go while running the probe could
+    // still be met holding by another case's. The check sees the
+    // withdrawal wait; it cannot always say for whom.
     let (found, on_found) = std::sync::mpsc::channel();
     let (withdrawn, on_withdrawn) = std::sync::mpsc::channel();
     let withdraw = std::thread::spawn(move || {

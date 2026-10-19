@@ -95,8 +95,10 @@ async fn counting_kitsu() -> (String, Arc<Mutex<Vec<SocketAddr>>>) {
 /// has had its turn — a count taken before then is a count of nothing.
 ///
 /// So the count waits, first, until the stand-in's accept loop is the
-/// only task left on the runtime: everything a route spawned has ended,
-/// and whatever it connected is in the stand-in's queue. Then the count
+/// only task left on the runtime: every task a route spawned has ended,
+/// and whatever it connected is in the stand-in's queue. Work a route
+/// handed to the blocking pool is not a task and is not waited for; no
+/// route asks Kitsu from there. Then the count
 /// connects once itself and waits to see that connection accepted, which
 /// the queue does after every connection made before it. What the
 /// stand-in saw ahead of it is what the routes made.

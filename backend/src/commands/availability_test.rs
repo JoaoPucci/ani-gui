@@ -2476,7 +2476,9 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
         ended = &mut bg => panic!("the lookup ended without asking the provider: {ended:?}"),
     }
     let held = state.availability_refreshes.for_row(&row);
-    let guard = held.lock().await;
+    let guard = tokio::time::timeout(std::time::Duration::from_secs(30), held.lock())
+        .await
+        .expect("the lookup held the row while it was out");
     provider.release();
 
     // The lookup comes to the row with its answer in hand and waits:

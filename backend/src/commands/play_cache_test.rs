@@ -329,9 +329,9 @@ async fn a_cached_rows_check_never_queues_ahead_of_a_playing_players_segment() {
                 .await
         })
     };
-    // The row's probes are waiting at the host before the player asks.
-    // Until then a player's segment served at the next token proves
-    // nothing about whether it would queue behind them.
+    // A probe of the row's is waiting at the host before the player
+    // asks. Until then a player's segment served at the next token
+    // proves nothing about whether it would queue behind the row.
     crate::held::until("the row's probes waiting at the host", || {
         state.host_budget.probe_waiting(&host)
     })

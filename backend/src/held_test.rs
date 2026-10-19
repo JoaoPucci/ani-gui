@@ -19,7 +19,16 @@
 //! The other way round — the test holds the lock and asserts that what
 //! waits on it has not gone ahead — needs to know the waiter got as far
 //! as the lock. [`queue`] watches a lock the app notes its waits on
-//! ([`queued`]), and [`Queue::joined`] returns once one has queued.
+//! ([`queued`]), and [`Queue::joined`] returns once one has queued. The
+//! same note marks a retry of an executable found busy and a wait on a
+//! claimed name, for a test that holds the file. [`shared`] sees a
+//! waiter at a lock handed out as an `Arc`, and [`until`] polls a state
+//! the subject reaches that the test can read but not await.
+//!
+//! Their deadlines are on tokio's clock, and on a paused clock that
+//! clock jumps ahead whenever the runtime is idle — while a subject
+//! works on a thread of its own, say — so they are for tests on the
+//! real clock.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -204,7 +213,8 @@ const QUEUE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 /// Called by a lock's waiter that found the lock taken, just before it
 /// waits: nothing between this and the wait lets it go ahead. `on` is
 /// what the lock is known by — the path it guards, or [`lock_key`] for
-/// a lock in memory.
+/// a lock in memory. A retry of a busy executable and a wait on a
+/// claimed name note the same way, under the file's path.
 pub(crate) fn queued(on: &str) {
     let mut queued = QUEUED.lock().unwrap_or_else(PoisonError::into_inner);
     *queued.entry(on.to_owned()).or_default() += 1;
