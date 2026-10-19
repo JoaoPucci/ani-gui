@@ -2420,7 +2420,8 @@ async fn another_entry_of_the_same_show_leaves_a_clean_miss() {
 
 /// A number glued to a word outside Japanese is the word's: "ＳＨＯＷ２"
 /// is no season before "ＳＨＯＷ３", as "Show2" is none before "Show 3",
-/// and is picked; glued to a Japanese word it is the season before.
+/// and is picked; glued to a Japanese word it is a number, refused by
+/// title as "Show 2" is for "Show 3".
 #[tokio::test]
 async fn a_number_glued_to_a_word_outside_japanese_is_the_word_s() {
     for (entry, listing) in [
@@ -2442,7 +2443,7 @@ async fn a_number_glued_to_a_word_outside_japanese_is_the_word_s() {
     ] {
         let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
         match walk_over(site).await {
-            Err(e) => assert!(e.clean_miss, "{entry}: {e:?}"),
+            Err(e) => assert!(e.refused_by_name && !e.clean_miss, "{entry}: {e:?}"),
             Ok(p) => panic!("{entry}: picked {}", p.hit.slug),
         }
     }
