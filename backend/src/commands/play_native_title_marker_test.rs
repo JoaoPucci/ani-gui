@@ -486,3 +486,25 @@ proptest::proptest! {
         proptest::prop_assert_eq!(glued_number(&format!("{}{n}", OTHER_HEADS[o])), None);
     }
 }
+
+/// Letters a number may stand glued before: Japanese ones only.
+const JAPANESE_AFTER: &[char] = &['第', 'シ', '期', 'ｼ'];
+const OTHER_AFTER: &[char] = &['é', 'ｓ', 'ш', '나', 'a'];
+
+proptest::proptest! {
+    /// Digits stand as a number before a space, the end, or a Japanese
+    /// letter glued to them ("20第2部"); before any other letter they
+    /// are a word's ("1é", "20a").
+    #[test]
+    fn a_number_stands_before_a_japanese_letter_only(
+        j in 0..JAPANESE_AFTER.len(),
+        o in 0..OTHER_AFTER.len(),
+        n in 0u32..100,
+    ) {
+        use super::super::play_native_title_reading::leading_number;
+        proptest::prop_assert_eq!(leading_number(&format!("{n}")).map(|x| x.0), Some(n));
+        proptest::prop_assert_eq!(leading_number(&format!("{n} season 1")).map(|x| x.0), Some(n));
+        proptest::prop_assert_eq!(leading_number(&format!("{n}{}1部", JAPANESE_AFTER[j])).map(|x| x.0), Some(n));
+        proptest::prop_assert_eq!(leading_number(&format!("{n}{} season 1", OTHER_AFTER[o])), None);
+    }
+}
