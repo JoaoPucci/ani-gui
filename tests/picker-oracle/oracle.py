@@ -49,17 +49,28 @@ NOT_MODELLED = object()
 JP = r"぀-ヿ一-鿿"
 
 
-# --- catalogue tags: "a release year or a format tag in brackets ... wherever in the title it stands"
+def _either_width(word):
+    """`word` with each character in its ASCII or its full-width form,
+    each on its own: a tag is read a character at a time, so "ｔv" is
+    the tag "tv" as "ｔｖ" and "tv" are."""
+    return "".join(f"[{c}{chr(ord(c) + 0xFEE0)}]" for c in word)
+
+
+# --- catalogue tags: "a release year or a format tag in brackets ... wherever
+# in the title it stands", each character of the tag ASCII or full-width
 
 CTAG = re.compile(
-    r"[\(\[（【]\s*(?:\d{4}|tv|ona|ova|oad|[０-９]{4}|ｔｖ|ｏｎａ|ｏｖａ|ｏａｄ)\s*[\)\]）】]"
+    r"[\(\[（【]\s*(?:"
+    + "|".join(["[0-9０-９]{4}"] + [_either_width(w) for w in ("tv", "ona", "ova", "oad")])
+    + r")\s*[\)\]）】]"
 )
 
 
 # --- version tags: "a bracketed version tag ... in ASCII or full-width round,
-# square or lenticular brackets, in any case" (Versions of one pick)
+# square or lenticular brackets, in any case" (Versions of one pick), each
+# character of the tag ASCII or full-width
 
-VTAG = re.compile(r"[\(\[（［【]\s*(?:uncensored|ｕｎｃｅｎｓｏｒｅｄ)\s*[\)\]）］】]")
+VTAG = re.compile(r"[\(\[（［【]\s*" + _either_width("uncensored") + r"\s*[\)\]）］】]")
 
 
 def version_of(t):
@@ -1267,6 +1278,8 @@ def gen():
         ("Show [OVA]", None),
         ("Show (2020) Season 1", None),
         ("Show （ONA）", None),
+        ("Show (ｔv)", None),
+        ("Show Season 1 （２0２0）", None),
         ("Show (Shin Series)", {"pick": "x", "count": E}),
         ("Show (Movie)", {"pick": "x", "count": E}),
     ]:
@@ -1346,6 +1359,10 @@ def gen():
         ("Show (2011)", E, [("other", "Show", E), ("own", "Show (2011)", E)], "own"),
         ("Show (2011) Season 2", E, [("orig", "Show Season 2", E), ("own", "Show Season 2 (2011)", E)], "own"),
         ("Show (2011) Season 2", None, [("orig", "Show Season 2", E), ("own", "Show Season 2 （２０１１）", E)], "own"),
+        # a tag mixing widths is read a character at a time: the same tag
+        ("Fruits Basket (2019)", 25, [("old", "Fruits Basket", 25), ("new", "Fruits Basket (２0１9)", 25)], "new"),
+        ("Show (ｔv)", E, [("own", "Show (TV)", E), ("other", "Other", E)], "own"),
+        ("Show (TV)", E, [("other", "Other", E), ("own", "Show （Ｔv）", E)], "own"),
     ]:
         for yr in (LISTING_YEAR, None):
             add(
@@ -1429,7 +1446,7 @@ def gen():
         if fam not in ("admission", "counted-dated", "counted-noyear") or len(c["rows"]) != 1:
             continue
         x = c["rows"][0]
-        vtag = ("(Uncensored)", "[UNCENSORED]", "（Uncensored）")[i % 3]
+        vtag = ("(Uncensored)", "[UNCENSORED]", "（Uncensored）", "(ｕncensored)", "［ＵＮＣＥＮsored］")[i % 5]
         same = [x[0] + "-u", f"{x[1]} {vtag}", x[2]]
         short = [x[0] + "-u", f"{x[1]} {vtag}", x[2] - 1]
         names = {k: c[k] for k in ("jnames", "page_names") if k in c} or None
@@ -1442,7 +1459,7 @@ def gen():
                 continue
             add(c["titles"], c["count"], c["entry_year"], rows, want, f"versions/{fam}/{how}", names=names)
     # every reader reads a title without its catalogue tags — every family again, tagged
-    tags = ["(TV)", "(2024)", "[OVA]", "（ＯＮＡ）", "【OAD】", "（２０２０）"]
+    tags = ["(TV)", "(2024)", "[OVA]", "（ＯＮＡ）", "【OAD】", "（２０２０）", "(ｔv)", "（２0２0）", "[Ｏva]"]
     tagged = []
     for i, c in enumerate(list(cases)):
         if c["family"].startswith(("year-or-format-tag", "remake", "versions")):
