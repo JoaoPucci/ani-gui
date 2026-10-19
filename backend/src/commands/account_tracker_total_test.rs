@@ -5,6 +5,13 @@
 //! show (Ranma ½ on AniList: 18 against 161), and when the total is unknown;
 //! and, on both trackers, an episode past Kitsu's finale, a rewatch's
 //! finale and a replay behind the row.
+//!
+//! This is the identity write: the one a show's episode map leaves as
+//! Kitsu numbers it. Where the map files the episodes under other
+//! entries or numbers — Ranma ½'s two AniList entries among them — the
+//! write is `account_mapped`'s, which decides each entry's completion
+//! from the map and does not read the renderer's `completed`; it is
+//! covered in `account_mapped_test.rs`.
 
 use super::*;
 use crate::account::provider::EntryUpdate;
