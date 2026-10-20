@@ -11,6 +11,7 @@ import { describeDownloadFailure } from './failure-copy';
 import { describePlayFailure, describeRateLimit } from '$lib/play/error-copy';
 import { describePlayFailureFromCache } from '$lib/play/other-audio';
 import { downloadStore } from './store.svelte';
+import { downloadQueue } from './queue';
 import { downloadFailureStore } from './failure-store.svelte';
 
 /** Typed-error payload shape coming off the SSE error event from
@@ -46,9 +47,14 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 	});
 
 	const ctrl = new AbortController();
-	downloadStore.markActive(id, ctrl);
+	// Queued until the queue gives it a slot — at once when one is free.
+	downloadStore.markQueued(id, ctrl);
 
-	void downloadStream(args, (p) => downloadStore.setProgress(id, p.line), ctrl.signal)
+	void downloadQueue
+		.run(() => downloadStream(args, (p) => downloadStore.setProgress(id, p.line), ctrl.signal), {
+			signal: ctrl.signal,
+			onStart: () => downloadStore.markActive(id, ctrl)
+		})
 		.then((resp) => downloadStore.markDone(id, resp.dest_dir))
 		.catch((e: unknown) => {
 			// ffmpeg_missing is a blocking install-required failure —

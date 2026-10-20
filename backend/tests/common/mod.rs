@@ -25,6 +25,9 @@ pub struct Backend {
     pub child: Child,
     /// The origin it printed, `http://127.0.0.1:<port>`.
     pub api_base: String,
+    /// The other lanes it announced ahead of that line, by name, each
+    /// an origin of its own.
+    pub lanes: std::collections::BTreeMap<String, String>,
 }
 
 /// A command for the backend at `exe`, its data under `home`, stdin a
@@ -74,10 +77,16 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
     let stdout = child.stdout.take().expect("stdout");
     // A thread owns the read, because a blocking read has no timeout
     // of its own; it hands the reader back once the handshake is in.
-    let (tx, rx) = mpsc::channel::<(String, BufReader<ChildStdout>)>();
+    type Handshake = (
+        String,
+        std::collections::BTreeMap<String, String>,
+        BufReader<ChildStdout>,
+    );
+    let (tx, rx) = mpsc::channel::<Handshake>();
     std::thread::spawn(move || {
         let mut output = BufReader::new(stdout);
         let mut api_base = None;
+        let mut lanes = std::collections::BTreeMap::new();
         let mut secret_seen = false;
         let mut line = String::new();
         while api_base.is_none() || !secret_seen {
@@ -89,17 +98,29 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
             if let Some(base) = line.strip_prefix("ANI_GUI_LISTENING ") {
                 api_base = Some(base.trim().to_string());
             }
+            if let Some(lane) = line.strip_prefix("ANI_GUI_LANE ") {
+                if let Some((name, base)) = lane.trim().split_once(' ') {
+                    lanes.insert(name.to_string(), base.trim().to_string());
+                }
+            }
             secret_seen |= line.starts_with("ANI_GUI_INTERNAL_SECRET ");
         }
-        let _ = tx.send((api_base.expect("checked by the loop"), output));
+        let _ = tx.send((api_base.expect("checked by the loop"), lanes, output));
     });
 
-    let Ok((api_base, output)) = rx.recv_timeout(HANDSHAKE_TIMEOUT) else {
+    let Ok((api_base, lanes, output)) = rx.recv_timeout(HANDSHAKE_TIMEOUT) else {
         let _ = child.kill();
         let _ = child.wait();
         panic!("the backend did not complete its handshake");
     };
-    (Backend { child, api_base }, output)
+    (
+        Backend {
+            child,
+            api_base,
+            lanes,
+        },
+        output,
+    )
 }
 
 /// The child's exit status, if it exits within `wait`.
