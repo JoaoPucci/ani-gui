@@ -233,12 +233,7 @@ export function clearForShow(showId: string): void {
  * For a page that stays mounted while it moves to another show.
  */
 export function clearBackgroundForShow(showId: string): void {
-	const prefix = `${showId}|`;
-	for (const [key, entry] of cached) {
-		if (!key.startsWith(prefix) || !entry.createdInBackground) continue;
-		entry.abortController.abort();
-		cached.delete(key);
-	}
+	clearBackground(showId, () => false);
 }
 
 /**
@@ -251,8 +246,20 @@ export function clearBackgroundForOtherVersions(
 	showId: string,
 	version: VersionKind | undefined
 ): void {
-	void showId;
-	void version;
+	// The version is the key's last axis (`makeKey`).
+	const chosen = `|${version ?? ''}`;
+	clearBackground(showId, (key) => key.endsWith(chosen));
+}
+
+/** Abort and forget the show's background entries, but those `spare`
+ *  keeps. */
+function clearBackground(showId: string, spare: (key: CacheKey) => boolean): void {
+	const prefix = `${showId}|`;
+	for (const [key, entry] of cached) {
+		if (!key.startsWith(prefix) || !entry.createdInBackground || spare(key)) continue;
+		entry.abortController.abort();
+		cached.delete(key);
+	}
 }
 
 /** Test seam: wipe the whole cache between vitest cases, including

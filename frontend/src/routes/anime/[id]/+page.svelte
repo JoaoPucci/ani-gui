@@ -92,7 +92,13 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
-	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import {
+		clearBackgroundForOtherVersions,
+		clearBackgroundForShow,
+		clearForShow,
+		getOrFire,
+		makeKey
+	} from '$lib/play/play-cache';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import {
@@ -189,6 +195,9 @@
 		// it changes nothing, and must not re-warm under another key.
 		if (kind === shownVersion) return;
 		versionChoice = applyChoice(id, kind);
+		// The strip re-warms under the chosen version's keys; the
+		// version left's warms are for a listing nobody will play.
+		if (id) clearBackgroundForOtherVersions(id, versionChoice);
 	}
 	const onVersionKey = (e: KeyboardEvent, index: number) =>
 		handleRadioKey(e, index, offeredVersions.length, (i) => chooseVersion(offeredVersions[i].kind));
