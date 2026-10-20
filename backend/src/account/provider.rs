@@ -199,6 +199,24 @@ pub trait UserListProvider: Send + Sync {
         tokens: &Tokens,
         id: ProviderMediaId,
     ) -> Result<Option<CurrentEntry>>;
+
+    /// The same bearer-scoped read as [`Self::current_entry`], plus the
+    /// tracker's own episode total for the media, in one request. The
+    /// mark-watched write-back reads this instead, so it can clamp the
+    /// count it sends to the tracker's total, and decide the finale's
+    /// completed status against it, without a second call.
+    async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia>;
+}
+
+/// What the mark-watched write-back reads before it writes: the user's
+/// list row for one media, if any, and the tracker's episode total.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrackedMedia {
+    /// The user's current row, `None` when the show isn't on the list.
+    pub entry: Option<CurrentEntry>,
+    /// The tracker's episode total for the media, `None` while it is
+    /// unknown (AniList's `null`, MAL's `0` for an airing show).
+    pub episodes: Option<u32>,
 }
 
 /// Lean snapshot of the user's existing list row for one media, read

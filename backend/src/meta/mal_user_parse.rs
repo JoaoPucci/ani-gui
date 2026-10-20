@@ -10,7 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 use crate::account::provider::{
-    CurrentEntry, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserProfile, UserStats,
+    CurrentEntry, ListEntry, ProviderKind, ProviderMediaId, Tokens, TrackedMedia, UserProfile,
+    UserStats,
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
@@ -19,6 +20,7 @@ use crate::error::{AniError, Result};
 mod status;
 pub(super) use status::{
     parse_iso8601_to_epoch, parse_list_status_response, parse_my_list_status_entry,
+    parse_tracked_media,
 };
 
 /// Parse MAL's OAuth token-exchange response into [`Tokens`]. Both

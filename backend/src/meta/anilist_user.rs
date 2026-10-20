@@ -31,8 +31,8 @@ use crate::account::credentials::{
 };
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
-    UserProfile, UserStats,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, TrackedMedia,
+    UserListProvider, UserProfile, UserStats,
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
@@ -91,6 +91,12 @@ const DELETE_ENTRY_GQL: &str = "mutation Delete($id: Int!) { \
 /// write-back guard.
 const MEDIA_PROGRESS_GQL: &str = "query Progress($mediaId: Int!) { \
         Media(id: $mediaId) { mediaListEntry { status progress } } \
+    }";
+
+/// GraphQL: [`MEDIA_PROGRESS_GQL`] with the media's own episode total
+/// beside the viewer's entry — the mark-watched write-back's one read.
+const MEDIA_TRACKED_GQL: &str = "query Tracked($mediaId: Int!) { \
+        Media(id: $mediaId) { episodes mediaListEntry { status progress } } \
     }";
 
 /// GraphQL: paginated full user list. `perChunk: 500` matches the
@@ -392,6 +398,15 @@ impl UserListProvider for AniListProvider {
         let bytes = self.post_graphql(tokens, &body).await?;
         parse_media_entry_response(&bytes)
     }
+
+    async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia> {
+        let body = serde_json::json!({
+            "query": MEDIA_TRACKED_GQL,
+            "variables": { "mediaId": id.0 },
+        });
+        let bytes = self.post_graphql(tokens, &body).await?;
+        parse_tracked_media_response(&bytes)
+    }
 }
 
 /// Pure parser for the `Media { mediaListEntry { status progress } }`
@@ -434,6 +449,36 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
             .unwrap_or(ListStatus::Watching),
         progress_episodes: e.progress.unwrap_or(0),
     }))
+}
+
+/// Pure parser for the [`MEDIA_TRACKED_GQL`] response: the viewer's
+/// entry as [`parse_media_entry_response`] reads it, and `Media.episodes`,
+/// `null` while AniList doesn't know the show's length.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the response isn't the
+/// documented `{ data: { Media: { … } } }` envelope.
+fn parse_tracked_media_response(body: &[u8]) -> Result<TrackedMedia> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Option<Media>,
+    }
+    #[derive(Deserialize)]
+    struct Media {
+        episodes: Option<u32>,
+    }
+    let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist media episodes: {e}"),
+    })?;
+    Ok(TrackedMedia {
+        entry: parse_media_entry_response(body)?,
+        episodes: wrap.data.media.and_then(|m| m.episodes).filter(|n| *n > 0),
+    })
 }
 
 /// Pure parser for the `Viewer` GraphQL response. AniList ids are
@@ -853,3 +898,7 @@ fn jwt_exp_claim(access_token: &str) -> Option<i64> {
 #[cfg(test)]
 #[path = "anilist_user_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_user_tracked_test.rs"]
+mod tracked_tests;
