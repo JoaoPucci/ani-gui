@@ -116,6 +116,8 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json(NOTHING_CACHED)),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+		// The fresh resolve a Reload that goes through asks for.
+		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
 			seen.evictions += 1;
 			return new HttpResponse(null, { status: 204 });
