@@ -49,6 +49,12 @@ export const API_BASE = 'http://127.0.0.1:31337';
  *   `prefetch`: this handler answers it too, so it cannot slip past
  *   to the real port, but records it as undescribed, which fails the
  *   scenario that sent it.
+ *
+ * They answer on `API_BASE`, which every lane falls back to while no
+ * scenario installs `window.aniGui.lanes`. A scenario that installs
+ * lanes answers its own routes on them; one that also drops its fake
+ * EventSource sends its warms on the resolve lane, where these do not
+ * reach, and they fail it as undescribed.
  */
 const absentBackend = () => HttpResponse.error();
 const incidental = [
