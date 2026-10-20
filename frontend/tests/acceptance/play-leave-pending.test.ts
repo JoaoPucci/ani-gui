@@ -648,13 +648,21 @@ describe('play route — a failed switch away from a failed stream', () => {
 
 	it('a Reload whose fresh resolve cannot start puts the error and Reload back', async () => {
 		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
-		// An airing show whose schedule never answers: every switch holds
-		// until it does, the recovery's own included.
+		// An airing show whose schedule does not answer while the case
+		// runs: every switch holds until it does, the recovery's own
+		// included. It answers before the page goes.
+		let answerSchedule = () => {};
+		const scheduleHeld = new Promise<void>((r) => (answerSchedule = r));
+		let scheduleAnswered = false;
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
-			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () => new Promise<Response>(() => {}))
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, async () => {
+				await scheduleHeld;
+				scheduleAnswered = true;
+				return HttpResponse.json(null);
+			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
@@ -673,6 +681,9 @@ describe('play route — a failed switch away from a failed stream', () => {
 
 		expect(reload()).not.toBeNull();
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
+		answerSchedule();
+		await until(() => scheduleAnswered, 'the schedule answered');
+		await new Promise((r) => setTimeout(r, 50));
 	});
 
 	it('a switch that overtakes a Reload and fails puts the error and Reload back', async () => {
