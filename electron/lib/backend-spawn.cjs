@@ -32,7 +32,7 @@ function backendSpawnOptions({ platform, env }) {
 
 /**
  * Spawn the backend at `bin` with `spawn` (node's, in main.js) and
- * resolve with `{ child, apiBase, internalSecret }` once `handshake`
+ * resolve with `{ child, apiBase, internalSecret, lanes }` once `handshake`
  * — lib/backend-handshake.cjs, wired up by the caller — resolves for
  * it.
  *

@@ -45,9 +45,17 @@ test("the downloads prompt is in the app's language, whichever it ships", () => 
   }
 });
 
-test("the prompt says how many downloads, and reads right for one", () => {
-  assert.equal(closePromptOptions({ locale: "en", count: 1 }).message, "1 download in progress.");
-  assert.equal(closePromptOptions({ locale: "en", count: 3 }).message, "3 downloads in progress.");
+// The count takes in downloads still queued, which a quit loses as
+// much as a running one — so the prompt calls them unfinished, which
+// both are, rather than in progress or active, which a queued one is
+// not.
+test("the prompt says how many downloads are unfinished, and reads right for one", () => {
+  assert.equal(closePromptOptions({ locale: "en", count: 1 }).message, "1 download not finished.");
+  assert.equal(closePromptOptions({ locale: "en", count: 3 }).message, "3 downloads not finished.");
+  assert.equal(closePromptOptions({ locale: "en", count: 3 }).title, "Unfinished downloads");
+  assert.equal(closePromptOptions({ locale: "pt-BR", count: 3 }).message, "3 downloads não concluídos.");
+  assert.equal(closePromptOptions({ locale: "es-419", count: 3 }).message, "3 descargas sin terminar.");
+  assert.equal(closePromptOptions({ locale: "ru", count: 3 }).message, "Незавершённых загрузок: 3.");
   for (const locale of LOCALES) {
     for (const count of [1, 2, 5, 21]) {
       const { message } = closePromptOptions({ locale, count });

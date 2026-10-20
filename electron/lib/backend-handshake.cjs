@@ -24,9 +24,17 @@
 const HANDSHAKE_TIMEOUT_MS = 120_000;
 
 /**
- * Resolve with `{ apiBase, internalSecret }` once the backend has
- * printed both handshake lines (in either order); reject when it
- * cannot get there:
+ * Resolve with `{ apiBase, internalSecret, lanes }` once the backend
+ * has printed both handshake lines (in either order); reject when it
+ * cannot get there.
+ *
+ * `lanes` holds the other loopback origins the backend listens on, one
+ * per class of traffic (`ANI_GUI_LANE <name> <origin>`), by name. The
+ * backend prints them ahead of the two lines the wait resolves on, so
+ * they are all in by then; a backend that announces none resolves
+ * with `{}`, and the renderer then reaches everything at `apiBase`.
+ *
+ * It rejects when:
  *
  *   - the spawn fails ('error' — EACCES, EPERM, ENOENT; the OS refused
  *     to run the binary, so no 'exit' follows);
@@ -44,6 +52,7 @@ function awaitHandshake(child, { timeoutMs, stopChild, log = () => {} }) {
     let settled = false;
     let apiBase = null;
     let internalSecret = null;
+    const lanes = {};
 
     const settle = (fn, value) => {
       if (settled) return;
@@ -70,7 +79,9 @@ function awaitHandshake(child, { timeoutMs, stopChild, log = () => {} }) {
       if (apiMatch) apiBase = apiMatch[1];
       const secretMatch = line.match(/^ANI_GUI_INTERNAL_SECRET\s+(\S+)/);
       if (secretMatch) internalSecret = secretMatch[1];
-      if (apiBase && internalSecret) settle(resolve, { apiBase, internalSecret });
+      const laneMatch = line.match(/^ANI_GUI_LANE\s+([a-z]+)\s+(\S+)/);
+      if (laneMatch) lanes[laneMatch[1]] = laneMatch[2];
+      if (apiBase && internalSecret) settle(resolve, { apiBase, internalSecret, lanes });
     };
 
     child.stdout.on("data", (chunk) => {

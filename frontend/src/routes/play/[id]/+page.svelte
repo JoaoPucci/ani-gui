@@ -8,7 +8,7 @@
     - kitsu_id:  drives the show context (poster, title, episodes,
                  similar titles) via the existing Kitsu endpoints.
     - session:   the StreamSession id. The master playlist URL is
-                 reconstructed client-side from `apiBase` + the id;
+                 reconstructed client-side from the stream lane + the id;
                  hls.js loads that URL through the local proxy.
     - episode:   currently-playing episode number. Highlighted in the
                  strip below the player; consumed by the prev/next
@@ -42,6 +42,7 @@
 		downloadDefaultDir as downloadDefaultDirApi,
 		evictPlayCache,
 		imageProxyUrl,
+		windowLaneBase,
 		checkAvailability,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
@@ -887,11 +888,13 @@
 	/** Reconstruct the proxy URL from the session id + kind. The proxy
 	 *  mounts each session at /s/<id>/master.m3u8 (HLS) or /s/<id>/file.mp4
 	 *  (MP4) — the pattern is stable, so we don't round-trip the backend
-	 *  just to learn the URL. window.aniGui.apiBase is set by Electron's
-	 *  preload script before the renderer mounts. */
+	 *  just to learn the URL. It is the stream lane's: the player's
+	 *  fetches have a connection budget nothing else draws on
+	 *  ($lib/backend/lanes). The bridge is set by Electron's preload
+	 *  script before the renderer mounts. */
 	const mediaUrl = $derived.by(() => {
 		if (!sessionId) return null;
-		const base = (typeof window !== 'undefined' && window.aniGui?.apiBase) || '';
+		const base = windowLaneBase('stream');
 		return base ? buildMediaUrl(base, sessionId, mediaKind) : null;
 	});
 
@@ -1030,23 +1033,26 @@
 		applyAvailabilityPatch(writeback.refresh(refresh));
 	}
 	const capGate = createCapGateProbe({
-		probe: async () => {
+		probe: async (signal) => {
 			const d = detail;
 			if (!d) return null;
-			const r = await checkAvailability({
-				title: d.canonical_title,
-				mode: capGateMode(),
-				alt_titles: altTitlesFromKitsu(d),
-				episode_count: d.episode_count ?? undefined,
-				year: yearFromKitsuRef(d) ?? undefined,
-				kitsu_id: d.id,
-				subtype: d.subtype ?? undefined,
-				status: d.status ?? undefined,
-				background: false,
-				// Without this the lookup answers from the very row
-				// being questioned and never reaches the provider.
-				bypass_cache: true
-			});
+			const r = await checkAvailability(
+				{
+					title: d.canonical_title,
+					mode: capGateMode(),
+					alt_titles: altTitlesFromKitsu(d),
+					episode_count: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
+					kitsu_id: d.id,
+					subtype: d.subtype ?? undefined,
+					status: d.status ?? undefined,
+					background: false,
+					// Without this the lookup answers from the very row
+					// being questioned and never reaches the provider.
+					bypass_cache: true
+				},
+				{ signal }
+			);
 			// The whole row, not one field of it — an unsettled answer
 			// as none, a refusal by name as the show unavailable. The
 			// controller decides which parts of a fresh answer are safe
@@ -1077,6 +1083,18 @@
 		onSuperseded: () => {
 			switchBusy = false;
 		}
+	});
+
+	// What a recheck is about, as a value: when it changes under an
+	// in-flight recheck (another show on this route, another mode),
+	// the recheck's answer would be discarded, so its probe is stopped
+	// rather than left holding a limiter slot.
+	// The visit, not the loaded detail, which is briefly null on any
+	// load: a recheck nobody navigated away from must not be stopped.
+	const capGateKey = $derived(`${visit}:${capGateMode()}`);
+	$effect(() => {
+		void capGateKey;
+		return () => capGate.supersede();
 	});
 
 	/**
@@ -1952,9 +1970,11 @@
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
-	// The backend does not see all of these at once. `play-cache.ts`
-	// caps background warms at PREFETCH_CONCURRENCY (2) and only a
-	// foreground click bypasses that, and the backend paces provider
+	// The backend does not see all of these at once. The play cache
+	// caps background warms at PREFETCH_CONCURRENCY (2,
+	// `$lib/play/prefetch-slots`) and only a foreground click — or the
+	// detail page's resume warm, which a click waits on — bypasses
+	// that, and the backend paces provider
 	// traffic again through ScraperGate, which spaces background
 	// admits and refuses them outright while its breaker is open.
 	// Widening the radius here changes how many are queued, not how

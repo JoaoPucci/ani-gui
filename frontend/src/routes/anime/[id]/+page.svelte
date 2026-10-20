@@ -92,7 +92,13 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
-	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import {
+		clearBackgroundForOtherVersions,
+		clearBackgroundForShow,
+		clearForShow,
+		getOrFire,
+		makeKey
+	} from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
@@ -114,6 +120,7 @@
 	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
 	import { joinResumeRefresh, refreshedResume } from '$lib/detail/resume-refresh';
+	import { warmResumeEpisode } from '$lib/detail/resume-warm';
 	import { settledWithin } from '$lib/detail/resume-join';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -190,6 +197,9 @@
 		// it changes nothing, and must not re-warm under another key.
 		if (kind === shownVersion) return;
 		versionChoice = applyChoice(id, kind);
+		// The strip re-warms under the chosen version's keys; the
+		// version left's warms are for a listing nobody will play.
+		if (id) clearBackgroundForOtherVersions(id, versionChoice);
 	}
 	const onVersionKey = (e: KeyboardEvent, index: number) =>
 		handleRadioKey(e, index, offeredVersions.length, (i) => chooseVersion(offeredVersions[i].kind));
@@ -327,23 +337,26 @@
 		resumeRefresh.again();
 	}
 	const capGate = createCapGateProbe({
-		probe: async () => {
+		probe: async (signal) => {
 			const d = detail;
 			if (!d) return null;
-			const r = await checkAvailability({
-				title: d.canonical_title,
-				mode: capGateMode(),
-				alt_titles: altTitlesFromKitsu(d),
-				episode_count: d.episode_count ?? undefined,
-				year: yearFromKitsuRef(d) ?? undefined,
-				kitsu_id: d.id,
-				subtype: d.subtype ?? undefined,
-				status: d.status ?? undefined,
-				background: false,
-				// Without this the lookup answers from the very row
-				// being questioned and never reaches the provider.
-				bypass_cache: true
-			});
+			const r = await checkAvailability(
+				{
+					title: d.canonical_title,
+					mode: capGateMode(),
+					alt_titles: altTitlesFromKitsu(d),
+					episode_count: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
+					kitsu_id: d.id,
+					subtype: d.subtype ?? undefined,
+					status: d.status ?? undefined,
+					background: false,
+					// Without this the lookup answers from the very row
+					// being questioned and never reaches the provider.
+					bypass_cache: true
+				},
+				{ signal }
+			);
 			// The whole row, not one field of it — an unsettled answer
 			// as none, a refusal by name as the show unavailable. The
 			// controller decides which parts of a fresh answer are safe
@@ -377,6 +390,18 @@
 			actionBusy = false;
 			actionProgress = null;
 		}
+	});
+
+	// What a recheck is about, as a value: when it changes under an
+	// in-flight recheck (another show on this route, another mode),
+	// the recheck's answer would be discarded, so its probe is stopped
+	// rather than left holding a limiter slot.
+	// The visit, not the loaded detail, which is briefly null on any
+	// load: a recheck nobody navigated away from must not be stopped.
+	const capGateKey = $derived(`${visit}:${capGateMode()}`);
+	$effect(() => {
+		void capGateKey;
+		return () => capGate.supersede();
 	});
 
 	/**
@@ -885,20 +910,25 @@
 	function warmResume(ep: number) {
 		const d = detail;
 		const title = playTitle();
-		if (!d || !title) return Promise.resolve();
+		// The route's id, which the play cache is keyed and cleared by.
+		const showId = id;
+		if (!d || !title || !showId) return Promise.resolve();
+		const mode = playMode(config);
+		const quality = playQuality(config);
+		// The version a click on the row would play: its warm puts that
+		// copy's numbering right and keeps its stream under the key the
+		// click reads.
+		const version = versionChoice;
 		const args = playArgsFor({
 			title,
 			episode: ep,
-			mode: playMode(config),
-			quality: playQuality(config),
+			mode,
+			quality,
 			show: d,
 			kitsuId: d.id,
-			// The version a click on the row would play: its warm puts
-			// that copy's numbering right and keeps its stream under the
-			// key the click reads.
-			version: versionChoice
+			version
 		});
-		return playStream({ ...args, prefetch: true }, () => {});
+		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
@@ -1152,6 +1182,13 @@
 				if (id !== currentId) return;
 				error = { headline: m.detail_error_load_headline(), detail: describeError(e) };
 			});
+		// The component outlives a move to another show, so the show
+		// left drops its warms here — nobody is waiting on them. A
+		// click's own play runs on and records its show's watch. Only
+		// when the id moved: this effect also re-runs on the same show.
+		return () => {
+			if (id !== currentId) clearBackgroundForShow(currentId);
+		};
 	});
 
 	onMount(() => {
@@ -1501,7 +1538,7 @@
 		actionNotice = null;
 		actionProgress = null;
 		// Hits the play-cache: a prefetch from onMount or an earlier
-		// click against the same (show, ep, mode, quality) tuple
+		// click against the same (show, ep, mode, quality, version)
 		// completes instantly here. The streaming variant feeds progress
 		// events into the overlay so the user sees `<provider> ✓` ticks.
 		const outcome = await runOwnedPlay(

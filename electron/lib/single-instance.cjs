@@ -37,7 +37,8 @@ function revealWindow(win) {
  * when that window closes (`closed`) and when the boot fails
  * (`failed`) — a failed boot has no window worth bringing forward.
  * `booted` records what the boot's window was opened against — the
- * backend's apiBase and internal secret — once the boot has opened it.
+ * backend's handshake: its apiBase, internal secret and lanes — once
+ * the boot has opened it.
  *
  * `summon()` then answers a launch:
  *
