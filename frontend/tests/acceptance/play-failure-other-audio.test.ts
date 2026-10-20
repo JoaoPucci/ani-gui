@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
@@ -27,6 +27,20 @@ vi.mock('$app/state', () => ({
 vi.mock('$lib/account/push-watched', () => ({
 	syncWatchedToTrackers: vi.fn(async () => {})
 }));
+// Every play the routes run is judged by `runOwnedPlay`, and the page
+// acts on its outcome — navigates, shows a failure, records a watch —
+// in the turn that outcome settles. Recording each outcome lets a case
+// wait for the page to have acted rather than for a fixed time.
+const owned = vi.hoisted(() => ({ outcomes: [] as Promise<unknown>[] }));
+vi.mock('$lib/play/owned-play', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/play/owned-play')>();
+	const runOwnedPlay = ((...args: Parameters<typeof real.runOwnedPlay>) => {
+		const outcome = real.runOwnedPlay(...args);
+		owned.outcomes.push(outcome);
+		return outcome;
+	}) as typeof real.runOwnedPlay;
+	return { ...real, runOwnedPlay };
+});
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -82,6 +96,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
+	owned.outcomes.length = 0;
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -103,6 +118,19 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 		await new Promise((r) => setTimeout(r, 10));
 	}
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
+}
+
+/** The last play the page ran has been judged and acted on. The page
+ *  awaits that outcome and registered its wait before this one, so
+ *  whatever it does with the answer — a navigation, a failure overlay,
+ *  and the cache lookup a failure is worded from, which the outcome
+ *  itself waits on — has happened by the time this resumes; the tick
+ *  flushes what it rendered. A negative read after this is a reading
+ *  of the page's answer, not of how far it had got. */
+async function playJudged() {
+	await until(() => owned.outcomes.length > 0, 'a play to be run');
+	await Promise.allSettled([owned.outcomes[owned.outcomes.length - 1]]);
+	await tick();
 }
 
 function kitsuEpisodes(count: number) {
@@ -484,7 +512,8 @@ describe('play — a handoff names the episode it launched, not the one on scree
 		await until(() => launched, 'the launch request');
 		// The viewer moves on to episode 4 while the launch is out.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-slow', episode: '4', kind: 'mp4' });
-		await new Promise((r) => setTimeout(r, 20));
+		// The page's effects have read episode 4 before the launch answers.
+		flushSync();
 		release();
 	}
 
@@ -624,7 +653,7 @@ describe('a play for one show that answers after the page moved on', () => {
 			});
 			await until(() => vi.mocked(syncWatchedToTrackers).mock.calls.length > 0, 'the mirror');
 			expect(vi.mocked(syncWatchedToTrackers).mock.calls[0].slice(0, 3)).toEqual([KITSU_ID, 5, 12]);
-			await new Promise((r) => setTimeout(r, 30));
+			await playJudged();
 			expect(vi.mocked(goto)).not.toHaveBeenCalled();
 			await until(() => playButton() !== null && !playButton()!.disabled, 'Play to be usable');
 		});
@@ -634,7 +663,7 @@ describe('a play for one show that answers after the page moved on', () => {
 			useOtherShowAndRecord();
 			app = mount(DetailPage, { target });
 			await clickMoveAndAnswer(5, moveTo, ['error', VERDICT]);
-			await new Promise((r) => setTimeout(r, 50));
+			await playJudged();
 			expect(target.textContent).not.toContain(PLAIN());
 			expect(target.textContent).not.toContain(SUGGESTS());
 			expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
@@ -661,7 +690,7 @@ describe('a play for one show that answers after the page moved on', () => {
 		expect(marked[marked.length - 1]).toMatchObject({ kitsu_id: KITSU_ID, episode: '2' });
 		await until(() => vi.mocked(syncWatchedToTrackers).mock.calls.length > 0, 'the mirror');
 		expect(vi.mocked(syncWatchedToTrackers).mock.calls[0][0]).toBe(KITSU_ID);
-		await new Promise((r) => setTimeout(r, 30));
+		await playJudged();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 
@@ -674,14 +703,16 @@ describe('a play for one show that answers after the page moved on', () => {
 		await clickMoveAndAnswer(
 			2,
 			async () => {
+				// Each id is seen by the page's effects, which is what
+				// advances its visit, before the next.
 				setParams({ id: OTHER_ID });
-				await new Promise((r) => setTimeout(r, 20));
+				flushSync();
 				setParams({ id: KITSU_ID });
-				await new Promise((r) => setTimeout(r, 20));
+				flushSync();
 			},
 			['done', SESSION]
 		);
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 
@@ -699,7 +730,7 @@ describe('a play for one show that answers after the page moved on', () => {
 			},
 			['error', VERDICT]
 		);
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(target.textContent).not.toContain(PLAIN());
 		expect(target.textContent).not.toContain(SUGGESTS());
 		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
@@ -714,14 +745,16 @@ describe('a play for one show that answers after the page moved on', () => {
 		await clickMoveAndAnswer(
 			2,
 			async () => {
+				// Each id is seen by the page's effects, which is what
+				// advances its visit, before the next.
 				setParams({ id: OTHER_ID });
-				await new Promise((r) => setTimeout(r, 20));
+				flushSync();
 				setParams({ id: KITSU_ID });
-				await new Promise((r) => setTimeout(r, 20));
+				flushSync();
 			},
 			['error', VERDICT]
 		);
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(target.textContent).not.toContain(PLAIN());
 		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
 	});
@@ -755,7 +788,7 @@ describe('a play for one show that answers after the page moved on', () => {
 		await until(lookup.asked, 'the other-audio lookup');
 		await toOther();
 		lookup.release();
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(target.textContent).not.toContain(SUGGESTS());
 		await until(() => playButton() !== null && !playButton()!.disabled, 'Play to be usable');
 	});
@@ -771,9 +804,9 @@ describe('a play for one show that answers after the page moved on', () => {
 		await until(lookup.asked, 'the other-audio lookup');
 		setParams({ id: OTHER_ID });
 		setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
-		await new Promise((r) => setTimeout(r, 20));
+		flushSync();
 		lookup.release();
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(target.textContent).not.toContain(SUGGESTS());
 	});
 
@@ -803,9 +836,9 @@ describe('a play for one show that answers after the page moved on', () => {
 			await until(() => launched, 'the launch');
 			setParams({ id: OTHER_ID });
 			setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
-			await new Promise((r) => setTimeout(r, 20));
+			flushSync();
 			release();
-			await new Promise((r) => setTimeout(r, 50));
+			await playJudged();
 			expect(target.textContent).not.toContain(SUGGESTS());
 			expect(target.textContent).not.toContain(PLAIN());
 			// Nothing is asked of the cache for a visit nobody is on.
@@ -840,7 +873,7 @@ describe('a play whose page is left before it answers', () => {
 			'done',
 			JSON.stringify({ id: 's', kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' })
 		);
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 });
@@ -917,7 +950,7 @@ describe('play — a switch whose page is left before it answers', () => {
 		unmount(app!);
 		app = null;
 		stream.dispatch('error', VERDICT);
-		await new Promise((r) => setTimeout(r, 50));
+		await playJudged();
 		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
 	});
 });
