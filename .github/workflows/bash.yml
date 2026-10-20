@@ -33,13 +33,14 @@ jobs:
           # `git diff | grep -q` under pipefail (SIGPIPE on early grep
           # exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          # The snapshot generator and the rust workflow filter live in
-          # tools/ and the bats suites execute them, so a change to
-          # either must run the suite that runs it; `tests/tools/`
+          # The snapshot generator, the rust workflow filter and the
+          # hostile temporary-directory tool live in tools/ and the bats
+          # suites execute them, so a change to any of them must run the
+          # suite that runs it; `tests/tools/`
           # carries the node tool tests. Workflows are included because
           # the invocation harness pins their resolved shape against
           # the recorded snapshot.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/hostile-tmpdir\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"

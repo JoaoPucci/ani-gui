@@ -1,6 +1,7 @@
 /**
  * The prefetch concurrency cap the play cache schedules its fires
- * under ($lib/play/play-cache), kept apart from the cache so each file
+ * under ($lib/play/play-cache): a counted set of slots and a queue of
+ * the fires waiting for one, kept apart from the cache so each file
  * stays inside the complexity bar.
  */
 
@@ -35,7 +36,10 @@ let generation = 0;
  * is for *background* warming; a click, or a warm a click waits on,
  * shouldn't be punished for the warming having queued ahead of it.
  */
-export function withSlot<T>(fn: () => Promise<T>): {
+export function withSlot<T>(
+	fn: () => Promise<T>,
+	signal: AbortSignal
+): {
 	promise: Promise<T>;
 	startNow: () => void;
 	hasStarted: () => boolean;
@@ -44,9 +48,29 @@ export function withSlot<T>(fn: () => Promise<T>): {
 	let started = false;
 	const promise = (async () => {
 		if (activeFires >= PREFETCH_CONCURRENCY) {
-			await new Promise<void>((resolve) => {
-				slotResolver = resolve;
-				fireQueue.push(resolve);
+			await new Promise<void>((resolve, reject) => {
+				// Aborted while it waits — its page is gone. It leaves
+				// the queue without taking a slot, so the fires behind
+				// it move up, and it never runs: a fire is a resolve
+				// request to the backend. An abort that lands after the
+				// slot was granted, before the fire starts, finds the
+				// listener gone; `fn` then runs with the signal aborted,
+				// which the play cache refuses before it fires (and
+				// playStream refuses too), and the slot passes on as it
+				// does for any fire that ends.
+				const onAbort = () => {
+					const idx = fireQueue.indexOf(grant);
+					if (idx >= 0) fireQueue.splice(idx, 1);
+					slotResolver = null;
+					reject(new Error('play-cache: aborted before its turn'));
+				};
+				const grant = () => {
+					signal.removeEventListener('abort', onAbort);
+					resolve();
+				};
+				slotResolver = grant;
+				fireQueue.push(grant);
+				signal.addEventListener('abort', onAbort, { once: true });
 			});
 		}
 		started = true;
@@ -76,7 +100,8 @@ export function withSlot<T>(fn: () => Promise<T>): {
 	return { promise, startNow, hasStarted: () => started };
 }
 
-/** Test seam: forget every running and queued slot. */
+/** Test seam: forget every running and queued slot, for
+ *  `__resetPlayCacheForTests`, which aborts every entry first. */
 export function resetPrefetchSlotsForTests(): void {
 	activeFires = 0;
 	fireQueue.length = 0;
