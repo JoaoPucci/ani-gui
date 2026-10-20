@@ -715,6 +715,14 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
     // being asked for would say nothing.
     let mut relations: serde_json::Value =
         serde_json::from_slice(&fixture("kitsu-relations-48677.json")).expect("relations");
+    // The announced sequel first: Kitsu lists the aired prequel ahead
+    // of it, and the prequel's page titles none of its episodes, so a
+    // reader that stops at the first page refusing the rows would pass
+    // the sequel over for that and not for being announced.
+    relations["data"]
+        .as_array_mut()
+        .expect("data")
+        .sort_by_key(|link| link["attributes"]["role"] != "sequel");
     let mut link = relations["data"][0].clone();
     link["id"] = "999001".into();
     link["attributes"]["role"] = "side_story".into();
