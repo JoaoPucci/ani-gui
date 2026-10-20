@@ -401,4 +401,37 @@ describe('detail route — the row read again after the viewer left', () => {
 		const warms = FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'));
 		expect(warms).toEqual([]);
 	});
+
+	it('warms nothing for a show the page moved on from', async () => {
+		// The route keeps its component across a move to another show:
+		// the warm is for the visit that read the row.
+		let answer = () => {};
+		const held = new Promise<void>((r) => (answer = r));
+		let asked = false;
+		useShowHandlers();
+		server.use(
+			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
+			http.get(`${API_BASE}/api/history/:id/number`, async () => {
+				asked = true;
+				await held;
+				return HttpResponse.json({ ep_no: '24.5' });
+			}),
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER_ID, 'Other Show', 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER_ID}`, () => HttpResponse.json(null))
+		);
+		app = mount(DetailPage, { target });
+		await until(() => asked, 'the row read again');
+		setParams({ id: OTHER_ID });
+		await until(() => (target.textContent ?? '').includes('Other Show'), 'the other show');
+		answer();
+		await new Promise((r) => setTimeout(r, 300));
+
+		const warms = FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'));
+		expect(warms).toEqual([]);
+	});
 });
+
+const OTHER_ID = '43';
