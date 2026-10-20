@@ -57,15 +57,15 @@ pub(super) fn fit_to_entry(
 ) -> bool {
     let admitted: Vec<bool> = probed
         .iter()
-        .map(|(h, _, _, _)| entry.admits(&h.title))
+        .map(|(h, _, _, _)| entry.admits_as_read(&h.title))
         .collect();
     // Pickable: admitted, and not another entry of the same show
-    // ([`EntryTitles::another_entry`]) — which still counts as admitted
+    // ([`EntryTitles::another_entry_as_read`]) — which still counts as admitted
     // when the pool is read for a broad listing.
     let pickable: Vec<bool> = probed
         .iter()
         .zip(&admitted)
-        .map(|((h, _, _, _), ok)| *ok && !entry.another_entry(&h.title))
+        .map(|((h, _, _, _), ok)| *ok && !entry.another_entry_as_read(&h.title))
         .collect();
     // Only a refusal by title keeps a rejected pool from being a clean
     // miss: another entry of the same show, like an L, F or P, is no
@@ -75,7 +75,21 @@ pub(super) fn fit_to_entry(
         .iter()
         .zip(&admitted)
         .any(|(row, ok)| !ok && row.2 <= tolerance);
-    let span = spanning(probed, expected, &admitted, entry);
+    // The spanning cut reads each title past a version tag, which hides
+    // no division; it answers by position, so the view is read alone.
+    let read: Vec<BrowseHit> = probed
+        .iter()
+        .map(|(h, _, _, _)| BrowseHit {
+            title: super::play_native_version_copies::without_version_tag(&h.title),
+            ..(*h).clone()
+        })
+        .collect();
+    let view: Vec<Probed<'_>> = probed
+        .iter()
+        .zip(&read)
+        .map(|((_, eps, d, c), h)| (h, eps.clone(), *d, *c))
+        .collect();
+    let span = spanning(&view, expected, &admitted, entry);
     for (row, ok) in probed.iter_mut().zip(&pickable) {
         if !ok {
             row.2 = UNFIT;
