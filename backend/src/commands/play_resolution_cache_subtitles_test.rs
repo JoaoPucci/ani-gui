@@ -22,6 +22,8 @@ fn the_row_round_trips_its_sidecar_tracks() {
             url: "https://cdn.example/x/subs/en.vtt".into(),
         }],
         kitsu_id: None,
+        versions: Vec::new(),
+        version: None,
         played: None,
         former_episode: None,
     };

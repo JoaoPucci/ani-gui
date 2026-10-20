@@ -21,7 +21,13 @@
  * The pages are adapters: they claim, run, and act on the outcome.
  */
 
-import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef, type PlayArgs } from '$lib/api';
+import {
+	altTitlesFromKitsu,
+	yearFromKitsuRef,
+	type KitsuAnimeRef,
+	type PlayArgs,
+	type VersionKind
+} from '$lib/api';
 
 /** A play's claim on the show and the route visit it was started for. */
 export interface PlayOwner {
@@ -84,6 +90,9 @@ export function playArgsFor(input: {
 	show: KitsuAnimeRef | null;
 	kitsuId: string | undefined;
 	prefetch?: boolean;
+	/** The version remembered for the show (`storedChoice` in
+	 *  `$lib/versions/version-choice.ts`); left off when none is. */
+	version?: VersionKind;
 }): PlayArgs {
 	const args: PlayArgs = {
 		title: input.title,
@@ -97,6 +106,7 @@ export function playArgsFor(input: {
 	};
 	if (input.kitsuId !== undefined) args.kitsu_id = input.kitsuId;
 	if (input.prefetch) args.prefetch = true;
+	if (input.version) args.version = input.version;
 	return args;
 }
 

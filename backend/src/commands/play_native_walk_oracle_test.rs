@@ -84,8 +84,10 @@ fn site_of(case: &Case) -> Recorded {
 }
 
 /// What the walk did, in the shape the oracle compares: a pick as its
-/// slug, regular count and every episode's `(id, number, tag)`; a
-/// refusal as the error's name and whether the pool was the clean miss.
+/// slug, regular count and every episode's `(id, number, tag)`, and —
+/// when it has versions — each version's slug and kind in the
+/// provider's order; a refusal as the error's name and whether the
+/// pool was the clean miss.
 fn outcome(result: std::result::Result<PickedShow, NativeError>) -> serde_json::Value {
     match result {
         Ok(p) => {
@@ -95,7 +97,16 @@ fn outcome(result: std::result::Result<PickedShow, NativeError>) -> serde_json::
                 .iter()
                 .map(|e| serde_json::json!([e.id, e.number, e.number2]))
                 .collect();
-            serde_json::json!({"ok": p.hit.slug, "count": count, "episodes": episodes})
+            let mut got =
+                serde_json::json!({"ok": p.hit.slug, "count": count, "episodes": episodes});
+            if !p.versions.is_empty() {
+                got["versions"] = p
+                    .versions
+                    .iter()
+                    .map(|v| serde_json::json!([v.hit.slug, v.kind]))
+                    .collect();
+            }
+            got
         }
         Err(e) => serde_json::json!({"err": format!("{:?}", e.error), "clean_miss": e.clean_miss}),
     }

@@ -1,4 +1,4 @@
-import type { AvailabilityResponse } from '$lib/api';
+import type { AvailabilityResponse, VersionInfo } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
 import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
 
@@ -50,6 +50,9 @@ export interface CapGateAnswer {
 	available: boolean;
 	/** Non-integer episode tags — recaps and specials, e.g. "1061.5". */
 	extraEpisodes: string[];
+	/** The show's versions, when its pick has several; none otherwise —
+	 *  a refused or delisted show among them. */
+	versions: VersionInfo[];
 	/** True when `available: false` is the provider refusing the title
 	 *  by name. */
 	refused?: boolean;
@@ -87,6 +90,11 @@ export interface CapGateRefresh {
 	 *  unconfirmed answer carries means "could not look", not "there
 	 *  are none", and writing it would delete specials that exist. */
 	extraEpisodes: string[] | null;
+	/** The show's versions, null when the answer was unconfirmed for
+	 *  the same reason: they come from the fetch the count does, and
+	 *  an empty list from an answer that could not look would take a
+	 *  choice away that exists. */
+	versions: VersionInfo[] | null;
 }
 
 /**
@@ -110,6 +118,7 @@ export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null
 		approximate: r.episode_count_approximate === true,
 		available,
 		extraEpisodes: r.extra_episodes ?? [],
+		versions: r.versions ?? [],
 		// Present only when true, as every answer before refusals reads.
 		...(refusedByName(r) ? { refused: true } : {})
 	};
@@ -153,7 +162,7 @@ export interface CapGateProbeDeps {
 }
 
 /**
- * Which parts of an answer a route may write. Three fields, three
+ * Which parts of an answer a route may write. Four fields, three
  * different reasons to trust them.
  *
  * The verdict always. It comes from the search, which either found
@@ -165,7 +174,8 @@ export interface CapGateProbeDeps {
  * did not answer — is the only thing that makes the empty list a
  * "could not look" rather than a "there are none". A delisted show
  * genuinely has none, and a show whose episodes are all non-integer
- * has a real list alongside a null count.
+ * has a real list alongside a null count. The show's versions are the
+ * same fetch's, and go with the extras.
  *
  * The count whenever it is confirmed — including when there is no
  * number. A count that can read one high must not replace a real
@@ -180,7 +190,8 @@ function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
 		available: answer.available,
 		...(answer.refused === true ? { refused: true } : {}),
 		count: answer.approximate ? null : (answer.count ?? 0),
-		extraEpisodes: answer.approximate ? null : answer.extraEpisodes
+		extraEpisodes: answer.approximate ? null : answer.extraEpisodes,
+		versions: answer.approximate ? null : answer.versions
 	};
 }
 
