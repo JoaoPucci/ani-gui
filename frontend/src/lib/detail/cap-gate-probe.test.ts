@@ -661,4 +661,32 @@ describe('createCapGateProbe — a superseded recheck', () => {
 		await flush();
 		expect(failed).toEqual([]);
 	});
+
+	it('a click in a context the lookup was not asked in stops that lookup as it asks afresh', async () => {
+		// The context can move on without a supersede — the page names
+		// a navigation it started in its context, which no supersede
+		// follows. The click asks afresh, and the lookup it replaces is
+		// stopped: its answer is about a context the page has left, and
+		// nothing could stop it later.
+		const calls: (AbortSignal | undefined)[] = [];
+		const probe = (s?: AbortSignal) => {
+			calls.push(s);
+			return new Promise<CapGateAnswer | null>((_res, rej) =>
+				s?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))
+			);
+		};
+		const { gate, failed, superseded, showing } = harness(probe);
+		gate.request(5);
+		showing.mode = 'dub';
+		gate.request(6);
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.aborted).toBe(true);
+		expect(calls[1]?.aborted).toBe(false);
+		await flush();
+		expect(superseded).toEqual([5]);
+		expect(failed).toEqual([]);
+		// The lookup that replaced it is still the one a supersede stops.
+		gate.supersede();
+		expect(calls[1]?.aborted).toBe(true);
+	});
 });
