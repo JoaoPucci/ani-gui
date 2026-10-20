@@ -109,11 +109,9 @@ function serve(held: Promise<void>, asked: () => void) {
 				await held;
 			}
 			return HttpResponse.json({
-				id: `session-${body.episode}`,
-				kind: 'hls',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: `session-${body.episode}`,
+				media_url: `${API_BASE}/s/session-${body.episode}/master.m3u8`,
+				media_kind: 'hls'
 			});
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
