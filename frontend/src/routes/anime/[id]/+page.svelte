@@ -23,7 +23,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
 		altTitlesFromKitsu,
@@ -99,6 +99,8 @@
 		getOrFire,
 		makeKey
 	} from '$lib/play/play-cache';
+	import { createShowReleases } from '$lib/play/show-release';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import {
@@ -210,8 +212,11 @@
 	 *
 	 * It BLOCKS, like every other long action here. `actionBusy`
 	 * raises the same overlay a play click does, so there is no window
-	 * in which a second tile can be clicked, the route can change, or
-	 * the episode page can move under the lookup. A cleared count
+	 * in which a second tile can be clicked. The route can still change
+	 * under it — Back, or a link reached from the keyboard, which the
+	 * overlay does not hold — and the context the answer is checked
+	 * against says so: another show, a page left, or a navigation
+	 * started that leaves it (`navigationClaims`). A cleared count
 	 * falls straight through into startPlay, which holds the overlay
 	 * up — the caption just changes from checking to the usual play
 	 * progress.
@@ -236,8 +241,8 @@
 	 * they left. Nothing about the question changed; there is simply
 	 * nobody left asking.
 	 *
-	 * Cannot collide with a real context, which always carries the
-	 * `id:mode` separator.
+	 * Cannot collide with a real context, which always carries `:`
+	 * separators between its parts.
 	 */
 	/**
 	 * Which visit to this route the answer belongs to.
@@ -269,6 +274,23 @@
 	onDestroy(() => {
 		gone = true;
 	});
+	/**
+	 * A navigation the viewer started. The page stays on screen until
+	 * it lands, with the same show and visit, and an action answering
+	 * in that window that went on to play would cancel the navigation
+	 * they asked for with its own `goto`. Actions that end in a play
+	 * claim navigation as they start, and their re-checks carry the
+	 * epoch in their context ($lib/navigation/claims).
+	 *
+	 * Only a navigation that leaves this page counts: another path,
+	 * which includes another show, or out of the app. One that changes
+	 * only the query — the episode pager, which the overlay covers from
+	 * the pointer but not from the keyboard, or a link to the URL on
+	 * screen — keeps the show on screen, and the action stays the
+	 * viewer's.
+	 */
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate((nav) => navigationClaims.started(nav));
 	/**
 	 * Write back what the re-ask learned about the show.
 	 *
@@ -341,7 +363,8 @@
 			// to write back.
 			return capGateAnswerFrom(r);
 		},
-		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		currentContext: () =>
+			gone ? GONE : `${visit}:${navigationClaims.epoch}:${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			// Overlay stays up; startPlay owns it from here.
@@ -413,7 +436,7 @@
 			},
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
-			currentContext: () => (gone ? GONE : `${visit}:${id ?? ''}`),
+			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
 			play: () => onPickEpisode(n),
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
@@ -863,9 +886,15 @@
 	async function readResumeAgain(entry: HistoryEntry) {
 		const showId = id;
 		if (!showId) return;
-		// No measured cap means no listing stood behind the lookup.
+		const atVisit = visit;
+		// No measured cap means no listing stood behind the lookup. The
+		// warm comes after the row is read, so only for a page still on
+		// this visit: a viewer who left meanwhile has had the show's
+		// plays released ($lib/play/show-release).
 		const warm =
-			playableEpisodeCount === null && detail ? (ep: number) => warmResume(ep) : undefined;
+			playableEpisodeCount === null && detail
+				? (ep: number) => (!gone && visit === atVisit ? warmResume(ep, showId) : Promise.resolve())
+				: undefined;
 		const next = await refreshedResume(
 			entry,
 			showId,
@@ -884,12 +913,12 @@
 	}
 
 	// A resolve of the resume episode that records no watch.
-	function warmResume(ep: number) {
+	// `showId` is the show the row was read for, which the play cache
+	// is keyed and cleared by.
+	function warmResume(ep: number, showId: string) {
 		const d = detail;
 		const title = playTitle();
-		// The route's id, which the play cache is keyed and cleared by.
-		const showId = id;
-		if (!d || !title || !showId) return Promise.resolve();
+		if (!d || !title) return Promise.resolve();
 		const mode = playMode(config);
 		const quality = playQuality(config);
 		// The version a click on the row would play: its warm puts that
@@ -1060,13 +1089,17 @@
 		{ key: 'worst', label: m.app_quality_worst }
 	];
 
-	// Cancel in-flight prefetches for this show on unmount. Prevents
-	// abandoned resolves from holding provider slots after the
-	// user navigates away — clearForShow aborts each entry's signal
-	// which closes the SSE EventSource and rejects the promise.
-	onDestroy(() => {
-		if (id) clearForShow(id);
-	});
+	// Cancel the plays of every show this page showed on unmount —
+	// warms and clicks alike. Prevents abandoned resolves from holding
+	// provider slots after the user navigates away — clearForShow
+	// aborts each entry's signal which closes the SSE EventSource and
+	// rejects the promise.
+	// Each show is recorded as the route names it: by the time the
+	// page is destroyed the route names where the user went
+	// ($lib/play/show-release).
+	const showReleases = createShowReleases(clearForShow);
+	$effect.pre(() => showReleases.showing(() => id));
+	onDestroy(showReleases.leave);
 
 	// Re-fetch detail + similar when the URL `id` changes. SvelteKit
 	// reuses this component for /anime/[a] → /anime/[b] navigations
@@ -1484,10 +1517,11 @@
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
 		// against them, and records the show the viewer clicked.
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
 		const show = detail;
 		const playArgs = playArgsFor({
@@ -1585,7 +1619,10 @@
 	 *  click still belongs to this visit after. */
 	async function resumeRowSettled(): Promise<boolean> {
 		const atVisit = visit;
-		const current = () => visit === atVisit && !gone;
+		// A navigation away started during the wait leaves the click behind
+		// too: the play claims afresh after it, too late to notice.
+		const here = navigationClaims.claim();
+		const current = () => visit === atVisit && !gone && here();
 		resumeWaiting = true;
 		try {
 			await settledWithin(resumeRefresh, RESUME_WAIT_MS, current);
