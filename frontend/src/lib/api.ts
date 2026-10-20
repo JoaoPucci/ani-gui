@@ -245,7 +245,8 @@ export interface CreateSessionArgs {
 /** What kind of media the resolved upstream serves. The renderer uses
  *  this to pick hls.js vs. a plain `<video src>` for direct MP4 streams
  *  (wixmp / sharepoint / fast4speed) that don't have an HLS manifest. */
-export type MediaKind = 'hls' | 'mp4';
+export const MEDIA_KINDS = ['hls', 'mp4'] as const;
+export type MediaKind = (typeof MEDIA_KINDS)[number];
 
 /** Output of `cmd_create_session` — proxy URLs the player should fetch. */
 /** One sidecar subtitle track a session offers, behind the proxy. */
@@ -293,7 +294,8 @@ export interface CreateSessionResponse {
 /** Which copy of a season a version is: the provider lists some
  *  seasons twice, once tagged "(Uncensored)" and once without the
  *  tag. The backend names a version; the renderer labels it. */
-export type VersionKind = 'uncensored' | 'standard';
+export const VERSION_KINDS = ['uncensored', 'standard'] as const;
+export type VersionKind = (typeof VERSION_KINDS)[number];
 
 /** One version of a pick, as availability and play name it: its kind
  *  and the provider show key it plays under. */
