@@ -328,7 +328,13 @@ async fn a_cached_rows_check_never_queues_ahead_of_a_playing_players_segment() {
                 .await
         })
     };
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // A probe of the row's is waiting at the host before the player
+    // asks. Until then a player's segment served at the next token
+    // proves nothing about whether it would queue behind the row.
+    crate::held::until("the row's probes waiting at the host", || {
+        state.host_budget.probe_waiting(&host)
+    })
+    .await;
     let start = std::time::Instant::now();
     state.host_budget.admit(&host).await;
     let waited = start.elapsed();
@@ -358,7 +364,13 @@ async fn a_cached_rows_check_is_served_beside_background_downloads() {
             budget.admit_background(&download_host).await;
         }
     });
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // The downloads are waiting at the host before the check starts.
+    // Until then a check served ahead of them proves nothing about
+    // whether it would be.
+    crate::held::until("the downloads waiting at the host", || {
+        state.host_budget.background_waiting(&host)
+    })
+    .await;
     // Its two tokens come at a refill and two; room for a slow runner.
     let live =
         super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;

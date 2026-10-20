@@ -4505,7 +4505,7 @@ async fn a_healthy_server_is_still_asked_when_the_attempt_has_the_reserve_and_a_
 /// The control: a deadline already past, never cleared, caps the
 /// bounded server at nothing, and the walk moves to the remainder's
 /// server, whose master never answers.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_stale_deadline_caps_a_healthy_bounded_server_at_nothing() {
     let c = client_with_server_budget(100);
     c.bound_attempt(Some(

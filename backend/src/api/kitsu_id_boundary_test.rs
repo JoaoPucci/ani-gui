@@ -3,8 +3,8 @@
 //! answers 400 `invalid_kitsu_id` before anything is read, written or
 //! requested; an optional one reads as no id at all.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -68,33 +68,67 @@ async fn send(state: Arc<AppState>, method: &str, uri: &str, body: &str) -> (Sta
 /// encoded where they sit in a path segment.
 const NOT_IDS: [&str; 4] = ["..%2F49877", "49877%2Fx", "12:21", "kid-1"];
 
-/// A stand-in Kitsu that answers nothing and counts every connection
-/// made to it. Spawned on the test's own runtime: a pooled mock
-/// server per call deadlocked on drop when a test ran dozens of them.
-async fn counting_kitsu() -> (String, Arc<AtomicUsize>) {
+/// A stand-in Kitsu that answers nothing and records every connection
+/// made to it, by the peer's address. Spawned on the test's own
+/// runtime: a pooled mock server per call deadlocked on drop when a
+/// test ran dozens of them.
+async fn counting_kitsu() -> (String, Arc<Mutex<Vec<SocketAddr>>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
     let base = format!("http://{}", listener.local_addr().expect("addr"));
-    let count = Arc::new(AtomicUsize::new(0));
-    let seen = count.clone();
+    let peers = Arc::new(Mutex::new(Vec::new()));
+    let seen = peers.clone();
     tokio::spawn(async move {
-        while let Ok((conn, _)) = listener.accept().await {
-            seen.fetch_add(1, Ordering::SeqCst);
+        while let Ok((conn, peer)) = listener.accept().await {
+            seen.lock().expect("peers").push(peer);
             drop(conn);
         }
     });
-    (base, count)
+    (base, peers)
 }
 
-/// The connections the stand-in has seen, once anything a route left
-/// running has had its turn. The test runs on one thread: a request a
-/// handler awaits is counted while it waits, but one spawned and not
-/// awaited reaches the accept loop only when the test yields, so the
-/// count waits a moment first.
-async fn connections(count: &AtomicUsize) -> usize {
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    count.load(Ordering::SeqCst)
+/// The connections the stand-in at `kitsu` has seen, once anything a
+/// route left running has ended. A request a handler awaits is made
+/// before the route answers; one spawned and not awaited would be made
+/// by a task the route left running, and is counted only once that task
+/// has had its turn — a count taken before then is a count of nothing.
+///
+/// So the count waits, first, until the stand-in's accept loop is the
+/// only task left on the runtime: every task a route spawned has ended,
+/// and whatever it connected is in the stand-in's queue. Work a route
+/// handed to the blocking pool is not a task and is not waited for; no
+/// route asks Kitsu from there. Then the count connects once itself and
+/// waits to see that connection accepted, which the queue does after
+/// every connection made before it. What the stand-in saw ahead of it
+/// is what the routes made.
+async fn connections(kitsu: &str, peers: &Mutex<Vec<SocketAddr>>) -> usize {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    while tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks()
+        > 1
+    {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "a route left a task running"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+    let ours = tokio::net::TcpStream::connect(kitsu.trim_start_matches("http://"))
+        .await
+        .expect("connect to the stand-in");
+    let ours = ours.local_addr().expect("our address");
+    loop {
+        if let Some(at) = peers.lock().expect("peers").iter().position(|p| *p == ours) {
+            return at;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the stand-in never took our connection"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
 }
 
 /// Each call runs against fresh state, so nothing one refusal could
@@ -173,7 +207,11 @@ async fn the_id_routes_refuse_a_value_that_is_not_an_id() {
     for method in ["GET", "DELETE"] {
         assert_refused(kitsu, method, "/api/account/entry/anilist?kitsu_id=", "").await;
     }
-    assert_eq!(connections(&asked).await, 0, "a refused route asked Kitsu");
+    assert_eq!(
+        connections(kitsu, &asked).await,
+        0,
+        "a refused route asked Kitsu"
+    );
 }
 
 #[tokio::test]
@@ -203,7 +241,11 @@ async fn the_id_bodies_refuse_a_value_that_is_not_an_id() {
         )
         .await;
     }
-    assert_eq!(connections(&asked).await, 0, "a refused route asked Kitsu");
+    assert_eq!(
+        connections(kitsu, &asked).await,
+        0,
+        "a refused route asked Kitsu"
+    );
 }
 
 #[tokio::test]
@@ -294,7 +336,11 @@ async fn a_stored_value_that_is_not_an_id_reaches_neither_the_renderer_nor_kitsu
         .await
         .expect_err("not an id");
     assert_eq!(err.key(), "error.request.invalid_kitsu_id");
-    assert_eq!(connections(&asked).await, 0, "a stored non-id asked Kitsu");
+    assert_eq!(
+        connections(&kitsu, &asked).await,
+        0,
+        "a stored non-id asked Kitsu"
+    );
 
     k::allmanga_kitsu_put(&s, "show-b", " 49877 ").expect("seed");
     let (_, text) = send(s, "GET", "/api/allmanga-kitsu-map/show-b", "").await;

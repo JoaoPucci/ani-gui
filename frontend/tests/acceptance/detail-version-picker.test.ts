@@ -100,8 +100,9 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 type Posted = Record<string, unknown>;
 
 /** Every request the page makes on mount; `versions` is what the
- *  availability answer names, and mark-watched bodies are recorded. */
-function useShowHandlers(versions: VersionInfo[] | undefined, watched: Posted[] = []) {
+ *  availability answer names, `count` the episodes it says the provider
+ *  carries, and mark-watched bodies are recorded. */
+function useShowHandlers(versions: VersionInfo[] | undefined, watched: Posted[] = [], count = 26) {
 	let probes = 0;
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
@@ -118,7 +119,7 @@ function useShowHandlers(versions: VersionInfo[] | undefined, watched: Posted[] 
 			probes += 1;
 			return HttpResponse.json({
 				available: true,
-				episode_count: 26,
+				episode_count: count,
 				extra_episodes: [],
 				episode_count_approximate: false,
 				...(versions ? { versions } : {})
@@ -155,27 +156,42 @@ const clickStreams = () =>
 
 const versionOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('version');
 
+/** Whether episode `n`'s tile is cap-gated: the page has applied an
+ *  availability answer whose count stops short of an aired episode. */
+const capGated = (n: number) =>
+	target.querySelector(`li[data-ep-num="${n}"] button`)?.getAttribute('title') ===
+	m.detail_ep_recheck_idle();
+
+/** How many episode tiles the strip shows. */
+const tiles = () => target.querySelectorAll('li[data-ep-num]').length;
+
 describe('detail route — the versions of a show listed twice', () => {
 	it('offers no version choice when the show has one version', async () => {
-		const h = useShowHandlers(undefined);
+		// The answer counts 11 episodes, one short of the 12 tiles the
+		// strip's first page shows of Kitsu's 26: a strip of 11 shows the
+		// page applied it, and the versions it names, none, with it.
+		const h = useShowHandlers(undefined, [], 11);
 		app = mount(DetailPage, { target });
 		await until(() => h.probes() > 0, 'the page-load availability lookup');
 		await until(() => playAction() !== null, 'the play action to render');
-		// Give the answer a moment to land, then make sure nothing came.
-		await new Promise((r) => setTimeout(r, 50));
+		await until(() => tiles() === 11, 'the availability answer to be applied');
 		expect(versionGroup()).toBeNull();
 		expect(target.textContent).not.toContain(m.detail_version_group_label());
 	});
 
 	it('offers no choice in a mode only one version carries', async () => {
-		const h = useShowHandlers([
-			{ ...TWO_VERSIONS[0], has_mode: false },
-			{ ...TWO_VERSIONS[1], has_mode: true }
-		]);
+		const h = useShowHandlers(
+			[
+				{ ...TWO_VERSIONS[0], has_mode: false },
+				{ ...TWO_VERSIONS[1], has_mode: true }
+			],
+			[],
+			11
+		);
 		app = mount(DetailPage, { target });
 		await until(() => h.probes() > 0, 'the page-load availability lookup');
 		await until(() => playAction() !== null, 'the play action to render');
-		await new Promise((r) => setTimeout(r, 50));
+		await until(() => tiles() === 11, 'the availability answer to be applied');
 		expect(versionGroup()).toBeNull();
 	});
 
@@ -353,7 +369,9 @@ describe('detail route — the versions of a show listed twice', () => {
 			target.querySelector(`li[data-ep-num="${AIRED}"] button`) as HTMLButtonElement | null;
 		await until(() => tile() !== null, `the tile for episode ${AIRED}`);
 		await until(() => playAction() !== null, 'the play action to render');
-		await new Promise((r) => setTimeout(r, 50));
+		// The page-load answer's count gates the aired tile: it has been
+		// applied, and the versions it names, none, with it.
+		await until(() => capGated(AIRED), 'the page-load answer to be applied');
 		expect(versionGroup()).toBeNull();
 
 		tile()!.click();

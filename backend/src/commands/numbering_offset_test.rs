@@ -174,14 +174,17 @@ fn puts_exclude_each_other_across_processes_via_the_file_lock() {
         .open(&lock_path)
         .expect("lock file");
     fs4::FileExt::lock(&foreign).expect("foreign lock");
+    let queue = crate::held::queue(lock_path.display().to_string());
     let (tx, rx) = std::sync::mpsc::channel();
     let writer = std::thread::spawn(move || {
         put(&state, "the-sequel-88", 40);
         tx.send(()).ok();
     });
+    // Behind the lock, not merely not there yet: a put that has not
+    // reached the lock has not finished either, and proves nothing.
+    queue.joined_blocking(|| rx.try_recv().is_ok());
     assert!(
-        rx.recv_timeout(std::time::Duration::from_millis(300))
-            .is_err(),
+        rx.try_recv().is_err(),
         "put finished while the offsets file lock was held elsewhere"
     );
     fs4::FileExt::unlock(&foreign).expect("unlock");

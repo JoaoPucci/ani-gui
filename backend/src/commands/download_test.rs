@@ -490,13 +490,19 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // tool lets the chain succeed; the two together do not. ffmpeg
     // marks a finished run, so a chain that ran to its end and only
     // then reported the timeout leaves the mark behind.
+    // It marks its start as well, with its pid: a chain that timed out
+    // before the fallback began says nothing about the fallback's
+    // deadline, and the mark of a finish is ruled out only once the
+    // process that would write it is gone.
+    let started = dest.path().join("ffmpeg-started");
     let finished = dest.path().join("ffmpeg-finished");
     stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "sleep 1; touch {finished}; exit 0",
+            "echo $$ > {started}; sleep 2.5; touch {finished}; exit 0",
+            started = crate::stub_file::sh_quote(&started),
             finished = crate::stub_file::sh_quote(&finished)
         ),
     );
@@ -513,16 +519,22 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
             "Show Episode 1",
             None,
             &bin.path().display().to_string(),
-            std::time::Duration::from_millis(1500),
+            std::time::Duration::from_secs(3),
             &mut |_l: &str| {},
         ),
     )
     .await
     .expect("the chain returned");
     assert!(
+        started.exists(),
+        "the fallback ran: a chain cut off before it proves nothing about its deadline: {got:?}"
+    );
+    assert!(
         matches!(got, Err(AniError::Timeout)),
         "the fallback runs against what is left of the deadline: {got:?}"
     );
+    let pid = std::fs::read_to_string(&started).expect("the fallback's pid");
+    until_gone(pid.trim(), "the ffmpeg fallback").await;
     assert!(
         !finished.exists(),
         "and the whole chain ends at the deadline: ffmpeg was cut off, not run to its end"
@@ -597,8 +609,12 @@ async fn a_busy_executable_is_retried_rather_than_failed() {
         .write(true)
         .open(bin.path().join("yt-dlp"))
         .expect("hold the tool open for writing");
+    // Let go once the spawn has found the tool busy: a spawn that came
+    // to it after the release would exec at once, retry nothing, and
+    // prove nothing.
+    let queue = crate::held::queue(bin.path().join("yt-dlp").display().to_string());
     let releaser = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        queue.joined().await;
         drop(held);
     });
     let got = spawn_download_tool(
@@ -1605,9 +1621,13 @@ async fn a_claim_that_dissolves_returns_the_name_to_the_collider() {
     std::fs::write(&target, b"").expect("the other publisher's claim");
     let scratch = dest.path().join("finished.part.mp4");
     std::fs::write(&scratch, b"the whole episode").expect("scratch");
+    // The claim dissolves once the publisher is waiting it out: one
+    // that came to the name after the claim had gone would find it
+    // free, wait for nothing, and prove nothing.
     let claim = target.clone();
+    let queue = crate::held::queue(target.display().to_string());
     let _cleanup = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        queue.joined().await;
         let _ = std::fs::remove_file(&claim);
     });
 
@@ -2058,16 +2078,50 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
         )
         .await
     });
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // Everything the tool writes is on disk before the cancel: a cancel
+    // that comes before it has nothing to leave behind, and proves
+    // nothing.
+    until_dir(dest.path(), "the tool's temporaries", |names| {
+        [".part", ".ytdl", ".part-Frag7"]
+            .iter()
+            .all(|end| names.iter().any(|n| n.ends_with(end)))
+    })
+    .await;
     running.abort();
+    // The transfer is dropped, its tool taken down and its scratch
+    // swept, before the join returns.
     let _ = running.await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let leftovers = ours_in(dest.path());
     assert!(
         leftovers.is_empty(),
         "the tool's own temporaries are the transfer too: {leftovers:?}"
     );
+}
+
+/// The names in `dir`, once `cond` holds of them.
+#[cfg(unix)]
+async fn until_dir(
+    dir: &std::path::Path,
+    what: &str,
+    cond: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let names: Vec<String> = std::fs::read_dir(dir)
+            .expect("dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        if cond(&names) {
+            return names;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}: {names:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }
 
 /// Every file in `dir` this app's transfer could have put there. The
@@ -2124,12 +2178,16 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
         )
         .await
     });
-    // Long enough for the stub to have written something.
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // The partial file is on disk before the cancel: a cancel that
+    // comes before it has nothing to leave behind, and proves nothing.
+    until_dir(dest.path(), "the partial file", |names| {
+        names.iter().any(|n| n.contains("part"))
+    })
+    .await;
     running.abort();
+    // The transfer is dropped, its tool taken down and its scratch
+    // swept, before the join returns.
     let _ = running.await;
-    // The drop runs on the task's own thread; give it a moment to land.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let leftovers: Vec<String> = std::fs::read_dir(dest.path())
         .expect("dest")
@@ -4116,6 +4174,51 @@ async fn until_log(
     }
 }
 
+/// Returns once a transfer has queued behind the lane `queue` watches.
+/// A second spawn in `log` first is the lane let through while held.
+#[cfg(unix)]
+async fn queued_behind_the_lane(queue: &crate::held::Queue, log: &std::path::Path) {
+    tokio::select! {
+        () = queue.joined() => {}
+        lines = until_log(log, "a second spawn", |l| {
+            l.iter().filter(|l| !l.starts_with("done")).count() > 1
+        }) => panic!("a second transfer spawned while the lane was held: {lines:?}"),
+    }
+}
+
+/// Returns once the process `pid` is gone: no such process, or one
+/// that has exited and waits only to be reaped.
+#[cfg(unix)]
+async fn until_gone(pid: &str, what: &str) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let signalled = std::process::Command::new("kill")
+            .args(["-0", pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("kill -0")
+            .success();
+        let exited = || {
+            std::process::Command::new("ps")
+                .args(["-o", "stat=", "-p", pid])
+                .output()
+                .is_ok_and(|o| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .trim_start()
+                        .starts_with('Z')
+                })
+        };
+        if !signalled || exited() {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what} ({pid}) to be gone"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 /// The byte-rate limit a logged spawn carries, if any.
 #[cfg(unix)]
 fn rate_limit_of(line: &str) -> Option<&str> {
@@ -4391,7 +4494,17 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
         got.expect("the resumed transfer completes"),
         Transferred::Episode
     );
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The first run is gone before its log is read: a first run that
+    // was left going, and has not got round to finishing yet, has not
+    // logged it either, and proves nothing.
+    let first_pid = std::fs::read_to_string(&log)
+        .expect("the tool ran")
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().next())
+        .expect("the first run's pid")
+        .to_string();
+    until_gone(&first_pid, "the first run").await;
     let calls = std::fs::read_to_string(&log).expect("the tool ran");
     let done: Vec<&str> = calls.lines().filter(|l| l.starts_with("done")).collect();
     let second_pid = calls
@@ -4784,6 +4897,9 @@ async fn paced_downloads_take_the_lane_one_at_a_time() {
     let live = std::sync::atomic::AtomicBool::new(true);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -4822,7 +4938,7 @@ async fn paced_downloads_take_the_lane_one_at_a_time() {
     let drive = async {
         let one = until_log(&log, "the first spawn", |l| l.len() == 1).await;
         assert_eq!(concurrency_of(&one[0]), Some("1"), "paced: {one:?}");
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        queued_behind_the_lane(&queue, &log).await;
         let still = std::fs::read_to_string(&log).expect("log");
         assert_eq!(
             still.lines().count(),
@@ -4974,6 +5090,9 @@ async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
     let live = std::sync::atomic::AtomicBool::new(true);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -5011,7 +5130,7 @@ async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
     );
     let drive = async {
         until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        queued_behind_the_lane(&queue, &log).await;
         let still = std::fs::read_to_string(&log).expect("log");
         assert_eq!(
             still.lines().count(),
@@ -5061,6 +5180,9 @@ async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_star
     let live = std::sync::atomic::AtomicBool::new(false);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -5101,7 +5223,7 @@ async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_star
             &pacing,
         );
         let release = async {
-            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            queued_behind_the_lane(&queue, &log).await;
             let still = std::fs::read_to_string(&log).expect("log");
             assert_eq!(
                 still.lines().count(),
@@ -5152,6 +5274,9 @@ async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
     let live = std::sync::atomic::AtomicBool::new(false);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
     let lane = tokio::sync::Semaphore::new(1);
+    // Behind the lane, not merely not there yet: a download that has
+    // not reached the lane has not spawned either, and proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&lane));
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
@@ -5189,7 +5314,7 @@ async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
     );
     let drive = async {
         until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
-        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        queued_behind_the_lane(&queue, &log).await;
         let still = std::fs::read_to_string(&log).expect("log");
         assert_eq!(
             still.lines().count(),
@@ -5854,8 +5979,14 @@ async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
         .await;
         (staged, std::time::Instant::now())
     };
+    // Queued first: the track is waiting at the budget before the
+    // player's request arrives. Until then a player's request taken
+    // first proves nothing about which waits for which.
     let player = async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        crate::held::until("the track waiting at the budget", || {
+            budget.background_waiting(&key)
+        })
+        .await;
         budget.admit(&key).await;
         std::time::Instant::now()
     };
