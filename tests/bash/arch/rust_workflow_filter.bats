@@ -96,6 +96,13 @@ both() { printf 'relevant=%s\npicker=%s' "$1" "$2"; }
     [ "$output" = "$(both true false)" ]
 }
 
+@test "the hostile temporary-directory tool selects the Rust pipeline only" {
+    head=$(change tools/hostile-tmpdir.sh)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(both true false)" ]
+}
+
 @test "the workflow itself selects both" {
     head=$(change .github/workflows/rust.yml)
     run filter pull_request "$base" "$head"
