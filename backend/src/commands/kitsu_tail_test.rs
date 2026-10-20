@@ -649,11 +649,6 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
             Some("40"),
             "kitsu-episodes-48677-p3.json",
         ),
-        (
-            "/anime/48677/media-relationships",
-            None,
-            "kitsu-relations-48677.json",
-        ),
         // The prequel Kitsu relates it to, an aired TV entry whose
         // page the reader asks for.
         (
@@ -671,6 +666,39 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
             .mount(&kitsu)
             .await;
     }
+    // The relations as recorded, with a finished one-episode OVA added
+    // to explain the row past the count: without one the reader stops
+    // before any relation's page, and the announced season's page not
+    // being asked for would say nothing.
+    let mut relations: serde_json::Value =
+        serde_json::from_slice(&fixture("kitsu-relations-48677.json")).expect("relations");
+    let mut link = relations["data"][0].clone();
+    link["id"] = "999001".into();
+    link["attributes"]["role"] = "side_story".into();
+    link["relationships"]["destination"]["data"]["id"] = "999002".into();
+    relations["data"].as_array_mut().expect("data").push(link);
+    let mut ova = relations["included"]
+        .as_array()
+        .expect("included")
+        .iter()
+        .find(|e| e["type"] == "anime")
+        .expect("an anime entry")
+        .clone();
+    ova["id"] = "999002".into();
+    ova["attributes"]["subtype"] = "OVA".into();
+    ova["attributes"]["status"] = "finished".into();
+    ova["attributes"]["episodeCount"] = 1.into();
+    relations["included"]
+        .as_array_mut()
+        .expect("included")
+        .push(ova);
+    let count = relations["meta"]["count"].as_u64().expect("count");
+    relations["meta"]["count"] = (count + 1).into();
+    Mock::given(method("GET"))
+        .and(path("/anime/48677/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&relations))
+        .mount(&kitsu)
+        .await;
     Mock::given(method("GET"))
         .and(path("/anime/49778/episodes"))
         .respond_with(ResponseTemplate::new(503))
@@ -702,6 +730,15 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
         .expect("the announced sequel");
     assert_eq!(sequel.status.as_deref(), Some("upcoming"));
     assert_eq!(sequel.first_episodes, None);
+    let prequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "prequel")
+        .expect("the aired prequel");
+    assert!(
+        prequel.first_episodes.is_some(),
+        "the aired prequel's page is read beside it"
+    );
 }
 
 /// Every aired TV entry Kitsu relates the show to has its first page

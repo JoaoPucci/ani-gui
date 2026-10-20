@@ -62,17 +62,23 @@ impl Answers {
 async fn serve(answers: &Answers, unserved: &[&str]) -> MockServer {
     let kitsu = MockServer::start().await;
     let served = |route: &str| !unserved.contains(&route);
-    if served("mappings") {
-        Mock::given(method("GET"))
-            .and(path("/anime/7881"))
-            .and(query_param("include", "mappings"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "data": answers.detail["data"].clone(), "included": []
-            })))
-            .with_priority(1)
-            .mount(&kitsu)
-            .await;
-    }
+    // Kitsu's mappings, which AniList's answer is read through, share
+    // the entry's route; unserved, they fail rather than fall through
+    // to the entry's answer.
+    let mappings = if served("mappings") {
+        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": answers.detail["data"].clone(), "included": []
+        }))
+    } else {
+        ResponseTemplate::new(500)
+    };
+    Mock::given(method("GET"))
+        .and(path("/anime/7881"))
+        .and(query_param("include", "mappings"))
+        .respond_with(mappings)
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
     if served("detail") {
         Mock::given(method("GET"))
             .and(path("/anime/7881"))
