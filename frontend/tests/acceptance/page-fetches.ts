@@ -5,7 +5,8 @@
 // fixed wait says nothing on a slow run. These records are taken
 // where the page acts instead: a request when the page calls
 // `fetch`, an answer when the page reads its body, and a request
-// that never answers when its `fetch` rejects (an abort among them).
+// that never answers when its `fetch` or the read of its body
+// rejects (an abort among them).
 // A case can then wait for the answer its claim is about to be read,
 // and check what the page asked for after it, without guessing how
 // long the network takes.
@@ -44,15 +45,15 @@ function described(input: RequestInfo | URL, init?: RequestInit): PageFetch {
 			body = {};
 		}
 	}
-	const url = new URL(href);
+	const url = new URL(href, location.href);
 	return { method: method.toUpperCase(), path: url.pathname, query: url.searchParams, body };
 }
 
 /**
  * Record, for the rest of the case, every request the page sends
  * (`sent`, as `fetch` is called), every answer whose body it has read
- * (`read`, once the read resolves) and every request whose `fetch`
- * rejected (`failed`, an aborted one among them).
+ * (`read`, once the read resolves) and every request whose `fetch` or
+ * body read rejected (`failed`, an aborted one among them).
  */
 export function watchPageFetches(): {
 	sent: PageFetch[];
@@ -92,6 +93,11 @@ export function watchPageFetches(): {
 						const value = await original();
 						read.push(asked);
 						return value;
+					} catch (e) {
+						// A body that never arrives, an abort mid-read among
+						// them, is an answer that failed.
+						failed.push(asked);
+						throw e;
 					} finally {
 						out -= 1;
 					}

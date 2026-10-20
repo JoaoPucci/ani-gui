@@ -19,6 +19,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -59,7 +60,6 @@ afterEach(() => {
 	if (app) unmount(app);
 	app = null;
 	target.remove();
-	vi.unstubAllGlobals();
 	vi.useRealTimers();
 });
 
@@ -90,7 +90,7 @@ const offers = (episode: number) =>
  */
 function mountRefusedRow() {
 	const probes: { mode?: string }[] = [];
-	recordAsked();
+	fetches = watchPageFetches();
 	server.use(
 		...homeHandlers({ history: [{ ep_no: String(WATCHED), id: 'allanime-1', title: SHOW }] }, [
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 26)])),
@@ -108,19 +108,11 @@ function mountRefusedRow() {
 	return probes;
 }
 
+/** What the page asks of the network, recorded as it asks. */
+let fetches: ReturnType<typeof watchPageFetches>;
 /** Availability probes the page has asked, counted at the call — before
  *  any of the request reaches a handler. */
-let askedProbes = 0;
-const asked = () => askedProbes;
-function recordAsked() {
-	askedProbes = 0;
-	const realFetch = globalThis.fetch;
-	vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
-		const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-		if (new URL(href).pathname === '/api/availability') askedProbes += 1;
-		return realFetch(input, init);
-	});
-}
+const asked = () => fetches.sent.filter((f) => f.path === '/api/availability').length;
 
 /** Comfortably past the breaker cooldown the retry waits out. */
 const PAST_COOLDOWN_MS = 90_000;

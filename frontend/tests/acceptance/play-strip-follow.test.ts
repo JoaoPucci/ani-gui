@@ -15,13 +15,14 @@
 // The stream is an mp4 session — happy-dom has no MediaSource, so an
 // HLS session would land on the error overlay instead of the player.
 
-import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, tick, unmount } from 'svelte';
+import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -164,53 +165,26 @@ function landOnEpisode(episode: number) {
 	});
 }
 
-/** The page's own episode fetches, in the order it asks them: which
- *  backing-API page each asks for, recorded as the page asks it, and
- *  whether the page has read its answer — recorded as the page's read
- *  resolves, before anything it decides from that answer runs. */
-function watchEpisodeFetches() {
-	const fetches: { page: string; read: boolean }[] = [];
-	const realFetch = globalThis.fetch;
-	vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-		const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-		const url = new URL(href);
-		if (!url.pathname.startsWith('/api/kitsu/episodes/')) return realFetch(input, init);
-		const seen = { page: url.searchParams.get('page') ?? '1', read: false };
-		fetches.push(seen);
-		const resp = await realFetch(input, init);
-		{
-			// A success is read as text, a failure's detail as JSON.
-			for (const how of ['text', 'json'] as const) {
-				const read = resp[how].bind(resp);
-				resp[how] = async () => {
-					try {
-						return await read();
-					} finally {
-						seen.read = true;
-					}
-				};
-			}
-		}
-		return resp;
-	});
-	onTestFinished(() => {
-		vi.unstubAllGlobals();
-	});
-	return fetches;
-}
+/** The page's own episode fetches, in the order it asks them,
+ *  recorded as the page asks each (see ./page-fetches). */
+const episodeFetches = (fetches: ReturnType<typeof watchPageFetches>) =>
+	fetches.sent.filter((f) => f.path.startsWith('/api/kitsu/episodes/'));
+/** Whether the page has read the answer to `f`, or seen it fail —
+ *  recorded as the read settles, before anything the page decides from
+ *  that answer runs. */
+const answered = (fetches: ReturnType<typeof watchPageFetches>, f: PageFetch) =>
+	fetches.read.includes(f) || fetches.failed.includes(f);
+/** Which backing-API page an episode fetch asks for. */
+const pageOf = (f: PageFetch) => f.query.get('page') ?? '1';
 
 /** How many backing-API page-2 fetches the page has asked, and whether
  *  it has read every answer to them. */
-const pageTwoAsked = (fetches: { page: string }[]) => fetches.filter((f) => f.page === '2').length;
-const pageTwoRead = (fetches: { page: string; read: boolean }[]) =>
-	fetches.filter((f) => f.page === '2').every((f) => f.read);
-
-/** What the page does with an answer it has read runs on in memory:
- *  one turn of the event loop, then a flush, puts it on screen. */
-async function settled() {
-	await new Promise((r) => setTimeout(r, 0));
-	await tick();
-}
+const pageTwoAsked = (fetches: ReturnType<typeof watchPageFetches>) =>
+	episodeFetches(fetches).filter((f) => pageOf(f) === '2').length;
+const pageTwoRead = (fetches: ReturnType<typeof watchPageFetches>) =>
+	episodeFetches(fetches)
+		.filter((f) => pageOf(f) === '2')
+		.every((f) => answered(fetches, f));
 
 const tile = (n: number) => target.querySelector(`li[data-ep-num="${n}"]`);
 const tileNumbers = () =>
@@ -280,7 +254,7 @@ describe('play route — the episode strip follows navigation', () => {
 			releaseFirst = resolve;
 		});
 		let episodesRequests = 0;
-		const fetches = watchEpisodeFetches();
+		const fetches = watchPageFetches();
 		useShowHandlers();
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async () => {
@@ -303,8 +277,12 @@ describe('play route — the episode strip follows navigation', () => {
 		// may change: once the page has read it, and what it does with
 		// it has run, the strip still shows the followed page.
 		releaseFirst();
-		await until(() => fetches[0]?.read === true, 'the stale mount-time answer to be read');
-		await settled();
+		await until(
+			() =>
+				episodeFetches(fetches)[0] !== undefined && answered(fetches, episodeFetches(fetches)[0]),
+			'the stale mount-time answer to be read'
+		);
+		await afterRead();
 		expect(tileNumbers()).toEqual([6, 7, 8, 9, 10]);
 		expect(currentCardIn(6)).not.toBeNull();
 	});
@@ -322,7 +300,7 @@ describe('play route — the episode strip follows navigation', () => {
 		const pageTwoBlocked = new Promise<void>((resolve) => {
 			releasePageTwo = resolve;
 		});
-		const fetches = watchEpisodeFetches();
+		const fetches = watchPageFetches();
 		useShowHandlers(30);
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async ({ request }) => {
@@ -358,10 +336,12 @@ describe('play route — the episode strip follows navigation', () => {
 		// what it does with them.
 		releasePageTwo();
 		await until(
-			() => fetches.some((f) => f.page === '2') && fetches.every((f) => f.read),
+			() =>
+				episodeFetches(fetches).some((f) => pageOf(f) === '2') &&
+				episodeFetches(fetches).every((f) => answered(fetches, f)),
 			'the stale page-5 answers to be read'
 		);
-		await settled();
+		await afterRead();
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 		expect(currentCardIn(20)).not.toBeNull();
 	});
@@ -373,7 +353,7 @@ describe('play route — the episode strip follows navigation', () => {
 		// retry and the strip would strand on page 4 for the rest of
 		// the session.
 		let failPageTwo = true;
-		const fetches = watchEpisodeFetches();
+		const fetches = watchPageFetches();
 		let pageTwoRequests = 0;
 		useShowHandlers(30);
 		server.use(
@@ -400,7 +380,7 @@ describe('play route — the episode strip follows navigation', () => {
 			() => pageTwoAsked(fetches) > askedBeforeFollow && pageTwoRead(fetches),
 			"the follow fetch's failure to be read"
 		);
-		await settled();
+		await afterRead();
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 
 		// The transient failure clears; the next episode change must
@@ -418,7 +398,7 @@ describe('play route — the episode strip follows navigation', () => {
 		// or auto-play onto 21 (page 5) would decline to follow and the
 		// current episode would go missing from the strip.
 		let failPageTwo = true;
-		const fetches = watchEpisodeFetches();
+		const fetches = watchPageFetches();
 		let pageTwoRequests = 0;
 		useShowHandlers(30);
 		server.use(
@@ -446,7 +426,7 @@ describe('play route — the episode strip follows navigation', () => {
 			() => pageTwoAsked(fetches) > askedBeforeBrowse && pageTwoRead(fetches),
 			"the browse fetch's failure to be read"
 		);
-		await settled();
+		await afterRead();
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 
 		// The failure clears; auto-play advances onto the page the

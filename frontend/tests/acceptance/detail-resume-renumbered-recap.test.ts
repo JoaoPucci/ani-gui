@@ -312,7 +312,7 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 				return HttpResponse.json({ ep_no: '12.5', former_ep_no: '24.5' });
 			})
 		);
-		const { sent, read } = watchPageFetches();
+		const { sent, settled: answered } = watchPageFetches();
 		const numberReads = () => sent.filter((r) => /^\/api\/history\/[^/]+\/number$/.test(r.path));
 		// The page's timeouts are the test's to run, with the clock still
 		// moving with real time so the page loads as it would.
@@ -335,17 +335,15 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
 			);
 		}
-		// Bounded means the reads stop: every read asked has been
-		// answered, every timeout pending then has run, and nothing new
-		// was asked. A loop, however it is paced by timeouts, never gets
-		// there.
+		// Bounded means the reads stop: everything the page asked has
+		// been answered and read — the reads, and any other answer that
+		// could set one off — every timeout pending then has run, and no
+		// new read was asked. A loop, however it is paced by timeouts or
+		// answers, never gets there.
 		let settled = false;
 		for (let round = 0; round < 10 && !settled; round++) {
 			const asked = numberReads().length;
-			await until(
-				() => numberReads().every((r) => read.includes(r)),
-				'the reads asked to be answered'
-			);
+			await answered('every request the page asked to be answered');
 			await vi.runOnlyPendingTimersAsync();
 			await afterRead();
 			settled = numberReads().length === asked;
