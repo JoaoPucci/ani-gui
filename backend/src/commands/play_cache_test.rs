@@ -140,27 +140,18 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
         ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()),
     )
     .await;
-    let state = state_with_proxy_origin();
-    let checking = std::time::Instant::now();
+    let mut state = state_with_proxy_origin();
+    // The two tokens are taken a moment apart, and the app's refill
+    // would top the second up by that moment: a budget that does not
+    // refill counts the requests alone.
+    state.host_budget = crate::proxy::host_budget::HostBudget::fresh_without_refill();
     assert!(try_serve_cached(&state, &cached).await.is_some());
-    let took = checking.elapsed();
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
-    // Two tokens taken a moment apart: the second tops up by the moment,
-    // which is no longer than the check took — a loaded runner's moment
-    // is longer than an idle one's.
-    let moment =
-        (took.as_secs_f64() / crate::proxy::host_budget::SEGMENT_REFILL.as_secs_f64()).max(0.01);
-    // Past half a token, two taken could no longer be told from one or
-    // three, and the case would say nothing.
-    assert!(
-        moment < 0.5,
-        "the check took too long to tell two tokens from one or three: {took:?}"
-    );
     let left = state.host_budget.on_hand(&host).expect("spent");
     assert!(
-        left > burst - 2.0 - 0.01 && left < burst - 2.0 + moment,
-        "the stream's ping and the track's read: {left}, check took {took:?}"
+        (left - (burst - 2.0)).abs() < 1e-3,
+        "the stream's ping and the track's read: {left}"
     );
 }
 
