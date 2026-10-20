@@ -31,12 +31,12 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
-// The engine double: the page's hls.js surface, with stopLoad counted
-// and an event registry the test emits through.
 vi.mock('../../src/lib/play/held-retry', async (importOriginal) =>
 	(await import('./held-retries')).trackHeldRetries(await importOriginal())
 );
 
+// The engine double: the page's hls.js surface, with stopLoad counted
+// and an event registry the test emits through.
 vi.mock('hls.js', () => {
 	type Handler = (event: string, data: unknown) => void;
 	class FakeHls {
@@ -219,6 +219,10 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		// or been cancelled before the engine is held to not starting.
 		await until(heldRetriesSettled, 'every armed retry to fire or be cancelled');
 		expect(hls.startLoadCalls).toBe(0);
+		// A stopped engine arms none: the failure handler returns before
+		// any hold, in the same call that took the failure, so the wait
+		// above had nothing to wait for and the engine was not started.
+		expect(heldRetries.map((r) => r.state)).toEqual([]);
 	});
 
 	it('does not stop a stream whose renditions each load a fragment twice', async () => {

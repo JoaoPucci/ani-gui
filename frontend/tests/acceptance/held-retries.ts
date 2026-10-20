@@ -24,7 +24,10 @@ export type HeldRetryState = 'pending' | 'fired' | 'cancelled';
 /** Every retry armed in the current case, in arming order. */
 export const heldRetries: { state: HeldRetryState }[] = [];
 
-/** Whether every retry armed so far has fired or been cancelled. */
+/** Whether every retry armed so far has fired or been cancelled. True
+ *  when none was armed, so it witnesses only retries the page arms
+ *  synchronously with the failure; a case expecting none says so by
+ *  asserting `heldRetries` empty. */
 export const heldRetriesSettled = () => heldRetries.every((r) => r.state !== 'pending');
 
 export function trackHeldRetries(real: typeof HeldRetryModule): typeof HeldRetryModule {
