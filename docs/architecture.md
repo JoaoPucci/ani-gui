@@ -239,7 +239,7 @@ Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode +
 
 The detail page's resume warm uses the same cache. When no listing stood behind the page's availability answer and the history row reads as a fractional episode, the page resolves that episode as a prefetch so the listing puts the row right. It cuts the queue like a click (`getOrFireNow`), since a click on Play waits for it.
 
-When the play or detail page goes, it clears the in-flight prefetches of every show it showed, each recorded as the page showed it: by the time the page is destroyed, the route already names where the viewer went. When the detail page moves to another show without unmounting, it drops the first show's warms, running and queued (`clearBackgroundForShow`). Picking another version of the show drops the other versions' warms the same way (`clearBackgroundForOtherVersions`), since each version is its own listing and the page re-warms under the chosen one's keys. A click's own play for that show runs on and records its watch.
+When the play or detail page goes, it clears the play cache of every show it showed — warms and clicks alike, running and queued — each show recorded as the page showed it: by the time the page is destroyed, the route already names where the viewer went. When the detail page moves to another show without unmounting, it drops the first show's warms, running and queued (`clearBackgroundForShow`). Picking another version of the show drops the other versions' warms the same way (`clearBackgroundForOtherVersions`), since each version is its own listing and the page re-warms under the chosen one's keys. A click's own play for that show runs on and records its watch, until the page goes.
 
 ## User settings
 
