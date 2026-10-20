@@ -779,10 +779,12 @@ async fn every_aired_tv_relation_s_page_is_read() {
 /// and turned away only a sequel still airing. The rule now reads
 /// every aired TV entry Kitsu relates the show to, whatever the role,
 /// and refuses an entry of any role airing now, so a reading it proved
-/// may be one the rule refuses: The Slime Diaries' rows appended to
-/// Slime's first season read as extras then. Kept, it would stand for
-/// thirty days whenever the evidence cannot be read. It is not
-/// remembered, and the key it is kept under has moved past master's.
+/// may be one the rule refuses: with Kitsu titling Slime's TV sequel,
+/// The Slime Diaries' rows appended to Slime's first season would read
+/// as extras then, and as the Diaries' episodes now. Kept, it would
+/// stand for thirty days whenever the evidence cannot be read. It is
+/// not remembered, and the key it is kept under has moved past
+/// master's.
 #[test]
 fn a_reading_kept_under_the_sequel_only_rule_is_not_remembered() {
     assert!(
