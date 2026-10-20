@@ -151,8 +151,8 @@ async fn build_resolved(
 
 /// Build the map for a show that resolves to nothing: through its
 /// prequels to the entry it may be filed under, back to the first part
-/// filed under that entry, then the parts from there. A show no prequel of which resolves is identity, kept for the
-/// short window.
+/// filed under that entry, then the parts from there. A show no
+/// prequel of which resolves is identity, kept for the short window.
 async fn build_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<EpisodeMap> {
     let ours = kitsu_show(ask, kitsu_id).await?;
     let Some((root, native)) = parts_walk::root_through_prequels(ask, kitsu_id).await? else {
