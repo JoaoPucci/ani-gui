@@ -352,3 +352,34 @@ fn pools_schedule_no_connection_reaper() {
         );
     }
 }
+
+/// Two backends can open one cache at once: a second app instance on
+/// the same profile, or the integration tests on Windows, which all
+/// share the dev profile's directories. Whichever reaches a fresh file
+/// first creates and migrates it; the others must wait for that and
+/// open it, not fail the start.
+#[test]
+fn concurrent_opens_of_a_fresh_cache_all_succeed() {
+    const OPENERS: usize = 6;
+    const ROUNDS: usize = 20;
+    for round in 0..ROUNDS {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("metadata.db");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(OPENERS));
+        let openers: Vec<_> = (0..OPENERS)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = std::sync::Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    open_pool(&path).map(|_| ())
+                })
+            })
+            .collect();
+        let results: Vec<_> = openers.into_iter().map(|t| t.join().unwrap()).collect();
+        assert!(
+            results.iter().all(Result::is_ok),
+            "round {round}: every opener gets the cache: {results:?}"
+        );
+    }
+}
