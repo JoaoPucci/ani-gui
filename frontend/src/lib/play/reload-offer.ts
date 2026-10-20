@@ -10,7 +10,10 @@
  *   • `delisted` — the provider no longer lists the show in the
  *     chosen audio. A delisted show comes back without a count, so
  *     the cap check cannot catch it: the cap is whatever it already
- *     was.
+ *     was. Where the show has versions, the answer is the pick's: a
+ *     play whose version lacks the audio plays it from the next
+ *     version that carries it, so only a show no version carries is
+ *     delisted, whichever version is being played.
  *   • `unaired` — the schedule says the episode has not aired.
  *   • `beyond-playable` — the episode is past the provider's playable
  *     count (catalogue lag).
