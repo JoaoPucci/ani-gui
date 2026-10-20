@@ -43,6 +43,11 @@ export default defineConfig({
 		// filter's grace render is 2s on its own. Above vitest's 5s
 		// default so a scenario's own wait expires first and reports
 		// what it was waiting for, instead of a bare "test timed out".
-		testTimeout: 20_000
+		testTimeout: 20_000,
+		// The request guard in tests/acceptance/setup.ts relies on its
+		// `afterEach` running after every scenario's own, which is
+		// vitest's default order; pinned so a config change cannot
+		// quietly turn the guard around.
+		sequence: { hooks: 'stack' }
 	}
 });

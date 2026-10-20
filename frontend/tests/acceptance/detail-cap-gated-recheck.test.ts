@@ -628,8 +628,9 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
 			// Two shows are visited, so the per-show reads have to answer
 			// for either id rather than for the one the other scenarios
-			// name explicitly.
-			http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json([])),
+			// name explicitly. Neither has a history row: the route answers
+			// `null` for that, not a list.
+			http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
 			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json({ dir: '/tmp' })),
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => HttpResponse.json({ ok: true })),

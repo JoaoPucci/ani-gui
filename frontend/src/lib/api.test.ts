@@ -744,20 +744,17 @@ describe('playStream', () => {
 		expect(es.closed).toBe(true);
 	});
 
-	it('rejects synchronously when the signal is already aborted at call time', async () => {
+	it('rejects without opening a stream when the signal is already aborted at call time', async () => {
 		// A click that races a clearForShow can hand us an already-
-		// aborted signal. The implementation must finish before the
-		// EventSource has a chance to do anything — otherwise the
-		// promise stays pending and the loading overlay sits open
-		// against a dead session.
+		// aborted signal. The promise must settle — otherwise the
+		// loading overlay sits open against a dead session — and no
+		// stream may open: opening one starts a resolve on the backend
+		// for a page that is already gone, even if it closes at once.
 		const ctrl = new AbortController();
 		ctrl.abort();
 		const promise = playStream({ title: 't', episode: '1', mode: 'sub' }, () => {}, ctrl.signal);
 		await expect(promise).rejects.toThrow(/aborted/i);
-		// The EventSource was constructed (apiBase resolves first),
-		// but should be closed by now.
-		const es = FakeEventSource.instances[0];
-		expect(es.closed).toBe(true);
+		expect(FakeEventSource.instances).toHaveLength(0);
 	});
 
 	it('closes the EventSource and rejects when the signal is aborted', async () => {
@@ -775,6 +772,27 @@ describe('playStream', () => {
 		ctrl.abort();
 		await expect(promise).rejects.toThrow(/aborted|cancelled|abort/i);
 		expect(es.closed).toBe(true);
+	});
+
+	it('opens no stream when the signal is aborted while the API base is still being read', async () => {
+		// The base is read asynchronously before the stream opens; an
+		// abort that lands in between is as late as the page gets.
+		const ctrl = new AbortController();
+		const promise = playStream({ title: 't', episode: '1', mode: 'sub' }, () => {}, ctrl.signal);
+		ctrl.abort();
+		await expect(promise).rejects.toThrow(/aborted/i);
+		expect(FakeEventSource.instances).toHaveLength(0);
+	});
+
+	it('sends no POST either when EventSource is unavailable and the signal is already aborted', async () => {
+		delete g.EventSource;
+		const fetchMock = vi.fn();
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const ctrl = new AbortController();
+		ctrl.abort();
+		const promise = playStream({ title: 't', episode: '1', mode: 'sub' }, () => {}, ctrl.signal);
+		await expect(promise).rejects.toThrow(/aborted/i);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it('falls back to play() POST when EventSource is unavailable', async () => {
