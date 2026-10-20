@@ -118,6 +118,34 @@ fn anilist_s_count_is_the_finished_one() {
     assert!(!entry_tail(Some("current"), None, &AiringStatus::default(), Vec::new()).finished);
 }
 
+/// A provider's listing as hianime recorded it.
+fn hianime_listing(id: u32) -> Vec<crate::scraper::provider::EpisodeRef> {
+    let body = String::from_utf8(fixture(&format!("episode-list-{id}.json"))).expect("utf-8");
+    crate::scraper::hianime::parse_episode_list(&body).expect("recorded listing")
+}
+
+/// A listing of `count` episodes, episode `n` named `name(n)`, and
+/// one row past the count named as no episode is: the shape the reader
+/// is asked about.
+fn listing_named(
+    count: u32,
+    name: impl Fn(u32) -> String,
+) -> Vec<crate::scraper::provider::EpisodeRef> {
+    (1..=count + 1)
+        .map(|n| crate::scraper::provider::EpisodeRef {
+            id: u64::from(n),
+            number: n,
+            number2: None,
+            title: Some(if n > count {
+                "An Extra of Its Own".to_string()
+            } else {
+                name(n)
+            }),
+            former_tag: None,
+        })
+        .collect()
+}
+
 fn state_with_kitsu(base: &str) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
@@ -209,11 +237,14 @@ async fn an_uncached_entry_and_page_are_read_from_kitsu() {
     )
     .expect("airing row");
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
-    let tail = source.tail(12, 2).await.expect("read");
+    let tail = source.tail(&hianime_listing(916), 12).await.expect("read");
     assert!(tail.finished && tail.count == Some(12) && tail.anilist_count == Some(12));
     assert_eq!(tail.episodes.len(), 12);
     // Cached: a second read does not ask Kitsu for the page again.
-    let again = source.tail(12, 2).await.expect("read again");
+    let again = source
+        .tail(&hianime_listing(916), 12)
+        .await
+        .expect("read again");
     assert_eq!(again, tail);
 }
 
@@ -222,7 +253,7 @@ async fn an_uncached_entry_and_page_are_read_from_kitsu() {
 async fn an_entry_kitsu_cannot_serve_gives_no_tail() {
     let state = state_with_kitsu("http://127.0.0.1:1");
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
-    assert_eq!(source.tail(12, 2).await, None);
+    assert_eq!(source.tail(&hianime_listing(916), 12).await, None);
 }
 
 /// The tail carries the entries Kitsu relates the show to, read whole,
@@ -269,7 +300,7 @@ async fn noragami_s_tail_carries_its_relations_and_its_sequel_s_titles() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("7881"))
         .expect("an entry")
-        .tail(12, 2)
+        .tail(&hianime_listing(916), 12)
         .await
         .expect("read");
     assert!(tail.related_complete);
@@ -370,7 +401,7 @@ async fn a_full_page_ending_at_the_count_is_followed_by_the_next() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("9"))
         .expect("an entry")
-        .tail(19, 1)
+        .tail(&listing_named(19, |n| format!("Story {n}")), 19)
         .await
         .expect("read");
     assert!(tail.read_past_count);
@@ -457,7 +488,7 @@ async fn the_page_after_is_read_however_full_the_last_one_looked() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("9"))
         .expect("an entry")
-        .tail(19, 1)
+        .tail(&listing_named(19, |n| format!("Story {n}")), 19)
         .await
         .expect("read");
     assert!(
@@ -532,7 +563,7 @@ async fn a_count_that_ends_a_page_reads_no_page_past_the_look_ahead() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("9"))
         .expect("an entry")
-        .tail(20, 1)
+        .tail(&listing_named(20, |n| format!("Story {n}")), 20)
         .await
         .expect("read without a third page");
     assert_eq!(tail.episodes.len(), 20);
@@ -596,7 +627,7 @@ async fn a_sequel_page_keeps_which_episodes_lack_titles() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("7881"))
         .expect("an entry")
-        .tail(12, 2)
+        .tail(&hianime_listing(916), 12)
         .await
         .expect("read");
     let sequel = tail
@@ -731,7 +762,7 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("48677"))
         .expect("an entry")
-        .tail(25, 1)
+        .tail(&listing_named(25, |n| format!("Season Two Story {n}")), 25)
         .await
         .expect("read without the announced season's page");
     assert!(tail.finished && tail.count == Some(25));
@@ -798,7 +829,7 @@ async fn every_aired_tv_relation_s_page_is_read() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("10800"))
         .expect("an entry")
-        .tail(13, 2)
+        .tail(&hianime_listing(913), 13)
         .await
         .expect("read");
     let prequel = tail

@@ -8,6 +8,7 @@
 
 use super::play_native_appended::{EntryTail, Remembered, TailSource};
 use crate::app::AppState;
+use crate::scraper::provider::EpisodeRef;
 
 /// How many episodes Kitsu lists to a page, as the backend asks for
 /// them.
@@ -81,47 +82,18 @@ impl TailSource for KitsuTail<'_> {
         }
     }
 
-    /// Each read is made only while the ones before it leave the
-    /// reading open. A refusal they already settle (Kitsu not ending
-    /// the show at the count, AniList not ending it there, a row Kitsu
-    /// lists past it, relations that do not explain the rows) is
-    /// returned at once: a later read failing must not hand the
-    /// listing back to a reading kept from before.
-    async fn tail(&self, count: u32, past: usize) -> Option<EntryTail> {
-        use crate::commands::play_native_appended::{
-            anilist_ends_at, explained, kitsu_ends_at, rows_end_at,
-        };
-        let detail = super::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
-            .await
-            .ok()?;
-        let mut tail = entry_tail(
-            detail.status.as_deref(),
-            detail.episode_count,
-            &crate::meta::anilist_airing::AiringStatus::default(),
-            Vec::new(),
-        );
-        if !kitsu_ends_at(&tail, count) {
+    /// Each read is made only while what is in hand leaves the reading
+    /// open, and a refusal it already settles is returned at once: a
+    /// later read failing must not hand the listing back to a reading
+    /// kept from before. See [`Self::end_of_show`] and
+    /// [`Self::relations_of`] for the order and the checks.
+    async fn tail(&self, listing: &[EpisodeRef], count: u32) -> Option<EntryTail> {
+        let past = listing.get(usize::try_from(count).ok()?..)?;
+        let (tail, open) = self.end_of_show(listing, count, past).await?;
+        if !open {
             return Some(tail);
         }
-        let airing = super::airing::airing_get(self.state, self.kitsu_id)
-            .await
-            .ok()?;
-        tail.anilist_count = read::anilist_count(&airing);
-        if !anilist_ends_at(&tail, count) {
-            return Some(tail);
-        }
-        tail.episodes = read::tail_episodes(self.read_pages(count).await?);
-        if !rows_end_at(&tail, count) {
-            return Some(tail);
-        }
-        let relations = self.read_relations().await?;
-        tail.related_complete = relations.complete;
-        tail.related = read::unpaged(&relations.entries);
-        if !explained(past, &tail) {
-            return Some(tail);
-        }
-        tail.related = self.with_first_pages(relations.entries).await?;
-        Some(tail)
+        self.relations_of(tail, past).await
     }
 }
 

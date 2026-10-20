@@ -8,6 +8,7 @@ use crate::commands::play_native_appended::{
 };
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::{KitsuEpisode, KitsuRelation};
+use crate::scraper::provider::EpisodeRef;
 
 /// The 1-based Kitsu page episode `n` is on.
 fn page_of(n: u32) -> u32 {
@@ -136,6 +137,70 @@ impl KitsuTail<'_> {
             .ok()
     }
 
+    /// What says whether the show ends at `count`, read in order while
+    /// what is in hand leaves the reading open: the listing's rows past
+    /// the count (`past`) have names of their own; Kitsu's entry ends
+    /// the show at the count; AniList's answer does; Kitsu's pages list
+    /// nothing past it, name its last episodes as `listing` does, and
+    /// name no row past it. Returns the tail so far and whether the
+    /// reading is still open; `None` when a read failed first.
+    pub(super) async fn end_of_show(
+        &self,
+        listing: &[EpisodeRef],
+        count: u32,
+        past: &[EpisodeRef],
+    ) -> Option<(EntryTail, bool)> {
+        use crate::commands::play_native_appended::{
+            aligned, anilist_ends_at, kitsu_ends_at, named_alone, rows_end_at, unlike_the_show_s,
+        };
+        if !named_alone(past) {
+            return Some((EntryTail::default(), false));
+        }
+        let detail = crate::commands::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
+            .await
+            .ok()?;
+        let mut tail = entry_tail(
+            detail.status.as_deref(),
+            detail.episode_count,
+            &AiringStatus::default(),
+            Vec::new(),
+        );
+        if !kitsu_ends_at(&tail, count) {
+            return Some((tail, false));
+        }
+        let airing = crate::commands::airing::airing_get(self.state, self.kitsu_id)
+            .await
+            .ok()?;
+        tail.anilist_count = anilist_count(&airing);
+        if !anilist_ends_at(&tail, count) {
+            return Some((tail, false));
+        }
+        tail.episodes = tail_episodes(self.read_pages(count).await?);
+        let open = rows_end_at(&tail, count)
+            && aligned(listing, count, &tail)
+            && unlike_the_show_s(past, &tail);
+        Some((tail, open))
+    }
+
+    /// `tail` with the entries Kitsu relates the show to: read whole,
+    /// then, while they explain the `past` rows, each aired TV entry's
+    /// first page, until a page refuses the rows their names.
+    pub(super) async fn relations_of(
+        &self,
+        mut tail: EntryTail,
+        past: &[EpisodeRef],
+    ) -> Option<EntryTail> {
+        use crate::commands::play_native_appended::explained;
+        let relations = self.read_relations().await?;
+        tail.related_complete = relations.complete;
+        tail.related = unpaged(&relations.entries);
+        if !explained(past.len(), &tail) {
+            return Some(tail);
+        }
+        tail.related = self.with_first_pages(relations.entries, past).await?;
+        Some(tail)
+    }
+
     /// The entries Kitsu relates the show to, and whether they are
     /// all of them.
     pub(super) async fn read_relations(&self) -> Option<crate::meta::kitsu::KitsuRelations> {
@@ -145,22 +210,29 @@ impl KitsuTail<'_> {
     }
 
     /// `entries` as the evidence reads them, each TV entry that has
-    /// aired, whatever the role, with its first page of episodes. An
-    /// entry only announced has aired nothing, and the rule passes it
-    /// over: its page is not asked for, since an answer the read does
-    /// not need could still fail it.
+    /// aired, whatever the role, with its first page of episodes, until
+    /// one leaves a row past the count without its name; the pages
+    /// after that one are not asked for. An entry only announced has
+    /// aired nothing, and the rule passes it over: its page is not
+    /// asked for either, since an answer the read does not need could
+    /// still fail it.
     pub(super) async fn with_first_pages(
         &self,
         entries: Vec<KitsuRelation>,
+        past: &[EpisodeRef],
     ) -> Option<Vec<Related>> {
+        use crate::commands::play_native_appended::{is_announced, leaves_names};
         let mut out = Vec::new();
+        let mut open = true;
         for r in entries {
-            let aired = !crate::commands::play_native_appended::is_announced(r.status.as_deref());
-            let first_episodes = if is_tv(&r) && aired {
+            let aired = !is_announced(r.status.as_deref());
+            let first_episodes = if open && is_tv(&r) && aired {
                 let page = crate::commands::kitsu::kitsu_episode_page(self.state, &r.id, 1)
                     .await
                     .ok()?;
-                Some(sequel_episodes(page))
+                let page = sequel_episodes(page);
+                open = leaves_names(past, &page);
+                Some(page)
             } else {
                 None
             };

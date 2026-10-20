@@ -76,7 +76,8 @@ pub fn rows_end_at(tail: &EntryTail, count: u32) -> bool {
 /// Whether the listing names Kitsu's last [`ALIGNED`] episodes as
 /// Kitsu does, and Kitsu dates each of them; titles that are only
 /// numbers line up whatever a row holds, so one at least must be more.
-fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
+#[must_use]
+pub fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
     let first = count.saturating_sub(ALIGNED - 1).max(1);
     let named = |n: u32| -> Option<&str> {
         let kitsu = tail.episodes.iter().find(|e| e.number == n)?;

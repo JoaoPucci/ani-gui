@@ -708,7 +708,7 @@ struct Kept {
 
 #[async_trait::async_trait]
 impl TailSource for Kept {
-    async fn tail(&self, _count: u32, _past: usize) -> Option<EntryTail> {
+    async fn tail(&self, _listing: &[EpisodeRef], _count: u32) -> Option<EntryTail> {
         self.tail.clone()
     }
     fn remembered(&self) -> Option<Remembered> {
