@@ -641,11 +641,6 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
         ("/anime/48677", None, "kitsu-anime-48677.json"),
         (
             "/anime/48677/episodes",
-            Some("20"),
-            "kitsu-episodes-48677-p2.json",
-        ),
-        (
-            "/anime/48677/episodes",
             Some("40"),
             "kitsu-episodes-48677-p3.json",
         ),
@@ -666,6 +661,23 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
             .mount(&kitsu)
             .await;
     }
+    // Kitsu's second page as recorded lists 21 to 25 with neither title
+    // nor date, which no listing lines up with: titled and dated here,
+    // so the season's own episodes leave the reading open and the
+    // relations are read.
+    let mut second: serde_json::Value =
+        serde_json::from_slice(&fixture("kitsu-episodes-48677-p2.json")).expect("page two");
+    for row in second["data"].as_array_mut().expect("rows") {
+        let n = row["attributes"]["number"].as_u64().expect("numbered");
+        row["attributes"]["canonicalTitle"] = format!("Season Two Story {n}").into();
+        row["attributes"]["airdate"] = "2025-03-01".into();
+    }
+    Mock::given(method("GET"))
+        .and(path("/anime/48677/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&second))
+        .mount(&kitsu)
+        .await;
     // The relations as recorded, with a finished one-episode OVA added
     // to explain the row past the count: without one the reader stops
     // before any relation's page, and the announced season's page not
