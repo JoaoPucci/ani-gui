@@ -1175,3 +1175,103 @@ async fn the_last_of_five_parts_under_one_entry_is_filed_after_the_four_before_i
     assert_eq!(map.segments[0].entry_total, 60);
     assert_eq!(map.segments[0].lead, 48);
 }
+
+/// Mount a Kitsu chain of twelve-episode parts, a year apart from
+/// 2020, each the single sequel of the one before; `mal` is each
+/// part's MyAnimeList mapping, if any.
+async fn mount_chain(kitsu: &MockServer, chain: &[(&str, Option<u32>)]) {
+    let dated = |i: usize| (format!("{}-01-01", 2020 + i), format!("{}-03-25", 2020 + i));
+    for (i, (id, mal)) in chain.iter().enumerate() {
+        let mut related = Vec::new();
+        let before = i.checked_sub(1).map(|j| (chain[j].0, dated(j)));
+        let after = chain.get(i + 1).map(|(n, _)| (*n, dated(i + 1)));
+        if let Some((p, (s, e))) = &before {
+            related.push(("prequel", *p, 12, s.clone(), e.clone()));
+        }
+        if let Some((n, (s, e))) = &after {
+            related.push(("sequel", *n, 12, s.clone(), e.clone()));
+        }
+        let related: Vec<(&str, &str, u32, &str, &str)> = related
+            .iter()
+            .map(|(r, id, n, s, e)| (*r, *id, *n, s.as_str(), e.as_str()))
+            .collect();
+        Mock::given(method("GET"))
+            .and(path(format!("/anime/{id}/media-relationships")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(relationships(&related)))
+            .mount(kitsu)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/anime/{id}")))
+            .and(query_param("include", "mappings"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(mappings(id, *mal, None)))
+            .mount(kitsu)
+            .await;
+    }
+}
+
+/// A MyAnimeList server answering for one finished entry.
+async fn mal_entry(id: u32, total: u32) -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/anime/{id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+            r#"{{"id":{id},"num_episodes":{total},"status":"finished_airing","media_type":"tv",
+                "start_date":"2020-01-01","end_date":"2030-03-25","related_anime":[]}}"#
+        )))
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn a_part_with_no_entry_between_two_under_the_entry_leaves_the_first_in_the_count() {
+    // Four parts of twelve: the first, third and fourth map to
+    // MyAnimeList 902, a 48-episode entry; the second maps to nothing.
+    // Read from the fourth, the parts under the entry run from the
+    // first, through the second, which has no entry of its own: the
+    // fourth is the entry's 37th–48th.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "94",
+        detail("94", Some(12), "2023-01-01", "2023-03-25"),
+        1,
+    )
+    .await;
+    mount_chain(
+        &kitsu,
+        &[
+            ("91", Some(902)),
+            ("92", None),
+            ("93", Some(902)),
+            ("94", Some(902)),
+        ],
+    )
+    .await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        902,
+        &mapped_body(&["91", "93", "94"]),
+    )
+    .await;
+    let mal_server = mal_entry(902, 48).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let map = episode_map_for(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: None,
+        },
+        "94",
+        ProviderMediaId(902),
+        Some(48),
+    )
+    .await;
+    assert_eq!(map.shape, Shape::SplitParts);
+    assert_eq!(map.segments[0].entry_total, 48);
+    assert_eq!(map.segments[0].lead, 36);
+}
