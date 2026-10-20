@@ -490,8 +490,10 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // tool lets the chain succeed; the two together do not. ffmpeg
     // marks a finished run, so a chain that ran to its end and only
     // then reported the timeout leaves the mark behind.
-    // It marks its start as well: a chain that timed out before the
-    // fallback began says nothing about the fallback's deadline.
+    // It marks its start as well, with its pid: a chain that timed out
+    // before the fallback began says nothing about the fallback's
+    // deadline, and the mark of a finish is ruled out only once the
+    // process that would write it is gone.
     let started = dest.path().join("ffmpeg-started");
     let finished = dest.path().join("ffmpeg-finished");
     stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
@@ -499,7 +501,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "touch {started}; sleep 2.5; touch {finished}; exit 0",
+            "echo $$ > {started}; sleep 2.5; touch {finished}; exit 0",
             started = crate::stub_file::sh_quote(&started),
             finished = crate::stub_file::sh_quote(&finished)
         ),
@@ -531,6 +533,8 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         matches!(got, Err(AniError::Timeout)),
         "the fallback runs against what is left of the deadline: {got:?}"
     );
+    let pid = std::fs::read_to_string(&started).expect("the fallback's pid");
+    until_gone(pid.trim(), "the ffmpeg fallback").await;
     assert!(
         !finished.exists(),
         "and the whole chain ends at the deadline: ffmpeg was cut off, not run to its end"
