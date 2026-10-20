@@ -86,15 +86,21 @@ interface Scenario {
 	aired?: number | null;
 	/** Holds the schedule's answer until it settles. */
 	airingHeld?: Promise<void>;
+	/** The case clicks a Reload that goes through: its fresh resolve,
+	 *  and the warms the fresh session starts, are answered with a
+	 *  session. Without it, any play is a request the scenario did not
+	 *  describe, and fails it. */
+	reloadResolves?: boolean;
 }
 
 interface Seen {
 	availabilityAnswered: boolean;
 	evictions: number;
+	resolves: number;
 }
 
 function useHandlers(s: Scenario): Seen {
-	const seen: Seen = { availabilityAnswered: false, evictions: 0 };
+	const seen: Seen = { availabilityAnswered: false, evictions: 0, resolves: 0 };
 	const mode = s.mode ?? 'sub';
 	const airing = s.aired ?? null;
 	server.use(
@@ -124,8 +130,6 @@ function useHandlers(s: Scenario): Seen {
 			return HttpResponse.json(body.mode === mode ? NOTHING_CACHED : (s.other ?? NOTHING_CACHED));
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		// The fresh resolve a Reload that goes through asks for.
-		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
 			seen.evictions += 1;
 			return new HttpResponse(null, { status: 204 });
@@ -133,6 +137,23 @@ function useHandlers(s: Scenario): Seen {
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 	);
+	if (s.reloadResolves) {
+		server.use(
+			http.post(`${API_BASE}/api/play`, async ({ request }) => {
+				// The fresh session warms its neighbours too; those are
+				// answered, and only the resolve the Reload asked for counts.
+				const body = (await request.json()) as { prefetch?: boolean };
+				if (!body.prefetch) seen.resolves += 1;
+				return HttpResponse.json({
+					id: 'session-2',
+					kind: 'mp4',
+					has_subtitles: false,
+					quality: '1080',
+					mode
+				});
+			})
+		);
+	}
 	return seen;
 }
 
@@ -248,7 +269,8 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		const seen = useHandlers({
 			availability: { available: true, episode_count: 12 },
 			aired: 12,
-			airingHeld
+			airingHeld,
+			reloadResolves: true
 		});
 		const toastsBefore = toastStore.items.length;
 		await failStream(seen, 1, NETWORK);
@@ -266,6 +288,7 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		await until(() => !(reloadButton() as HTMLButtonElement | null)?.disabled, 'Reload enabled');
 		(reloadButton() as HTMLButtonElement).click();
 		await until(() => seen.evictions === 1, 'the Reload recovery');
+		await until(() => seen.resolves === 1, "the Reload's fresh resolve");
 	});
 
 	it('a failure on an episode the switch would take keeps its Reload', async () => {
@@ -290,13 +313,15 @@ describe('play route — the player-error overlay offers Reload only where it ca
 					{ kind: 'uncensored', show_key: 'show-uncensored-1', has_mode: true },
 					{ kind: 'standard', show_key: 'show-2', has_mode: false }
 				]
-			}
+			},
+			reloadResolves: true
 		});
 		await failStream(seen, 1, DECODE);
 		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
 		expect(body()).toBe(m.play_error_stream_body());
 		(reloadButton() as HTMLButtonElement).click();
 		await until(() => seen.evictions === 1, 'the Reload recovery');
+		await until(() => seen.resolves === 1, "the Reload's fresh resolve");
 	});
 
 	it('a show no version carries in the audio is a dead end whichever version was chosen', async () => {
