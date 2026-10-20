@@ -141,7 +141,11 @@ export const server = setupServer(
 //   config bans importing `passthrough` and `bypass` in this tier
 //   instead;
 // - a WebSocket, which raises no request events at all (the app opens
-//   none).
+//   none);
+// - an EventSource a scenario replaces with a fake of its own, as many
+//   play, warm and download scenarios do: the fake sends nothing, so
+//   a stream it opens is never on the wire, and nothing here checks
+//   that the scenario answers or closes it.
 
 interface Scenario {
 	name: string;
