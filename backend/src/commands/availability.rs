@@ -737,6 +737,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v23: the appended-extras rule checks the rows past the count
+    //      against every aired TV entry Kitsu relates the show to,
+    //      whatever the role, and refuses an entry of any role airing
+    //      now; a stitched listing is never read for them. A v22 row's
+    //      cap and extras may come from a reading the narrower rule
+    //      proved and this one refuses, and nothing in a row says which
+    //      rule stamped it, so re-keying re-probes.
     // v22: a season the provider lists twice — an "(Uncensored)" copy
     //      and a plain one — is one pick with two versions, and the
     //      answer names them and says of each whether it carries the
@@ -872,7 +879,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v22:{kitsu_id}:{m}")
+    format!("availability:v23:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
