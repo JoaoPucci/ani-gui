@@ -677,14 +677,20 @@ export type PlayProgress =
  *  `onProgress` callback simply never fires in that case.
  *
  *  When `signal` is provided and aborted, the EventSource is closed
- *  and the promise rejects with an "aborted" error. Used by
- *  play-cache's `clearForShow` to cancel a show's abandoned plays
- *  when the user navigates away from it. */
+ *  and the promise rejects with an "aborted" error; aborted before
+ *  the stream opens, nothing is sent at all. Used by play-cache's
+ *  `clearForShow` to cancel a show's abandoned plays when the user
+ *  navigates away from it. */
 export function playStream(
 	args: PlayArgs,
 	onProgress: (p: PlayProgress) => void,
 	signal?: AbortSignal
 ): Promise<CreateSessionResponse> {
+	// Cancelled before it began: nothing is sent. Opening a stream
+	// and closing it at once still starts a resolve on the backend.
+	if (signal?.aborted) {
+		return Promise.reject(new Error('playStream: aborted'));
+	}
 	if (typeof EventSource === 'undefined') {
 		return play(args);
 	}
@@ -710,6 +716,11 @@ export function playStream(
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
 			new Promise<CreateSessionResponse>((resolve, reject) => {
+				// Aborted while the URL was being read: still nothing sent.
+				if (signal?.aborted) {
+					reject(new Error('playStream: aborted'));
+					return;
+				}
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -719,14 +730,12 @@ export function playStream(
 					fn();
 				};
 				// Cancellation: abort during a streaming resolve closes
-				// the EventSource and rejects. If the signal is already
-				// aborted, finish synchronously before any listeners
-				// attach. Listening on the signal once captures both
-				// cases without leaking — `finish` is idempotent.
+				// the EventSource and rejects. The signal is not aborted
+				// yet here, so one listener covers it; `finish` is
+				// idempotent.
 				if (signal) {
 					const onAbort = () => finish(() => reject(new Error('playStream: aborted')));
-					if (signal.aborted) onAbort();
-					else signal.addEventListener('abort', onAbort, { once: true });
+					signal.addEventListener('abort', onAbort, { once: true });
 				}
 				es.addEventListener('progress', (ev) => {
 					try {

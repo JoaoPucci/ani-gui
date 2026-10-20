@@ -52,6 +52,28 @@ export default ts.config(
 		}
 	},
 	{
+		// The acceptance tier's request guard cannot tell a request MSW
+		// sends on to a port that refuses it from one a handler
+		// answered (see tests/acceptance/setup.ts), so the tier does
+		// not send requests on at all.
+		files: ['tests/acceptance/**/*.ts'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: 'msw',
+							importNames: ['passthrough', 'bypass'],
+							message:
+								'The acceptance tier answers every request; a request sent on to the network can slip past its guard.'
+						}
+					]
+				}
+			]
+		}
+	},
+	{
 		// `src/lib/paraglide/` is the typed-TS output of the Paraglide
 		// compiler — it ships with `/* eslint-disable */` headers
 		// per file but recent eslint flags those as unused-disable
