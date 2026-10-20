@@ -144,6 +144,19 @@ jobs:
         name: Fetch the crates before the network is refused
         working-directory: backend
         run: cargo fetch --locked
+      - if: needs.filter.outputs.relevant == 'true' && runner.os != 'Windows'
+        name: Point TMPDIR at a directory a shell reads specially
+        # Nearly every path the backend tests stage comes from the
+        # temporary directory, and many tests paste one into a stub
+        # script or a config file. Under this directory a test that
+        # pastes it unquoted fails here, on the pull request that adds
+        # it, rather than for whoever first runs the suite with an
+        # apostrophe in their TMPDIR. The tool says what the name
+        # carries. Windows keeps its own: a double quote cannot be
+        # part of a name there, and its tests stage no shell stubs.
+        run: |
+          dir=$(sh tools/hostile-tmpdir.sh "$RUNNER_TEMP")
+          printf 'TMPDIR=%s\n' "$dir" >> "$GITHUB_ENV"
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
         working-directory: backend

@@ -29,6 +29,7 @@ pub mod error;
 pub mod history;
 pub mod i18n;
 pub mod kitsu_id;
+pub mod lanes;
 pub mod legacy_script;
 pub mod meta;
 pub mod parent_watch;
@@ -37,6 +38,9 @@ pub mod proxy;
 pub mod scraper;
 pub mod shutdown;
 pub mod spawn;
+#[cfg(all(test, unix))]
+#[path = "stub_file_test.rs"]
+pub(crate) mod stub_file;
 
 pub use error::{AniError, Result};
 

@@ -2,13 +2,15 @@
 //! HTTP server. Used by Electron's main process, which spawns this as
 //! a sidecar and reads its stdout to learn the bound port.
 //!
-//! Stdout protocol: two lines,
+//! Stdout protocol: one line per lane beside the API, then two more,
+//!     ANI_GUI_LANE <name> http://127.0.0.1:<port>
 //!     ANI_GUI_LISTENING http://127.0.0.1:<port>
 //!     ANI_GUI_INTERNAL_SECRET <hex>
-//! printed once the listener is bound and the state is built. The
-//! Electron main process matches the prefixes and hands both to the
-//! renderer through the preload script: `window.aniGui.apiBase` and
-//! the renderer-only secret.
+//! printed once every listener is bound and the state is built (see
+//! `ani_gui::lanes` for what a lane is and why the lanes come first).
+//! The Electron main process matches the prefixes and hands them to
+//! the renderer through the preload script: `window.aniGui.apiBase`,
+//! `window.aniGui.lanes` and the renderer-only secret.
 //!
 //! After printing, this binary serves until it is asked to stop (see
 //! `ani_gui::shutdown`). Electron asks in two ways. Its quit sends
@@ -42,7 +44,8 @@
 
 use std::sync::Arc;
 
-use ani_gui::{api, app, parent_watch, proxy, shutdown, AniError};
+use ani_gui::lanes::{Lane, Lanes};
+use ani_gui::{api, app, lanes, parent_watch, proxy, shutdown, AniError};
 
 /// Print the handshake and flush it — Electron reads it line by line,
 /// so a line left in a buffer would hang the spawn.
@@ -51,11 +54,12 @@ use ani_gui::{api, app, parent_watch, proxy, shutdown, AniError};
 /// handshake leaves stdout closed, and `println!` answers that with a
 /// panic. Nobody is left to serve, so the caller fails the start
 /// instead.
-fn announce(api_base: &str, internal_secret: &str) -> std::io::Result<()> {
+fn announce(lines: &[String]) -> std::io::Result<()> {
     use std::io::Write;
     let mut out = std::io::stdout().lock();
-    writeln!(out, "ANI_GUI_LISTENING {api_base}")?;
-    writeln!(out, "ANI_GUI_INTERNAL_SECRET {internal_secret}")?;
+    for line in lines {
+        writeln!(out, "{line}")?;
+    }
     out.flush()
 }
 
@@ -110,8 +114,12 @@ fn main() -> std::process::ExitCode {
     // Bind, build state, spawn server, hold the runtime.
     let result = runtime.block_on(async {
         let proxy_http = proxy::upstream::build_client()?;
-        let (addr, listener) = proxy::bind_loopback(0).await?;
-        let origin = proxy::ProxyOrigin::new(&addr.ip().to_string(), addr.port());
+        // One listener per lane; the stream proxy's URLs carry the
+        // stream lane's origin, so the player's fetches never wait for
+        // a socket behind anything else the renderer has open.
+        let bound = Lanes::bind().await?;
+        let stream = bound.addr(Lane::Stream);
+        let origin = proxy::ProxyOrigin::new(&stream.ip().to_string(), stream.port());
         let state = Arc::new(app::AppState::build(
             proxy_http,
             origin.clone(),
@@ -127,8 +135,9 @@ fn main() -> std::process::ExitCode {
         // SIGTERM is a request rather than a kill.
         let stop = shutdown::requested(parent.serving());
 
-        // The handshake: the URL the Electron main process is waiting
-        // for, then serve until stopped.
+        // The handshake: every lane's origin, then the API's, which
+        // the Electron main process is waiting for, then serve until
+        // stopped.
         //
         // Codex P2 #3370011855: the renderer-only secret goes out on
         // the same channel so Electron's main process can parse it and
@@ -136,11 +145,16 @@ fn main() -> std::process::ExitCode {
         // internalSecret`. The renderer attaches it as the
         // `x-ani-gui-internal-secret` header on the few backend paths
         // that need a cross-origin defense beyond the bearer.
-        announce(&origin.base, state.internal_secret.as_hex()).map_err(|_| AniError::Io)?;
-        tracing::info!(addr = %addr, "ani-gui-backend ready");
+        let bases = bound.bases();
+        announce(&lanes::handshake_lines(
+            &bases,
+            state.internal_secret.as_hex(),
+        ))
+        .map_err(|_| AniError::Io)?;
+        tracing::info!(lanes = ?bases, "ani-gui-backend ready");
 
-        shutdown::serve_until(
-            listener,
+        shutdown::serve_all_until(
+            bound.into_listeners(),
             router,
             async move {
                 let reason = stop.await;
