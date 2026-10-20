@@ -134,12 +134,15 @@ export function getOrFire(
 			for (const s of subscribers) s(p);
 		};
 		const fireRef = { current: fire };
-		// An entry cleared while it waited for its slot never fires: it
-		// rejects as its aborted stream would have.
-		const slot = withSlot(() =>
-			abortController.signal.aborted
-				? Promise.reject(new Error('playStream: aborted'))
-				: fireRef.current(emit, abortController.signal)
+		// An entry cleared while it waited for its slot leaves the queue
+		// and never fires; one cleared after its slot was granted, before
+		// it started, rejects as its aborted stream would have.
+		const slot = withSlot(
+			() =>
+				abortController.signal.aborted
+					? Promise.reject(new Error('playStream: aborted'))
+					: fireRef.current(emit, abortController.signal),
+			abortController.signal
 		);
 		newEntry.promise = slot.promise;
 		newEntry.startNow = slot.startNow;
