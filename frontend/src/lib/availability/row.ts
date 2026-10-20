@@ -28,6 +28,15 @@
  * first answer about a new key starts from nothing known as well, so a
  * patch carrying only some fields does not inherit the others from
  * another audio.
+ *
+ * The version is not part of the key. Where the provider lists the
+ * show twice, an answer is asked with no version and is the pick's:
+ * available when any version carries the audio, with the count the
+ * versions share — copies of a season number the same episodes — and
+ * a play whose version lacks the audio plays it from one that carries
+ * it. So one answer holds for every version, and a choice made on the
+ * page leaves the row standing; nothing would ask again for a key that
+ * named the version.
  */
 
 import type { AvailabilityPatch } from '$lib/detail/availability-writeback';
