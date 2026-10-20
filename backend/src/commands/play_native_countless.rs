@@ -42,6 +42,23 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     needle: &str,
     entry: EntryTitles<'_>,
 ) -> Result<PickedShow> {
+    // A hit the title rule refuses once read past its version tag is
+    // not the entry, though the head took it (see
+    // EntryTitles::admits_as_read): passed over, and a pool left with
+    // nothing then is the refusal by title.
+    let read: Vec<(&BrowseHit, bool)> = head
+        .iter()
+        .copied()
+        .filter(|(h, _)| entry.admits_as_read(&h.title))
+        .collect();
+    let refused = read.len() < head.len();
+    // So is another entry of the same show read past the tag — passed
+    // over as the head passes one over, no refusal.
+    let read: Vec<(&BrowseHit, bool)> = read
+        .into_iter()
+        .filter(|(h, _)| !entry.another_entry_as_read(&h.title))
+        .collect();
+    let head = read.as_slice();
     let exact = head
         .iter()
         .map(|(h, _)| *h)
@@ -82,8 +99,12 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
             Err(e) => return Err(e),
         }
     }
+    // A dead listing may have been the entry's, whatever the title
+    // rule passed over beside it: the dead end on it comes first.
     Err(if dead {
         crate::error::AniError::Upstream { status: 404 }
+    } else if refused {
+        super::play_native_title_verdict::refused_by_title()
     } else {
         crate::error::AniError::NoResults
     })

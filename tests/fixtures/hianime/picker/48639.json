@@ -1,0 +1,77 @@
+{
+ "kitsu": {
+  "id": "48639",
+  "name": "Chained Soldier S2",
+  "canonical": "Mato Seihei no Slave 2nd Season",
+  "alt_titles": ["魔都精兵のスレイブ 第２期", "Chained Soldier Season 2"],
+  "episode_count": 12,
+  "year": 2026,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Chained Soldier Season 2": [
+    ["chained-soldier-season-2-5834", "Chained Soldier Season 2", "TV"],
+    ["chained-soldier-season-2-uncensored-10415", "Chained Soldier Season 2 [Uncensored]", "TV"]
+  ],
+  "Mato Seihei no Slave 2nd Season": [
+    ["chained-soldier-season-2-5834", "Chained Soldier Season 2", "TV"],
+    ["chained-soldier-season-2-uncensored-10415", "Chained Soldier Season 2 [Uncensored]", "TV"],
+    ["chained-soldier-3873", "Chained Soldier", "TV"],
+    ["chained-soldier-uncensored-9454", "Chained Soldier [Uncensored]", "TV"]
+  ],
+  "魔都精兵のスレイブ 第２期": [
+    ["chained-soldier-3873", "Chained Soldier", "TV"]
+  ]
+ },
+ "episodes": {
+  "chained-soldier-season-2-5834": [
+    [73849, 1, null],
+    [73850, 2, null],
+    [73851, 3, null],
+    [73852, 4, null],
+    [73853, 5, null],
+    [73854, 6, null],
+    [73855, 7, null],
+    [73856, 8, null],
+    [73857, 9, null],
+    [73858, 10, null],
+    [73859, 11, null],
+    [73860, 12, null]
+  ],
+  "chained-soldier-season-2-uncensored-10415": [
+    [148781, 1, null],
+    [148782, 2, null],
+    [148783, 3, null],
+    [148784, 4, null],
+    [148785, 5, null],
+    [148788, 6, null],
+    [148789, 7, null],
+    [148792, 8, null],
+    [148794, 9, null],
+    [148795, 10, null],
+    [148796, 11, null],
+    [148798, 12, null]
+  ]
+ },
+ "years": {
+  "chained-soldier-season-2-5834": 2026,
+  "chained-soldier-season-2-uncensored-10415": 2026,
+  "chained-soldier-uncensored-9454": 2024
+ },
+ "jnames": {
+  "chained-soldier-3873": "Mato Seihei no Slave",
+  "chained-soldier-season-2-5834": "Mato Seihei no Slave 2",
+  "chained-soldier-season-2-uncensored-10415": "Mato Seihei no Slave 2 [Uncensored]",
+  "chained-soldier-uncensored-9454": "Mato Seihei no Slave [Uncensored]"
+ },
+ "page_names": {
+  "chained-soldier-season-2-5834": ["魔都精兵のスレイブ2", "Mato Seihei no Slave 2"],
+  "chained-soldier-season-2-uncensored-10415": ["魔都精兵のスレイブ2", "Mato Seihei no Slave 2 [Uncensored]"],
+  "chained-soldier-uncensored-9454": ["Mato Seihei no Slave [Uncensored]"]
+ },
+ "genres": {
+  "chained-soldier-season-2-5834": ["Adventure", "Fantasy", "Shounen", "Drama", "Ecchi", "Romance", "Harem", "Action"],
+  "chained-soldier-season-2-uncensored-10415": ["Adventure", "Fantasy", "Shounen", "Drama", "Ecchi", "Romance", "Harem", "Action"],
+  "chained-soldier-uncensored-9454": ["Fantasy", "Shounen", "Ecchi", "Action"]
+ }
+}
