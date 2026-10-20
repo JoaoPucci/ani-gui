@@ -1,5 +1,6 @@
 import type { CreateSessionResponse, PlayProgress, VersionKind } from '$lib/api';
 import { resetPrefetchSlotsForTests, withSlot } from './prefetch-slots';
+import { sweepShow } from './play-cache-sweep';
 
 /**
  * In-flight + result cache for `play()` calls. Backs the prefetch
@@ -219,12 +220,7 @@ export function getOrFireNow(key: CacheKey, fire: FireFn): Promise<CreateSession
  * the same key fires fresh.
  */
 export function clearForShow(showId: string): void {
-	const prefix = `${showId}|`;
-	for (const [key, entry] of cached) {
-		if (!key.startsWith(prefix)) continue;
-		entry.abortController.abort();
-		cached.delete(key);
-	}
+	sweepShow(cached, showId, () => true);
 }
 
 /**
@@ -233,7 +229,7 @@ export function clearForShow(showId: string): void {
  * For a page that stays mounted while it moves to another show.
  */
 export function clearBackgroundForShow(showId: string): void {
-	clearBackground(showId, () => false);
+	sweepShow(cached, showId, (_key, entry) => entry.createdInBackground === true);
 }
 
 /**
@@ -248,18 +244,11 @@ export function clearBackgroundForOtherVersions(
 ): void {
 	// The version is the key's last axis (`makeKey`).
 	const chosen = `|${version ?? ''}`;
-	clearBackground(showId, (key) => key.endsWith(chosen));
-}
-
-/** Abort and forget the show's background entries, but those `spare`
- *  keeps. */
-function clearBackground(showId: string, spare: (key: CacheKey) => boolean): void {
-	const prefix = `${showId}|`;
-	for (const [key, entry] of cached) {
-		if (!key.startsWith(prefix) || !entry.createdInBackground || spare(key)) continue;
-		entry.abortController.abort();
-		cached.delete(key);
-	}
+	sweepShow(
+		cached,
+		showId,
+		(key, entry) => entry.createdInBackground === true && !key.endsWith(chosen)
+	);
 }
 
 /** Test seam: wipe the whole cache between vitest cases, including
