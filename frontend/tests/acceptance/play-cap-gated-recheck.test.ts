@@ -17,6 +17,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -391,6 +392,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const { read } = watchPageFetches();
 		app = mount(PlayPage, { target });
 		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
 		await until(() => ordinaryLookups === 1, 'the first availability lookup');
@@ -407,10 +409,17 @@ describe('play route — clicking a dimmed aired episode', () => {
 
 		releaseModeLookup();
 
-		// Bounded, and sound for the same reason as elsewhere: the
-		// write happens on the microtask after the response resolves,
-		// so anything that was going to clobber has by now.
-		await new Promise((r) => setTimeout(r, 300));
+		// The page has read the older answer, and the write it would
+		// make follows in memory: anything that was going to clobber
+		// has by now.
+		await until(
+			() =>
+				read.some(
+					(r) => r.path === '/api/availability' && r.body.mode === 'dub' && !r.body.bypass_cache
+				),
+			"the mode change's lookup to be read"
+		);
+		await afterRead();
 
 		// Both halves of the clobber. The older answer is staler AND
 		// unconfirmed, so letting it win would delete a special that
@@ -497,6 +506,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 		);
 
+		const { sent, read } = watchPageFetches();
 		app = mount(PlayPage, { target });
 		await until(() => probes.length > 0, 'the page-load availability lookup');
 
@@ -505,8 +515,13 @@ describe('play route — clicking a dimmed aired episode', () => {
 		// again spends a slot on an answer already in hand.
 		releaseSettings();
 		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
-		await new Promise((r) => setTimeout(r, 200));
+		// The page has read the settings, and what they set off has run
+		// to its next request: a second lookup would be asked by now.
+		await until(() => read.some((r) => r.path === '/api/settings'), 'the settings to be read');
+		await afterRead();
 
+		const lookups = sent.filter((r) => r.path === '/api/availability' && !r.body.bypass_cache);
+		expect(lookups).toHaveLength(1);
 		expect(probes.filter((p) => !p.bypass_cache)).toHaveLength(1);
 	});
 });
