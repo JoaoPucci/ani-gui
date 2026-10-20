@@ -1480,3 +1480,7 @@ async fn the_rails_dead_end_may_rest_on_a_cached_anilist_negative() {
     // `.expect(1)`: the batch asked AniList nothing; the page's earlier
     // answer stood in.
 }
+
+#[cfg(test)]
+#[path = "account_tracker_total_test.rs"]
+mod tracker_total;
