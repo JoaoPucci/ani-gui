@@ -10,7 +10,7 @@ use super::{EntryTail, Related};
 /// whatever its format: a non-TV entry's page is never read, so
 /// nothing but its airing tells its cour from extras. A music video
 /// is no cour, and an entry only announced has aired nothing.
-pub(super) fn explained(past: usize, tail: &EntryTail) -> bool {
+pub fn explained(past: usize, tail: &EntryTail) -> bool {
     let finished = |r: &Related| r.status.as_deref() == Some("finished");
     let length = u32::try_from(past).ok();
     let extra = |r: &Related| {

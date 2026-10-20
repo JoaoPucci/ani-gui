@@ -107,9 +107,12 @@ pub struct Remembered {
 /// past the count ([`appended_count`]).
 #[async_trait::async_trait]
 pub trait TailSource: Send + Sync + std::fmt::Debug {
-    /// The entry's tail, as far as it is known for `count`; `None`
-    /// when nothing could be read.
-    async fn tail(&self, count: u32) -> Option<EntryTail>;
+    /// The entry's tail, as far as it is known for `count` and the
+    /// `past` rows a listing runs past it; `None` when what could be
+    /// read leaves the reading open. A tail whose reads stopped early,
+    /// because what they had read already refuses the reading, is no
+    /// `None`: the refusal stands whatever a later read would say.
+    async fn tail(&self, count: u32, past: usize) -> Option<EntryTail>;
 
     /// The reading the evidence last proved for the entry, if any.
     fn remembered(&self) -> Option<Remembered> {
@@ -179,7 +182,8 @@ pub async fn fit_appended(
         count,
         ids: past_ids(&picked.episodes, count),
     };
-    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(count)).await {
+    let past = picked.episodes.len().saturating_sub(count as usize);
+    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(count, past)).await {
         Ok(Some(tail)) => {
             let fitted = appended_extras(&picked.episodes, count, &tail);
             source.remember(fitted.as_ref().map(|_| &reading));
@@ -215,12 +219,13 @@ fn kept_for_a_version(picked: &PickedShow, kept: &Remembered) -> bool {
 
 #[path = "play_native_appended_rule.rs"]
 mod rule;
-pub use rule::{appended_extras, ALIGNED};
+pub use rule::{anilist_ends_at, appended_extras, kitsu_ends_at, rows_end_at, ALIGNED};
 #[path = "play_native_appended_names.rs"]
 mod names;
 pub use names::is_announced;
 #[path = "play_native_appended_explained.rs"]
 mod explained;
+pub use explained::explained;
 #[path = "play_native_appended_titles.rs"]
 mod titles;
 pub use titles::same_title;

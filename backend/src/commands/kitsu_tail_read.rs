@@ -41,23 +41,40 @@ pub fn entry_tail(
     EntryTail {
         finished: status == Some("finished"),
         count,
-        anilist_count: airing
-            .aired
-            .filter(|n| *n > 0 && airing.next_episode.is_none()),
-        episodes: episodes
-            .into_iter()
-            .filter_map(|e| {
-                Some(TailEpisode {
-                    number: e.number?,
-                    title: e.canonical_title,
-                    airdate: e.airdate,
-                })
-            })
-            .collect(),
+        anilist_count: anilist_count(airing),
+        episodes: tail_episodes(episodes),
         read_past_count: true,
         related: Vec::new(),
         related_complete: false,
     }
+}
+
+/// The count AniList gives a show it calls finished: an aired count
+/// with nothing scheduled after it.
+pub(super) fn anilist_count(airing: &AiringStatus) -> Option<u32> {
+    airing
+        .aired
+        .filter(|n| *n > 0 && airing.next_episode.is_none())
+}
+
+/// Kitsu's rows as the evidence reads them: each with a number.
+pub(super) fn tail_episodes(episodes: Vec<KitsuEpisode>) -> Vec<TailEpisode> {
+    episodes
+        .into_iter()
+        .filter_map(|e| {
+            Some(TailEpisode {
+                number: e.number?,
+                title: e.canonical_title,
+                airdate: e.airdate,
+            })
+        })
+        .collect()
+}
+
+/// The relations as the evidence reads them before any page is asked
+/// for: enough to say whether they explain the rows past the count.
+pub(super) fn unpaged(entries: &[KitsuRelation]) -> Vec<Related> {
+    entries.iter().map(|r| related(r.clone(), None)).collect()
 }
 
 /// Whether `r` is a TV entry, in whatever role Kitsu relates it: an
@@ -119,17 +136,25 @@ impl KitsuTail<'_> {
             .ok()
     }
 
-    /// The entries Kitsu relates the show to, each TV entry that has
-    /// aired — whatever the role — with its first page of episodes, and
-    /// whether they are all of them. An entry only announced has aired
-    /// nothing, and the rule passes it over: its page is not asked for,
-    /// since an answer the read does not need could still fail it.
-    pub(super) async fn read_related(&self) -> Option<(Vec<Related>, bool)> {
-        let relations = crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
+    /// The entries Kitsu relates the show to, and whether they are
+    /// all of them.
+    pub(super) async fn read_relations(&self) -> Option<crate::meta::kitsu::KitsuRelations> {
+        crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
             .await
-            .ok()?;
+            .ok()
+    }
+
+    /// `entries` as the evidence reads them, each TV entry that has
+    /// aired, whatever the role, with its first page of episodes. An
+    /// entry only announced has aired nothing, and the rule passes it
+    /// over: its page is not asked for, since an answer the read does
+    /// not need could still fail it.
+    pub(super) async fn with_first_pages(
+        &self,
+        entries: Vec<KitsuRelation>,
+    ) -> Option<Vec<Related>> {
         let mut out = Vec::new();
-        for r in relations.entries {
+        for r in entries {
             let aired = !crate::commands::play_native_appended::is_announced(r.status.as_deref());
             let first_episodes = if is_tv(&r) && aired {
                 let page = crate::commands::kitsu::kitsu_episode_page(self.state, &r.id, 1)
@@ -141,6 +166,6 @@ impl KitsuTail<'_> {
             };
             out.push(related(r, first_episodes));
         }
-        Some((out, relations.complete))
+        Some(out)
     }
 }

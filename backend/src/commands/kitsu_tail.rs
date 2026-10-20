@@ -81,23 +81,46 @@ impl TailSource for KitsuTail<'_> {
         }
     }
 
-    async fn tail(&self, count: u32) -> Option<EntryTail> {
+    /// Each read is made only while the ones before it leave the
+    /// reading open. A refusal they already settle (Kitsu not ending
+    /// the show at the count, AniList not ending it there, a row Kitsu
+    /// lists past it, relations that do not explain the rows) is
+    /// returned at once: a later read failing must not hand the
+    /// listing back to a reading kept from before.
+    async fn tail(&self, count: u32, past: usize) -> Option<EntryTail> {
+        use crate::commands::play_native_appended::{
+            anilist_ends_at, explained, kitsu_ends_at, rows_end_at,
+        };
         let detail = super::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
             .await
             .ok()?;
-        let airing = super::airing::airing_get(self.state, self.kitsu_id)
-            .await
-            .ok()?;
-        let episodes = self.read_pages(count).await?;
-        let (related, related_complete) = self.read_related().await?;
         let mut tail = entry_tail(
             detail.status.as_deref(),
             detail.episode_count,
-            &airing,
-            episodes,
+            &crate::meta::anilist_airing::AiringStatus::default(),
+            Vec::new(),
         );
-        tail.related = related;
-        tail.related_complete = related_complete;
+        if !kitsu_ends_at(&tail, count) {
+            return Some(tail);
+        }
+        let airing = super::airing::airing_get(self.state, self.kitsu_id)
+            .await
+            .ok()?;
+        tail.anilist_count = read::anilist_count(&airing);
+        if !anilist_ends_at(&tail, count) {
+            return Some(tail);
+        }
+        tail.episodes = read::tail_episodes(self.read_pages(count).await?);
+        if !rows_end_at(&tail, count) {
+            return Some(tail);
+        }
+        let relations = self.read_relations().await?;
+        tail.related_complete = relations.complete;
+        tail.related = read::unpaged(&relations.entries);
+        if !explained(past, &tail) {
+            return Some(tail);
+        }
+        tail.related = self.with_first_pages(relations.entries).await?;
         Some(tail)
     }
 }

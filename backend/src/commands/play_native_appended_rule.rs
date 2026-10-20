@@ -49,11 +49,28 @@ pub fn appended_extras(
 /// Whether Kitsu and AniList both end the show at `count`, and Kitsu's
 /// rows read show nothing past it.
 fn ends_at(tail: &EntryTail, count: u32) -> bool {
-    tail.finished
-        && tail.count == Some(count)
-        && tail.anilist_count == Some(count)
-        && tail.read_past_count
-        && tail.episodes.iter().all(|e| e.number <= count)
+    kitsu_ends_at(tail, count) && anilist_ends_at(tail, count) && rows_end_at(tail, count)
+}
+
+/// Whether Kitsu calls the show finished at `count`. Read from Kitsu's
+/// entry alone, so the evidence reader asks for nothing more when it
+/// does not.
+#[must_use]
+pub fn kitsu_ends_at(tail: &EntryTail, count: u32) -> bool {
+    tail.finished && tail.count == Some(count)
+}
+
+/// Whether AniList ends the show at `count`, with nothing scheduled.
+#[must_use]
+pub fn anilist_ends_at(tail: &EntryTail, count: u32) -> bool {
+    tail.anilist_count == Some(count)
+}
+
+/// Whether the Kitsu rows read are the ones that would show an episode
+/// past `count`, and show none.
+#[must_use]
+pub fn rows_end_at(tail: &EntryTail, count: u32) -> bool {
+    tail.read_past_count && tail.episodes.iter().all(|e| e.number <= count)
 }
 
 /// Whether the listing names Kitsu's last [`ALIGNED`] episodes as
