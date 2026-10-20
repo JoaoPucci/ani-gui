@@ -515,16 +515,38 @@ async fn tower_of_god_s_later_part_is_filed_under_its_prequel_s_anilist_entry() 
         .respond_with(ResponseTemplate::new(200).set_body_string(TOWER_OF_GOD_RELATIONS))
         .mount(&kitsu)
         .await;
+    // The season's own prequel, the first season, has an AniList entry
+    // of its own (115230, MAL 40221): the parts under 153406 start at
+    // the second season.
+    Mock::given(method("GET"))
+        .and(path("/anime/43004"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(mappings(
+            "43004",
+            Some(40_221),
+            Some(115_230),
+        )))
+        .mount(&kitsu)
+        .await;
     kitsu_mapped(&kitsu, "anilist/anime", 153_406, TOWER_OF_GOD_MAPPED).await;
     kitsu_mapped(&kitsu, "myanimelist/anime", 52_635, TOWER_OF_GOD_MAPPED).await;
 
     let anilist_server = MockServer::start().await;
-    // The public id translations: 52635 → 153406; 59989 → nothing.
+    // The public id translations: 52635 → 153406; 40221 → 115230;
+    // 59989 → nothing.
     Mock::given(method("POST"))
         .and(body_string_contains("MediaIdByMal"))
         .and(body_string_contains("\"idMal\":52635"))
         .respond_with(
             ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":153406}}}"#),
+        )
+        .mount(&anilist_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdByMal"))
+        .and(body_string_contains("\"idMal\":40221"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":115230}}}"#),
         )
         .mount(&anilist_server)
         .await;
