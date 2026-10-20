@@ -89,10 +89,13 @@ export function startAvailabilityLookup(
 			// Whatever a re-ask has since established is the re-ask's —
 			// it is newer and it bypassed the cache. Anything it left
 			// unanswered is still this lookup's to fill.
+			// The show's versions travel in the patch, owned with the
+			// count: a refused pool has no pick, so a refusal names none.
 			const patch = settle({
 				available,
 				count: r.episode_count,
 				extraEpisodes: r.extra_episodes,
+				versions: r.versions ?? [],
 				...(refusedByName(r) ? { refused: true } : {})
 			});
 			if (patch.available !== undefined) deps.setListed(patch.available);

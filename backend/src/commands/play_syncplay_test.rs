@@ -74,6 +74,7 @@ fn play_args() -> PlayArgs {
         alt_titles: Vec::new(),
         prefetch: false,
         kitsu_id: None,
+        version: None,
     }
 }
 
@@ -153,6 +154,8 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
             played: None,
             former_episode: None,
         },
@@ -233,6 +236,8 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
             played: None,
             former_episode: None,
         },
@@ -282,6 +287,7 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -372,6 +378,8 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
             played: None,
             former_episode: None,
         },
@@ -384,6 +392,7 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");

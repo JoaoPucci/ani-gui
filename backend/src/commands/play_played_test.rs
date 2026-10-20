@@ -93,6 +93,8 @@ async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
             kitsu_id: None,
             played: Some("1.5".into()),
             former_episode: None,
+            versions: Vec::new(),
+            version: None,
         },
     );
     let resp = play_with_progress(&state, &asked, |_| {})
@@ -200,6 +202,8 @@ fn first_recap_row(upstream: &str) -> CachedResolution {
         kitsu_id: None,
         played: Some("12.5".into()),
         former_episode: None,
+        versions: Vec::new(),
+        version: None,
     }
 }
 
@@ -215,9 +219,10 @@ fn listed_as(state: &AppState) -> String {
 #[tokio::test]
 async fn a_replay_of_one_recap_after_another_reads_back_as_the_one_replayed() {
     // Two recaps sit between episodes 12 and 13: slot 13 ("12.5") and
-    // slot 14 ("12.75"). The second was played last, so the show's one
-    // display stamp names slot 14. Replaying the first from the cache
-    // writes slot 13; it must read back as "12.5", not as the slot.
+    // slot 14 ("12.75"). An earlier version's watch of the second left
+    // the show's display stamp on slot 14. Replaying the first from the
+    // cache records "12.5" itself, and it reads back so, whatever the
+    // stamp names.
     let upstream = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("HEAD"))
         .respond_with(wiremock::ResponseTemplate::new(200))
@@ -246,33 +251,27 @@ async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched
     let state = state(&td);
     crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
     let cached = first_recap_row("http://x");
-    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
+    let watch = crate::commands::play_cache::cached_watch(&cached, "12.5");
     crate::commands::play_native_record::record_watch(&state, &watch, None).await;
     assert_eq!(listed_as(&state), "12.5");
 }
 
 #[tokio::test]
-async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_stamp() {
+async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_row() {
     // A mark-watched of the cached slot-13 recap began before the
-    // slot-14 recap ("12.75") was watched: it records nothing, and
-    // moves no stamp off the row that watch left.
+    // slot-14 recap ("12.75") was watched: it records nothing, and the
+    // row stays the one that watch left.
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
     let begun = crate::history::guard::epoch(&state.history_path);
     let later = crate::commands::play_native_record::Watch {
         show_id: stitched_key(),
         title: "Stitched Show".into(),
-        ep_no: "14".into(),
-        display: Some(crate::commands::play_native_record::WatchedDisplay {
-            slug: stitched_key(),
-            offset: 0,
-            slot: 14,
-            tag: "12.75".into(),
-        }),
+        ep_no: "12.75".into(),
     };
     crate::commands::play_native_record::record_watch(&state, &later, None).await;
     let cached = first_recap_row("http://x");
-    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
+    let watch = crate::commands::play_cache::cached_watch(&cached, "12.5");
     crate::commands::play_native_record::record_watch_requested_at(&state, &watch, None, begun)
         .await;
     assert_eq!(listed_as(&state), "12.75");
@@ -318,10 +317,9 @@ async fn a_replay_names_the_former_number_its_row_keeps() {
 
 #[tokio::test]
 async fn a_prefetch_after_a_watched_recap_leaves_the_row_reading_as_the_recap() {
-    // The recap is watched — the row holds its slot, the stamp names it
-    // "0.5" — then the player prefetches episode 1, a displaced row of
-    // its own. The prefetch records no watch, and the row still reads
-    // as the recap.
+    // The recap is watched — the row records "0.5" itself — then the
+    // player prefetches episode 1, a displaced row of its own. The
+    // prefetch records no watch, and the row still reads as the recap.
     use crate::commands::play_native_test_provider::{
         cumulative_opening_recap, CUMULATIVE, CUMULATIVE_SLUG,
     };
@@ -461,7 +459,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
     let cached = play_resolution_cache::get(&state.cache_pool, &key_for(&cumulative_ask("1"), "1"))
         .expect("readable")
         .expect("kept");
-    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "1");
+    let watch = crate::commands::play_cache::cached_watch(&cached, "1");
     crate::commands::play_native_record::record_watch(&state, &watch, None).await;
     let recap = crate::commands::play_native_resolve::resolve_native(
         &table,
@@ -474,6 +472,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
             expected_count: Some(2),
             year: Some(2026),
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -579,8 +578,8 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The recap was resolved by a prefetch alone, so the show has no
     // display stamp. The player marks it watched with the page's Kitsu
     // id, and the mapping lookup that follows the row hangs: a Continue
-    // card loaded meanwhile reads the row — as the recap, not as the
-    // slot it holds.
+    // card loaded meanwhile reads the row as the recap, the number it
+    // records.
     use tower::ServiceExt as _;
     let mock = kitsu_that_hangs().await;
     let td = tempfile::tempdir().expect("td");
@@ -629,8 +628,8 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
 #[tokio::test]
 async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The watch a handoff records from its fresh resolve, with the
-    // page's Kitsu id: the pair its row reads through goes in with the
-    // row, not after the lookup.
+    // page's Kitsu id: its row, the recap's own number, is written
+    // before the lookup, not after it.
     let mock = kitsu_that_hangs().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = state(&td);
@@ -647,6 +646,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             expected_count: Some(2),
             year: Some(2026),
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -654,7 +654,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     )
     .await
     .expect("resolves the recap");
-    let watch = crate::commands::play_native_record::Watch::of(&recap);
+    let watch = crate::commands::play_native_record::Watch::of(&recap, "0.5");
     let recording = {
         let state = state.clone();
         tokio::spawn(async move {
@@ -711,15 +711,15 @@ async fn rows_a_play_caches_behind_its_repair(prefetch: bool, stamp_after: (u32,
         .await
         .expect("plays");
     let after = crate::commands::numbering_offset::display_stamp(&state, &stitched_key());
-    // A prefetch leaves the repaired stamp; a watch moves it on to the
-    // episode it records, slot 6, as the app numbers it "5".
+    // A watch records the app's own number and moves no display
+    // stamp, so a play leaves the repaired one as a prefetch does.
     assert_eq!(after, Some((stamp_after.0, stamp_after.1.to_string())));
     assert_rows_landed_after_the_repair(&seen, &["availability:", "play:"], &after);
 }
 
 #[tokio::test]
 async fn a_play_puts_the_numbering_right_before_it_caches_its_rows() {
-    rows_a_play_caches_behind_its_repair(false, (6, "5")).await;
+    rows_a_play_caches_behind_its_repair(false, (2, "1.5")).await;
 }
 
 #[tokio::test]
@@ -747,55 +747,4 @@ async fn a_handoff_puts_the_numbering_right_before_it_caches_availability() {
         "the handoff repaired the stamp"
     );
     assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
-}
-
-/// A cached resolution from before the slot was cached: its watch is
-/// written through the store's offset and stamp.
-fn slotless_row() -> CachedResolution {
-    CachedResolution {
-        resolved_slot: None,
-        played: None,
-        ..first_recap_row("http://127.0.0.1:1")
-    }
-}
-
-/// The store as an earlier version left it, offset 0 and the recap's
-/// slot 2 stamped "2.5", and a write that moves both to offset 1 with
-/// the slot tagged "3.5". Either way episode "2.5" is slot 2.
-fn moving_stamp(state: &AppState, n: usize) {
-    crate::commands::numbering_offset::put_display(state, &stitched_key(), 0, 2, "2.5");
-    let writing = state.clone();
-    crate::commands::numbering_offset::read_tap::before_read(n, move || {
-        crate::commands::numbering_offset::put_display(&writing, &stitched_key(), 1, 2, "3.5");
-    });
-}
-
-#[test]
-fn a_cached_watch_writes_its_row_from_one_read_of_the_numbering() {
-    let td = tempfile::tempdir().expect("td");
-    let state = state(&td);
-    for n in 1..=3 {
-        moving_stamp(&state, n);
-        let watch = crate::commands::play_cache::cached_watch(&state, &slotless_row(), "2.5");
-        crate::commands::numbering_offset::read_tap::clear();
-        assert_eq!(watch.ep_no, "2", "a write before read {n}");
-    }
-}
-
-#[test]
-fn a_cache_hit_writes_its_row_from_one_read_of_the_numbering() {
-    let td = tempfile::tempdir().expect("td");
-    let state = state(&td);
-    for n in 1..=3 {
-        moving_stamp(&state, n);
-        let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
-        write_history_on_cache_hit(&state, &args("2.5"), &slotless_row(), asked);
-        crate::commands::numbering_offset::read_tap::clear();
-        let row = crate::history::read_all(&state.history_path)
-            .expect("history")
-            .into_iter()
-            .find(|e| e.id == stitched_key())
-            .expect("row");
-        assert_eq!(row.ep_no, "2", "a write before read {n}");
-    }
 }

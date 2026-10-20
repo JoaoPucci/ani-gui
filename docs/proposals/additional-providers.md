@@ -299,9 +299,10 @@ ever the pick, this is its own investigation first.
   the history file
   (`backend/src/commands/anidb_offset_store.rs`, since renamed
   `numbering_offset_store.rs`), one row per bare
-  slug carrying a show's numbering offset and last-watch display
-  stamp — it outlives SQLite cache clears and is consulted on every
-  history read and write, so a second provider's slugs landing in it
+  slug carrying a show's numbering offset and the (slot, tag) display
+  stamp rows from before the own-number marker read through — it
+  outlives SQLite cache clears and is consulted on every read of such
+  a row, so a second provider's slugs landing in it
   unqualified would apply the wrong episode translation to Continue
   Watching; the last-watched stamps (`watched-at:v1:<show id>` rows
   in the metadata cache, 30-day TTL) that Continue Watching's

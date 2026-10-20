@@ -698,16 +698,7 @@ async fn post_play_mark_watched(
     // resolution row is read: a removal of the show in between took
     // that row, and the watch read from it is not recorded after it.
     let begun = crate::history::guard::epoch(&state.history_path);
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let key = args.resolution_key();
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
             // The row, the watched-at stamp and, when the frontend
@@ -731,10 +722,9 @@ async fn post_play_mark_watched(
             // or home ordering.
             //
             // The watch is the cached row's, built the way the handoffs
-            // build theirs: the row's own slot when it carries one, the
-            // display number translated through the stamp only for a
-            // row from before the slot was cached.
-            let watch = crate::commands::play_cache::cached_watch(&state, &cached, &args.episode);
+            // build theirs: the episode the click played, as the app
+            // numbers it.
+            let watch = crate::commands::play_cache::cached_watch(&cached, &args.episode);
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
@@ -833,16 +823,7 @@ async fn post_play_cache_evict(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> StatusCode {
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let key = args.resolution_key();
     crate::commands::play_resolution_cache::evict(&state.cache_pool, &key);
     StatusCode::NO_CONTENT
 }
@@ -1166,6 +1147,7 @@ mod tests {
                 title: title.into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         )
         .expect("seed row");
@@ -1626,6 +1608,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1674,6 +1658,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1696,12 +1682,16 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
-        // Format: ep_no\tid\ttitle\twatched_at_ms\n — the CLI's three
-        // columns, then the moment of the watch that wrote the row.
+        // Format: ep_no\tid\ttitle\tep:own\twatched_at_ms\n — the CLI's
+        // three columns, the marker that the episode is the app's own
+        // number, then the moment of the watch that wrote the row.
         let line = body
             .strip_suffix('\n')
             .expect("one line, newline-terminated");
         let (columns, moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let columns = columns
+            .strip_suffix("\tep:own")
+            .expect("the row marks the app's own number after the title");
         assert_eq!(
             columns, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)",
             "history line should match cache metadata"
@@ -1712,16 +1702,13 @@ mod tests {
         );
     }
 
-    /// A cached row carries the slot its resolve landed on, and the
-    /// history file speaks that numbering: episode 4 sits at slot 5
-    /// when a recap holds slot 4. The show's single display stamp can
-    /// have moved to a later resolve's row by the time the click is
-    /// marked, and translating the display number through it then
-    /// names slot 4 — the recap — so the row's own slot is what the
-    /// route records, as the handoffs and the embedded replay already
-    /// do.
+    /// A cached row carries the slot its resolve landed on: episode 4
+    /// sits at slot 5 when a recap holds slot 4. Mark-watched records
+    /// the episode itself, 4, marked as the app's own number, as the
+    /// handoffs and the embedded replay do — neither the slot nor a
+    /// display stamp decides what the row reads back as.
     #[tokio::test]
-    async fn mark_watched_records_the_cached_rows_own_slot() {
+    async fn mark_watched_records_the_episode_for_a_cached_row() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
         use crate::proxy::MediaKind;
 
@@ -1741,11 +1728,13 @@ mod tests {
                 resolved_slot: Some(5),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
         );
-        // A later resolve moved the display stamp to its own row.
+        // A stamp for another row, which no longer matters to a new row.
         crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 7, "6");
         let router = build_api_router(Arc::new(state));
 
@@ -1766,17 +1755,20 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         let line = body.strip_suffix('\n').expect("one line");
-        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (rest, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (columns, marker) = rest.rsplit_once('\t').expect("the marker");
         assert_eq!(
-            columns, "5\tthe-show-77\tThe Show",
-            "the row records the cached slot, not the display number"
+            columns, "4\tthe-show-77\tThe Show",
+            "the row records the episode marked, not the cached slot"
         );
+        assert_eq!(marker, "ep:own");
     }
 
-    /// A row from before the slot was cached carries none, and keeps
-    /// the stamp-aware translation of the display number.
+    /// A cached row from before the slot was cached carries none; the
+    /// watch records the episode played all the same, whatever the
+    /// sidecar's stamp says.
     #[tokio::test]
-    async fn mark_watched_translates_the_display_number_for_a_row_without_a_slot() {
+    async fn mark_watched_records_the_episode_for_a_row_without_a_slot() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
         use crate::proxy::MediaKind;
 
@@ -1796,6 +1788,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1821,11 +1815,13 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         let line = body.strip_suffix('\n').expect("one line");
-        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (rest, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (columns, marker) = rest.rsplit_once('\t').expect("the marker");
         assert_eq!(
-            columns, "5\tthe-show-77\tThe Show",
-            "a row without a slot translates the display number through the stamp"
+            columns, "4\tthe-show-77\tThe Show",
+            "the episode played, marked, not the stamp's slot"
         );
+        assert_eq!(marker, "ep:own");
     }
 
     /// `mark-watched` is the second carrier of the reverse mapping —
@@ -1855,6 +1851,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1912,6 +1910,8 @@ mod tests {
                     resolved_slot: Some(1),
                     subtitles: Vec::new(),
                     kitsu_id: None,
+                    versions: Vec::new(),
+                    version: None,
                     played: None,
                     former_episode: None,
                 },
@@ -1997,6 +1997,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -2101,6 +2103,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -2194,6 +2198,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -2298,6 +2304,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -2408,6 +2416,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -2463,6 +2473,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -2594,6 +2606,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },

@@ -85,7 +85,11 @@ fn sample_resolution() -> CachedResolution {
         show_title: "Naruto: Shippuuden (500 episodes)".into(),
         resolved_slot: None,
         subtitles: Vec::new(),
-        kitsu_id: None, played: None, former_episode: None,
+        kitsu_id: None,
+        versions: Vec::new(),
+        version: None,
+        played: None,
+        former_episode: None,
     }
 }
 
@@ -201,7 +205,7 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v22:"), "got {k}");
+    assert!(k.starts_with("play:v23:"), "got {k}");
 }
 
 #[test]
