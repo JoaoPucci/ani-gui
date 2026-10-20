@@ -59,6 +59,13 @@ pub struct CreateSessionResponse {
     /// resolve listed none.
     #[serde(default)]
     pub subtitles: Vec<SessionSubtitle>,
+    /// The played show's versions, when its pick has several ("Versions
+    /// of one pick" in `docs/title-resolution.md`); absent otherwise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+    /// The version that played, when there are several.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
     /// The app's own number for the episode the play resolved to —
     /// the request, unless the request named the row by a tag it no
     /// longer carries ("24.5" for the recap that is "12.5" now). The
@@ -143,6 +150,8 @@ fn create_session_inner(
         media_kind,
         cache_hit: false, // play layer flips when serving cached
         subtitles,
+        versions: Vec::new(),
+        version: None,
         // The play layer names the episode it resolved.
         episode: None,
         former_episode: None,
@@ -302,6 +311,8 @@ mod tests {
             media_kind: crate::proxy::MediaKind::Hls,
             cache_hit: false,
             subtitles: Vec::new(),
+            versions: Vec::new(),
+            version: None,
             episode: None,
             former_episode: None,
         };

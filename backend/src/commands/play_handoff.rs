@@ -8,7 +8,7 @@
 use crate::app::AppState;
 use crate::commands::external_player::LaunchArgs;
 use crate::commands::play::PlayArgs;
-use crate::commands::play_native_resolve::{NativeResolveRequest, NativeResolved};
+use crate::commands::play_native_resolve::NativeResolved;
 use crate::config::{read_config, Config};
 use crate::error::Result;
 
@@ -17,10 +17,10 @@ use crate::error::Result;
 /// A handoff is always a click, never a prefetch, so the walk runs at
 /// interactive priority against the providers in order, and each
 /// breaker hears its attempt's outcome under the same mapping the
-/// embedded path uses. The resolve stamps the offset and former tags
-/// it learned, and hands back the watch to record — the history row,
-/// the display pair it reads through and the watched-at stamp — which
-/// the command writes once the player has started: the spawn is the watch, and a player that fails to start
+/// embedded path uses. The resolve stamps the numbering it learned
+/// and hands back the watch to record — the history row and the
+/// watched-at stamp — which the command writes once the player has
+/// started: the spawn is the watch, and a player that fails to start
 /// leaves nothing behind. Both paths go through
 /// [`crate::commands::play_native_record`] so they cannot disagree
 /// about what a row's number means.
@@ -47,20 +47,12 @@ pub async fn resolve_launch_args(
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let request = NativeResolveRequest {
-        title: &args.title,
-        alt_titles: &args.alt_titles,
-        episode: &args.episode,
-        mode: &args.mode,
+    let request = args.native_request(
         quality,
-        expected_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.as_deref(),
-        stamps_beside: Some(&state.history_path),
-        tail: tail
-            .as_ref()
+        Some(&state.history_path),
+        tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
-    };
+    );
     let at_start = crate::commands::availability::RowAtStart::read(
         state,
         args.kitsu_id.as_deref(),
@@ -82,8 +74,6 @@ pub async fn resolve_launch_args(
         Ok(attempted) => {
             // The numbering is put right before the row a probe
             // would take instead of the listing that repairs it.
-            // The display pair rides on the watch: the record
-            // writes it with the row once the player has started.
             crate::commands::play_native_record::stamp_numbering(state, &attempted.value, asked);
             crate::commands::availability::stamp_after_native(
                 state,
@@ -94,7 +84,9 @@ pub async fn resolve_launch_args(
                     attempted.provider,
                     attempted.value.episode_cap,
                     &attempted.value.extra_tags,
-                ),
+                )
+                .with_versions(&attempted.value.versions)
+                .with_played(attempted.value.version),
             )
             .await;
             attempted.value
@@ -113,7 +105,7 @@ pub async fn resolve_launch_args(
             return Err(ne.error);
         }
     };
-    let watch = crate::commands::play_native_record::Watch::of(&native);
+    let watch = crate::commands::play_native_record::Watch::of(&native, &args.episode);
     Ok((launch_args_for(native, args, &cfg), watch))
 }
 

@@ -879,6 +879,7 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         alt_titles: vec![],
         kitsu_id: None,
         download_dir: Some("/tmp/explicit".into()),
+        version: None,
     };
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));
@@ -7511,6 +7512,190 @@ async fn a_tool_that_cannot_be_started_is_the_tool_failing_not_the_network() {
     );
 }
 
+/// A range whose episodes the provider dubs in different copies of
+/// the season: each episode falls through to a version that carries
+/// it, not only the first.
+#[cfg(unix)]
+#[tokio::test]
+async fn every_episode_of_a_range_falls_through_to_a_version_that_carries_it() {
+    use crate::scraper::table_provider::listing_of;
+    let card = |slug: &str, title: &str| crate::scraper::provider::BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    // Episode 1 is dubbed in the uncensored copy, episode 2 only in
+    // the plain one.
+    let server = std::sync::Arc::new(
+        TableProvider::new()
+            .search_default(vec![
+                card("the-show-1", "The Show"),
+                card("the-show-2", "The Show (Uncensored)"),
+            ])
+            .listing(1, listing_of(1, 2))
+            .listing(2, listing_of(2, 2))
+            .year(1, Some(2020))
+            .year(2, Some(2020))
+            .stream(1002, "dub", "https://cdn.example/m/1002/master.m3u8")
+            .stream(2001, "dub", "https://cdn.example/m/2001/master.m3u8")
+            .stream_from(
+                2002,
+                "dub",
+                crate::scraper::table_provider::Answer::fails(|| AniError::NoResults),
+            ),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show",
+        "episode": "1-2",
+        "mode": "dub",
+        "episode_count": 2,
+        "year": 2020,
+        "subtype": "TV",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_| {})
+        .await
+        .expect("both episodes download, each from a copy that carries it");
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    assert!(
+        calls.contains("/m/2001/"),
+        "episode 1 from the uncensored copy: {calls}"
+    );
+    assert!(
+        calls.contains("/m/1002/"),
+        "episode 2 from the plain copy: {calls}"
+    );
+    // Each file is named after the version that served it.
+    assert!(
+        dest.path()
+            .join("The Show (Uncensored) Episode 1.mp4")
+            .exists(),
+        "episode 1 named for the uncensored copy that served it"
+    );
+    assert!(
+        dest.path().join("The Show Episode 2.mp4").exists(),
+        "episode 2 named for the plain copy that served it"
+    );
+}
+
+/// A range whose first episode only the plain copy dubs keeps the
+/// version it names for the episodes after it: the second, dubbed in
+/// both copies, comes from the uncensored one.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_keeps_its_version_after_one_episode_falls_through() {
+    use crate::scraper::table_provider::listing_of;
+    let card = |slug: &str, title: &str| crate::scraper::provider::BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    let server = std::sync::Arc::new(
+        TableProvider::new()
+            .search_default(vec![
+                card("the-show-1", "The Show"),
+                card("the-show-2", "The Show (Uncensored)"),
+            ])
+            .listing(1, listing_of(1, 2))
+            .listing(2, listing_of(2, 2))
+            .year(1, Some(2020))
+            .year(2, Some(2020))
+            .stream(1001, "dub", "https://cdn.example/m/1001/master.m3u8")
+            .stream(1002, "dub", "https://cdn.example/m/1002/master.m3u8")
+            .stream_from(
+                2001,
+                "dub",
+                crate::scraper::table_provider::Answer::fails(|| AniError::NoResults),
+            )
+            .stream(2002, "dub", "https://cdn.example/m/2002/master.m3u8"),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo \"$*\" >> '{}'\n{}\nexit 0",
+            log.display(),
+            writes_its_output("video")
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show",
+        "episode": "1-2",
+        "mode": "dub",
+        "episode_count": 2,
+        "year": 2020,
+        "subtype": "TV",
+        "kitsu_id": "777",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_| {})
+        .await
+        .expect("both episodes download");
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    assert!(
+        calls.contains("/m/1001/"),
+        "episode 1 from the plain copy: {calls}"
+    );
+    assert!(
+        calls.contains("/m/2002/"),
+        "episode 2 from the uncensored copy: {calls}"
+    );
+    // The first episode's file is named after the copy that served it,
+    // not the version the range was asked for.
+    assert!(
+        dest.path().join("The Show Episode 1.mp4").exists(),
+        "episode 1 named for the plain copy that served it"
+    );
+    assert!(
+        dest.path()
+            .join("The Show (Uncensored) Episode 2.mp4")
+            .exists(),
+        "episode 2 named for the uncensored copy that served it"
+    );
+    // The show's availability row says the copy that served the first
+    // episode carries the dub, as a play's and a single download's do.
+    let row: crate::commands::availability::AvailabilityResponse = serde_json::from_str(
+        &crate::cache::meta_cache_get(
+            &state.cache_pool,
+            &crate::commands::availability::cache_key("777", "dub"),
+        )
+        .expect("read")
+        .expect("a row"),
+    )
+    .expect("row");
+    let standard = row
+        .versions
+        .iter()
+        .find(|v| v.kind == crate::commands::play_native_versions::VersionKind::Standard)
+        .expect("the plain copy among the versions");
+    assert_eq!(standard.has_mode, Some(true));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_download_of_a_stitched_show_puts_its_former_tag_stamp_right() {
@@ -7748,4 +7933,103 @@ async fn a_download_puts_the_numbering_right_before_it_caches_availability() {
 #[tokio::test]
 async fn a_range_download_puts_the_numbering_right_before_it_caches_availability() {
     a_download_caches_availability_behind_its_repair("4-5").await;
+}
+
+/// A range of a season listed twice, whose recap an earlier version
+/// tagged "24.5": each copy's stamp names the recap as the listing does
+/// now, whichever copy the range plays.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_puts_every_copys_stamp_right() {
+    use crate::commands::play_native_versions::numbering_tests::{
+        two_cumulative_copies, PLAIN, TITLE, UNCUT,
+    };
+    let server = std::sync::Arc::new(two_cumulative_copies());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = |slug: &str| {
+        crate::scraper::provider::ShowKey::new(
+            crate::scraper::provider::Provider::id(server.as_ref()),
+            slug,
+        )
+        .to_string()
+    };
+    for slug in [PLAIN, UNCUT] {
+        crate::commands::numbering_offset::put_display(&state, &key(slug), 12, 1, "24.5");
+    }
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": TITLE,
+        "episode": "1-2",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    for slug in [UNCUT, PLAIN] {
+        assert_eq!(
+            crate::commands::numbering_offset::display_stamp(&state, &key(slug)),
+            Some((1, "12.5".to_string())),
+            "{slug}: the stamp names the recap by its tag now"
+        );
+    }
+}
+
+/// A download of one episode of a season listed twice puts every
+/// copy's stamp right, as a range does.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_puts_every_copys_stamp_right() {
+    use crate::commands::play_native_versions::numbering_tests::{
+        two_cumulative_copies, PLAIN, TITLE, UNCUT,
+    };
+    let server = std::sync::Arc::new(two_cumulative_copies());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = |slug: &str| {
+        crate::scraper::provider::ShowKey::new(
+            crate::scraper::provider::Provider::id(server.as_ref()),
+            slug,
+        )
+        .to_string()
+    };
+    for slug in [PLAIN, UNCUT] {
+        crate::commands::numbering_offset::put_display(&state, &key(slug), 12, 1, "24.5");
+    }
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": TITLE,
+        "episode": "1",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    for slug in [UNCUT, PLAIN] {
+        assert_eq!(
+            crate::commands::numbering_offset::display_stamp(&state, &key(slug)),
+            Some((1, "12.5".to_string())),
+            "{slug}: the stamp names the recap by its tag now"
+        );
+    }
 }

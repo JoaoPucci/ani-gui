@@ -540,6 +540,31 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('names the version to play in the query when one is set, and only then', async () => {
+		// The SSE endpoint reads the version from its query string; a
+		// show whose pick has versions plays the uncensored one when
+		// the request names none, so an unset version must stay off
+		// the wire rather than going out empty.
+		const named = playStream(
+			{ title: 'X', episode: '5', mode: 'sub', version: 'standard' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('version')).toBe('standard');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await named;
+
+		const unnamed = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const plain = FakeEventSource.instances[1];
+		expect(new URL(plain.url).searchParams.has('version')).toBe(false);
+		plain.dispatch('done', JSON.stringify(donePayload()));
+		await unnamed;
+	});
+
 	it('omits prefetch param entirely when not set or false', async () => {
 		// Click path: leave the field default. Backend treats absence
 		// as false, history-write fires.
@@ -1682,6 +1707,27 @@ describe('downloadStream', () => {
 		expect(es.url).toContain('download_dir=%2Ftmp%2Fdl');
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
+	});
+
+	it('names the version to download in the query when one is set, and only then', async () => {
+		const named = downloadStream(
+			{ title: 'X', episode: '1', mode: 'sub', version: 'uncensored' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('version')).toBe('uncensored');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await named;
+
+		const unnamed = downloadStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const plain = FakeEventSource.instances[1];
+		expect(new URL(plain.url).searchParams.has('version')).toBe(false);
+		plain.dispatch('done', JSON.stringify(donePayload()));
+		await unnamed;
 	});
 
 	it('appends subtype when provided, mirroring playStream', async () => {

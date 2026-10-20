@@ -59,6 +59,7 @@ fn list_translates_provider_numbering_back_to_kitsu() {
                 title: "The Sequel".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "5".into(),
@@ -66,6 +67,7 @@ fn list_translates_provider_numbering_back_to_kitsu() {
                 title: "Plain Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -90,6 +92,7 @@ fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
             title: "The Sequel".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -115,6 +118,7 @@ fn by_kitsu_returns_the_matching_entry() {
                 title: "Show A (10 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "12".into(),
@@ -122,6 +126,7 @@ fn by_kitsu_returns_the_matching_entry() {
                 title: "Show B (24 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -151,6 +156,7 @@ fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
             title: "Show A (10 episodes)".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -188,6 +194,7 @@ fn delete_removes_matching_row_and_preserves_others() {
                 title: "Show A".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "12".into(),
@@ -195,6 +202,7 @@ fn delete_removes_matching_row_and_preserves_others() {
                 title: "Show B".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -202,6 +210,7 @@ fn delete_removes_matching_row_and_preserves_others() {
                 title: "Show C".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -231,6 +240,7 @@ fn delete_unknown_id_is_idempotent_no_op() {
             title: "Show A".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -266,6 +276,7 @@ fn delete_with_empty_id_returns_false() {
             title: "Show A".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -289,6 +300,7 @@ fn list_then_clear_round_trip() {
             title: "T (10 episodes)".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -318,6 +330,7 @@ fn by_kitsu_reads_the_kitsu_id_the_row_records() {
                 title: "There Is Also a Hole in the Student Organization!".into(),
                 watched_at: None,
                 kitsu_id: Some("49877".into()),
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "5".into(),
@@ -325,6 +338,7 @@ fn by_kitsu_reads_the_kitsu_id_the_row_records() {
                 title: "Here is Greenwood".into(),
                 watched_at: None,
                 kitsu_id: Some("1623".into()),
+                own_number: false,
             },
         ],
     )
@@ -358,6 +372,7 @@ fn row(id: &str, title: &str) -> HistoryEntry {
         title: title.into(),
         watched_at: None,
         kitsu_id: Some("49877".into()),
+        own_number: false,
     }
 }
 
@@ -819,6 +834,7 @@ fn delete_removes_the_shows_skip_times() {
     let s = make_state(path.clone());
     let older = HistoryEntry {
         kitsu_id: None,
+        own_number: false,
         ..row("hianime:seitokai-10497", "Seitokai")
     };
     write_atomic(&path, &[row("one-piece-69", "One Piece"), older]).unwrap();
@@ -887,6 +903,7 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
     let s = make_state(path.clone());
     let unrecorded = |id: &str, title: &str| HistoryEntry {
         kitsu_id: None,
+        own_number: false,
         ..row(id, title)
     };
     write_atomic(
@@ -895,6 +912,7 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
             unrecorded("hianime:seitokai-10497", "Seitokai"),
             HistoryEntry {
                 kitsu_id: Some("1623".into()),
+                own_number: false,
                 ..row("hianime:here-is-greenwood-3081", "Here is Greenwood")
             },
             unrecorded("naruto-20", "Naruto"),
@@ -983,6 +1001,7 @@ fn renamed_legacy_row(s: &AppState) {
         &s.history_path,
         &[HistoryEntry {
             kitsu_id: None,
+            own_number: false,
             ..row(RENAMED_ID, "The Show: Renamed")
         }],
     )
@@ -1051,10 +1070,10 @@ fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() 
 }
 
 #[test]
-fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
-    // A watch writes its row and then the display pair the row reads
-    // through, under the history guard. A reader that starts between
-    // the two waits for both: it never reads the row by its slot.
+fn a_list_read_while_a_writer_holds_the_guard_waits_for_it() {
+    // A list read takes the guard every writer holds: one that starts
+    // inside a writer's hold waits for the hold to end, and reads what
+    // the writer left, however many writes the hold makes.
     let td = tempfile::tempdir().expect("td");
     let state = make_state(td.path().join("history"));
     let show = "hianime:stitched-show-4";
@@ -1069,6 +1088,7 @@ fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
             title: "Stitched Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         })
         .expect("row");
         let reading = state.clone();
@@ -1079,9 +1099,17 @@ fn a_list_read_while_a_watch_is_being_written_sees_the_watch_whole() {
         queue.joined_blocking(|| reader.is_finished());
         assert!(
             !reader.is_finished(),
-            "a reader waits for the watch to be written whole"
+            "a reader waits for the writer's hold to end"
         );
-        crate::commands::numbering_offset::put_watched_display(&state, show, 0, 2, "1.5");
+        held.upsert(HistoryEntry {
+            ep_no: "1.5".into(),
+            id: show.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        })
+        .expect("own-number row");
         reader
     });
     let rows = reader.join().expect("reader");
