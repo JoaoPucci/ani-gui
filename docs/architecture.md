@@ -235,7 +235,7 @@ Two prefetch surfaces warm play data ahead of demand so episode boundaries don't
 - **Adjacent-episode warm.** When the play page mounts, it warms `episode + 1` (and on the detail page, `episode 1`) through the same play-resolution path the click would take. Hits land in the long-term resolution cache. If the current playback ends and auto-play-next is on, the next episode usually plays from cache instead of waiting on a fresh provider walk.
 - **Visible-page warm.** The episode strip's currently-rendered Kitsu page is warmed in parallel so episode tiles get titles and thumbnails before the user scrolls.
 
-Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality — which dedupes concurrent calls and keeps each answer until the show's prefetches are cleared or the resolve fails. The 4-hour lifetime is the backend session table's. At most two run at once; a click cuts the queue. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
+Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality + version — which dedupes concurrent calls and keeps each answer until the show's prefetches are cleared or the resolve fails. The 4-hour lifetime is the backend session table's. At most two run at once; a click cuts the queue. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
 
 The detail page's resume warm uses the same cache. When no listing stood behind the page's availability answer and the history row reads as a fractional episode, the page resolves that episode as a prefetch so the listing puts the row right. It cuts the queue like a click (`getOrFireNow`), since a click on Play waits for it.
 

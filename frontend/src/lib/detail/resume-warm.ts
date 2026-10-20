@@ -29,10 +29,11 @@ export type ResumeWarmStream = (
 
 /** Resolves `args` as a prefetch, through the play cache.
  *
- *  Through the cache, the page's unmount or its move to another show
- *  cancels it with the show's other warms (`clearForShow`,
- *  `clearBackgroundForShow`), so it does not hold a connection on the
- *  resolve lane after its page. A click on the same episode plays the
+ *  Through the cache, the page's unmount, its move to another show or
+ *  the viewer's pick of another version cancels it with the show's
+ *  other warms (`clearForShow`, `clearBackgroundForShow`,
+ *  `clearBackgroundForOtherVersions`), so it does not hold a connection
+ *  on the resolve lane after its page. A click on the same episode plays the
  *  session it resolved instead of asking again.
  *
  *  It starts at once rather than behind the next episodes' background
