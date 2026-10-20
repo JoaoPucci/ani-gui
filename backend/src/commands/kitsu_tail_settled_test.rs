@@ -143,7 +143,28 @@ fn noragami() -> PickedShow {
 /// Fits Noragami's listing against `answers`, with the reading the
 /// recorded evidence proves kept from an earlier play.
 async fn fitted(answers: &Answers, unserved: &[&str]) -> (Vec<EpisodeRef>, Option<Remembered>) {
+    fitted_listing(answers, unserved, noragami()).await
+}
+
+/// [`fitted`] for `show`, a listing of Noragami's as hianime might
+/// list it.
+async fn fitted_listing(
+    answers: &Answers,
+    unserved: &[&str],
+    show: PickedShow,
+) -> (Vec<EpisodeRef>, Option<Remembered>) {
     let kitsu = serve(answers, unserved).await;
+    fit_on(&kitsu, answers, show).await
+}
+
+/// Fits `show` against the Kitsu `kitsu` serves, with AniList's answer
+/// cached as `answers` gives it and the reading the recorded evidence
+/// proves kept from an earlier play.
+async fn fit_on(
+    kitsu: &MockServer,
+    answers: &Answers,
+    show: PickedShow,
+) -> (Vec<EpisodeRef>, Option<Remembered>) {
     let state = state_with_kitsu(&kitsu.uri());
     if let Some(airing) = &answers.airing {
         crate::cache::meta_cache_put(
@@ -155,7 +176,6 @@ async fn fitted(answers: &Answers, unserved: &[&str]) -> (Vec<EpisodeRef>, Optio
         .expect("airing row");
     }
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
-    let show = noragami();
     source.remember(Some(&Remembered {
         slug: show.hit.slug.clone(),
         count: 12,
@@ -258,4 +278,97 @@ async fn a_read_the_reading_needs_failing_keeps_the_kept_reading() {
     let (rows, kept) = fitted(&Answers::recorded(), &["sequel page"]).await;
     assert!(!untagged(&rows), "{rows:?}");
     assert!(kept.is_some());
+}
+
+/// Every read Kitsu's evidence takes.
+const EVERY_READ: &[&str] = &["detail", "mappings", "page", "relations", "sequel page"];
+
+/// A row past the count with no name of its own refuses the reading on
+/// the listing alone: nothing need be read, and Kitsu being down
+/// changes nothing.
+#[tokio::test]
+async fn a_row_past_the_count_without_a_name_refuses_without_any_read() {
+    let mut show = noragami();
+    show.episodes[12].title = Some("Episode 13".into());
+    let (rows, kept) = fitted_listing(&Answers::recorded(), EVERY_READ, show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// The listing does not name Kitsu's last episodes as Kitsu does: its
+/// numbering is not shown to be Kitsu's, and the relations are not
+/// read.
+#[tokio::test]
+async fn a_listing_kitsu_s_last_episodes_do_not_line_up_with_refuses_without_the_relations() {
+    let mut show = noragami();
+    show.episodes[11].title = Some("Something Else Entirely".into());
+    let (rows, kept) = fitted_listing(&Answers::recorded(), &["relations"], show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// A row past the count carries the name of one of the show's own
+/// episodes on Kitsu: the relations are not read.
+#[tokio::test]
+async fn a_row_named_as_one_of_the_show_s_episodes_refuses_without_the_relations() {
+    let answers = Answers::recorded();
+    let first = answers.page["data"][0]["attributes"]["canonicalTitle"]
+        .as_str()
+        .expect("Kitsu titles episode 1")
+        .to_string();
+    let mut show = noragami();
+    show.episodes[12].title = Some(first);
+    let (rows, kept) = fitted_listing(&answers, &["relations"], show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// One TV relation's page already refuses the reading, here by not
+/// titling the episodes the rows would be: the next TV relation's page
+/// is not read.
+#[tokio::test]
+async fn one_tv_relation_s_page_refusing_settles_it_without_the_next() {
+    let mut answers = Answers::recorded();
+    // A second TV entry Kitsu relates the show to, listed after the
+    // sequel, whose page fails.
+    let mut link = answers.relations["data"][0].clone();
+    link["id"] = "999001".into();
+    link["attributes"]["role"] = "other".into();
+    link["relationships"]["destination"]["data"]["id"] = "999002".into();
+    answers.relations["data"]
+        .as_array_mut()
+        .expect("data")
+        .push(link);
+    let mut entry = answers.relations["included"][0].clone();
+    entry["id"] = "999002".into();
+    answers.relations["included"]
+        .as_array_mut()
+        .expect("included")
+        .push(entry);
+    let count = answers.relations["meta"]["count"].as_u64().expect("count");
+    answers.relations["meta"]["count"] = (count + 1).into();
+    let kitsu_untitled = serde_json::json!({"data": [
+        {"id": "1", "type": "episodes", "attributes": {"number": 1, "airdate": "2015-10-02"}},
+        {"id": "2", "type": "episodes", "attributes": {"number": 2, "airdate": "2015-10-09"}}
+    ]});
+    let (rows, kept) = fitted_with_sequel_page(&answers, kitsu_untitled, noragami()).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// [`fitted_listing`] with the sequel's page answered by `page`, and
+/// every other relation's page failing.
+async fn fitted_with_sequel_page(
+    answers: &Answers,
+    page: serde_json::Value,
+    show: PickedShow,
+) -> (Vec<EpisodeRef>, Option<Remembered>) {
+    let kitsu = serve(answers, &["sequel page"]).await;
+    Mock::given(method("GET"))
+        .and(path("/anime/10800/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    fit_on(&kitsu, answers, show).await
 }
