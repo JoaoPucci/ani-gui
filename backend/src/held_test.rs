@@ -138,6 +138,65 @@ impl wiremock::Respond for Held {
     }
 }
 
+/// A bounded wait timed on tokio's clock: how long it took, and when
+/// the clock was paused. See [`paused_once`].
+pub(crate) struct Timed<T> {
+    pub(crate) out: T,
+    took: std::time::Duration,
+    paused_at: std::time::Duration,
+}
+
+impl<T> Timed<T> {
+    /// The wait's output, once it is seen to have returned by
+    /// `deadline`. The wait started its deadline somewhere between the
+    /// call and the pause, so it returns no later than the deadline
+    /// after the pause. From the pause on only timers move the clock,
+    /// so a wait still out then returns at the first deadline that ends
+    /// it, however slow the machine.
+    pub(crate) fn ended_by(self, deadline: std::time::Duration, what: &str) -> T {
+        // Tokio's timers fire on millisecond ticks, rounded up from the
+        // instant they were set: up to two of them past the deadline.
+        let tick = std::time::Duration::from_millis(2);
+        let bound = self.paused_at + deadline + tick;
+        assert!(
+            self.took <= bound,
+            "{what}: took {:?} on tokio's clock, past the {deadline:?} deadline \
+             (clock paused at {:?})",
+            self.took,
+            self.paused_at
+        );
+        self.out
+    }
+}
+
+/// Run `subject` on the real clock until `reached` resolves — the
+/// requests it makes have reached the holds that keep them — then on a
+/// paused clock to its end, and resume the clock. Paused, tokio moves
+/// time on only to the next timer, so the subject's own deadline is
+/// what ends it, at that deadline exactly, and a deadline that grew is
+/// seen to have. The test must run on a current-thread runtime.
+pub(crate) async fn paused_once<F: std::future::Future>(
+    subject: F,
+    reached: impl std::future::Future<Output = ()>,
+) -> Timed<F::Output> {
+    let start = tokio::time::Instant::now();
+    tokio::pin!(subject);
+    tokio::select! {
+        out = &mut subject => {
+            let took = start.elapsed();
+            Timed { out, took, paused_at: took }
+        }
+        () = reached => {
+            let paused_at = start.elapsed();
+            tokio::time::pause();
+            let out = subject.await;
+            let took = start.elapsed();
+            tokio::time::resume();
+            Timed { out, took, paused_at }
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_held_answer_waits_for_its_release() {
     // The server first, so the gate is dropped before it: a failure
@@ -174,4 +233,37 @@ async fn a_dropped_gate_lets_its_hold_go() {
     gate.asked().await;
     drop(gate);
     waiting.await.expect("released");
+}
+
+#[tokio::test]
+async fn a_wait_timed_once_its_request_is_held_returns_at_its_deadline() {
+    let (hold, gate) = gate();
+    let deadline = std::time::Duration::from_millis(300);
+    let held = tokio::spawn(async move { hold.wait().await });
+    let timed = paused_once(
+        tokio::time::timeout(deadline, async { std::future::pending::<()>().await }),
+        gate.asked(),
+    )
+    .await;
+    assert!(timed.out.is_err(), "the deadline ended it");
+    timed.ended_by(deadline, "a wait ended by its deadline");
+    gate.release();
+    held.await.expect("released");
+}
+
+#[tokio::test]
+#[should_panic(expected = "past the")]
+async fn a_wait_whose_deadline_grew_is_seen_past_the_one_it_was_given() {
+    let (hold, gate) = gate();
+    let held = tokio::spawn(async move { hold.wait().await });
+    let timed = paused_once(
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            std::future::pending::<()>().await;
+        }),
+        gate.asked(),
+    )
+    .await;
+    gate.release();
+    let _ = held.await;
+    timed.ended_by(std::time::Duration::from_millis(300), "a grown deadline");
 }
