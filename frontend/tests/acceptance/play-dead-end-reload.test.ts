@@ -145,11 +145,9 @@ function useHandlers(s: Scenario): Seen {
 				const body = (await request.json()) as { prefetch?: boolean };
 				if (!body.prefetch) seen.resolves += 1;
 				return HttpResponse.json({
-					id: 'session-2',
-					kind: 'mp4',
-					has_subtitles: false,
-					quality: '1080',
-					mode
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
 				});
 			})
 		);
