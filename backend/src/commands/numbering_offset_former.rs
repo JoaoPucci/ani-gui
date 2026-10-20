@@ -76,6 +76,11 @@ pub fn retag_from_resolve(
     retag_display(state, &native.slug, &native.former_tags, &|former| {
         crate::commands::play_native_merge::names_a_row_now(former, native)
     });
+    // The pick's other versions: each copy's history row reads a stamp
+    // of its own, put right from that copy's listing.
+    for (slug, episodes) in &native.other_copies {
+        retag_from_listing(state, slug, episodes);
+    }
 }
 
 /// [`retag_display`] from a listing at hand — a probe's, a

@@ -953,6 +953,7 @@ async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
         },
         episodes,
         stitched: false,
+        versions: Vec::new(),
     };
     let resolved =
         crate::commands::play_native_episode::resolve_episode(&c, &picked, "7.5", "sub", "720")

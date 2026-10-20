@@ -134,6 +134,11 @@
     "captured": "2026-10-06",
     "sha256": "d6d393b34c86c4cc435ed57347ae6af9994fdbcf7a589c7f2498a9986add79a9"
   },
+  "41410.json": {
+    "source": "kitsu.io /api/edge/anime/41410; hianime.at search pages, /api/theme/episode/list/:id and entry pages, with the search cards' romanized names and the entry pages' other names and genres, read on 2026-10-16 through the bundled impersonating transport and reduced to what the parsers return (play_native_walk_record_test.rs)",
+    "captured": "2026-10-16",
+    "sha256": "603a4d92e4846f398cdee6a6e1699ebb67eb1b9bb236dff53323b348f820364c"
+  },
   "41982.json": {
     "source": "kitsu.io /api/edge/anime/41982; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs)",
     "captured": "2026-10-06",
@@ -493,6 +498,11 @@
     "source": "kitsu.io /api/edge/anime/8671; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs)",
     "captured": "2026-10-06",
     "sha256": "d5b7ad08e39b29469a5395bb60170e4ff78c76730f4f99b4027a06ff35b8b6c0"
+  },
+  "8739.json": {
+    "source": "kitsu.io /api/edge/anime/8739; hianime.at search pages, /api/theme/episode/list/:id and entry pages, with the search cards' romanized names and the entry pages' other names and genres, read on 2026-10-16 through the bundled impersonating transport and reduced to what the parsers return (play_native_walk_record_test.rs)",
+    "captured": "2026-10-16",
+    "sha256": "906dc6416857e0a3206af94cf3ad12d01c5d1cf0cc60614e5004e17a668556bc"
   },
   "9965.json": {
     "source": "kitsu.io /api/edge/anime/9965; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs)",
