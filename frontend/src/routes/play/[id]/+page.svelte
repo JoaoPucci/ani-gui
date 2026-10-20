@@ -30,7 +30,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { settle } from '$lib/transitions/settle';
@@ -94,6 +94,8 @@
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { createShowReleases } from '$lib/play/show-release';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
@@ -109,7 +111,7 @@
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
 	import { bufferAheadSeconds } from '$lib/play/buffer-ahead';
 	import { scheduleHeldRetry } from '$lib/play/held-retry';
-	import { runwaySeconds } from '$lib/play/stale-stream';
+	import { runwaySeconds, recoveryAfterEviction } from '$lib/play/stale-stream';
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
@@ -959,8 +961,8 @@
 	 * `switchToEpisode`, pulling the user back into playback on a page
 	 * they left. Nothing about the question changed; nobody is asking.
 	 *
-	 * Cannot collide with a real context, which always carries the
-	 * `id:mode` separator.
+	 * Cannot collide with a real context, which always carries `:`
+	 * separators between its parts.
 	 */
 	/**
 	 * Which visit to this route the answer belongs to.
@@ -992,6 +994,23 @@
 	onDestroy(() => {
 		gone = true;
 	});
+	/**
+	 * A navigation the viewer started. The page stays on screen until
+	 * it lands, with the same show and visit, and an action answering
+	 * in that window that went on to switch would cancel the
+	 * navigation they asked for with its own `goto`. Actions that end
+	 * in a switch claim navigation as they start, and their re-checks
+	 * carry the epoch in their context ($lib/navigation/claims).
+	 *
+	 * Only a navigation that leaves this page counts: another path,
+	 * which includes another show, or out of the app. A switch's own
+	 * `goto` changes only the query, so it ends no pending action; the
+	 * poster link back to the show's page leaves, and does. A re-check
+	 * superseded by a navigation that leaves drops what it learned
+	 * about the show, as one superseded by a move to another show does.
+	 */
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate((nav) => navigationClaims.started(nav));
 	/**
 	 * Write back what the re-ask learned about the show.
 	 *
@@ -1055,7 +1074,8 @@
 			// to write back.
 			return capGateAnswerFrom(r);
 		},
-		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		currentContext: () =>
+			gone ? GONE : `${visit}:${navigationClaims.epoch}:${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
@@ -1123,7 +1143,7 @@
 			},
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
-			currentContext: () => (gone ? GONE : `${visit}:${id ?? ''}`),
+			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
 			play: () => void switchToEpisode(n),
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
@@ -1255,6 +1275,9 @@
 	/** What the page knows about episode `n`, for the plays it refuses
 	 *  ($lib/play/reload-offer). */
 	function standingOf(n: number): EpisodeStanding {
+		// The verdict and the count are read through the row, which
+		// holds them only for the show and audio on screen
+		// ($lib/availability/row).
 		return {
 			listed: showListed,
 			unaired: epAirState(n, airing).unaired,
@@ -1696,6 +1719,7 @@
 			}
 		});
 		playerError = null;
+		failedStreamError = null;
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -1904,6 +1928,11 @@
 		}
 	});
 
+	// Every show this page showed, recorded as the route names it: by
+	// the time the page is destroyed the route names where the viewer
+	// went ($lib/play/show-release).
+	const showReleases = createShowReleases(clearForShow);
+	$effect.pre(() => showReleases.showing(() => id));
 	onDestroy(() => {
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
@@ -1913,7 +1942,7 @@
 		sourceScope.flush();
 		teardown();
 		releasePlayerVideo(ownVideo);
-		if (id) clearForShow(id);
+		showReleases.leave();
 	});
 
 	// describeError / describePlayFailure live in $lib/play/error-copy
@@ -2061,6 +2090,17 @@
 		}
 	});
 
+	/** Switches started on this page, so a recovery can tell whether
+	 *  one started while its eviction was out, and whether its own
+	 *  fresh resolve started at all (recoverFromStaleStream). */
+	let switchesStarted = 0;
+	/** The playback error of the stream on screen, kept while it is off
+	 *  screen for a replacement that has not attached: a recovery
+	 *  clears it as it begins. Anything that leaves that stream on
+	 *  screen — a switch that fails, or whose navigation does — puts it
+	 *  back. Forgotten when a stream attaches. */
+	let failedStreamError: string | null = null;
+
 	async function switchToEpisode(targetEp: number) {
 		if (!detail || switchBusy) return;
 		// Single choke point for every navigation path — tile clicks,
@@ -2080,10 +2120,11 @@
 		// taken at the click ($lib/play/owned-play): the route's component
 		// is reused across shows and across a round trip back, so a late
 		// answer is judged against them. (`detail` loads only on mount.)
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
 		const show = detail;
 		const guess = fromGuess;
@@ -2102,8 +2143,13 @@
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
 		markStarted(owner.showId, targetEp, undefined, row);
+		switchesStarted += 1;
 		switchBusy = true;
 		switchProgress = null;
+		// Cleared for the stream the switch brings; kept to put back if
+		// the switch fails, or its navigation does, and the failed stream
+		// stays on screen.
+		const errorBefore = playerError ?? failedStreamError;
 		playerError = null;
 		try {
 			// Hits the play-cache: ep+1 was prefetched on mount, so the
@@ -2129,6 +2175,10 @@
 			// failure says nothing: it is about a visit the viewer left.
 			if (outcome.kind === 'failed') {
 				playFailure = { episode: targetEp, message: outcome.message };
+				// Nothing replaced the stream on screen: its error still
+				// stands, with its Reload, or with the dead end it is at
+				// ($lib/play/reload-offer).
+				playerError ??= errorBefore;
 				return;
 			}
 			if (outcome.kind === 'abandoned') return;
@@ -2185,7 +2235,11 @@
 				resolve('/play/[id]', { id: owner.showId }) +
 					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
 				{ replaceState: true }
-			).catch(() => {});
+			).catch(() => {
+				// Nothing replaced the stream on screen: its error stands —
+				// unless the rejection came from the viewer navigating away.
+				if (owner.isCurrent()) playerError ??= errorBefore;
+			});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} finally {
 			switchBusy = false;
@@ -2206,13 +2260,28 @@
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
 		if (!detail) return;
+		// A switch or re-check holds the switch lock: Reload waits for it.
+		// A switch replaces the stream, and one that fails, like a
+		// re-check that does not switch, leaves the error and its Reload
+		// on screen. (The automatic path never starts under the lock.)
+		if (switchBusy) return;
 		// The visit this recovery is for ($lib/play/owned-play): a page
 		// moved on while the eviction was out must not resolve afresh.
+		// Nor must one a switch overtook: the recovery does not hold the
+		// switch lock while it evicts ($lib/play/stale-stream,
+		// recoveryAfterEviction).
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
+		const atSwitch = switchesStarted;
+		// What the overlay says now, or one worded from the reason when it
+		// says nothing, to put back while the stream that failed is still
+		// on screen.
+		const restore = playerError ?? m.play_error_playback_technical({ detail: reason });
+		failedStreamError = restore;
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2257,10 +2326,28 @@
 		// sibling prefetches are warming work; losing them costs only
 		// the next slow play, which is acceptable for the retry.
 		// The viewer left while the eviction was out: a fresh resolve
-		// would only navigate them back.
-		if (!owner.isCurrent()) return;
+		// would only navigate them back. Or a switch overtook it, and its
+		// session is the one on its way.
+		const turn = recoveryAfterEviction({
+			left: !owner.isCurrent(),
+			switchedSince: switchesStarted !== atSwitch,
+			switchBusyNow: switchBusy
+		});
+		// A re-check holds the lock and may not switch: the stale stream
+		// is still on screen, so its error is offered again — with its
+		// Reload, or with the dead end it is at.
+		if (turn === 'offer-reload') playerError = restore;
+		if (turn !== 'resolve') return;
 		clearForShow(id);
+		// The error went off screen as the recovery began; a fresh
+		// resolve that fails leaves the failed stream, so it comes back.
+		// So does one the switch declines before it starts — the airing
+		// lookup still out, or a dead end: the show delisted, the episode
+		// past the cap, where it comes back naming the dead end, with no
+		// Reload.
+		const switchesBefore = switchesStarted;
 		await switchToEpisode(episodeNum);
+		if (switchesStarted === switchesBefore) playerError ??= restore;
 	}
 
 	/** Wired to the Reload button on the player-error overlay. Bypasses

@@ -35,6 +35,8 @@ vi.mock('$app/navigation', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { goto } from '$app/navigation';
+import { forgetNavigationListeners, startNavigation } from './navigation';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -50,6 +52,8 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	vi.mocked(goto).mockClear();
+	forgetNavigationListeners();
 	setParams({ id: KITSU_ID });
 	setUrl(`/play/${KITSU_ID}`, { episode: '1' });
 	target = document.createElement('div');
@@ -485,5 +489,73 @@ describe('play route — clicking a dimmed aired episode', () => {
 		await new Promise((r) => setTimeout(r, 200));
 
 		expect(probes.filter((p) => !p.bypass_cache)).toHaveLength(1);
+	});
+});
+
+describe('play route — a navigation the viewer starts while a dimmed episode is re-asked', () => {
+	it('switches to nothing and goes nowhere', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		let asked = false;
+		const played: { episode?: string; prefetch?: boolean }[] = [];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) {
+					asked = true;
+					await held;
+				}
+				// The held re-ask comes back reaching the episode, so the
+				// answer would clear the gate and switch if anything still
+				// acted on it.
+				return HttpResponse.json({
+					available: true,
+					episode_count: body.bypass_cache ? FRESH_COUNT : CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			}),
+			http.post(`${API_BASE}/api/play`, async ({ request }) => {
+				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
+				return HttpResponse.json({
+					id: 'session-1',
+					kind: 'hls',
+					has_subtitles: false,
+					quality: '1080',
+					mode: 'sub'
+				});
+			}),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		);
+
+		app = mount(PlayPage, { target });
+		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
+		card(AIRED)!.click();
+		await until(() => asked, 'the re-ask to go out');
+
+		startNavigation();
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+
+		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
+		expect(goto).not.toHaveBeenCalled();
 	});
 });

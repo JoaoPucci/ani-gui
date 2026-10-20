@@ -3,7 +3,7 @@
  {"id": "versions/2", "titles": ["Show Part 5: Wind", "Show: Wind"], "count": 39, "entry_year": 2020, "rows": [["p", "Show Part 5: Wind", 39], ["u", "Show Part 5: Wind (Uncensored)", 39]], "expect": {"pick": "u", "count": 39, "versions": [["p", "standard"], ["u", "uncensored"]]}, "family": "versions"},
  {"id": "versions/3", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["p", "Show", 12], ["u", "Show (Uncensored)", 12]], "dead": ["u"], "expect": null, "family": "versions"},
  {"id": "versions/4", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["u", "Show (Uncensored)", 12], ["p", "Show", 12]], "dead": ["p"], "expect": null, "family": "versions"},
- {"id": "versions/5", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["p", "Show Season 2", 12], ["u", "Show Season 2 (Uncensored)", 12]], "expect": {"pick": "u", "count": 12}, "family": "versions"},
+ {"id": "versions/5", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["p", "Show Season 2", 12], ["u", "Show Season 2 (Uncensored)", 12]], "expect": null, "family": "versions"},
  {"id": "versions/6", "titles": ["Show"], "count": null, "entry_year": 2020, "rows": [["p", "Show", 12], ["u", "Show (Uncensored)", 12]], "expect": {"pick": "p", "count": 12}, "family": "versions"},
  {"id": "versions/7", "titles": ["Show"], "count": 12, "entry_year": null, "rows": [["p", "Show", 12], ["u", "Show (Uncensored)", 12]], "dead": ["u"], "expect": {"pick": "p", "count": 12}, "family": "versions"}
 ]

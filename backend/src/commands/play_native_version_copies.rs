@@ -6,49 +6,9 @@
 
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
-use super::play_native_title_grammar::normalized;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_versions::{ShowVersion, VersionKind};
-
-/// The version tag's word, as a bracket holds it.
-const UNCENSORED: &str = "uncensored";
-
-/// `title` read for its version: the title without a bracketed
-/// version tag — "(Uncensored)", "[UNCENSORED]", in ASCII or
-/// full-width brackets, any case — compared as written
-/// ([`normalized`]: case and spacing aside, catalogue tags kept), and
-/// which version the tag names.
-pub(crate) fn version_of(title: &str) -> (String, VersionKind) {
-    let mut rest = title;
-    let mut out = String::new();
-    let mut kind = VersionKind::Standard;
-    while let Some(open) = rest.find(['(', '[', '（', '［', '【']) {
-        let after = &rest[open..];
-        let inner_start = after.chars().next().map_or(1, char::len_utf8);
-        let Some(close) = after.find([')', ']', '）', '］', '】']) else {
-            break;
-        };
-        let inner: String = after[inner_start..close]
-            .trim()
-            .chars()
-            .map(|c| match c {
-                '！'..='～' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
-                _ => c,
-            })
-            .collect();
-        let closer = after[close..].chars().next().map_or(1, char::len_utf8);
-        if inner.eq_ignore_ascii_case(UNCENSORED) {
-            kind = VersionKind::Uncensored;
-            out.push_str(&rest[..open]);
-            out.push(' ');
-        } else {
-            out.push_str(&rest[..open + close + closer]);
-        }
-        rest = &after[close + closer..];
-    }
-    out.push_str(rest);
-    (normalized(&out), kind)
-}
+pub(crate) use super::play_native_version_tag::{version_of, without_version_tag};
+use super::play_native_versions::ShowVersion;
 
 /// Whether two hits list one title under any version tag, as far as
 /// their cards tell: the same title once the tag is set aside, and the
@@ -137,3 +97,7 @@ pub(crate) fn note_dead<'h>(
         dead.push(hit);
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_version_tag_test.rs"]
+mod tag_tests;
