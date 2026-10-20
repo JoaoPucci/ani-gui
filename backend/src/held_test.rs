@@ -140,8 +140,11 @@ impl wiremock::Respond for Held {
 
 #[tokio::test]
 async fn a_held_answer_waits_for_its_release() {
-    let (hold, gate) = gate();
+    // The server first, so the gate is dropped before it: a failure
+    // while the answer is held lets it go before the server's drop
+    // waits on the state the held answer keeps locked.
     let server = wiremock::MockServer::start().await;
+    let (hold, gate) = gate();
     wiremock::Mock::given(wiremock::matchers::any())
         .respond_with(Held::new(hold, wiremock::ResponseTemplate::new(204)))
         .mount(&server)
