@@ -334,4 +334,48 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		await bodyBecomes(m.detail_unavailable_message());
 		expectDeadEnd();
 	});
+
+	it('a dead end learned while a recovery evicts brings the failure back with no Reload', async () => {
+		// The network failure lands before the page has heard whether the
+		// provider lists the show, so the automatic recovery starts. The
+		// answer, delisted, lands while its eviction is out: the switch
+		// the recovery hands to declines, and the failure comes back
+		// naming the dead end rather than offering a Reload that would
+		// decline again.
+		let answerListing = () => {};
+		const listingHeld = new Promise<void>((r) => (answerListing = r));
+		let releaseEvict = () => {};
+		const evictHeld = new Promise<void>((r) => (releaseEvict = r));
+		const seen = useHandlers({ availability: { available: false, episode_count: null } });
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async () => {
+				await listingHeld;
+				seen.availabilityAnswered = true;
+				return HttpResponse.json({ available: false, episode_count: null, extra_episodes: [] });
+			}),
+			http.post(`${API_BASE}/api/play/cache/evict`, async () => {
+				seen.evictions += 1;
+				await evictHeld;
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: NETWORK }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => seen.evictions === 1, "the recovery's eviction");
+
+		answerListing();
+		await until(() => seen.availabilityAnswered, 'the availability answer');
+		await new Promise((r) => setTimeout(r, 50));
+		releaseEvict();
+
+		await bodyBecomes(m.detail_unavailable_message());
+		// No play is described here: a resolve sent anyway fails the
+		// scenario through the acceptance guard.
+		expectDeadEnd();
+	});
 });
