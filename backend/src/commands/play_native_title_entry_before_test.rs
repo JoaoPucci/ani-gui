@@ -87,4 +87,23 @@ proptest! {
         let candidate = format!("{name}{first}");
         prop_assert!(is_name_and_first_divisions(&candidate, &title));
     }
+
+    /// A full-width closing bracket around the name separates it from
+    /// what follows as the ASCII one does: "［Show］ 2nd Season" has
+    /// the entries before it that "[Show] 2nd Season" has.
+    #[test]
+    fn a_full_width_bracket_around_the_name_reads_as_the_ascii_one(
+        candidate in candidate(),
+        name in proptest::sample::select(NAMES.to_vec()),
+        division in proptest::sample::select(DIVISIONS.to_vec()),
+    ) {
+        let ascii = format!("[{name}] {division}");
+        let wide = format!("［{name}］ {division}");
+        prop_assert_eq!(
+            is_name_and_first_divisions(&candidate, &wide),
+            is_name_and_first_divisions(&candidate, &ascii)
+        );
+        let plain = name.to_string();
+        prop_assert!(is_name_and_first_divisions(&plain, &wide) || division == "Season 1");
+    }
 }
