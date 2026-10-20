@@ -79,8 +79,12 @@ fn builder() -> r2d2::Builder<SqliteConnectionManager> {
 /// it doesn't exist. Runs all pending migrations, and marks the
 /// mappings earlier builds' plays stored (`played_marks`).
 ///
+/// Both run under [`migration_lock`], so two backends opening the same
+/// cache at once take turns rather than racing.
+///
 /// # Errors
-/// - [`AniError::Cache`] when the pool can't be built or migrations fail.
+/// - [`AniError::Cache`] when the pool can't be built, the lock can't
+///   be taken, or migrations fail.
 pub fn open_pool(path: &Path) -> Result<SqlitePool> {
     let manager = SqliteConnectionManager::file(path);
     let pool = builder()
@@ -88,9 +92,36 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
         .build(manager)
         .map_err(|_| AniError::Cache)?;
     let mut conn = pool.get().map_err(|_| AniError::Cache)?;
+    let _turn = migration_lock(path)?;
     run_migrations(&mut conn)?;
     crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
     Ok(pool)
+}
+
+/// The cross-process lock a cache's migrations run under, held until
+/// the returned file is dropped — and released by the OS if the
+/// process dies holding it.
+///
+/// Refinery reads which migrations a database has applied and then
+/// applies the rest, with nothing ordering two runners in between: two
+/// backends meeting a fresh cache both find nothing applied, and the
+/// later one fails creating a table the earlier one just made. A
+/// second app instance on the same profile does that, and so do the
+/// integration tests on Windows, which all share the dev profile.
+///
+/// A file of its own beside the database, rather than a lock on the
+/// database file, which SQLite locks itself.
+fn migration_lock(db: &Path) -> Result<std::fs::File> {
+    let mut name = db.file_name().unwrap_or_default().to_os_string();
+    name.push(".migrate-lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(db.with_file_name(name))
+        .map_err(|_| AniError::Cache)?;
+    fs4::FileExt::lock(&file).map_err(|_| AniError::Cache)?;
+    Ok(file)
 }
 
 /// Open a pool against an in-memory database. Tests only — `:memory:` is
