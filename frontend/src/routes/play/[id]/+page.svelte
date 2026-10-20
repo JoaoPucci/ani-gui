@@ -2184,8 +2184,9 @@
 			// failure says nothing: it is about a visit the viewer left.
 			if (outcome.kind === 'failed') {
 				playFailure = { episode: targetEp, message: outcome.message };
-				// Nothing replaced the stream on screen: its error, and the
-				// Reload with it, still stand.
+				// Nothing replaced the stream on screen: its error still
+				// stands, with its Reload, or with the dead end it is at
+				// ($lib/play/reload-offer).
 				playerError ??= errorBefore;
 				return;
 			}
@@ -2342,14 +2343,17 @@
 			switchBusyNow: switchBusy
 		});
 		// A re-check holds the lock and may not switch: the stale stream
-		// is still on screen, so Reload is offered again.
+		// is still on screen, so its error is offered again — with its
+		// Reload, or with the dead end it is at.
 		if (turn === 'offer-reload') playerError = restore;
 		if (turn !== 'resolve') return;
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
 		// So does one the switch declines before it starts — the airing
-		// lookup still out, the show delisted, the episode past the cap.
+		// lookup still out, or a dead end: the show delisted, the episode
+		// past the cap, where it comes back naming the dead end, with no
+		// Reload.
 		const switchesBefore = switchesStarted;
 		await switchToEpisode(episodeNum);
 		if (switchesStarted === switchesBefore) playerError ??= restore;
