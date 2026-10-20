@@ -213,11 +213,13 @@ fn a_row_resolved_before_every_related_tv_entry_was_read_is_not_served() {
     // The appended-extras rule checked the rows past the count against
     // a TV sequel's names alone, refused only a sequel still airing,
     // and read a stitched listing too. A v23 row for an extra it read
-    // (Noragami Aragoto's `13.1`, its rows titled as its prequel's
-    // first episodes) holds a stream the rule now reads as a whole
-    // episode, under the extra's number, and a HEAD-passing hit would
-    // keep playing and recording it as that extra. Master keys its
-    // rows `play:v23:`; this schema sits above it.
+    // and this rule refuses (Noragami Aragoto's `13.1`, were its rows
+    // titled as its prequel's first episodes) holds a stream the rule
+    // now reads as a whole episode, under the extra's number, and a
+    // HEAD-passing hit for a request naming that extra — a history
+    // row's Continue, a link — would keep playing and recording it as
+    // the extra. Master keys its rows `play:v23:`; this schema sits
+    // above it.
     let pool = pool();
     let current = cache_key(
         "Noragami Aragoto",

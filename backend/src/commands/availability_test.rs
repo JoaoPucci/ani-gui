@@ -2140,11 +2140,12 @@ fn cache_key_is_versioned_per_mode() {
 /// A verdict stamped while the appended-extras rule checked a TV
 /// sequel's names alone, and refused only a sequel still airing, is
 /// not served: its cap and extras may come from a reading the rule now
-/// refuses — rows past Noragami Aragoto's count titled as its prequel
-/// Noragami's first episodes, read as `13.1` and `13.2` then and as
-/// whole episodes now — and a row says nothing of which rule stamped
-/// it. The key sits above the one master moved to for the versions of
-/// a season.
+/// refuses — were the rows past Noragami Aragoto's count titled as its
+/// prequel Noragami's first episodes, they would have read as `13.1`
+/// and `13.2` then and as whole episodes now (as recorded they read as
+/// extras under either rule) — and a row says nothing of which rule
+/// stamped it. The key sits above the one master moved to for the
+/// versions of a season.
 #[test]
 fn a_verdict_stamped_before_every_related_tv_entry_was_read_is_not_read() {
     let current = cache_key("10800", "sub");
