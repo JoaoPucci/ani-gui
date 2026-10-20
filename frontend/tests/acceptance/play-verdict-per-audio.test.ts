@@ -75,6 +75,7 @@ interface Seen {
 	subAnswered: boolean;
 	dubAsked: boolean;
 	evictions: number;
+	resolves: number;
 }
 
 /**
@@ -82,7 +83,7 @@ interface Seen {
  * it. The dub question then ends as `dub` says.
  */
 function useHandlers(sub: { available: boolean; episode_count: number | null }, dub: DubAnswer) {
-	const seen: Seen = { subAnswered: false, dubAsked: false, evictions: 0 };
+	const seen: Seen = { subAnswered: false, dubAsked: false, evictions: 0, resolves: 0 };
 	let releaseSettings = () => {};
 	const settingsHeld = new Promise<void>((r) => (releaseSettings = r));
 	server.use(
@@ -116,8 +117,20 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json(NOTHING_CACHED)),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		// The fresh resolve a Reload that goes through asks for.
-		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
+		// Every case's Reload goes through: its fresh resolve, and the
+		// warms the fresh session starts, are answered with a session,
+		// and only the resolve the Reload asked for counts.
+		http.post(`${API_BASE}/api/play`, async ({ request }) => {
+			const body = (await request.json()) as { prefetch?: boolean; mode?: string };
+			if (!body.prefetch) seen.resolves += 1;
+			return HttpResponse.json({
+				id: 'session-2',
+				kind: 'mp4',
+				has_subtitles: false,
+				quality: '1080',
+				mode: body.mode ?? 'dub'
+			});
+		}),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
 			seen.evictions += 1;
 			return new HttpResponse(null, { status: 204 });
@@ -163,6 +176,7 @@ async function expectReloadWorks(seen: Seen) {
 	await until(() => !reloadButton()?.disabled, 'Reload enabled');
 	reloadButton()?.click();
 	await until(() => seen.evictions === 1, 'the Reload recovery');
+	await until(() => seen.resolves === 1, "the Reload's fresh resolve");
 }
 
 describe('play route — a verdict for sub does not gate dub', () => {
