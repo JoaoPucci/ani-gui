@@ -86,14 +86,21 @@ async fn serve(answers: &Answers, unserved: &[&str]) -> MockServer {
             .mount(&kitsu)
             .await;
     }
+    // The page after the count's, which the reader looks ahead to: it
+    // fails whenever the pages are unserved, or it alone is.
+    let ahead = if served("page") && served("look-ahead") {
+        ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []}))
+    } else {
+        ResponseTemplate::new(500)
+    };
+    Mock::given(method("GET"))
+        .and(path("/anime/7881/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ahead)
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
     if served("page") {
-        Mock::given(method("GET"))
-            .and(path("/anime/7881/episodes"))
-            .and(query_param("page[offset]", "20"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
-            .with_priority(1)
-            .mount(&kitsu)
-            .await;
         Mock::given(method("GET"))
             .and(path("/anime/7881/episodes"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&answers.page))
@@ -371,4 +378,34 @@ async fn fitted_with_sequel_page(
         .mount(&kitsu)
         .await;
     fit_on(&kitsu, answers, show).await
+}
+
+/// A row past the count named as one of the show's own episodes on the
+/// page that holds the count's last ones: the page after it, which can
+/// only add names, is not read.
+#[tokio::test]
+async fn a_row_named_as_one_of_the_show_s_episodes_refuses_without_the_page_after() {
+    let answers = Answers::recorded();
+    let first = answers.page["data"][0]["attributes"]["canonicalTitle"]
+        .as_str()
+        .expect("Kitsu titles episode 1")
+        .to_string();
+    let mut show = noragami();
+    show.episodes[12].title = Some(first);
+    let (rows, kept) = fitted_listing(&answers, &["look-ahead", "relations"], show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// Every one of Kitsu's last episodes is on the page read, and the
+/// listing names one of them otherwise: the page after cannot change
+/// that, and is not read.
+#[tokio::test]
+async fn a_listing_whose_last_episodes_kitsu_names_otherwise_refuses_without_the_page_after() {
+    let mut show = noragami();
+    show.episodes[11].title = Some("Something Else Entirely".into());
+    let (rows, kept) =
+        fitted_listing(&Answers::recorded(), &["look-ahead", "relations"], show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
 }
