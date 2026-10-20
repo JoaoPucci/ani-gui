@@ -151,6 +151,11 @@ describe('a Continue card over a renumbered recap', () => {
 		// the row right, and the click goes on from what the row reads as
 		// after it.
 		let repaired = false;
+		// The background probe is held until the click has gone through,
+		// then answered, so that it does not outlive the page.
+		let releaseProbe!: () => void;
+		const probeHeld = new Promise<void>((r) => (releaseProbe = r));
+		let probeAnswered = false;
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '24.5', id: ROW, title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
@@ -158,8 +163,11 @@ describe('a Continue card over a renumbered recap', () => {
 				),
 				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 					const body = (await request.json()) as { background?: boolean };
-					// The background probe never answers.
-					if (body.background !== false) return new Promise<never>(() => {});
+					if (body.background !== false) {
+						await probeHeld;
+						probeAnswered = true;
+						return HttpResponse.json({ available: true, episode_count: 36, approximate: false });
+					}
 					repaired = true;
 					return HttpResponse.json({ available: true, episode_count: 36, approximate: false });
 				}),
@@ -181,6 +189,8 @@ describe('a Continue card over a renumbered recap', () => {
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 		const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');
 		expect(new URL(url, 'http://app.test').searchParams.get('episode')).toBe('13');
+		releaseProbe();
+		await until(() => probeAnswered, 'the held probe to be answered');
 	});
 
 	it('offers the recap left part-way under the number it had before', async () => {
