@@ -7,6 +7,7 @@
 
 pub mod account;
 pub mod account_edit;
+mod account_mapped;
 pub mod airing;
 mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
@@ -114,6 +115,7 @@ pub mod session;
 pub mod settings;
 pub mod syncplay;
 pub(crate) mod title_match_store;
+pub(crate) mod tracker_map;
 
 pub use app_info::app_info;
 pub use external_player::{open_external_player, LaunchArgs};

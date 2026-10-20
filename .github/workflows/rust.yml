@@ -21,15 +21,17 @@ env:
 jobs:
   filter:
     # Outputs `relevant = true|false` — whether the diff touches
-    # anything Rust-shaped — and `picker = true|false` — whether it
-    # touches anything the picker oracle reads. tools/rust-workflow-
-    # filter.sh decides both, and the bats suite runs it over every
+    # anything Rust-shaped — `picker = true|false` — whether it touches
+    # anything the picker oracle reads — and `tracker_map = true|false`
+    # — the same for the episode-map oracle. tools/rust-workflow-
+    # filter.sh decides all three, and the bats suite runs it over every
     # shape of change it has to tell apart. On push events (merge to
-    # master) both are true and the whole pipeline runs.
+    # master) all are true and the whole pipeline runs.
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.detect.outputs.relevant }}
       picker: ${{ steps.detect.outputs.picker }}
+      tracker_map: ${{ steps.detect.outputs.tracker_map }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -238,6 +240,55 @@ jobs:
           python3 -I tests/picker-oracle/oracle.py cmp
           "$RUNNER_TEMP/cases.json" "$RUNNER_TEMP/out.json"
           --allowlist tests/picker-oracle/allowlist.json
+
+  tracker-map-oracle:
+    needs: filter
+    name: episode map oracle agreement
+    # The episode-map rules against the model of docs/title-resolution.md
+    # under tests/tracker-map-oracle/: every generated case and every
+    # recorded tracker mismatch must map, and write each episode, as the
+    # model says, or be carried by the allowlist with a reason. The
+    # recorded cases' golden is the ordinary
+    # `recorded_tracker_fixtures_map_as_the_golden_dump_records` test the
+    # `test` job already runs.
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.filter.outputs.tracker_map != 'true'
+        run: 'echo "Not required: no episode-map, tracker case, oracle or title-resolution changes in this PR"'
+      - if: needs.filter.outputs.tracker_map == 'true'
+        uses: actions/checkout@v4
+      - if: needs.filter.outputs.tracker_map == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.tracker_map == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - if: needs.filter.outputs.tracker_map == 'true'
+        name: The model's own tests
+        run: python3 -I -m unittest discover -s tests/tracker-map-oracle -p 'test_*.py'
+      - if: needs.filter.outputs.tracker_map == 'true'
+        name: Generate the cases
+        run: python3 -I tests/tracker-map-oracle/oracle.py gen "$RUNNER_TEMP/tracker-map-cases.json"
+      - if: needs.filter.outputs.tracker_map == 'true'
+        name: Map them
+        working-directory: backend
+        env:
+          TRACKER_MAP_ORACLE_CASES: ${{ runner.temp }}/tracker-map-cases.json
+          TRACKER_MAP_ORACLE_OUT: ${{ runner.temp }}/tracker-map-out.json
+        # The exact test name, and the outcome file has to exist after:
+        # a filter that matches no test exits 0 having run nothing.
+        run: |
+          cargo test --lib -- --ignored --exact account::episode_map_rules::oracle::run_the_tracker_map_oracle_cases
+          test -s "$TRACKER_MAP_ORACLE_OUT" || {
+            echo "run_the_tracker_map_oracle_cases wrote no outcomes to $TRACKER_MAP_ORACLE_OUT"
+            exit 1
+          }
+      - if: needs.filter.outputs.tracker_map == 'true'
+        name: Compare with the model
+        run: >
+          python3 -I tests/tracker-map-oracle/oracle.py cmp
+          "$RUNNER_TEMP/tracker-map-cases.json" "$RUNNER_TEMP/tracker-map-out.json"
+          --allowlist tests/tracker-map-oracle/allowlist.json
 
   coverage:
     needs: filter

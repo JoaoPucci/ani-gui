@@ -32,8 +32,8 @@ use crate::account::credentials::{
 };
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, TrackedMedia,
-    UserListProvider, UserProfile, UserStats,
+    CurrentEntry, EntryUpdate, ListEntry, MediaEvidence, ProviderKind, ProviderMediaId, Tokens,
+    TrackedMedia, UserListProvider, UserProfile, UserStats,
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
@@ -409,7 +409,19 @@ impl UserListProvider for AniListProvider {
         let bytes = self.post_graphql(tokens, &body).await?;
         parse_tracked_media_response(&bytes)
     }
+
+    async fn media_evidence(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<MediaEvidence> {
+        let body = serde_json::json!({
+            "query": evidence::MEDIA_EVIDENCE_GQL,
+            "variables": { "mediaId": id.0 },
+        });
+        let bytes = self.post_graphql(tokens, &body).await?;
+        evidence::parse_media_evidence_response(&bytes)
+    }
 }
+
+#[path = "anilist_user_evidence.rs"]
+mod evidence;
 
 /// Pure parser for the `Media { mediaListEntry { status progress } }`
 /// response. Returns `None` when `mediaListEntry` is `null` (the show
@@ -904,3 +916,7 @@ mod tests;
 #[cfg(test)]
 #[path = "anilist_user_tracked_test.rs"]
 mod tracked_tests;
+
+#[cfg(test)]
+#[path = "anilist_user_evidence_test.rs"]
+mod evidence_tests;

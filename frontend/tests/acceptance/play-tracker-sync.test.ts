@@ -8,10 +8,17 @@
 // on the page, from the Kitsu show it loaded: only Kitsu's own last
 // episode of a finished show sends it. Everything that depends on the
 // tracker's own row — its episode total, a rewatch, progress already
-// past the episode — is decided by the backend behind that route, and
-// is covered against MAL and AniList in
-// `backend/src/commands/account_tracker_total_test.rs`. These
-// scenarios pin the page's half: what each tracker's route receives.
+// past the episode — is decided by the backend behind that route. A
+// show whose episode map leaves it as Kitsu numbers it is covered
+// against MAL and AniList (a shorter entry against MAL only) in
+// `backend/src/commands/account_tracker_total_test.rs`. A show the map
+// files under other entries or numbers is written by
+// `backend/src/commands/account_mapped.rs`, which decides each entry's
+// completion from the map and does not read the page's `completed`;
+// that is covered in `backend/src/commands/account_mapped_test.rs`,
+// and the requests each tracker receives for it in
+// `account_mapped_wire_test.rs`. These scenarios pin the page's half:
+// what each tracker's route receives.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
