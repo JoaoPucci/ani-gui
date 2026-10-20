@@ -224,6 +224,24 @@ starting it, and delete it when you find it done.
   follows; a tagged family mixing widths would hold it. The generated
   set never reaches it, which is why it waited.
 
+- **Bracketed words after a division.** The docs say bracketed words
+  that are no catalogue tag are words ("Haikyuu!! (Shin Series)"), and
+  every rule but the version rule reads hianime's "(Uncensored)" tag
+  that way — but they do not settle how a title reads when such words
+  follow a division it would otherwise end on, and the model
+  (`tests/picker-oracle/oracle.py`) and the picker disagree there:
+  "Show 1 (Uncensored)" for "Show 2", "Kaiju No. 7 (Uncensored)" for
+  "Kaiju No. 8", "Show 2 0 (Uncensored)" for "Show 2", among some
+  ninety shapes. The provider carries such titles live — "Chained
+  Soldier Season 2 [Uncensored]" — and read as words the tag hides the
+  season from the title rule, so the tagged copy of a later season is
+  admitted for the first. The generated versions family leaves pools
+  whose title ends on a division out for that reason. The docs decide
+  first — most likely by reading a version tag as the structure readers
+  read a catalogue tag, which moves the probe head of the recorded
+  JoJo pools and wants them re-recorded — then the model and the
+  picker follow.
+
 - **The CRAP ratchet can disagree between CI and local.** Coverage
   attribution differs between the runner's toolchain and local ones,
   and once put the high-risk count at 26 in one and 25 in the other.
@@ -358,48 +376,6 @@ starting it, and delete it when you find it done.
   logged while the removal succeeds. Each of the first four is a link
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
-
-- **Everything the renderer asks the backend for shares one origin,
-  and so one connection budget.** The backend binds a single loopback
-  listener and serves the API, the image route and the stream proxy
-  from it, so the renderer reaches all three at the same
-  `http://127.0.0.1:<port>`; the one request that goes anywhere else
-  is the manual diagnostic route's, which hands a pasted URL straight
-  to the player, as the content security policy entry below records.
-  Chromium opens at most six connections at a time to one host and
-  port over plain HTTP, and a request past the sixth waits for a
-  socket whatever it is for. The requests that hold
-  a socket longest are the ones that wait on a provider: an
-  availability probe stays open until the provider answers or the
-  sixty-second resolve deadline passes — and, for a show before its
-  premiere that the provider does not list, through the AniList airing
-  lookup that follows the answer — the search page runs four of them
-  at once while its cards render and does not abort them when the
-  user leaves the page, and the image route on a cold cache holds its
-  socket for the upstream fetch, up to thirty seconds. With the
-  provider slow, the probes and a couple of posters fill the six, and
-  the next page's own metadata request — a cache hit the backend would
-  answer in milliseconds — queues behind them for a socket. To the
-  user that is a page that takes tens of seconds to open, with the
-  probes themselves ending as 504s. Seen on 2026-10-15 against a slow
-  hianime: pages stalled while the backend was idle. A proxied
-  stream's segment fetches draw on the same six during playback.
-
-  The cheap part of the answer is a second loopback listener, so that
-  what waits on a provider — images, probes, or both — spends a budget
-  of its own and the API keeps one to itself; the proxy's segment
-  traffic argues for a listener of its own on the same grounds. The
-  costlier part is that the backend announces one base URL in its
-  handshake and the renderer builds every backend URL it composes
-  from it,
-  while the proxy stamps the playlist and segment URLs it rewrites
-  from the same origin, so a second
-  origin is a second line in the handshake and a second base on the
-  window. It waited because the search page, which suffers most,
-  already bounds the damage with a render deadline and the probe pool,
-  and because the layout of listeners is also where the content
-  security policy deferred below will name its origins; the two are
-  better decided together.
 
 ## Interface
 
@@ -844,6 +820,11 @@ starting it, and delete it when you find it done.
   proxy like every other stream, or retires it. And the HLS player
   attaches media through blob URLs, which no origin-shaped rule
   covers.
+
+  The loopback origins it would allow are the backend's lanes — six,
+  on ports the kernel assigns at every start and the handshake
+  announces — so the policy is one the main process writes for each
+  launch rather than a constant.
 
   It waited for a play to verify against — one that goes through
   the proxy and the event stream the page listens to. At the time

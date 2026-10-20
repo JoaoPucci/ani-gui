@@ -1,4 +1,5 @@
-import type { AvailabilityResponse } from '$lib/api';
+import { probeScope, type ProbeRun } from '$lib/availability/probe-scope';
+import type { AvailabilityResponse, VersionInfo } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
 import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
 
@@ -50,6 +51,9 @@ export interface CapGateAnswer {
 	available: boolean;
 	/** Non-integer episode tags — recaps and specials, e.g. "1061.5". */
 	extraEpisodes: string[];
+	/** The show's versions, when its pick has several; none otherwise —
+	 *  a refused or delisted show among them. */
+	versions: VersionInfo[];
 	/** True when `available: false` is the provider refusing the title
 	 *  by name. */
 	refused?: boolean;
@@ -87,6 +91,11 @@ export interface CapGateRefresh {
 	 *  unconfirmed answer carries means "could not look", not "there
 	 *  are none", and writing it would delete specials that exist. */
 	extraEpisodes: string[] | null;
+	/** The show's versions, null when the answer was unconfirmed for
+	 *  the same reason: they come from the fetch the count does, and
+	 *  an empty list from an answer that could not look would take a
+	 *  choice away that exists. */
+	versions: VersionInfo[] | null;
 }
 
 /**
@@ -110,6 +119,7 @@ export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null
 		approximate: r.episode_count_approximate === true,
 		available,
 		extraEpisodes: r.extra_episodes ?? [],
+		versions: r.versions ?? [],
 		// Present only when true, as every answer before refusals reads.
 		...(refusedByName(r) ? { refused: true } : {})
 	};
@@ -118,8 +128,9 @@ export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null
 export interface CapGateProbeDeps {
 	/** Ask the provider about THIS SHOW, skipping the cached row. Answers
 	 *  with the whole fresh row; null when it could not answer at all.
-	 *  Takes no episode: the question is show-level. */
-	probe: () => Promise<CapGateAnswer | null>;
+	 *  Takes no episode: the question is show-level. `signal` is the
+	 *  recheck's own run, which `supersede` ends. */
+	probe: (signal?: AbortSignal) => Promise<CapGateAnswer | null>;
 	/** What the answer will be about — read when the click goes out and
 	 *  again when it lands. Everything that changes the meaning of a
 	 *  count belongs in here: the show, because both routes reuse one
@@ -151,7 +162,7 @@ export interface CapGateProbeDeps {
 }
 
 /**
- * Which parts of an answer a route may write. Three fields, three
+ * Which parts of an answer a route may write. Four fields, three
  * different reasons to trust them.
  *
  * The verdict always. It comes from the search, which either found
@@ -163,7 +174,8 @@ export interface CapGateProbeDeps {
  * did not answer — is the only thing that makes the empty list a
  * "could not look" rather than a "there are none". A delisted show
  * genuinely has none, and a show whose episodes are all non-integer
- * has a real list alongside a null count.
+ * has a real list alongside a null count. The show's versions are the
+ * same fetch's, and go with the extras.
  *
  * The count whenever it is confirmed — including when there is no
  * number. A count that can read one high must not replace a real
@@ -178,22 +190,36 @@ function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
 		available: answer.available,
 		...(answer.refused === true ? { refused: true } : {}),
 		count: answer.approximate ? null : (answer.count ?? 0),
-		extraEpisodes: answer.approximate ? null : answer.extraEpisodes
+		extraEpisodes: answer.approximate ? null : answer.extraEpisodes,
+		versions: answer.approximate ? null : answer.versions
 	};
 }
 
 export function createCapGateProbe(deps: CapGateProbeDeps): {
 	request: (episode: number) => void;
 	isProbing: (episode: number) => boolean;
+	/** The page's context has moved on (another mode, another show on
+	 *  the same route): stop the recheck's probe, whose answer would
+	 *  be discarded anyway. Its tiles are let go as superseded. */
+	supersede: () => void;
 } {
 	/** The shared in-flight lookup, or null when none is out. */
 	let pending: Promise<CapGateAnswer | null> | null = null;
+	/** The run the in-flight lookup probes under. */
+	let run: ProbeRun | null = null;
 	/** Tiles waiting on it — per episode, because the spinner belongs
 	 *  to the tile the user pressed rather than to the whole strip. */
 	const waiting = new Set<number>();
 
 	return {
 		isProbing: (episode) => waiting.has(episode),
+		supersede: () => {
+			run?.end();
+			run = null;
+			// A click from here on asks afresh rather than joining the
+			// stopped lookup.
+			pending = null;
+		},
 		request: (episode) => {
 			if (waiting.has(episode)) return;
 			waiting.add(episode);
@@ -206,9 +232,17 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// Cleared as soon as the request settles, so a click after
 			// this one gets a current answer instead of joining a
 			// lookup that has already finished.
-			pending ??= deps.probe().finally(() => {
-				pending = null;
-			});
+			if (!pending) {
+				const own = probeScope.begin();
+				run = own;
+				const asking: Promise<CapGateAnswer | null> = deps.probe(own.signal).finally(() => {
+					// Only its own: a lookup superseded and replaced must
+					// not clear the one that replaced it.
+					if (pending === asking) pending = null;
+					if (run === own) run = null;
+				});
+				pending = asking;
+			}
 			void pending
 				.then((answer) => {
 					if (deps.currentContext() !== asked) return deps.onSuperseded(episode);

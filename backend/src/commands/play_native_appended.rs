@@ -4,8 +4,8 @@
 //! whole-numbered rows after the last episode Kitsu counts — Noragami
 //! lists its two OADs as episodes 13 and 14 of a twelve-episode show.
 //! Read as whole episodes they become tiles 13 and 14, raise the cap
-//! past the show's end, and send tracker progress past the count the
-//! trackers hold. When Kitsu and AniList agree conclusively that the
+//! past the show's end, and move the trackers' progress for rows they
+//! do not count. When Kitsu and AniList agree conclusively that the
 //! show ended at its count, and the listing's own titles line up with
 //! Kitsu's up to that count, the rows past it are read as extras of
 //! their own instead: tagged `12.1`, `12.2` beside episode 12, as a
@@ -173,12 +173,32 @@ pub async fn fit_appended(
             source.remember(fitted.as_ref().map(|_| &reading));
             fitted
         }
-        _ => (source.remembered() == Some(reading)).then(|| tag_past(&picked.episodes, count)),
+        _ => source
+            .remembered()
+            .is_some_and(|kept| kept == reading || kept_for_a_version(&picked, &kept))
+            .then(|| tag_past(&picked.episodes, count)),
     };
     match fitted {
-        Some(episodes) => PickedShow { episodes, ..picked },
+        // Every version is the same episodes under its own ids: the
+        // reading holds for each of them.
+        Some(episodes) => PickedShow {
+            versions: super::play_native_versions::fitted_versions(&picked.versions, &episodes),
+            episodes,
+            ..picked
+        },
         None => picked,
     }
+}
+
+/// Whether `kept` was proved on another version of `picked` — the same
+/// episodes under that copy's slug and ids — so it stands for the
+/// version that plays as for the one it was proved on.
+fn kept_for_a_version(picked: &PickedShow, kept: &Remembered) -> bool {
+    picked.versions.iter().any(|v| {
+        v.hit.slug == kept.slug
+            && v.episodes.len() == picked.episodes.len()
+            && past_ids(&v.episodes, kept.count) == kept.ids
+    })
 }
 
 #[path = "play_native_appended_rule.rs"]

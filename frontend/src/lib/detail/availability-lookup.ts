@@ -14,6 +14,7 @@
  * this side, where it can be driven directly.
  */
 
+import { probeScope } from '$lib/availability/probe-scope';
 import type { AvailabilityArgs, AvailabilityResponse } from '$lib/api';
 import type { AvailabilityAnswer, AvailabilityPatch } from './availability-writeback';
 import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
@@ -30,7 +31,7 @@ export interface AvailabilitySubject {
 }
 
 export interface AvailabilityLookupDeps {
-	check: (args: AvailabilityArgs) => Promise<AvailabilityResponse>;
+	check: (args: AvailabilityArgs, opts?: { signal?: AbortSignal }) => Promise<AvailabilityResponse>;
 	/** Opens the writeback ticket. Called before the request goes out,
 	 *  so what it captures describes the moment the question was asked. */
 	begin: () => (answer: AvailabilityAnswer) => AvailabilityPatch;
@@ -63,20 +64,26 @@ export function startAvailabilityLookup(
 	deps: AvailabilityLookupDeps
 ): () => void {
 	let cancelled = false;
+	// The lookup's own run: a lookup cancelled — asked again for another
+	// mode or show on the same page — stops its probe too.
+	const run = probeScope.begin();
 	deps.setResolved(false);
 	deps.setListed(null);
 	const settle = deps.begin();
 	void deps
-		.check({
-			title: subject.title,
-			mode,
-			alt_titles: subject.altTitles,
-			episode_count: subject.episodeCount,
-			year: subject.year,
-			kitsu_id: subject.kitsuId,
-			status: subject.status,
-			subtype: subject.subtype
-		})
+		.check(
+			{
+				title: subject.title,
+				mode,
+				alt_titles: subject.altTitles,
+				episode_count: subject.episodeCount,
+				year: subject.year,
+				kitsu_id: subject.kitsuId,
+				status: subject.status,
+				subtype: subject.subtype
+			},
+			{ signal: run.signal }
+		)
 		.then((r) => {
 			if (cancelled) return;
 			// An unsettled answer reached the provider and established
@@ -89,10 +96,13 @@ export function startAvailabilityLookup(
 			// Whatever a re-ask has since established is the re-ask's —
 			// it is newer and it bypassed the cache. Anything it left
 			// unanswered is still this lookup's to fill.
+			// The show's versions travel in the patch, owned with the
+			// count: a refused pool has no pick, so a refusal names none.
 			const patch = settle({
 				available,
 				count: r.episode_count,
 				extraEpisodes: r.extra_episodes,
+				versions: r.versions ?? [],
 				...(refusedByName(r) ? { refused: true } : {})
 			});
 			if (patch.available !== undefined) deps.setListed(patch.available);
@@ -107,5 +117,6 @@ export function startAvailabilityLookup(
 		});
 	return () => {
 		cancelled = true;
+		run.end();
 	};
 }

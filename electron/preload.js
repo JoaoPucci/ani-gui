@@ -1,10 +1,11 @@
 // Electron preload — bridges main → renderer with contextIsolation on.
 //
-// Only one piece of state crosses the bridge: the localhost URL of
-// the Rust backend. The main process discovered the kernel-assigned
-// port at startup and passed it via `webPreferences.additionalArguments`
-// as `--ani-gui-api-base=http://127.0.0.1:<port>`. We parse it here
-// and surface it as `window.aniGui.apiBase`.
+// The backend's localhost URLs cross the bridge: the API's, which the
+// main process discovered at startup and passed via
+// `webPreferences.additionalArguments` as
+// `--ani-gui-api-base=http://127.0.0.1:<port>` and which is parsed here
+// into `window.aniGui.apiBase`, and its other lanes, parsed further
+// down into `window.aniGui.lanes`.
 //
 // The frontend's `lib/api.ts > apiBase()` checks `window.aniGui.apiBase`
 // first; once this value is present, all `fetch()` calls land on the
@@ -45,9 +46,24 @@ const internalSecret = internalSecretArg
 	? internalSecretArg.slice(internalSecretFlag.length)
 	: null;
 
+// The backend's other loopback origins, one per class of traffic —
+// `--ani-gui-lane-<name>=<origin>`, one flag per lane (see
+// lib/window-args.cjs, which writes them). Each spends a connection
+// budget of its own, so a request that holds a socket for as long as a
+// provider takes never queues the rest behind it. A window opened with
+// none has an empty map, and the renderer reaches everything at
+// apiBase.
+const laneFlag = /^--ani-gui-lane-([a-z]+)=(\S+)$/;
+const lanes = {};
+for (const a of process.argv) {
+	const lane = laneFlag.exec(a);
+	if (lane) lanes[lane[1]] = lane[2];
+}
+
 contextBridge.exposeInMainWorld('aniGui', {
 	apiBase,
 	internalSecret,
+	lanes,
 
 	// Surface `process.platform` so renderer-side UI can tailor copy
 	// per OS (Windows installer vs Linux package manager vs macOS
