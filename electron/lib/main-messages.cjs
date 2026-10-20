@@ -27,9 +27,11 @@ const TRANSLATIONS = {
     bootFailedDetail: (reason) =>
       `The app ran into a problem while starting and has to close.\n\nDetails: ${reason}`,
     close: "Close",
-    downloadsTitle: "Active downloads",
+    downloadsTitle: "Unfinished downloads",
+    // Unfinished, not in progress: the count takes in downloads still
+    // queued, which a quit loses as much as a running one.
     downloadsInProgress: (count) =>
-      count === 1 ? "1 download in progress." : `${count} downloads in progress.`,
+      count === 1 ? "1 download not finished." : `${count} downloads not finished.`,
     downloadsQuitDetail: "They will be cancelled if you quit. Continue?",
     cancel: "Cancel",
     quitAnyway: "Quit anyway",
@@ -39,9 +41,9 @@ const TRANSLATIONS = {
     bootFailedDetail: (reason) =>
       `O aplicativo encontrou um problema ao iniciar e precisa ser fechado.\n\nDetalhes: ${reason}`,
     close: "Fechar",
-    downloadsTitle: "Downloads ativos",
+    downloadsTitle: "Downloads não concluídos",
     downloadsInProgress: (count) =>
-      count === 1 ? "1 download em andamento." : `${count} downloads em andamento.`,
+      count === 1 ? "1 download não concluído." : `${count} downloads não concluídos.`,
     downloadsQuitDetail: "Eles serão cancelados se você sair. Continuar?",
     cancel: "Cancelar",
     quitAnyway: "Sair mesmo assim",
@@ -51,9 +53,9 @@ const TRANSLATIONS = {
     bootFailedDetail: (reason) =>
       `La aplicación tuvo un problema al iniciar y debe cerrarse.\n\nDetalles: ${reason}`,
     close: "Cerrar",
-    downloadsTitle: "Descargas activas",
+    downloadsTitle: "Descargas sin terminar",
     downloadsInProgress: (count) =>
-      count === 1 ? "1 descarga en curso." : `${count} descargas en curso.`,
+      count === 1 ? "1 descarga sin terminar." : `${count} descargas sin terminar.`,
     downloadsQuitDetail: "Se cancelarán si sales. ¿Continuar?",
     cancel: "Cancelar",
     quitAnyway: "Salir de todos modos",
@@ -63,10 +65,10 @@ const TRANSLATIONS = {
     bootFailedDetail: (reason) =>
       `При запуске приложения возникла проблема, и оно будет закрыто.\n\nПодробности: ${reason}`,
     close: "Закрыть",
-    downloadsTitle: "Активные загрузки",
+    downloadsTitle: "Незавершённые загрузки",
     // Counted after a colon, so the noun keeps one form for any
     // number; Russian would otherwise need three.
-    downloadsInProgress: (count) => `Активных загрузок: ${count}.`,
+    downloadsInProgress: (count) => `Незавершённых загрузок: ${count}.`,
     downloadsQuitDetail: "При выходе они будут отменены. Продолжить?",
     cancel: "Отмена",
     quitAnyway: "Всё равно выйти",

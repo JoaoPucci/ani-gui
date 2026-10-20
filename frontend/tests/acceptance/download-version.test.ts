@@ -39,6 +39,7 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests, type VersionInfo } from '../../src/lib/api';
 import { applyChoice } from '../../src/lib/versions/version-choice';
+import { downloadStore } from '../../src/lib/download/store.svelte';
 
 const KITSU_ID = '7154';
 const TITLE = "JoJo's Bizarre Adventure";
@@ -82,7 +83,13 @@ beforeEach(() => {
 	document.body.appendChild(target);
 });
 
-afterEach(() => {
+afterEach(async () => {
+	// Each case's download stays open — nothing ends its stream — and
+	// holds a slot in the download queue, which outlives the case. Left
+	// running, a later case's download would wait as queued behind the
+	// earlier cases' instead of opening its stream.
+	for (const item of [...downloadStore.items]) downloadStore.cancel(item.id);
+	await new Promise((r) => setTimeout(r, 0));
 	if (app) unmount(app);
 	app = null;
 	delete g.EventSource;
