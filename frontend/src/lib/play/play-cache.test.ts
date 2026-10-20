@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CreateSessionResponse, PlayProgress } from '$lib/api';
 import {
 	__resetPlayCacheForTests,
+	clearBackgroundForOtherVersions,
 	clearBackgroundForShow,
 	clearForShow,
 	getOrFire,
@@ -473,6 +474,71 @@ describe('clearBackgroundForShow', () => {
 		const reuse = vi.fn(() => Promise.resolve(fakeResp('again')));
 		expect(await getOrFire(makeKey('show-1', 5, 'sub', 'best'), reuse)).toEqual(fakeResp('done'));
 		expect(reuse).not.toHaveBeenCalled();
+	});
+});
+
+describe('clearBackgroundForOtherVersions', () => {
+	/** A fire that never answers and reports whether it was aborted. */
+	function heldFire() {
+		const seen: { signal?: AbortSignal } = {};
+		const fire = (_emit: (p: PlayProgress) => void, signal: AbortSignal) => {
+			seen.signal = signal;
+			return new Promise<CreateSessionResponse>((_resolve, reject) => {
+				signal.addEventListener('abort', () => reject(new Error('aborted')));
+			});
+		};
+		return { fire, seen };
+	}
+
+	// A new version choice re-warms the show under the chosen version's
+	// keys. The other version's warms are for a listing nobody will
+	// play now, and left running they hold the prefetch slots and the
+	// resolve lane ahead of the chosen version's.
+	it("aborts the show's warms of every other version, running or queued", async () => {
+		const unversioned = heldFire();
+		const uncensored = heldFire();
+		const queued = heldFire();
+		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best'), unversioned.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best', 'uncensored'), uncensored.fire);
+		const c = getOrFire(makeKey('show-1', 3, 'sub', 'best'), queued.fire);
+		for (const p of [a, b, c]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', 'standard');
+		expect(unversioned.seen.signal?.aborted).toBe(true);
+		expect(uncensored.seen.signal?.aborted).toBe(true);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(queued.seen.signal).toBeUndefined();
+		const again = vi.fn(() => Promise.resolve(fakeResp('fresh')));
+		await getOrFire(makeKey('show-1', 1, 'sub', 'best'), again);
+		expect(again).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves the chosen version's warms, a click's own play and another show's", async () => {
+		const chosen = heldFire();
+		const click = heldFire();
+		const other = heldFire();
+		// The two warms take both prefetch slots; the click cuts past.
+		const r = getOrFire(makeKey('show-2', 1, 'sub', 'best'), other.fire);
+		const p = getOrFire(makeKey('show-1', 1, 'sub', 'best', 'standard'), chosen.fire);
+		const q = getOrFire(makeKey('show-1', 2, 'sub', 'best'), click.fire, () => {});
+		for (const x of [p, q, r]) x.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', 'standard');
+		expect(chosen.seen.signal?.aborted).toBe(false);
+		expect(click.seen.signal?.aborted).toBe(false);
+		expect(other.seen.signal?.aborted).toBe(false);
+	});
+
+	it('reads no version as the choice of the default copy', async () => {
+		const unversioned = heldFire();
+		const standard = heldFire();
+		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best'), unversioned.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best', 'standard'), standard.fire);
+		for (const p of [a, b]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', undefined);
+		expect(unversioned.seen.signal?.aborted).toBe(false);
+		expect(standard.seen.signal?.aborted).toBe(true);
 	});
 });
 
