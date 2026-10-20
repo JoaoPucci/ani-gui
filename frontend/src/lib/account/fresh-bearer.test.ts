@@ -77,7 +77,7 @@ describe('freshBearerFor', () => {
 	});
 
 	it('coalesces concurrent refreshes for the same provider into one exchange', async () => {
-		// Codex P2 #3420173434: two call sites (Watch Later refresh + a
+		// Two call sites (Watch Later refresh + a
 		// watched-progress sync) hitting the same near-expiry provider must
 		// share ONE refresh-token exchange, not start two independent
 		// rotations whose writes race.
@@ -122,7 +122,7 @@ describe('freshBearerFor', () => {
 	});
 
 	it('does not start a refresh while an account change (disconnect) is in progress', async () => {
-		// Codex P2 #3421338541: disconnectAccount calls beginAccountChange()
+		// disconnectAccount calls beginAccountChange()
 		// (generation bumped, accountChanging set) but leaves byProvider as
 		// `connected` until the async clear finishes. A refresh entering that
 		// window sees a stable already-bumped generation, so its checks pass
@@ -146,7 +146,7 @@ describe('freshBearerFor', () => {
 	});
 
 	it('does not coalesce onto a pending refresh after the generation changes mid-flight', async () => {
-		// Codex P2 #3420249568: a refresh is in flight for the current
+		// A refresh is in flight for the current
 		// connection; the user reconnects the same provider (generation
 		// bumps, new account). A subsequent caller must NOT reuse the old
 		// promise — when that resolves `superseded`, freshBearer falls back

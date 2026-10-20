@@ -359,6 +359,27 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
+- **The player's delisted verdict can outlive the audio it was for.**
+  The play page keeps the provider's last "does it list this show"
+  answer (`showListed`) and its playable count across a lookup that
+  fails, by design, and does not clear them when the audio changes.
+  Settings landing after the default sub lookup answered can therefore
+  leave a sub verdict standing while the page asks about dub. The
+  dead-end reading — the switch, the player-error overlay's Reload and
+  the automatic recovery — takes the verdict and the count only for
+  the audio they were answered for. The rest of the page does not. The
+  episode strip disables every card for a sub "not listed" and dims
+  cards past a sub count, in dub. The episode cap the count sets also
+  hides Next and stops auto-play-next at the sub count, caps the
+  download range, and bounds the warm. Each holds until the dub answer
+  lands, and for the rest of the visit when that lookup fails or comes
+  back unsettled. Clearing the verdict on an audio change would let a
+  failed lookup open the page to a show the provider dropped, which is
+  why it is retained; the fix is every reader taking the stamped
+  verdict and count as the dead end does. It waited because the
+  detail page reads its verdict and count the same way, and the two
+  pages are one change.
+
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.

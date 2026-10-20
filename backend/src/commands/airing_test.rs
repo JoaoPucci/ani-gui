@@ -98,7 +98,7 @@ async fn airing_get_defaults_when_kitsu_has_no_mappings() {
 }
 
 // --- airing_ttl_for -----------------------------------------------
-// Codex P2 #3565710322: a row cached shortly before a scheduled
+// A row cached shortly before a scheduled
 // airing must not outlive the airing by the full fixed TTL, or the
 // just-dropped episode stays greyed for hours. The TTL caps at the
 // schedule boundary plus a short grace.

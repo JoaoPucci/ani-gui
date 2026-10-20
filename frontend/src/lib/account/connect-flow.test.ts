@@ -76,7 +76,7 @@ describe('connectAccount', () => {
 		expect(r.kind).toBe('persist_failed');
 	});
 
-	// Codex P2 #3372942245: Linux without a usable keyring (libsecret
+	// Linux without a usable keyring (libsecret
 	// missing / kwallet locked) makes safeStorage fall back to
 	// `basic_text`; main.js refuses to persist and returns
 	// `encryption_unavailable`. The flow must thread that kind through
@@ -182,7 +182,7 @@ describe('disconnectAccount', () => {
 		};
 	}
 
-	it('signals beginAccountChange before any async clear (Codex P2 #3416762784)', async () => {
+	it('signals beginAccountChange before any async clear', async () => {
 		const deps = disconnectDeps();
 		const order: string[] = [];
 		(deps.beginAccountChange as ReturnType<typeof vi.fn>).mockImplementation(() =>
@@ -211,7 +211,7 @@ describe('disconnectAccount', () => {
 		expect(deps.dropProviderCache).not.toHaveBeenCalled();
 	});
 
-	it('uses dropProviderCache when there is no prior account (Codex P2 #3371658227)', async () => {
+	it('uses dropProviderCache when there is no prior account', async () => {
 		// Orphan-token disconnect: hydrate found the keychain
 		// unreadable, so the store has no bearer + no user_id. The
 		// per-user dropListCache can't run; fall through to the
@@ -226,7 +226,7 @@ describe('disconnectAccount', () => {
 
 	it('uses dropProviderCache for error-with-no-account orphan states', async () => {
 		// Same orphan-cleanup path triggered from the unreadable-token
-		// error state set by hydrate() in #3371530183.
+		// error state hydrate() sets when the token cannot be read.
 		const deps = disconnectDeps();
 		const s: ProviderState = { kind: 'error', account: null, message: 'Keychain read failed' };
 		const r = await disconnectAccount('anilist', s, deps);
@@ -253,7 +253,7 @@ describe('disconnectAccount', () => {
 		expect(r.kind).toBe('ok');
 	});
 
-	it('returns token_clear_failed when safeStorage clear fails (Codex P2 #3369988183)', async () => {
+	it('returns token_clear_failed when safeStorage clear fails', async () => {
 		// If clearPersistedAccount returns false the bearer is still on
 		// disk and hydrate() will restore the account next launch.
 		// Telling the user they're disconnected in that state is a lie.
@@ -266,7 +266,7 @@ describe('disconnectAccount', () => {
 });
 
 describe('restoreAfterFailedConnect', () => {
-	// Codex P2 #3370011851: failed reconnect should NOT discard the
+	// Failed reconnect should NOT discard the
 	// account from the UI when the underlying token is still on disk.
 	it('keeps expired-with-account when reconnect fails', () => {
 		const s: ProviderState = { kind: 'expired', account: payload() };
@@ -278,7 +278,7 @@ describe('restoreAfterFailedConnect', () => {
 		expect(restoreAfterFailedConnect(s)).toEqual(s);
 	});
 
-	// Codex P2 #3372887747: an error-without-account state means hydrate
+	// An error-without-account state means hydrate
 	// detected an orphan token file it couldn't decrypt. The page shows
 	// Disconnect so the user can purge the file. If they click Connect
 	// from there and OAuth fails (cancel, timeout, api_error), falling

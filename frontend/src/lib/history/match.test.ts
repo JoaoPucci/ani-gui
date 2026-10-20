@@ -549,7 +549,7 @@ describe('resolveKitsuMatch', () => {
 	});
 
 	it('cour > 1 reverse-map hit with absent slug preserves the cache (no eviction)', async () => {
-		// Codex P2: an absent slug is missing evidence, not proof of
+		// An absent slug is missing evidence, not proof of
 		// cross-cour poisoning. Evicting on slug=null churns valid rows
 		// whose Kitsu detail payload simply doesn't include the slug.
 		const preliminary = resolveHistoryEntry(

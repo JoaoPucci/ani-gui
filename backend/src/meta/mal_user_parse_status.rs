@@ -49,8 +49,7 @@ pub(in crate::meta) fn parse_list_status_response(body: &[u8], media_id: u32) ->
 /// `my_list_status` is absent when the show isn't on the user's list →
 /// `None`. An unrecognized status maps to `ListStatus::Watching` so a
 /// malformed enum can't suppress the write-back reconcile. Powers the
-/// monotonic + status-preserving guard (Codex P1 #3386909281, P2
-/// #3387319861 / #3387383171).
+/// monotonic + status-preserving guard.
 pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<CurrentEntry>> {
     #[derive(Deserialize)]
     struct Wire {

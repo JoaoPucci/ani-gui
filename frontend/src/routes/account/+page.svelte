@@ -85,7 +85,7 @@
 	// True while a primary-tracker write is in flight. Gates the radios
 	// so a second pick can't race the first: without it, clicking again
 	// before settingsPut resolves passes a stale `config` into the
-	// helper and the slower response wins (Codex P2 #3413276568).
+	// helper and the slower response wins.
 	let savingPrimary = $state(false);
 
 	async function setPrimary(value: string) {
@@ -110,7 +110,7 @@
 		// expired (or connect-from-error-with-account) can restore the
 		// UI to it instead of collapsing to `disconnected` — the
 		// persisted token is still on disk and hydrate() would resurrect
-		// it on next launch anyway (Codex P2 #3370011851).
+		// it on next launch anyway.
 		const prev = accountStore.byProvider[provider];
 		accountStore.setConnecting(provider);
 		const r = await connectAccount(provider, {
@@ -124,9 +124,9 @@
 		});
 		if (r.kind === 'connected') {
 			accountStore.setConnected(provider, r.account);
-			// Codex P2 #3370057922: seed user_list_cache for the rails +
-			// account stats that read from it (Watch Later in PR #2,
-			// progress/score in PR #4). The bearer is good and the token
+			// Seed user_list_cache for the rails +
+			// account stats that read from it (Watch Later,
+			// progress/score). The bearer is good and the token
 			// is already persisted; if this errors the connection is
 			// still valid — we just leave the cache empty and the next
 			// rail/sync mount will warm it. Best-effort, not fatal.
@@ -150,7 +150,7 @@
 			return;
 		}
 		if (r.kind === 'persist_failed') {
-			// Codex P2 #3372942245: surface the underlying keychain
+			// Surface the underlying keychain
 			// failure so Linux users without a usable libsecret/kwallet
 			// see "install your OS keyring" instead of the generic
 			// sign-in error.
@@ -193,7 +193,7 @@
 	}
 
 	async function cancelConnect() {
-		// Codex P2 #3370087029: without this the `connecting` state
+		// Without this the `connecting` state
 		// only resolves after openOAuth's 5-minute server timeout — the
 		// user can't recover until then. cancelOAuth stops the
 		// loopback server immediately; the awaiting connectAccount
@@ -201,7 +201,7 @@
 		// and the prior `disconnected` state is restored via the
 		// existing restoreAfterFailedConnect path. (The OAuth server
 		// is process-singleton across providers, so we don't need a
-		// provider arg — MAL in PR #3 reuses the same server.)
+		// provider arg — MAL reuses the same server.)
 		await cancelOAuth();
 	}
 
@@ -210,14 +210,14 @@
 		const r = await disconnectAccount(provider, prev, {
 			// Supersede any in-flight boot refresh before the async clear
 			// (disconnectAccount calls this first) so a refresh resolving
-			// mid-disconnect can't re-persist/reconnect (Codex P2 #3416668470).
+			// mid-disconnect can't re-persist/reconnect.
 			beginAccountChange: () => accountStore.beginAccountChange(provider),
 			clearPersistedAccount,
 			dropListCache,
 			dropProviderCache
 		});
 		if (r.kind === 'token_clear_failed') {
-			// Codex P2 #3369988183: the bearer is still on disk; telling
+			// The bearer is still on disk; telling
 			// the user they're disconnected would be a lie because the
 			// next hydrate() restores the account. Leave state as-is and
 			// surface the failure as an error.
@@ -329,7 +329,7 @@
 						{m.account_card_action_connect()}
 					</button>
 				{:else if state.kind === 'error' && !state.account}
-					<!-- Codex P2 #3371530183: error-with-no-account covers the
+					<!-- Error-with-no-account covers the
 					     orphan-file case where hydrate() couldn't read the
 					     keychain. Offer Disconnect so the user can call
 					     clearToken and clean up before reconnecting; the

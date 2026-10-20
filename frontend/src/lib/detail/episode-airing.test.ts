@@ -61,7 +61,7 @@ describe('epAirState', () => {
 	});
 
 	it('keeps released decimal extras playable', () => {
-		// Codex P2 #3565610386: The provider exposes recaps/specials as
+		// The provider exposes recaps/specials as
 		// decimal tags (2.5 airs between regular eps 2 and 3). AniList
 		// only counts regular episodes, so a strict n <= aired check
 		// would grey a streamable 2.5 until ep 3 airs. Floor-compare:
@@ -77,7 +77,7 @@ describe('epAirState', () => {
 
 describe('airedCap', () => {
 	it('clamps the episode cap to the aired count', () => {
-		// Codex P2 #3565649454: the primary Play/Continue CTA computes
+		// The primary Play/Continue CTA computes
 		// its target from the cap; without the clamp a user watched
 		// through the aired count gets "Continue" into an unaired
 		// episode — the same doomed resolution the tiles disable.
@@ -102,7 +102,7 @@ describe('airedCap', () => {
 	});
 
 	it('collapses to zero for a not-yet-premiered show', () => {
-		// Drives the primary CTA block (Codex P2 #3565666393): a
+		// Drives the primary CTA block: a
 		// searchable provider stub with nothing aired must not offer
 		// Play episode 1.
 		expect(airedCap(12, { aired: 0, next_episode: null, next_airing_at: null })).toBe(0);
@@ -111,7 +111,7 @@ describe('airedCap', () => {
 
 describe('airedTargets', () => {
 	it('drops unaired episode numbers from a prefetch list', () => {
-		// Codex P2 #3565590966: the detail-page warm must not spend
+		// The detail-page warm must not spend
 		// scraper slots resolving greyed-out future episodes.
 		expect(airedTargets([1, 2, 3, 4, 12], RELEASING)).toEqual([1, 2]);
 	});
@@ -162,7 +162,7 @@ describe('displayCap', () => {
 
 describe('minCap', () => {
 	it('takes the smaller of two known caps', () => {
-		// Codex P2 #3566042284: with the padded strip,
+		// With the padded strip,
 		// knownAvailableEpisodes is usually null, so the download
 		// modal's range clamped only to the aired count (5) even when
 		// the provider has just 2 catalogued — a 1-5 download starts with
@@ -183,7 +183,7 @@ describe('minCap', () => {
 
 describe('beyondPlayable', () => {
 	it('gates integer episodes above the provider playable count', () => {
-		// Codex P2 #3565988141/#3565988143: AniList can report more
+		// AniList can report more
 		// aired episodes than the provider has catalogued (aired=5,
 		// playable=2 during lag). Those tiles are aired per epAirState
 		// but not streamable — clicks and prefetches must not fire.
@@ -210,7 +210,7 @@ describe('beyondPlayable', () => {
 
 describe('airingPending', () => {
 	it('reports pending while a non-finished show awaits its airing fetch', () => {
-		// Codex P2 #3565710325: availability can return from cache
+		// Availability can return from cache
 		// before airingGet finishes; treating the in-flight lookup as
 		// "unknown airing data" leaves every tile and the primary CTA
 		// interactive for a beat — long enough for a quick click to
