@@ -122,6 +122,10 @@ describe('home Continue Watching', () => {
 			http.get(`${API_BASE}/api/history`, () =>
 				HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
 			),
+			// The row read again before it resumes reads as it did.
+			http.get(`${API_BASE}/api/history/allanime-1/number`, () =>
+				HttpResponse.json({ ep_no: '3' })
+			),
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
 				HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
 			),
@@ -176,6 +180,9 @@ describe('home Continue Watching', () => {
 				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config('sub'))),
 				http.get(`${API_BASE}/api/history`, () =>
 					HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+				),
+				http.get(`${API_BASE}/api/history/allanime-1/number`, () =>
+					HttpResponse.json({ ep_no: '3' })
 				),
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
 					HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
