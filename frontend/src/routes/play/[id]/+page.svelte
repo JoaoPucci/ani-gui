@@ -1009,6 +1009,11 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
+		// The writeback and the re-ask have both checked that the answer
+		// is about the show and audio on screen, so it is stamped with
+		// them for the dead-end reading below.
+		if (patch.available !== undefined) listedFor = verdictKey();
+		if (patch.count !== undefined) countedFor = verdictKey();
 		if (patch.available !== undefined) {
 			showListed = patch.available;
 			// Whether that verdict is a refusal by name travels with it
@@ -1155,6 +1160,11 @@
 	 *  cannot express "there is nothing here" — it just stays where it
 	 *  was and keeps every episode under it looking playable. */
 	let showListed = $state<boolean | null>(null);
+	/** The show and audio `showListed` and `playableEpisodeCount` were
+	 *  answered for ({@link standingOf}). */
+	let listedFor = $state<string | null>(null);
+	let countedFor = $state<string | null>(null);
+	const verdictKey = () => `${detail?.id ?? ''}:${capGateMode()}`;
 	/** Whether `showListed`'s verdict is the provider refusing the
 	 *  title by name, which the detail page's notice never answers with
 	 *  the other audio. */
@@ -1251,10 +1261,16 @@
 	/** What the page knows about episode `n`, for the plays it refuses
 	 *  ($lib/play/reload-offer). */
 	function standingOf(n: number): EpisodeStanding {
+		// A verdict or a count is about the show and audio it was asked
+		// for: the provider catalogues sub and dub apart, and settings
+		// landing on dub after the default sub answer leave that answer
+		// standing. For another audio it claims nothing, as before any
+		// answer.
+		const here = verdictKey();
 		return {
-			listed: showListed,
+			listed: listedFor === here ? showListed : null,
 			unaired: epAirState(n, airing).unaired,
-			beyondPlayable: beyondPlayable(n, playableEpisodeCount)
+			beyondPlayable: countedFor === here && beyondPlayable(n, playableEpisodeCount)
 		};
 	}
 	/** Whether the episode on screen is one a play cannot reach. The
