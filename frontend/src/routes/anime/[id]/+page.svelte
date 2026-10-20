@@ -1511,7 +1511,7 @@
 		actionNotice = null;
 		actionProgress = null;
 		// Hits the play-cache: a prefetch from onMount or an earlier
-		// click against the same (show, ep, mode, quality) tuple
+		// click against the same (show, ep, mode, quality, version)
 		// completes instantly here. The streaming variant feeds progress
 		// events into the overlay so the user sees `<provider> ✓` ticks.
 		const outcome = await runOwnedPlay(
