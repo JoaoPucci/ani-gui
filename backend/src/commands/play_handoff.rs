@@ -8,7 +8,7 @@
 use crate::app::AppState;
 use crate::commands::external_player::LaunchArgs;
 use crate::commands::play::PlayArgs;
-use crate::commands::play_native_resolve::{NativeResolveRequest, NativeResolved};
+use crate::commands::play_native_resolve::NativeResolved;
 use crate::config::{read_config, Config};
 use crate::error::Result;
 
@@ -47,20 +47,12 @@ pub async fn resolve_launch_args(
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let request = NativeResolveRequest {
-        title: &args.title,
-        alt_titles: &args.alt_titles,
-        episode: &args.episode,
-        mode: &args.mode,
+    let request = args.native_request(
         quality,
-        expected_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.as_deref(),
-        stamps_beside: Some(&state.history_path),
-        tail: tail
-            .as_ref()
+        Some(&state.history_path),
+        tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
-    };
+    );
     let at_start = crate::commands::availability::RowAtStart::read(
         state,
         args.kitsu_id.as_deref(),
@@ -92,7 +84,9 @@ pub async fn resolve_launch_args(
                     attempted.provider,
                     attempted.value.episode_cap,
                     &attempted.value.extra_tags,
-                ),
+                )
+                .with_versions(&attempted.value.versions)
+                .with_played(attempted.value.version),
             )
             .await;
             attempted.value

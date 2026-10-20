@@ -56,6 +56,35 @@ CTAG = re.compile(
 )
 
 
+# --- version tags: "a bracketed version tag ... in ASCII or full-width round,
+# square or lenticular brackets, in any case" (Versions of one pick)
+
+VTAG = re.compile(r"[\(\[（［【]\s*(?:uncensored|ｕｎｃｅｎｓｏｒｅｄ)\s*[\)\]）］】]")
+
+
+def version_of(t):
+    """A title read for its version: the title without its version tag,
+    compared as written, and the version the tag names."""
+    low = t.lower()
+    kind = "uncensored" if VTAG.search(low) else "standard"
+    return written(VTAG.sub(" ", low)), kind
+
+
+def versions_of(winner, tied):
+    """The versions of `winner` among the candidates `tied` with it on
+    distance that could be picked: every one whose title is the winner's
+    once the version tag is set aside and whose listing numbers the same
+    episodes (here: the same count, every listing numbering 1..n under
+    one badge), in the provider's order — when they are under different
+    version tags, one each; none otherwise."""
+    base = version_of(winner[1])[0]
+    group = [r for r in tied if version_of(r[1])[0] == base and r[2] == winner[2]]
+    kinds = [version_of(r[1])[1] for r in group]
+    if len(group) < 2 or len(set(kinds)) != len(kinds):
+        return []
+    return [[r[0], k] for r, k in zip(group, kinds)]
+
+
 def _ascii(s):
     """Full-width letters and digits read as ASCII."""
     return "".join(chr(ord(c) - 0xFEE0) if "！" <= c <= "～" else c for c in s)
@@ -836,7 +865,7 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
     tol = max(3, count // 10)
     fits = [r for r in adm if abs(r[2] - count) <= tol]
     if not fits:
-        return None
+        return None, []
     best = min(abs(r[2] - count) for r in fits)
     tied = [r for r in fits if abs(r[2] - count) == best]
     return sorted(
@@ -845,7 +874,18 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
             0 if written(r[1]) == written(searched) else 1,
             0 if part_agrees(titles, r[1]) else 1,
         ),
-    )[0]
+    )[0], tied
+
+
+def with_versions(r, tied):
+    """The expectation for the pick `r`: copies of it under another version
+    tag among `tied` make it a pick with versions, the uncensored copy
+    playing (Versions of one pick)."""
+    versions = versions_of(r, tied)
+    if not versions:
+        return {"pick": r[0], "count": r[2]}
+    playing = next(v[0] for v in versions if v[1] == "uncensored")
+    return {"pick": playing, "count": r[2], "versions": versions}
 
 
 def _stem_text(t):
@@ -894,10 +934,12 @@ def predict(case):
     for searched in titles:
         if count is None:
             r = countless_pick(titles, searched, rows, year)
+            if r:
+                return {"pick": r[0], "count": r[2]}
         else:
-            r = counted_pick(titles, searched, rows, count, year, lambda slug: card_names(case, slug))
-        if r:
-            return {"pick": r[0], "count": r[2]}
+            r, tied = counted_pick(titles, searched, rows, count, year, lambda slug: card_names(case, slug))
+            if r:
+                return with_versions(r, tied)
     return None
 
 
@@ -1347,11 +1389,40 @@ def gen():
         ("Show 2", [("x", "Show Season 1", 40)]),
     ]:
         add([t], E, LISTING_YEAR, rows, None, "other-entry-clean")
+    # a copy of the pick under a version tag beside it — after it or before
+    # it at the same count, after it one short — the tag in each spelling in
+    # turn, in every pool whose one hit is the pick (Versions of one pick); a
+    # card that names the pick names its copy too. Only titles that end on
+    # no division: every other rule reads the tag as bracketed words, and
+    # how bracketed words after a division read — "Show 2 0 (Uncensored)",
+    # "Kaiju No. 7 (Uncensored)" — is a shape the docs do not settle and the
+    # model and the picker read differently (docs/deferred-work.md, "Bracketed
+    # words after a division"); those pools are not generated.
+    for i, c in enumerate(list(cases)):
+        fam = c["family"].split("/")[0]
+        if fam not in ("admission", "counted-dated", "counted-noyear") or len(c["rows"]) != 1:
+            continue
+        x = c["rows"][0]
+        stem, ends_on = strip_trailing(_word_ordinals(norm(x[1])))
+        if ends_on or bare_number(stem) is not None or re.search(r"\d$", stem):
+            continue
+        vtag = ("(Uncensored)", "[UNCENSORED]", "（Uncensored）")[i % 3]
+        same = [x[0] + "-u", f"{x[1]} {vtag}", x[2]]
+        short = [x[0] + "-u", f"{x[1]} {vtag}", x[2] - 1]
+        names = {k: c[k] for k in ("jnames", "page_names") if k in c} or None
+        if names and x[0] in names.get("jnames", {}):
+            names = dict(names, jnames=dict(names["jnames"], **{same[0]: names["jnames"][x[0]]}))
+        for how, rows in (("same/after", [x, same]), ("same/before", [same, x]), ("short/after", [x, short])):
+            case = dict(c, rows=rows, **(names or {}))
+            want = predict(case)
+            if want is NOT_MODELLED:
+                continue
+            add(c["titles"], c["count"], c["entry_year"], rows, want, f"versions/{fam}/{how}", names=names)
     # every reader reads a title without its catalogue tags — every family again, tagged
     tags = ["(TV)", "(2024)", "[OVA]", "（ＯＮＡ）", "【OAD】", "（２０２０）"]
     tagged = []
     for i, c in enumerate(list(cases)):
-        if c["family"].startswith(("year-or-format-tag", "remake")):
+        if c["family"].startswith(("year-or-format-tag", "remake", "versions")):
             continue
         # a title already carrying a tag is not tagged again: two release
         # years on one title is a shape the docs do not speak to
@@ -1378,17 +1449,25 @@ def gen():
 # --- the comparison
 
 def outcome(got):
-    """A driver outcome as the pick it reports, or `None` for a refusal."""
+    """A driver outcome as the pick it reports, with its versions when it
+    reports any, or `None` for a refusal."""
     if "ok" in got:
-        return {"pick": got["ok"], "count": got["count"]}
+        out = {"pick": got["ok"], "count": got["count"]}
+        if "versions" in got:
+            out["versions"] = got["versions"]
+        return out
     return None
 
 
 def summary(got):
     """What the allowlist records of an outcome: the pick with its
-    episodes, or the refusal's error and clean-miss verdict."""
+    episodes and any versions, or the refusal's error and clean-miss
+    verdict."""
     if "ok" in got:
-        return {"pick": got["ok"], "count": got["count"], "episodes": got["episodes"]}
+        out = {"pick": got["ok"], "count": got["count"], "episodes": got["episodes"]}
+        if "versions" in got:
+            out["versions"] = got["versions"]
+        return out
     return {"refused": got["err"], "clean_miss": got["clean_miss"]}
 
 

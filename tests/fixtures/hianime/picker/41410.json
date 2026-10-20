@@ -1,0 +1,132 @@
+{
+ "kitsu": {
+  "id": "41410",
+  "name": "JoJo Golden Wind",
+  "canonical": "JoJo's Bizarre Adventure: Golden Wind",
+  "alt_titles": ["JoJo no Kimyou na Bouken: Ougon no Kaze", "ジョジョの奇妙な冒険 黄金の風", "Jojo's Bizarre Adventure Part 5: Golden Wind", "JoJo's Bizarre Adventure Part 5: Vento Aureo"],
+  "episode_count": 39,
+  "year": 2018,
+  "subtype": "TV"
+ },
+ "searches": {
+  "JoJo no Kimyou na Bouken: Ougon no Kaze": [
+    ["jojos-bizarre-adventure-golden-wind-695", "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)", "TV"],
+    ["jojo-s-bizarre-adventure-part-5-golden-wind-9757", "JoJo's Bizarre Adventure Part 5: Golden Wind", "TV"]
+  ],
+  "JoJo's Bizarre Adventure Part 5: Vento Aureo": [
+    ["jojos-bizarre-adventure-golden-wind-695", "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)", "TV"],
+    ["jojo-s-bizarre-adventure-part-5-golden-wind-9757", "JoJo's Bizarre Adventure Part 5: Golden Wind", "TV"]
+  ],
+  "JoJo's Bizarre Adventure: Golden Wind": [
+    ["jojos-bizarre-adventure-golden-wind-695", "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)", "TV"],
+    ["jojo-s-bizarre-adventure-part-5-golden-wind-9757", "JoJo's Bizarre Adventure Part 5: Golden Wind", "TV"]
+  ],
+  "Jojo's Bizarre Adventure Part 5: Golden Wind": [
+    ["jojo-s-bizarre-adventure-part-5-golden-wind-9757", "JoJo's Bizarre Adventure Part 5: Golden Wind", "TV"],
+    ["jojos-bizarre-adventure-golden-wind-695", "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)", "TV"]
+  ],
+  "ジョジョの奇妙な冒険 黄金の風": [
+    ["jojos-bizarre-adventure-golden-wind-695", "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)", "TV"]
+  ]
+ },
+ "episodes": {
+  "jojo-s-bizarre-adventure-part-5-golden-wind-9757": [
+    [140689, 1, null],
+    [140691, 2, null],
+    [140693, 3, null],
+    [140695, 4, null],
+    [140697, 5, null],
+    [140698, 6, null],
+    [140700, 7, null],
+    [140702, 8, null],
+    [140704, 9, null],
+    [140706, 10, null],
+    [140708, 11, null],
+    [140710, 12, null],
+    [140711, 13, null],
+    [140713, 14, null],
+    [140715, 15, null],
+    [140717, 16, null],
+    [140720, 17, null],
+    [140721, 18, null],
+    [140724, 19, null],
+    [140727, 20, null],
+    [140731, 21, null],
+    [140736, 22, null],
+    [140740, 23, null],
+    [140744, 24, null],
+    [140749, 25, null],
+    [140755, 26, null],
+    [140759, 27, null],
+    [140763, 28, null],
+    [140767, 29, null],
+    [140771, 30, null],
+    [140776, 31, null],
+    [140779, 32, null],
+    [140784, 33, null],
+    [140788, 34, null],
+    [140791, 35, null],
+    [140794, 36, null],
+    [140798, 37, null],
+    [140803, 38, null],
+    [140806, 39, null]
+  ],
+  "jojos-bizarre-adventure-golden-wind-695": [
+    [12289, 1, null],
+    [12290, 2, null],
+    [12291, 3, null],
+    [12292, 4, null],
+    [12293, 5, null],
+    [12294, 6, null],
+    [12295, 7, null],
+    [12296, 8, null],
+    [12297, 9, null],
+    [12298, 10, null],
+    [12299, 11, null],
+    [12300, 12, null],
+    [12301, 13, null],
+    [12302, 14, null],
+    [12303, 15, null],
+    [12304, 16, null],
+    [12305, 17, null],
+    [12306, 18, null],
+    [12307, 19, null],
+    [12308, 20, null],
+    [12309, 21, null],
+    [12310, 22, null],
+    [12311, 23, null],
+    [12312, 24, null],
+    [12313, 25, null],
+    [12314, 26, null],
+    [12315, 27, null],
+    [12316, 28, null],
+    [12317, 29, null],
+    [12318, 30, null],
+    [12319, 31, null],
+    [12320, 32, null],
+    [12321, 33, null],
+    [12322, 34, null],
+    [12323, 35, null],
+    [12324, 36, null],
+    [12325, 37, null],
+    [12326, 38, null],
+    [12327, 39, null]
+  ]
+ },
+ "years": {
+  "jojo-s-bizarre-adventure-part-5-golden-wind-9757": 2018,
+  "jojos-bizarre-adventure-golden-wind-695": 2018
+ },
+ "jnames": {
+  "jojo-s-bizarre-adventure-part-5-golden-wind-9757": "JoJo no Kimyou na Bouken Part 5: Ougon no Kaze",
+  "jojos-bizarre-adventure-golden-wind-695": "JoJo no Kimyou na Bouken Part 5: Ougon no Kaze (Uncensored)"
+ },
+ "page_names": {
+  "jojo-s-bizarre-adventure-part-5-golden-wind-9757": ["JoJo no Kimyou na Bouken Part 5: Ougon no Kaze"],
+  "jojos-bizarre-adventure-golden-wind-695": ["ジョジョの奇妙な冒険 黄金の風", "JoJo no Kimyou na Bouken Part 5: Ougon no Kaze (Uncensored)"]
+ },
+ "genres": {
+  "jojo-s-bizarre-adventure-part-5-golden-wind-9757": ["Adventure", "Fantasy", "Supernatural", "Action"],
+  "jojos-bizarre-adventure-golden-wind-695": ["Adventure", "Shounen", "Organized Crime", "Super Power", "Action"]
+ }
+}

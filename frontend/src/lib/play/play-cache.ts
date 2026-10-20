@@ -1,4 +1,4 @@
-import type { CreateSessionResponse, PlayProgress } from '$lib/api';
+import type { CreateSessionResponse, PlayProgress, VersionKind } from '$lib/api';
 import { __resetPrefetchSlotsForTests, withSlot } from './prefetch-slots';
 
 /**
@@ -25,13 +25,21 @@ import { __resetPrefetchSlotsForTests, withSlot } from './prefetch-slots';
 export type CacheKey = string & { readonly __brand: 'PlayCacheKey' };
 
 /**
- * Build a stable, deterministic key from the four axes that decide
+ * Build a stable, deterministic key from the axes that decide
  * whether two `play()` requests would resolve to the same session.
  * Mode + quality matter because the backend resolves a different
- * embed URL for each.
+ * embed URL for each; the version because each version of a show is
+ * its own listing, so a session warmed for one must never answer a
+ * request naming another — or naming none.
  */
-export function makeKey(showId: string, episode: number, mode: string, quality: string): CacheKey {
-	return `${showId}|${episode}|${mode}|${quality}` as CacheKey;
+export function makeKey(
+	showId: string,
+	episode: number,
+	mode: string,
+	quality: string,
+	version?: VersionKind
+): CacheKey {
+	return `${showId}|${episode}|${mode}|${quality}|${version ?? ''}` as CacheKey;
 }
 
 interface CacheEntry {

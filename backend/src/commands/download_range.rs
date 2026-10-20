@@ -8,7 +8,7 @@ use crate::error::Result;
 
 use super::download::{DownloadArgs, DownloadProgress};
 use super::play_native::PickedShow;
-use super::play_native_episode::{resolve_episode, ResolvedEpisode};
+use super::play_native_episode::ResolvedEpisode;
 use super::play_native_resolve::NativeError;
 use super::play_native_walk::pick_native_walk;
 use super::providers::{gate_of, Attempt};
@@ -48,12 +48,14 @@ struct RangeStartAttempt<'r> {
 
 #[async_trait::async_trait]
 impl Attempt for RangeStartAttempt<'_> {
-    type Output = (PickedShow, ResolvedEpisode);
+    /// The pick in the version the range names, the version that served
+    /// the first episode, and that episode's stream.
+    type Output = (PickedShow, PickedShow, ResolvedEpisode);
 
     async fn run(
         &mut self,
         provider: &dyn Provider,
-    ) -> std::result::Result<(PickedShow, ResolvedEpisode), NativeError> {
+    ) -> std::result::Result<(PickedShow, PickedShow, ResolvedEpisode), NativeError> {
         let picked = pick_native_walk(
             provider,
             &self.args.title,
@@ -63,16 +65,21 @@ impl Attempt for RangeStartAttempt<'_> {
             self.args.subtype.as_deref(),
             self.tail,
         )
-        .await?;
-        let first = resolve_episode(
+        .await?
+        .choose(self.args.version);
+        // The first episode from the version named, or the next that
+        // carries it; the range keeps the version named for the rest,
+        // and the version that served names the episode's file.
+        let (served, first) = super::play_native_version_modes::resolve_in_any_version(
             provider,
-            &picked,
+            picked.clone(),
             &self.first.to_string(),
+            None,
             &self.args.mode,
             self.quality,
         )
-        .await?;
-        Ok((picked, first))
+        .await;
+        Ok((picked, served, first?))
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
@@ -140,19 +147,25 @@ where
             return Err(ne.error);
         }
     };
-    let (picked, first_resolved) = attempted.value;
+    let (picked, first_served, first_resolved) = attempted.value;
+    let (_, played) =
+        super::play_native_versions::named_versions(attempted.provider, &first_served);
     // As a play does: a stamp an earlier version wrote with a stitched
-    // row's former tag reads right.
-    crate::commands::numbering_offset::retag_from_listing(
-        state,
-        &crate::scraper::provider::ShowKey::new(attempted.provider, picked.hit.slug.clone())
-            .to_string(),
-        &picked.episodes,
-    );
+    // row's former tag reads right — for every version of the pick,
+    // each keying stamps of its own.
+    for (hit, episodes) in picked.copies() {
+        crate::commands::numbering_offset::retag_from_listing(
+            state,
+            &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
+                .to_string(),
+            episodes,
+        );
+    }
     // The range's first stream is a positive availability fact
     // naming the provider that served it, with the cap the pick's
     // listing paid for — the row the play path writes.
     let extra_tags = super::play_native_numbering::extra_episode_tags(&picked.episodes);
+    let (versions, _) = super::play_native_versions::named_versions(attempted.provider, &picked);
     super::availability::stamp_after_native(
         state,
         args.kitsu_id.as_deref(),
@@ -162,7 +175,10 @@ where
             attempted.provider,
             super::play_native_numbering::kitsu_episode_cap(&picked.episodes),
             &extra_tags,
-        ),
+        )
+        .with_versions(&versions)
+        // The copy that served the first episode carries the mode.
+        .with_played(played),
     )
     .await;
     let client = attempted.client;
@@ -170,7 +186,7 @@ where
     on_progress(DownloadProgress {
         line: format!("Matched {}", picked.hit.title),
     });
-    let mut first_resolved = Some(first_resolved);
+    let mut first_resolved = Some((first_served, first_resolved));
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
@@ -182,9 +198,22 @@ where
         let episode_started_at = tokio::time::Instant::now();
         // The first episode was resolved by the attempt that chose
         // the provider; the rest resolve here, against it.
-        let resolved = match first_resolved.take() {
-            Some(r) => Ok(r),
-            None => resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await,
+        // Each episode with the version that served it: the version
+        // named, or the next that carries the episode in the mode, as
+        // the range's start did. The file and the log name that one.
+        let (serving, resolved) = match first_resolved.take() {
+            Some((served, r)) => (served, Ok(r)),
+            None => {
+                super::play_native_version_modes::resolve_in_any_version(
+                    &*client,
+                    picked.clone(),
+                    &ep_no,
+                    None,
+                    &args.mode,
+                    quality,
+                )
+                .await
+            }
         };
         let resolved = match resolved {
             Ok(r) => r,
@@ -205,9 +234,9 @@ where
                 });
             }
         };
-        let file_stem = format!("{} Episode {ep}", picked.hit.title);
+        let file_stem = format!("{} Episode {ep}", serving.hit.title);
         tracing::info!(
-            slug = %picked.hit.slug,
+            slug = %serving.hit.slug,
             episode = %ep_no,
             dest = %dest.display(),
             "download: spawning tool on natively resolved stream",
