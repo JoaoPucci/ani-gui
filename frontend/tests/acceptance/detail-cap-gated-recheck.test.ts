@@ -41,6 +41,8 @@ vi.mock('$app/navigation', () => ({
 
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { goto } from '$app/navigation';
+import { forgetNavigationListeners, startNavigation } from './navigation';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -54,6 +56,8 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	vi.mocked(goto).mockClear();
+	forgetNavigationListeners();
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -456,6 +460,72 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// Clearing the gate here calls startPlay, whose goto would haul
 		// the user back into playback on a page they already left.
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
+	});
+
+	it('does not take over a navigation the user started while it checks', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		const played: { episode?: string; prefetch?: boolean }[] = [];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				if (body.bypass_cache) await held;
+				return HttpResponse.json({
+					available: true,
+					// The remembered count gates the tile; the held re-ask
+					// comes back reaching it, so the answer would clear
+					// the gate and start playback if anything still acted
+					// on it.
+					episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			}),
+			http.post(`${API_BASE}/api/play`, async ({ request }) => {
+				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
+				return HttpResponse.json({
+					id: 'session-1',
+					kind: 'hls',
+					has_subtitles: false,
+					quality: '1080',
+					mode: 'sub'
+				});
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		tile(AIRED)!.click();
+		await until(() => overlay() !== null, 'the page to block while it checks');
+
+		// The user follows a link or presses Back. The page is still
+		// on screen until that navigation lands, and the show and the
+		// mode are unchanged.
+		startNavigation();
+
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+
+		// Clearing the gate here calls startPlay, whose goto would cancel
+		// the navigation the user asked for.
+		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
+		expect(goto).not.toHaveBeenCalled();
 	});
 
 	it('presents the dimmed tile as something to click, not as refused', async () => {
