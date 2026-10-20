@@ -13,7 +13,8 @@ import {
 	altTitlesFromKitsu,
 	yearFromKitsuRef,
 	type DownloadArgs,
-	type KitsuAnimeRef
+	type KitsuAnimeRef,
+	type VersionKind
 } from '$lib/api';
 
 export interface BuildDownloadArgsInput {
@@ -22,6 +23,9 @@ export interface BuildDownloadArgsInput {
 	mode: 'sub' | 'dub';
 	quality: string;
 	kitsuId: string;
+	/** The version remembered for the show; a range download starts
+	 *  from it and keeps to it. Omitted when none is. */
+	version?: VersionKind;
 }
 
 export function buildDownloadArgs(input: BuildDownloadArgsInput): DownloadArgs {
@@ -34,6 +38,7 @@ export function buildDownloadArgs(input: BuildDownloadArgsInput): DownloadArgs {
 		year: yearFromKitsuRef(input.detail) ?? undefined,
 		subtype: input.detail.subtype ?? undefined,
 		alt_titles: altTitlesFromKitsu(input.detail),
-		kitsu_id: input.kitsuId
+		kitsu_id: input.kitsuId,
+		version: input.version
 	};
 }

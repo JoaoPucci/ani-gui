@@ -19,10 +19,11 @@ use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 
 use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
-use super::play_native_episode::{classify_chain_failure, resolve_episode_stamped, ChainOutcome};
+use super::play_native_episode::{classify_chain_failure, ChainOutcome};
 use super::play_native_merge::former_tags_of;
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
+use super::play_native_version_modes::resolve_in_any_version;
 
 /// A fully resolved native play: what the orchestrator needs to open
 /// a session, stamp caches, and write history.
@@ -70,11 +71,21 @@ pub struct NativeResolved {
     /// ([`crate::commands::play_native_record::matched_episode`]).
     /// Display stamps are no longer written from it.
     pub resolved_tag: Option<String>,
+    /// The pick's versions, in the provider's order — empty when it
+    /// has one.
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+    /// The version that played, when the pick has several.
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
     /// Rows of the picked listing an earlier version tagged otherwise:
     /// (slot, the tag it had then, the tag it has now) — a stitched
     /// recap before a cumulatively numbered part. Empty for any other
     /// listing.
     pub former_tags: Vec<(u32, String, String)>,
+    /// The pick's other versions, each as its show key and its listing:
+    /// a stamp a copy's history row reads through is put right from its
+    /// own listing, whichever copy played. Empty for a pick with one
+    /// version.
+    pub other_copies: Vec<(String, Vec<crate::scraper::provider::EpisodeRef>)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -132,6 +143,9 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// The version to play when the pick has several; `None` plays
+    /// the pick's default.
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
     /// The history file whose numbering sidecar keeps each show's
     /// (slot, tag) display stamp — what a request from the user's
     /// history names a row by. `None` asks nothing of it.
@@ -237,8 +251,11 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        // The version asked for first, so the listing
+                        // the appended-extras rule reads is the one that
+                        // plays.
                         let picked = super::play_native_appended::fit_appended(
-                            picked,
+                            picked.choose(req.version),
                             req.expected_count,
                             req.tail,
                         )
@@ -246,22 +263,24 @@ where
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let stamp = req.stamps_beside.and_then(|history| {
-                            crate::commands::numbering_offset::stamp_beside(
-                                history,
-                                &ShowKey::new(client.id(), picked.hit.slug.clone()).to_string(),
-                            )
-                        });
-                        let resolved = match resolve_episode_stamped(
+                        // The version asked for, or the next that
+                        // carries the episode in the mode, each read
+                        // through its own display stamp.
+                        let (picked, resolved) = resolve_in_any_version(
                             client,
-                            &picked,
+                            picked,
                             req.episode,
-                            stamp.as_ref(),
+                            req.stamps_beside,
                             req.mode,
                             req.quality,
                         )
-                        .await
-                        {
+                        .await;
+                        let (versions, version) =
+                            crate::commands::play_native_versions::named_versions(
+                                client.id(),
+                                &picked,
+                            );
+                        let resolved = match resolved {
                             Ok(resolved) => resolved,
                             Err(ne) => match classify_chain_failure(ne) {
                                 ChainOutcome::Stop(ne) => return Err(ne),
@@ -291,6 +310,17 @@ where
                         on_progress(ProgressLine::LinksFetched {
                             provider: client.label().into(),
                         });
+                        let other_copies = picked
+                            .copies()
+                            .into_iter()
+                            .filter(|(hit, _)| hit.slug != picked.hit.slug)
+                            .map(|(hit, episodes)| {
+                                (
+                                    ShowKey::new(client.id(), hit.slug.clone()).to_string(),
+                                    episodes.to_vec(),
+                                )
+                            })
+                            .collect();
                         let episode_cap = kitsu_episode_cap(&picked.episodes);
                         let offset = numbering_offset(&picked.episodes);
                         let extra_tags = extra_episode_tags(&picked.episodes);
@@ -308,7 +338,10 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            versions,
+                            version,
                             former_tags: former_tags_of(&picked.episodes),
+                            other_copies,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS

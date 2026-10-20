@@ -242,6 +242,19 @@ describe('playArgsFor', () => {
 		expect('kitsu_id' in args).toBe(false);
 	});
 
+	it('names the remembered version, and none when none is remembered', () => {
+		const base = {
+			title: 'Show',
+			episode: 1,
+			mode: 'sub' as const,
+			quality: 'best',
+			show,
+			kitsuId: '42'
+		};
+		expect(playArgsFor({ ...base, version: 'standard' }).version).toBe('standard');
+		expect('version' in playArgsFor(base)).toBe(false);
+	});
+
 	it('takes a missing show as no metadata', () => {
 		const args = playArgsFor({
 			title: 'Show',
