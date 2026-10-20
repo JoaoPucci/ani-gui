@@ -16,11 +16,12 @@
 // assertions here are about requests that left the app and text that
 // reached the DOM.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -140,6 +141,15 @@ describe('detail route — the tracker answers 429 to the live-entry read', () =
 	it('asks once more after the advertised wait, then says the tracker is busy', async () => {
 		const entryReads = { count: 0 };
 		useShowHandlers(entryReads);
+		const { sent } = watchPageFetches();
+		const reads = () => sent.filter((r) => r.path === '/api/account/entry/anilist').length;
+		// The page's timeouts are the test's to run: the clock still
+		// moves with real time, so the page loads as it would, and once
+		// the plan has given up every timeout armed by then can be run.
+		vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
 
 		app = mount(DetailPage, { target });
 
@@ -154,8 +164,13 @@ describe('detail route — the tracker answers 429 to the live-entry read', () =
 		// an Add that could overwrite an entry the tracker does have.
 		expect(listTrigger()?.disabled).toBe(true);
 
-		// Nothing further leaves the app once the plan has given up.
-		await new Promise((r) => setTimeout(r, 1500));
+		// Nothing further leaves the app once the plan has given up. Every
+		// timeout pending by then has run, a retry's wait among them, and
+		// what it set off has run to its next request, which is counted
+		// as the page sends it.
+		await vi.runOnlyPendingTimersAsync();
+		await afterRead();
+		expect(reads()).toBe(2);
 		expect(entryReads.count).toBe(2);
 	});
 });

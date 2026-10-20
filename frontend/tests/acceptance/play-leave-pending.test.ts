@@ -14,12 +14,32 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { ownedPlays } from './owned-plays';
 
 vi.mock('$app/state', () => ({
 	get page() {
 		return page;
 	}
 }));
+// What a left page's late answer is judged by. A recovery acts on its
+// eviction's answer, and a switch on its `runOwnedPlay` outcome, in the
+// turn each settles; recording them lets a case wait for the page to
+// have acted on the answer rather than for a fixed time.
+const seen = vi.hoisted(() => ({
+	evictions: [] as Promise<unknown>[]
+}));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		const answered = real.evictPlayCache(args);
+		seen.evictions.push(answered);
+		return answered;
+	};
+	return { ...real, evictPlayCache };
+});
+vi.mock('$lib/play/owned-play', async (importOriginal) =>
+	(await import('./owned-plays')).trackOwnedPlays(await importOriginal())
+);
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -69,6 +89,8 @@ beforeEach(() => {
 	__resetPlayCacheForTests();
 	window.localStorage.clear();
 	vi.mocked(goto).mockClear();
+	seen.evictions.length = 0;
+	ownedPlays.length = 0;
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -90,6 +112,15 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 		await new Promise((r) => setTimeout(r, 10));
 	}
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
+}
+
+/** The last of `answers` has settled, and the page has acted on it: it
+ *  awaits that promise and registered its wait before this one, so the
+ *  turn it runs in — up to a navigation, or the switch a recovery
+ *  would start — is over by the time this resumes. */
+async function actedOn(answers: Promise<unknown>[], what: string) {
+	await until(() => answers.length > 0, what);
+	await Promise.allSettled([answers[answers.length - 1]]);
 }
 
 function kitsuEpisodes(count: number) {
@@ -160,9 +191,14 @@ describe('play route — a page that has gone sends nobody back to it', () => {
 		unmount(app);
 		app = null;
 		const streamsAtLeave = FakeEventSource.instances.length;
+		const playsAtLeave = ownedPlays.length;
 		releaseEvict();
-		await new Promise((r) => setTimeout(r, 200));
+		await actedOn(seen.evictions, 'the eviction');
 
+		// A fresh resolve starts as a switch, which the recovery runs in
+		// the turn the eviction answers; its stream opens later, once
+		// the request's URL is read, so the switch is what is ruled out.
+		expect(ownedPlays.length, 'no switch is started for the page left').toBe(playsAtLeave);
 		expect(FakeEventSource.instances.length).toBe(streamsAtLeave);
 		expect(goto).not.toHaveBeenCalled();
 	});
@@ -190,7 +226,7 @@ describe('play route — a page that has gone sends nobody back to it', () => {
 		tile.click();
 		unmount(app);
 		app = null;
-		await new Promise((r) => setTimeout(r, 100));
+		await actedOn(ownedPlays, "the switch's answer");
 
 		expect(goto).not.toHaveBeenCalled();
 	});

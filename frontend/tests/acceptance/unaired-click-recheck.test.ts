@@ -14,6 +14,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 
@@ -174,8 +175,19 @@ describe('detail route — clicking an episode the page calls unaired', () => {
 		);
 		await until(() => tile(3)?.getAttribute('aria-disabled') === 'false', 'the page released');
 
+		// The second click is answered from the first one's verdict:
+		// the user hears it again, which is the click having run to its
+		// end, and the refresh it would otherwise send is counted as the
+		// page sends it.
+		const { sent } = watchPageFetches();
+		const told = () =>
+			toastStore.items.filter((t) => t.message === m.detail_ep_unaired_still()).length;
+		const toldBefore = told();
 		tile(3)!.click();
-		await new Promise((r) => setTimeout(r, 100));
+		await until(() => told() > toldBefore, 'the still-unaired message again');
+		await afterRead();
+		expect(sent.filter((r) => r.query.get('refresh') === 'true')).toEqual([]);
+		expect(sent.filter((r) => r.path === '/api/play' && !r.body.prefetch)).toEqual([]);
 		expect(refreshes).toHaveLength(2);
 		expect(playedEpisode(3)).toBe(false);
 	});

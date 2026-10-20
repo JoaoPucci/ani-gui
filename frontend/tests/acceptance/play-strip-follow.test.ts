@@ -22,6 +22,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -164,6 +165,27 @@ function landOnEpisode(episode: number) {
 	});
 }
 
+/** The page's own episode fetches, in the order it asks them,
+ *  recorded as the page asks each (see ./page-fetches). */
+const episodeFetches = (fetches: ReturnType<typeof watchPageFetches>) =>
+	fetches.sent.filter((f) => f.path.startsWith('/api/kitsu/episodes/'));
+/** Whether the page has read the answer to `f`, or seen it fail —
+ *  recorded as the read settles, before anything the page decides from
+ *  that answer runs. */
+const answered = (fetches: ReturnType<typeof watchPageFetches>, f: PageFetch) =>
+	fetches.read.includes(f) || fetches.failed.includes(f);
+/** Which backing-API page an episode fetch asks for. */
+const pageOf = (f: PageFetch) => f.query.get('page') ?? '1';
+
+/** How many backing-API page-2 fetches the page has asked, and whether
+ *  it has read every answer to them. */
+const pageTwoAsked = (fetches: ReturnType<typeof watchPageFetches>) =>
+	episodeFetches(fetches).filter((f) => pageOf(f) === '2').length;
+const pageTwoRead = (fetches: ReturnType<typeof watchPageFetches>) =>
+	episodeFetches(fetches)
+		.filter((f) => pageOf(f) === '2')
+		.every((f) => answered(fetches, f));
+
 const tile = (n: number) => target.querySelector(`li[data-ep-num="${n}"]`);
 const tileNumbers = () =>
 	Array.from(target.querySelectorAll('li[data-ep-num]')).map((li) =>
@@ -232,6 +254,7 @@ describe('play route — the episode strip follows navigation', () => {
 			releaseFirst = resolve;
 		});
 		let episodesRequests = 0;
+		const fetches = watchPageFetches();
 		useShowHandlers();
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async () => {
@@ -251,10 +274,15 @@ describe('play route — the episode strip follows navigation', () => {
 		expect(episodesRequests).toBe(2);
 
 		// Now the stale mount-time response arrives. Nothing observable
-		// may change, so give its completion a beat to (wrongly) land
-		// before asserting the strip still shows the followed page.
+		// may change: once the page has read it, and what it does with
+		// it has run, the strip still shows the followed page.
 		releaseFirst();
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await until(
+			() =>
+				episodeFetches(fetches)[0] !== undefined && answered(fetches, episodeFetches(fetches)[0]),
+			'the stale mount-time answer to be read'
+		);
+		await afterRead();
 		expect(tileNumbers()).toEqual([6, 7, 8, 9, 10]);
 		expect(currentCardIn(6)).not.toBeNull();
 	});
@@ -272,6 +300,7 @@ describe('play route — the episode strip follows navigation', () => {
 		const pageTwoBlocked = new Promise<void>((resolve) => {
 			releasePageTwo = resolve;
 		});
+		const fetches = watchPageFetches();
 		useShowHandlers(30);
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async ({ request }) => {
@@ -303,9 +332,16 @@ describe('play route — the episode strip follows navigation', () => {
 		);
 
 		// The stale page-5 response arrives. Nothing observable may
-		// change, so give its completion a beat to (wrongly) land.
+		// change once the page has read every answer for it, and done
+		// what it does with them.
 		releasePageTwo();
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await until(
+			() =>
+				episodeFetches(fetches).some((f) => pageOf(f) === '2') &&
+				episodeFetches(fetches).every((f) => answered(fetches, f)),
+			'the stale page-5 answers to be read'
+		);
+		await afterRead();
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 		expect(currentCardIn(20)).not.toBeNull();
 	});
@@ -317,6 +353,7 @@ describe('play route — the episode strip follows navigation', () => {
 		// retry and the strip would strand on page 4 for the rest of
 		// the session.
 		let failPageTwo = true;
+		const fetches = watchPageFetches();
 		let pageTwoRequests = 0;
 		useShowHandlers(30);
 		server.use(
@@ -332,11 +369,18 @@ describe('play route — the episode strip follows navigation', () => {
 		await mountAtEpisode(20);
 		await until(() => currentCardIn(20) != null, 'the strip on page 4 with ep 20 current');
 		const requestsBeforeFollow = pageTwoRequests;
+		const askedBeforeFollow = pageTwoAsked(fetches);
 
-		// Next: the follow to page 5 hits the failing request.
+		// Next: the follow to page 5 hits the failing request. Once the
+		// page has read its failure, and done what it does with it, the
+		// strip still shows page 4.
 		landOnEpisode(21);
 		await until(() => pageTwoRequests > requestsBeforeFollow, 'the follow fetch to be attempted');
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await until(
+			() => pageTwoAsked(fetches) > askedBeforeFollow && pageTwoRead(fetches),
+			"the follow fetch's failure to be read"
+		);
+		await afterRead();
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 
 		// The transient failure clears; the next episode change must
@@ -354,6 +398,7 @@ describe('play route — the episode strip follows navigation', () => {
 		// or auto-play onto 21 (page 5) would decline to follow and the
 		// current episode would go missing from the strip.
 		let failPageTwo = true;
+		const fetches = watchPageFetches();
 		let pageTwoRequests = 0;
 		useShowHandlers(30);
 		server.use(
@@ -371,11 +416,17 @@ describe('play route — the episode strip follows navigation', () => {
 		const requestsBeforeBrowse = pageTwoRequests;
 
 		// The user pages toward 5; the fetch fails and the strip keeps
-		// rendering page 4.
+		// rendering page 4 — still, once the page has read the failure
+		// and done what it does with it.
 		await until(() => pagerNext() != null && !pagerNext()!.disabled, 'the pager to be ready');
+		const askedBeforeBrowse = pageTwoAsked(fetches);
 		pagerNext()!.click();
 		await until(() => pageTwoRequests > requestsBeforeBrowse, 'the browse fetch to be attempted');
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await until(
+			() => pageTwoAsked(fetches) > askedBeforeBrowse && pageTwoRead(fetches),
+			"the browse fetch's failure to be read"
+		);
+		await afterRead();
 		expect(tileNumbers()).toEqual([16, 17, 18, 19, 20]);
 
 		// The failure clears; auto-play advances onto the page the
