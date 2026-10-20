@@ -13,10 +13,12 @@
 import { onTestFinished, vi } from 'vitest';
 import { tick } from 'svelte';
 
-/** One request as the page sent it: its method, path and JSON body. */
+/** One request as the page sent it: its method, path, query and JSON
+ *  body. */
 export interface PageFetch {
 	method: string;
 	path: string;
+	query: URLSearchParams;
 	body: Record<string, unknown>;
 }
 
@@ -31,7 +33,8 @@ function described(input: RequestInfo | URL, init?: RequestInit): PageFetch {
 			body = {};
 		}
 	}
-	return { method: method.toUpperCase(), path: new URL(href).pathname, body };
+	const url = new URL(href);
+	return { method: method.toUpperCase(), path: url.pathname, query: url.searchParams, body };
 }
 
 /**
