@@ -7436,8 +7436,8 @@ async fn every_episode_of_a_range_falls_through_to_a_version_that_carries_it() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo \"$*\" >> '{}'\n{}\nexit 0",
-            log.display(),
+            "printf '%s\\n' \"$*\" >> {}\n{}\nexit 0",
+            crate::stub_file::sh_quote(&log),
             writes_its_output("video")
         ),
     );
@@ -7518,8 +7518,8 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo \"$*\" >> '{}'\n{}\nexit 0",
-            log.display(),
+            "printf '%s\\n' \"$*\" >> {}\n{}\nexit 0",
+            crate::stub_file::sh_quote(&log),
             writes_its_output("video")
         ),
     );
