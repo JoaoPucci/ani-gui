@@ -39,8 +39,10 @@ export interface PlayOwner {
 
 /** Claim a play for `showId` on the route's current visit. `visit`
  *  reads the route's visit counter; it is read now and on every
- *  `isCurrent()`. `gone` reads whether the page was destroyed, which
- *  leaving the route does without moving the counter. */
+ *  `isCurrent()`. `gone` reads whether the page has been left without
+ *  the counter moving: destroyed, or — as the pages pass it — with a
+ *  navigation away from it started since the play was claimed, which
+ *  the page outlives until it lands ($lib/navigation/claims). */
 export function claimPlay(
 	showId: string,
 	visit: () => number,
