@@ -78,6 +78,25 @@ pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<
     }))
 }
 
+/// Parse an `/anime/{id}?fields=my_list_status,num_episodes` response:
+/// the user's row as [`parse_my_list_status_entry`] reads it, and the
+/// anime's episode total, where MAL's `0` (length not announced) is
+/// unknown.
+pub(in crate::meta) fn parse_tracked_media(body: &[u8]) -> Result<TrackedMedia> {
+    #[derive(Deserialize)]
+    struct Wire {
+        #[serde(default)]
+        num_episodes: Option<u32>,
+    }
+    let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("mal anime num_episodes: {e}"),
+    })?;
+    Ok(TrackedMedia {
+        entry: parse_my_list_status_entry(body)?,
+        episodes: wire.num_episodes.filter(|n| *n > 0),
+    })
+}
+
 /// Minimal RFC 3339 / ISO 8601 parser. MAL always emits the canonical
 /// `YYYY-MM-DDTHH:MM:SS±HH:MM` (or trailing `Z`) shape — we extract
 /// the date + time numerically and normalise the trailing offset to

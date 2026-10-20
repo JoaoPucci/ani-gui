@@ -1,7 +1,7 @@
 // Fan-out trigger for write-back: on mark-watched, push the episode
 // the user just watched to every connected tracker. Renderer-driven
 // (the backend is stateless) — we hold the per-provider bearers, so
-// the renderer orchestrates the calls. Green commit implements.
+// the renderer orchestrates the calls.
 
 import type { ListEntry, Provider } from './types';
 import { updateProgress } from './api';
@@ -45,13 +45,21 @@ export interface PushWatchedDeps {
  * (e.g. 12 dubbed of 24), and watching the last dubbed episode must
  * not complete the whole series. null/0 means
  * the total is unknown — don't complete.
+ *
+ * The backend reads `completed` on the progress route as this finale
+ * and drops it where the tracker's own episode total is known and
+ * differs from the episode (and, as before, for a rewatching row), so
+ * nothing else may send `completed` through `updateProgress`.
  */
 export function watchedStatus(
 	episode: number,
 	seriesTotal: number | null,
 	seriesFinished: boolean
 ): string | null {
-	const atFinale = !!seriesTotal && seriesTotal > 0 && episode >= seriesTotal;
+	// Kitsu's own last episode, not any episode at or past it: one the
+	// provider lists past Kitsu's count has no known place in the
+	// tracker's numbering, so it completes nothing.
+	const atFinale = !!seriesTotal && seriesTotal > 0 && episode === seriesTotal;
 	return seriesFinished && atFinale ? 'completed' : null;
 }
 
