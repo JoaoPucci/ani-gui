@@ -104,4 +104,12 @@ describe('interactive click-time lookups (render-then-refine)', () => {
 		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'sub');
 		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: true }));
 	});
+
+	it("carries the caller's signal into the probe", async () => {
+		const ipc = vi.fn().mockResolvedValue({ available: true, extra_episodes: [] });
+		const fetcher = makeFetchAvailability(ipc) as (...args: unknown[]) => Promise<unknown>;
+		const ctrl = new AbortController();
+		await fetcher(makeMatch(), 'sub', ctrl.signal);
+		expect(ipc.mock.calls[0][1]).toEqual({ signal: ctrl.signal });
+	});
 });
