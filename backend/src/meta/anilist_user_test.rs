@@ -134,7 +134,6 @@ async fn exchange_code_parses_access_token_and_expiry() {
 ///
 /// Header + signature are intentionally fixed garbage — we never
 /// verify the signature, we only base64url-decode the payload.
-/// Codex P1 #3371176290.
 fn fake_anilist_jwt_with_exp(exp_epoch_s: i64) -> String {
     use base64::Engine;
     let header =
@@ -152,8 +151,7 @@ fn fake_anilist_jwt_with_exp(exp_epoch_s: i64) -> String {
 /// tokens are essentially non-expiring and the field is documented
 /// inconsistently). The earlier required-`expires_in` decoder would
 /// reject an otherwise valid exchange as `ParseFailed` and the
-/// Connect flow would fail before persisting the token. Codex P1
-/// #3371176290.
+/// Connect flow would fail before persisting the token.
 ///
 /// This test fixture's body omits `expires_in` entirely; the access
 /// token IS a JWT-shaped string with a known `exp` claim, so the
@@ -183,8 +181,8 @@ async fn exchange_code_falls_back_to_jwt_exp_when_expires_in_missing() {
 
 /// Defensive fallback: when AniList ever returns a non-JWT access
 /// token AND omits `expires_in`, the parser uses a 1-year sentinel
-/// rather than failing the exchange. Codex P1 #3371176290 — the user
-/// would otherwise be stuck on a stale connect flow on every retry
+/// rather than failing the exchange. Without it the user would be
+/// stuck on a stale connect flow on every retry
 /// even though the token itself is fine.
 #[tokio::test]
 async fn exchange_code_falls_back_to_one_year_sentinel_when_jwt_decode_fails() {
@@ -296,7 +294,7 @@ async fn me_parses_viewer_query_response() {
     // AniList's meanScore wire format is 0..=100 (percentage points)
     // regardless of the user's chosen scoring system; UserStats's
     // contract is 0..=10, so 74.0 from the wire rescales to 7.4 here.
-    // Codex P2 #3370087028: prior pass-through surfaced 65.5/10 for a
+    // Prior pass-through surfaced 65.5/10 for a
     // 100-point user.
     assert!(
         matches!(stats.mean_score_0_to_10, Some(v) if (v - 7.4).abs() < 0.001),
@@ -424,7 +422,7 @@ async fn list_all_parses_single_chunk_with_status_score_and_mal_id() {
     // First entry — ONE PIECE, CURRENT, score 75.0 → Some(75) on the
     // unified 0..=100 scale. The GraphQL query requests
     // `score(format: POINT_100)` so this value is independent of the
-    // user's AniList scoring preference (per Codex P2 fix), mal_id
+    // user's AniList scoring preference, mal_id
     // present, updated timestamp passes through, title falls back to
     // userPreferred when present.
     let watching = entries
@@ -789,7 +787,7 @@ async fn delete_entry_errors_when_mutation_reports_deleted_false() {
     // `deleted` is false — its documented failure signal. The provider
     // must NOT report success: a future retry/cache layer would drop
     // the local row and stop retrying for an entry the provider never
-    // removed (Codex P2 #3381101376).
+    // removed.
     use wiremock::matchers::{body_string_contains, method};
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))

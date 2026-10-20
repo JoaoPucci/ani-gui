@@ -7,8 +7,7 @@
  *   - `shouldAnimateRemoval(id)`: drives `out:scale`. True only
  *     for the ids the user's confirm actually deleted. A
  *     shifted-survivor that gets dedupe-removed by a background
- *     callback during the window MUST NOT animate (Codex P2
- *     #3369281412) — otherwise the flicker creeps back in via
+ *     callback during the window MUST NOT animate — otherwise the flicker creeps back in via
  *     the survivor's out-transition.
  *
  *   - `shouldAnimateShift(id)`: drives `animate:flip`, ONE-SHOT.
@@ -19,7 +18,7 @@
  *     mutation (e.g., a concurrent dedupe) can't re-fire the
  *     same survivor's flip during the 350ms window. Without the
  *     consume, the row-remount flicker could come back right
- *     after the user's delete (Codex P2 #3369293607).
+ *     after the user's delete.
  *
  * Two non-obvious bits:
  *
@@ -89,7 +88,7 @@ export function createAnimationGate(
 			// subsequent flip on the same survivor (e.g., from a
 			// background dedupe mutation during the open window)
 			// reads false and short-circuits. See class docblock for
-			// the Codex P2 #3369293607 scenario.
+			// the concurrent-dedupe scenario.
 			if (!shifted.has(id)) return false;
 			shifted.delete(id);
 			return true;
