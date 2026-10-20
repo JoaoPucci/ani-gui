@@ -298,16 +298,12 @@ describe('play route — the player-error overlay offers Reload only where it ca
 	});
 
 	it('a show no version carries in the audio is a dead end whichever version was chosen', async () => {
+		// An absence is answered only once every version answered it, and
+		// it names no versions: the version remembered for the show has
+		// nothing to set it apart.
 		applyChoice(KITSU_ID, 'standard');
 		const seen = useHandlers({
-			availability: {
-				available: false,
-				episode_count: null,
-				versions: [
-					{ kind: 'uncensored', show_key: 'show-uncensored-1', has_mode: false },
-					{ kind: 'standard', show_key: 'show-2', has_mode: false }
-				]
-			}
+			availability: { available: false, episode_count: null, versions: [] }
 		});
 		await failStream(seen, 1, DECODE);
 		await bodyBecomes(m.detail_unavailable_message());
