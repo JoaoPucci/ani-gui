@@ -21,11 +21,18 @@ import {
  * exercised by the unit tests below.
  */
 export function makeFetchAvailability(
-	checkAvailabilityFn: (args: AvailabilityArgs) => Promise<AvailabilityResponse>,
+	checkAvailabilityFn: (
+		args: AvailabilityArgs,
+		opts?: { signal?: AbortSignal }
+	) => Promise<AvailabilityResponse>,
 	opts?: { background: boolean }
-): (match: KitsuAnimeRef, mode: 'sub' | 'dub') => Promise<AvailabilityResponse> {
-	return (match, mode) =>
-		checkAvailabilityFn({
+): (
+	match: KitsuAnimeRef,
+	mode: 'sub' | 'dub',
+	signal?: AbortSignal
+) => Promise<AvailabilityResponse> {
+	return (match, mode, signal) => {
+		const args: AvailabilityArgs = {
 			title: match.canonical_title,
 			mode,
 			alt_titles: altTitlesFromKitsu(match),
@@ -39,5 +46,9 @@ export function makeFetchAvailability(
 			// user-awaited lookup rides the interactive lane instead of
 			// being paced or refused.
 			background: opts?.background ?? true
-		});
+		};
+		// The caller's page, when it names one; otherwise the probe
+		// takes the page it is asked on.
+		return signal ? checkAvailabilityFn(args, { signal }) : checkAvailabilityFn(args);
+	};
 }

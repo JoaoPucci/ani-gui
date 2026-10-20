@@ -46,7 +46,9 @@ pub struct AppState {
     /// row's liveness probes (`upstream_head_ok`) go out on.
     pub meta_http: reqwest::Client,
     /// Public base URL the frontend uses to reach the proxy
-    /// (`http://127.0.0.1:<port>`). Set after the listener binds.
+    /// (`http://127.0.0.1:<port>`): the stream lane's origin (see
+    /// [`crate::lanes`]), so the player's fetches have a connection
+    /// budget of their own. Set after the listeners bind.
     pub proxy_origin: ProxyOrigin,
     /// Directory the packages stage next to the backend binary,
     /// holding the impersonating transport and the download tools.

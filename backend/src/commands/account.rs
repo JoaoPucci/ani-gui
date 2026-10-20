@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::account::pkce::Pkce;
+use crate::account::progress_fit::fit_to_tracker_total;
 use crate::account::provider::{
     CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
     UserProfile,
@@ -792,8 +793,13 @@ async fn push_progress_via(
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
     let update = if update.progress_episodes.is_some() {
-        let current = provider.current_entry(tokens, native).await?;
-        match reconcile_monotonic(update, current) {
+        // The same read carries the tracker's own episode total, so the
+        // count is fitted to it — nothing exceeds a shorter entry, and a
+        // finale completes only where the total is unknown or equals the
+        // episode — before the monotonic reconcile, at no extra request.
+        let media = provider.tracked_media(tokens, native).await?;
+        let update = fit_to_tracker_total(update, media.episodes);
+        match reconcile_monotonic(update, media.entry) {
             Some(reconciled) => reconciled,
             None => return Ok(None),
         }

@@ -77,4 +77,19 @@ describe('formatDownloadBarLabel', () => {
 		const out = formatDownloadBarLabel([item({ episode: '1' }), item({ episode: '2' })]);
 		expect(out).toEqual({ kind: 'multi', episodeCount: 2 });
 	});
+
+	it('counts the running episodes and the queued downloads apart', () => {
+		// A queued range is one queued download, whatever its length.
+		const items = [
+			item({ status: 'active' }),
+			item({ status: 'active', episode: '1-3', rangeTotal: 3 }),
+			item({ status: 'queued', episode: '4-9', rangeTotal: 6 }),
+			item({ status: 'queued' })
+		];
+		expect(formatDownloadBarLabel(items)).toEqual({
+			kind: 'multi-queued',
+			episodeCount: 4,
+			queued: 2
+		});
+	});
 });

@@ -17,6 +17,7 @@
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
 	import { formatSpeed, totalSpeed } from '$lib/download/speed';
+	import { dockLabel } from '$lib/download/dock-label';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
@@ -26,6 +27,7 @@
 	const activeCount = $derived(downloadStore.active.length);
 	const speed = $derived(totalSpeed(itemsView));
 	const unseenCount = $derived(downloadStore.unseenCount);
+	const triggerLabel = $derived(dockLabel(downloadStore.active, unseenCount));
 	// Hide the dock entirely when there are no downloads — the icon
 	// only earns space in the topbar when there's something to surface.
 	// Slide transition animates the inline-size, so the topbar's search
@@ -90,14 +92,20 @@
 			onclick={() => (open = !open)}
 			aria-haspopup="menu"
 			aria-expanded={open}
-			aria-label={activeCount > 0
-				? m.download_dock_active_speed_label({
-						count: activeCount,
+			aria-label={triggerLabel.kind === 'active-queued'
+				? m.download_dock_active_queued_speed_label({
+						count: triggerLabel.count,
+						queued: triggerLabel.queued,
 						speed: formatSpeed(speed ?? 0)
 					})
-				: unseenCount > 0
-					? m.download_dock_unseen_label({ count: unseenCount })
-					: m.download_dock_idle_label()}
+				: triggerLabel.kind === 'active'
+					? m.download_dock_active_speed_label({
+							count: triggerLabel.count,
+							speed: formatSpeed(speed ?? 0)
+						})
+					: triggerLabel.kind === 'unseen'
+						? m.download_dock_unseen_label({ count: triggerLabel.count })
+						: m.download_dock_idle_label()}
 			title={m.download_dock_title()}
 		>
 			<!-- The badge and the dot sit on the icon's corner, so a trigger
@@ -148,15 +156,22 @@
 								</span>
 
 								<!-- Active/pending: thin indeterminate bar fills the
-								     remaining inline space + a single cancel (X). -->
-								{#if item.status === 'active' || item.status === 'pending'}
-									<span
-										class="dl-row-bar dl-row-bar-indet"
-										aria-hidden="true"
-										title={progressTitle(item)}
-									>
-										<span></span>
-									</span>
+								     remaining inline space + a single cancel (X).
+								     Queued: a label in the bar's place, same cancel. -->
+								{#if item.status === 'queued' || item.status === 'active' || item.status === 'pending'}
+									{#if item.status === 'queued'}
+										<!-- Waiting for one of the downloads running at once
+										     to end ($lib/download/queue). -->
+										<span class="dl-row-queued">{m.download_dock_queued()}</span>
+									{:else}
+										<span
+											class="dl-row-bar dl-row-bar-indet"
+											aria-hidden="true"
+											title={progressTitle(item)}
+										>
+											<span></span>
+										</span>
+									{/if}
 									<button
 										type="button"
 										class="dl-row-act"
@@ -427,6 +442,15 @@
 		white-space: nowrap;
 		flex-shrink: 0;
 	}
+	.dl-row-queued {
+		flex-shrink: 0;
+		inline-size: 5rem;
+		font-family: var(--font-body);
+		font-size: var(--type-micro);
+		color: var(--bone-300);
+		text-align: end;
+	}
+
 	.dl-row-bar {
 		position: relative;
 		/* Fixed width so every row's bar matches regardless of title

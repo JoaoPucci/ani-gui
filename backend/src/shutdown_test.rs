@@ -137,6 +137,76 @@ async fn a_request_that_never_finishes_holds_the_stop_for_the_grace_and_no_longe
     request.abort();
 }
 
+#[tokio::test]
+async fn every_listener_serves_and_one_stop_winds_them_all_down() {
+    let mut listeners = Vec::new();
+    let mut bases = Vec::new();
+    for _ in 0..3 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        bases.push(format!("http://{}", listener.local_addr().expect("addr")));
+        listeners.push(listener);
+    }
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let (e, r) = (entered.clone(), release.clone());
+    let router = axum::Router::new()
+        .route("/ok", axum::routing::get(|| async { "ok" }))
+        .route(
+            "/held",
+            axum::routing::get(move || {
+                let (e, r) = (e.clone(), r.clone());
+                async move {
+                    e.notify_one();
+                    r.notified().await;
+                    "released"
+                }
+            }),
+        );
+    let (stop, stopped) = oneshot::channel::<()>();
+    let done = tokio::spawn(serve_all_until(
+        listeners,
+        router,
+        async move {
+            let _ = stopped.await;
+        },
+        Duration::from_secs(60),
+    ));
+
+    // A request held on the last listener; every listener still answers.
+    let held_url = format!("{}/held", bases[2]);
+    let held = tokio::spawn(async move { reqwest::get(held_url).await?.text().await });
+    entered.notified().await;
+    for base in &bases {
+        let body = reqwest::get(format!("{base}/ok"))
+            .await
+            .expect("answered")
+            .text()
+            .await
+            .expect("body");
+        assert_eq!(body, "ok", "{base}");
+    }
+
+    stop.send(()).expect("stop");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!done.is_finished(), "the held request holds the stop");
+    for base in &bases {
+        assert!(
+            reqwest::get(format!("{base}/ok")).await.is_err(),
+            "{base} stopped accepting"
+        );
+    }
+
+    release.notify_one();
+    assert_eq!(held.await.expect("join").expect("answered"), "released");
+    tokio::time::timeout(Duration::from_secs(5), done)
+        .await
+        .expect("every listener stops once the request is answered")
+        .expect("join")
+        .expect("served");
+}
+
 /// Sets its flag when dropped — the shape of the guard that kills a
 /// download tool's process group when its task is torn down.
 struct Dropped(Arc<AtomicBool>);
