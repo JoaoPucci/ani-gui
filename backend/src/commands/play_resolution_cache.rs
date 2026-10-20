@@ -184,7 +184,8 @@ use crate::proxy::MediaKind;
 // refuses an entry of any role airing now, and never reads a stitched
 // listing. A v23 row for an extra the narrower rule read can hold a
 // stream this one reads as a whole episode, under the extra's number,
-// and a HEAD-passing hit would keep playing and recording it as that
+// and a HEAD-passing hit for a request naming that extra — a history
+// row's Continue, a link — would keep playing and recording it as the
 // extra; bumping re-resolves.
 const SCHEMA: &str = "v24";
 
