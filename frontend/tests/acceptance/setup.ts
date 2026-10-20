@@ -179,8 +179,10 @@ const PLAY_PATH = new URL(`${API_BASE}/api/play`).pathname;
 /** A play request: `/api/play` on any lane, whose bases are origins. */
 const isPlay = (request: Request) =>
 	request.method === 'POST' && new URL(request.url).pathname === PLAY_PATH;
-/** The in-flight record of each play that has ended, until its answer
- *  is checked ({@link inFlight} forgets it at `request:end`). */
+/** The in-flight record of each play that has ended, kept for its
+ *  answer to be checked ({@link inFlight} forgets it at `request:end`).
+ *  A play answered with a network error or sent on to the network
+ *  raises no `response:mocked`, and its record stays for the file. */
 const endedPlays = new Map<string, InFlight>();
 /** Every request MSW has seen start, by request id, until it ends. One
  *  that never ends — nothing answered it, or its handler threw, which
@@ -259,7 +261,9 @@ server.events.on('request:end', ({ requestId }) => {
  */
 server.events.on('response:mocked', ({ request, requestId, response }) => {
 	if (!isPlay(request)) return;
-	const entry = endedPlays.get(requestId);
+	// Read whichever holds it, so the order of MSW's events does not
+	// decide what the guard knows.
+	const entry = inFlight.get(requestId) ?? endedPlays.get(requestId);
 	endedPlays.delete(requestId);
 	// Accounted for already — sent late, or charged at its sender's
 	// teardown — is charged nothing more, however it is answered.
