@@ -1300,20 +1300,22 @@ pub(crate) mod tests {
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
             track("es", false, &format!("{}/subs/es.vtt", stalling.uri())),
         ];
-        let live = tokio::time::timeout(
-            // The track is held until after the check, so its deadline is
-            // all that ends it; a check that waited on the track would
-            // never return. The guard is loose on purpose: it bounds the
-            // deadline's size without counting a loaded machine's delays
-            // against it.
-            std::time::Duration::from_secs(10),
-            crate::commands::play_cache::cached_row_is_live_within(
-                &state,
-                &cached,
-                std::time::Duration::from_millis(300),
+        // The track is held until after the check, so its deadline is all
+        // that ends it; a check that waited on the track would never
+        // return. Once the track is held the clock is paused
+        // ([`crate::held::paused_once`]), so the check returns at the
+        // deadline it applies, which must be the one it is given.
+        let deadline = std::time::Duration::from_millis(300);
+        let live = crate::held::paused_once(
+            tokio::time::timeout(
+                // Only a guard against hanging the suite.
+                std::time::Duration::from_secs(10),
+                crate::commands::play_cache::cached_row_is_live_within(&state, &cached, deadline),
             ),
+            stalled.asked(),
         )
         .await
+        .ended_by(deadline, "the cached-row check")
         .expect("the check returned at the deadline, not after the stalled request");
         stalled.release();
         assert!(!live, "a track that does not answer in time is a dead row");
