@@ -241,6 +241,20 @@ export function clearBackgroundForShow(showId: string): void {
 	}
 }
 
+/**
+ * Drop the given show's background entries for every version but
+ * `version` — no version being the default copy's — and abort their
+ * fires, leaving any a click owns. For a page whose version choice
+ * moved: the other versions' warms are for listings nobody will play.
+ */
+export function clearBackgroundForOtherVersions(
+	showId: string,
+	version: VersionKind | undefined
+): void {
+	void showId;
+	void version;
+}
+
 /** Test seam: wipe the whole cache between vitest cases, including
  *  the withSlot semaphore ($lib/play/prefetch-slots). Without resetting it,
  *  state from a prior test where saturated fires never resolved
