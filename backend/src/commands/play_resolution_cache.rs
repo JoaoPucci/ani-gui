@@ -179,7 +179,14 @@ use crate::proxy::MediaKind;
 // version reads, and a HEAD-passing hit would keep serving it; bumping
 // re-resolves. Keyed past the v21 and v22 above, whose rows name no
 // versions either.
-const SCHEMA: &str = "v23";
+// v24: the appended-extras rule checks the rows past the count against
+// every aired TV entry Kitsu relates the show to, whatever the role,
+// refuses an entry of any role airing now, and never reads a stitched
+// listing. A v23 row for an extra the narrower rule read can hold a
+// stream this one reads as a whole episode, under the extra's number,
+// and a HEAD-passing hit would keep playing and recording it as that
+// extra; bumping re-resolves.
+const SCHEMA: &str = "v24";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
