@@ -496,8 +496,8 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "sleep 1; touch '{finished}'; exit 0",
-            finished = finished.display()
+            "sleep 1; touch {finished}; exit 0",
+            finished = crate::stub_file::sh_quote(&finished)
         ),
     );
     let got = tokio::time::timeout(
