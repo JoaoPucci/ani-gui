@@ -1,7 +1,8 @@
 /**
  * The prefetch concurrency cap the play cache schedules its fires
- * under: a counted set of slots and a queue of the fires waiting for
- * one. Split out of `play-cache.ts`, which is its only user.
+ * under ($lib/play/play-cache): a counted set of slots and a queue of
+ * the fires waiting for one, kept apart from the cache so each file
+ * stays inside the complexity bar.
  */
 
 /**
@@ -19,17 +20,21 @@
 const PREFETCH_CONCURRENCY = 2;
 let activeFires = 0;
 const fireQueue: Array<() => void> = [];
+/** Bumped by the test reset: a slot taken before it neither gives its
+ *  count back nor hands its place on after, so the fires a reset
+ *  aborts cannot unbalance the next test's cap as they settle. */
+let generation = 0;
 
 /**
  * Schedule `fn` under the prefetch concurrency cap. Returns the
  * promise + a `startNow` escape hatch that callers can invoke to cut
- * the queue (used by clicks). `startNow` is a no-op once the slot is
- * already running.
+ * the queue (used by clicks, and by `getOrFireNow` for a warm a click
+ * waits on). `startNow` is a no-op once the slot is already running.
  *
  * Bypassing the cap briefly exceeds PREFETCH_CONCURRENCY by one for
- * each click — that's the explicit trade. The cap is for *background*
- * warming; foreground clicks shouldn't be punished for the warming
- * having queued ahead of them.
+ * each caller that cuts the queue — that's the explicit trade. The cap
+ * is for *background* warming; a click, or a warm a click waits on,
+ * shouldn't be punished for the warming having queued ahead of it.
  */
 export function withSlot<T>(
 	fn: () => Promise<T>,
@@ -49,10 +54,10 @@ export function withSlot<T>(
 				// it move up, and it never runs: a fire is a resolve
 				// request to the backend. An abort that lands after the
 				// slot was granted, before the fire starts, finds the
-				// listener gone; the fire then runs with an aborted
-				// signal, which playStream refuses before it sends
-				// anything, and the slot passes on as it does for any
-				// fire that ends.
+				// listener gone; `fn` then runs with the signal aborted,
+				// which the play cache refuses before it fires (and
+				// playStream refuses too), and the slot passes on as it
+				// does for any fire that ends.
 				const onAbort = () => {
 					const idx = fireQueue.indexOf(grant);
 					if (idx >= 0) fireQueue.splice(idx, 1);
@@ -71,12 +76,15 @@ export function withSlot<T>(
 		started = true;
 		slotResolver = null;
 		activeFires += 1;
+		const taken = generation;
 		try {
 			return await fn();
 		} finally {
-			activeFires -= 1;
-			const next = fireQueue.shift();
-			if (next) next();
+			if (taken === generation) {
+				activeFires -= 1;
+				const next = fireQueue.shift();
+				if (next) next();
+			}
 		}
 	})();
 	const startNow = () => {
@@ -92,9 +100,10 @@ export function withSlot<T>(
 	return { promise, startNow, hasStarted: () => started };
 }
 
-/** Test seam: release every slot and drop the queue, for
- *  `__resetPlayCacheForTests`. */
-export function __resetPrefetchSlotsForTests(): void {
+/** Test seam: forget every running and queued slot, for
+ *  `__resetPlayCacheForTests`, which aborts every entry first. */
+export function resetPrefetchSlotsForTests(): void {
 	activeFires = 0;
 	fireQueue.length = 0;
+	generation += 1;
 }

@@ -846,18 +846,17 @@ describe('a play whose page is left before it answers', () => {
 });
 
 describe('detail — warms queued before the page moved to another show', () => {
-	it('carry the show they were queued for', async () => {
+	it('are cancelled, running or queued, and never take on the other show', async () => {
 		// Warms run two at a time; the rest wait for a slot. The page
 		// moves to another show (the component is reused) while some
-		// wait. When they fire, they must still describe the show they
-		// were queued for — they are keyed and titled for it, and the
-		// backend records their Kitsu id against the provider's show.
+		// wait. The show left is the page left: its warms are background
+		// work nobody is waiting on, and each one running holds a
+		// connection on the resolve lane, so the running ones close and
+		// the queued ones never fire — the other show's warms take the
+		// slots. A user's own click is not a warm and runs on (the
+		// cases above). Whatever warm does go out for the first show
+		// still describes it — keyed and titled for it, with its Kitsu id.
 		const OTHER_ID = '777';
-		server.use(
-			http.get(`${API_BASE}/api/settings`, () =>
-				HttpResponse.json({ ...appConfig('sub'), cache_resolutions: true })
-			)
-		);
 		useHandlers({ cached: {}, playable_episode_counts: {} });
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () =>
@@ -872,21 +871,23 @@ describe('detail — warms queued before the page moved to another show', () => 
 		);
 		app = mount(DetailPage, { target });
 		const warms = () => FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'));
+		const titled = (title: string) => `title=${encodeURIComponent(title).replace(/%20/g, '+')}`;
 		await until(() => warms().length >= 2, 'the first warms');
 		// Two are running and the rest are queued behind them.
 		expect(warms().length).toBe(2);
 		expect(warms().every((w) => w.url.includes(`kitsu_id=${KITSU_ID}`))).toBe(true);
+		const first = warms().slice();
 		setParams({ id: OTHER_ID });
 		await until(() => (target.textContent ?? '').includes('Another Show'), 'the other show');
-		const before = warms().length;
-		for (const w of warms().slice(0, 2)) w.dispatch('error', JSON.stringify({ kind: 'timeout' }));
-		await until(() => warms().length > before, 'a queued warm to fire');
-		const fired = warms()
-			.slice(before)
-			.filter((w) => w.url.includes(`title=${encodeURIComponent(TITLE).replace(/%20/g, '+')}`));
-		expect(fired.length).toBeGreaterThan(0);
-		for (const w of fired) {
-			expect(w.url, 'a queued warm keeps its own show').toContain(`kitsu_id=${KITSU_ID}`);
+		await until(() => first.every((w) => w.closed), "the first show's running warms to close");
+		await until(
+			() => warms().some((w) => w.url.includes(`kitsu_id=${OTHER_ID}`)),
+			"the other show's warms"
+		);
+		const firstShowWarms = warms().filter((w) => w.url.includes(titled(TITLE)));
+		expect(firstShowWarms, 'no queued warm of the first show fires').toEqual(first);
+		for (const w of firstShowWarms) {
+			expect(w.url, 'a warm keeps its own show').toContain(`kitsu_id=${KITSU_ID}`);
 			expect(w.url).not.toContain(`kitsu_id=${OTHER_ID}`);
 		}
 	});

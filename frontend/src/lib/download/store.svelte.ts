@@ -6,7 +6,9 @@
  * Lifecycle of a download item:
  *   1. `addPending(args)` returns the new id; status = "pending"
  *      (modal opened, awaiting user confirm).
- *   2. `markActive(id)` flips to "active" and starts the SSE stream.
+ *   2. `markQueued(id)` flips to "queued" while the download waits for
+ *      a slot (`$lib/download/queue`); `markActive(id)` flips to
+ *      "active" once it has one and its SSE stream starts.
  *      `setProgress(id, line)` updates the latest progress line.
  *   3. `markDone(id, destDir)` flips to "done"; renderer can then
  *      offer "reveal in folder".
@@ -19,7 +21,7 @@
  * downloader child.
  */
 
-export type DownloadStatus = 'pending' | 'active' | 'done' | 'error';
+export type DownloadStatus = 'pending' | 'queued' | 'active' | 'done' | 'error';
 
 export interface DownloadItem {
 	id: string;
@@ -132,7 +134,9 @@ class DownloadStore {
 	items = $state<DownloadItem[]>([]);
 
 	get active(): DownloadItem[] {
-		return this.items.filter((i) => i.status === 'pending' || i.status === 'active');
+		return this.items.filter(
+			(i) => i.status === 'pending' || i.status === 'queued' || i.status === 'active'
+		);
 	}
 	get hasActive(): boolean {
 		return this.active.length > 0;
@@ -179,6 +183,12 @@ class DownloadStore {
 			...this.items
 		];
 		return id;
+	}
+
+	/** Waiting for a slot. Carries the controller so a cancel reaches
+	 *  it before it has started. */
+	markQueued(id: string, abort: AbortController) {
+		this.items = this.items.map((i) => (i.id === id ? { ...i, status: 'queued', abort } : i));
 	}
 
 	markActive(id: string, abort: AbortController) {

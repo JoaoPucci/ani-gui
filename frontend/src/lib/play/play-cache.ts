@@ -1,5 +1,6 @@
 import type { CreateSessionResponse, PlayProgress, VersionKind } from '$lib/api';
-import { __resetPrefetchSlotsForTests, withSlot } from './prefetch-slots';
+import { resetPrefetchSlotsForTests, withSlot } from './prefetch-slots';
+import { sweepShow } from './play-cache-sweep';
 
 /**
  * In-flight + result cache for `play()` calls. Backs the prefetch
@@ -73,8 +74,9 @@ interface CacheEntry {
 	/** When the entry is still waiting for a slot in `withSlot`'s queue,
 	 *  this is the resolver that, when called, lets it run. A click
 	 *  (priority subscriber) calls this to cut the queue rather than
-	 *  sit on a Lottie while the backend warms unrelated episodes.
-	 *  Cleared once the slot is acquired and `fire` actually starts. */
+	 *  sit on a Lottie while the backend warms unrelated episodes, and
+	 *  so does `getOrFireNow` for a warm a click waits on. A no-op once
+	 *  the slot is acquired and `fire` actually starts. */
 	startNow?: () => void;
 	/** Drives cancellation when the user navigates away mid-resolve
 	 *  (clearForShow aborts; playStream's listener closes the
@@ -132,8 +134,14 @@ export function getOrFire(
 			for (const s of subscribers) s(p);
 		};
 		const fireRef = { current: fire };
+		// An entry cleared while it waited for its slot leaves the queue
+		// and never fires; one cleared after its slot was granted, before
+		// it started, rejects as its aborted stream would have.
 		const slot = withSlot(
-			() => fireRef.current(emit, abortController.signal),
+			() =>
+				abortController.signal.aborted
+					? Promise.reject(new Error('playStream: aborted'))
+					: fireRef.current(emit, abortController.signal),
 			abortController.signal
 		);
 		newEntry.promise = slot.promise;
@@ -190,6 +198,19 @@ export function getOrFire(
 }
 
 /**
+ * {@link getOrFire} for a background caller that must not wait behind
+ * the prefetch cap: the entry is a background one — a click attaching
+ * while it runs still aborts it and fires its own Interactive request —
+ * but it starts now, past the queue, as a click's would. For a warm a
+ * click waits on.
+ */
+export function getOrFireNow(key: CacheKey, fire: FireFn): Promise<CreateSessionResponse> {
+	const promise = getOrFire(key, fire);
+	cached.get(key)?.startNow?.();
+	return promise;
+}
+
+/**
  * Drop every cache entry for the given show and abort any in-flight
  * fires. Called on detail-page / player-page unmount so prefetched-
  * but-unused sessions don't keep streaming SSE events into the void
@@ -202,21 +223,44 @@ export function getOrFire(
  * the same key fires fresh.
  */
 export function clearForShow(showId: string): void {
-	const prefix = `${showId}|`;
-	for (const [key, entry] of cached) {
-		if (!key.startsWith(prefix)) continue;
-		entry.abortController.abort();
-		cached.delete(key);
-	}
+	sweepShow(cached, showId, () => true);
+}
+
+/**
+ * Drop the background entries for the given show — the warms nobody
+ * is waiting on — and abort their fires, leaving any a click owns.
+ * For a page that stays mounted while it moves to another show.
+ */
+export function clearBackgroundForShow(showId: string): void {
+	sweepShow(cached, showId, (_key, entry) => entry.createdInBackground === true);
+}
+
+/**
+ * Drop the given show's background entries for every version but
+ * `version` — no version being the default copy's — and abort their
+ * fires, leaving any a click owns. For a page whose version choice
+ * moved: the other versions' warms are for listings nobody will play.
+ */
+export function clearBackgroundForOtherVersions(
+	showId: string,
+	version: VersionKind | undefined
+): void {
+	// The version is the key's last axis (`makeKey`).
+	const chosen = `|${version ?? ''}`;
+	sweepShow(
+		cached,
+		showId,
+		(key, entry) => entry.createdInBackground === true && !key.endsWith(chosen)
+	);
 }
 
 /** Test seam: wipe the whole cache between vitest cases, including
- *  the withSlot semaphore. Without resetting activeFires/fireQueue,
+ *  the withSlot semaphore ($lib/play/prefetch-slots). Without resetting it,
  *  state from a prior test where saturated fires never resolved
  *  would leak — the next test's fire would queue forever. Each
  *  entry's controller is also aborted to release any awaits. */
 export function __resetPlayCacheForTests(): void {
 	for (const entry of cached.values()) entry.abortController.abort();
 	cached.clear();
-	__resetPrefetchSlotsForTests();
+	resetPrefetchSlotsForTests();
 }
