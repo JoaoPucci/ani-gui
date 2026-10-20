@@ -17,7 +17,7 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
 import { FRAGMENT_LOAD_ALLOWANCE } from '../../src/lib/play/fragment-loop-guard';
-import { HOLD_DELAYS_MS } from '../../src/lib/play/stall-machine';
+import { heldRetries, heldRetriesSettled } from './held-retries';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -33,6 +33,10 @@ vi.mock('$app/navigation', () => ({
 
 // The engine double: the page's hls.js surface, with stopLoad counted
 // and an event registry the test emits through.
+vi.mock('../../src/lib/play/held-retry', async (importOriginal) =>
+	(await import('./held-retries')).trackHeldRetries(await importOriginal())
+);
+
 vi.mock('hls.js', () => {
 	type Handler = (event: string, data: unknown) => void;
 	class FakeHls {
@@ -89,6 +93,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	hlsInstances().length = 0;
+	heldRetries.length = 0;
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -191,14 +196,14 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		const first = { frag: { type: 'main', level: 0, sn: 1 } };
 		for (let i = 0; i <= FRAGMENT_LOAD_ALLOWANCE; i++) hls.emit(FRAG_LOADED, first);
 		expect(hls.stopLoadCalls).toBe(1);
-		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		// The hold's retry can no longer fire: once it has fired or been
+		// cancelled, a startLoad it made would be counted.
+		await until(heldRetriesSettled, 'the held retry to fire or be cancelled');
+		expect(heldRetries.map((r) => r.state)).toEqual(['cancelled']);
 		expect(hls.startLoadCalls).toBe(0);
 	});
 
 	it('a failure after the trip does not start the stopped engine', async () => {
-		// The trip's own loads reset the rendition's hold count, so the
-		// re-armed delay would be the first rung; the wait covers the
-		// second rung as well, so the case does not lean on that reset.
 		const hls = await mountHls();
 		const video = playerVideo();
 		Object.defineProperty(video, 'buffered', {
@@ -210,7 +215,9 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		for (let i = 0; i <= FRAGMENT_LOAD_ALLOWANCE; i++) hls.emit(FRAG_LOADED, first);
 		expect(hls.stopLoadCalls).toBe(1);
 		hls.emit(ERROR, { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' });
-		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[1] + 500));
+		// Whatever retry the failure armed, at whatever rung, has fired
+		// or been cancelled before the engine is held to not starting.
+		await until(heldRetriesSettled, 'every armed retry to fire or be cancelled');
 		expect(hls.startLoadCalls).toBe(0);
 	});
 
