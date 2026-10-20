@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { pushWatchedToTrackers } from './push-watched';
+import fc from 'fast-check';
+import { pushWatchedToTrackers, watchedStatus } from './push-watched';
 import type { Provider } from './types';
 
 function deps(overrides: Partial<Parameters<typeof pushWatchedToTrackers>[0]> = {}) {
@@ -73,7 +74,7 @@ describe('pushWatchedToTrackers finale status', () => {
 
 	it('sends no status at the latest episode of a still-airing series', async () => {
 		// Codex P2 #3387184082: the playable cap for an airing show is
-		// the latest released episode, so episode >= cap is true — but a
+		// the latest released episode, so the episode reaches the cap — but a
 		// non-finished series must not be completed (progress only).
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 12, 12, false);
@@ -93,6 +94,32 @@ describe('pushWatchedToTrackers finale status', () => {
 		const { d: d2, calls: c2 } = deps();
 		await pushWatchedToTrackers(d2, 'kitsu-12', 6, 0, true);
 		expect(c2[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 6 });
+	});
+});
+
+describe('pushWatchedToTrackers past the finale', () => {
+	it('sends no status for a whole episode the provider lists past Kitsu’s count', async () => {
+		// A finished 12-episode Kitsu show whose provider plays a 13th:
+		// that episode is not Kitsu's finale, and a tracker counting 13
+		// would otherwise be completed on an episode whose place in its
+		// numbering is unknown (a prologue or recap it counts elsewhere).
+		const { d, calls } = deps();
+		await pushWatchedToTrackers(d, 'kitsu-12', 13, 12, true);
+		expect(calls[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 13 });
+	});
+
+	it('completes only Kitsu’s own last episode of a finished show', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 3000 }),
+				fc.option(fc.integer({ min: 0, max: 3000 })),
+				fc.boolean(),
+				(episode, total, finished) => {
+					const finale = finished && total !== null && total > 0 && episode === total;
+					expect(watchedStatus(episode, total, finished)).toBe(finale ? 'completed' : null);
+				}
+			)
+		);
 	});
 });
 

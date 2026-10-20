@@ -22,6 +22,7 @@ pub mod cache_upsert;
 pub mod credentials;
 pub mod internal_secret;
 pub mod pkce;
+pub mod progress_fit;
 pub mod provider;
 pub mod status;
 

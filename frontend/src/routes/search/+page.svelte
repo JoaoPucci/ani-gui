@@ -210,7 +210,8 @@
 			return config;
 		},
 		pickMode: pickAvailabilityMode,
-		filter: (items, mode, emit) => filterAvailableProgressive(items, mode, emit),
+		filter: (items, mode, emit, signal) =>
+			filterAvailableProgressive(items, mode, emit, undefined, undefined, signal),
 		onResults: (visible) => {
 			results = visible;
 		},
