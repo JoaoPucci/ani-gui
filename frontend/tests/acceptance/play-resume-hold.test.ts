@@ -12,7 +12,8 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
-import { savePosition } from '../../src/lib/play/watch-position';
+import { readPosition, savePosition } from '../../src/lib/play/watch-position';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -205,7 +206,11 @@ describe('play route — a resumed episode opens at its point', () => {
 
 	it('an episode with no point opens without holding', async () => {
 		const { video } = await openEpisode('hls');
-		await new Promise((r) => setTimeout(r, 20));
+		// The source has attached: its listeners mark the episode
+		// started, in the same call that decides whether to hold. One
+		// turn then puts whatever that call decided on the page.
+		await until(() => readPosition(KITSU_ID, 1) === 0, 'the source to attach');
+		await new Promise((r) => setTimeout(r, 0));
 		expect(busy()).toBe(false);
 		expect(frame().classList.contains('player-resuming')).toBe(false);
 		expect(inert(playButton())).toBe(false);
@@ -218,6 +223,7 @@ describe('play route — a resumed episode opens at its point', () => {
 		// point, and the hold would never see its seek land; the skip
 		// waits for the reveal instead.
 		savePosition(KITSU_ID, 1, 612.5, 1420);
+		const fetches = watchPageFetches();
 		const { video, play } = await openEpisode('hls', {
 			autoSkipOp: true,
 			skips: [{ skip_type: 'op', start_time: 600, end_time: 690 }]
@@ -227,8 +233,15 @@ describe('play route — a resumed episode opens at its point', () => {
 		video.dispatchEvent(new Event('loadedmetadata'));
 		video.dispatchEvent(new Event('durationchange'));
 		expect(video.currentTime).toBe(612.5);
+		// The skip needs the setting and the opening's times, which the
+		// page asks for once the length is known: every answer is in
+		// and applied, so a skip would act on the timeupdate below.
+		await fetches.settled('the settings and the skip times to be applied');
+		expect(fetches.sent.some((f) => f.path.startsWith('/api/aniskip/'))).toBe(true);
 		video.dispatchEvent(new Event('timeupdate'));
-		await new Promise((r) => setTimeout(r, 100));
+		// The skip acts on the playhead the event reports, in the
+		// effects one turn runs; nothing it waits on is still out.
+		await new Promise((r) => setTimeout(r, 0));
 		expect(video.currentTime).toBe(612.5);
 		video.dispatchEvent(new Event('seeked'));
 		expect(play).toHaveBeenCalledTimes(1);

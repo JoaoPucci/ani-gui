@@ -9,6 +9,17 @@
 // A case can then wait for the answer its claim is about to be read,
 // and check what the page asked for after it, without guessing how
 // long the network takes.
+//
+// Where a claim follows every answer rather than one, `settled` waits
+// until nothing the page asked is still out or being read across a
+// whole turn of the event loop. A request still out keeps the page
+// unsettled however long it takes: the difference from a fixed sleep,
+// which ends on time whether or not the answer has landed.
+//
+// The tier's teardown (`setup.ts`) already fails a case whose request
+// is still out when its page unmounts. What it cannot see is an answer
+// that lands after a sleep ended but before the case did — one the
+// case itself goes on to wait for — and that is what these close.
 
 import { onTestFinished, vi } from 'vitest';
 import { tick } from 'svelte';
@@ -47,29 +58,43 @@ export function watchPageFetches(): {
 	sent: PageFetch[];
 	read: PageFetch[];
 	failed: PageFetch[];
+	/** Resolves once nothing the page asked is out or being read across
+	 *  a whole turn: every answer is in and read, and what it set off
+	 *  has asked whatever it asks. */
+	settled(what: string, timeoutMs?: number): Promise<void>;
 } {
 	const sent: PageFetch[] = [];
 	const read: PageFetch[] = [];
 	const failed: PageFetch[] = [];
+	/** Requests not yet answered, plus bodies being read. */
+	let out = 0;
 	const realFetch = globalThis.fetch;
 	vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
 		const asked = described(input, init);
 		sent.push(asked);
+		out += 1;
 		let resp: Response;
 		try {
 			resp = await realFetch(input, init);
 		} catch (e) {
 			failed.push(asked);
 			throw e;
+		} finally {
+			out -= 1;
 		}
-		for (const how of ['text', 'json'] as const) {
+		for (const how of ['text', 'json', 'arrayBuffer', 'blob'] as const) {
 			const original = resp[how].bind(resp) as () => Promise<unknown>;
 			Object.defineProperty(resp, how, {
 				configurable: true,
 				value: async () => {
-					const value = await original();
-					read.push(asked);
-					return value;
+					out += 1;
+					try {
+						const value = await original();
+						read.push(asked);
+						return value;
+					} finally {
+						out -= 1;
+					}
 				}
 			});
 		}
@@ -78,7 +103,21 @@ export function watchPageFetches(): {
 	onTestFinished(() => {
 		vi.unstubAllGlobals();
 	});
-	return { sent, read, failed };
+	async function settled(what: string, timeoutMs = 8000) {
+		const deadline = Date.now() + timeoutMs;
+		for (;;) {
+			if (out === 0) {
+				await new Promise((r) => setTimeout(r, 0));
+				if (out === 0) return;
+			} else {
+				await new Promise((r) => setTimeout(r, 10));
+			}
+			if (Date.now() > deadline) {
+				throw new Error(`timed out waiting for ${what}: the page still has a request out`);
+			}
+		}
+	}
+	return { sent, read, failed, settled };
 }
 
 /**
