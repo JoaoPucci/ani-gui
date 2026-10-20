@@ -205,8 +205,9 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 	 *  be discarded anyway. Its tiles are let go as superseded. */
 	supersede: () => void;
 } {
-	/** The shared in-flight lookup, or null when none is out. */
-	let pending: Promise<CapGateAnswer | null> | null = null;
+	/** The shared in-flight lookup and the context it asked in, or
+	 *  null when none is out. */
+	let pending: { context: string; answer: Promise<CapGateAnswer | null> } | null = null;
 	/** The run the in-flight lookup probes under. */
 	let run: ProbeRun | null = null;
 	/** Tiles waiting on it — per episode, because the spinner belongs
@@ -231,21 +232,34 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// so applying an answer across either change plays the wrong
 			// thing.
 			const asked = deps.currentContext();
-			// Cleared as soon as the request settles, so a click after
-			// this one gets a current answer instead of joining a
-			// lookup that has already finished.
-			if (!pending) {
+			// Joined only while it asks the same question: the lookup
+			// fixed its show and audio when it started, so a click after
+			// the context moved — settings landing on dub — asks again
+			// rather than taking the other audio's answer, which would
+			// pass the check below, since the page is still on the
+			// context that click asked in. The lookup it replaces is
+			// stopped, as a supersede stops it: its answer is about a
+			// context the page has left, and once replaced nothing but
+			// leaving the page would stop it. Cleared as soon as the
+			// request settles, so a click after this one gets a current
+			// answer instead of joining a lookup that has already
+			// finished.
+			if (pending?.context !== asked) {
+				run?.end();
 				const own = probeScope.begin();
 				run = own;
-				const asking: Promise<CapGateAnswer | null> = deps.probe(own.signal).finally(() => {
-					// Only its own: a lookup superseded and replaced must
-					// not clear the one that replaced it.
-					if (pending === asking) pending = null;
-					if (run === own) run = null;
-				});
-				pending = asking;
+				const mine = {
+					context: asked,
+					answer: deps.probe(own.signal).finally(() => {
+						// Only its own: a lookup superseded and replaced must
+						// not clear the one that replaced it.
+						if (pending === mine) pending = null;
+						if (run === own) run = null;
+					})
+				};
+				pending = mine;
 			}
-			void pending
+			void pending.answer
 				.then((answer) => {
 					if (deps.currentContext() !== asked) return deps.onSuperseded(episode);
 					if (answer == null) return deps.onFailed(episode, null);
