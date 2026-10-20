@@ -240,6 +240,22 @@ impl HostBudget {
         })
     }
 
+    /// [`Self::fresh`] with a refill of one token a day, too slow to
+    /// land inside a test: a token a test's fetch takes stays taken,
+    /// however long the scheduler holds the test between two takes. A
+    /// test that counts what a fetch spent against the app's own refill
+    /// counts the moment between the takes too — every fifteen
+    /// milliseconds a hundredth of a token — so its count rides on how
+    /// busy the machine running it is.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn fresh_without_refill() -> Arc<Self> {
+        Arc::new(Self {
+            reserve: BACKGROUND_RESERVE,
+            ..Self::new(SEGMENT_BURST, Duration::from_secs(86_400))
+        })
+    }
+
     /// The tokens `host` has on hand as of its last take, for a test
     /// to see what a fetch spent; `None` for a host never fetched from.
     #[cfg(test)]
