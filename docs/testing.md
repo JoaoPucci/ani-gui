@@ -69,6 +69,9 @@ tests/bash/helpers/run-suite.sh
 # Rust backend
 cd backend && cargo test --workspace
 cd backend && cargo test --test proptests
+# ... and as CI's Unix legs run it, under a temporary directory whose
+# name a shell, a TOML string or a printf format reads specially
+cd backend && TMPDIR="$(sh ../tools/hostile-tmpdir.sh "${TMPDIR:-/tmp}")" cargo test --workspace
 
 # Frontend
 cd frontend && pnpm test
@@ -107,7 +110,7 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | Workflow | Triggers | Gating |
 |---|---|---|
 | `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, a script the suites execute, or a workflow | yes |
-| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
+| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json`, `tools/hostile-tmpdir.sh` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
 | `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | not in the ruleset's required list yet |
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
