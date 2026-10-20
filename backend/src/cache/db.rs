@@ -213,6 +213,7 @@ pub fn meta_cache_row(pool: &SqlitePool, key: &str) -> Result<Option<MetaCacheRo
 /// Lower `seen`'s TTL to `ttl_seconds`, body and `fetched_at` kept.
 /// Applies only while the stored row is still `seen` and only when it
 /// shortens, so a row rewritten since it was read keeps its window.
+/// Answers whether the row was shortened.
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
@@ -221,23 +222,54 @@ pub fn meta_cache_shorten(
     key: &str,
     seen: &MetaCacheRow,
     ttl_seconds: u64,
-) -> Result<()> {
+) -> Result<bool> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
-    conn.execute(
-        "UPDATE meta_cache SET ttl_seconds = ?1 \
+    let changed = conn
+        .execute(
+            "UPDATE meta_cache SET ttl_seconds = ?1 \
          WHERE key = ?2 AND body = ?3 AND fetched_at = ?4 AND ttl_seconds = ?5 \
          AND ?1 < ttl_seconds",
-        params![
-            as_i64(ttl_seconds),
-            key,
-            seen.body,
-            as_i64(seen.fetched_at),
-            as_i64(seen.ttl_seconds)
-        ],
-    )
-    .map_err(|_| AniError::Cache)?;
-    Ok(())
+            params![
+                as_i64(ttl_seconds),
+                key,
+                seen.body,
+                as_i64(seen.fetched_at),
+                as_i64(seen.ttl_seconds)
+            ],
+        )
+        .map_err(|_| AniError::Cache)?;
+    Ok(changed == 1)
+}
+
+/// Replace `seen`'s body with `body`, `fetched_at` and the TTL kept —
+/// the row's window is its own write's, not this one's. Applies only
+/// while the stored row is still `seen`. Answers whether it applied.
+///
+/// # Errors
+/// [`AniError::Cache`] on write failure.
+pub fn meta_cache_rebody(
+    pool: &SqlitePool,
+    key: &str,
+    seen: &MetaCacheRow,
+    body: &str,
+) -> Result<bool> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
+    let changed = conn
+        .execute(
+            "UPDATE meta_cache SET body = ?1 \
+             WHERE key = ?2 AND body = ?3 AND fetched_at = ?4 AND ttl_seconds = ?5",
+            params![
+                body,
+                key,
+                seen.body,
+                as_i64(seen.fetched_at),
+                as_i64(seen.ttl_seconds)
+            ],
+        )
+        .map_err(|_| AniError::Cache)?;
+    Ok(changed == 1)
 }
 
 /// Delete every meta_cache entry. Used by tests and a future "clear cache"

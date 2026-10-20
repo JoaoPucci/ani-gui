@@ -35,7 +35,11 @@ proptest::proptest! {
             resolved_tag: None,
             referer: referer.clone(),
             subtitles: Vec::new(),
-            provider: crate::scraper::provider::ProviderId::TestA, former_tags: Vec::new(),
+            provider: crate::scraper::provider::ProviderId::TestA,
+            versions: Vec::new(),
+            version: None,
+            former_tags: Vec::new(),
+            other_copies: Vec::new(),
         };
         let args: PlayArgs = serde_json::from_value(serde_json::json!({
             "title": show_title,

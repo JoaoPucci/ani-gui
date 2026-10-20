@@ -173,12 +173,32 @@ pub async fn fit_appended(
             source.remember(fitted.as_ref().map(|_| &reading));
             fitted
         }
-        _ => (source.remembered() == Some(reading)).then(|| tag_past(&picked.episodes, count)),
+        _ => source
+            .remembered()
+            .is_some_and(|kept| kept == reading || kept_for_a_version(&picked, &kept))
+            .then(|| tag_past(&picked.episodes, count)),
     };
     match fitted {
-        Some(episodes) => PickedShow { episodes, ..picked },
+        // Every version is the same episodes under its own ids: the
+        // reading holds for each of them.
+        Some(episodes) => PickedShow {
+            versions: super::play_native_versions::fitted_versions(&picked.versions, &episodes),
+            episodes,
+            ..picked
+        },
         None => picked,
     }
+}
+
+/// Whether `kept` was proved on another version of `picked` — the same
+/// episodes under that copy's slug and ids — so it stands for the
+/// version that plays as for the one it was proved on.
+fn kept_for_a_version(picked: &PickedShow, kept: &Remembered) -> bool {
+    picked.versions.iter().any(|v| {
+        v.hit.slug == kept.slug
+            && v.episodes.len() == picked.episodes.len()
+            && past_ids(&v.episodes, kept.count) == kept.ids
+    })
 }
 
 #[path = "play_native_appended_rule.rs"]
