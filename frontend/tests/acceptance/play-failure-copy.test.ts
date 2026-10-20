@@ -96,6 +96,10 @@ describe('home — a resume failure renders the shared copy', () => {
 			http.get(`${API_BASE}/api/history`, () =>
 				HttpResponse.json([{ ep_no: '3', id: 'provider-1', title: 'Cowboy Bebop' }])
 			),
+			// The row read again before it resumes reads as it did.
+			http.get(`${API_BASE}/api/history/provider-1/number`, () =>
+				HttpResponse.json({ ep_no: '3' })
+			),
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
 				HttpResponse.json([{ ...kitsuRef('1', 'Cowboy Bebop', 26), status: 'finished' }])
 			),

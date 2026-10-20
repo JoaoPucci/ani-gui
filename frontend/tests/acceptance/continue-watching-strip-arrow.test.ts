@@ -159,6 +159,10 @@ describe('home Continue Watching scroll arrows', () => {
 					{ ep_no: '2', id: 'allanime-2', title: 'Cowboy Bebop' }
 				])
 			),
+			// A row read again before it resumes reads as it did.
+			http.get(`${API_BASE}/api/history/:id/number`, ({ params }) =>
+				HttpResponse.json({ ep_no: params.id === 'allanime-2' ? '2' : '3' })
+			),
 			http.post(`${API_BASE}/api/kitsu/search`, async () => {
 				await searchHeld;
 				return HttpResponse.json([ref('1', 'Cowboy Bebop', 26)]);
