@@ -121,14 +121,12 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 		// warms the fresh session starts, are answered with a session,
 		// and only the resolve the Reload asked for counts.
 		http.post(`${API_BASE}/api/play`, async ({ request }) => {
-			const body = (await request.json()) as { prefetch?: boolean; mode?: string };
+			const body = (await request.json()) as { prefetch?: boolean };
 			if (!body.prefetch) seen.resolves += 1;
 			return HttpResponse.json({
-				id: 'session-2',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: body.mode ?? 'dub'
+				session_id: 'session-2',
+				media_url: `${API_BASE}/s/session-2/file.mp4`,
+				media_kind: 'mp4'
 			});
 		}),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
