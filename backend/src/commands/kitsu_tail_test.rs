@@ -810,3 +810,6 @@ fn a_reading_kept_under_the_sequel_only_rule_is_not_remembered() {
     tail.remember(Some(&before));
     assert_eq!(tail.remembered(), Some(before));
 }
+
+#[path = "kitsu_tail_settled_test.rs"]
+mod settled;
