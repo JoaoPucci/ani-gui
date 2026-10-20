@@ -9,7 +9,7 @@
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
@@ -38,7 +38,8 @@
 		return flip(node, animation, { duration: 280, easing: quintOut });
 	}
 	import { resolve } from '$app/paths';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import {
 		allmangaKitsuMapGet,
 		checkAvailability,
@@ -716,7 +717,15 @@
 			// would play it.
 			version: storedChoice(a.match.id)
 		});
+	// A Continue click awaits its session before it opens the player;
+	// one that answers after the viewer left home, or started a
+	// navigation away from it, must not pull them back
+	// ($lib/navigation/claims).
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate((nav) => navigationClaims.started(nav));
+	onDestroy(() => navigationClaims.left());
 	const startResume = makeStartResume({
+		claimNavigation: () => navigationClaims.claim(),
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		currentNumber: (entryId) => historyNumber(entryId),
@@ -734,12 +743,15 @@
 		// The shared mapper, default phrasing; the other audio's answer
 		// comes from the availability cache for the show and episode
 		// the resume asked for.
-		onFailure: async (title, e, args) => {
+		onFailure: async (title, e, args, isCurrent) => {
 			const message = await describePlayFailureFromCache(e, {
 				kitsuId: args.match.id,
 				mode: args.mode,
 				episode: args.episode
 			});
+			// Moved on while the message was worded: it is about a click
+			// the viewer left behind.
+			if (isCurrent?.() === false) return;
 			resumeFailure = { title, message };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
