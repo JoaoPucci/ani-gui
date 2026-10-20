@@ -1275,3 +1275,48 @@ async fn a_part_with_no_entry_between_two_under_the_entry_leaves_the_first_in_th
     assert_eq!(map.segments[0].entry_total, 48);
     assert_eq!(map.segments[0].lead, 36);
 }
+#[tokio::test]
+async fn a_part_four_unresolved_prequels_after_its_entry_is_filed_under_it() {
+    // Six parts of twelve: only the first maps to MyAnimeList 903, a
+    // 72-episode entry. The sixth, mapped to nothing, is found through
+    // four prequels with no entry of their own and a fifth that has
+    // one: it is the entry's 61st–72nd.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "76",
+        detail("76", Some(12), "2025-01-01", "2025-03-25"),
+        1,
+    )
+    .await;
+    mount_chain(
+        &kitsu,
+        &[
+            ("71", Some(903)),
+            ("72", None),
+            ("73", None),
+            ("74", None),
+            ("75", None),
+            ("76", None),
+        ],
+    )
+    .await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 903, &mapped_body(&["71"])).await;
+    let mal_server = mal_entry(903, 72).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let map = episode_map_for_unresolved(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: None,
+        },
+        "76",
+    )
+    .await;
+    assert_eq!(map.shape, Shape::SplitParts);
+    assert_eq!(map.segments[0].entry_total, 72);
+    assert_eq!(map.segments[0].lead, 60);
+}
