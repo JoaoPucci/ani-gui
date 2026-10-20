@@ -237,10 +237,11 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// pass the check below, since the page is still on the
 			// context that click asked in. The lookup it replaces is
 			// stopped, as a supersede stops it: its answer is about a
-			// context the page has left, and once replaced nothing else
-			// could stop it. Cleared as soon as the request settles, so a
-			// click after this one gets a current answer instead of
-			// joining a lookup that has already finished.
+			// context the page has left, and once replaced nothing but
+			// leaving the page would stop it. Cleared as soon as the
+			// request settles, so a click after this one gets a current
+			// answer instead of joining a lookup that has already
+			// finished.
 			if (pending?.context !== asked) {
 				run?.end();
 				const own = probeScope.begin();
