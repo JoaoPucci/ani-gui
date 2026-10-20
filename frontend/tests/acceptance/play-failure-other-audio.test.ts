@@ -17,6 +17,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { ownedPlays } from './owned-plays';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -27,20 +28,12 @@ vi.mock('$app/state', () => ({
 vi.mock('$lib/account/push-watched', () => ({
 	syncWatchedToTrackers: vi.fn(async () => {})
 }));
-// Every play the routes run is judged by `runOwnedPlay`, and the page
-// acts on its outcome — navigates, shows a failure, records a watch —
-// in the turn that outcome settles. Recording each outcome lets a case
-// wait for the page to have acted rather than for a fixed time.
-const owned = vi.hoisted(() => ({ outcomes: [] as Promise<unknown>[] }));
-vi.mock('$lib/play/owned-play', async (importOriginal) => {
-	const real = await importOriginal<typeof import('$lib/play/owned-play')>();
-	const runOwnedPlay = ((...args: Parameters<typeof real.runOwnedPlay>) => {
-		const outcome = real.runOwnedPlay(...args);
-		owned.outcomes.push(outcome);
-		return outcome;
-	}) as typeof real.runOwnedPlay;
-	return { ...real, runOwnedPlay };
-});
+// Every play the routes run is judged by `runOwnedPlay`; recording
+// each outcome lets a case wait for the page to have acted on it rather
+// than for a fixed time (see ./owned-plays).
+vi.mock('$lib/play/owned-play', async (importOriginal) =>
+	(await import('./owned-plays')).trackOwnedPlays(await importOriginal())
+);
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -96,7 +89,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
-	owned.outcomes.length = 0;
+	ownedPlays.length = 0;
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -128,8 +121,8 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
  *  flushes what it rendered. A negative read after this is a reading
  *  of the page's answer, not of how far it had got. */
 async function playJudged() {
-	await until(() => owned.outcomes.length > 0, 'a play to be run');
-	await Promise.allSettled([owned.outcomes[owned.outcomes.length - 1]]);
+	await until(() => ownedPlays.length > 0, 'a play to be run');
+	await Promise.allSettled([ownedPlays[ownedPlays.length - 1]]);
 	await tick();
 }
 
