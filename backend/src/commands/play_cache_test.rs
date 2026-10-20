@@ -140,14 +140,17 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
         ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()),
     )
     .await;
-    let state = state_with_proxy_origin();
+    let mut state = state_with_proxy_origin();
+    // The two tokens are taken a moment apart, and the app's refill
+    // would top the second up by that moment: a budget that does not
+    // refill counts the requests alone.
+    state.host_budget = crate::proxy::host_budget::HostBudget::fresh_without_refill();
     assert!(try_serve_cached(&state, &cached).await.is_some());
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
-    // Two tokens taken a moment apart: the second tops up by the moment.
     let left = state.host_budget.on_hand(&host).expect("spent");
     assert!(
-        (left - (burst - 2.0)).abs() < 0.01,
+        (left - (burst - 2.0)).abs() < 1e-3,
         "the stream's ping and the track's read: {left}"
     );
 }
