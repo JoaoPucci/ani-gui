@@ -175,6 +175,13 @@ interface InFlight {
 }
 
 const owner = new AsyncLocalStorage<Scenario>();
+const PLAY_PATH = new URL(`${API_BASE}/api/play`).pathname;
+/** A play request: `/api/play` on any lane, whose bases are origins. */
+const isPlay = (request: Request) =>
+	request.method === 'POST' && new URL(request.url).pathname === PLAY_PATH;
+/** The in-flight record of each play that has ended, until its answer
+ *  is checked ({@link inFlight} forgets it at `request:end`). */
+const endedPlays = new Map<string, InFlight>();
 /** Every request MSW has seen start, by request id, until it ends. One
  *  that never ends — nothing answered it, or its handler threw, which
  *  MSW ends with no `request:end` — stays, settled, for the file. */
@@ -229,7 +236,51 @@ server.events.on('unhandledException', ({ request, requestId }) =>
 	undescribedRequest(request, requestId, 'its handler threw')
 );
 server.events.on('request:end', ({ requestId }) => {
+	const entry = inFlight.get(requestId);
+	// MSW raises `response:mocked` after `request:end`: what a play's
+	// answer is checked against is kept for it.
+	if (entry && isPlay(entry.request)) endedPlays.set(requestId, entry);
 	inFlight.delete(requestId);
+});
+
+/**
+ * A play the viewer asked for — a POST `/api/play` with no `prefetch`
+ * — that a scenario answers with success must be answered with a
+ * session: the page reads `session_id`, `media_url` and `media_kind`
+ * off it and opens the player there. An empty 204, or an older shape,
+ * passes for one only because nothing reads the player it opened, and
+ * a handler that answers every play that way also answers a stray
+ * one, which the guard would otherwise catch. A failure status is a
+ * scenario's own description of a backend that failed, and passes.
+ *
+ * What this does not see: a handler that answers every play with a
+ * real session still answers a stray one, and a play landed through a
+ * fake EventSource never crosses this boundary.
+ */
+server.events.on('response:mocked', ({ request, requestId, response }) => {
+	if (!isPlay(request)) return;
+	const entry = endedPlays.get(requestId);
+	endedPlays.delete(requestId);
+	// Accounted for already — sent late, or charged at its sender's
+	// teardown — is charged nothing more, however it is answered.
+	if (!response.ok || entry?.late || entry?.settled) return;
+	const sender = entry ? entry.sender : owner.getStore();
+	void (async () => {
+		const asked = (await request
+			.clone()
+			.json()
+			.catch(() => null)) as { prefetch?: boolean } | null;
+		if (asked?.prefetch === true) return;
+		const answer = (await response
+			.clone()
+			.json()
+			.catch(() => null)) as Record<string, unknown> | null;
+		const isSession =
+			typeof answer?.session_id === 'string' &&
+			typeof answer?.media_url === 'string' &&
+			typeof answer?.media_kind === 'string';
+		if (!isSession) charge(sender, `${label(request)} — a play answered with no session`);
+	})();
 });
 
 /**
