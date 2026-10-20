@@ -22,6 +22,8 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { applyChoice } from '../../src/lib/versions/version-choice';
+import type { VersionInfo } from '../../src/lib/api';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -56,6 +58,7 @@ afterEach(() => {
 	if (app) unmount(app);
 	app = null;
 	target.remove();
+	window.localStorage.clear();
 });
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
@@ -76,7 +79,7 @@ const NOTHING_CACHED: CacheAnswer = { cached: {}, playable_episode_counts: {} };
 interface Scenario {
 	mode?: 'sub' | 'dub';
 	/** The provider's answer for the chosen audio. */
-	availability: { available: boolean; episode_count: number | null };
+	availability: { available: boolean; episode_count: number | null; versions?: VersionInfo[] };
 	/** The cache's answer for the other audio. */
 	other?: CacheAnswer;
 	/** The schedule's aired count; `null` for a finished show. */
@@ -268,5 +271,46 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		await failStream(seen, 1, DECODE);
 		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
 		expect(body()).toBe(m.play_error_stream_body());
+	});
+
+	it('a chosen version without the audio is no dead end while another version carries it', async () => {
+		// The availability answer is the show's in the chosen audio,
+		// whichever version carries it, and a play whose version lacks
+		// the audio plays it from the version that does. So the version
+		// being played lacking it leaves the play reachable: the Reload
+		// stays, and it goes through.
+		applyChoice(KITSU_ID, 'standard');
+		const seen = useHandlers({
+			availability: {
+				available: true,
+				episode_count: 12,
+				versions: [
+					{ kind: 'uncensored', show_key: 'show-uncensored-1', has_mode: true },
+					{ kind: 'standard', show_key: 'show-2', has_mode: false }
+				]
+			}
+		});
+		await failStream(seen, 1, DECODE);
+		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
+		expect(body()).toBe(m.play_error_stream_body());
+		(reloadButton() as HTMLButtonElement).click();
+		await until(() => seen.evictions === 1, 'the Reload recovery');
+	});
+
+	it('a show no version carries in the audio is a dead end whichever version was chosen', async () => {
+		applyChoice(KITSU_ID, 'standard');
+		const seen = useHandlers({
+			availability: {
+				available: false,
+				episode_count: null,
+				versions: [
+					{ kind: 'uncensored', show_key: 'show-uncensored-1', has_mode: false },
+					{ kind: 'standard', show_key: 'show-2', has_mode: false }
+				]
+			}
+		});
+		await failStream(seen, 1, DECODE);
+		await bodyBecomes(m.detail_unavailable_message());
+		expectDeadEnd();
 	});
 });
