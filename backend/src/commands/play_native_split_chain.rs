@@ -66,15 +66,24 @@ pub(crate) fn stitched(
     best_single: u32,
     entry: crate::commands::play_native_title_marker::EntryTitles<'_>,
 ) -> Option<crate::commands::play_native::PickedShow> {
+    // Each part's title read past a version tag, which hides no part.
+    let titles: Vec<String> = probed
+        .iter()
+        .map(|(h, _, _, _)| {
+            crate::commands::play_native_version_copies::without_version_tag(&h.title)
+        })
+        .collect();
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()
-        .map(|(h, eps, distance, confirmed)| PartCandidate {
-            title: &h.title,
+        .zip(&titles)
+        .map(|((h, eps, distance, confirmed), title)| PartCandidate {
+            title,
             count: crate::commands::play_native_numbering::regular_episode_count(eps),
             confirmed: *confirmed,
             offset: crate::commands::play_native_numbering::numbering_offset(eps),
             admitted: *distance != crate::commands::play_native_wide_listing::UNFIT,
             agrees: entry.part_agrees(&h.title),
+            version: crate::commands::play_native_version_copies::version_of(&h.title).1,
         })
         .collect();
     let chain = split_chain(&cands, expected, best_single)?;
