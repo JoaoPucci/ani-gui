@@ -21,6 +21,7 @@ fn positive(count: u32) -> AvailabilityResponse {
         gate_refused: false,
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        versions: Vec::new(),
     }
 }
 
@@ -175,6 +176,7 @@ fn negative() -> AvailabilityResponse {
         gate_refused: false,
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        versions: Vec::new(),
     }
 }
 

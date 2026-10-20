@@ -52,6 +52,18 @@ describe('buildDownloadArgs', () => {
 		expect(args.episode_count).toBeUndefined();
 	});
 
+	it('downloads the version the show would play, or names none', () => {
+		const base = {
+			detail: refWithCount(12),
+			episode: 1,
+			mode: 'sub',
+			quality: 'best',
+			kitsuId: 'k1'
+		} as const;
+		expect(buildDownloadArgs({ ...base, version: 'standard' }).version).toBe('standard');
+		expect(buildDownloadArgs(base).version).toBeUndefined();
+	});
+
 	it("threads the detail's subtype for the picker's format disproof", () => {
 		const args = buildDownloadArgs({
 			detail: { ...refWithCount(1), subtype: 'movie' },

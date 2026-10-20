@@ -32,7 +32,7 @@ function deferredProbe() {
 		// common case is a show that is there with no specials, so
 		// that is the default and cases override what they are about.
 		release: (count: number | null, approximate = false, rest: Partial<CapGateAnswer> = {}) =>
-			release({ count, approximate, available: true, extraEpisodes: [], ...rest }),
+			release({ count, approximate, available: true, extraEpisodes: [], versions: [], ...rest }),
 		fail: () => reject(new Error('probe failed'))
 	};
 }
@@ -92,6 +92,7 @@ describe('createCapGateProbe', () => {
 			approximate: false,
 			available: false,
 			extraEpisodes: [],
+			versions: [],
 			refused: true
 		}));
 		gate.request(5);
@@ -294,7 +295,8 @@ describe('createCapGateProbe', () => {
 			count,
 			approximate: false,
 			available: true,
-			extraEpisodes: []
+			extraEpisodes: [],
+			versions: []
 		});
 		// The sub answer reaches episode 6, and lands while the page is in dub.
 		answers[0](answer(12));
@@ -351,7 +353,7 @@ describe('createCapGateProbe', () => {
 		// word for "no cap known", which `beyondPlayable` reads as
 		// UNBOUNDED — the opposite of what a delisted show means. A
 		// confirmed absence is a cap of zero.
-		expect(refreshes).toEqual([{ available: false, count: 0, extraEpisodes: [] }]);
+		expect(refreshes).toEqual([{ available: false, count: 0, extraEpisodes: [], versions: [] }]);
 	});
 
 	it('caps at zero when the catalogue confirms it has no whole episodes', async () => {
@@ -368,7 +370,9 @@ describe('createCapGateProbe', () => {
 		// Leaving the page's previous cap in place would keep every
 		// tile under it playable against a row that now says none of
 		// them exist.
-		expect(refreshes).toEqual([{ available: true, count: 0, extraEpisodes: ['1.5'] }]);
+		expect(refreshes).toEqual([
+			{ available: true, count: 0, extraEpisodes: ['1.5'], versions: [] }
+		]);
 	});
 
 	it('carries refreshed extras so the strip picks up specials', async () => {
@@ -383,7 +387,28 @@ describe('createCapGateProbe', () => {
 		// position. A special catalogued since the page loaded is
 		// invisible until this list is replaced — and one that was
 		// pulled stays on screen and playable.
-		expect(refreshes).toEqual([{ available: true, count: 6, extraEpisodes: ['4.5'] }]);
+		expect(refreshes).toEqual([
+			{ available: true, count: 6, extraEpisodes: ['4.5'], versions: [] }
+		]);
+	});
+
+	it("carries the pick's versions so the page offers what the fresh row names", async () => {
+		const d = deferredProbe();
+		const { gate, refreshes } = harness(d.probe);
+		const two = [
+			{ kind: 'uncensored' as const, show_key: 'hianime:show-uncensored-1' },
+			{ kind: 'standard' as const, show_key: 'hianime:show-2' }
+		];
+
+		gate.request(9);
+		// The re-ask replaces the backend's whole row, the versions of
+		// the pick among it. A version listed since the page loaded, or
+		// one whose audio changed, is offered only once this list
+		// replaces the page's.
+		d.release(12, false, { versions: two });
+		await flush();
+
+		expect(refreshes).toEqual([{ available: true, count: 12, extraEpisodes: [], versions: two }]);
 	});
 
 	it('withholds count and extras from an unconfirmed answer, but keeps the verdict', async () => {
@@ -403,7 +428,11 @@ describe('createCapGateProbe', () => {
 		d.release(6, true, { extraEpisodes: [] });
 		await flush();
 
-		expect(failedRefreshes).toEqual([{ available: true, count: null, extraEpisodes: null }]);
+		// The versions are the per-show fetch's too: withheld with the
+		// count, since an empty list here is "could not look".
+		expect(failedRefreshes).toEqual([
+			{ available: true, count: null, extraEpisodes: null, versions: null }
+		]);
 	});
 
 	it('still answers normally when the strip stayed put', async () => {
@@ -515,7 +544,13 @@ describe('capGateAnswerFrom', () => {
 	it('reads a settled answer whole, the extras defaulting to none', () => {
 		expect(
 			capGateAnswerFrom({ available: true, episode_count: 7, extra_episodes: ['7.5'] })
-		).toEqual({ count: 7, approximate: false, available: true, extraEpisodes: ['7.5'] });
+		).toEqual({
+			count: 7,
+			approximate: false,
+			available: true,
+			extraEpisodes: ['7.5'],
+			versions: []
+		});
 		expect(
 			capGateAnswerFrom({
 				available: true,
@@ -523,7 +558,18 @@ describe('capGateAnswerFrom', () => {
 				extra_episodes: [],
 				episode_count_approximate: true
 			})
-		).toEqual({ count: 4, approximate: true, available: true, extraEpisodes: [] });
+		).toEqual({ count: 4, approximate: true, available: true, extraEpisodes: [], versions: [] });
+	});
+
+	it("reads the show's versions, none when the answer names none", () => {
+		const two = [
+			{ kind: 'uncensored' as const, show_key: 'hianime:show-uncensored-1' },
+			{ kind: 'standard' as const, show_key: 'hianime:show-2' }
+		];
+		expect(
+			capGateAnswerFrom({ available: true, episode_count: 7, extra_episodes: [], versions: two })
+				?.versions
+		).toEqual(two);
 	});
 
 	it('reads an unsettled answer as no answer at all', () => {
@@ -567,6 +613,7 @@ describe('capGateAnswerFrom', () => {
 			approximate: false,
 			available: false,
 			extraEpisodes: [],
+			versions: [],
 			refused: true
 		});
 	});

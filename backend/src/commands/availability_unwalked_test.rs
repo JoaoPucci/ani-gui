@@ -192,7 +192,16 @@ async fn a_replay_over_a_positive_row_nobody_walked_writes_the_walked_providers_
         seed(&state, id, body);
         let at_start = RowAtStart::read(&state, Some(id), "sub").await;
 
-        stamp_after_cache_hit(&state, Some(id), "sub", &at_start, ProviderId::Hianime).await;
+        stamp_after_cache_hit(
+            &state,
+            Some(id),
+            "sub",
+            &at_start,
+            ProviderId::Hianime,
+            &[],
+            None,
+        )
+        .await;
 
         let stored = meta_cache_get(&state.cache_pool, &cache_key(id, "sub"))
             .expect("read")

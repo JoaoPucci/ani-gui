@@ -728,6 +728,7 @@ fn picked(rows: Vec<EpisodeRef>) -> PickedShow {
             jname: None,
         },
         episodes: rows,
+        versions: Vec::new(),
     }
 }
 
@@ -1102,4 +1103,146 @@ fn a_sequel_page_is_read_by_episode_number() {
         first_episodes: Some(vec![untitled(1), titled(2), titled(3)]),
     });
     assert_eq!(appended_extras(&rows, 12, &two), None, "a second sequel");
+}
+
+/// A season the provider lists twice is one pick with versions, each a
+/// listing of the same episodes: the appended-extras reading of the
+/// listing that plays holds for every version's, so a version chosen
+/// later — or played when the first lacks the mode — carries the same
+/// extras rather than the OADs as episodes 13 and 14.
+#[tokio::test]
+async fn every_version_of_a_pick_is_fitted_with_it() {
+    use crate::commands::play_native_versions::{ShowVersion, VersionKind};
+    let (rows, tail) = noragami();
+    let copy = |offset: u64| -> Vec<EpisodeRef> {
+        rows.iter()
+            .map(|e| EpisodeRef {
+                id: e.id + offset,
+                ..e.clone()
+            })
+            .collect()
+    };
+    let hit = |slug: &str, title: &str| crate::scraper::provider::BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: None,
+        jname: None,
+    };
+    let mut p = picked(rows.clone());
+    p.versions = vec![
+        ShowVersion {
+            kind: VersionKind::Standard,
+            hit: p.hit.clone(),
+            episodes: rows.clone(),
+        },
+        ShowVersion {
+            kind: VersionKind::Uncensored,
+            hit: hit("noragami-uncensored-917", "Noragami (Uncensored)"),
+            episodes: copy(100_000),
+        },
+    ];
+    let source = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(None),
+    };
+    let fitted = fit_appended(p, Some(12), Some(&source)).await;
+    assert_eq!(extra_episode_tags(&fitted.episodes), vec!["12.1", "12.2"]);
+    for v in &fitted.versions {
+        assert_eq!(
+            extra_episode_tags(&v.episodes),
+            vec!["12.1", "12.2"],
+            "{:?} fitted with the pick",
+            v.kind
+        );
+        assert_eq!(v.episodes.len(), fitted.episodes.len());
+    }
+    // The other copy's rows are still its own: the ids it streams from.
+    assert!(fitted.versions[1].episodes.iter().all(|e| e.id > 100_000));
+    // Choosing it plays the fitted listing.
+    let chosen = fitted.clone().choose(Some(VersionKind::Uncensored));
+    assert_eq!(extra_episode_tags(&chosen.episodes), vec!["12.1", "12.2"]);
+}
+
+/// The two copies of a season, Noragami's listing under the plain slug
+/// and the same episodes under the uncensored copy's slug and ids.
+fn two_copies_of_noragami() -> PickedShow {
+    use crate::commands::play_native_versions::{ShowVersion, VersionKind};
+    let (rows, _) = noragami();
+    let other: Vec<EpisodeRef> = rows
+        .iter()
+        .map(|e| EpisodeRef {
+            id: e.id + 100_000,
+            ..e.clone()
+        })
+        .collect();
+    let mut p = picked(rows.clone());
+    p.versions = vec![
+        ShowVersion {
+            kind: VersionKind::Standard,
+            hit: p.hit.clone(),
+            episodes: rows,
+        },
+        ShowVersion {
+            kind: VersionKind::Uncensored,
+            hit: crate::scraper::provider::BrowseHit {
+                slug: "noragami-uncensored-917".into(),
+                title: "Noragami (Uncensored)".into(),
+                kind: None,
+                jname: None,
+            },
+            episodes: other,
+        },
+    ];
+    p
+}
+
+/// A reading the evidence proved while one copy played stands for the
+/// other copy when the evidence cannot be read: the copies are the same
+/// episodes, and the kept reading names one of the pick's versions.
+#[tokio::test]
+async fn a_reading_kept_for_one_copy_stands_for_the_other() {
+    use crate::commands::play_native_versions::VersionKind;
+    let (_, tail) = noragami();
+    let source = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(None),
+    };
+    // Proved while the uncensored copy played.
+    let first = fit_appended(
+        two_copies_of_noragami().choose(Some(VersionKind::Uncensored)),
+        Some(12),
+        Some(&source),
+    )
+    .await;
+    assert_eq!(extra_episode_tags(&first.episodes), vec!["12.1", "12.2"]);
+    // Later, the evidence cannot be read, and the plain copy plays.
+    let unread = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(source.remembered()),
+    };
+    let later = fit_appended(
+        two_copies_of_noragami().choose(Some(VersionKind::Standard)),
+        Some(12),
+        Some(&unread),
+    )
+    .await;
+    assert_eq!(later.hit.slug, "noragami-916");
+    assert_eq!(extra_episode_tags(&later.episodes), vec!["12.1", "12.2"]);
+}
+
+/// A version whose own rows are numbered otherwise than by position is
+/// not a copy the pick's reading can be laid over: it is left as it was.
+#[tokio::test]
+async fn a_version_numbered_otherwise_is_not_refitted() {
+    let (_, tail) = noragami();
+    let mut p = two_copies_of_noragami();
+    p.versions[1].episodes[3].number2 = Some("3.5".into());
+    let before = p.versions[1].episodes.clone();
+    let source = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(None),
+    };
+    let fitted = fit_appended(p, Some(12), Some(&source)).await;
+    assert_eq!(extra_episode_tags(&fitted.episodes), vec!["12.1", "12.2"]);
+    assert_eq!(fitted.versions[1].episodes, before);
 }

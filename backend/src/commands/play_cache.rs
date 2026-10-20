@@ -1,5 +1,5 @@
 //! Cache-shaped helpers extracted from `commands::play` so that
-//! file's cyclomatic complexity stays under the CRAP ratchet. Three
+//! file's cyclomatic complexity stays under the CRAP ratchet. Four
 //! related helpers live here:
 //!
 //!   • `cached_row_is_live` — the check both replays share: the
@@ -15,15 +15,18 @@
 //!     [`LaunchArgs`] (or `None`) so `play_external` can hand mpv a
 //!     cached URL without resolving again.
 //!   • `stamp_availability_on_cache_hit` — the availability refresh
-//!     both replays owe: the provider the cached row's show key
-//!     names is stamped on the request's row, as a fresh resolve
-//!     would have stamped it.
+//!     both replays owe: where no positive row stands, the provider
+//!     the cached row's show key names, and the versions it holds
+//!     with the one that served marked as carrying the mode, are
+//!     stamped on the request's row, as a fresh resolve would have
+//!     stamped them; where one stands, only the served version's mode
+//!     is merged into it, its window and the rest kept.
 //!
 //! The readers a row's check is made of — the stream's HEAD ping,
 //! the WebVTT prefix, the track's GET — live in
 //! `commands::play_cache_tracks` and are re-exported here.
 //!
-//! All three are async and depend on `AppState`'s reqwest client +
+//! The replays are async and depend on `AppState`'s reqwest client +
 //! cache pool, so the fixtures in play.rs's test module
 //! (`state_with_proxy_origin`, `cached_blank`, `seed_play_cache`)
 //! are still used to drive them via wiremock.
@@ -51,11 +54,14 @@ pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderI
     ShowKey::parse(&cached.show_id).provider
 }
 
-/// Refresh the availability row a served replay stands on with the
-/// provider the cached row names, for the request's own show and
-/// mode — the embedded player's replay and the handoff's alike, so
-/// the affinity a fresh resolve would have written survives the
-/// resolution cache outliving the row.
+/// Refresh the availability row a served replay stands on, where no
+/// positive row stands, with the provider the cached row names and the
+/// versions it holds, the one that served marked as carrying the mode,
+/// for the request's own show and mode — the embedded player's replay
+/// and the handoff's alike, so the affinity a fresh resolve would have
+/// written survives the resolution cache outliving the row. Where a
+/// positive row stands, only the served version's mode is merged into
+/// it, the row's window and every other field kept.
 ///
 /// `at_start` is the row as the caller read it BEFORE the liveness
 /// check went out — the same ordering a fresh resolve keeps — so a
@@ -77,6 +83,8 @@ pub(crate) async fn stamp_availability_on_cache_hit(
         args.mode.as_str(),
         at_start,
         provider,
+        &cached.versions,
+        cached.version,
     )
     .await;
 }
@@ -196,6 +204,7 @@ pub(crate) async fn try_serve_cached(
     // retryable (cache hit can be evicted + re-resolved) or terminal
     // (fresh fetch, no cache to clear).
     resp.cache_hit = true;
+    super::play::with_versions_of(&mut resp, &cached.versions, cached.version);
     // The episode the resolve behind the row played; a row from before
     // the field names none.
     resp.episode.clone_from(&cached.played);
@@ -220,16 +229,7 @@ pub(crate) async fn try_launch_args_from_cache(
     if !cfg.cache_resolutions {
         return None;
     }
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let cache_key = play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let cache_key = args.resolution_key();
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     // Captured before the check goes out, like a fresh resolve's
     // answer: a refresh landing during the check owns the row.
