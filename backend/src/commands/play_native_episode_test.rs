@@ -31,6 +31,7 @@ fn show(episodes: Vec<EpisodeRef>) -> PickedShow {
             jname: None,
         },
         episodes,
+        versions: Vec::new(),
     }
 }
 

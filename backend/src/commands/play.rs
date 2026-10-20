@@ -107,6 +107,53 @@ pub struct PlayArgs {
     /// ([`crate::kitsu_id`]), reads the same way.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
+    /// The version of the show to play when the pick has several
+    /// (`"uncensored"`, `"standard"` — see "Versions of one pick" in
+    /// `docs/title-resolution.md`). `None`, or a version the pick does
+    /// not carry, plays the pick's default.
+    #[serde(default)]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
+}
+
+impl PlayArgs {
+    /// The resolution-cache key this play reads and writes: the
+    /// request's own axes, its version among them.
+    #[must_use]
+    pub fn resolution_key(&self) -> String {
+        play_resolution_cache::cache_key_for_version(
+            &self.title,
+            &self.mode,
+            self.quality.as_deref().unwrap_or("best"),
+            &self.episode,
+            self.year,
+            self.episode_count,
+            self.subtype.as_deref(),
+            self.version,
+        )
+    }
+
+    /// The native resolve this play asks for, at `quality`.
+    #[must_use]
+    pub fn native_request<'a>(
+        &'a self,
+        quality: &'a str,
+        stamps_beside: Option<&'a std::path::Path>,
+        tail: Option<&'a dyn super::play_native_appended::TailSource>,
+    ) -> NativeResolveRequest<'a> {
+        NativeResolveRequest {
+            title: &self.title,
+            alt_titles: &self.alt_titles,
+            episode: &self.episode,
+            mode: &self.mode,
+            quality,
+            expected_count: self.episode_count,
+            year: self.year,
+            subtype: self.subtype.as_deref(),
+            version: self.version,
+            stamps_beside,
+            tail,
+        }
+    }
 }
 
 // `deserialize_alt_titles`, `deserialize_loose_bool`, and the
@@ -166,6 +213,7 @@ fn write_history_on_cache_hit(
 /// Stamp the availability cache with a native resolution's verdict —
 /// the shared [`crate::commands::availability::stamp_after_native`],
 /// keyed by the play's own show and mode.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn stamp_availability_after_native(
     state: &AppState,
     args: &PlayArgs,
@@ -174,6 +222,8 @@ pub(super) async fn stamp_availability_after_native(
     at_start: &crate::commands::availability::RowAtStart,
     episode_cap: Option<u32>,
     extra_tags: &[String],
+    versions: &[crate::commands::play_native_versions::VersionInfo],
+    played: Option<crate::commands::play_native_versions::VersionKind>,
 ) {
     crate::commands::availability::stamp_after_native(
         state,
@@ -185,6 +235,8 @@ pub(super) async fn stamp_availability_after_native(
             provider,
             episode_cap,
             extra_tags,
+            versions,
+            played,
         },
     )
     .await;
@@ -255,15 +307,7 @@ where
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
     // ~50ms; a full resolve is ~5–7s. Worth the round-trip.
-    let cache_key = play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let cache_key = args.resolution_key();
     // Read before any network work — the replay's liveness check
     // and the resolving alike — not before the write: the answer a
     // play stamps is the one it got here, and a refresh can land any
@@ -310,20 +354,12 @@ where
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let request = NativeResolveRequest {
-        title: &args.title,
-        alt_titles: &args.alt_titles,
-        episode: &args.episode,
-        mode: &args.mode,
+    let request = args.native_request(
         quality,
-        expected_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.as_deref(),
-        stamps_beside: Some(&state.history_path),
-        tail: tail
-            .as_ref()
+        Some(&state.history_path),
+        tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
-    };
+    );
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
     // that accepts connections but stalls every request must not
@@ -359,6 +395,8 @@ where
                     &availability_at_start,
                     None,
                     &[],
+                    &[],
+                    None,
                 )
                 .await;
             }
@@ -400,6 +438,8 @@ where
         &availability_at_start,
         native.episode_cap,
         &native.extra_tags,
+        &native.versions,
+        native.version,
     )
     .await;
 
@@ -450,7 +490,10 @@ where
         if crate::commands::play_native_episode::tag_matches(&episode, args.episode.trim()) {
             cache_key
         } else {
-            play_resolution_cache::cache_key(
+            // The version the request named keys this row too: kept
+            // under the key of a request naming none, it would answer
+            // for whichever version that request plays.
+            play_resolution_cache::cache_key_for_version(
                 &args.title,
                 &args.mode,
                 quality,
@@ -458,6 +501,7 @@ where
                 args.year,
                 args.episode_count,
                 args.subtype.as_deref(),
+                args.version,
             )
         };
     play_resolution_cache::store(state, asked, &kept_under, &cached_resolution);
@@ -468,11 +512,24 @@ where
         referer: cached_resolution.referer,
         subtitles: cached_resolution.subtitles,
     };
-    Ok(CreateSessionResponse {
+    let mut resp = CreateSessionResponse {
         episode: Some(episode),
         former_episode,
         ..create_session_with_kind(state, &session_args, kind)?
-    })
+    };
+    with_versions_of(&mut resp, &native.versions, native.version);
+    Ok(resp)
+}
+
+/// `resp` naming the played show's `versions` and the `version` that
+/// played.
+pub(crate) fn with_versions_of(
+    resp: &mut CreateSessionResponse,
+    versions: &[crate::commands::play_native_versions::VersionInfo],
+    version: Option<crate::commands::play_native_versions::VersionKind>,
+) {
+    resp.versions = versions.to_vec();
+    resp.version = version;
 }
 
 /// The cache row a native resolve leaves behind: the stream, the
@@ -495,6 +552,8 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         former_episode: crate::commands::play_native_merge::former_number(native),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
+        versions: native.versions.clone(),
+        version: native.version,
     }
 }
 
@@ -539,6 +598,7 @@ pub(crate) mod tests {
                 alt_titles: vec![],
                 prefetch,
                 kitsu_id,
+                version: None,
             };
             let got = scrape_priority(&args);
             let want = if prefetch {
@@ -604,6 +664,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("42".into()),
+            version: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -619,6 +680,8 @@ pub(crate) mod tests {
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
+            &[],
+            None,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -656,6 +719,7 @@ pub(crate) mod tests {
                 gate_refused: false,
                 unsettled: None,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+                versions: Vec::new(),
             },
         );
         let args = PlayArgs {
@@ -669,6 +733,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("42".into()),
+            version: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -684,6 +749,8 @@ pub(crate) mod tests {
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
+            &[],
+            None,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -724,6 +791,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
             let r = play_with_progress(&state, &mk(&format!("absent show {i}")), |_| {}).await;
@@ -781,6 +849,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         }
     }
 
@@ -1002,6 +1071,8 @@ pub(crate) mod tests {
             resolved_slot: None,
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
             played: None,
             former_episode: None,
         }
@@ -1055,6 +1126,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         write_history_on_cache_hit(
             &state,
@@ -1301,6 +1373,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         }
     }
 
@@ -1344,6 +1417,8 @@ pub(crate) mod tests {
                 resolved_slot: Some(1),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1392,6 +1467,8 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles,
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1446,6 +1523,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -1490,6 +1568,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -1618,6 +1697,7 @@ pub(crate) mod tests {
                 gate_refused: false,
                 unsettled: None,
                 provider: Some(crate::scraper::provider::ProviderId::Hianime),
+                versions: Vec::new(),
             },
         );
         seed_play_cache_from(
@@ -1826,6 +1906,8 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
                 played: None,
                 former_episode: None,
             },
@@ -1938,6 +2020,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
     }
@@ -2088,6 +2171,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("race-1".into()),
+            version: None,
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
         let at_start =
@@ -2104,7 +2188,18 @@ pub(crate) mod tests {
         );
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[]).await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            false,
+            None,
+            &at_start,
+            None,
+            &[],
+            &[],
+            None,
+        )
+        .await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -2139,6 +2234,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("cap-1".into()),
+            version: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub").await;
@@ -2150,6 +2246,8 @@ pub(crate) mod tests {
             &at_start,
             Some(2),
             &[],
+            &[],
+            None,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
@@ -2186,6 +2284,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("dub-2".into()),
+            version: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub").await;
@@ -2197,6 +2296,8 @@ pub(crate) mod tests {
             &at_start,
             Some(12),
             &[],
+            &[],
+            None,
         )
         .await;
         let key = crate::commands::availability::cache_key("dub-2", "dub");
@@ -2238,6 +2339,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("dub-1".into()),
+            version: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub").await;
@@ -2249,6 +2351,8 @@ pub(crate) mod tests {
             &at_start,
             Some(12),
             &[],
+            &[],
+            None,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
