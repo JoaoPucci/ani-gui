@@ -353,9 +353,10 @@ fn pools_schedule_no_connection_reaper() {
     }
 }
 
-/// Two backends can open one cache at once: a second app instance on
-/// the same profile, or the integration tests on Windows, which all
-/// share the dev profile's directories. Whichever reaches a fresh file
+/// Two backends can open one cache at once: the integration tests on
+/// Windows share the dev profile's directories and start backends in
+/// parallel, and a backend run by hand opens the cache the app's own
+/// backend has open. Whichever reaches a fresh file
 /// first creates and migrates it; the others must wait for that and
 /// open it, not fail the start.
 #[test]

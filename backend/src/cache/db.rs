@@ -105,9 +105,12 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
 /// Refinery reads which migrations a database has applied and then
 /// applies the rest, with nothing ordering two runners in between: two
 /// backends meeting a fresh cache both find nothing applied, and the
-/// later one fails creating a table the earlier one just made. A
-/// second app instance on the same profile does that, and so do the
-/// integration tests on Windows, which all share the dev profile.
+/// later one fails creating a table the earlier one just made. The
+/// shell's single-instance lock keeps a second app from spawning a
+/// backend, but it does not cover every backend: the integration tests
+/// on Windows all share the dev profile and start backends in
+/// parallel, beside a `pnpm dev` run on the same profile if one is up,
+/// and a backend can be run by hand next to the app.
 ///
 /// A file of its own beside the database, rather than a lock on the
 /// database file, which SQLite locks itself.
