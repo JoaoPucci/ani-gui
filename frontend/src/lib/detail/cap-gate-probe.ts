@@ -235,12 +235,14 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// the context moved — settings landing on dub — asks again
 			// rather than taking the other audio's answer, which would
 			// pass the check below, since the page is still on the
-			// context that click asked in. (A change of audio or visit
-			// also supersedes the lookup, which stops it and clears it.)
-			// Cleared as soon as the request settles, so a click after
-			// this one gets a current answer instead of joining a lookup
-			// that has already finished.
+			// context that click asked in. The lookup it replaces is
+			// stopped, as a supersede stops it: its answer is about a
+			// context the page has left, and once replaced nothing else
+			// could stop it. Cleared as soon as the request settles, so a
+			// click after this one gets a current answer instead of
+			// joining a lookup that has already finished.
 			if (pending?.context !== asked) {
+				run?.end();
 				const own = probeScope.begin();
 				run = own;
 				const mine = {
