@@ -99,6 +99,26 @@ impl EntryTitles<'_> {
             && !self.continues_a_number(candidate)
     }
 
+    /// [`Self::admits`] for a probed candidate, read past a bracketed
+    /// version tag ("Show Season 2 [Uncensored]" ends on its season 2):
+    /// the rule that decides whether a probed candidate can be the
+    /// entry. Which hits are probed is decided by [`Self::admits`] on
+    /// the title as written, as before.
+    pub(crate) fn admits_as_read(&self, candidate: &str) -> bool {
+        self.admits(&super::play_native_version_copies::without_version_tag(
+            candidate,
+        ))
+    }
+
+    /// [`Self::another_entry`] for a probed candidate, read past a
+    /// bracketed version tag as [`Self::admits_as_read`] is: "Show 1
+    /// [Uncensored]" is the entry before "Show 2" as "Show 1" is.
+    pub(crate) fn another_entry_as_read(&self, candidate: &str) -> bool {
+        self.another_entry(&super::play_native_version_copies::without_version_tag(
+            candidate,
+        ))
+    }
+
     /// Whether `candidate` matches one of the entry's titles only by
     /// continuing its first number ([`continues_number_of`]) — "Show20"
     /// for "Show 2", "861" for "86 Part 2" — and no title of the entry
@@ -115,6 +135,9 @@ impl EntryTitles<'_> {
     /// first part. Two same-year, same-length cours ("2nd Season" and
     /// "2nd Season Part 2") are told apart by nothing else.
     pub(crate) fn part_agrees(&self, candidate: &str) -> bool {
+        // Read past a version tag, which hides no part: part agreement
+        // never decides which hits the probe head takes.
+        let candidate = &super::play_native_version_copies::without_version_tag(candidate);
         let mut entry_parts: BTreeSet<u32> = self.all().flat_map(part_ordinals).collect();
         if entry_parts.is_empty() {
             entry_parts.insert(1);
