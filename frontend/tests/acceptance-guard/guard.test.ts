@@ -257,6 +257,26 @@ describe('acceptance request guard', () => {
 		failedOn(late, /POST \S+\/api\/play — still unanswered/);
 		expect(late?.failure ?? '').not.toMatch(/no session/);
 		passed(f.scenarios['runs while the earlier play is answered']);
+		// The session is held to its whole contract: the kinds are the
+		// ones api.ts declares, and an optional field present has its
+		// declared type.
+		for (const name of [
+			'answers a play with a session whose media kind is not one there is',
+			'answers a play with a session whose version is not one there is',
+			'answers a play with a session whose optional fields have the wrong type'
+		]) {
+			failedOn(f.scenarios[name], /POST \S+\/api\/play — a play answered with no session/);
+		}
+		passed(f.scenarios['answers a play with a whole session']);
+		// An answer whose body is still arriving as its scenario ends is
+		// read before that scenario reports, and fails it.
+		failedOn(
+			f.scenarios[
+				'answers a play with a non-session whose body is still arriving as the scenario ends'
+			],
+			/POST \S+\/api\/play — a play answered with no session/
+		);
+		passed(f.scenarios['runs after the slow body']);
 		expect(f.fileFailure).toBe('');
 	});
 });
