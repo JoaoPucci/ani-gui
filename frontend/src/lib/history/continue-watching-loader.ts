@@ -1,5 +1,6 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { createApproximateCollector, type ApproximateRow } from './approximate-retry';
+import { probeScope } from '$lib/availability/probe-scope';
 
 export interface ContinueWatchingState {
 	matches: Record<string, KitsuAnimeRef | null>;
@@ -31,7 +32,9 @@ export interface ContinueWatchingLoaderDeps {
 	 */
 	fetchAvailability: (
 		match: KitsuAnimeRef,
-		mode: 'sub' | 'dub'
+		mode: 'sub' | 'dub',
+		/** The page the load belongs to: aborted once it is left. */
+		signal: AbortSignal
 	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
 	/**
 	 * Resolves to the configured availability mode. Async because the
@@ -68,6 +71,8 @@ export interface ContinueWatchingLoaderDeps {
 	 * many cards at the cost of higher the provider load.
 	 */
 	probeConcurrency?: number;
+	/** The run the load belongs to; the page's path when absent. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -121,6 +126,9 @@ export async function loadContinueWatchingState(
 	// should ask about again.
 	const unconfirmed = createApproximateCollector();
 	const modePromise = deps.getMode().catch(() => 'sub' as const);
+	// Taken once, when the load starts: leaving the page aborts the
+	// probes in flight, and the rows still queued are not probed.
+	const signal = deps.signal ?? probeScope.signal();
 
 	const queue: { entry: HistoryEntry; match: KitsuAnimeRef }[] = [];
 	let drainResolve!: () => void;
@@ -152,6 +160,14 @@ export async function loadContinueWatchingState(
 
 	const runProbe = async () => {
 		while (queue.length > 0) {
+			if (signal.aborted) {
+				// The page is gone: the queued rows keep the fallback cap
+				// their cards were released with, and the load ends.
+				pendingProbes -= queue.length;
+				queue.length = 0;
+				maybeFinishLoad();
+				break;
+			}
 			const job = queue.shift();
 			if (!job) break;
 			const mode = await modePromise;
@@ -160,7 +176,7 @@ export async function loadContinueWatchingState(
 			// detail fetch. Forwarded explicitly — see finalizeRow.
 			let approximate = false;
 			try {
-				const r = await deps.fetchAvailability(job.match, mode);
+				const r = await deps.fetchAvailability(job.match, mode, signal);
 				count = r?.episode_count ?? null;
 				approximate = r?.episode_count_approximate === true;
 			} catch {

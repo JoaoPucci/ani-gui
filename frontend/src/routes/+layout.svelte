@@ -54,6 +54,7 @@
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
+	import { probeScope } from '$lib/availability/probe-scope';
 	import {
 		RECENT_LIMIT,
 		RECENT_STORAGE_KEY,
@@ -70,8 +71,8 @@
 	// Push the active-download count to Electron main on every
 	// change. Main caches the latest value and reads it at close
 	// time to decide whether to prompt the user before quitting.
-	// `active` filters items by pending/active status — which is
-	// exactly the set whose work would be lost on quit.
+	// `active` filters items by pending/queued/active status — which
+	// is exactly the set whose work would be lost on quit.
 	$effect(() => {
 		const count = downloadStore.active.length;
 		if (typeof window !== 'undefined') window.aniGui?.notifyActiveDownloads?.(count);
@@ -98,6 +99,10 @@
 	// popstate can read it later.
 	let canGoBack = $state(false);
 	let navDepth = 0;
+
+	// Availability probes the page just left asked are aborted now
+	// that the next page is up ($lib/availability/probe-scope).
+	afterNavigate(() => probeScope.settle());
 
 	afterNavigate(({ type }) => {
 		if (typeof window === 'undefined') return;

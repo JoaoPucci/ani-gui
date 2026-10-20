@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadContinueWatchingState } from './continue-watching-loader';
+import { probeScope } from '$lib/availability/probe-scope';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
@@ -264,7 +265,7 @@ describe('loadContinueWatchingState', () => {
 			getMode: () => Promise.reject(new Error('config read failed'))
 		});
 
-		expect(fetchAvailability).toHaveBeenCalledWith(m1, 'sub');
+		expect(fetchAvailability).toHaveBeenCalledWith(m1, 'sub', expect.any(AbortSignal));
 		expect(result.matches).toEqual({ 'hist-a': m1 });
 		expect(result.playableCounts).toEqual({ 'hist-a': 12 });
 	});
@@ -482,5 +483,32 @@ describe('reporting the rows whose cap is still unconfirmed', () => {
 		// already on its match.episode_count fallback, which is what a
 		// countless probe leaves it on either way.
 		expect(result.approximateRows).toEqual([]);
+	});
+
+	it('rows left when the page is left are not probed, and the load still ends', async () => {
+		const g = globalThis as unknown as { location?: { pathname: string } };
+		g.location = { pathname: '/' };
+		try {
+			const history = ['1', '2', '3', '4', '5'].map((i) => makeEntry(`h${i}`, '1', `T${i}`));
+			const first = defer<{ episode_count: number }>();
+			const fetchAvailability = vi.fn().mockImplementation(() => first.promise);
+			const done = loadContinueWatchingState(history, {
+				resolveMatch: (e: HistoryEntry) => Promise.resolve(makeMatch(`k-${e.id}`, 12)),
+				fetchAvailability,
+				getMode: subMode,
+				probeConcurrency: 1
+			});
+			await vi.waitFor(() => expect(fetchAvailability).toHaveBeenCalledTimes(1));
+			const signal = fetchAvailability.mock.calls[0][2] as AbortSignal;
+			expect(signal).toBeInstanceOf(AbortSignal);
+			g.location = { pathname: '/anime/1' };
+			probeScope.settle();
+			expect(signal.aborted).toBe(true);
+			first.resolve({ episode_count: 12 });
+			await done;
+			expect(fetchAvailability).toHaveBeenCalledTimes(1);
+		} finally {
+			delete g.location;
+		}
 	});
 });

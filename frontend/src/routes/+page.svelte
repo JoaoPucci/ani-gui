@@ -78,6 +78,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
+	import { probeScope } from '$lib/availability/probe-scope';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
@@ -404,6 +405,10 @@
 		// read, so a user with mode='dub' doesn't see the batch query
 		// the sub playable counts (mismatching what startResume reads
 		// at click time).
+		// The Continue Watching load and its retries are one run of
+		// probes, ended when the page unmounts: the strip's probes stop
+		// with it.
+		const continueProbes = probeScope.begin();
 		settingsPromise = settingsGet().catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
@@ -444,6 +449,7 @@
 					// on the backend; per-row calls are cheap for cached
 					// rows and only pay the provider roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
+					signal: continueProbes.signal,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
 					// Per-row state mutations are routed through the
 					// component-scope rowReady handler (row-ready.ts) —
@@ -475,7 +481,8 @@
 						// straight past the gate that exists to keep
 						// background work from poisoning the connection
 						// the user's next click depends on.
-						fetchAvailability: makeFetchAvailability(checkAvailability),
+						fetchAvailability: (m, mode) =>
+							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
 						// The retry pays for the listing the first probe
 						// did not: read the row again after it.
@@ -509,6 +516,7 @@
 		// the provider about a strip that is no longer mounted.
 		return () => {
 			continueRetryCancelled = true;
+			continueProbes.end();
 		};
 	});
 

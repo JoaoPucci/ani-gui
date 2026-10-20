@@ -2,10 +2,11 @@
 //
 // Responsibilities:
 //   1. Spawn the Rust sidecar (`ani-gui-backend`) and parse its stdout
-//      to learn the localhost port it bound to.
-//   2. Create a BrowserWindow whose preload script injects that URL
-//      into `window.aniGui.apiBase` so the SvelteKit renderer can
-//      `fetch()` against it.
+//      to learn the localhost ports it bound to — the API's and one per
+//      lane (lib/backend-handshake.cjs).
+//   2. Create a BrowserWindow whose preload script injects those URLs
+//      into `window.aniGui.apiBase` and `window.aniGui.lanes` so the
+//      SvelteKit renderer can `fetch()` against them.
 //   3. Forward app lifecycle events to the sidecar — kill the
 //      backend when the window closes so we don't leak a process.
 //
@@ -48,6 +49,7 @@ const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
+const { windowArguments } = require("./lib/window-args.cjs");
 const {
   bootApp,
   firstShowTimeoutMs,
@@ -102,8 +104,7 @@ process.title = APP_NAME;
 // finds no window (macOS keeps the app running when its last window
 // closes) opens a new one against the boot's backend.
 const keeper = windowKeeper({
-  createWindow: ({ apiBase, internalSecret }) =>
-    createWindow(apiBase, internalSecret),
+  createWindow: (backend) => createWindow(backend),
   quitting: () => quitGoingAhead,
   logError: console.error,
   // A reopen happens only with no window left, so whatever window is
@@ -356,7 +357,7 @@ function signalBackendGroup(pid) {
   }
 }
 
-async function createWindow(apiBase, internalSecret) {
+async function createWindow(backend) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
   // work-area size avoids the "open at 1280×800, then animate to
@@ -390,21 +391,14 @@ async function createWindow(apiBase, internalSecret) {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      // Pass the resolved apiBase + the user's configured locale
+      // Pass the backend's handshake + the user's configured locale
       // into the preload via additional arguments. The preload reads
       // them off process.argv. The locale flag is omitted entirely
       // when config.toml is missing or has no locale key, so the
       // preload falls through to Paraglide's preferredLanguage /
       // baseLocale strategies instead of seeding garbage.
-      additionalArguments: (() => {
-        const args = [`--ani-gui-api-base=${apiBase}`];
-        const locale = readConfigLocale();
-        if (locale) args.push(`--ani-gui-locale=${locale}`);
-        if (internalSecret) {
-          args.push(`--ani-gui-internal-secret=${internalSecret}`);
-        }
-        return args;
-      })(),
+      // The backend's lanes go the same way (lib/window-args.cjs).
+      additionalArguments: windowArguments(backend, readConfigLocale()),
     },
   });
 
@@ -970,11 +964,11 @@ app.whenReady().then(() =>
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    createWindow: async ({ apiBase, internalSecret }) => {
-      await createWindow(apiBase, internalSecret);
+    createWindow: async (backend) => {
+      await createWindow(backend);
       // The boot's window is open: what it was opened against is what
-      // a later window needs (see windowKeeper).
-      keeper.booted({ apiBase, internalSecret });
+      // a later window needs (see windowKeeper) — its lanes included.
+      keeper.booted(backend);
     },
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,
