@@ -73,6 +73,28 @@ describe('warmResumeEpisode', () => {
 		expect(click).not.toHaveBeenCalled();
 	});
 
+	// Each version of a show is its own listing: the warm of the
+	// version the row would play is the one a click on it reads, and a
+	// click on the other version must not be served it.
+	it('is keyed by the version it resolves', async () => {
+		const { stream, calls } = heldStream();
+		const standard = { ...key, version: 'standard' as const };
+		const warm = warmResumeEpisode(standard, { ...args, version: 'standard' }, stream);
+		await settle();
+		calls[0].answer();
+		await warm;
+		const same = vi.fn(() => Promise.resolve(session));
+		await getOrFire(
+			makeKey(key.showId, key.episode, key.mode, key.quality, 'standard'),
+			same,
+			() => {}
+		);
+		expect(same).not.toHaveBeenCalled();
+		const other = vi.fn(() => Promise.resolve(session));
+		await getOrFire(makeKey(key.showId, key.episode, key.mode, key.quality), other, () => {});
+		expect(other).toHaveBeenCalledTimes(1);
+	});
+
 	// The backend paces a prefetch as background, and its gate can
 	// refuse one; a click must never be left waiting on it.
 	it('leaves a click that comes while it runs its own resolve', async () => {
