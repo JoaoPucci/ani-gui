@@ -384,3 +384,57 @@ fn concurrent_opens_of_a_fresh_cache_all_succeed() {
         );
     }
 }
+
+/// The file change counter in a SQLite database's header (bytes 24 to
+/// 27, big-endian): one more for every transaction that wrote to the
+/// file, in the rollback-journal mode the cache runs in.
+fn commits_to(path: &std::path::Path) -> u32 {
+    let header = std::fs::read(path).expect("read the database");
+    u32::from_be_bytes(header[24..28].try_into().expect("a header"))
+}
+
+/// Every write transaction costs a rollback-journal commit four
+/// fsyncs: the journal twice, its directory and the database. On a
+/// busy or spinning disk each can take a second or more, and a fresh
+/// cache is made before the backend's handshake, so the first launch
+/// waits on every one of them. A fresh cache is made in three: the
+/// migrations' history table, every migration together, and the mark
+/// of the plays earlier builds stored.
+#[test]
+fn a_fresh_cache_is_made_in_three_commits() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    assert_eq!(commits_to(&path), 3);
+}
+
+/// The migrations a cache has yet to apply land together or not at
+/// all: one that fails leaves none of the others applied, so a cache
+/// never stops part-way between two schemas. Here a fresh file already
+/// holds a table the second migration creates, and the first
+/// migration's tables are not left behind when the second fails.
+#[test]
+fn a_migration_that_fails_leaves_none_of_its_batch_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE user_list_cache (x INTEGER);")
+        .unwrap();
+    assert!(open_pool(&path).is_err(), "the second migration fails");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+    assert_eq!(tables, vec!["refinery_schema_history", "user_list_cache"]);
+    let applied: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refinery_schema_history", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(applied, 0, "no migration recorded as applied");
+}
