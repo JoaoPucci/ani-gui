@@ -89,3 +89,7 @@ pub(crate) fn without_stem_number(stem: &[String]) -> Option<(String, u32)> {
     words.push(head.to_string());
     Some((words.join(" "), n))
 }
+
+#[cfg(test)]
+#[path = "play_native_title_past_test.rs"]
+mod tests;
