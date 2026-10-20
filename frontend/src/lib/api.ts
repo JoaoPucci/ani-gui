@@ -677,9 +677,9 @@ export type PlayProgress =
  *
  *  When `signal` is provided and aborted, the EventSource is closed
  *  and the promise rejects with an "aborted" error; aborted before
- *  the stream opens, nothing is sent at all. Used by
- *  play-cache's `clearForShow` to cancel abandoned prefetches when
- *  the user navigates away from a show. */
+ *  the stream opens, nothing is sent at all. Used by play-cache's
+ *  `clearForShow` to cancel a show's abandoned plays when the user
+ *  navigates away from it. */
 export function playStream(
 	args: PlayArgs,
 	onProgress: (p: PlayProgress) => void,
