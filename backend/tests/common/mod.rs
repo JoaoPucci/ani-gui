@@ -61,9 +61,9 @@ pub fn command(exe: &Path, home: &Path) -> Command {
 ///
 /// # Panics
 /// When the backend exits, or stays silent past [`HANDSHAKE_TIMEOUT`],
-/// before printing both handshake lines — after killing it, with its
-/// exit status, its stdout (which carries its log) and its stderr in
-/// the message.
+/// before printing both handshake lines. The message carries its exit
+/// status (or that it was still running, and has been killed), the
+/// stdout it wrote until then, which carries its log, and its stderr.
 pub fn start(cmd: Command) -> Backend {
     let (backend, output) = start_keeping_output(cmd);
     std::thread::spawn(move || for _ in output.lines() {});
@@ -79,33 +79,33 @@ pub fn start(cmd: Command) -> Backend {
 pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout>) {
     let mut child = cmd.spawn().expect("spawn backend");
     let stdout = child.stdout.take().expect("stdout");
-    let stderr = child.stderr.take().map(drain_stderr);
+    let stderr = child.stderr.take().map(drain);
     // A thread owns the read, because a blocking read has no timeout
-    // of its own; it hands the reader back once the handshake is in,
-    // or everything it read once the output ends without one.
+    // of its own; it hands the reader back once the handshake is in.
+    // What it reads before then is kept where a failed start can
+    // report it, whether the output ended or the wait ran out.
     type Handshake = (
         String,
         std::collections::BTreeMap<String, String>,
         BufReader<ChildStdout>,
     );
-    let (tx, rx) = mpsc::channel::<Result<Handshake, String>>();
+    let said: Arc<Mutex<String>> = Arc::default();
+    let heard = Arc::clone(&said);
+    let (tx, rx) = mpsc::channel::<Handshake>();
     std::thread::spawn(move || {
         let mut output = BufReader::new(stdout);
         let mut api_base = None;
         let mut lanes = std::collections::BTreeMap::new();
         let mut secret_seen = false;
-        let mut seen = String::new();
         let mut line = String::new();
         while api_base.is_none() || !secret_seen {
             line.clear();
             match output.read_line(&mut line) {
-                Ok(n) if n > 0 => seen.push_str(&line),
-                Ok(_) => {
-                    let _ = tx.send(Err(seen));
-                    return;
-                }
+                Ok(n) if n > 0 => heard.lock().expect("stdout so far").push_str(&line),
+                Ok(_) => return,
                 Err(e) => {
-                    let _ = tx.send(Err(format!("{seen}<stdout read failed: {e}>")));
+                    let note = format!("<stdout read failed: {e}>");
+                    heard.lock().expect("stdout so far").push_str(&note);
                     return;
                 }
             }
@@ -119,17 +119,28 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
             }
             secret_seen |= line.starts_with("ANI_GUI_INTERNAL_SECRET ");
         }
-        let _ = tx.send(Ok((api_base.expect("checked by the loop"), lanes, output)));
+        let _ = tx.send((api_base.expect("checked by the loop"), lanes, output));
     });
 
     let (api_base, lanes, output) = match rx.recv_timeout(HANDSHAKE_TIMEOUT) {
-        Ok(Ok(handshake)) => handshake,
-        Ok(Err(stdout)) => fail(&mut child, "its output ended", &stdout, stderr.as_ref()),
-        Err(_) => fail(
+        Ok(handshake) => handshake,
+        // The reader dropped its sender: the output ended first.
+        // Output that ended usually means an exit on its way, so the
+        // backend gets a moment to finish it; one still silent past
+        // the timeout gets none.
+        Err(mpsc::RecvTimeoutError::Disconnected) => fail(
+            &mut child,
+            "its output ended",
+            Duration::from_secs(5),
+            &said,
+            stderr,
+        ),
+        Err(mpsc::RecvTimeoutError::Timeout) => fail(
             &mut child,
             "it stayed silent past the timeout",
-            "<still being read>",
-            stderr.as_ref(),
+            Duration::ZERO,
+            &said,
+            stderr,
         ),
     };
     (
@@ -142,13 +153,15 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
     )
 }
 
-/// What the backend has written to stderr so far, read on a thread of
-/// its own until the pipe closes, so the pipe never fills.
-type Captured = Arc<Mutex<Vec<u8>>>;
+/// What the backend writes to stderr, read on a thread of its own
+/// until the pipe closes, so the pipe never fills; the receiver hears
+/// when it has.
+type Drained = (Arc<Mutex<Vec<u8>>>, mpsc::Receiver<()>);
 
-fn drain_stderr(mut stderr: std::process::ChildStderr) -> Captured {
-    let captured: Captured = Arc::default();
+fn drain(mut stderr: std::process::ChildStderr) -> Drained {
+    let captured: Arc<Mutex<Vec<u8>>> = Arc::default();
     let sink = Arc::clone(&captured);
+    let (done, closed) = mpsc::channel();
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         while let Ok(n) = stderr.read(&mut buf) {
@@ -159,29 +172,42 @@ fn drain_stderr(mut stderr: std::process::ChildStderr) -> Captured {
                 .expect("stderr buffer")
                 .extend_from_slice(&buf[..n]);
         }
+        let _ = done.send(());
     });
-    captured
+    (captured, closed)
 }
 
-/// Fail the start with everything the backend said: its exit status
-/// (or that it was still running and has been killed), its stdout up
-/// to the failure, which carries its log, and its stderr.
-fn fail(child: &mut Child, why: &str, stdout: &str, stderr: Option<&Captured>) -> ! {
-    let status = match exited_within(child, Duration::from_secs(5)) {
+/// Fail the start with everything the backend said: its exit status,
+/// or that it was still running and has been killed; the stdout it
+/// wrote, which carries its log; and its stderr.
+///
+/// `grace` is how long it may take to exit before it is killed.
+fn fail(
+    child: &mut Child,
+    why: &str,
+    grace: Duration,
+    said: &Mutex<String>,
+    stderr: Option<Drained>,
+) -> ! {
+    let status = match exited_within(child, grace).or_else(|| child.try_wait().ok().flatten()) {
         Some(status) => format!("exited with {status}"),
         None => {
             let _ = child.kill();
             let _ = child.wait();
-            "still running, killed".to_string()
+            "was still running and has been killed".to_string()
         }
     };
-    // The child is gone, so its stderr is closing; give the drain a
-    // moment to read the last of it.
-    std::thread::sleep(Duration::from_millis(200));
     let stderr = stderr.map_or_else(
         || "<redirected by the caller>".to_string(),
-        |c| String::from_utf8_lossy(&c.lock().expect("stderr buffer")).into_owned(),
+        |(captured, closed)| {
+            // The child is gone, so its stderr closes once whatever
+            // inherited the pipe is gone too; wait a bounded time for
+            // the drain to read the last of it.
+            let _ = closed.recv_timeout(Duration::from_secs(2));
+            String::from_utf8_lossy(&captured.lock().expect("stderr buffer")).into_owned()
+        },
     );
+    let stdout = said.lock().expect("stdout so far").clone();
     panic!(
         "the backend did not complete its handshake: {why}; it {status}\n\
          --- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
