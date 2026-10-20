@@ -8,11 +8,12 @@
 // reads now — 13, not 25 — and back to the recap when it was left
 // part-way under the number it had then.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -311,6 +312,14 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 				return HttpResponse.json({ ep_no: '12.5', former_ep_no: '24.5' });
 			})
 		);
+		const { sent, read } = watchPageFetches();
+		const numberReads = () => sent.filter((r) => /^\/api\/history\/[^/]+\/number$/.test(r.path));
+		// The page's timeouts are the test's to run, with the clock still
+		// moving with real time so the page loads as it would.
+		vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
 		app = mount(DetailPage, { target });
 		await until(
 			() => playButton(m.detail_play_button_resume({ episode: '13' })) !== null,
@@ -326,7 +335,23 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
 			);
 		}
-		await new Promise((r) => setTimeout(r, 500));
+		// Bounded means the reads stop: every read asked has been
+		// answered, every timeout pending then has run, and nothing new
+		// was asked. A loop, however it is paced by timeouts, never gets
+		// there.
+		let settled = false;
+		for (let round = 0; round < 10 && !settled; round++) {
+			const asked = numberReads().length;
+			await until(
+				() => numberReads().every((r) => read.includes(r)),
+				'the reads asked to be answered'
+			);
+			await vi.runOnlyPendingTimersAsync();
+			await afterRead();
+			settled = numberReads().length === asked;
+		}
+		expect(settled, 'the reads to stop').toBe(true);
+		expect(numberReads().length).toBeLessThan(10);
 		expect(reads).toBeLessThan(10);
 	});
 });
