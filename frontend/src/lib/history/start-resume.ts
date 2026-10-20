@@ -13,13 +13,21 @@
  *   write-back → play resolution → watched + tracker fan-out
  *   (fire-and-forget) → navigate. Busy stays set on
  *   success — navigation unmounts the page; failure clears busy and
- *   reports through onFailure.
+ *   reports through onFailure. A click whose navigation claim lapsed
+ *   meanwhile (claimNavigation) neither navigates nor reports, and
+ *   clears busy; one that lapsed before its play was asked for asks
+ *   for none, and records nothing. One that lapsed while settings
+ *   loaded sends no cap lookup either, and one that lapsed by the time
+ *   the row was read warms nothing. onFailure gets the claim, to ask
+ *   once the failure is worded.
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
 import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
+import { claimOrHold } from '$lib/navigation/claims';
+import { settledRow } from './settled-row';
 
 export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
@@ -41,7 +49,14 @@ export interface StartResumeDeps {
 	/** `args` is what the failed play asked for — the show, episode
 	 *  and audio a failure surface needs to word its message. Busy
 	 *  holds until a returned promise settles. */
-	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void | Promise<void>;
+	onFailure: (
+		title: string,
+		error: unknown,
+		args: ResumePlayArgs,
+		/** Whether the click's navigation claim still holds — asked once
+		 *  the failure is worded, which can outlast the viewer staying. */
+		isCurrent?: () => boolean
+	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
 	getPlayableCount: (entryId: string) => number | null;
@@ -82,6 +97,11 @@ export interface StartResumeDeps {
 		guess?: boolean,
 		row?: string
 	) => void;
+	/** Claims navigation as the click starts ($lib/navigation/claims).
+	 *  A click whose claim lapsed while it worked — its page left, or a
+	 *  navigation away from it started — opens no player and shows no failure:
+	 *  the viewer has moved on. Omitted, no claim lapses. */
+	claimNavigation?: () => () => boolean;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept. Omitted, nothing was. */
 	leftPartWay?: (kitsuId: string, episode: number) => boolean;
@@ -123,10 +143,17 @@ export function makeStartResume(
 		if (deps.isBusy()) return;
 		const title = match.canonical_title;
 		if (!title) return;
+		const stillHere = claimOrHold(deps.claimNavigation);
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 
 		const { mode, quality } = await deps.getSettings();
+		// The viewer moved on while settings loaded: nothing of the
+		// click's provider work, the cap lookup included, is theirs.
+		if (!stillHere()) {
+			deps.onBusy(null);
+			return;
+		}
 		const lastWatchedRaw = parseHistoryEpisode(entry.ep_no) ?? NaN;
 		const resolved = await resolveResumeEpisode(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
@@ -149,13 +176,20 @@ export function makeStartResume(
 		// read it before. A position kept under what it read as moves.
 		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
 		const guess = deps.isGuess?.(entry.id) ?? false;
-		const now = await settledRow(deps, entry.id, card, count === null || approximate, {
-			match,
-			title,
-			mode,
-			quality,
-			guess
-		});
+		const now = await settledRow(
+			deps,
+			entry.id,
+			card,
+			count === null || approximate,
+			{
+				match,
+				title,
+				mode,
+				quality,
+				guess
+			},
+			stillHere
+		);
 		if (now.former !== null && now.last !== null) {
 			deps.movePosition?.(match.id, now.former, now.last);
 		}
@@ -176,6 +210,13 @@ export function makeStartResume(
 		}
 
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
+		// The viewer moved on while the click was still settling what to
+		// play: no play has begun, so none is resolved, started or
+		// recorded.
+		if (!stillHere()) {
+			deps.onBusy(null);
+			return;
+		}
 		deps.markStarted?.(match.id, episode, entry.id);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
@@ -189,59 +230,31 @@ export function makeStartResume(
 			if (!guess) {
 				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
+			// The viewer moved on while the session was on its way: the
+			// watch is still theirs, but a player opened now would pull
+			// them away from wherever they went.
+			if (!stillHere()) {
+				deps.onProgress(null);
+				deps.onBusy(null);
+				return;
+			}
 			deps.navigateToSession(match.id, session, played, guess, entry.id);
 		} catch (e) {
 			deps.onProgress(null);
+			// A failure about a page the viewer has moved on from says
+			// nothing.
+			if (!stillHere()) {
+				deps.onBusy(null);
+				return;
+			}
 			// Busy holds until the failure is on screen: the page words it
 			// after a cache lookup, and a card left idle meanwhile would
 			// take a second click whose play the late message then covers.
 			try {
-				await deps.onFailure(title, e, args);
+				await deps.onFailure(title, e, args, stillHere);
 			} finally {
 				deps.onBusy(null);
 			}
 		}
 	};
-}
-
-/** What the clicked row reads as now, and the number it read as
- *  before its numbering was put right; what the card read when the row
- *  cannot be asked. */
-async function rowNow(
-	deps: StartResumeDeps,
-	entryId: string,
-	card: number | null
-): Promise<{ last: number | null; former: number | null }> {
-	try {
-		const row = await deps.currentNumber?.(entryId);
-		if (!row) return { last: card, former: null };
-		return {
-			last: parseHistoryEpisode(row.ep_no),
-			former: parseHistoryEpisode(row.former_ep_no)
-		};
-	} catch {
-		return { last: card, former: null };
-	}
-}
-
-/** {@link rowNow}, with the row's own episode warmed first when no
- *  listing stands behind the cap (`unmeasured`) and the row reads as a
- *  fractional episode — the one kind a renumbering leaves under a
- *  number it no longer has. The warm resolves the listing, which puts
- *  the row right, and records no watch. */
-async function settledRow(
-	deps: StartResumeDeps,
-	entryId: string,
-	card: number | null,
-	unmeasured: boolean,
-	play: Omit<ResumePlayArgs, 'episode'>
-): Promise<{ last: number | null; former: number | null }> {
-	const now = await rowNow(deps, entryId, card);
-	if (!unmeasured || !deps.warm || now.last === null || Number.isInteger(now.last)) return now;
-	try {
-		await deps.warm({ ...play, episode: now.last });
-	} catch {
-		return now;
-	}
-	return rowNow(deps, entryId, now.last);
 }
