@@ -124,6 +124,8 @@ function useHandlers(s: Scenario): Seen {
 			return HttpResponse.json(body.mode === mode ? NOTHING_CACHED : (s.other ?? NOTHING_CACHED));
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+		// The fresh resolve a Reload that goes through asks for.
+		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
 			seen.evictions += 1;
 			return new HttpResponse(null, { status: 204 });
