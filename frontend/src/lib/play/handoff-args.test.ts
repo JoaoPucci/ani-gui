@@ -37,6 +37,28 @@ describe('handoffArgs', () => {
 		});
 	});
 
+	it('hands off the version the embedded play would play', () => {
+		const args = handoffArgs({
+			title: 'The Show',
+			episode: 3,
+			kitsuId: '42',
+			config: { mode: 'sub', quality: 'best' },
+			detail,
+			version: 'standard'
+		});
+		expect(args.version).toBe('standard');
+		expect(
+			'version' in
+				handoffArgs({
+					title: 'The Show',
+					episode: 3,
+					kitsuId: '42',
+					config: { mode: 'sub', quality: 'best' },
+					detail
+				})
+		).toBe(false);
+	});
+
 	it('defaults to sub and best, and sends no id when the page has none', () => {
 		const args = handoffArgs({
 			title: 'The Show',

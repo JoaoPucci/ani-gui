@@ -7,6 +7,7 @@ use crate::commands::play_native_count_alone::unvouched_counted;
 use crate::commands::play_native_dated_name::{may_win, unnamed_dated};
 use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
+use crate::commands::play_native_versions::{note_dead, versions_of, with_versions};
 use crate::commands::play_native_year::PageNames;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
@@ -73,6 +74,12 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // weather.
     let mut best_failed: Option<(u8, usize)> = None;
     let mut positions: Vec<usize> = Vec::new();
+    // The transport-dead candidates that could have been picked, which
+    // a winner's copy among them leaves unheard (see
+    // play_native_versions::copy_died). A copy whose listing answered
+    // not-found is positively gone, and is a dead listing like any
+    // other.
+    let mut dead_copies: Vec<&BrowseHit> = Vec::new();
     for (pos, (h, year_confirmed)) in head.into_iter().enumerate() {
         match client.episodes(&h.slug).await {
             Ok(eps) => {
@@ -108,6 +115,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                         pos,
                         could_win,
                     );
+                    note_dead(&mut dead_copies, h, could_win, entry);
                 } else {
                     // Answered not-found: a stale listing that may have
                     // been the entry's, if it could have won.
@@ -202,9 +210,21 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         ));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
-    if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
+    if winner_unheard(
+        best_failed,
+        winner_rank,
+        positions[winner_idx],
+        &dead_copies,
+        probed_ok[winner_idx].0,
+    ) {
         return Err(crate::error::AniError::Network);
     }
+    // Copies of the winner under another version tag are versions of
+    // this one pick (see play_native_versions).
+    let versions = versions_of(&probed_ok, winner_idx, best_dist);
     let (hit, episodes, _, _) = probed_ok.swap_remove(winner_idx);
-    Ok(PickedShow::listed(hit.clone(), episodes))
+    Ok(with_versions(
+        PickedShow::listed(hit.clone(), episodes),
+        versions,
+    ))
 }

@@ -224,6 +224,24 @@ starting it, and delete it when you find it done.
   follows; a tagged family mixing widths would hold it. The generated
   set never reaches it, which is why it waited.
 
+- **Bracketed words after a division.** The docs say bracketed words
+  that are no catalogue tag are words ("Haikyuu!! (Shin Series)"), and
+  every rule but the version rule reads hianime's "(Uncensored)" tag
+  that way — but they do not settle how a title reads when such words
+  follow a division it would otherwise end on, and the model
+  (`tests/picker-oracle/oracle.py`) and the picker disagree there:
+  "Show 1 (Uncensored)" for "Show 2", "Kaiju No. 7 (Uncensored)" for
+  "Kaiju No. 8", "Show 2 0 (Uncensored)" for "Show 2", among some
+  ninety shapes. The provider carries such titles live — "Chained
+  Soldier Season 2 [Uncensored]" — and read as words the tag hides the
+  season from the title rule, so the tagged copy of a later season is
+  admitted for the first. The generated versions family leaves pools
+  whose title ends on a division out for that reason. The docs decide
+  first — most likely by reading a version tag as the structure readers
+  read a catalogue tag, which moves the probe head of the recorded
+  JoJo pools and wants them re-recorded — then the model and the
+  picker follow.
+
 - **The CRAP ratchet can disagree between CI and local.** Coverage
   attribution differs between the runner's toolchain and local ones,
   and once put the high-risk count at 26 in one and 25 in the other.
