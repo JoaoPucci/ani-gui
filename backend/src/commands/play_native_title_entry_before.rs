@@ -81,3 +81,7 @@ fn first_divisions_only(words: &[String]) -> bool {
     }
     true
 }
+
+#[cfg(test)]
+#[path = "play_native_title_entry_before_test.rs"]
+mod tests;
