@@ -283,6 +283,26 @@ export interface CreateSessionResponse {
 	/** The number an earlier version gave the same episode, when it gave
 	 *  another: what a position kept from then is keyed by. */
 	former_episode?: string;
+	/** The played show's versions when its pick has several (see
+	 *  {@link VersionInfo}); absent when it has one. */
+	versions?: VersionInfo[];
+	/** The version that played, when there are several. */
+	version?: VersionKind;
+}
+
+/** Which copy of a season a version is: the provider lists some
+ *  seasons twice, once tagged "(Uncensored)" and once without the
+ *  tag. The backend names a version; the renderer labels it. */
+export type VersionKind = 'uncensored' | 'standard';
+
+/** One version of a pick, as availability and play name it: its kind
+ *  and the provider show key it plays under. */
+export interface VersionInfo {
+	kind: VersionKind;
+	show_key: string;
+	/** Whether the copy carries the audio mode an availability answer
+	 *  was asked about; absent where nobody asked or nobody answered. */
+	has_mode?: boolean;
 }
 
 /** Player flag-syntax flavor — controls the argv shape `build_argv`
@@ -580,6 +600,12 @@ export interface PlayArgs {
 	 *  and the native picker uses it as format disproof against the
 	 *  provider's browse-card badges. Kitsu can return null. */
 	subtype?: string | null;
+	/** Which version of the show to play when its pick has several.
+	 *  Absent plays the backend's default, the uncensored one; a
+	 *  version the pick lacks plays the pick. The backend keys its
+	 *  resolution cache on it, so a stamp or an eviction names the
+	 *  version its play named. */
+	version?: VersionKind;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
@@ -679,6 +705,7 @@ export function playStream(
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
+	if (args.version) params.set('version', args.version);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -761,6 +788,8 @@ export interface DownloadArgs {
 	alt_titles?: string[];
 	kitsu_id?: string;
 	download_dir?: string;
+	/** Which version to download — {@link PlayArgs.version}. */
+	version?: VersionKind;
 }
 
 /** SSE progress event body — one line of the download's progress
@@ -806,6 +835,7 @@ export function downloadStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
+	if (args.version) params.set('version', args.version);
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
@@ -946,6 +976,9 @@ export interface AvailabilityResponse {
 	 *  Read it through `$lib/availability/verdict`. A backend before
 	 *  reasons sends `true`. Absent from every settled answer. */
 	unsettled?: boolean | UnsettledReason;
+	/** The show's versions, in the provider's order, when its pick has
+	 *  several; absent when it has one. */
+	versions?: VersionInfo[];
 }
 
 /** Why an availability probe reached no verdict

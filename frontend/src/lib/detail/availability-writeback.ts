@@ -16,10 +16,12 @@
  * belongs to the other catalogue (Codex P2 #3674622194).
  *
  * So ownership is per field. A re-ask claims the verdict always and the
- * count only when it confirmed one; whatever it left open, a lookup
- * still out may fill.
+ * count — with the extras and the show's versions, which the same
+ * fetch answers — only when it confirmed one; whatever it left open, a
+ * lookup still out may fill.
  */
 
+import type { VersionInfo } from '$lib/api';
 import type { CapGateRefresh } from './cap-gate-probe';
 
 /** What an ordinary, cache-reading lookup came back with. */
@@ -27,6 +29,8 @@ export interface AvailabilityAnswer {
 	available: boolean;
 	count: number | null;
 	extraEpisodes: string[];
+	/** The show's versions, none when it has one. */
+	versions: VersionInfo[];
 	/** True when `available: false` is the provider refusing the title
 	 *  by name. */
 	refused?: boolean;
@@ -40,6 +44,9 @@ export interface AvailabilityPatch {
 	available?: boolean;
 	count?: number | null;
 	extraEpisodes?: string[];
+	/** The show's versions; owned with the count, which the same fetch
+	 *  answered, so whoever writes the count writes these. */
+	versions?: VersionInfo[];
 	/** Present, and true, when the verdict this patch writes is a
 	 *  refusal by name; it travels only with the verdict, so whoever
 	 *  owns the verdict owns it too. */
@@ -88,6 +95,7 @@ export function createAvailabilityWriteback(currentContext: () => string): Avail
 				if (counts === countsAtStart && (verdictStands || answer.available)) {
 					patch.count = answer.count;
 					patch.extraEpisodes = answer.extraEpisodes;
+					patch.versions = answer.versions;
 				}
 				return patch;
 			};
@@ -96,10 +104,11 @@ export function createAvailabilityWriteback(currentContext: () => string): Avail
 			verdicts += 1;
 			const patch: AvailabilityPatch = { available: refresh.available };
 			if (refresh.refused === true) patch.refused = true;
-			if (refresh.count != null && refresh.extraEpisodes != null) {
+			if (refresh.count != null && refresh.extraEpisodes != null && refresh.versions != null) {
 				counts += 1;
 				patch.count = refresh.count;
 				patch.extraEpisodes = refresh.extraEpisodes;
+				patch.versions = refresh.versions;
 			}
 			return patch;
 		}
