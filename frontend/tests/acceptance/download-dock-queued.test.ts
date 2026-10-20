@@ -157,4 +157,27 @@ describe('downloads past the ones running at once', () => {
 		expect(FakeEventSource.opened).toBe(DOWNLOAD_CONCURRENCY);
 		expect(downloadStore.items.some((i) => i.id === ids[DOWNLOAD_CONCURRENCY])).toBe(false);
 	});
+
+	// A show listed twice downloads the copy its request names. The
+	// request a queued download makes when its turn comes is the one
+	// built when it was started, so the version chosen then rides along.
+	it('a queued download names the version it was started with when it starts', async () => {
+		startEpisodes(DOWNLOAD_CONCURRENCY);
+		startDownload({
+			title: 'Frieren',
+			episode: String(DOWNLOAD_CONCURRENCY + 1),
+			mode: 'sub',
+			quality: '1080',
+			version: 'standard',
+			destDir: '/dl'
+		});
+		await settle();
+		expect(FakeEventSource.opened).toBe(DOWNLOAD_CONCURRENCY);
+		FakeEventSource.open[0].finish();
+		await settle();
+		expect(FakeEventSource.opened).toBe(DOWNLOAD_CONCURRENCY + 1);
+		const started = new URL(FakeEventSource.open[FakeEventSource.open.length - 1].url);
+		expect(started.searchParams.get('episode')).toBe(String(DOWNLOAD_CONCURRENCY + 1));
+		expect(started.searchParams.get('version')).toBe('standard');
+	});
 });
