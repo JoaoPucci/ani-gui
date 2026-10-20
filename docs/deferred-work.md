@@ -293,11 +293,12 @@ starting it, and delete it when you find it done.
   picker's and the request lanes' frontend cases of it. These are
   older ones the conversion did not reach.
 
-  A 0 ms timer is a sleep of the same kind in an acceptance case. The
-  page's requests pass through MSW, and one turn of the event loop
-  is not known to carry them to a handler. In a unit test whose stand-ins
-  live in memory, one turn drains every microtask, so it settles the
-  question. In the acceptance cases it does not.
+  A 0 ms timer is a sleep of the same kind wherever the page's
+  requests pass through MSW: one turn of the event loop is not known
+  to carry them to a handler. Where every stand-in lives in memory, as
+  in the unit tests and in acceptance cases built on a fake
+  EventSource alone, one turn drains every microtask and settles the
+  question.
 
 ## Correctness in the app (continued)
 
