@@ -22,11 +22,12 @@ pub const ALIGNED: u32 = 3;
 ///   does, at least one of them by more than its number, and Kitsu
 ///   dates them ([`aligned`]), so its numbering is Kitsu's up to the
 ///   count;
-/// - every row past the count has a name of its own, which no TV
-///   sequel's first episodes carry ([`own_names`]);
+/// - every row past the count has a name of its own, which none of
+///   the first episodes of any aired TV entry Kitsu relates the show
+///   to carries, whatever the relation's role ([`own_names`]);
 /// - Kitsu relates the entry to a finished OVA, ONA or special exactly
-///   as long as the rows past the count, and to no sequel still to
-///   finish ([`explained`]).
+///   as long as the rows past the count, and to no entry airing now,
+///   whatever its role or format, a music video aside ([`explained`]).
 ///
 /// `None` otherwise, and for a listing [`appended_count`] turns away.
 #[must_use]

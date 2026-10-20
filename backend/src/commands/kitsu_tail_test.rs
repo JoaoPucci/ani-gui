@@ -654,6 +654,13 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
             None,
             "kitsu-relations-48677.json",
         ),
+        // The prequel Kitsu relates it to, an aired TV entry whose
+        // page the reader asks for.
+        (
+            "/anime/46241/episodes",
+            None,
+            "kitsu-episodes-46241-p1.json",
+        ),
     ] {
         let mock = Mock::given(method("GET")).and(path(route));
         let mock = match offset {
@@ -695,4 +702,111 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
         .expect("the announced sequel");
     assert_eq!(sequel.status.as_deref(), Some("upcoming"));
     assert_eq!(sequel.first_episodes, None);
+}
+
+/// Every aired TV entry Kitsu relates the show to has its first page
+/// read, whatever the role: Noragami Aragoto's one TV relation is its
+/// prequel, and its page comes back with Noragami's twelve titled
+/// episodes; the OVA Kitsu relates as `other` gets none.
+#[tokio::test]
+async fn every_aired_tv_relation_s_page_is_read() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/10800/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    for (route, file) in [
+        ("/anime/10800", "kitsu-anime-10800.json"),
+        ("/anime/10800/episodes", "kitsu-episodes-10800-p1.json"),
+        (
+            "/anime/10800/media-relationships",
+            "kitsu-relations-10800.json",
+        ),
+        ("/anime/7881/episodes", "kitsu-episodes-7881-p1.json"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+    let airing =
+        crate::meta::anilist_airing::parse_airing_response(&fixture("anilist-airing-10800.json"))
+            .expect("airing")
+            .expect("known");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:10800",
+        &serde_json::to_string(&airing).expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("10800"))
+        .expect("an entry")
+        .tail(13)
+        .await
+        .expect("read");
+    let prequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "prequel")
+        .expect("the prequel");
+    let page = prequel.first_episodes.as_ref().expect("the prequel's page");
+    assert_eq!(page.len(), 12);
+    assert_eq!(
+        page[0],
+        SequelEpisode {
+            number: 1,
+            title: Some("A Housecat, a Stray God, and a Tail".into()),
+        }
+    );
+    let ova = tail
+        .related
+        .iter()
+        .find(|r| r.subtype.as_deref() == Some("OVA"))
+        .expect("the OVA");
+    assert_eq!(ova.first_episodes, None);
+}
+
+/// A reading master kept (`appended:v1:`) was proved by a rule that
+/// checked the rows past the count against a TV sequel's names alone,
+/// and turned away only a sequel still airing. The rule now reads
+/// every aired TV entry Kitsu relates the show to, whatever the role,
+/// and refuses an entry of any role airing now, so a reading it proved
+/// may be one the rule refuses: with Kitsu titling Slime's TV sequel,
+/// The Slime Diaries' rows appended to Slime's first season would read
+/// as extras then, and as the Diaries' episodes now. Kept, it would
+/// stand for thirty days whenever the evidence cannot be read. It is
+/// not remembered, and the key it is kept under has moved past
+/// master's.
+#[test]
+fn a_reading_kept_under_the_sequel_only_rule_is_not_remembered() {
+    assert!(
+        !kept_key("41024").starts_with("appended:v1:"),
+        "the key must have moved past master's v1: {}",
+        kept_key("41024")
+    );
+    let state = state_with_kitsu("http://127.0.0.1:1");
+    let before = Remembered {
+        slug: "tensei-shitara-slime-datta-ken-77".into(),
+        count: 24,
+        ids: vec![1, 2, 3],
+    };
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "appended:v1:41024",
+        &serde_json::to_string(&before).expect("serialize"),
+        60,
+    )
+    .expect("put");
+    let tail = KitsuTail::for_entry(&state, Some("41024")).expect("an entry");
+    assert_eq!(tail.remembered(), None);
+    tail.remember(Some(&before));
+    assert_eq!(tail.remembered(), Some(before));
 }

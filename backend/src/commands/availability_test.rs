@@ -2133,8 +2133,26 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v22:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v22:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v23:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v23:kid-1:dub");
+}
+
+/// A verdict stamped while the appended-extras rule checked a TV
+/// sequel's names alone, and refused only a sequel still airing, is
+/// not served: its cap and extras may come from a reading the rule now
+/// refuses — were the rows past Noragami Aragoto's count titled as its
+/// prequel Noragami's first episodes, they would have read as `13.1`
+/// and `13.2` then and as whole episodes now (as recorded they read as
+/// extras under either rule) — and a row says nothing of which rule
+/// stamped it. The key sits above the one master moved to for the
+/// versions of a season.
+#[test]
+fn a_verdict_stamped_before_every_related_tv_entry_was_read_is_not_read() {
+    let current = cache_key("10800", "sub");
+    assert!(
+        !current.starts_with("availability:v22:"),
+        "the key must have moved past master's v22: {current}"
+    );
 }
 
 /// A verdict stamped before the extras a provider appends after a

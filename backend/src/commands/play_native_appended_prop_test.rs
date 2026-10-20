@@ -102,6 +102,8 @@ enum Break {
     SequelUntitled(u32),
     SequelMissing(u32),
     SequelNamed(u32),
+    OtherTvAiring,
+    OtherTvUntitled,
     RelationsInPart,
 }
 
@@ -126,6 +128,8 @@ fn a_break(count: u32, past: u32) -> impl Strategy<Value = Break> {
         1 => (1..=past + 2).prop_map(Break::SequelUntitled),
         1 => (1..=past + 2).prop_map(Break::SequelMissing),
         1 => (1..=past).prop_map(Break::SequelNamed),
+        1 => Just(Break::OtherTvAiring),
+        1 => Just(Break::OtherTvUntitled),
         1 => Just(Break::RelationsInPart),
     ]
 }
@@ -173,9 +177,35 @@ fn broken(count: u32, past: u32, b: &Break) -> (Vec<EpisodeRef>, EntryTail) {
         Break::SequelNamed(i) => {
             sequel_episode(&mut tail, *i).title = rows[at(count + i)].title.clone();
         }
+        Break::OtherTvAiring => tail.related.push(other_tv("current", Some("Other 1"))),
+        Break::OtherTvUntitled => tail.related.push(other_tv("finished", None)),
         Break::RelationsInPart => tail.related_complete = false,
     }
     (rows, tail)
+}
+
+/// A TV entry Kitsu relates as `other`, with `status`, its first
+/// episode titled `first` and the rest titled.
+fn other_tv(status: &str, first: Option<&str>) -> Related {
+    Related {
+        role: "other".into(),
+        anime: true,
+        subtype: Some("TV".into()),
+        status: Some(status.into()),
+        episode_count: Some(12),
+        first_episodes: Some(
+            (1..=12)
+                .map(|n| SequelEpisode {
+                    number: n,
+                    title: if n == 1 {
+                        first.map(str::to_string)
+                    } else {
+                        Some(format!("Other {n}"))
+                    },
+                })
+                .collect(),
+        ),
+    }
 }
 
 /// The sequel's episode `n` in the conclusive evidence.

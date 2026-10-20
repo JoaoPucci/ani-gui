@@ -2,8 +2,8 @@
 //! ([`super::play_native_appended`]), from what a detail page visit
 //! already caches: Kitsu's entry, the Kitsu episode pages holding the
 //! count's last episodes, and AniList's airing answer — and, past
-//! those, the entries Kitsu relates the show to, with a TV sequel's
-//! first episode page. Each is read
+//! those, the entries Kitsu relates the show to, with each aired TV
+//! entry's first episode page. Each is read
 //! from the cache first and fetched only when it is missing.
 
 use super::play_native_appended::{EntryTail, Remembered, TailSource};
@@ -39,8 +39,13 @@ impl std::fmt::Debug for KitsuTail<'_> {
 }
 
 /// Where the reading the evidence last proved for an entry is kept.
+///
+/// v2: the rule reads every aired TV entry Kitsu relates the show to,
+/// whatever the role, and refuses an entry of any role airing now. A
+/// v1 reading was proved against a TV sequel alone and may be one the
+/// rule now refuses, so it is not read.
 fn kept_key(kitsu_id: &str) -> String {
-    format!("appended:v1:{kitsu_id}")
+    format!("appended:v2:{kitsu_id}")
 }
 
 #[path = "kitsu_tail_read.rs"]

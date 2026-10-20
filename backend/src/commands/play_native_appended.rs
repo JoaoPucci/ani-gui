@@ -124,9 +124,14 @@ pub trait TailSource: Send + Sync + std::fmt::Debug {
 /// The count to ask the evidence about, when `listing` has the shape
 /// appended extras give it: Kitsu counts the entry, every row is
 /// numbered by its position and carries no tag of its own — a recap's
-/// fraction, a continuation's offset, a stitched or cut listing's
-/// re-display each mean another reading is already in force — and the
-/// listing runs past the count by at most [`MAX_APPENDED`] rows.
+/// fraction or a continuation's offset means another reading is
+/// already in force — and the listing runs past the count by at most
+/// [`MAX_APPENDED`] rows. The shape alone does not tell a stitched
+/// listing from a single one: parts numbered from 1 stitch into
+/// untagged rows numbered by position, so [`fit_appended`] turns a
+/// stitched pick away before asking. A cut spanning listing is cut to
+/// the entry's own episodes, and runs no whole episode past the count;
+/// a recap it keeps after them is tagged, which this check turns away.
 #[must_use]
 pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u32> {
     let count = expected.filter(|c| *c > 0)?;
@@ -141,9 +146,10 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 /// `picked` with the extras its provider appended read as extras,
 /// when the evidence proves them, or when the evidence cannot be read
 /// and the source keeps that reading for these very rows; `picked`
-/// itself otherwise — no source, a listing of another shape, evidence
-/// that reads and falls short of proof (which forgets a kept reading),
-/// or no evidence and nothing kept.
+/// itself otherwise — no source, a stitched listing, a listing of
+/// another shape (either of which, given a count, forgets a reading
+/// kept for its slug), evidence that reads and falls short of proof
+/// (which forgets a kept reading), or no evidence and nothing kept.
 pub async fn fit_appended(
     picked: PickedShow,
     expected: Option<u32>,
@@ -152,7 +158,13 @@ pub async fn fit_appended(
     let Some(source) = source else {
         return picked;
     };
-    let Some(count) = appended_count(&picked.episodes, expected) else {
+    // A stitched listing is numbered by position like a single one, but
+    // the rows a chain fits past the count are its later part's own
+    // episodes: it is never read for appended extras.
+    let shaped = (!picked.stitched)
+        .then(|| appended_count(&picked.episodes, expected))
+        .flatten();
+    let Some(count) = shaped else {
         // The show's listing no longer runs past a count — Kitsu took
         // the rows in, or the listing changed shape — so a reading
         // kept for it no longer stands.
