@@ -331,6 +331,8 @@ function useHomeHandlers(cache: CacheAnswer | 'fails', asked: Asked) {
 		http.get(`${API_BASE}/api/history`, () =>
 			HttpResponse.json([{ ep_no: '3', id: 'provider-1', title: TITLE }])
 		),
+		// The row read again before it resumes reads as it did.
+		http.get(`${API_BASE}/api/history/provider-1/number`, () => HttpResponse.json({ ep_no: '3' })),
 		http.post(`${API_BASE}/api/kitsu/search`, () =>
 			HttpResponse.json([{ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' }])
 		),
