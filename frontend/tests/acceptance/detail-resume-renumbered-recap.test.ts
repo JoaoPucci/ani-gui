@@ -373,3 +373,32 @@ describe('detail route — a navigation started while Play waits for the row', (
 		expect(goto).not.toHaveBeenCalled();
 	});
 });
+
+// The row is read again before its warm: a viewer who left while that
+// read was out has had the show released, and a warm fired then would
+// resolve for a page that is gone.
+describe('detail route — the row read again after the viewer left', () => {
+	it('warms nothing', async () => {
+		let answer = () => {};
+		const held = new Promise<void>((r) => (answer = r));
+		let asked = false;
+		useShowHandlers();
+		server.use(
+			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
+			http.get(`${API_BASE}/api/history/:id/number`, async () => {
+				asked = true;
+				await held;
+				return HttpResponse.json({ ep_no: '24.5' });
+			})
+		);
+		app = mount(DetailPage, { target });
+		await until(() => asked, 'the row read again');
+		unmount(app);
+		app = null;
+		answer();
+		await new Promise((r) => setTimeout(r, 300));
+
+		const warms = FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'));
+		expect(warms).toEqual([]);
+	});
+});
