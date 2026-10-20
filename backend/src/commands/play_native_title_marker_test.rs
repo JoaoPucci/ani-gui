@@ -1,4 +1,5 @@
 use super::*;
+use proptest::strategy::Strategy as _;
 
 fn entry<'a>(titles: &'a [&'a str]) -> EntryTitles<'a> {
     EntryTitles::new(titles)
@@ -506,5 +507,28 @@ proptest::proptest! {
         proptest::prop_assert_eq!(leading_number(&format!("{n} season 1")).map(|x| x.0), Some(n));
         proptest::prop_assert_eq!(leading_number(&format!("{n}{}1部", JAPANESE_AFTER[j])).map(|x| x.0), Some(n));
         proptest::prop_assert_eq!(leading_number(&format!("{n}{} season 1", OTHER_AFTER[o])), None);
+    }
+}
+
+proptest::proptest! {
+    /// Whether digits glued after a letter are a number is decided by
+    /// the letter alone, over every character: a Japanese letter's
+    /// glued number is one, any other letter's is the word's own; and
+    /// digits stand as a number before a space or a Japanese letter
+    /// and before nothing else. A Japanese letter is a letter, and
+    /// never an ASCII one.
+    #[test]
+    fn every_character_reads_a_glued_number_as_japanese_or_not(
+        c in proptest::prelude::any::<char>().prop_filter("a digit continues the number", |c| !c.is_ascii_digit()),
+        n in 0u32..100,
+    ) {
+        use super::super::play_native_title_grammar::{glued_number, is_japanese, small_number};
+        use super::super::play_native_title_reading::leading_number;
+        let japanese = is_japanese(c);
+        proptest::prop_assert!(!japanese || (c.is_alphanumeric() && !c.is_ascii()), "{:?}", c);
+        let want = if japanese { small_number(&n.to_string()) } else { None };
+        proptest::prop_assert_eq!(glued_number(&format!("{c}{n}")), want, "{:?}", c);
+        let stands = c == ' ' || japanese;
+        proptest::prop_assert_eq!(leading_number(&format!("{n}{c}")).is_some(), stands, "{:?}", c);
     }
 }

@@ -7,6 +7,8 @@ use crate::error::AniError;
 use crate::scraper::provider::BrowseHit;
 use crate::scraper::table_provider::{listing_of, Asked, TableProvider};
 
+use proptest::strategy::Strategy as _;
+
 const YEAR: u32 = 2020;
 
 fn hit(slug: &str, title: &str) -> BrowseHit {
@@ -446,4 +448,24 @@ fn a_version_tag_inside_a_closed_bracket_is_the_tag_as_a_catalogue_tag_is() {
     let (title, kind) = version_of("Show [Extra (Uncensored)]");
     assert_eq!(kind, VersionKind::Uncensored);
     assert_eq!(title, "show [extra ]");
+}
+
+proptest::proptest! {
+    /// A title without a version tag is read as written: whatever
+    /// brackets it opens and leaves unclosed, or closes around other
+    /// words, nothing of it is taken away.
+    #[test]
+    fn a_title_without_a_version_tag_is_read_as_written(
+        title in proptest::prop_oneof![
+            (0..PLAIN.len(), 0..UNCLOSED.len()).prop_map(|(t, u)| format!("{} {}", PLAIN[t], UNCLOSED[u])),
+            (0..PLAIN.len(), 0..OPENS.len()).prop_map(|(t, o)| format!("{} {}Uncensored", PLAIN[t], OPENS[o])),
+            proptest::prelude::any::<String>(),
+        ],
+    ) {
+        use super::{version_of, without_version_tag};
+        use crate::commands::play_native_versions::VersionKind;
+        if version_of(&title).1 == VersionKind::Standard {
+            proptest::prop_assert_eq!(without_version_tag(&title), title.trim());
+        }
+    }
 }
