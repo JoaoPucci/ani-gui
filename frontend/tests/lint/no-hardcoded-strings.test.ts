@@ -34,6 +34,22 @@ function component(script: string, markup = ''): string {
 	return `<script lang="ts">\n${script}\n</script>\n${markup}\n`;
 }
 
+// The project's own ESLint, for the cases that pin where the rule
+// applies. Built here rather than inside their describe, so it can be
+// primed below.
+const frontendDir = fileURLToPath(new URL('../..', import.meta.url));
+const eslint = new ESLint({ cwd: frontendDir });
+
+// Both linters load most of what they run on first use: the Svelte
+// parser and TypeScript behind it, and for ESLint the project's config
+// and every plugin it names. Left to the first case, that loading ran
+// against the case's 5 s budget, which is wall time and which a machine
+// busy with other builds can spend before a rule has run. One throwaway
+// lint each, while the file is collected, moves the loading out of the
+// cases; what they assert is unchanged.
+flagged(component(''));
+await eslint.lintText('', { filePath: `${frontendDir}src/lib/fixture/prime.ts` });
+
 describe('no-hardcoded-strings: template text and attributes', () => {
 	it('flags raw text and a literal user-facing attribute', () => {
 		const out = flagged(component('', '<button title="Close the panel">Save changes</button>'));
@@ -100,9 +116,6 @@ describe('no-hardcoded-strings: where the project applies it', () => {
 	// credits list, a message picked by a helper — that a component only
 	// renders. These run the project's own eslint.config.js, so they pin
 	// which files the rule reaches, not just what it reports.
-	const frontendDir = fileURLToPath(new URL('../..', import.meta.url));
-	const eslint = new ESLint({ cwd: frontendDir });
-
 	async function ruleHits(relPath: string, code: string): Promise<string[]> {
 		const [result] = await eslint.lintText(code, { filePath: `${frontendDir}${relPath}` });
 		return result.messages
