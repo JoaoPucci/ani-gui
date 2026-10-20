@@ -4,6 +4,7 @@ import {
 	decideStreamFailureResponse,
 	HOLD_MIN_BUFFER_SECONDS,
 	isHostSlowStreamError,
+	recoveryAfterEviction,
 	shouldAttemptStaleStreamRetry,
 	shouldResetStaleStreamBudget,
 	STALL_NUDGE_BUDGET
@@ -378,5 +379,47 @@ describe('decideStreamFailureResponse — with buffered media in hand', () => {
 				bufferAheadSeconds: 120
 			})
 		).toBe('surface');
+	});
+});
+
+describe('recoveryAfterEviction', () => {
+	const quiet = {
+		left: false,
+		switchedSince: false,
+		switchBusyNow: false
+	};
+
+	it('resolves the episode afresh when nothing happened meanwhile', () => {
+		expect(recoveryAfterEviction(quiet)).toBe('resolve');
+	});
+
+	it('stands down for a page left', () => {
+		expect(recoveryAfterEviction({ ...quiet, left: true })).toBe('stand-down');
+	});
+
+	it('stands down for a switch that started meanwhile', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchedSince: true, switchBusyNow: true })).toBe(
+			'stand-down'
+		);
+		expect(recoveryAfterEviction({ ...quiet, switchedSince: true })).toBe('stand-down');
+	});
+});
+
+describe('recoveryAfterEviction, with the switch lock held', () => {
+	const quiet = {
+		left: false,
+		switchedSince: false,
+		switchBusyNow: false
+	};
+
+	// A re-check holds the lock without a switch of its own until it
+	// clears its episode, and it may not. The stream is still the stale
+	// one, so the viewer gets Reload back rather than a dead video.
+	it('offers Reload again while a re-check holds the lock', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchBusyNow: true })).toBe('offer-reload');
+	});
+
+	it('stands down for a page left, whatever holds the lock', () => {
+		expect(recoveryAfterEviction({ ...quiet, left: true, switchBusyNow: true })).toBe('stand-down');
 	});
 });
