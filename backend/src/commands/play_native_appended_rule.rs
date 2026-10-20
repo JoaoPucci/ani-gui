@@ -73,6 +73,15 @@ pub fn rows_end_at(tail: &EntryTail, count: u32) -> bool {
     tail.read_past_count && tail.episodes.iter().all(|e| e.number <= count)
 }
 
+/// Whether every one of Kitsu's last [`ALIGNED`] episodes is among the
+/// rows read, so [`aligned`] reads them all and no further row can
+/// change what it says: each is read by the first row with its number.
+#[must_use]
+pub fn aligned_is_final(count: u32, tail: &EntryTail) -> bool {
+    let first = count.saturating_sub(ALIGNED - 1).max(1);
+    (first..=count).all(|n| tail.episodes.iter().any(|e| e.number == n))
+}
+
 /// Whether the listing names Kitsu's last [`ALIGNED`] episodes as
 /// Kitsu does, and Kitsu dates each of them; titles that are only
 /// numbers line up whatever a row holds, so one at least must be more.

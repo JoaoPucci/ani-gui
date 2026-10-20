@@ -52,6 +52,8 @@ fn kept_key(kitsu_id: &str) -> String {
 #[path = "kitsu_tail_read.rs"]
 mod read;
 pub use read::{entry_tail, tail_pages};
+#[path = "kitsu_tail_stages.rs"]
+mod stages;
 
 /// How long a proved reading is kept: as long as the title-match
 /// rows a play stores.
@@ -85,8 +87,8 @@ impl TailSource for KitsuTail<'_> {
     /// Each read is made only while what is in hand leaves the reading
     /// open, and a refusal it already settles is returned at once: a
     /// later read failing must not hand the listing back to a reading
-    /// kept from before. See [`Self::end_of_show`] and
-    /// [`Self::relations_of`] for the order and the checks.
+    /// kept from before. See `end_of_show` and `relations_of` for the
+    /// order and the checks.
     async fn tail(&self, listing: &[EpisodeRef], count: u32) -> Option<EntryTail> {
         let past = listing.get(usize::try_from(count).ok()?..)?;
         let (tail, open) = self.end_of_show(listing, count, past).await?;
