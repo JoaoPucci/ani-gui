@@ -19,6 +19,10 @@
 const PREFETCH_CONCURRENCY = 2;
 let activeFires = 0;
 const fireQueue: Array<() => void> = [];
+/** Bumped by the test reset: a slot taken before it neither gives its
+ *  count back nor hands its place on after, so the fires a reset
+ *  aborts cannot unbalance the next test's cap as they settle. */
+let generation = 0;
 
 /**
  * Schedule `fn` under the prefetch concurrency cap. Returns the
@@ -48,12 +52,15 @@ export function withSlot<T>(fn: () => Promise<T>): {
 		started = true;
 		slotResolver = null;
 		activeFires += 1;
+		const taken = generation;
 		try {
 			return await fn();
 		} finally {
-			activeFires -= 1;
-			const next = fireQueue.shift();
-			if (next) next();
+			if (taken === generation) {
+				activeFires -= 1;
+				const next = fireQueue.shift();
+				if (next) next();
+			}
 		}
 	})();
 	const startNow = () => {
@@ -73,4 +80,5 @@ export function withSlot<T>(fn: () => Promise<T>): {
 export function resetPrefetchSlotsForTests(): void {
 	activeFires = 0;
 	fireQueue.length = 0;
+	generation += 1;
 }
