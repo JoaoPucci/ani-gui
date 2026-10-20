@@ -18,9 +18,10 @@
 //! Nothing here runs on a write whose map is cached, and a cached
 //! identity map costs the write one cache read. The evidence is
 //! gathered — one tracker read for the entry and one per sequel it names
-//! at each hop, one Kitsu read per mapping or relationship asked, and the
-//! id translations a part's resolution makes — only on a miss, once per
-//! show per window ([`evidence`] has the walks).
+//! at each hop, one Kitsu read per mapping or relationship asked, the id
+//! translations a part's resolution makes, and the pages of Kitsu's
+//! episode list an exact chain's unplaced bounds need — only on a miss,
+//! once per show per window ([`evidence`] has the walks).
 
 use std::sync::Arc;
 
@@ -33,6 +34,8 @@ use crate::cache::ttl::TRACKER_MAP_TTL;
 use crate::cache::ttl::TRACKER_MAP_UNSETTLED_TTL;
 use crate::error::Result;
 
+#[path = "tracker_map_airdates.rs"]
+mod airdates;
 #[path = "tracker_map_cache.rs"]
 mod cache;
 #[path = "tracker_map_evidence.rs"]

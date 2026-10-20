@@ -1,9 +1,11 @@
 //! The walks that gather an [`Evidence`] for the episode map, one
 //! request per thing the rules read and none they do not.
 
+use super::airdates::kitsu_airdates;
 use super::kitsu_side::{claimed_on_kitsu, sharing_on_kitsu};
 use super::parts_walk::{first_part_under, kitsu_parts, MAX_HOPS};
 use super::*;
+use crate::account::episode_map_rules::chain_dates_needed;
 use crate::account::provider::MediaEvidence;
 
 /// The tracker's single-sequel chain from `entry`, each hop's evidence
@@ -67,13 +69,20 @@ pub(super) async fn gather(
                 claimed.push(show.id);
             }
         }
-        return Ok(Evidence {
+        let mut evidence = Evidence {
             kitsu,
             entry: entry.show,
             chain,
             claimed,
             ..Default::default()
-        });
+        };
+        // Kitsu's own air dates are read only for the bounds of an exact,
+        // unclaimed chain that Kitsu's start and end dates leave outside.
+        let needed = chain_dates_needed(&evidence);
+        if !needed.is_empty() {
+            evidence.kitsu_airdates = kitsu_airdates(ask, &evidence.kitsu.id, &needed).await?;
+        }
+        return Ok(evidence);
     }
     let root = first_part_under(ask, &kitsu, native).await?;
     gather_longer(ask, kitsu, root, native, entry).await

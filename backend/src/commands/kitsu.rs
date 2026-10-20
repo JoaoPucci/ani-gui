@@ -267,7 +267,7 @@ where
 /// Kitsu's episodes endpoint caps `page[limit]` at 20 (`code: 118 —
 /// "Limit exceeds maximum page size of 20"` if you push higher), unlike
 /// the anime search endpoint which allows 24. Hard-coded ceiling here.
-const EPISODES_PAGE_LIMIT: u8 = 20;
+pub(crate) const EPISODES_PAGE_LIMIT: u8 = 20;
 
 /// Fetch a page of episodes for an anime. `page` is 1-based and
 /// translates to a Kitsu `page[offset]` of `(page-1)*limit`. Each page
