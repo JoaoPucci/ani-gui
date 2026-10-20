@@ -886,9 +886,15 @@
 	async function readResumeAgain(entry: HistoryEntry) {
 		const showId = id;
 		if (!showId) return;
-		// No measured cap means no listing stood behind the lookup.
+		const atVisit = visit;
+		// No measured cap means no listing stood behind the lookup. The
+		// warm comes after the row is read, so only for a page still on
+		// this visit: a viewer who left meanwhile has had the show's
+		// plays released ($lib/play/show-release).
 		const warm =
-			playableEpisodeCount === null && detail ? (ep: number) => warmResume(ep) : undefined;
+			playableEpisodeCount === null && detail
+				? (ep: number) => (!gone && visit === atVisit ? warmResume(ep, showId) : Promise.resolve())
+				: undefined;
 		const next = await refreshedResume(
 			entry,
 			showId,
@@ -907,12 +913,12 @@
 	}
 
 	// A resolve of the resume episode that records no watch.
-	function warmResume(ep: number) {
+	// `showId` is the show the row was read for, which the play cache
+	// is keyed and cleared by.
+	function warmResume(ep: number, showId: string) {
 		const d = detail;
 		const title = playTitle();
-		// The route's id, which the play cache is keyed and cleared by.
-		const showId = id;
-		if (!d || !title || !showId) return Promise.resolve();
+		if (!d || !title) return Promise.resolve();
 		const mode = playMode(config);
 		const quality = playQuality(config);
 		// The version a click on the row would play: its warm puts that
