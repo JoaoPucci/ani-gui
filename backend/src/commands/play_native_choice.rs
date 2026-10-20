@@ -36,17 +36,19 @@ pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, conf
     }
 }
 
-/// Whether a candidate could have been picked, as far as the entry's
-/// titles go: admitted, not another entry of the same show, and not
-/// ruled out by the caller's rules otherwise (`could_win`).
+/// Whether a probed candidate could have been picked, as far as the
+/// entry's titles go: admitted, not another entry of the same show —
+/// each read past a bracketed version tag, as every reader of a probed
+/// candidate's divisions reads ([`EntryTitles::admits_as_read`]) — and
+/// not ruled out by the caller's rules otherwise (`could_win`).
 pub(super) fn could_have_won(entry: EntryTitles<'_>, title: &str, could_win: bool) -> bool {
-    could_win && entry.admits(title) && !entry.another_entry(title)
+    could_win && entry.admits_as_read(title) && !entry.another_entry_as_read(title)
 }
 
 /// The strongest transport-dead candidate so far, by [`entry_rank`]
 /// and then provider position, with the candidate that just died at
 /// `pos` weighed in. A candidate the entry's titles refuse, or another
-/// entry of the same show ([`EntryTitles::another_entry`]), could
+/// entry of the same show ([`EntryTitles::another_entry_as_read`]), could
 /// never have won, so its death blocks no winner, and neither does one
 /// the name rule that applies would have refused (`could_win` false:
 /// `play_native_dated_name::may_win`); it still leaves the pool

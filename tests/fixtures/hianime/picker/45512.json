@@ -1,0 +1,91 @@
+{
+ "kitsu": {
+  "id": "45512",
+  "name": "Chained Soldier",
+  "canonical": "Mato Seihei no Slave",
+  "alt_titles": ["魔都精兵のスレイブ", "Chained Soldier", "Slave of the Magic Capital's Elite Troops"],
+  "episode_count": 12,
+  "year": 2024,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Chained Soldier": [
+    ["chained-soldier-3873", "Chained Soldier", "TV"],
+    ["chained-soldier-season-2-5834", "Chained Soldier Season 2", "TV"],
+    ["chained-soldier-season-2-uncensored-10415", "Chained Soldier Season 2 [Uncensored]", "TV"],
+    ["chained-soldier-uncensored-9454", "Chained Soldier [Uncensored]", "TV"]
+  ],
+  "Mato Seihei no Slave": [
+    ["chained-soldier-3873", "Chained Soldier", "TV"],
+    ["chained-soldier-season-2-5834", "Chained Soldier Season 2", "TV"],
+    ["chained-soldier-season-2-uncensored-10415", "Chained Soldier Season 2 [Uncensored]", "TV"],
+    ["chained-soldier-uncensored-9454", "Chained Soldier [Uncensored]", "TV"]
+  ],
+  "Slave of the Magic Capital's Elite Troops": [
+    ["worldend-what-do-you-do-at-the-end-of-the-world-are-you-busy-will-you-save-us-2657", "WorldEnd: What do you do at the end of the world? Are you busy? Will you save us?", "TV"]
+  ],
+  "魔都精兵のスレイブ": [
+    ["chained-soldier-3873", "Chained Soldier", "TV"],
+    ["chained-soldier-season-2-5834", "Chained Soldier Season 2", "TV"],
+    ["chained-soldier-season-2-uncensored-10415", "Chained Soldier Season 2 [Uncensored]", "TV"]
+  ]
+ },
+ "episodes": {
+  "chained-soldier-3873": [
+    [50396, 1, null],
+    [50397, 2, null],
+    [50398, 3, null],
+    [50399, 4, null],
+    [50400, 5, null],
+    [50401, 6, null],
+    [50402, 7, null],
+    [50403, 8, null],
+    [50404, 9, null],
+    [50405, 10, null],
+    [50406, 11, null],
+    [50407, 12, null]
+  ],
+  "chained-soldier-uncensored-9454": [
+    [134967, 1, null],
+    [134968, 2, null],
+    [134969, 3, null],
+    [134970, 4, null],
+    [134971, 5, null],
+    [134972, 6, null],
+    [134973, 7, null],
+    [134974, 8, null],
+    [134975, 9, null],
+    [134976, 10, null],
+    [134977, 11, null],
+    [134978, 12, null]
+  ]
+ },
+ "years": {
+  "chained-soldier-3873": 2024,
+  "chained-soldier-season-2-5834": 2026,
+  "chained-soldier-season-2-uncensored-10415": 2026,
+  "chained-soldier-uncensored-9454": 2024,
+  "worldend-what-do-you-do-at-the-end-of-the-world-are-you-busy-will-you-save-us-2657": 2017
+ },
+ "jnames": {
+  "chained-soldier-3873": "Mato Seihei no Slave",
+  "chained-soldier-season-2-5834": "Mato Seihei no Slave 2",
+  "chained-soldier-season-2-uncensored-10415": "Mato Seihei no Slave 2 [Uncensored]",
+  "chained-soldier-uncensored-9454": "Mato Seihei no Slave [Uncensored]",
+  "worldend-what-do-you-do-at-the-end-of-the-world-are-you-busy-will-you-save-us-2657": "Shuumatsu Nani Shitemasu ka? Isogashii Desu ka? Sukutte Moratte Ii Desu ka?"
+ },
+ "page_names": {
+  "chained-soldier-3873": ["魔都精兵のスレイブ", "Mato Seihei no Slave"],
+  "chained-soldier-season-2-5834": ["魔都精兵のスレイブ2", "Mato Seihei no Slave 2"],
+  "chained-soldier-season-2-uncensored-10415": ["魔都精兵のスレイブ2", "Mato Seihei no Slave 2 [Uncensored]"],
+  "chained-soldier-uncensored-9454": ["Mato Seihei no Slave [Uncensored]"],
+  "worldend-what-do-you-do-at-the-end-of-the-world-are-you-busy-will-you-save-us-2657": ["終末なにしてますか？忙しいですか？救ってもらっていいですか？", "Shuumatsu Nani Shitemasu ka? Isogashii Desu ka? Sukutte Moratte Ii Desu ka?"]
+ },
+ "genres": {
+  "chained-soldier-3873": ["Fantasy", "Shounen", "Ecchi", "Harem", "Action"],
+  "chained-soldier-season-2-5834": ["Adventure", "Fantasy", "Shounen", "Drama", "Ecchi", "Romance", "Harem", "Action"],
+  "chained-soldier-season-2-uncensored-10415": ["Adventure", "Fantasy", "Shounen", "Drama", "Ecchi", "Romance", "Harem", "Action"],
+  "chained-soldier-uncensored-9454": ["Fantasy", "Shounen", "Ecchi", "Action"],
+  "worldend-what-do-you-do-at-the-end-of-the-world-are-you-busy-will-you-save-us-2657": ["Fantasy", "Drama", "Sci-Fi", "Romance"]
+ }
+}
