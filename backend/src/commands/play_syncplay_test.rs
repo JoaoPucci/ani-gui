@@ -25,8 +25,8 @@ fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Path
     std::fs::write(
         &binary,
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{}\"\n",
-            argv_file.display()
+            "#!/bin/sh\n{}\n",
+            crate::stub_file::publish(&argv_file, "printf '%s\\n' \"$@\"")
         ),
     )
     .expect("write recorder");
@@ -89,7 +89,10 @@ async fn a_fresh_syncplay_launch_resolves_natively_and_receives_the_master_url()
     let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
-        format!("syncplay_binary = \"{}\"\n", binary.display()),
+        format!(
+            "syncplay_binary = {}\n",
+            crate::stub_file::toml_quote(&binary)
+        ),
     )
     .expect("write config");
 
@@ -127,8 +130,8 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
     std::fs::write(
         &state.config_path,
         format!(
-            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
-            binary.display()
+            "syncplay_binary = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&binary)
         ),
     )
     .expect("write config");
@@ -206,8 +209,8 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
     std::fs::write(
         &state.config_path,
         format!(
-            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
-            binary.display()
+            "syncplay_binary = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&binary)
         ),
     )
     .expect("write config");
@@ -275,7 +278,10 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
     let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
-        format!("syncplay_binary = \"{}\"\n", binary.display()),
+        format!(
+            "syncplay_binary = {}\n",
+            crate::stub_file::toml_quote(&binary)
+        ),
     )
     .expect("write config");
     crate::history::upsert_and_write(
@@ -318,7 +324,7 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
 
     assert!(
         argv.contains("/x/master.m3u8"),
-        "syncplay was still launched: {argv}"
+        "syncplay was not launched with the stream: {argv:?}"
     );
     assert!(
         crate::history::read_all(&state.history_path)
@@ -355,8 +361,8 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
     std::fs::write(
         &state.config_path,
         format!(
-            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
-            binary.display()
+            "syncplay_binary = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&binary)
         ),
     )
     .expect("write config");

@@ -166,7 +166,10 @@ async fn a_hung_transport_child_dies_with_the_dropped_deadline() {
     let pidfile = dir.path().join("child.pid");
     let fetch = stage_curl_stub(
         dir.path(),
-        &format!("echo $$ >'{}'\nsleep 600", pidfile.display()),
+        &format!(
+            "echo $$ >{}\nsleep 600",
+            crate::stub_file::sh_quote(&pidfile)
+        ),
     )
     .with_deadline(std::time::Duration::from_millis(300));
     let err = fetch

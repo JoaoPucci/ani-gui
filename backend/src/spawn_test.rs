@@ -253,9 +253,9 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
     std::fs::write(
         &probe,
         format!(
-            "#!/bin/sh\nif [ \"$1\" != 4000000 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > '{started}'\ni=0\nwhile [ ! -f '{release}' ] && [ \"$i\" -lt 1000 ]; do sleep 0.01; i=$((i+1)); done\nexit 0\n",
-            started = started.display(),
-            release = release.display(),
+            "#!/bin/sh\nif [ \"$1\" != 4000000 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > {started}\ni=0\nwhile [ ! -f {release} ] && [ \"$i\" -lt 1000 ]; do sleep 0.01; i=$((i+1)); done\nexit 0\n",
+            started = crate::stub_file::sh_quote(&started),
+            release = crate::stub_file::sh_quote(&release),
         ),
     )
     .expect("write probe");

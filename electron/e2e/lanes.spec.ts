@@ -26,14 +26,16 @@
  * the route. A control request on a held lane must itself wait, or the
  * holds did not take and the rest of the test would prove nothing.
  *
- * Nothing here is timed. "At once" is read as an order: the API call,
- * the session and the play's first proxy request each answer while
- * every held request is still held, so none of them can have waited
- * for one of those connections to come free; and the control answers
- * only after a held request on its lane has let its connection go.
- * The holds end on the backend's connect timeout, so an answer slower
- * than that would fail the order — it can fail on a machine that slow,
- * never pass because of it.
+ * No outcome is read off a clock. "At once" is read as an order:
+ * the API call, the session and the play's first proxy request each
+ * answer while every held request is still held. A request queued on
+ * a held lane goes out only once a held response has come in, and its
+ * own answer needs a round trip more, so none of them can have waited
+ * for one of those connections. The control answers only after a held
+ * request on its lane has let its connection go. The holds end on the
+ * backend's connect timeout, so an answer slower than that fails the
+ * order: it can fail on a machine that slow, never pass because of it.
+ * The waits that remain are guards against a hang.
  *
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
@@ -192,7 +194,10 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 		const holding = HELD_LANES.length * CHROMIUM_PER_ORIGIN;
 		await expect
 			.poll(silent.accepted, {
-				message: 'every held lane has its connections taken'
+				message: 'every held lane has its connections taken',
+				// A guard, not a bound: connections taken by requests a
+				// released hold let through are refused just below.
+				timeout: 30_000
 			})
 			.toBeGreaterThanOrEqual(holding);
 		// Taken by the first requests of each lane, not by later ones
@@ -232,8 +237,8 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 					};
 				};
 
-				// The control: a held lane's seventh-and-later request
-				// waits for one of the held to let its connection go.
+				// The control: a request on a held lane, past the six its
+				// connections carry, waits for one of the held to let go.
 				const control = ordered(`${lanes.probe}/healthz`);
 				const apiCall = await ordered(`${api}/api/settings`);
 				const session = await ordered(`${api}/api/sessions`, {
