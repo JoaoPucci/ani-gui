@@ -39,8 +39,13 @@ impl std::fmt::Debug for KitsuTail<'_> {
 }
 
 /// Where the reading the evidence last proved for an entry is kept.
+///
+/// v2: the rule reads every aired TV entry Kitsu relates the show to,
+/// whatever the role, and refuses an entry of any role airing now. A
+/// v1 reading was proved against a TV sequel alone and may be one the
+/// rule now refuses, so it is not read.
 fn kept_key(kitsu_id: &str) -> String {
-    format!("appended:v1:{kitsu_id}")
+    format!("appended:v2:{kitsu_id}")
 }
 
 #[path = "kitsu_tail_read.rs"]
