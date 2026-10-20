@@ -146,9 +146,10 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 /// `picked` with the extras its provider appended read as extras,
 /// when the evidence proves them, or when the evidence cannot be read
 /// and the source keeps that reading for these very rows; `picked`
-/// itself otherwise — no source, a listing of another shape, evidence
-/// that reads and falls short of proof (which forgets a kept reading),
-/// or no evidence and nothing kept.
+/// itself otherwise — no source, a stitched listing, a listing of
+/// another shape (either of which, given a count, forgets a reading
+/// kept for its slug), evidence that reads and falls short of proof
+/// (which forgets a kept reading), or no evidence and nothing kept.
 pub async fn fit_appended(
     picked: PickedShow,
     expected: Option<u32>,
