@@ -405,7 +405,48 @@ fn a_fresh_cache_is_made_in_three_commits() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("metadata.db");
     drop(open_pool(&path).expect("a fresh cache opens"));
+    // The counter counts commits in rollback-journal mode only; in WAL
+    // mode it would not move per commit and the count would mislead.
+    let mode: String = rusqlite::Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "journal_mode", |r| r.get(0))
+        .unwrap();
+    assert_eq!(mode, "delete", "the cache runs in rollback-journal mode");
     assert_eq!(commits_to(&path), 3);
+}
+
+/// A cache an earlier build left with some migrations applied gets the
+/// rest, and only the rest: the batch refinery groups is what is
+/// pending.
+#[test]
+fn a_cache_with_some_migrations_applied_gets_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations_to(&mut conn, 1).unwrap();
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES ('kept', 'v', ?1, 3600)",
+            [now_secs()],
+        )
+        .unwrap();
+    }
+    let pool = open_pool(&path).expect("the cache upgrades");
+    let conn = pool.get().unwrap();
+    let applied: Vec<i64> = conn
+        .prepare("SELECT version FROM refinery_schema_history ORDER BY version")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+    assert_eq!(applied, vec![1, 2]);
+    drop(conn);
+    assert_eq!(meta_cache_get(&pool, "kept").unwrap().as_deref(), Some("v"));
+    let pool_conn = pool.get().unwrap();
+    pool_conn
+        .prepare("SELECT 1 FROM user_list_cache LIMIT 1")
+        .expect("V002's table is there");
 }
 
 /// The migrations a cache has yet to apply land together or not at
