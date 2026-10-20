@@ -38,6 +38,9 @@ pub mod proxy;
 pub mod scraper;
 pub mod shutdown;
 pub mod spawn;
+#[cfg(all(test, unix))]
+#[path = "stub_file_test.rs"]
+pub(crate) mod stub_file;
 
 pub use error::{AniError, Result};
 

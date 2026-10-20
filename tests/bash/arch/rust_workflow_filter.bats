@@ -98,6 +98,13 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
     [ "$output" = "$(outputs true false false)" ]
 }
 
+@test "the hostile temporary-directory tool selects the Rust pipeline only" {
+    head=$(change tools/hostile-tmpdir.sh)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs true false false)" ]
+}
+
 @test "the workflow itself selects everything" {
     head=$(change .github/workflows/rust.yml)
     run filter pull_request "$base" "$head"

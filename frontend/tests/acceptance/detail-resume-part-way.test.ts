@@ -114,6 +114,10 @@ function useShowHandlers() {
 		),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
 			HttpResponse.json({ id: 'show-1', ep_no: String(LAST), title: TITLE })
+		),
+		// The row read again once the lookup answers reads as it did.
+		http.get(`${API_BASE}/api/history/show-1/number`, () =>
+			HttpResponse.json({ ep_no: String(LAST) })
 		)
 	);
 }

@@ -277,8 +277,20 @@ describe('play route — the quality the setting names, and the menu that change
 	});
 
 	it('settings that never answer hold the start back only for a bound, then read as best', async () => {
+		// The settings are held through every assertion, so the start is
+		// chosen without them; then they are answered, so that the request
+		// does not outlive the page.
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		let answered = false;
 		useShowHandlers();
-		server.use(http.get(`${API_BASE}/api/settings`, () => new Promise<never>(() => {})));
+		server.use(
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await gate;
+				answered = true;
+				return HttpResponse.json(appConfig());
+			})
+		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 		app = mount(PlayPage, { target });
 		await until(() => hlsInstances().length > 0, 'the hls engine to attach');
@@ -286,6 +298,8 @@ describe('play route — the quality the setting names, and the menu that change
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
 		await until(() => hls.starts === 1, 'the engine to start without the settings', 10_000);
 		expect(hls.loads).toEqual([2]);
+		release();
+		await until(() => answered, 'the held settings to be answered');
 	});
 
 	it('offers no quality row for a stream of one level', async () => {
