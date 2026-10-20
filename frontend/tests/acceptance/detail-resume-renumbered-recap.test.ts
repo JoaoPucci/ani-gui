@@ -278,6 +278,28 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		).toBe(false);
 	});
 
+	it('warms the row in the version chosen for the show', async () => {
+		// The plain copy was chosen. The warm that puts the row right
+		// resolves that copy, as the click it stands in for would: a warm
+		// of the default copy repairs the other copy's numbering and keeps
+		// its stream under a key the click never reads.
+		window.localStorage.setItem(
+			'ani-gui.version-choices',
+			JSON.stringify([[KITSU_ID, 'standard']])
+		);
+		useShowHandlers();
+		server.use(
+			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 }))
+		);
+		app = mount(DetailPage, { target });
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=24.5')),
+			'the warm of the row'
+		);
+		const warms = FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'));
+		expect(warms.every((i) => i.url.includes('version=standard'))).toBe(true);
+	});
+
 	it('reads a row put right before the visit a bounded number of times', async () => {
 		// The stamp keeps naming its former number for good. Warms that
 		// answer after the row was read must not read it again forever.

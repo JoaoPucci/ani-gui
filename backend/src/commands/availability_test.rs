@@ -146,6 +146,7 @@ fn warm_backoff_keeps_the_pacing_gap_for_other_outcomes() {
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: Vec::new(),
+        versions: Vec::new(),
     });
     assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
     let other: Result<AvailabilityResponse> = Err(crate::error::AniError::Network);
@@ -178,6 +179,7 @@ fn response_round_trips_with_episode_count_and_extras() {
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: vec!["1061.5".into()],
+        versions: Vec::new(),
     };
     let json = serde_json::to_string(&r).expect("serialize");
     let back: AvailabilityResponse = serde_json::from_str(&json).expect("deserialize");
@@ -1197,6 +1199,7 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
                     gate_refused: false,
                     unsettled: None,
                     provider,
+                    versions: Vec::new(),
                 };
                 let a_refusing = a_broken || a_paused;
                 let b_refusing = b_broken || b_paused;
@@ -1228,6 +1231,7 @@ fn the_remembered_provider_is_read_off_a_positive_row_alone() {
         gate_refused: false,
         unsettled: None,
         provider,
+        versions: Vec::new(),
     };
     write_cache_full(
         &state,
@@ -1875,6 +1879,7 @@ fn write_cache_full_round_trips_via_batch_cached() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     let resp = batch_cached(
@@ -1907,6 +1912,7 @@ fn write_cache_full_skips_empty_kitsu_id() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     // No row in the cache → batch_cached returns an empty map
@@ -2127,8 +2133,8 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v21:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v21:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v22:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v22:kid-1:dub");
 }
 
 /// A verdict stamped before the extras a provider appends after a
@@ -2247,6 +2253,7 @@ fn batch_cached_returns_playable_episode_counts() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     write_cache_full(
@@ -2262,6 +2269,7 @@ fn batch_cached_returns_playable_episode_counts() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     // Cached as unavailable — no playable count to surface.
@@ -2278,6 +2286,7 @@ fn batch_cached_returns_playable_episode_counts() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     let resp = batch_cached(
@@ -2340,6 +2349,7 @@ async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
 
@@ -2423,6 +2433,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     provider.release();
@@ -2498,6 +2509,7 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     drop(guard);
@@ -2569,6 +2581,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
         gate_refused: false,
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        versions: Vec::new(),
     };
     assert!(
         cache_hit_is_usable(&state, &exact),
@@ -2606,6 +2619,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         gate_refused: false,
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        versions: Vec::new(),
     };
     assert!(
         !cache_hit_is_usable(&state, &legacy),
@@ -2620,6 +2634,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         gate_refused: false,
         unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        versions: Vec::new(),
     };
     assert!(
         cache_hit_is_usable(&state, &negative),
@@ -2676,6 +2691,7 @@ fn usability_is_negative_or_a_confirmed_count() {
                 gate_refused: false,
                 unsettled: None,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+                versions: Vec::new(),
             };
             proptest::prop_assert_eq!(
                 cache_hit_is_usable(&state, &row),
@@ -2707,6 +2723,7 @@ fn an_unconfirmed_available_row_is_never_served() {
                 gate_refused: false,
                 unsettled: None,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+                versions: Vec::new(),
             };
             proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
             Ok(())
@@ -2733,6 +2750,7 @@ fn write_cache_full_round_trips_the_approximate_flag() {
             gate_refused: false,
             unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+            versions: Vec::new(),
         },
     );
     let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))

@@ -1,0 +1,89 @@
+import { describe, expect, it } from 'vitest';
+import { m } from '$lib/paraglide/messages';
+import type { LadderLevel } from './quality-ladder';
+import { levelLabel, qualityMenu, type QualityView } from './quality-menu';
+
+const LEVELS: LadderLevel[] = [
+	{ height: 480, bitrate: 800_000 },
+	{ height: 720, bitrate: 2_500_000 },
+	{ height: 1080, bitrate: 5_000_000 }
+];
+
+function view(over: Partial<QualityView> = {}): QualityView {
+	return { levels: LEVELS, pinned: null, playing: null, unavailable: [], ...over };
+}
+
+describe('levelLabel', () => {
+	it('names a level by its height', () => {
+		expect(levelLabel(LEVELS, 2)).toBe(m.play_quality_height({ height: '1080' }));
+	});
+
+	it('adds the bitrate when another level has the same height', () => {
+		const twins: LadderLevel[] = [
+			{ height: 1080, bitrate: 4_000_000 },
+			{ height: 1080, bitrate: 6_250_000 }
+		];
+		expect(levelLabel(twins, 1)).toBe(
+			m.play_quality_height_bitrate({ height: '1080', mbps: '6.3' })
+		);
+		expect(levelLabel(twins, 0)).toBe(
+			m.play_quality_height_bitrate({ height: '1080', mbps: '4.0' })
+		);
+	});
+
+	it('names a level with no height by its bitrate', () => {
+		expect(levelLabel([{ height: 0, bitrate: 1_500_000 }], 0)).toBe(
+			m.play_quality_bitrate({ mbps: '1.5' })
+		);
+	});
+});
+
+describe('qualityMenu', () => {
+	it('has nothing to offer without a stream or with one level', () => {
+		expect(qualityMenu(null)).toBeNull();
+		expect(qualityMenu(view({ levels: [LEVELS[1]] }))).toBeNull();
+	});
+
+	it('lists Auto, then the levels highest first, with Auto checked', () => {
+		const menu = qualityMenu(view());
+		expect(menu?.items.map((i) => [i.key, i.label, i.checked])).toEqual([
+			['auto', m.play_quality_auto(), true],
+			[2, m.play_quality_height({ height: '1080' }), false],
+			[1, m.play_quality_height({ height: '720' }), false],
+			[0, m.play_quality_height({ height: '480' }), false]
+		]);
+	});
+
+	it('says what Auto is playing once a segment plays', () => {
+		expect(qualityMenu(view())?.current).toBe(m.play_quality_auto());
+		expect(qualityMenu(view({ playing: 2 }))?.current).toBe(
+			m.play_quality_auto_playing({ quality: m.play_quality_height({ height: '1080' }) })
+		);
+		expect(qualityMenu(view({ playing: 9 }))?.current).toBe(m.play_quality_auto());
+	});
+
+	it('checks a pinned level and names it as the row value', () => {
+		// The play never sits above its pin: a pinned play plays its pin
+		// or a level below it.
+		const menu = qualityMenu(view({ pinned: 1, playing: 1 }));
+		expect(menu?.items.filter((i) => i.checked).map((i) => i.key)).toEqual([1]);
+		expect(menu?.current).toBe(m.play_quality_height({ height: '720' }));
+	});
+
+	it('names what plays under a pin while the play sits below it', () => {
+		expect(qualityMenu(view({ pinned: 2, playing: 1 }))?.current).toBe(
+			m.play_quality_pinned_playing({
+				pinned: m.play_quality_height({ height: '1080' }),
+				quality: m.play_quality_height({ height: '720' })
+			})
+		);
+		expect(qualityMenu(view({ pinned: 2, playing: 2 }))?.current).toBe(
+			m.play_quality_height({ height: '1080' })
+		);
+	});
+
+	it('leaves out the levels the engine could not load', () => {
+		const menu = qualityMenu(view({ unavailable: [2] }));
+		expect(menu?.items.map((i) => i.key)).toEqual(['auto', 1, 0]);
+	});
+});

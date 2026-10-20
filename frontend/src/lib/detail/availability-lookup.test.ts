@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { startAvailabilityLookup, type AvailabilityLookupDeps } from './availability-lookup';
 import type { AvailabilityPatch } from './availability-writeback';
-import type { AvailabilityResponse } from '$lib/api';
+import type { AvailabilityResponse, VersionInfo } from '$lib/api';
 
 const SUBJECT = {
 	title: 'Ongoing Show',
@@ -37,13 +37,16 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 			available: a.available,
 			count: a.count,
 			extraEpisodes: a.extraEpisodes,
+			versions: a.versions,
 			...(a.refused ? { refused: true } : {})
 		}),
 		apply: (p) => applied.push(p),
 		setResolved: (r) => resolved.push(r),
 		setListed: (l) => listed.push(l)
 	};
-	return { deps, applied, resolved, listed, sent };
+	/** The versions each applied patch carried. */
+	const versions = () => applied.map((p) => p.versions);
+	return { deps, applied, resolved, listed, versions, sent };
 }
 
 const settled = () => new Promise((r) => setTimeout(r, 0));
@@ -93,7 +96,9 @@ describe('startAvailabilityLookup', () => {
 		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
 		await settled();
 
-		expect(h.applied).toEqual([{ available: true, count: 9, extraEpisodes: ['9.5'] }]);
+		expect(h.applied).toEqual([
+			{ available: true, count: 9, extraEpisodes: ['9.5'], versions: [] }
+		]);
 	});
 
 	it('establishes nothing when the lookup fails, but stops saying it is open', async () => {
@@ -137,7 +142,7 @@ describe('startAvailabilityLookup', () => {
 		await settled();
 
 		expect(h.applied).toEqual([
-			{ available: false, count: null, extraEpisodes: [], refused: true }
+			{ available: false, count: null, extraEpisodes: [], versions: [], refused: true }
 		]);
 		expect(h.listed).toEqual([null, false]);
 		expect(h.resolved).toEqual([false, true]);
@@ -153,7 +158,9 @@ describe('startAvailabilityLookup', () => {
 		);
 		startAvailabilityLookup(SUBJECT, 'sub', settledFalse.deps);
 		await settled();
-		expect(settledFalse.applied).toEqual([{ available: false, count: null, extraEpisodes: [] }]);
+		expect(settledFalse.applied).toEqual([
+			{ available: false, count: null, extraEpisodes: [], versions: [] }
+		]);
 	});
 
 	it('establishes nothing from an answer unsettled for any other reason', async () => {
@@ -307,5 +314,63 @@ describe('startAvailabilityLookup — cancellation is idempotent', () => {
 		await settled();
 
 		expect(h.resolved).toEqual([false]);
+	});
+});
+
+describe("startAvailabilityLookup — the show's versions", () => {
+	it("writes the show's versions with the patch it settles, none when the answer names none", async () => {
+		const two: VersionInfo[] = [
+			{ kind: 'uncensored', show_key: 'hianime:show-uncensored-1' },
+			{ kind: 'standard', show_key: 'hianime:show-2' }
+		];
+		// Through the patch, so the writeback's ownership holds for the
+		// versions as for the count: a cache-bypassing re-ask that
+		// answered meanwhile keeps its own.
+		const h = harness(() => Promise.resolve(answer({ versions: two })));
+		startAvailabilityLookup(SUBJECT, 'dub', h.deps);
+		await settled();
+		expect(h.versions()).toEqual([two]);
+
+		const plain = harness();
+		startAvailabilityLookup(SUBJECT, 'sub', plain.deps);
+		await settled();
+		expect(plain.versions()).toEqual([[]]);
+	});
+
+	it('writes no versions from an answer that settled nothing, a failure, or a cancelled lookup', async () => {
+		const versions: VersionInfo[] = [
+			{ kind: 'uncensored', show_key: 'a' },
+			{ kind: 'standard', show_key: 'b' }
+		];
+		const unsettled = harness(() =>
+			Promise.resolve(answer({ available: false, unsettled: true, versions }))
+		);
+		startAvailabilityLookup(SUBJECT, 'sub', unsettled.deps);
+		const unanswered = harness(() =>
+			Promise.resolve(answer({ available: false, unsettled: 'unanswered', versions }))
+		);
+		startAvailabilityLookup(SUBJECT, 'sub', unanswered.deps);
+		const failed = harness(() => Promise.reject(new Error('down')));
+		startAvailabilityLookup(SUBJECT, 'sub', failed.deps);
+		const cancelled = harness(() => Promise.resolve(answer({ versions })));
+		startAvailabilityLookup(SUBJECT, 'sub', cancelled.deps)();
+		await settled();
+		expect(unsettled.applied).toEqual([]);
+		expect(unanswered.applied).toEqual([]);
+		expect(failed.applied).toEqual([]);
+		expect(cancelled.applied).toEqual([]);
+	});
+
+	it('writes a refusal by name as a show with no versions', async () => {
+		// A refused pool has no pick, so the page is told the show has
+		// no versions along with the verdict.
+		const refused = harness(() =>
+			Promise.resolve(answer({ available: false, episode_count: null, unsettled: 'refused' }))
+		);
+		startAvailabilityLookup(SUBJECT, 'dub', refused.deps);
+		await settled();
+		expect(refused.applied).toEqual([
+			{ available: false, count: null, extraEpisodes: [], versions: [], refused: true }
+		]);
 	});
 });

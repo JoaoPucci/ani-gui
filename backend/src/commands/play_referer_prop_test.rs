@@ -34,7 +34,11 @@ proptest::proptest! {
             resolved_tag: tag,
             referer: referer.clone(),
             subtitles: Vec::new(),
-            provider: crate::scraper::provider::ProviderId::TestA, former_tags: Vec::new(),
+            provider: crate::scraper::provider::ProviderId::TestA,
+            versions: Vec::new(),
+            version: None,
+            former_tags: Vec::new(),
+            other_copies: Vec::new(),
         };
         let row = cached_resolution_for(&resolved);
         proptest::prop_assert_eq!(row.upstream_url, master_url);

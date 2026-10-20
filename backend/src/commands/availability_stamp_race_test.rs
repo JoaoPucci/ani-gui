@@ -57,6 +57,7 @@ fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse 
         gate_refused: false,
         unsettled: None,
         provider: Some(provider),
+        versions: Vec::new(),
     }
 }
 
@@ -144,7 +145,8 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
     let replay = tokio::spawn({
         let state = state.clone();
         async move {
-            stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, replayed_from).await;
+            stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, replayed_from, &[], None)
+                .await;
         }
     });
     tokio::task::yield_now().await;
@@ -238,7 +240,16 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
     seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestA).await;
+    stamp_after_cache_hit(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ProviderId::TestA,
+        &[],
+        None,
+    )
+    .await;
 
     let row = row_now(&state);
     assert_eq!(
@@ -333,7 +344,16 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
     let stamped_at = written_at(&state);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestB).await;
+    stamp_after_cache_hit(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ProviderId::TestB,
+        &[],
+        None,
+    )
+    .await;
 
     assert_eq!(
         written_at(&state),
@@ -448,7 +468,16 @@ async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again
     );
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestB).await;
+    stamp_after_cache_hit(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ProviderId::TestB,
+        &[],
+        None,
+    )
+    .await;
 
     let row = row_now(&state);
     assert!(row.available);
@@ -658,7 +687,16 @@ async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_o
     seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestB).await;
+    stamp_after_cache_hit(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ProviderId::TestB,
+        &[],
+        None,
+    )
+    .await;
     stamp_after_native(
         &state,
         Some(ID),

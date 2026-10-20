@@ -35,6 +35,7 @@ async fn run(
             expected_count: expected,
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -185,6 +186,7 @@ async fn a_detail_refusal_stops_the_alias_walk() {
             expected_count: Some(3),
             year: Some(2026),
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -281,6 +283,7 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
             expected_count: Some(3),
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -324,6 +327,7 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
             expected_count: Some(3),
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -380,6 +384,7 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
             expected_count: Some(3),
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -507,6 +512,7 @@ async fn run_chain(fate: &TableProvider) -> std::result::Result<NativeResolved, 
             expected_count: Some(2),
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -546,6 +552,7 @@ async fn the_transient_verdict_carries_the_failing_attempts_instant() {
             expected_count: Some(2),
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -607,6 +614,7 @@ async fn a_transport_dead_pick_leaves_a_transient_verdict() {
             expected_count: Some(2),
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -841,10 +849,10 @@ async fn an_answered_upstream_status_in_the_episode_chain_survives_alias_exhaust
 
 #[tokio::test]
 async fn the_resolve_names_the_matched_rows_slot_and_tag() {
-    // A resume looks up slot numbers — the integer `number` field
-    // the provider's episode list is built from — so the history
-    // writer needs the matched row's slot, and the sidecar stamp
-    // needs its display tag.
+    // The resolve names the matched row by its slot — the integer
+    // `number` field the provider's episode list is built from — and
+    // its display tag: the history writer reads the app's own number
+    // for the episode from the two.
     let provider = scripted(&[("the show", THE_SHOW)]);
     let (got, _) = run(&provider, "the show", &[], "2.5", Some(3)).await;
     let resolved = got.expect("resolved");
@@ -925,6 +933,7 @@ async fn a_stalled_provider_cannot_outlive_the_resolve_deadline() {
             expected_count: None,
             year: None,
             subtype: None,
+            version: None,
             stamps_beside: None,
             tail: None,
         },
@@ -1022,6 +1031,7 @@ async fn a_resolved_play_carries_the_sources_referer() {
         expected_count: Some(1),
         year: None,
         subtype: None,
+        version: None,
         stamps_beside: None,
         tail: None,
     };
@@ -1123,6 +1133,7 @@ fn listing_request() -> NativeResolveRequest<'static> {
         expected_count: Some(1),
         year: None,
         subtype: None,
+        version: None,
         stamps_beside: None,
         tail: None,
     }
@@ -1198,6 +1209,7 @@ async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
         expected_count: Some(1),
         year: None,
         subtype: None,
+        version: None,
         stamps_beside: None,
         tail: None,
     };
@@ -1273,6 +1285,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
             former_tag: None,
             title: None,
         }],
+        versions: Vec::new(),
     }
 }
 

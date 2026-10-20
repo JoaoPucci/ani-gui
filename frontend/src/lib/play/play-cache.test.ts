@@ -34,6 +34,33 @@ describe('makeKey', () => {
 		expect(makeKey('show-1', 1, 'dub', 'best')).not.toBe(base);
 		expect(makeKey('show-1', 1, 'sub', '1080')).not.toBe(base);
 	});
+
+	it('keeps a session warmed for one version from serving another', () => {
+		// A show the provider lists twice plays a different listing per
+		// version: a warm for the uncensored copy must never answer a
+		// click for the standard one, nor one naming no version.
+		const named = makeKey('show-1', 1, 'sub', 'best', 'uncensored');
+		expect(makeKey('show-1', 1, 'sub', 'best', 'standard')).not.toBe(named);
+		expect(makeKey('show-1', 1, 'sub', 'best')).not.toBe(named);
+		expect(makeKey('show-1', 1, 'sub', 'best', 'standard')).toBe(
+			makeKey('show-1', 1, 'sub', 'best', 'standard')
+		);
+	});
+
+	it("still lets clearForShow release every version's entries", async () => {
+		const signals: AbortSignal[] = [];
+		const hold = (_emit: unknown, signal: AbortSignal) => {
+			signals.push(signal);
+			return new Promise<CreateSessionResponse>(() => {});
+		};
+		void getOrFire(makeKey('show-1', 1, 'sub', 'best', 'standard'), hold).catch(() => {});
+		void getOrFire(makeKey('show-1', 1, 'sub', 'best', 'uncensored'), hold).catch(() => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		clearForShow('show-1');
+		expect(signals).toHaveLength(2);
+		expect(signals.every((s) => s.aborted)).toBe(true);
+	});
 });
 
 describe('getOrFire', () => {
