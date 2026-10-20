@@ -212,14 +212,16 @@ async fn every_listener_serves_and_one_stop_winds_them_all_down() {
     }
 
     stop.send(()).expect("stop");
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!done.is_finished(), "the held request holds the stop");
+    // Every listener has taken the stop in once it refuses a
+    // connection; until then a serve that has not got round to it has
+    // not stopped either, and proves nothing. All of them are polled by
+    // the one serving task on the test's one thread, so once the last
+    // refuses, a serve that stops with the request in flight has
+    // stopped in that poll, and is seen to have.
     for base in &bases {
-        assert!(
-            reqwest::get(format!("{base}/ok")).await.is_err(),
-            "{base} stopped accepting"
-        );
+        stopped_accepting(base).await;
     }
+    assert!(!done.is_finished(), "the held request holds the stop");
 
     release.notify_one();
     assert_eq!(held.await.expect("join").expect("answered"), "released");
