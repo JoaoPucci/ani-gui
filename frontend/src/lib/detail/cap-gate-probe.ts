@@ -1,3 +1,4 @@
+import { probeScope, type ProbeRun } from '$lib/availability/probe-scope';
 import type { AvailabilityResponse, VersionInfo } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
 import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
@@ -127,8 +128,9 @@ export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null
 export interface CapGateProbeDeps {
 	/** Ask the provider about THIS SHOW, skipping the cached row. Answers
 	 *  with the whole fresh row; null when it could not answer at all.
-	 *  Takes no episode: the question is show-level. */
-	probe: () => Promise<CapGateAnswer | null>;
+	 *  Takes no episode: the question is show-level. `signal` is the
+	 *  recheck's own run, which `supersede` ends. */
+	probe: (signal?: AbortSignal) => Promise<CapGateAnswer | null>;
 	/** What the answer will be about — read when the click goes out and
 	 *  again when it lands. Everything that changes the meaning of a
 	 *  count belongs in here: the show, because both routes reuse one
@@ -196,16 +198,29 @@ function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
 export function createCapGateProbe(deps: CapGateProbeDeps): {
 	request: (episode: number) => void;
 	isProbing: (episode: number) => boolean;
+	/** The page's context has moved on (another mode, another show on
+	 *  the same route): stop the recheck's probe, whose answer would
+	 *  be discarded anyway. Its tiles are let go as superseded. */
+	supersede: () => void;
 } {
 	/** The shared in-flight lookup and the context it asked in, or
 	 *  null when none is out. */
 	let pending: { context: string; answer: Promise<CapGateAnswer | null> } | null = null;
+	/** The run the in-flight lookup probes under. */
+	let run: ProbeRun | null = null;
 	/** Tiles waiting on it — per episode, because the spinner belongs
 	 *  to the tile the user pressed rather than to the whole strip. */
 	const waiting = new Set<number>();
 
 	return {
 		isProbing: (episode) => waiting.has(episode),
+		supersede: () => {
+			run?.end();
+			run = null;
+			// A click from here on asks afresh rather than joining the
+			// stopped lookup.
+			pending = null;
+		},
 		request: (episode) => {
 			if (waiting.has(episode)) return;
 			waiting.add(episode);
@@ -220,15 +235,21 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// the context moved — settings landing on dub — asks again
 			// rather than taking the other audio's answer, which would
 			// pass the check below, since the page is still on the
-			// context that click asked in. Cleared as soon as the
-			// request settles, so a click after this one gets a current
-			// answer instead of joining a lookup that has already
-			// finished.
+			// context that click asked in. (A change of audio or visit
+			// also supersedes the lookup, which stops it and clears it.)
+			// Cleared as soon as the request settles, so a click after
+			// this one gets a current answer instead of joining a lookup
+			// that has already finished.
 			if (pending?.context !== asked) {
+				const own = probeScope.begin();
+				run = own;
 				const mine = {
 					context: asked,
-					answer: deps.probe().finally(() => {
+					answer: deps.probe(own.signal).finally(() => {
+						// Only its own: a lookup superseded and replaced must
+						// not clear the one that replaced it.
 						if (pending === mine) pending = null;
+						if (run === own) run = null;
 					})
 				};
 				pending = mine;

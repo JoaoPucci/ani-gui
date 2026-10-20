@@ -16,7 +16,7 @@
 //! down, which drops every remaining task — a running download among
 //! them — and is bounded too ([`teardown`]).
 
-use std::future::Future;
+use std::future::{Future, IntoFuture};
 use std::time::Duration;
 
 /// How long requests in flight get to finish once a stop is requested
@@ -210,17 +210,43 @@ pub async fn serve_until<F>(
 where
     F: Future<Output = ()> + Send + 'static,
 {
-    let (stopping_tx, mut stopping_rx) = tokio::sync::watch::channel(false);
-    let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
+    serve_all_until(vec![listener], router, stop, grace).await
+}
+
+/// [`serve_until`] over several listeners at once — one per lane (see
+/// [`crate::lanes`]) — sharing one `stop` and one `grace`: every
+/// listener stops accepting when `stop` resolves, and the grace bounds
+/// the requests in flight on all of them together. A listener that
+/// fails ends the serve with its error.
+///
+/// # Errors
+/// Whatever any of the servers fails with.
+pub async fn serve_all_until<F>(
+    listeners: Vec<tokio::net::TcpListener>,
+    router: axum::Router,
+    stop: F,
+    grace: Duration,
+) -> std::io::Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let (stopping_tx, stopping_rx) = tokio::sync::watch::channel(false);
+    let serving = futures_util::future::try_join_all(listeners.into_iter().map(|listener| {
+        let mut stopping = stopping_rx.clone();
+        axum::serve(listener, router.clone())
+            .with_graceful_shutdown(async move {
+                let _ = stopping.wait_for(|stopping| *stopping).await;
+            })
+            .into_future()
+    }));
+    let watchdog = async move {
         stop.await;
         let _ = stopping_tx.send(true);
-    });
+        tokio::time::sleep(grace).await;
+    };
     tokio::select! {
-        served = serve => served,
-        () = async move {
-            let _ = stopping_rx.wait_for(|stopping| *stopping).await;
-            tokio::time::sleep(grace).await;
-        } => {
+        served = serving => served.map(|_| ()),
+        () = watchdog => {
             tracing::warn!("in-flight requests outlived the shutdown grace");
             Ok(())
         }

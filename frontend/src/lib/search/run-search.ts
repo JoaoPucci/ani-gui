@@ -22,6 +22,7 @@
 
 import type { Config, KitsuAnimeRef, KitsuSearchPage, SearchOrder } from '$lib/api';
 import { afterPage, canLoadMore, freshHits, type PagingPhase } from './paging';
+import { probeScope, type ProbeRun } from '$lib/availability/probe-scope';
 
 export interface SearchRunnerDeps {
 	/** One page of the Kitsu search in `order`, starting at `offset`. */
@@ -35,7 +36,10 @@ export interface SearchRunnerDeps {
 	filter: (
 		items: KitsuAnimeRef[],
 		mode: 'sub' | 'dub',
-		emit: (visible: KitsuAnimeRef[]) => void
+		emit: (visible: KitsuAnimeRef[]) => void,
+		/** Aborts the page's probes; the run's own, so a run that is
+		 *  superseded can stop them. */
+		signal?: AbortSignal
 	) => Promise<void>;
 	onResults: (visible: KitsuAnimeRef[]) => void;
 	onError: (e: unknown) => void;
@@ -56,6 +60,9 @@ interface Search {
 	/** The offset of the next page; `null` once there is none. */
 	next: number | null;
 	emptyStreak: number;
+	/** The probes this search's pages ask: ended when another search
+	 *  replaces it, since the page's path does not change. */
+	probes: ProbeRun;
 }
 
 export function createSearchRunner(deps: SearchRunnerDeps): {
@@ -66,6 +73,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	loadMore: () => void;
 } {
 	let generation = 0;
+	let previousProbes: ProbeRun | null = null;
 	let search: Search | null = null;
 	let phase: PagingPhase = { kind: 'loading' };
 	// Config is cached only after a SUCCESSFUL load, and the load is
@@ -107,16 +115,21 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		s.next = page.next_offset;
 		const index = s.pages.push([]) - 1;
 		let settled = false;
-		await deps.filter(freshHits(s.seen, page.hits), s.mode, (visible) => {
-			if (s !== search) return;
-			s.pages[index] = visible;
-			deps.onResults(s.pages.flat());
-			deps.onBusy(false);
-			if (!settled) {
-				settled = true;
-				settle(s, visible.length);
-			}
-		});
+		await deps.filter(
+			freshHits(s.seen, page.hits),
+			s.mode,
+			(visible) => {
+				if (s !== search) return;
+				s.pages[index] = visible;
+				deps.onResults(s.pages.flat());
+				deps.onBusy(false);
+				if (!settled) {
+					settled = true;
+					settle(s, visible.length);
+				}
+			},
+			s.probes.signal
+		);
 	};
 
 	const settle = (s: Search, visible: number) => {
@@ -138,6 +151,11 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	const run = async (q: string, order: SearchOrder = 'relevance') => {
 		const gen = ++generation;
 		const current = () => gen === generation;
+		// The search this one replaces stops asking: its emissions were
+		// already dropped, and its probes would hold the limiter's slots.
+		previousProbes?.end();
+		const probes = probeScope.begin();
+		previousProbes = probes;
 		search = null;
 		setPhase({ kind: 'loading' });
 		deps.onBusy(true);
@@ -150,7 +168,8 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 				pages: [],
 				seen: new Set(),
 				next: 0,
-				emptyStreak: 0
+				emptyStreak: 0,
+				probes
 			};
 			// A run superseded while its config loaded still fetches,
 			// but as a search that is not current, so nothing of it

@@ -26,7 +26,36 @@ test("both handshake lines resolve the wait, in either order and split across ch
   const got = awaitHandshake(child, { timeoutMs: 1_000, stopChild: () => {} });
   say(child, "ANI_GUI_INTERNAL_SECRET ab");
   say(child, "cd\nANI_GUI_LISTENING http://127.0.0.1:4242\n");
-  assert.deepEqual(await got, { apiBase: "http://127.0.0.1:4242", internalSecret: "abcd" });
+  assert.deepEqual(await got, {
+    apiBase: "http://127.0.0.1:4242",
+    internalSecret: "abcd",
+    lanes: {},
+  });
+});
+
+// The backend listens on one loopback origin per class of traffic and
+// announces each lane ahead of the two lines the handshake has always
+// ended with, so a reader that resolves on those two has every lane by
+// then.
+test("lanes announced ahead of the handshake's last two lines come back by name", async () => {
+  const child = fakeChild();
+  const got = awaitHandshake(child, { timeoutMs: 1_000, stopChild: () => {} });
+  say(child, "ANI_GUI_LANE stream http://127.0.0.1:2\nANI_GUI_LANE pro");
+  say(child, "be http://127.0.0.1:3\nANI_GUI_LISTENING http://127.0.0.1:1\n");
+  say(child, "ANI_GUI_INTERNAL_SECRET s\n");
+  assert.deepEqual(await got, {
+    apiBase: "http://127.0.0.1:1",
+    internalSecret: "s",
+    lanes: { stream: "http://127.0.0.1:2", probe: "http://127.0.0.1:3" },
+  });
+});
+
+test("a lane line without a name and an origin is no lane", async () => {
+  const child = fakeChild();
+  const got = awaitHandshake(child, { timeoutMs: 1_000, stopChild: () => {} });
+  say(child, "ANI_GUI_LANE\nANI_GUI_LANE stream\nANI_GUI_LANE Bad-Name http://x\n");
+  say(child, "ANI_GUI_LISTENING http://127.0.0.1:1\nANI_GUI_INTERNAL_SECRET s\n");
+  assert.deepEqual((await got).lanes, {});
 });
 
 test("a backend that exits before the handshake fails the wait", async () => {
@@ -102,7 +131,7 @@ test("a backend a minute and a half into a slow first start is late, not failed"
   assert.equal(outcome, "waiting");
   assert.deepEqual(stopped, []);
   say(child, "ANI_GUI_LISTENING http://127.0.0.1:4242\nANI_GUI_INTERNAL_SECRET s\n");
-  assert.deepEqual(await got, { apiBase: "http://127.0.0.1:4242", internalSecret: "s" });
+  assert.deepEqual(await got, { apiBase: "http://127.0.0.1:4242", internalSecret: "s", lanes: {} });
 });
 
 test("a backend that never answers still ends the boot, at the end of the budget", async (t) => {

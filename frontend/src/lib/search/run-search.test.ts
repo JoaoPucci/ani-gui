@@ -270,6 +270,53 @@ describe('acceptance: progressive search rendering (runner + real filter)', () =
 	});
 });
 
+describe('a superseded run stops its probes', () => {
+	it('a new search aborts the probes of the one it replaces, whatever the path', async () => {
+		// The page's path does not change between two searches on
+		// /search, so the page's scope cannot tell them apart: the run
+		// must. Otherwise the replaced search's pool keeps its slots in
+		// the renderer-wide limiter, and the new one's probes wait.
+		const signals: (AbortSignal | undefined)[] = [];
+		const h = makeHarness({
+			filter: vi.fn().mockImplementation((_items, _mode, _emit, signal) => {
+				signals.push(signal);
+				return new Promise<void>(() => {});
+			})
+		});
+		const runner = createSearchRunner(h.deps);
+		void runner.run('a');
+		await drain();
+		void runner.run('a', 'year');
+		await drain();
+		expect(signals).toHaveLength(2);
+		expect(signals[0]).toBeInstanceOf(AbortSignal);
+		expect(signals[0]?.aborted).toBe(true);
+		expect(signals[1]?.aborted).toBe(false);
+	});
+
+	it("the next page of a search probes under that search's run", async () => {
+		const signals: (AbortSignal | undefined)[] = [];
+		const h = makeHarness({
+			searchPage: vi
+				.fn()
+				.mockResolvedValueOnce({ hits: [ref('1')], next_offset: 20 })
+				.mockResolvedValue(lastPage([ref('2')])),
+			filter: vi.fn().mockImplementation(async (items, _mode, emit, signal) => {
+				signals.push(signal);
+				emit(items);
+			})
+		});
+		const runner = createSearchRunner(h.deps);
+		await runner.run('a');
+		await drain();
+		runner.loadMore();
+		await drain();
+		expect(signals.length).toBeGreaterThanOrEqual(2);
+		expect(signals[1]).toBe(signals[0]);
+		expect(signals[0]?.aborted).toBe(false);
+	});
+});
+
 describe('concurrent config loads (shared load promise)', () => {
 	it('a stale failed load cannot pin the fallback after a success exists', async () => {
 		// Two searches entering the load block

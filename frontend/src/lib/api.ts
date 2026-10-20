@@ -26,6 +26,9 @@
  */
 import type { StreamProvider } from '$lib/history/show-key';
 import { clearAllPositions } from '$lib/play/watch-position';
+import { laneBase, type Lane } from '$lib/backend/lanes';
+import { probeLimiter } from '$lib/availability/probe-limiter';
+import { probeScope } from '$lib/availability/probe-scope';
 
 let apiBaseCache: string | null = null;
 
@@ -33,6 +36,11 @@ declare global {
 	interface Window {
 		aniGui?: {
 			apiBase?: string;
+			/** The backend's other loopback origins, one per class of
+			 *  traffic, by lane name (`$lib/backend/lanes`). Absent in
+			 *  browser-only dev, where every lane falls back to
+			 *  `apiBase`. */
+			lanes?: Partial<Record<string, string>>;
 			/** Per-process random secret printed by the Rust backend at
 			 *  startup and threaded through Electron's preload. Sent as
 			 *  the `x-ani-gui-internal-secret` header on the few backend
@@ -123,9 +131,23 @@ export function __resetApiBaseForTests(next: string | null = null): void {
  * Internal: build a URL by joining the cached base with a path. Path
  * is taken verbatim, so callers control any query-string encoding.
  */
-async function url(path: string): Promise<string> {
-	const base = await apiBase();
-	return base.replace(/\/+$/, '') + path;
+async function url(path: string, lane: Lane = 'api'): Promise<string> {
+	return laneBase(windowLanes(), lane, await apiBase()) + path;
+}
+
+/** The lanes the preload bridge carries, if any. */
+function windowLanes(): Partial<Record<string, string>> | undefined {
+	return typeof window === 'undefined' ? undefined : window.aniGui?.lanes;
+}
+
+/**
+ * The origin `lane` is reached at, read synchronously off the preload
+ * bridge — for URLs a component renders eagerly (an `<img src>`, the
+ * player's media URL). `null` when the bridge carries no API origin.
+ */
+export function windowLaneBase(lane: Lane): string | null {
+	if (typeof window === 'undefined' || !window.aniGui?.apiBase) return null;
+	return laneBase(window.aniGui.lanes, lane, window.aniGui.apiBase);
 }
 
 /**
@@ -160,12 +182,20 @@ async function getJson<T>(path: string): Promise<T> {
 	return expect2xx<T>(resp);
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-	const resp = await fetch(await url(path), {
+/** Where a request goes and what can cancel it. */
+interface RequestOptions {
+	lane?: Lane;
+	signal?: AbortSignal;
+}
+
+async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
+	const init: RequestInit = {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify(body)
-	});
+	};
+	if (opts.signal) init.signal = opts.signal;
+	const resp = await fetch(await url(path, opts.lane), init);
 	return expect2xx<T>(resp);
 }
 
@@ -580,14 +610,14 @@ export interface PlayArgs {
 /** Play an episode in the embedded player. Returns the session URLs
  *  the renderer feeds to hls.js after navigating to /play. */
 export function play(args: PlayArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/play', args);
+	return postJson<CreateSessionResponse>('/api/play', args, { lane: 'resolve' });
 }
 
 /** Play an episode in the user's external media player (default mpv).
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', args);
+	return postJson<void>('/api/play/external', args, { lane: 'resolve' });
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -597,7 +627,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', args);
+	return postJson<void>('/api/play/syncplay', args, { lane: 'resolve' });
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -676,10 +706,9 @@ export function playStream(
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
 
-	return apiBase().then(
-		(base) =>
+	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
+		(url) =>
 			new Promise<CreateSessionResponse>((resolve, reject) => {
-				const url = `${base.replace(/\/+$/, '')}/api/play/stream?${params.toString()}`;
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -807,10 +836,9 @@ export function downloadStream(
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
 
-	return apiBase().then(
-		(base) =>
+	return url(`/api/download/stream?${params.toString()}`, 'download').then(
+		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
-				const url = `${base.replace(/\/+$/, '')}/api/download/stream?${params.toString()}`;
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -968,8 +996,15 @@ export type UnsettledReason =
 /** "Is this title in the provider's catalog?" probe. The detail page hits
  *  this on mount so it can gate the Play + Download CTAs ahead of a
  *  click instead of letting the user discover the gap by clicking. */
-export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityResponse> {
-	return postJson<AvailabilityResponse>('/api/availability', args);
+export function checkAvailability(
+	args: AvailabilityArgs,
+	opts: { signal?: AbortSignal } = {}
+): Promise<AvailabilityResponse> {
+	const signal = opts.signal ?? probeScope.signal();
+	return probeLimiter.run(
+		(s) => postJson<AvailabilityResponse>('/api/availability', args, { lane: 'probe', signal: s }),
+		{ background: args.background === true, signal }
+	);
 }
 
 /** Cached-only batch lookup. List views (home / search) call this
@@ -1305,16 +1340,19 @@ export function imageCacheClear(): Promise<void> {
  * Convert an `https://…` upstream image URL into a URL the renderer
  * can drop into `<img src=>`.
  *
- * The backend serves `/api/image?url=…` over HTTP; we need the
- * apiBase synchronously (Svelte renders the `src` attribute eagerly),
- * so we read it directly off `window.aniGui.apiBase` set by the
- * Electron preload before any component mounts.
+ * The backend serves `/api/image?url=…` over HTTP, on the image lane
+ * (a cold poster holds its connection for the upstream fetch, which
+ * must not queue the API or the player). We need the origin
+ * synchronously (Svelte renders the `src` attribute eagerly), so we
+ * read it directly off the bridge the Electron preload sets before any
+ * component mounts.
  *
  * Returns `null` for non-https input or when the apiBase isn't
  * available yet — components show a placeholder in that case.
  */
 export function imageProxyUrl(httpsUrl: string | null | undefined): string | null {
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
-	if (typeof window === 'undefined' || !window.aniGui?.apiBase) return null;
-	return `${window.aniGui.apiBase}/api/image?url=${encodeURIComponent(httpsUrl)}`;
+	const base = windowLaneBase('image');
+	if (base === null) return null;
+	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
 }

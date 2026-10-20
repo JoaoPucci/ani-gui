@@ -13,6 +13,7 @@ vi.mock('$lib/api', () => apiMock);
 const storeMock = vi.hoisted(() => ({
 	downloadStore: {
 		add: vi.fn(),
+		markQueued: vi.fn(),
 		markActive: vi.fn(),
 		setProgress: vi.fn(),
 		markDone: vi.fn(),
@@ -21,6 +22,20 @@ const storeMock = vi.hoisted(() => ({
 	}
 }));
 vi.mock('./store.svelte', () => storeMock);
+
+// The queue stands aside here: these cases are about what the start
+// path does with a download's answer, and several leave a download
+// running forever, which against the real queue would hold its slots
+// for every case after. How many run at once is the queue's own spec
+// (queue.test.ts) and the dock's acceptance case.
+vi.mock('./queue', () => ({
+	downloadQueue: {
+		run: (task: () => Promise<unknown>, opts: { onStart: () => void }) => {
+			opts.onStart();
+			return task();
+		}
+	}
+}));
 
 const failureStoreMock = vi.hoisted(() => ({
 	downloadFailureStore: {
@@ -46,6 +61,7 @@ describe('startDownload', () => {
 	beforeEach(() => {
 		storeMock.downloadStore.add.mockReset();
 		storeMock.downloadStore.markActive.mockReset();
+		storeMock.downloadStore.markQueued.mockReset();
 		storeMock.downloadStore.setProgress.mockReset();
 		storeMock.downloadStore.markDone.mockReset();
 		storeMock.downloadStore.markError.mockReset();

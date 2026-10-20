@@ -85,6 +85,13 @@
 				<span class="dl-bar-suffix">
 					{m.download_bar_label_multi({ count: label.episodeCount })}
 				</span>
+			{:else if label?.kind === 'multi-queued'}
+				<span class="dl-bar-suffix">
+					{m.download_bar_label_multi_queued({
+						count: label.episodeCount,
+						queued: label.queued
+					})}
+				</span>
 			{/if}
 		</span>
 		{#if speed !== null}
