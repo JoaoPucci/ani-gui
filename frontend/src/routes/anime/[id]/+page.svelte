@@ -883,6 +883,10 @@
 		if (!d || !title || !showId) return Promise.resolve();
 		const mode = playMode(config);
 		const quality = playQuality(config);
+		// The version a click on the row would play: its warm puts that
+		// copy's numbering right and keeps its stream under the key the
+		// click reads.
+		const version = versionChoice;
 		const args = playArgsFor({
 			title,
 			episode: ep,
@@ -890,12 +894,9 @@
 			quality,
 			show: d,
 			kitsuId: d.id,
-			// The version a click on the row would play: its warm puts
-			// that copy's numbering right and keeps its stream under the
-			// key the click reads.
-			version: versionChoice
+			version
 		});
-		return warmResumeEpisode({ showId, episode: ep, mode, quality }, args, playStream);
+		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are

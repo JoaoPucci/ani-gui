@@ -7,7 +7,7 @@
  * row again after ({@link refreshedResume}).
  */
 
-import type { CreateSessionResponse, PlayArgs, PlayProgress } from '$lib/api';
+import type { CreateSessionResponse, PlayArgs, PlayProgress, VersionKind } from '$lib/api';
 import { getOrFireNow, makeKey } from '$lib/play/play-cache';
 
 /** The play-cache axes of the episode warmed. */
@@ -16,6 +16,8 @@ export interface ResumeWarmKey {
 	episode: number;
 	mode: string;
 	quality: string;
+	/** The version resolved; none for the backend's default copy. */
+	version?: VersionKind;
 }
 
 /** `playStream`'s shape, injected so the warm can be tested. */
@@ -44,7 +46,8 @@ export function warmResumeEpisode(
 	args: PlayArgs,
 	stream: ResumeWarmStream
 ): Promise<unknown> {
-	return getOrFireNow(makeKey(key.showId, key.episode, key.mode, key.quality), (emit, signal) =>
-		stream({ ...args, prefetch: true }, emit, signal)
+	return getOrFireNow(
+		makeKey(key.showId, key.episode, key.mode, key.quality, key.version),
+		(emit, signal) => stream({ ...args, prefetch: true }, emit, signal)
 	);
 }
