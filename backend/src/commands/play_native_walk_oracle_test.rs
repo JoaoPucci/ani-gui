@@ -349,3 +349,44 @@ async fn recorded_fixtures_pick_as_the_golden_dump_records() {
         wrong.join("\n")
     );
 }
+
+/// The oracle reads a word's letters and digits from a table of the
+/// characters `char::is_alphanumeric` accepts, since Python's own test
+/// misses some. The table must be this toolchain's: when a bump moves
+/// the set, this fails and prints the table to write.
+#[test]
+fn the_oracle_s_alphanumeric_table_is_the_toolchain_s() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests/picker-oracle/alphanumeric.txt");
+    let text = std::fs::read_to_string(&path).expect("the oracle's alphanumeric table");
+    let recorded: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.is_empty())
+        .collect();
+    let mut ranges: Vec<(u32, u32)> = Vec::new();
+    for c in (0..=0x10_FFFF).filter_map(char::from_u32) {
+        if !c.is_alphanumeric() {
+            continue;
+        }
+        let cp = c as u32;
+        match ranges.last_mut() {
+            Some((_, end)) if *end + 1 == cp => *end = cp,
+            _ => ranges.push((cp, cp)),
+        }
+    }
+    let expected: Vec<String> = ranges
+        .iter()
+        .map(|&(a, b)| {
+            if a == b {
+                format!("{a:04X}")
+            } else {
+                format!("{a:04X}-{b:04X}")
+            }
+        })
+        .collect();
+    assert!(
+        recorded == expected,
+        "tests/picker-oracle/alphanumeric.txt is not this toolchain's set; its ranges are:\n{}",
+        expected.join("\n")
+    );
+}

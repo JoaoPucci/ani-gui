@@ -414,6 +414,13 @@ const CATALOGUE_TAGS: &[&str] = &[
     "（ＯＮＡ）",
     "【OAD】",
     "（２０２０）",
+    // each character of a tag in ASCII or full-width on its own
+    "(ｔv)",
+    "（２0２0）",
+    "[Ｏva]",
+    // full-width square brackets, as round and lenticular ones are
+    "［ＴＶ］",
+    "［2020］",
 ];
 
 proptest::proptest! {
@@ -451,5 +458,53 @@ proptest::proptest! {
         }
         let e = entry(&["Show"]);
         proptest::prop_assert_eq!(e.admits(&tagged), e.admits(plain), "Show admits {}", tagged);
+    }
+}
+
+// ── a number glued to a word ────────────────────────────────────────
+
+/// Words a number may be glued to, ending on a Japanese letter: kana,
+/// a kanji, the iteration mark, half-width katakana.
+const JAPANESE_HEADS: &[&str] = &["ショー", "怪獣", "時々", "ｼｮｰ", "しょう"];
+
+/// Words ending on a letter outside Japanese, ASCII or not: a Latin
+/// word, an accented one, a full-width Latin one, Cyrillic, Hangul.
+const OTHER_HEADS: &[&str] = &["show", "café", "ｓｈｏｗ", "шоу", "나혼자만레벨업"];
+
+proptest::proptest! {
+    /// A number glued to the end of a word is a number only after a
+    /// Japanese letter, as Japanese writes one ("ショー2"); after any
+    /// other letter it is the word's own ("Show2", "ＳＨＯＷ２").
+    #[test]
+    fn a_number_is_glued_only_to_a_japanese_word(
+        h in 0..JAPANESE_HEADS.len(),
+        o in 0..OTHER_HEADS.len(),
+        n in 0u32..100,
+    ) {
+        use super::super::play_native_title_grammar::glued_number;
+        proptest::prop_assert_eq!(glued_number(&format!("{}{n}", JAPANESE_HEADS[h])), Some(n));
+        proptest::prop_assert_eq!(glued_number(&format!("{}{n}", OTHER_HEADS[o])), None);
+    }
+}
+
+/// Letters a number may stand glued before: Japanese ones only.
+const JAPANESE_AFTER: &[char] = &['第', 'シ', '期', 'ｼ'];
+const OTHER_AFTER: &[char] = &['é', 'ｓ', 'ш', '나', 'a'];
+
+proptest::proptest! {
+    /// Digits stand as a number before a space, the end, or a Japanese
+    /// letter glued to them ("20第2部"); before any other letter they
+    /// are a word's ("1é", "20a").
+    #[test]
+    fn a_number_stands_before_a_japanese_letter_only(
+        j in 0..JAPANESE_AFTER.len(),
+        o in 0..OTHER_AFTER.len(),
+        n in 0u32..100,
+    ) {
+        use super::super::play_native_title_reading::leading_number;
+        proptest::prop_assert_eq!(leading_number(&format!("{n}")).map(|x| x.0), Some(n));
+        proptest::prop_assert_eq!(leading_number(&format!("{n} season 1")).map(|x| x.0), Some(n));
+        proptest::prop_assert_eq!(leading_number(&format!("{n}{}1部", JAPANESE_AFTER[j])).map(|x| x.0), Some(n));
+        proptest::prop_assert_eq!(leading_number(&format!("{n}{} season 1", OTHER_AFTER[o])), None);
     }
 }

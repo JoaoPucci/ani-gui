@@ -212,18 +212,6 @@ starting it, and delete it when you find it done.
 
 ## Testing and CI
 
-- **The picker oracle reads a mixed-width catalogue tag otherwise than
-  the picker.** The picker folds each character of a bracketed tag to
-  ASCII on its own, so "(ｔv)" is a format tag to it; the oracle's
-  model (`tests/picker-oracle/oracle.py`, its tag pattern) matches a
-  tag written all in ASCII or all in full-width, so it is not. The
-  docs say "brackets and tag alike ASCII or full-width" and do not
-  settle the mixed form. Repro: entry ["Show (ｔv)"], count 12, no
-  year, rows "Show (TV)" 12 and "Other" 12 — the picker picks "Show
-  (TV)", the model refuses. The docs decide it first, then the model
-  follows; a tagged family mixing widths would hold it. The generated
-  set never reaches it, which is why it waited.
-
 - **The CRAP ratchet can disagree between CI and local.** Coverage
   attribution differs between the runner's toolchain and local ones,
   and once put the high-risk count at 26 in one and 25 in the other.
