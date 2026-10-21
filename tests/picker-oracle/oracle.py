@@ -13,6 +13,10 @@ the comparison says which pool.
     oracle.py gen CASES.json
         writes every pool with the pick the docs answer for it — the
         generated families and the hand-written sets under cases/
+    oracle.py fuzz SEED N CASES.json
+        writes N pools drawn from SEED by the differential fuzzer
+        (fuzz.py), each with the pick the model predicts, for the same
+        driver and the same comparison
     oracle.py cmp CASES.json OUT.json [--allowlist allowlist.json]
         reads the driver's outcomes for those pools and exits non-zero
         on a disagreement the allowlist does not carry, an allowlisted
@@ -137,6 +141,9 @@ ALNUM = "[" + _class_body(_subtract(_ALNUM_RANGES, _JP_BLOCKS)) + "]"
 WORD = "[" + _class_body(_ALNUM_RANGES) + "]"
 #: A character no word is made of.
 NOT_WORD = "[^" + _class_body(_ALNUM_RANGES) + "]"
+#: What parts two words of a title: any run of characters no word is
+#: made of, but for the "+" a span ("Part 1+2") is written with.
+SEP = "[^" + _class_body(_ALNUM_RANGES) + "+]"
 #: A word starts here / ends here: the picker's words, not Python's `\b`.
 BS = "(?<!" + WORD + ")"
 BE = "(?!" + WORD + ")"
@@ -204,7 +211,15 @@ def pickable_as_read(titles, cand):
     """A probed candidate the selectors choose among: `pickable`, read past
     a bracketed version tag — so "Show 1 [Uncensored]" is the entry before
     "Show 2" as "Show 1" is."""
-    return pickable(titles, _past_vtag(cand))
+    read = _past_vtag(cand)
+    # the sequel guard drops a hit before it is probed, on its title as
+    # written: the tag hides a later part from it as from the probe head
+    return (
+        admitted(titles, read)
+        and not before_entry(titles, read)
+        and not season_before_entry(titles, read)
+        and not later_part_of(titles, cand)
+    )
 
 
 def versions_of(winner, tied):
@@ -301,25 +316,24 @@ MARKER = r"(?:season|part|cour|stage)"
 # Patterns built from the picker's character classes are compiled once:
 # the classes are long, and a pattern rebuilt on every call is rehashed
 # by the regular-expression cache on every call too.
-_CARDINAL_RX = re.compile(BS + r"(" + MARKER + r")\s+(" + "|".join(CARD) + r")" + BE)
-_WORD_ORD_RX = re.compile(BS + r"(" + "|".join(WORD_ORD) + r")\s+(" + MARKER + r"|half)" + BE)
-_SUFFIXED_MARKER_RX = re.compile(BS + r"([0-9０-９]+)(?:st|nd|rd|th)\s+" + MARKER)
+_CARDINAL_RX = re.compile(BS + r"(" + MARKER + r")" + SEP + r"+(" + "|".join(CARD) + r")" + BE)
+_WORD_ORD_RX = re.compile(BS + r"(" + "|".join(WORD_ORD) + r")" + SEP + r"+(" + MARKER + r"|half)" + BE)
+_SUFFIXED_MARKER_RX = re.compile(BS + r"([0-9０-９]{1,3})(?:st|nd|rd|th)" + SEP + "+" + MARKER + BE)
+_MARKER_NUMBER_RX = re.compile(BS + MARKER + SEP + r"+([0-9０-９]{1,3})(?![0-9０-９+]|" + ALNUM + ")")
+_NOT_WORDS_LEAD_RX = re.compile("^" + SEP + "+")
 _SMALL_NUMBER_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?!" + ALNUM + r")")
-_SMALL_SUFFIXED_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,2})(?:st|nd|rd|th)(?!" + ALNUM + r")")
+_SMALL_SUFFIXED_RX = re.compile(r"(?<!" + ALNUM + r")([0-9０-９]{1,3})(?:st|nd|rd|th)(?!" + ALNUM + r")")
 _WORDS_RX = re.compile(WORD + "+")
-_BARE_NUMBER_RX = re.compile(r"(?:^|" + NOT_WORD + r")([0-9０-９]{1,2})$")
+_BARE_NUMBER_RX = re.compile(r"(?:^|" + "[^" + _class_body(_ALNUM_RANGES) + "+]" + r")([0-9０-９]{1,2})$")
 _NOT_WORD_RX = re.compile(NOT_WORD)
 _NOT_WORDS_RX = re.compile(NOT_WORD + "+")
-_NAME_END_RX = re.compile(
-    r"([0-9０-９]|第|" + BS + r"(?:ii|iii|iv|vi|vii|viii|ix|first|second|third|season|part|cour|stage)" + BE + ")"
-)
-_ROMAN_RX = re.compile(BS + r"(ii|iii|iv|v|vi|vii|viii|ix)" + BE)
-_LEAD_RX = re.compile(r"^([0-9]{1,2})" + BE)
-_JP_CHAR_RX = re.compile(r"[" + JP + r"]")
-_JP_GLUED_RX = re.compile(r"^([" + JP + r"]+)([0-9０-９]{1,2})$")
 _JP_BEFORE_NUMBER_RX = re.compile(r"(?<=[" + JP + r"])([0-9０-９]{1,2})$")
-_PRIME_END_RX = re.compile(r"(?<=" + WORD + r")['’′](?!" + WORD + r")")
-_PRIME_OPEN_RX = re.compile(r"(?<!" + WORD + r")['’′](?=" + WORD + r")")
+#: An apostrophe, however it is written: ASCII, the typographic right
+#: and left single quotes, the prime, the acute accent, the grave accent
+#: and the full-width apostrophe.
+PRIMES = "'’‘′´`＇"
+_PRIME_END_RX = re.compile(r"(?<=" + WORD + r")[" + PRIMES + r"]+(?!" + WORD + r")")
+_PRIME_OPEN_RX = re.compile(r"(?<!" + WORD + r")[" + PRIMES + r"]+(?=" + WORD + r")")
 
 
 def _cardinals(t):
@@ -345,12 +359,13 @@ def named(titles):
     Japanese counter."""
     out = set()
     for t in titles:
-        n = _word_ordinals(t)
-        for m in re.finditer(MARKER + r"\s+([0-9０-９]+)", n):
+        # read in its words read apart: "VII第三部" is VII and 第三部
+        n = _word_ordinals(" ".join(_tokenize(norm(t))))
+        for m in _MARKER_NUMBER_RX.finditer(n):
             out.add(int(m.group(1)))
         for m in _SUFFIXED_MARKER_RX.finditer(n):
             out.add(int(m.group(1)))
-        for m in re.finditer(r"第([0-9]+|[〇零一二三四五六七八九十百]+)", n):
+        for m in re.finditer(r"第([0-9]{1,3}(?![0-9])|[〇零一二三四五六七八九十百]+)", n):
             k = _jp_ordinal(m.group(1))
             if k is not None:
                 out.add(k)
@@ -370,38 +385,54 @@ def named(titles):
     return out
 
 
-TRAIL = [
-    re.compile(r"\s*" + BS + MARKER + r"\s+([0-9０-９]+(?:\+[0-9０-９]+)*)$"),
-    re.compile(r"\s*" + BS + r"([0-9０-９]+)(?:st|nd|rd|th)\s+" + MARKER + r"$"),
-    re.compile(r"\s*第([0-9]+|[〇零一二三四五六七八九十百]+)(?:期|部|クール)$"),
-    re.compile(r"\s+(ii|iii|iv|v|vi|vii|viii|ix)$"),
-]
+#: The kind of division a marker names: a season, or a part of one.
+_KIND = {"season": "season", "part": "part", "cour": "part", "stage": "part", "期": "season", "部": "part", "クール": "part"}
 
 
-_BRACKETED_MARKER = re.compile(r"\s*[\(\[]\s*(" + MARKER + r"\s+[0-9０-９]+(?:\+[0-9０-９]+)*)\s*[\)\]]$")
+def _tail_split(tokens):
+    """Where the markers a title ends on start, among its words, and those
+    markers, innermost first, each as its kind and the ordinals it names.
+    The words are read once, first to last, as the reader reads them — a
+    spelled or suffixed ordinal pairs with the marker after it, so "Third
+    Stage 2" is a third stage and a bare 2 — and the markers are what that
+    one reading ends on: a marker pair, a Japanese division, an ordinal
+    spelled as one standing alone. A bare number ends no marker run (it
+    stays in the stem), nor does a "Half", which is no marker word."""
+    items = _division_items(tokens)
+    starts, at = [], 0
+    for _, width, _, _ in items:
+        starts.append(at)
+        at += width
+    out = []
+    end = len(items)
+    while end > 0:
+        ords, width, kind, alone = items[end - 1]
+        token = tokens[starts[end - 1]]
+        last = tokens[starts[end - 1] + width - 1]
+        if ords is None or last == "half" or (alone and re.fullmatch(r"[0-9]+", token)):
+            break
+        out.append((kind, tuple(ords)))
+        end -= 1
+    return (starts[end] if end < len(items) else len(tokens)), out
+
+
+def strip_trailing_kinds(n):
+    """The markers a title ends on, innermost first, each as its kind and
+    the ordinals it names, and what is left — the title's words before
+    them, joined by spaces ("Show Season 3 Part 2" → "show", [part 2,
+    season 3]). A span ("Part 1+2") is every part in it; brackets around a
+    marker ("(Part 1+2)") are not the marker's, and marks after a title's
+    last word are no word of it ("Show 2!" ends on its 2)."""
+    tokens = _tokenize(norm(n))
+    cut, out = _tail_split(tokens)
+    return " ".join(tokens[:cut]), out
 
 
 def strip_trailing(n):
-    """The markers a title ends on, innermost first, and what is left. A
-    span ("Part 1+2") is every part in it; brackets around a marker
-    ("(Part 1+2)") are not the marker's."""
-    ords = []
-    while True:
-        n = _BRACKETED_MARKER.sub(r" \1", n)
-        for r in TRAIL:
-            m = r.search(n)
-            if m:
-                span = []
-                for g in m.group(1).split("+"):
-                    k = ROMAN.get(g, None)
-                    if k is None:
-                        k = _jp_ordinal(g)
-                    span.append(k)
-                ords.append(tuple(span))
-                n = n[: m.start()].rstrip(" :-")
-                break
-        else:
-            return n, ords
+    """The markers a title ends on, innermost first, as the ordinals each
+    names, and what is left (`strip_trailing_kinds`)."""
+    n, out = strip_trailing_kinds(n)
+    return n, [span for _, span in out]
 
 
 def bare_number(stem):
@@ -451,7 +482,7 @@ def admitted(titles, cand):
     show, unless another of the entry's titles carries that number after
     the same words."""
     nm = named(titles)
-    stem, ords = strip_trailing(_word_ordinals(cand))
+    stem, ords = strip_trailing(cand)
     for span in ords:
         # a first part or a span through it never disqualifies; any other
         # span needs every part in it named
@@ -474,14 +505,6 @@ def admitted(titles, cand):
 def _clean(t):
     return _NOT_WORDS_RX.sub(" ", norm(t)).strip()
 
-
-def _name(t):
-    c = _clean(_word_ordinals(t))
-    m = _NAME_END_RX.search(c)
-    return (c[: m.start()] if m else c).strip()
-
-
-FIRSTS = {"season", "part", "cour", "stage", "first", "1", "half"}
 
 SEPS = set(":-–—~,.・、：－～，．]］）)】」』")
 
@@ -521,15 +544,17 @@ def _untag(t):
 def _name_and_first_divisions(cand, t):
     """The name word by word, the marks right after it the title's own
     (separators none), then first divisions alone."""
-    nm = _name(_untag(t)).split()
+    nm = _name_tokens(_untag(t))
     if not nm:
         return False
     c, tt = _untag(cand), _untag(t)
     ce, te = _tokens_end(c, nm), _tokens_end(tt, nm)
     if ce is None or te is None or _marks(c, ce) != _marks(tt, te):
         return False
-    toks = _clean(c[ce:]).split()
-    return all(w in FIRSTS or re.fullmatch(r"1(st|nd|rd|th)|第[1１一][期部]", w) for w in toks)
+    # first divisions alone, as the reader reads them ("Season One",
+    # "1st Season", "First Half", 第1期), or nothing at all
+    items = _division_items(_tokenize(norm(c[ce:])))
+    return all(o is not None and all(x == 1 for x in o) for o, _, _, _ in items)
 
 
 def before_entry(titles, cand):
@@ -538,7 +563,10 @@ def before_entry(titles, cand):
     followed by first divisions alone, is the entry before it — unless it
     is one of the entry's titles or carries the number one of them does."""
     def reads(t):
-        return bool(named([t]) - {1})
+        # "reads as naming a division other than the first": the reader's
+        # ordinals, a division whose first ordinal is 1 left out as the
+        # whole ("Part 1+2" names nothing beyond the first)
+        return bool(Reading(t).ords)
 
     return (
         not reads(cand)
@@ -552,137 +580,145 @@ def before_entry(titles, cand):
     )
 
 
-def _seasons(text):
-    """Seasons a text names: marker pairs, 第N期, a Roman numeral or a
-    spelled ordinal standing alone."""
-    t = _word_ordinals(text)
-    out = [int(m) for m in re.findall(r"season\s+([0-9０-９]+)", t)]
-    out += [int(m) for m in re.findall(r"([0-9０-９]+)(?:st|nd|rd|th)\s+season", t)]
-    out += [
-        k
-        for k in (_jp_ordinal(m) for m in re.findall(r"第([0-9]+|[〇零一二三四五六七八九十百]+)期", t))
-        if k is not None
-    ]
-    out += [ROMAN[m] for m in _ROMAN_RX.findall(t)]
-    # an ordinal standing alone after a part stays as it is read: "Show
-    # Season 3 Part 1 Second Half" names a season 2, before the 3
-    out += [int(m) for m in re.findall(r"part\s+[0-9０-９]+\s+([0-9０-９]+)(?:st|nd|rd|th)\s+half", t)]
+def _name_tokens(t):
+    """`t`'s name as the reader's words ("One reading of a title"): the
+    words up to its first division — "怪獣８号" is one word, the ８ inside
+    it no number."""
+    return Reading(t).name
+
+
+def _rest_after(text, own):
+    """What follows `own` at the start of `text` (both the reader's words
+    joined by spaces), when `own` ends there at a word's end or with a
+    digit or 第 glued to it — no digit after an `own` that itself ends in
+    one. An empty `own` is no stem: nothing is read past it."""
+    if not own or not text.startswith(own):
+        return None
+    rest = text[len(own) :]
+    if not rest or rest[0] == " " or rest[0] == "第" or (_digits(rest[0]) and not _digits(own[-1])):
+        return rest
+    return None
+
+
+def _leading_number(rest):
+    """The number `rest` opens on, and its digits: a run of digits ending
+    the text, before a space, or before a Japanese letter glued to it."""
+    m = re.match(r"\s*([0-9]+)(?=$| |[" + JP + r"])", rest)
+    return (int(m.group(1)), m.group(1)) if m else None
+
+
+def past_stem(cand, wide):
+    """What follows `wide`'s stem in `cand`, as the reader's words, and the
+    divisions `wide` carries there — the ones it ends on, and the bare
+    number its stem ends on when `cand` is read past the stem without it
+    ("Show Season 3" past "Show 2"). A title whose number where `wide`'s
+    stands only continues it or is lower is not read past it. `None` when
+    `cand` does not start with the stem."""
+    wt = _tokenize(norm(wide))
+    stem = _stem_tokens(wt)
+    carried = [(o, k) for o, _, k, _ in _division_items(wt[len(stem) :]) if o is not None]
+    text = " ".join(_tokenize(norm(cand)))
+    rest = _rest_after(text, " ".join(stem))
+    if rest is not None:
+        return rest, carried
+    if len(stem) < 2 or not re.fullmatch(r"[0-9]{1,2}", stem[-1]):
+        return None
+    n = int(stem[-1])
+    rest = _rest_after(text, " ".join(stem[:-1]))
+    if rest is None:
+        return None
+    lead = _leading_number(rest)
+    if lead and (lead[0] < n or (lead[0] != n and lead[1].startswith(str(n)))):
+        return None
+    return rest, carried + [([n], "season")]
+
+
+def _opening_items(rest):
+    """The divisions `rest` opens with, up to the first word that names
+    none, with their kinds and whether each stands alone."""
+    out = []
+    for item in _division_items(_tokenize(rest)):
+        if item[0] is None:
+            break
+        out.append(item)
     return out
 
 
-def _past_name(cand, t):
-    """What follows the name of `t` in `cand`: at a word's end, or with a
-    digit or 第 glued to it ("ショー２", "ショー第2期", "Show2") — a digit
-    only after a name that does not end in one. "Showtime 2" and "Show²"
-    do not start with "Show"."""
-    nm = _name(t).split()
-    c = _clean(cand).split()
-    if not nm or c[: len(nm)] != nm:
-        # an empty name (a title that is nothing but a division) is no
-        # name: nothing is read past it
-        cc, nn = _clean(cand), _name(t)
-        if not nn or not cc.startswith(nn):
-            return None
-        nxt = cc[len(nn) : len(nn) + 1]
-        glued = nxt == "第" or (nxt in "0123456789" and nxt != "" and not _digits(nn[-1]))
-        return cc[len(nn) :] if glued else None
-    return " ".join(c[len(nm) :])
+def _beside(cand, wide):
+    """The divisions `cand` opens what follows `wide`'s stem with, as
+    (ordinals, kind) — any `wide` itself ends on left out, an ordinal
+    standing alone right after one of `wide`'s own seasons dividing that
+    season (a part), and after a part staying a season — and the season
+    `wide` carries: the highest among its own divisions, the first when
+    it carries none. `None` when `cand` does not start with the stem."""
+    past = past_stem(cand, wide)
+    if past is None:
+        return None
+    rest, carried = past
+    seasons = [o for ords, kind in carried if kind == "season" for o in ords]
+    own = [(list(ords), kind) for ords, kind in carried]
+    named = []
+    after_season = False
+    for ords, _, kind, alone in _opening_items(rest):
+        divides = after_season and alone
+        if divides:
+            named.append((list(ords), "part"))
+        elif (list(ords), kind) not in own:
+            named.append((list(ords), kind))
+        after_season = not divides and kind == "season" and (list(ords), kind) in own
+    return named, (max(seasons) if seasons else 1)
 
 
-def _glued_to_latin(cand, t):
-    """`cand` carries a digit glued to the last letter of `t`'s name, a
-    letter outside Japanese ("Show2" for "Show")."""
-    cc, nn = _clean(cand), _name(t)
-    nxt = cc[len(nn) : len(nn) + 1] if nn and cc.startswith(nn) else ""
-    return nxt in "0123456789" and nxt != "" and not _JP_CHAR_RX.match(nn[-1])
+def names_earlier_season(cand, wide):
+    """`cand` names, past `wide`'s stem (`_beside`), a season before the
+    one `wide` carries."""
+    beside = _beside(cand, wide)
+    if beside is None:
+        return False
+    named, season = beside
+    return any(kind == "season" and any(o < season for o in ords) for ords, kind in named)
 
 
-def _after_stem(rest, t):
-    """`rest`, read past `t`'s name, read past the rest of `t`'s stem too
-    when it carries it ("100" of "Mob Psycho 100 II"): the picker reads a
-    candidate's divisions from where the stem ends, not the name."""
-    tail = _clean(_stem_text(t))[len(_name(t)) :].strip()
-    if tail and (rest == tail or rest.startswith(tail + " ")):
-        return rest[len(tail) :]
-    return rest
-
-
-def _opening(rest):
-    """The divisions `rest` opens with, up to the first word that names
-    none: what a sibling names right after a stem ("arc season 1" names
-    none, "season 1 arc" a season 1)."""
-    tokens = _tokenize(rest)
-    taken = 0
-    for ords, width in _divisions(tokens):
-        if ords is None:
-            break
-        taken += width
-    return " ".join(tokens[:taken])
+def _without_stem_number(t):
+    """`t`'s stem without the bare number it ends on, and that number."""
+    stem = _stem_tokens(_tokenize(norm(t)))
+    if len(stem) >= 2 and re.fullmatch(r"[0-9]{1,2}", stem[-1]):
+        return stem[:-1], int(stem[-1])
+    return None
 
 
 def season_before_entry(titles, cand):
     """A candidate naming a season before the one an entry title carries,
-    read past its stem, or whose stem ends on a lower number after the
-    same words — unless it is one of the entry's titles."""
+    read past that title's stem as a sibling is read past W's, or whose
+    stem ends on a lower number after the same words — unless it is one
+    of the entry's titles."""
     if any(written(t) == written(cand) for t in titles):
         return False
     for t in titles:
-        rest_t = _past_name(t, t)
-        rest_c = _past_name(cand, t)
-        if rest_t is None or rest_c is None:
-            continue
-        lead_t = _LEAD_RX.match(rest_t)
-        lead_c = _LEAD_RX.match(rest_c)
-        if lead_t and lead_c and int(lead_c.group(1)) < int(lead_t.group(1)):
-            # the candidate's stem must end on that number, written as a
-            # word of its own or glued to a Japanese word ("ショー２"):
-            # "Show2" is a word, "Show 1 Shin" ends on "shin", and a lower
-            # number in the stem's place is not read past
-            stem_rest = _past_name(_stem_text(cand), t)
-            if _glued_to_latin(cand, t) or stem_rest is None or stem_rest.strip() != lead_c.group(1):
-                continue
+        if names_earlier_season(cand, t):
             return True
-        if lead_t and not lead_c:
-            # the bare number the entry's stem ends on is the season it
-            # carries for a candidate read past the stem without it
-            season = max([int(lead_t.group(1))] + _seasons(rest_t[len(lead_t.group(0)) :]))
-            if any(x < season for x in _seasons(_opening(rest_c))):
-                return True
-            continue
-        same_lead = lead_t and lead_c and lead_c.group(1) == lead_t.group(1)
-        ts = _seasons(rest_t[len(lead_t.group(0)) :] if same_lead else rest_t)
-        season = max(ts) if ts else 1
-        cs = _seasons(_opening(rest_c[len(lead_c.group(0)) :] if lead_c else _after_stem(rest_c, t)))
-        if any(x < season for x in cs):
+        a, b = _without_stem_number(cand), _without_stem_number(t)
+        if a and b and a[0] == b[0] and a[1] < b[1]:
             return True
     return False
 
 
-_ONE_MARKER = re.compile(
-    r"^(?:"
-    + MARKER
-    + r" ([0-9０-９]+)|([0-9０-９]+)(?:st|nd|rd|th) "
-    + MARKER
-    + r"|(ii|iii|iv|v|vi|vii|viii|ix)|第([0-9]+|[〇零一二三四五六七八九十百]+)(?:期|部|クール))$"
-)
-
-
 def part_after(title, stem):
     """The ordinal of the one short part marker — "2nd Stage", "Part 3",
-    "Season 2", "II", 第2期 — that `title` adds to `stem`, or `None` when
-    `title` is not the stem followed by exactly one."""
-    n = _word_ordinals(title)
+    "Season 2", "II", "Second", "2nd", 第2期 — that `title` adds to
+    `stem`, or `None` when `title` is not the stem followed by exactly
+    one naming one ordinal: the one parse of a title's tail, read over
+    what follows the stem."""
+    n = norm(title)
     if not n.startswith(stem) or len(n) == len(stem):
         return None
     tail = n[len(stem) :]
     if _alnum(tail[0]) and tail[0] != "第":
         return None
-    m = _ONE_MARKER.match(tail.lstrip(" :-–—~,.・、"))
-    if not m:
+    rest, ords = strip_trailing(_NOT_WORDS_LEAD_RX.sub("", tail))
+    if _clean(rest) or len(ords) != 1 or len(ords[0]) != 1:
         return None
-    g = next(x for x in m.groups() if x is not None)
-    k = ROMAN.get(g)
-    return _jp_ordinal(g) if k is None else k
+    return ords[0][0]
 
 
 def later_part_of(titles, cand):
@@ -693,8 +729,8 @@ def later_part_of(titles, cand):
     another entry of the same show, as the entry before is. A bare number
     is no such marker: "Show" beside "Show 2" is the entry before's shape,
     with that rule's allowance for an alias naming no later division."""
-    c = _word_ordinals(cand)
-    return any(part_after(t, c) not in (None, 1) for t in titles)
+    c = norm(cand)
+    return any((part_after(t, c) or 0) >= 2 for t in titles)
 
 
 def pickable(titles, cand):
@@ -711,43 +747,49 @@ def pickable(titles, cand):
 
 # --- "One reading of a title": the reader the entry names a hit through
 
-_WORD = re.compile(
-    r"[0-9０-９]+(?:\+[0-9０-９]+)+|" + ALNUM + r"+|[" + JP + r"]+(?:[0-9]+[" + JP + r"]+)*(?:[0-9]{1,2}(?![0-9]))?"
-)
-_JP_DIV = re.compile(r"第([0-9]+|[〇零一二三四五六七八九十百]+)(期|部|クール)")
-_SPAN = re.compile(r"^([0-9０-９]+)(?:\+([0-9０-９]+))+$")
+#: A word: any run of letters and digits, in any script — "推しの子IX" is
+#: one word, as "Show2" is — with the "+" a span is written with.
+_WORD = re.compile("[" + _class_body(_ALNUM_RANGES) + "+]+")
+_JP_DIV = re.compile(r"第([0-9]{1,3}|[〇零一二三四五六七八九十百]+)(期|部|クール)")
+_JP_DIV_END = re.compile(r"第([0-9]{1,3}|[〇零一二三四五六七八九十百]+)(期|部|クール)$")
+_JP_DIGITS_END = re.compile(r"^(.*[" + JP + r"])([0-9]+)$")
+#: A span: one- or two-digit numbers joined by "+" ("1+2"); "12+131"
+#: names no span.
+_SPAN = re.compile(r"^([0-9０-９]{1,2})(?:\+([0-9０-９]{1,2}))+$")
 
 
 def _tokenize(n):
     """Words and Japanese divisions, in order. A span ("1+2") is one word.
-    A Japanese run keeps the digits inside it and splits into the word,
-    each 第N期 glued to it, and a one- or two-digit number glued to its
-    end ("ショー第2期第2部" → ショー, 第2期, 第2部; "ショー２" → ショー, 2;
-    "怪獣８号" stays one word); a longer number glued to its end is a word
-    of its own, as it is written apart ("ショー200" → ショー, 200)."""
+    A word splits into what it holds before the Japanese divisions glued
+    to its end, each 第N期 of them, and the number glued to the end of a
+    Japanese letter ("ショー第2期第2部" → ショー, 第2期, 第2部; "ショー２" →
+    ショー, 2; "怪獣８号２" → 怪獣8号, 2; "怪獣８号" stays one word); a
+    longer number glued to a Japanese letter is a word of its own, as it
+    is written apart ("ショー200" → ショー, 200). Digits glued to any other
+    letter are that word's ("Show2", "推しの子IX" stay whole)."""
     out = []
     for m in _WORD.finditer(n):
-        w = m.group(0)
-        if not _JP_CHAR_RX.match(w):
-            out.append(w)
-            continue
-        pos = 0
-        for d in _JP_DIV.finditer(w):
-            if d.start() > pos:
-                out.append(w[pos : d.start()])
-            out.append(d.group(0))
-            pos = d.end()
-        if pos < len(w):
-            out.append(w[pos:])
-    # a one- or two-digit number glued to the end of a Japanese word
-    split = []
-    for w in out:
-        m = _JP_GLUED_RX.match(w)
-        if m:
-            split += [m.group(1), m.group(2)]
-        else:
-            split.append(w)
-    return split
+        out += _apart(m.group(0))
+    return out
+
+
+def _apart(w):
+    """One word read apart: the Japanese divisions glued to its end, and
+    a number glued to the end of a Japanese letter — a division's last
+    letter included ("第3期２" is 第3期 and 2) — each a word of its own."""
+    divs = []
+    while True:
+        d = _JP_DIV_END.search(w)
+        if not d:
+            break
+        divs.insert(0, d.group(0))
+        w = w[: d.start()]
+    if not w:
+        return divs
+    g = _JP_DIGITS_END.match(w)
+    if not g:
+        return [w] + divs
+    return _apart(g.group(1)) + [g.group(2)] + divs
 
 
 def _is_marker(w):
@@ -758,7 +800,7 @@ def _ordinal_of(w):
     """A word read as an ordinal where one may stand alone: a suffixed
     number, a spelled ordinal, a Roman numeral, a bare number of one or
     two digits (a zero included), a Japanese division."""
-    m = re.fullmatch(r"([0-9０-９]+)(?:st|nd|rd|th)", w)
+    m = re.fullmatch(r"([0-9０-９]{1,3})(?:st|nd|rd|th)", w)
     if m:
         return [int(m.group(1))]
     if w in WORD_ORD:
@@ -777,50 +819,89 @@ def _ordinal_of(w):
 def _divisions(tokens):
     """Each token read as a word (`None`) or as the ordinals of the
     division it opens, with the tokens the division spans."""
+    return [(ords, width) for ords, width, _, _ in _division_items(tokens)]
+
+
+def _marker_ordinal(w):
+    """`w` is an ordinal a marker word can carry after it."""
+    return w is not None and bool(
+        (_digits(w) and len(w) <= 3)
+        or _SPAN.fullmatch(w)
+        or w in CARD
+        or re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", w)
+        or w in WORD_ORD
+        or w in ROMAN
+    )
+
+
+def _division_items(tokens):
+    """`_divisions`, each division with the kind it names — a season, or
+    a part (a part, a cour, a stage, 第N部, 第Nクール) — and whether it is
+    an ordinal standing alone: a Roman numeral, a word ordinal, a suffixed
+    or bare number, an ordinal before "Half". Standing alone, an ordinal
+    names a season."""
     items = []
     i = 0
     while i < len(tokens):
         w = tokens[i]
         nxt = tokens[i + 1] if i + 1 < len(tokens) else None
         if _is_marker(w) and nxt is not None:
+            kind = _KIND[w]
             if _SPAN.fullmatch(nxt):
-                items.append(([int(k) for k in nxt.split("+")], 2))
+                items.append(([int(k) for k in nxt.split("+")], 2, kind, False))
                 i += 2
                 continue
-            if _digits(nxt):
-                items.append(([int(nxt)], 2))
+            if _digits(nxt) and len(nxt) <= 3:
+                items.append(([int(nxt)], 2, kind, False))
                 i += 2
                 continue
             if nxt in CARD:
-                items.append(([CARD[nxt]], 2))
+                items.append(([CARD[nxt]], 2, kind, False))
                 i += 2
                 continue
-        if (re.fullmatch(r"[0-9０-９]+(?:st|nd|rd|th)", w) or w in WORD_ORD) and nxt is not None and (
+            # the ordinal after a marker word, spelled, suffixed or Roman
+            # ("Season Second", "Season 2nd", "Season II")
+            if re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", nxt) or nxt in WORD_ORD or nxt in ROMAN:
+                items.append((_ordinal_of(nxt), 2, kind, False))
+                i += 2
+                continue
+        # a spelled, suffixed or Roman ordinal pairs with the marker word
+        # after it — a Roman numeral only where that marker carries no
+        # ordinal of its own ("II Part 2" is two divisions, "II Part" one)
+        after_next = tokens[i + 2] if i + 2 < len(tokens) else None
+        roman_pairs = w in ROMAN and nxt is not None and _is_marker(nxt) and not _marker_ordinal(after_next)
+        if roman_pairs or (re.fullmatch(r"[0-9０-９]{1,3}(?:st|nd|rd|th)", w) or w in WORD_ORD) and nxt is not None and (
             _is_marker(nxt) or nxt == "half"
         ):
-            items.append((_ordinal_of(w), 2))
+            if nxt == "half":
+                items.append((_ordinal_of(w), 2, "season", True))
+            else:
+                items.append((_ordinal_of(w), 2, _KIND[nxt], False))
             i += 2
             continue
         if w in WORD_ORD:
             # a word ordinal standing alone ends the name only where
             # nothing but divisions follows it
-            rest = tokens[i + 1 :]
-            if all(_ordinal_of(r) is not None or _is_marker(r) or r == "half" for r in rest):
-                items.append(([WORD_ORD[w]], 1))
+            if all(o is not None for o, _, _, _ in _division_items(tokens[i + 1 :])):
+                items.append(([WORD_ORD[w]], 1, "season", True))
             else:
-                items.append((None, 1))
+                items.append((None, 1, None, False))
             i += 1
             continue
         if w == "x":
             # X is never a numeral, being a word of its own in titles like "Spy x Family"
-            items.append((None, 1))
+            items.append((None, 1, None, False))
             i += 1
             continue
         k = _ordinal_of(w)
         if k is not None and not re.fullmatch(r"[0-9０-９]{3,}", w):
-            items.append((k, 1))
+            m = _JP_DIV.fullmatch(w)
+            if m:
+                items.append((k, 1, _KIND[m.group(2)], False))
+            else:
+                items.append((k, 1, "season", True))
         else:
-            items.append((None, 1))
+            items.append((None, 1, None, False))
         i += 1
     return items
 
@@ -849,8 +930,8 @@ class Reading:
                     in_name = False
                     # read on from the stem's end
                     tail_items = _divisions(tokens[len(stem) :])
-                    self.ords = [o for o in _ordinals_of(_divisions(stem)) if o]
-                    self.ords += [o for o in _ordinals_of(tail_items) if o]
+                    self.ords = _flat(_ordinals_of(_divisions(stem)))
+                    self.ords += _flat(_ordinals_of(tail_items))
                     j = len(stem)
                     for t_ords, t_width in tail_items:
                         if t_ords is None:
@@ -859,14 +940,16 @@ class Reading:
                     break
                 in_name = False
                 if ords[0] != 1:
-                    self.ords.append(ords[0] if len(ords) == 1 else tuple(ords))
+                    # the ordinals a division names, a span's each in turn
+                    self.ords += ords
             i += width
         low = title.lower()
         tags = [_ascii(m.group(0))[1:-1].strip() for m in CTAG.finditer(low)]
         years = [t for t in tags if _digits(t)]
         self.year = years[0] if years else None
-        ends = len(_PRIME_END_RX.findall(low))
-        opens = len(_PRIME_OPEN_RX.findall(low))
+        # each run of apostrophes counts by its length
+        ends = sum(len(m) for m in _PRIME_END_RX.findall(low))
+        opens = sum(len(m) for m in _PRIME_OPEN_RX.findall(low))
         self.primes = max(0, ends - opens)
 
     def same_show(self, other):
@@ -882,6 +965,16 @@ class Reading:
         )
 
 
+def _flat(ordinals):
+    """`_ordinals_of`'s divisions as the ordinals they name, in order —
+    a span's each in turn — the whole ones left out."""
+    out = []
+    for o in ordinals:
+        if o is not None:
+            out += list(o) if isinstance(o, tuple) else [o]
+    return out
+
+
 def _ordinals_of(items):
     out = []
     for ords, _ in items:
@@ -893,17 +986,10 @@ def _ordinals_of(items):
 
 def _stem_tokens(tokens):
     """The title with every marker and Japanese division it ends on
-    removed; a bare or glued number it ends on stays."""
-    items = _divisions(tokens)
-    end = len(items)
-    while end > 0:
-        ords, width = items[end - 1]
-        token = tokens[sum(w for _, w in items[: end - 1])]
-        if ords is not None and (width == 2 or _JP_DIV.fullmatch(token) or token in ROMAN):
-            end -= 1
-            continue
-        break
-    return tokens[: sum(w for _, w in items[:end])]
+    removed — an ordinal spelled as one standing alone ("Show Seventh",
+    "Show 20th") is one — while a bare or glued number it ends on
+    stays (`_tail_split`)."""
+    return tokens[: _tail_split(tokens)[0]]
 
 
 def names(titles, cand):
@@ -916,42 +1002,32 @@ def names(titles, cand):
 
 # --- choosing among candidates
 
-PARTS = (
-    re.compile(r"\s*" + BS + r"part\s+([0-9０-９]+)$"),
-    re.compile(r"\s*" + BS + r"([0-9０-９]+)(?:st|nd|rd|th)\s+part$"),
-    re.compile(r"\s*第([0-9]+|[〇零一二三四五六七八九十百]+)部$"),
-)
-
-
 def parts_of(t):
-    """Every part marker in the run of markers a title ends on; none reads
-    as the first part."""
-    n = _word_ordinals(t)
-    out = set()
-    while True:
-        for r in PARTS:
-            m = r.search(n)
-            if m:
-                k = _jp_ordinal(m.group(1))
-                if k is not None:
-                    out.add(k)
-                n = n[: m.start()].rstrip(" :-")
-                break
-        else:
-            for r in TRAIL:
-                m = r.search(n)
-                if m:
-                    n = n[: m.start()].rstrip(" :-")
-                    break
-            else:
-                return out
+    """Every ordinal the part markers name in the run of markers a title
+    ends on — a part, a cour or a stage, as the kind of division a marker
+    word names; none reads as the first part."""
+    _, out = strip_trailing_kinds(t)
+    return {k for kind, span in out if kind == "part" for k in span}
 
 
 def part_agrees(titles, cand):
     """Part agreement never decides which hits the probe head takes, and
     reads past a bracketed version tag, which hides no part."""
     eparts = set().union(*(parts_of(t) for t in titles)) or {1}
-    return bool((parts_of(_past_vtag(cand)) or {1}) & eparts)
+    parts = parts_of(_past_vtag(cand)) or {1}
+    # a span without the first part agrees only where the entry ends on
+    # every part in it, as the title rule admits one
+    return parts <= eparts if 1 not in parts else bool(parts & eparts)
+
+
+def probed(titles, rows, counted):
+    """Every hit the probe head takes, in the provider's order: the five
+    that could be picked, as written, and with a count the evidence
+    beside them. Once probed, a hit is read past its version tag, so
+    evidence the tag made unpickable as written can be picked as read."""
+    picked, evidence = head(titles, rows, counted)
+    taken = {id(r) for r in picked + evidence}
+    return [r for r in rows if id(r) in taken]
 
 
 def head(titles, rows, counted):
@@ -960,6 +1036,10 @@ def head(titles, rows, counted):
     be picked, up to the fifth that could."""
     picked, evidence = [], []
     for r in rows:
+        if later_part_of(titles, r[1]):
+            # the sequel guard drops it from the pool before probing: it is
+            # neither considered nor evidence
+            continue
         if pickable(titles, r[1]):
             picked.append(r)
             if len(picked) == 5:
@@ -1063,18 +1143,53 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
     count stands alone, only a hit the title searched or the entry's names
     vouch for can be picked; with a year beside the count, only a hit the
     title searched or a name of the show (`names_of`) vouches for."""
-    adm, _ = head(titles, rows, True)
-    adm = [r for r in adm if pickable_as_read(titles, r[1])]
+    taken = probed(titles, rows, True)
+    adm = [r for r in taken if pickable_as_read(titles, r[1])]
     if count_stands_alone(count, entry_year):
         adm = [r for r in adm if vouched_by_name(titles, searched, r[1])]
     if needs_a_name(count, entry_year):
         adm = [r for r in adm if vouched_dated(titles, searched, r[1], names_of(r[0]))]
     tol = max(3, count // 10)
+    # beside a broad listing W — admitted, from the entry's year, listing
+    # more than E, with a stem — an O, here one of the entry's own titles
+    # read past its tag and listing exactly E, scores every other exact
+    # fit one behind it, whatever W is, and whether or not the O itself
+    # can be picked
+    own = {written(t) for t in titles}
+
+    def is_o(r):
+        return r[2] == count and written(_past_vtag(r[1])) in own and admitted_as_read(titles, r[1])
+
+    broad = entry_year == LISTING_YEAR and any(
+        r[2] > count and admitted_as_read(titles, r[1]) and _stem_tokens(_tokenize(norm(_past_vtag(r[1]))))
+        for r in taken
+    )
+    behind = broad and any(is_o(r) for r in taken)
+
+    def dist(r):
+        d = abs(r[2] - count)
+        return d + 1 if behind and d == 0 and not is_o(r) else d
+
     fits = [r for r in adm if abs(r[2] - count) <= tol]
     if not fits:
-        return None, []
-    best = min(abs(r[2] - count) for r in fits)
-    tied = [r for r in fits if abs(r[2] - count) == best]
+        # the airing rescue: a candidate whose own year is the entry's,
+        # listing fewer episodes than the entry has, is an airing part —
+        # by distance, then the exact title, then part agreement — and
+        # one pick, never with versions
+        short = [r for r in adm if entry_year == LISTING_YEAR and r[2] < count]
+        if not short:
+            return None, []
+        best = min(
+            short,
+            key=lambda r: (
+                count - r[2],
+                0 if written(r[1]) == written(searched) else 1,
+                0 if part_agrees(titles, r[1]) else 1,
+            ),
+        )
+        return best, [best]
+    best = min(dist(r) for r in fits)
+    tied = [r for r in fits if dist(r) == best]
     return sorted(
         tied,
         key=lambda r: (
@@ -1096,7 +1211,7 @@ def with_versions(r, tied):
 
 
 def _stem_text(t):
-    return strip_trailing(_word_ordinals(t))[0]
+    return strip_trailing(t)[0]
 
 
 def _opens_past_stem(title, stem):
@@ -1112,6 +1227,22 @@ def _opens_past_stem(title, stem):
     if nxt == "第" or not _alnum(nxt):
         return True
     return _digits(nxt) and not _digits(stem[-1])
+
+
+def _cut_kin(r, w, count):
+    """Whether the sibling `r` of the broad listing `w` is one the cut
+    reads: an L or an O by its count, or by its divisions an F (first
+    divisions alone past W's stem) or a P (a season before W's)."""
+    if r[2] in (count, w[2] - count):
+        return True
+    a, b = _past_vtag(r[1]), _past_vtag(w[1])
+    beside = _beside(a, b)
+    if beside is None:
+        return False
+    # first divisions alone: each division's first ordinal is 1, a span
+    # through the first ("Part 1+2") reading as the whole
+    first = bool(beside[0]) and all(ords[0] == 1 for ords, _ in beside[0])
+    return first or names_earlier_season(a, b)
 
 
 def predict(case):
@@ -1130,16 +1261,31 @@ def predict(case):
             short = re.sub(r"\s*(?<![0-9０-９])[0-9０-９]{1,2}$", "", stem)
             stems = {stem, short} if short.strip() else {stem}
             kin = [r for r in rows if r is not w and any(_opens_past_stem(r[1], s) for s in stems)]
-            # a broad listing a sibling could complete: the spanning cut
-            if w[2] > count and admitted(titles, w[1]) and kin:
+            # the spanning cut reads a probed candidate past its version
+            # tag, so a tagged sibling is kin as its plain copy is
+            kin += [r for r in rows if r is not w and past_stem(_past_vtag(r[1]), _past_vtag(w[1])) is not None]
+            # a broad listing a sibling could complete or bar: the spanning
+            # cut, which takes an L (W's count less the entry's) or an O
+            # (the entry's count) and never picks an F or a P, whatever
+            # their counts
+            if w[2] > count and admitted_as_read(titles, w[1]) and any(_cut_kin(r, w, count) for r in kin):
                 return NOT_MODELLED
             # an admitted bare title beside later parts of it — the title
             # followed by one short part marker — whose counts could
             # together explain the entry's, within the tolerance or short
             # of it: stitching. A refused lead heads no chain, and a first
             # part completes none.
-            parts = [r for r in rows if r is not w and part_after(r[1], _word_ordinals(w[1])) not in (None, 1)]
-            if admitted(titles, w[1]) and parts and w[2] + min(r[2] for r in parts) <= count + tol:
+            parts = [
+                r
+                for r in rows
+                if r is not w
+                and max(
+                    part_after(r[1], norm(w[1])) or 0,
+                    part_after(_past_vtag(r[1]), norm(_past_vtag(w[1]))) or 0,
+                )
+                >= 2
+            ]
+            if admitted_as_read(titles, w[1]) and parts and w[2] + min(r[2] for r in parts) <= count + tol:
                 return NOT_MODELLED
     for searched in titles:
         if count is None:
@@ -1164,18 +1310,19 @@ def clean_miss_expected(case):
         # version tag is passed over, a refusal by title as a dropped one is
         taken, _ = head(titles, rows, False)
         late = any(not admitted_as_read(titles, r[1]) for r in taken)
-        return not late and not any(not admitted(titles, r[1]) for r in rows)
+        # a hit the sequel guard drops is another entry, no refusal
+        return not late and not any(not admitted(titles, r[1]) and not later_part_of(titles, r[1]) for r in rows)
     taken, evidence = head(titles, rows, True)
     tol = max(3, count // 10)
-    if any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence):
+    # evidence is probed too, and read past its version tag once probed
+    if any(abs(r[2] - count) <= tol and not admitted_as_read(titles, r[1]) for r in evidence):
         return False
     if any(abs(r[2] - count) <= tol and not admitted_as_read(titles, r[1]) for r in taken):
         return False
     # the count-alone refusal is a refusal by title too: a fitting hit
     # nothing names, among the hits probed, leaves no clean miss
     if count_stands_alone(count, case["entry_year"]):
-        adm, _ = head(titles, rows, True)
-        adm = [r for r in adm if pickable_as_read(titles, r[1])]
+        adm = [r for r in probed(titles, rows, True) if pickable_as_read(titles, r[1])]
         return not any(abs(r[2] - count) <= tol for r in adm)
     # so is the dated-name refusal: a fitting hit no name vouches for —
     # under any title searched, since every title's search answers with
@@ -1184,8 +1331,7 @@ def clean_miss_expected(case):
     # tolerance, or from the entry's year (every listing's here) and
     # shorter than the entry, as the airing rescue and the stitching take
     if needs_a_name(count, case["entry_year"]):
-        adm, _ = head(titles, rows, True)
-        adm = [r for r in adm if pickable_as_read(titles, r[1])]
+        adm = [r for r in probed(titles, rows, True) if pickable_as_read(titles, r[1])]
         confirmed = case["entry_year"] == LISTING_YEAR
         return not any(
             (abs(r[2] - count) <= tol or (confirmed and r[2] < count))
@@ -1376,10 +1522,11 @@ def gen():
         shapes.append((t + " Season 3", "cut") if t != "Show" else (t + " Season 2", "cut"))
         if ends_digit:
             jp = t.endswith("２")
-            # "Lucky 2 2nd Season" reads [2, 2]: L. "ショー２第2期": the ２ is inside a word,
-            # as 怪獣８号's ８ is, so it reads [2] as the entry does and carries W's stem
-            # opening a division: O.
-            shapes.append((t + ("第2期" if jp else " 2nd Season"), "O" if jp else "cut"))
+            # "Lucky 2 2nd Season" reads [2, 2]: L. So does "ショー２第2期": the ２ glued
+            # to the end of a Japanese word stands as a number before the division
+            # glued to it — not inside a word, as 怪獣８号's ８ is — so it reads
+            # [2, 2] and opens what follows W's stem with a later season: L.
+            shapes.append((t + ("第2期" if jp else " 2nd Season"), "cut"))
             for g in ["０", "１"] if jp else ["0", "1"]:
                 shapes.append((t + g, "nothing"))  # no digit glued to a digit-ending stem; refused
             if jp:
@@ -1866,6 +2013,17 @@ def main(argv):
         with open(argv[2], "w", encoding="utf-8") as fh:
             json.dump(cases, fh, ensure_ascii=False)
         print(len(cases), "pools")
+        return 0
+    if len(argv) == 5 and argv[1] == "fuzz":
+        # run with -I, the script's directory is not on the path
+        sys.path.insert(0, HERE)
+        sys.modules.setdefault("oracle", sys.modules[__name__])
+        import fuzz
+
+        cases = fuzz.fuzz(int(argv[2]), int(argv[3]))
+        with open(argv[4], "w", encoding="utf-8") as fh:
+            json.dump(cases, fh, ensure_ascii=False)
+        print(len(cases), "pools from seed", argv[2])
         return 0
     if len(argv) >= 4 and argv[1] == "cmp":
         allowlist = None

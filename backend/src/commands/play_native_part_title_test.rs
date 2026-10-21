@@ -252,3 +252,18 @@ fn a_japanese_division_names_a_later_part_too() {
     );
     assert!(precedes_entry("X", &["X 第2期"]));
 }
+
+proptest::proptest! {
+    /// A title's digits are read in ASCII whatever width it writes them
+    /// in, the sequel guard's comparison of a candidate with what an
+    /// entry title adds to it included: "Lucky ２" is the season before
+    /// "Lucky 2 Season 2" as "Lucky 2" is.
+    #[test]
+    fn the_sequel_guard_reads_full_width_digits_as_ascii(n in 0u32..100, k in 2u32..10) {
+        let wide: String = n.to_string().chars().map(|c| char::from_u32(c as u32 - '0' as u32 + '０' as u32).unwrap()).collect();
+        let entry = format!("Lucky {n} Season {k}");
+        let (full, ascii) = (format!("Lucky {wide}"), format!("Lucky {n}"));
+        proptest::prop_assert!(precedes_entry(&full, &[entry.as_str()]), "{}", full);
+        proptest::prop_assert!(precedes_entry(&ascii, &[entry.as_str()]), "{}", ascii);
+    }
+}

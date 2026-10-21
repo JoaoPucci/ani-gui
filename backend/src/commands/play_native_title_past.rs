@@ -20,7 +20,7 @@ use super::*;
 /// read past it ([`leading_number`]); the same or a higher one is.
 pub(crate) fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
     let own = stem(wide);
-    let text = words(title).join(" ");
+    let text = read_words(title).join(" ");
     let mut wide_markers = trailing_markers(wide);
     if let Some(rest) = rest_after(&text, &own.join(" ")) {
         return Some((rest, wide_markers));
@@ -75,17 +75,12 @@ pub(crate) fn rest_after(text: &str, own: &str) -> Option<String> {
         .then(|| rest.to_string())
 }
 
-/// A stem with the bare number it ends on taken off — a word of its
-/// own ("Show 2") or glued to a Japanese word ("ショー２") — and that
-/// number, when something of the stem is left.
+/// A stem with the bare number it ends on taken off — the number a
+/// word of its own, as a stem's words are read apart ("Show 2", the ２
+/// of "ショー２") — and that number, when something of the stem is
+/// left.
 pub(crate) fn without_stem_number(stem: &[String]) -> Option<(String, u32)> {
     let (last, before) = stem.split_last()?;
-    if let Some(n) = small_number(last) {
-        return (!before.is_empty()).then(|| (before.join(" "), n));
-    }
-    let n = glued_number(last)?;
-    let head = last.trim_end_matches(|c: char| c.is_ascii_digit());
-    let mut words = before.to_vec();
-    words.push(head.to_string());
-    Some((words.join(" "), n))
+    let n = small_number(last)?;
+    (!before.is_empty()).then(|| (before.join(" "), n))
 }
