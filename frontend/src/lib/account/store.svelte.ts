@@ -6,8 +6,8 @@
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
- *   - PR #2 home Watch Later rail — gate render on hasAny
- *   - PR #2 AccountChip — avatar + amber dot
+ *   - home Watch Later rail — gate render on hasAny
+ *   - AccountChip — avatar + amber dot
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
@@ -27,7 +27,7 @@ class AccountStore {
 	 * ([`beginAccountChange`]). A boot-time refresh captures it before
 	 * its network await and re-checks after, so a disconnect / re-auth
 	 * that raced the refresh supersedes the write even before the
-	 * `byProvider` snapshot updates (Codex P2 #3416668470).
+	 * `byProvider` snapshot updates.
 	 */
 	accountGeneration: Record<Provider, number> = { anilist: 0, mal: 0, inhouse: 0 };
 
@@ -39,7 +39,7 @@ class AccountStore {
 	 * stable (already-bumped) generation and pass its checks, so the
 	 * generation counter alone can't gate it. Consumers (fresh-bearer)
 	 * treat a changing provider as non-refreshable so a post-disconnect
-	 * refresh can't enqueue a resurrecting write (Codex P2 #3421338541).
+	 * refresh can't enqueue a resurrecting write.
 	 */
 	accountChanging: Record<Provider, boolean> = { anilist: false, mal: false, inhouse: false };
 
@@ -58,11 +58,10 @@ class AccountStore {
 	/**
 	 * Signal that an async account mutation (e.g. disconnect) is starting
 	 * for `provider`, so an in-flight token refresh is superseded before
-	 * the mutation's async clear updates `byProvider` (Codex P2
-	 * #3416668470). Also marks the provider as changing until the next
-	 * resolved state transition, so a refresh entering the disconnect
-	 * window (byProvider still `connected`) is held off (Codex P2
-	 * #3421338541). Synchronous and side-effect-free beyond those flags.
+	 * the mutation's async clear updates `byProvider`. Also marks the provider
+	 * as changing until the next resolved state transition, so a refresh
+	 * entering the disconnect window (byProvider still `connected`) is held
+	 * off. Synchronous and side-effect-free beyond those flags.
 	 */
 	beginAccountChange(provider: Provider): void {
 		this.bumpGeneration(provider);
@@ -93,9 +92,10 @@ class AccountStore {
 				next[p] = { kind: 'disconnected' };
 				continue;
 			}
-			// Codex P2 #3371530183: the token file is on disk but the
+			// The token file is on disk but the
 			// keychain is unreachable (libsecret/Keychain outage,
-			// decrypt failure, basic_text reject from #3370070913).
+			// decrypt failure, or a token refused because safeStorage
+			// fell back to basic_text).
 			// Surface as error with no account; the page's error-no-
 			// account branch now exposes Disconnect so the user can
 			// call clearToken and remove the orphan file before
@@ -112,8 +112,7 @@ class AccountStore {
 		this.byProvider = next;
 		// Every hydrate path (cold launch AND the account page) must give a
 		// just-expired-but-refreshable provider a chance to refresh, so
-		// hydrate() owns it rather than each caller remembering (Codex P2
-		// #3416668464). Fire-and-forget — safe to ignore.
+		// hydrate() owns it rather than each caller remembering. Fire-and-forget — safe to ignore.
 		void this.refreshExpired();
 	}
 
@@ -122,8 +121,7 @@ class AccountStore {
 	 * usable refresh token (MAL's ~1h access token), re-persisting the
 	 * rotated tokens and flipping it back to `connected`. AniList carries
 	 * no refresh token, so it stays expired → reauth. Best-effort and
-	 * safe to `void` from the layout's onMount after hydrate (Codex P2
-	 * #3412673586).
+	 * safe to `void` from the layout's onMount after hydrate.
 	 */
 	refreshExpired(): Promise<void> {
 		return refreshExpiredAccounts({
@@ -135,10 +133,10 @@ class AccountStore {
 			// advances on any account change (and synchronously at the start
 			// of an async disconnect), so a refresh that resolved after a
 			// mid-flight disconnect / re-auth is dropped — even before the
-			// store snapshot catches up (Codex P2 #3416616176, #3416668470).
+			// store snapshot catches up.
 			generation: (provider) => this.accountGeneration[provider],
 			// Don't even start an expired refresh for a provider whose
-			// disconnect is mid-flight (Codex P2 #3421609159).
+			// disconnect is mid-flight.
 			changing: (provider) => this.accountChanging[provider]
 		});
 	}
@@ -188,7 +186,7 @@ class AccountStore {
 
 	setError(provider: Provider, message: string): void {
 		this.setChanging(provider, false);
-		// Codex P2 #3370096597: preserve the account from prior
+		// Preserve the account from prior
 		// `error`-with-account too, not just connected / expired. If
 		// the user is already in error-with-account and a Disconnect
 		// attempt hits token_clear_failed, the bearer is still on disk

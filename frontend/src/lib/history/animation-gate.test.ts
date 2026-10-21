@@ -49,7 +49,7 @@ describe('createAnimationGate', () => {
 		expect(gate.shouldAnimateShift('surv-3')).toBe(true);
 		// Removed ids must NOT animate flip, and shifted ids must
 		// NOT animate the scale-out — that crosstalk is exactly the
-		// Codex P2 #3369281412 leak this split exists to prevent.
+		// leak this split exists to prevent.
 		expect(gate.shouldAnimateShift('del-1')).toBe(false);
 		expect(gate.shouldAnimateRemoval('surv-3')).toBe(false);
 
@@ -65,7 +65,7 @@ describe('createAnimationGate', () => {
 	});
 
 	test('shouldAnimateShift is ONE-SHOT — a second call for the same id returns false', () => {
-		// Scenario Codex P2 #3369293607 caught: user deletes A.
+		// Scenario: user deletes A.
 		// During the 350ms window a background dedupe mutation
 		// removes a different row, causing remaining survivors to
 		// re-flip. The shift gate must not re-fire on survivors
@@ -89,7 +89,7 @@ describe('createAnimationGate', () => {
 	});
 
 	test('a concurrent dedupe-removal of a shifted survivor does NOT animate as a removal', () => {
-		// Scenario the Codex P2 caught:
+		// Scenario:
 		//   1. User deletes A. shifted = [B, C].
 		//   2. During the 350ms window, an unrelated
 		//      loadContinueWatchingState callback resolves B's

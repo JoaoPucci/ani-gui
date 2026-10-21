@@ -95,7 +95,7 @@ describe('accountStore lifecycle', () => {
 	});
 
 	it('setError preserves the account when prior state was already error-with-account', () => {
-		// Codex P2 #3370096597: a second Disconnect attempt that fails
+		// A second Disconnect attempt that fails
 		// token_clear must NOT drop the persisted account from the UI.
 		// Without this preservation the page collapses to bare Connect
 		// even though the token is still on disk and the user needs
@@ -203,7 +203,7 @@ describe('accountStore.hydrate', () => {
 		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
 	});
 
-	// Codex P2 #3371530183: when the token file is on disk but the OS
+	// When the token file is on disk but the OS
 	// keychain is unreachable (libsecret missing on Linux, Keychain
 	// access denied, etc.), getToken returns { ok: false, kind:
 	// 'encryption_unavailable' }. Collapsing that to `null` here would
@@ -227,8 +227,7 @@ describe('accountStore.hydrate', () => {
 	});
 
 	it('seeds error state when keychain read fails with decrypt_error', () => {
-		// Corrupted token file (e.g., partial write, basic_text reject
-		// from #3370070913 on a fresh start) — same orphan-cleanup
+		// Corrupted token file (e.g., a partial write) — same orphan-cleanup
 		// path as encryption_unavailable.
 		stubBridgeWithReadError('anilist', 'decrypt_error');
 		accountStore.hydrate();
@@ -279,7 +278,7 @@ describe('accountStore.refreshExpired', () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	// Codex P2 #3416668470: a Disconnect clicked while the boot refresh is
+	// A Disconnect clicked while the boot refresh is
 	// awaiting the network must win — beginAccountChange bumps the
 	// generation, so the refresh is superseded and the provider is NOT
 	// reconnected (nor its token re-persisted) when the call returns.
@@ -319,7 +318,7 @@ describe('accountStore.hydrate triggers refresh', () => {
 	});
 
 	it('kicks off refreshExpired after seeding state', () => {
-		// Codex P2 #3416668464: every hydrate path (cold launch AND the
+		// Every hydrate path (cold launch AND the
 		// account page) must follow up with a refresh, so hydrate() owns it.
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {

@@ -9,7 +9,7 @@ impl MalProvider {
     /// cache-check + network call so two concurrent refreshers
     /// serialize, hits the cache when the input refresh token
     /// matches a previously-rotated set and that set hasn't yet
-    /// expired (Codex P2 #3375578767), otherwise rotates and stores
+    /// expired, otherwise rotates and stores
     /// the result.
     pub(in crate::meta) async fn refresh_inner(&self, refresh_token: &str) -> Result<Tokens> {
         let mut guard = self.refresh_state().lock().lock().await;
@@ -41,8 +41,7 @@ impl MalProvider {
 /// Extract the (scheme, host, port) tuple of a URL string for origin
 /// comparison. Returns `("", "", 0)` for unparseable input — the
 /// caller treats that as a non-matching origin so a malformed
-/// `paging.next` value is dropped rather than followed (Codex P2
-/// #3375623170).
+/// `paging.next` value is dropped rather than followed.
 pub(in crate::meta) fn url_origin(s: &str) -> (String, String, u16) {
     let Ok(u) = url::Url::parse(s) else {
         return (String::new(), String::new(), 0);
