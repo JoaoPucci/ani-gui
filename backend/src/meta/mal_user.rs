@@ -53,7 +53,7 @@ impl MalProvider {
     /// Build a provider that hits production MAL endpoints. The
     /// `refresh_state` is shared across every provider instance the
     /// dispatcher constructs so two concurrent handler calls hit the
-    /// same coalesce cache (Codex P2 #3379969316).
+    /// same coalesce cache.
     #[must_use]
     pub fn new(client: reqwest::Client, refresh_state: MalRefreshState) -> Self {
         Self {
@@ -106,8 +106,8 @@ impl UserListProvider for MalProvider {
 
     fn auth_url(&self, pkce: &Pkce, state: &str) -> Result<String> {
         // MAL's authorize endpoint rejects S256. Return
-        // `UnsupportedPkce` (mapped to 400 by the route layer, Codex
-        // P2 #3377294701) so a renderer/local client sending the bad
+        // `UnsupportedPkce` (mapped to 400 by the route layer) so a
+        // renderer/local client sending the bad
         // value gets a clean request-validation failure.
         if !matches!(pkce.method, PkceMethod::Plain) {
             return Err(AniError::UnsupportedPkce);
@@ -159,8 +159,7 @@ impl UserListProvider for MalProvider {
             let page = parse_list_page(&bytes)?;
             out.extend(page.entries);
             // Drop off-origin paging.next so a compromised upstream
-            // can't redirect pagination with our bearer attached
-            // (Codex P2 #3375623170).
+            // can't redirect pagination with our bearer attached.
             next_url = page.next_url.filter(|n| url_origin(n) == api_origin);
         }
         Ok(out)
@@ -210,8 +209,7 @@ impl UserListProvider for MalProvider {
     ) -> Result<Option<CurrentEntry>> {
         // `nsfw=true` so an R18 title isn't hidden from the lookup —
         // matching `list_all`. Without it MAL omits the entry for NSFW
-        // anime and the write-back would never see (or update) it
-        // (Codex P2 #3387530453).
+        // anime and the write-back would never see (or update) it.
         let url = format!(
             "{}/anime/{}?fields=my_list_status&nsfw=true",
             self.api_url(),

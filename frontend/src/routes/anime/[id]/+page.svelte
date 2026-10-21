@@ -162,8 +162,7 @@
 	// True once the availability probe settled (result, error, or the
 	// music-subtype skip). The prefetch warm waits on it: firing while
 	// playableEpisodeCount is still null would treat the cap as
-	// unbounded and resolve aired-but-uncatalogued padded tiles
-	// (Codex P2 #3566100686).
+	// unbounded and resolve aired-but-uncatalogued padded tiles.
 	let availabilityResolved = $state(false);
 	// The current lookup's own verdict, for the warm: null while the
 	// question is open or after it failed, never one retained from
@@ -253,7 +252,7 @@
 	 * and a click abandoned two navigations ago finds the context it
 	 * left behind and acts on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
-	 * asked it (Codex P2 #3674767163).
+	 * asked it.
 	 *
 	 * Derived from the route param rather than the loaded detail: the
 	 * detail is briefly null on any load, and treating that as a
@@ -525,7 +524,7 @@
 	// True once the airing question is answered for this show — fetched,
 	// failed (stays unknown/ungated), or skipped for finished shows. The
 	// prefetch warm waits on it so it can't race ahead of the schedule
-	// and burn scraper slots on unaired episodes (Codex P2 #3565590966).
+	// and burn scraper slots on unaired episodes.
 	let airingResolved = $state(false);
 	$effect(() => {
 		const currentId = id;
@@ -555,7 +554,7 @@
 
 	// In-flight beat between mount and the airing answer: tiles and
 	// the primary actions stay inert so a quick click can't race the
-	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
+	// schedule. Resolved-unknown stays ungated.
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 
 	// CTA area render state. 'ready' includes the settled-but-unknown
@@ -834,8 +833,7 @@
 	// nothing about the dub catalogue. Reading the mode inside the
 	// load callback made it invisible to the effect, so nothing
 	// reissued the question and the page kept no cap at all — every
-	// aired dub tile playable until the user navigated (Codex P2
-	// #3674916858). The play route already worked this way.
+	// aired dub tile playable until the user navigated. The play route already worked this way.
 	//
 	// Network errors leave availability null — the lazy click-failure
 	// path then handles it.
@@ -1221,15 +1219,14 @@
 		if (isMusicSubtype(detail?.subtype ?? null)) return;
 		// Wait for the airing answer before warming anything — firing
 		// on mount with airing still unknown would resolve the whole
-		// visible schedule, greyed-out future episodes included
-		// (Codex P2 #3565590966). airingPending (not raw
+		// visible schedule, greyed-out future episodes included. airingPending (not raw
 		// airingResolved) so a show without a Kitsu status — where no
 		// airing fetch ever starts — doesn't deadlock the warm.
 		if (airingIsPending) return;
 		// ...and for the availability probe: until it settles,
 		// playableEpisodeCount is null and beyondPlayable reads the
 		// cap as unbounded, so the warm would resolve
-		// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+		// aired-but-uncatalogued padded tiles.
 		if (!availabilityResolved) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
@@ -1247,7 +1244,7 @@
 		// Aired per AniList AND catalogued by the provider — the grid can
 		// render aired-but-uncatalogued tiles (displayCap), and warming
 		// those is the same doomed resolution the availability probe
-		// already capped out (Codex P2 #3565988141).
+		// already capped out.
 		// Which tiles to warm — and how wide, given the caching
 		// setting — is the module's decision; the page only feeds it
 		// the runtime inputs.
@@ -1463,8 +1460,7 @@
 		// inputs: no resume entry → 1, mid-show → last + 1, at cap →
 		// last (Replay branch). The cap clamps to the aired count so a
 		// user watched through the aired episodes gets Replay of the
-		// last aired one instead of Continue into an unaired episode
-		// (Codex P2 #3565649454).
+		// last aired one instead of Continue into an unaired episode.
 		const last = resumeEntry ? parseHistoryEpisode(resumeEntry.ep_no) : null;
 		return pickResumeEpisode(last, airedCap(episodeCap, airing), leftPartWay(last));
 	}
@@ -1569,9 +1565,7 @@
 			// op is idempotent.
 			// Completion is decided against the FULL finite series total
 			// (Kitsu's mode-independent count), NOT episodeCap — in dub
-			// mode the playable cap is only the dubbed slice (Codex P2
-			// #3387467149) — and only for a finished series (Codex P2
-			// #3387184082).
+			// mode the playable cap is only the dubbed slice — and only for a finished series.
 			// The episode the session plays: the request may have named it
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, ep);
@@ -1611,7 +1605,7 @@
 	// so availability === true while zero episodes have aired. The
 	// tiles and prefetch are gated by epAirState, but pickNextEpisode's
 	// no-history branch returns 1 regardless of the cap — block the
-	// primary CTA too (Codex P2 #3565666393).
+	// primary CTA too.
 	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
 
 	/** Waits, busy, while the resume row is being read again — it is
@@ -1662,7 +1656,7 @@
 		// what the backend picker compares against the provider's planned
 		// `episodeCount`. The modal's range cap (the provider's released-
 		// so-far count) is a separate concern, passed via DownloadConfirm's
-		// `availableEpisodes` prop. Codex P2 #3243357083.
+		// `availableEpisodes` prop.
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: defaultEpisode(),

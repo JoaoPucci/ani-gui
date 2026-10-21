@@ -1,8 +1,8 @@
 /**
  * Merge the per-provider Plan-to-Watch cache rows into a single
- * deduped list for the home page's Watch Later rail (PR #2, plan
- * §6.6). Pure helper so the rail's data path is unit-testable
- * without any HTTP / store mocking.
+ * deduped list for the home page's Watch Later rail. Pure helper so
+ * the rail's data path is unit-testable without any HTTP / store
+ * mocking.
  *
  * Order: most recently touched on the tracker first, so the rail
  * leads with what the user last did something about rather than with
@@ -25,10 +25,10 @@
 import type { ListEntry, Provider } from './types';
 
 /**
- * Per plan §6.6: AniList first (richer metadata via Kitsu's
- * mappings), then MAL. `inhouse` isn't in scope for the rail —
- * it's reserved for the future native provider that doesn't have
- * an off-app library to mirror.
+ * AniList first (richer metadata via Kitsu's mappings), then MAL.
+ * `inhouse` isn't in scope for the rail — it's reserved for the
+ * future native provider that doesn't have an off-app library to
+ * mirror.
  */
 const MERGE_ORDER: ReadonlyArray<Provider> = ['anilist', 'mal'];
 

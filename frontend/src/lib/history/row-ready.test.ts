@@ -68,7 +68,7 @@ function makeSpy(
 
 describe('makeContinueRowReadyHandler', () => {
 	it('null match: only setMatch is called, no episode fetch', async () => {
-		// Codex P1 #3349155760 motivation — the extracted handler must
+		// The extracted handler must
 		// short-circuit for orphan rows. The page renders these as
 		// /search-fallback links; there's no kitsu_id to fetch episodes
 		// for and no count to surface.
@@ -197,7 +197,7 @@ describe('makeContinueRowReadyHandler', () => {
 	});
 
 	it('malformed ep_no (NaN-parse): treats the row as no-history, fetches episode 1', async () => {
-		// Codex P2 #3349231667 — a user-edited or otherwise malformed
+		// A user-edited or otherwise malformed
 		// ep_no ('abc', '0', empty) must not surface a phantom "watched
 		// episode 1, ready for episode 2" state. The detail page's
 		// defaultEpisode reads raw `parseInt(resumeEntry.ep_no, 10)`

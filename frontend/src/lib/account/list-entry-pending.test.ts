@@ -33,7 +33,7 @@ describe('seedForOpen', () => {
 	});
 
 	it('reseeds a pending retry from the stored intent, not the folded live view', () => {
-		// Codex P2 #3444295964: the user saved watching/5, MAL (already completed
+		// The user saved watching/5, MAL (already completed
 		// at 24) rate-limited, and a reconcile folds the live view up to 24. The
 		// retry must replay the user's intended 5, not the lagging tracker's 24.
 		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching', intendedProgress: 5 };
@@ -45,7 +45,7 @@ describe('seedForOpen', () => {
 	});
 
 	it('coerces the stored progress coherent to the pending status (planning → 0)', () => {
-		// Codex P2 #3444274176: planning + watched episodes would promote back to
+		// Planning + watched episodes would promote back to
 		// watching on save, so a pending planning retry seeds at 0.
 		const pending: PendingEdit = { kitsuId: 'k1', intendedStatus: 'planning', intendedProgress: 5 };
 		expect(seedForOpen(view('watching', 5), pending, 'k1')).toEqual({
@@ -107,12 +107,10 @@ describe('pendingAfterSave', () => {
 	it('does NOT record a pending edit when a progress-only partial fails', () => {
 		// statusChanged was false (episode-only edit): a retry must stay
 		// progress-only and not force-write a status onto a divergent tracker.
-		// (Codex P2 #3442488294)
 		expect(pendingAfterSave(null, 'k1', 'partial', false, 'watching', 5)).toBeNull();
 	});
 
 	it('refreshes the intent on a repeat same-show status partial', () => {
-		// (Codex P2 #3442360116)
 		const prev: PendingEdit = { kitsuId: 'k1', intendedStatus: 'watching', intendedProgress: 5 };
 		expect(pendingAfterSave(prev, 'k1', 'partial', true, 'paused', 8)).toEqual({
 			kitsuId: 'k1',

@@ -294,7 +294,7 @@ pub async fn mal_id_for_media_id(
 /// AniList `mediaId`s in ONE request per [`MAL_BATCH_PAGE_SIZE`]-sized
 /// chunk. The Watch-Later bridge uses it so a rail load with many
 /// Kitsu-unmapped titles costs O(n/50) AniList calls instead of O(n)
-/// against the public 30 req/min limit (Codex P2 #3565216298).
+/// against the public 30 req/min limit.
 const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
         Page(perPage: 50) { media(type: ANIME, idMal_in: $idMals) { id idMal } } \
     }";
