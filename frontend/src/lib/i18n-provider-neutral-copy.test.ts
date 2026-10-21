@@ -17,6 +17,16 @@ const LOCALES = fs
 	.map((e) => e.name)
 	.sort();
 
+// Read while the file is collected, not inside a test: a test's 5 s
+// budget is wall time, and a cold read queued behind another build's
+// disk writes can spend it before anything is checked.
+const DETAIL = new Map<string, Record<string, string>>(
+	LOCALES.map((locale) => [
+		locale,
+		JSON.parse(fs.readFileSync(path.join(MESSAGES, locale, 'detail.json'), 'utf8'))
+	])
+);
+
 /** The detail-page keys that describe the streaming catalogue. */
 const CATALOGUE_KEYS = [
 	'ep_disabled_tooltip',
@@ -34,9 +44,7 @@ describe('the catalogue copy names no provider', () => {
 
 	for (const locale of LOCALES) {
 		it(`${locale} catalogue strings name neither provider`, () => {
-			const detail = JSON.parse(
-				fs.readFileSync(path.join(MESSAGES, locale, 'detail.json'), 'utf8')
-			) as Record<string, string>;
+			const detail = DETAIL.get(locale)!;
 			const offenders: string[] = [];
 			for (const key of CATALOGUE_KEYS) {
 				const value = detail[key];
@@ -51,10 +59,9 @@ describe('the catalogue copy names no provider', () => {
 		// busy line that says the providers, plural, are being asked
 		// promises a sweep the walk does not make.
 		it(`${locale} recheck busy line does not count the providers`, () => {
-			const detail = JSON.parse(
-				fs.readFileSync(path.join(MESSAGES, locale, 'detail.json'), 'utf8')
-			) as Record<string, string>;
-			expect(detail.ep_recheck_busy).not.toMatch(/provider|proveedor|provedor|провайдер/i);
+			expect(DETAIL.get(locale)!.ep_recheck_busy).not.toMatch(
+				/provider|proveedor|provedor|провайдер/i
+			);
 		});
 	}
 });
