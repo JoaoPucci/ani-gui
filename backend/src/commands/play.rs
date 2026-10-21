@@ -1277,14 +1277,18 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
             .mount(&server)
             .await;
+        // The stalled track is held for the whole check
+        // ([`crate::held`]), on a server of its own so the rest of the
+        // row is not held behind it.
+        let stalling = wiremock::MockServer::start().await;
+        let (hold, stalled) = crate::held::gate();
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/subs/es.vtt"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_string("WEBVTT\n\n")
-                    .set_delay(std::time::Duration::from_secs(3)),
-            )
-            .mount(&server)
+            .respond_with(crate::held::Held::new(
+                hold,
+                wiremock::ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"),
+            ))
+            .mount(&stalling)
             .await;
         let state = state_with_proxy_origin();
         let mut cached = cached_blank(
@@ -1294,21 +1298,25 @@ pub(crate) mod tests {
         );
         cached.subtitles = vec![
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
-            track("es", false, &format!("{}/subs/es.vtt", server.uri())),
+            track("es", false, &format!("{}/subs/es.vtt", stalling.uri())),
         ];
-        let started = std::time::Instant::now();
-        let live = crate::commands::play_cache::cached_row_is_live_within(
-            &state,
-            &cached,
-            std::time::Duration::from_millis(300),
+        let live = tokio::time::timeout(
+            // The track is held until after the check, so its deadline is
+            // all that ends it; a check that waited on the track would
+            // never return. The guard is loose on purpose: it bounds the
+            // deadline's size without counting a loaded machine's delays
+            // against it.
+            std::time::Duration::from_secs(10),
+            crate::commands::play_cache::cached_row_is_live_within(
+                &state,
+                &cached,
+                std::time::Duration::from_millis(300),
+            ),
         )
-        .await;
-        let elapsed = started.elapsed();
+        .await
+        .expect("the check returned at the deadline, not after the stalled request");
+        stalled.release();
         assert!(!live, "a track that does not answer in time is a dead row");
-        assert!(
-            elapsed < std::time::Duration::from_millis(1500),
-            "the check returned at the deadline, not after the stalled request: {elapsed:?}"
-        );
     }
 
     /// Every track is asked, with the row's referer — the CDN that

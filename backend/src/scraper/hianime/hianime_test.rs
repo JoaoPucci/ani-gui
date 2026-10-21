@@ -4038,10 +4038,10 @@ fn the_floor_under_a_bounded_servers_share_is_the_one_the_walk_set_out_with() {
 /// attempt times out with a healthy server unasked. Each server's
 /// chain has its own bound, and a server that stalls past it is
 /// stepped over like one that refused.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_server_that_stalls_past_its_budget_is_stepped_over_for_the_next_server() {
     let c = client_with_server_budget(100);
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     let stream = c.stream_for(21446, "sub", "720").await.expect("resolved");
     assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
@@ -4174,10 +4174,10 @@ async fn the_last_readable_server_runs_on_the_remainder_when_unread_hosts_trail_
     assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_earlier_readable_server_is_still_cut_off_when_unread_hosts_trail_the_last() {
     let c = client_with_server_budget(100);
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     let stream = c.stream_for(21451, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://mp.example/v/slow/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
@@ -4408,10 +4408,10 @@ async fn a_second_stalled_server_keeps_the_reserve_the_attempt_had_funded() {
 /// Without an attempt deadline — the client driven outside the walk
 /// — every bounded server keeps the fixed bound: the two stalled
 /// servers each spend it before the last is served.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn without_an_attempt_deadline_each_stalled_server_spends_the_fixed_bound() {
     let c = client_with_server_budget(100);
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     let stream = c.stream_for(21467, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
     let elapsed = started.elapsed();
@@ -4430,7 +4430,12 @@ async fn without_an_attempt_deadline_each_stalled_server_spends_the_fixed_bound(
 /// had passed, and a later episode would fail with a healthy server
 /// unasked. Told a deadline already past and then none, the client
 /// serves a bounded server that answers inside the fixed bound.
-#[tokio::test]
+///
+/// On a paused clock, like the other walks here that time a bound:
+/// every wait in it is a timer of the stand-in's or the client's, so
+/// the brief server is served or cut off by what the client does,
+/// never by how long a loaded machine takes to get round to it.
+#[tokio::test(start_paused = true)]
 async fn a_client_told_no_deadline_keeps_the_fixed_bound_for_a_later_resolve() {
     let c = client_with_server_budget(100);
     c.bound_attempt(Some(
@@ -4524,10 +4529,10 @@ async fn a_stale_deadline_caps_a_healthy_bounded_server_at_nothing() {
 /// host must not take the remainder from a named one when there is
 /// one. Here the last is a host the client never read, so the walk
 /// ends on the earlier server's cut-off.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_unnamed_host_ahead_of_the_last_listed_server_keeps_the_bound() {
     let c = client_with_server_budget(100);
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     let err = c
         .stream_for(21454, "sub", "720")
         .await

@@ -537,54 +537,66 @@ use crate::commands::play_native_test_provider::{
     cumulative_opening_recap_season, CUMULATIVE_S2, CUMULATIVE_S2_SLUG,
 };
 
-/// A Kitsu that never answers in time: every request waits twenty
-/// seconds, so a watch's mapping lookup is out for the whole test.
-async fn kitsu_that_hangs() -> wiremock::MockServer {
+/// A Kitsu that holds every lookup it is asked ([`crate::held`]), so a
+/// watch's mapping lookup stays out until the test lets it go.
+async fn kitsu_that_holds() -> (wiremock::MockServer, crate::held::Gate) {
     let mock = wiremock::MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(wiremock::matchers::any())
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(20)),
-        )
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200),
+        ))
         .mount(&mock)
         .await;
-    mock
+    (mock, gate)
 }
 
-/// What the row of the show `slug` keys reads as once it is there and
-/// reads as `want`, within three seconds; the last reading otherwise.
-async fn reads_within(state: &AppState, slug: &str, want: &str) -> String {
+/// What the row of the show `slug` keys reads as once `recording` has
+/// its Kitsu lookup out — `kitsu` asked — and while it still has: the
+/// lookup is held, so the recording cannot have finished, and the read
+/// is taken with nothing left of the watch to wait for but Kitsu. A
+/// recording that ends without asking Kitsu fails the test, as does
+/// one whose row is not there by then.
+///
+/// No clock decides it: the read may queue behind other histories'
+/// writes for as long as the machine takes, and still reads what the
+/// watch put down before it asked Kitsu.
+async fn reads_while_kitsu_is_out<T: std::fmt::Debug>(
+    state: &AppState,
+    slug: &str,
+    kitsu: &crate::held::Gate,
+    recording: &mut tokio::task::JoinHandle<T>,
+) -> String {
+    tokio::select! {
+        () = kitsu.asked() => {}
+        ended = &mut *recording => panic!("the recording ended without asking Kitsu: {ended:?}"),
+    }
     let key = crate::scraper::provider::ShowKey::new(
         crate::provider_set::ProviderSet::TEST_DEFAULT,
         slug,
     )
     .to_string();
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
-    let mut last = String::from("<no row>");
-    while tokio::time::Instant::now() < deadline {
-        if let Some(row) = crate::commands::history::history_list(state)
-            .expect("list")
-            .into_iter()
-            .find(|e| e.id == key)
-        {
-            last = row.ep_no;
-            if last == want {
-                return last;
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    last
+    let read = crate::commands::history::history_list(state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .map_or_else(|| String::from("<no row>"), |row| row.ep_no);
+    assert!(!recording.is_finished(), "the lookup is still out");
+    recording.abort();
+    kitsu.release();
+    read
 }
 
 #[tokio::test]
 async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The recap was resolved by a prefetch alone, so the show has no
     // display stamp. The player marks it watched with the page's Kitsu
-    // id, and the mapping lookup that follows the row hangs: a Continue
-    // card loaded meanwhile reads the row as the recap, the number it
-    // records.
+    // id, and the mapping lookup that follows the row is held: a
+    // Continue card loaded meanwhile reads the row as the recap, the
+    // number it records.
     use tower::ServiceExt as _;
-    let mock = kitsu_that_hangs().await;
+    let (mock, kitsu) = kitsu_that_holds().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = state(&td);
     state.providers.set_stub(std::sync::Arc::new(
@@ -606,7 +618,7 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
         "year": 2026,
         "kitsu_id": "77",
     });
-    let marking = tokio::spawn(async move {
+    let mut marking = tokio::spawn(async move {
         router
             .oneshot(
                 axum::http::Request::builder()
@@ -622,9 +634,7 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             .expect("oneshot")
             .status()
     });
-    let read = reads_within(&state, CUMULATIVE_S2_SLUG, "0.5").await;
-    assert!(!marking.is_finished(), "the lookup is still out");
-    marking.abort();
+    let read = reads_while_kitsu_is_out(&state, CUMULATIVE_S2_SLUG, &kitsu, &mut marking).await;
     assert_eq!(read, "0.5");
 }
 
@@ -633,7 +643,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The watch a handoff records from its fresh resolve, with the
     // page's Kitsu id: its row, the recap's own number, is written
     // before the lookup, not after it.
-    let mock = kitsu_that_hangs().await;
+    let (mock, kitsu) = kitsu_that_holds().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = state(&td);
     state.kitsu = crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), mock.uri());
@@ -658,15 +668,13 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     .await
     .expect("resolves the recap");
     let watch = crate::commands::play_native_record::Watch::of(&recap, "0.5");
-    let recording = {
+    let mut recording = {
         let state = state.clone();
         tokio::spawn(async move {
             crate::commands::play_native_record::record_watch(&state, &watch, Some("77")).await;
         })
     };
-    let read = reads_within(&state, CUMULATIVE_S2_SLUG, "0.5").await;
-    assert!(!recording.is_finished(), "the lookup is still out");
-    recording.abort();
+    let read = reads_while_kitsu_is_out(&state, CUMULATIVE_S2_SLUG, &kitsu, &mut recording).await;
     assert_eq!(read, "0.5");
 }
 

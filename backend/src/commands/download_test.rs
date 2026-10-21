@@ -486,30 +486,46 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // as one.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "sleep 0.6; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "sleep 0.6; exit 0");
-    let started = std::time::Instant::now();
-    let got = spawn_download_tool(
-        &StreamSource {
-            master_url: "https://cdn.example/x/master.m3u8".into(),
-            referer: None,
-            subtitles: Vec::new(),
-        },
-        dest.path(),
-        "Show Episode 1",
-        None,
-        &bin.path().display().to_string(),
-        std::time::Duration::from_millis(900),
-        &mut |_l: &str| {},
+    // Each tool fits inside the deadline on its own, so a deadline per
+    // tool lets the chain succeed; the two together do not. ffmpeg
+    // marks a finished run, so a chain that ran to its end and only
+    // then reported the timeout leaves the mark behind.
+    let finished = dest.path().join("ffmpeg-finished");
+    stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "sleep 1; touch {finished}; exit 0",
+            finished = crate::stub_file::sh_quote(&finished)
+        ),
+    );
+    let got = tokio::time::timeout(
+        // Only a guard against hanging the suite.
+        std::time::Duration::from_secs(30),
+        spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_millis(1500),
+            &mut |_l: &str| {},
+        ),
     )
-    .await;
+    .await
+    .expect("the chain returned");
     assert!(
         matches!(got, Err(AniError::Timeout)),
         "the fallback runs against what is left of the deadline: {got:?}"
     );
     assert!(
-        started.elapsed() < std::time::Duration::from_millis(1_600),
-        "and the whole chain ends at the deadline, not at one per tool"
+        !finished.exists(),
+        "and the whole chain ends at the deadline: ffmpeg was cut off, not run to its end"
     );
 }
 
@@ -1239,14 +1255,18 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let ran = dest.path().join("ran");
+    let release = dest.path().join("release");
     stage_tool(
         bin.path(),
         "yt-dlp",
-        // Records the run before sleeping, so a spawn that is later
-        // killed at its deadline still leaves evidence it happened.
+        // Records the run before it waits, so a spawn that is later
+        // killed at its deadline still leaves evidence it happened; then
+        // holds the file until the test lets it go, so the first call
+        // still owns it for the whole of the duplicate's deadline.
         &format!(
-            "echo ran >> {ran}\nsleep 1.5\nexit 0",
-            ran = crate::stub_file::sh_quote(&ran)
+            "echo ran >> {ran}\nwhile [ ! -e {release} ]; do sleep 0.05; done\nexit 0",
+            ran = crate::stub_file::sh_quote(&ran),
+            release = crate::stub_file::sh_quote(&release),
         ),
     );
     let path_env = bin.path().display().to_string();
@@ -1272,8 +1292,18 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
             .await
         })
     };
-    // Let the first call reach the tool before the duplicate arrives.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // The first call has reached the tool before the duplicate arrives.
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !ran.exists() {
+            assert!(
+                !held.is_finished(),
+                "the first call ended before its tool ran"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the first call reached its tool");
 
     let mut sink = |_l: &str| {};
     let queued = tokio::time::timeout(
@@ -1299,6 +1329,7 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
         "a download that spends its deadline waiting for a same-process holder \
          has timed out, exactly as it would waiting for another instance: {queued:?}"
     );
+    std::fs::write(&release, "").expect("release the first download");
     held.await.expect("join").expect("the first download runs");
     // The discriminating assertion. Timeout alone proves nothing here:
     // a queued call handed a fresh deadline still spawns its tool and
@@ -2995,14 +3026,16 @@ async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_r
     use wiremock::matchers::{method, path as wm_path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let server = MockServer::start().await;
+    // Both tracks are held for the whole phase ([`crate::held`]): a
+    // phase that waited on either would never return.
+    let (hold, stalled) = crate::held::gate();
     for route in ["/subs/en.vtt", "/subs/es.vtt"] {
         Mock::given(method("GET"))
             .and(wm_path(route))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("WEBVTT\n\nlate\n")
-                    .set_delay(std::time::Duration::from_secs(5)),
-            )
+            .respond_with(crate::held::Held::new(
+                hold.clone(),
+                ResponseTemplate::new(200).set_body_string("WEBVTT\n\nlate\n"),
+            ))
             .mount(&server)
             .await;
     }
@@ -3014,22 +3047,26 @@ async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_r
         url: format!("{}{route}", server.uri()),
     };
     let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
-    let started = std::time::Instant::now();
-    let written = write_sidecar_subtitles_within(
-        &reqwest::Client::new(),
-        &tracks,
-        None,
-        dest.path(),
-        "Show Episode 14",
-        std::time::Duration::from_millis(300),
+    let written = tokio::time::timeout(
+        // The tracks are held until after the phase, so its deadline is
+        // all that ends it; a call that waited on them would never
+        // return. The guard is loose on purpose: it bounds the
+        // deadline's size without counting a loaded machine's delays
+        // against it.
+        std::time::Duration::from_secs(10),
+        write_sidecar_subtitles_within(
+            &reqwest::Client::new(),
+            &tracks,
+            None,
+            dest.path(),
+            "Show Episode 14",
+            std::time::Duration::from_millis(300),
+        ),
     )
-    .await;
-    let elapsed = started.elapsed();
+    .await
+    .expect("the phase returned at its deadline, its tracks still held");
+    stalled.release();
     assert!(written.is_empty(), "nothing arrived in time: {written:?}");
-    assert!(
-        elapsed < std::time::Duration::from_millis(1500),
-        "the phase returned at its deadline, not after each stalled request: {elapsed:?}"
-    );
     assert!(!dest.path().join("Show Episode 14.en.vtt").exists());
     assert!(!dest.path().join("Show Episode 14.es.vtt").exists());
 }
@@ -3047,34 +3084,48 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
         .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\nquick\n"))
         .mount(&server)
         .await;
+    // The late track is held for the whole phase ([`crate::held`]), on
+    // a server of its own so the quick one is not held behind it.
+    let stalling = MockServer::start().await;
+    let (hold, stalled) = crate::held::gate();
     Mock::given(method("GET"))
         .and(wm_path("/subs/es.vtt"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("WEBVTT\n\nlate\n")
-                .set_delay(std::time::Duration::from_secs(5)),
-        )
-        .mount(&server)
+        .respond_with(crate::held::Held::new(
+            hold,
+            ResponseTemplate::new(200).set_body_string("WEBVTT\n\nlate\n"),
+        ))
+        .mount(&stalling)
         .await;
     let dest = tempfile::tempdir().expect("dest");
-    let track = |lang: &str, route: &str| SubtitleTrack {
+    let track = |lang: &str, server: &MockServer, route: &str| SubtitleTrack {
         lang: lang.into(),
         label: lang.into(),
         default: false,
         url: format!("{}{route}", server.uri()),
     };
-    let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
-    let started = std::time::Instant::now();
-    let written = write_sidecar_subtitles_within(
-        &reqwest::Client::new(),
-        &tracks,
-        None,
-        dest.path(),
-        "Show Episode 15",
-        std::time::Duration::from_millis(300),
+    let tracks = vec![
+        track("en", &server, "/subs/en.vtt"),
+        track("es", &stalling, "/subs/es.vtt"),
+    ];
+    let written = tokio::time::timeout(
+        // The late track is held until after the phase, so its deadline
+        // is all that ends it; five times that deadline is a loose
+        // bound on its size.
+        std::time::Duration::from_secs(10),
+        write_sidecar_subtitles_within(
+            &reqwest::Client::new(),
+            &tracks,
+            None,
+            dest.path(),
+            "Show Episode 15",
+            // Room for the quick track on a loaded machine; the late one
+            // never answers inside it, however long it is.
+            std::time::Duration::from_secs(2),
+        ),
     )
-    .await;
-    let elapsed = started.elapsed();
+    .await
+    .expect("the phase returned at its deadline, the late track still held");
+    stalled.release();
     let en = dest.path().join("Show Episode 15.en.vtt");
     assert_eq!(
         written,
@@ -3086,10 +3137,6 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
         "WEBVTT\n\nquick\n"
     );
     assert!(!dest.path().join("Show Episode 15.es.vtt").exists());
-    assert!(
-        elapsed < std::time::Duration::from_millis(1500),
-        "the phase returned at its deadline: {elapsed:?}"
-    );
 }
 
 /// A track URL can point at something far larger than a subtitle
