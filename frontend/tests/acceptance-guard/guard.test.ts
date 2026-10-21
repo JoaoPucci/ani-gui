@@ -236,4 +236,27 @@ describe('acceptance request guard', () => {
 		expect(f.fileFailure).toMatch(/GET \S+\/nobody — sent outside any scenario/);
 		expect(mentions(f.fileFailure, '/nobody')).toBe(1);
 	});
+
+	it('fails a scenario that answers a play with anything but a session, and only then', () => {
+		const f = fixture('play-without-session');
+		failedOn(
+			f.scenarios['answers a play with an empty 204'],
+			/POST \S+\/api\/play — a play answered with no session/
+		);
+		failedOn(
+			f.scenarios['answers a play with an older shape'],
+			/POST \S+\/api\/play — a play answered with no session/
+		);
+		passed(f.scenarios['answers a play with a session']);
+		passed(f.scenarios['answers a warm with an empty 204']);
+		passed(f.scenarios['answers a play with a failure']);
+		// A play its teardown already charged as unanswered is charged
+		// nothing more when its empty answer lands.
+		const late =
+			f.scenarios['leaves a play behind that is answered with an empty 204 after it ended'];
+		failedOn(late, /POST \S+\/api\/play — still unanswered/);
+		expect(late?.failure ?? '').not.toMatch(/no session/);
+		passed(f.scenarios['runs while the earlier play is answered']);
+		expect(f.fileFailure).toBe('');
+	});
 });

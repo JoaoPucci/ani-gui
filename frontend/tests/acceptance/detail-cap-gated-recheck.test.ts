@@ -249,11 +249,9 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
 				return HttpResponse.json({
-					id: 'session-1',
-					kind: 'hls',
-					has_subtitles: false,
-					quality: '1080',
-					mode: 'sub'
+					session_id: 'session-1',
+					media_url: `${API_BASE}/s/session-1/master.m3u8`,
+					media_kind: 'hls'
 				});
 			})
 		);
@@ -438,11 +436,9 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
 				return HttpResponse.json({
-					id: 'session-1',
-					kind: 'hls',
-					has_subtitles: false,
-					quality: '1080',
-					mode: 'sub'
+					session_id: 'session-1',
+					media_url: `${API_BASE}/s/session-1/master.m3u8`,
+					media_kind: 'hls'
 				});
 			})
 		);
@@ -624,11 +620,9 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
 				return HttpResponse.json({
-					id: 'session-1',
-					kind: 'hls',
-					has_subtitles: false,
-					quality: '1080',
-					mode: 'sub'
+					session_id: 'session-1',
+					media_url: `${API_BASE}/s/session-1/master.m3u8`,
+					media_kind: 'hls'
 				});
 			})
 		);
