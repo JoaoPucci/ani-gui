@@ -8,6 +8,7 @@
 
 pub mod anilist;
 pub mod anilist_airing;
+pub(crate) mod anilist_gate;
 pub mod anilist_media;
 pub mod anilist_streaming_eps;
 pub mod anilist_user;
