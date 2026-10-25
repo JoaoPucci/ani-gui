@@ -90,22 +90,24 @@ pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Ve
 /// tracker knows — each the single sequel of the one before, with no
 /// entry of its own on the tracker — sums exactly to the entry's total
 /// as far as the sum reaches, the show among those parts. The chain's
-/// order is Kitsu's own. The parts past the sum are the chain running on
-/// into entries of its own; one of them that Kitsu maps to the entry
-/// itself says the parts that reach the sum are not the whole of it.
-pub(super) fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
+/// order is Kitsu's own.
+///
+/// The parts past the sum are the chain running on into entries of its
+/// own. A Kitsu entry mapped to the tracker's entry that is not among
+/// the parts taken — a later part of the chain, or one outside it, or a
+/// page of mappings Kitsu did not list whole — says the parts are not
+/// the whole of the entry: the placement comes back marked
+/// contradicted.
+pub(super) fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<(Vec<Segment>, bool)> {
     let parts: Vec<&KitsuShow> = evidence.parts.iter().collect();
     let (lead, count, taken) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
-    if parts[taken..]
+    let taken_parts = &parts[..taken];
+    let contradicted = evidence
+        .sharing
         .iter()
-        .any(|past| evidence.sharing.iter().any(|mapped| mapped.id == past.id))
-    {
-        return None;
-    }
-    Some(vec![part_of_entry(
-        &evidence.entry,
-        tracker_total,
-        count,
-        lead,
-    )])
+        .any(|mapped| !taken_parts.iter().any(|part| part.id == mapped.id));
+    Some((
+        vec![part_of_entry(&evidence.entry, tracker_total, count, lead)],
+        contradicted,
+    ))
 }

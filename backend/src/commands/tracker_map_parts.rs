@@ -17,10 +17,7 @@ pub(super) const MAX_HOPS: usize = 6;
 /// Kitsu's chain of parts from `root`: each the single sequel of the
 /// one before, resolving on the tracker to nothing or to `native`
 /// itself — never to an entry of its own — followed until the counts
-/// reach `tracker_total` or the chain ends. Where the counts reach the
-/// total, the next sequel is taken too if it resolves to `native`: a
-/// part mapped to the entry past its total says the parts before are
-/// not the whole of it, and the rules read it so.
+/// reach `tracker_total` or the chain ends.
 pub(super) async fn kitsu_parts(
     ask: &MapAsk<'_>,
     root: KitsuShow,
@@ -55,17 +52,16 @@ pub(super) async fn kitsu_parts(
             break;
         }
     }
-    if covered >= tracker_total {
-        if let Some(past) = mapped_past_total(ask, &parts, native).await? {
-            parts.push(past);
-        }
-    }
     Ok(parts)
 }
 
 /// The single sequel of the last of `parts` when it resolves to
-/// `native` itself.
-async fn mapped_past_total(
+/// `native` itself: a part mapped to the entry past the parts that reach
+/// its total, which says they are not the whole of it. Kitsu's page of
+/// the entries mapped to the tracker's id need not list it — it may be
+/// mapped through the other tracker's id — so the gatherer files it
+/// among them.
+pub(super) async fn mapped_past_total(
     ask: &MapAsk<'_>,
     parts: &[KitsuShow],
     native: ProviderMediaId,

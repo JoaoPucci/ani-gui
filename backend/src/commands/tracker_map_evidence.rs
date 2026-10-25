@@ -2,7 +2,17 @@
 //! request per thing the rules read and none they do not.
 
 use super::kitsu_side::{claimed_on_kitsu, sharing_on_kitsu};
-use super::parts_walk::{first_part_under, kitsu_parts, MAX_HOPS};
+use super::parts_walk::{first_part_under, kitsu_parts, mapped_past_total, MAX_HOPS};
+
+/// Whether `parts` reach `total` exactly, at least two of them: where a
+/// part past them could say they are not the whole of the entry.
+fn reaches(parts: &[KitsuShow], total: u32) -> bool {
+    parts.len() >= 2
+        && parts
+            .iter()
+            .try_fold(0u32, |sum, p| p.episodes.and_then(|n| sum.checked_add(n)))
+            == Some(total)
+}
 use super::*;
 use crate::account::provider::MediaEvidence;
 
@@ -101,11 +111,22 @@ async fn gather_longer(
     native: ProviderMediaId,
     entry: MediaEvidence,
 ) -> Result<Evidence> {
-    let sharing = sharing_on_kitsu(ask.state, ask.kind, &entry.show).await?;
+    let mut sharing = sharing_on_kitsu(ask.state, ask.kind, &entry.show).await?;
     let parts = match entry.show.episodes {
         Some(total) => kitsu_parts(ask, root, native, total).await?,
         None => vec![root],
     };
+    if entry
+        .show
+        .episodes
+        .is_some_and(|total| reaches(&parts, total))
+    {
+        if let Some(past) = mapped_past_total(ask, &parts, native).await? {
+            if !sharing.iter().any(|mapped| mapped.id == past.id) {
+                sharing.push(past);
+            }
+        }
+    }
     Ok(Evidence {
         kitsu: ours,
         entry: entry.show,
