@@ -170,8 +170,8 @@ interface InFlight {
 	 *  that already. */
 	late: boolean;
 	/** Accounted for: charged as undescribed, or still in flight when
-	 *  its sender's teardown reported — charged for that, or aborted by
-	 *  its page. Nothing it does later is charged again. */
+	 *  its sender's teardown swept what it left — charged for that, or
+	 *  aborted by its page. Nothing it does later is charged again. */
 	settled: boolean;
 }
 
@@ -279,6 +279,14 @@ server.events.on('response:mocked', ({ request, requestId, response }) => {
 	const sender = entry ? entry.sender : owner.getStore();
 	const mark = { abandoned: false };
 	const check = (async () => {
+		try {
+			await checkAnswer();
+		} catch {
+			// A read that throws, of either body, is charged as no session.
+			if (!mark.abandoned) charge(sender, `${label(request)} — a play answered with no session`);
+		}
+	})();
+	async function checkAnswer() {
 		const asked = (await request
 			.clone()
 			.json()
@@ -291,7 +299,7 @@ server.events.on('response:mocked', ({ request, requestId, response }) => {
 		// One its teardown stopped waiting for was charged for that.
 		if (mark.abandoned) return;
 		if (!isSession(answer)) charge(sender, `${label(request)} — a play answered with no session`);
-	})();
+	}
 	const checks = answerChecks.get(sender) ?? new Set<Promise<void>>();
 	answerChecks.set(sender, checks);
 	checks.add(check);
@@ -307,11 +315,11 @@ const marks = new WeakMap<Promise<void>, { abandoned: boolean }>();
  *  they check. */
 const answerChecks = new Map<Scenario | undefined, Set<Promise<void>>>();
 /** How long a teardown waits for its answer checks. One still reading
- *  then is charged for that: its body never finished. */
+ *  then is charged for that, whether or not its body finishes later. */
 const ANSWER_CHECK_GRACE_MS = 1000;
 
-/** Waits for `sender`'s answer checks, and charges each that outlives
- *  the grace. */
+/** Waits for `sender`'s answer checks, and charges the sender once if
+ *  any outlives the grace. Checks never reject. */
 async function settleAnswerChecks(sender: Scenario | undefined) {
 	const checks = answerChecks.get(sender);
 	if (!checks) return;
@@ -319,7 +327,10 @@ async function settleAnswerChecks(sender: Scenario | undefined) {
 	const timedOut = new Promise<'timeout'>((r) => {
 		timer = setTimeout(() => r('timeout'), ANSWER_CHECK_GRACE_MS);
 	});
-	// Until none is left: a check can join the set while the wait runs.
+	// Until none is left. A check can still join while this waits only
+	// for a play whose `request:end` came before the sweep and whose
+	// `response:mocked`, a microtask behind it, has not yet: the sweep
+	// settles every play still in flight.
 	let outcome: 'done' | 'timeout' = 'done';
 	while (checks.size > 0 && outcome === 'done') {
 		outcome = await Promise.race([Promise.all(checks).then(() => 'done' as const), timedOut]);
@@ -482,7 +493,11 @@ afterAll(async () => {
 	await new Promise((r) => setTimeout(r, LATE_REQUEST_GRACE_MS));
 	// What is still being read of answers no teardown waited for — a
 	// play sent outside any scenario, or answered after its sender's.
-	for (const sender of [...answerChecks.keys()]) await settleAnswerChecks(sender);
+	// Until the map is empty, should a check join under a new key.
+	while (answerChecks.size > 0) {
+		const [sender] = answerChecks.keys();
+		await settleAnswerChecks(sender);
+	}
 	try {
 		failOn(strays.splice(0), 'requests no running scenario sent');
 	} finally {
