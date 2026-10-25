@@ -52,6 +52,27 @@ describe('pushWatchedToTrackers', () => {
 		expect(calls.sort()).toEqual(['anilist', 'mal']);
 	});
 
+	it('runs each write through the injected runner and reports the provider whose write failed', async () => {
+		const ran: Provider[] = [];
+		const reported: Provider[] = [];
+		const d = {
+			connected: ['anilist', 'mal'] as Provider[],
+			bearerFor: (p: Provider) => `bearer-${p}`,
+			updateProgress: vi.fn(async (provider: Provider) => {
+				if (provider === 'mal') throw new Error('network');
+				return null;
+			}),
+			runWrite: async <T>(provider: Provider, attempt: () => Promise<T>) => {
+				ran.push(provider);
+				return attempt();
+			},
+			reportFailure: (provider: Provider) => reported.push(provider)
+		};
+		await pushWatchedToTrackers(d, 'kitsu-12', 3);
+		expect(ran.sort()).toEqual(['anilist', 'mal']);
+		expect(reported).toEqual(['mal']);
+	});
+
 	it('no-ops on empty kitsu_id or no connected providers', async () => {
 		const { d: d1, calls: c1 } = deps();
 		await pushWatchedToTrackers(d1, '', 5);
