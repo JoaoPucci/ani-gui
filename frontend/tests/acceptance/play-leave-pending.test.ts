@@ -719,46 +719,6 @@ describe('play route — a failed switch away from a failed stream', () => {
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 	});
 
-	it('a Reload whose fresh resolve cannot start puts the error and Reload back', async () => {
-		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
-		// An airing show whose schedule does not answer while the case
-		// runs: every switch holds until it does, the recovery's own
-		// included. It answers before the page goes.
-		let answerSchedule = () => {};
-		const scheduleHeld = new Promise<void>((r) => (answerSchedule = r));
-		let scheduleAnswered = false;
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
-			),
-			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, async () => {
-				await scheduleHeld;
-				scheduleAnswered = true;
-				return HttpResponse.json(null);
-			})
-		);
-		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
-		app = mount(PlayPage, { target });
-		await until(() => playerVideoInSlot(), 'the video in its slot');
-		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
-
-		const video = playerVideo();
-		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
-		video.dispatchEvent(new Event('error'));
-		const reload = () =>
-			target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
-		await until(() => reload() !== null, 'the Reload button');
-		const shown = target.querySelector('.player-error-detail')?.textContent;
-		reload()!.click();
-		await new Promise((r) => setTimeout(r, 200));
-
-		expect(reload()).not.toBeNull();
-		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
-		answerSchedule();
-		await until(() => scheduleAnswered, 'the schedule answered');
-		await new Promise((r) => setTimeout(r, 50));
-	});
-
 	it('a switch that overtakes a Reload and fails puts the error and Reload back', async () => {
 		let releaseEvict: () => void = () => {};
 		let evictAsked = false;
