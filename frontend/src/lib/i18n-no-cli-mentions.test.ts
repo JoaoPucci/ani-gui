@@ -26,6 +26,21 @@ const LOCALES = fs
 	.map((e) => e.name)
 	.sort();
 
+// Every bundle is read while the file is collected, not inside the
+// test that sweeps it: a test's 5 s budget is wall time, and cold reads
+// queued behind another build's disk writes can spend it before a
+// single string is checked.
+const BUNDLES = new Map(
+	LOCALES.map((locale) => {
+		const dir = path.join(MESSAGES, locale);
+		const files = fs
+			.readdirSync(dir)
+			.filter((file) => file.endsWith('.json'))
+			.map((file) => ({ file, data: JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) }));
+		return [locale, files];
+	})
+);
+
 describe('no user-visible string names the retired CLI', () => {
 	it('the locale enumeration found the known locales', () => {
 		// An empty or partial listing must not read as a clean sweep.
@@ -34,11 +49,8 @@ describe('no user-visible string names the retired CLI', () => {
 
 	for (const locale of LOCALES) {
 		it(`${locale} bundles carry no ani-cli or pystardust mention`, () => {
-			const dir = path.join(MESSAGES, locale);
 			const offenders: string[] = [];
-			for (const file of fs.readdirSync(dir)) {
-				if (!file.endsWith('.json')) continue;
-				const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+			for (const { file, data } of BUNDLES.get(locale)!) {
 				for (const [key, value] of Object.entries(data)) {
 					// A message with plural variants is an array of objects, not
 					// a string; serialising it sweeps every variant's text.

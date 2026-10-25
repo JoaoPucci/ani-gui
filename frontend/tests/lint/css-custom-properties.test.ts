@@ -47,9 +47,14 @@ const files = (readdirSync(SRC, { recursive: true }) as string[])
 
 const styleFiles = files.filter((path) => /\.(svelte|css|html)$/.test(path));
 
+// Every file is read once, here, while the file is collected; the test
+// below sweeps these texts rather than reading again. A test's 5 s
+// budget is wall time, and re-reading the stylesheets inside it can
+// spend that budget in a disk queue another build has filled.
+const texts = new Map(files.map((path) => [path, readFileSync(path, 'utf8')]));
+
 const declared = new Set<string>();
-for (const path of files) {
-	const text = readFileSync(path, 'utf8');
+for (const [, text] of texts) {
 	for (const match of text.matchAll(/(?<![\w-])(--[\w-]+)\s*:/g)) declared.add(match[1]);
 	for (const match of text.matchAll(/style:(--[\w-]+)/g)) declared.add(match[1]);
 }
@@ -65,7 +70,7 @@ describe('custom properties', () => {
 	it('every var() names a declared property', () => {
 		const undeclared: string[] = [];
 		for (const path of styleFiles) {
-			const lines = readFileSync(path, 'utf8').split('\n');
+			const lines = texts.get(path)!.split('\n');
 			lines.forEach((line, index) => {
 				for (const match of line.matchAll(/var\(\s*(--[\w-]+)/g)) {
 					if (!declared.has(match[1])) {
