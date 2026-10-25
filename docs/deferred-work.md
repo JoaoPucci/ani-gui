@@ -266,14 +266,16 @@ starting it, and delete it when you find it done.
   only, since nothing builds or launches the Windows app in CI.
 - **Frontend tests that sleep, then assert something did not
   happen.** Many acceptance cases (`frontend/tests/acceptance/`) wait
-  a fixed 20 to 1,500 ms and then assert that no request went out, no
+  a fixed 10 to 1,500 ms and then assert that no request went out, no
   notice showed or no state changed. On a slow run the page may not
   have reached the point where it would have done the thing, and the
   negative passes without having checked anything. They never fail
   falsely, so no run has surfaced them. The backend's tests of this
-  shape were converted to positive witnesses, and so were the version
-  picker's and the request lanes' frontend cases of it. These are
-  older ones the conversion did not reach.
+  shape were converted to positive witnesses, and so were the cases
+  the version picker (#255) and the request lanes (#257) added. The
+  rest are not converted: the older cases, and newer ones such as
+  those the navigation-state, Reload and per-audio verdict fixes added
+  (#267, #268, #269).
 
   A 0 ms timer is a sleep of the same kind wherever the page's
   requests pass through MSW: one turn of the event loop is not known
