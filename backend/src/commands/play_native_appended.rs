@@ -222,7 +222,10 @@ mod rule;
 pub use rule::{anilist_ends_at, appended_extras, kitsu_ends_at, rows_end_at, ALIGNED};
 #[path = "play_native_appended_aligned.rs"]
 mod aligned;
-pub use aligned::{aligned, misaligned_so_far, past_named_as_a_last_episode};
+pub use aligned::aligned;
+#[path = "play_native_appended_settled.rs"]
+mod settled;
+pub use settled::{misaligned_so_far, past_named_as_a_last_episode};
 #[path = "play_native_appended_names.rs"]
 mod names;
 pub use names::{is_announced, leaves_names, named_alone, unlike_the_show_s};
