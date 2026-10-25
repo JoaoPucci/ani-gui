@@ -40,12 +40,28 @@ vi.mock('./store.svelte', () => ({
 }));
 
 import { syncRemoveEntry, syncSetEntry } from './set-entry';
+import { toastStore } from '$lib/toasts/store.svelte';
+import { m } from '$lib/paraglide/messages';
+
+/** The backend holding a write back: 429 with the wait, by shape (the
+ *  api module is mocked here). */
+const refused = (secs: number) =>
+	Object.assign(new Error('rate limited'), {
+		status: 429,
+		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs })
+	});
+
+const busyNotice = () =>
+	m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 0 });
 
 beforeEach(() => {
 	getEntry.mockClear();
 	getEntry.mockResolvedValue({ status: 'watching', progress: 3 });
-	setEntry.mockClear();
-	removeEntry.mockClear();
+	setEntry.mockReset();
+	setEntry.mockResolvedValue({ progress_episodes: 3 });
+	removeEntry.mockReset();
+	removeEntry.mockResolvedValue(undefined);
+	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
 	invalidateWatchLater.mockClear();
 	for (const k of Object.keys(byProvider)) delete byProvider[k];
 });
@@ -85,5 +101,31 @@ describe('syncRemoveEntry', () => {
 		expect(out).toEqual({ removed: 1, failed: 0 });
 		expect(removeEntry).toHaveBeenCalledWith('anilist', 'tok-a', 'kitsu-12');
 		expect(invalidateWatchLater).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('a save the tracker holds back', () => {
+	it('waits it out with a notice, re-reads, and lands', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(0));
+		const out = await syncSetEntry('kitsu-12', {
+			status: 'dropped',
+			statusChanged: true,
+			progress: 3
+		});
+		expect(out).toEqual({ written: 1, failed: 0 });
+		expect(setEntry).toHaveBeenCalledTimes(2);
+		// The retry decides off a fresh read of the tracker's row.
+		expect(getEntry).toHaveBeenCalledTimes(2);
+		expect(toastStore.items.map((t) => t.message)).toContain(busyNotice());
+	});
+
+	it('waits out a removal the same way', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		removeEntry.mockRejectedValueOnce(refused(0));
+		const out = await syncRemoveEntry('kitsu-12');
+		expect(out).toEqual({ removed: 1, failed: 0 });
+		expect(removeEntry).toHaveBeenCalledTimes(2);
+		expect(toastStore.items.map((t) => t.message)).toContain(busyNotice());
 	});
 });
