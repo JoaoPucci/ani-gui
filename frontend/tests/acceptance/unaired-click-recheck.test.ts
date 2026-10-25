@@ -232,6 +232,7 @@ describe('leaving the show while the check is out', () => {
 		setParams({ id: '7004' });
 		serve('7004', { airsOnRefresh: true, hold });
 		serve('7005', { airsOnRefresh: false, aired: 1 });
+		const pageFetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => tile(3)?.classList.contains('ep-tile-unaired') === true, 'tile 3 unaired');
 
@@ -249,7 +250,11 @@ describe('leaving the show while the check is out', () => {
 			() => target.querySelector('[role="status"].backdrop') === null,
 			'the page let go once the check for the show left behind settled'
 		);
-		await new Promise((r) => setTimeout(r, 100));
+		// The check's answer is about the show left behind: the click
+		// does nothing with it, and nothing it would have set off is
+		// asked for.
+		expect(await unairedClickOver(pageFetches)).toBe('none');
+		expect(pageFetches.sent.filter((r) => r.path === '/api/play' && !r.body.prefetch)).toEqual([]);
 		expect(tile(2)?.classList.contains('ep-tile-unaired')).toBe(true);
 		expect(tile(3)?.classList.contains('ep-tile-unaired')).toBe(true);
 		expect(playedEpisode(3)).toBe(false);
