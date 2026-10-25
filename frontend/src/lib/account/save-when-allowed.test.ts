@@ -4,6 +4,7 @@ import { AccountApiError } from './api';
 import {
 	busyWaitSecs,
 	DEFAULT_WAIT_S,
+	keepFields,
 	MAX_SAVE_ATTEMPTS,
 	MAX_WAIT_S,
 	saveWhenAllowed,
@@ -133,5 +134,24 @@ describe('a write no longer wanted after its wait', () => {
 				stillWanted: () => true
 			})
 		).toBe('saved');
+	});
+});
+
+describe('keepFields', () => {
+	it('drops the declared fields a newer write covered, and nothing else', () => {
+		const body = { kitsu_id: '12', status: 'paused', progress: 5 };
+		expect(keepFields(body, ['status', 'progress'], ['status', 'progress'])).toEqual(body);
+		expect(keepFields(body, ['status', 'progress'], ['status'])).toEqual({
+			kitsu_id: '12',
+			status: 'paused'
+		});
+		// A status the write sets without declaring it — the one a new row is
+		// created with — stays.
+		expect(keepFields(body, ['progress'], [])).toEqual({ kitsu_id: '12', status: 'paused' });
+	});
+
+	it('is nothing once neither a status nor a progress is left', () => {
+		expect(keepFields({ kitsu_id: '12', progress: 5 }, ['progress'], [])).toBeNull();
+		expect(keepFields({ status: 'paused', progress: 5 }, ['status', 'progress'], [])).toBeNull();
 	});
 });

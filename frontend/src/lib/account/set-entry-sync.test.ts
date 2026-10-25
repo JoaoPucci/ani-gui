@@ -231,3 +231,21 @@ describe('a held save a newer write covers in part', () => {
 		expect(setEntry).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('a held removal a newer write covers in part', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is superseded rather than sent, since it cannot go in part', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		removeEntry.mockRejectedValueOnce(refused(1));
+		const held = syncRemoveEntry('kitsu-40');
+		await vi.advanceTimersByTimeAsync(0);
+		await saveWhenTrackerAllows('anilist', 'kitsu-40', async () => null, ['progress']);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ removed: 0, failed: 0, superseded: true });
+		expect(removeEntry).toHaveBeenCalledTimes(1);
+	});
+});
