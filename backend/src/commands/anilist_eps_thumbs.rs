@@ -97,17 +97,24 @@ async fn fetch_anilist_eps_thumbs(
     // Neither id: nothing to ask AniList. Err so the empty result
     // takes the short negative TTL, as a failed lookup does.
     MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
-    streaming_listing_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
-        .await
-        .map_err(|e| {
-            tracing::warn!(
-                kitsu_id,
-                mal_id = ?ids.mal,
-                anilist_id = ?ids.anilist,
-                error = ?e,
-                "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
-            );
-        })
+    // A fill the page renders without: it spends AniList's budget
+    // behind what the user is looking at.
+    crate::meta::anilist_gate::in_background(streaming_listing_for_ids(
+        &state.meta_http,
+        ids.mal,
+        ids.anilist,
+        anilist_base,
+    ))
+    .await
+    .map_err(|e| {
+        tracing::warn!(
+            kitsu_id,
+            mal_id = ?ids.mal,
+            anilist_id = ?ids.anilist,
+            error = ?e,
+            "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
+        );
+    })
 }
 
 /// Returns `true` when at least one episode in the page has a

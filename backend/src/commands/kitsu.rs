@@ -1297,10 +1297,16 @@ async fn anilist_banner_for(
     let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
         .ok()?;
-    crate::meta::anilist_media::banner_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
-        .await
-        .ok()
-        .flatten()
+    // The detail renders without it: a background fill.
+    crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
+        &state.meta_http,
+        ids.mal,
+        ids.anilist,
+        anilist_base,
+    ))
+    .await
+    .ok()
+    .flatten()
 }
 
 #[cfg(test)]
