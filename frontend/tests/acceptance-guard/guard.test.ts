@@ -279,4 +279,18 @@ describe('acceptance request guard', () => {
 		passed(f.scenarios['runs after the slow body']);
 		expect(f.fileFailure).toBe('');
 	});
+
+	it('waits for a play answer without letting an unanswered request through, and charges once', () => {
+		const f = fixture('answer-check-wait');
+		failedOn(
+			f.scenarios['leaves a request unanswered while a play answer is still being read'],
+			/GET \S+\/slow — still unanswered/
+		);
+		const past = f.scenarios['reads a play answer past the grace that turns out to be no session'];
+		failedOn(past, /still being read \d+ ms after teardown/);
+		passed(f.scenarios['runs after the late answers']);
+		// Charged at its teardown for the wait, it is charged nothing more
+		// when its answer is read.
+		expect(f.fileFailure).toBe('');
+	});
 });
