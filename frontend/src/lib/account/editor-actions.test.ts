@@ -209,3 +209,19 @@ describe('editorToggle', () => {
 		expect(editorToggle({ open: true, busy: false, disabled: false })).toBe('close');
 	});
 });
+
+describe('a removal a newer write superseded', () => {
+	it('says nothing and takes nothing, where one that removed somewhere still clears', async () => {
+		const superseded = await runEditorRemove(
+			{ syncRemoveEntry: async () => ({ removed: 0, failed: 0, superseded: true }) },
+			{ kitsuId: 'kitsu-12', disabled: false }
+		);
+		expect(superseded).toEqual({ kind: 'superseded' });
+		expect(settleRemove(superseded, true)).toEqual({ toast: null, local: false });
+		const cleared = await runEditorRemove(
+			{ syncRemoveEntry: async () => ({ removed: 1, failed: 0, superseded: true }) },
+			{ kitsuId: 'kitsu-12', disabled: false }
+		);
+		expect(cleared).toEqual({ kind: 'removed' });
+	});
+});
