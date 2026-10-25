@@ -264,6 +264,18 @@ starting it, and delete it when you find it done.
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
   only, since nothing builds or launches the Windows app in CI.
+- **Backend tests that sleep and then assert something did not
+  happen pass without testing it on a slow machine.** A test sleeps a
+  few hundred milliseconds so the subject can reach the state under
+  test, then asserts a negative: nothing was written, the task is
+  still waiting, nothing was left behind. If the subject has not got
+  there by the time the sleep ends, the negative holds anyway, and the
+  run is green without having checked anything. These never fail
+  falsely, which is why they were left when the tests that fail on a
+  slow disk were moved onto `crate::held` (`backend/src/held_test.rs`)
+  and paused clocks. The fix is the same: wait for an event the
+  subject raises on reaching the state (a held request arriving, a
+  marker file, a waiter count) instead of a sleep.
 
 ## Correctness in the app (continued)
 
