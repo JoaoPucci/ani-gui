@@ -16,7 +16,7 @@ function bridge() {
 }
 
 /**
- * Result of a safeStorage read. Codex P2 #3371530183: collapsing every
+ * Result of a safeStorage read. Collapsing every
  * non-ok read to `null` made `hydrate()` treat a keychain outage the
  * same as "no token on disk", hiding the Disconnect action even though
  * the credential file was still there. Now the consumer can distinguish
@@ -44,7 +44,7 @@ export function readPersistedAccount(provider: Provider): ReadPersistedAccountRe
 }
 
 /**
- * Result of a safeStorage write. Codex P2 #3372942245: collapsing every
+ * Result of a safeStorage write. Collapsing every
  * failure to `false` hid `encryption_unavailable` and `basic_text` from
  * the page, so Linux users without a usable keyring saw the generic
  * "sign-in failed" error after a successful OAuth round-trip with no
@@ -68,8 +68,7 @@ export async function persistAccount(
 	const b = bridge();
 	if (!b) return { ok: false, kind: 'no_bridge' };
 	// Serialize with any concurrent clearToken for this provider so a
-	// boot refresh's write can't land after a racing disconnect's clear
-	// (Codex P2 #3416883099).
+	// boot refresh's write can't land after a racing disconnect's clear.
 	const r = await enqueueTokenWrite(provider, () => b.setToken(provider, payload));
 	if (r.ok) return { ok: true };
 	return { ok: false, kind: normaliseSetTokenKind(r.kind), detail: r.message };

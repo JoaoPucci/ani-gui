@@ -177,7 +177,7 @@ describe('createSearchRunner (generation guard)', () => {
 	});
 
 	it('a getConfig rejection falls back to null for THIS run and retries on the next', async () => {
-		// Codex P2 #3664593085 — a deeplink's first run can race the
+		// A deeplink's first run can race the
 		// mount's settings load and lose. Permanently caching that
 		// failure pins a DUB user to the 'sub' fallback for the whole
 		// mount; a later run must ask again and pick up the config
@@ -319,7 +319,7 @@ describe('a superseded run stops its probes', () => {
 
 describe('concurrent config loads (shared load promise)', () => {
 	it('a stale failed load cannot pin the fallback after a success exists', async () => {
-		// Codex P2 #3664635236 — two searches entering the load block
+		// Two searches entering the load block
 		// concurrently could interleave so the newer load succeeded
 		// with DUB and the older then rejected: the stale catch reset
 		// the shared config to null while configLoaded stayed true,

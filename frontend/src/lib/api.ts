@@ -45,8 +45,7 @@ declare global {
 			 *  startup and threaded through Electron's preload. Sent as
 			 *  the `x-ani-gui-internal-secret` header on the few backend
 			 *  paths that need a renderer-only gate beyond the bearer —
-			 *  specifically the disconnect-after-expiry cache wipe
-			 *  (Codex P2 #3370011855). Absent in browser-only dev. */
+			 *  specifically the disconnect-after-expiry cache wipe. Absent in browser-only dev. */
 			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
@@ -678,9 +677,9 @@ export type PlayProgress =
  *
  *  When `signal` is provided and aborted, the EventSource is closed
  *  and the promise rejects with an "aborted" error; aborted before
- *  the stream opens, nothing is sent at all. Used by
- *  play-cache's `clearForShow` to cancel abandoned prefetches when
- *  the user navigates away from a show. */
+ *  the stream opens, nothing is sent at all. Used by play-cache's
+ *  `clearForShow` to cancel a show's abandoned plays when the user
+ *  navigates away from it. */
 export function playStream(
 	args: PlayArgs,
 	onProgress: (p: PlayProgress) => void,
@@ -1106,14 +1105,14 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
  *  Order is preserved; ids Kitsu can't map drop out of the response.
- *  Used by the home Watch Later rail (plan §6.6) to render the
- *  merged Plan-to-Watch list with Kitsu metadata + availability
- *  filtering matching the rest of the home. Empty input → empty
+ *  Used by the home Watch Later rail to render the merged
+ *  Plan-to-Watch list with Kitsu metadata + availability filtering
+ *  matching the rest of the home. Empty input → empty
  *  output (no round-trip needed).
  *
  *  Sends the renderer-only internal-secret header — backend gates
  *  the route on it so a cross-origin page under permissive CORS
- *  can't reach the handler (Codex P1 #3373789621). Also enforces
+ *  can't reach the handler. Also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
 export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {

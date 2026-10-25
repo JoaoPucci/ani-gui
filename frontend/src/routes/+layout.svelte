@@ -132,7 +132,7 @@
 	// Cold-launch + ongoing expiry-toast tracker. Pushes one pinned
 	// `warning` toast per expired provider after hydrate, dismisses
 	// it the moment the provider recovers (the user re-auths from
-	// `/account` or the chip popover) — Codex P2 #3375219208. Re-runs
+	// `/account` or the chip popover). Re-runs
 	// reactively on every `accountStore.byProvider` mutation so the
 	// recovery path doesn't need to know the toast exists.
 	const expiryToastTracker = new ExpiryToastTracker();
@@ -201,13 +201,13 @@
 		// sees populated providers from their own onMount. Previously
 		// only `/account/+page.svelte` called this, which meant a cold
 		// launch directly to `/` left the rail blank for connected
-		// users until they visited Accounts first (Codex P2 #3373736854).
+		// users until they visited Accounts first.
 		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
 		// the time the home page mounts the store is fully populated.
 		// hydrate() seeds the store from safeStorage AND kicks off a
 		// silent refresh of any expired-but-refreshable token (e.g. MAL's
 		// ~1h access token), so the user isn't pushed through OAuth every
-		// hour (Codex P2 #3412673586, #3416668464).
+		// hour.
 		accountStore.hydrate();
 
 		// Update notifier — one-shot check on app open. Routes

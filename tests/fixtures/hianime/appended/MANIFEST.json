@@ -18,16 +18,22 @@
     "sha256": "393a85b4c83f549e01c7d030d22a30b93c9e2542dab9c009e0a8a4fd9885023e"
   },
   "corpus.json": {
-    "source": "113 Kitsu entries — every multi-episode pick recorded under hianime/picker/ and every other show checked while looking for numbering disagreements — each with the Kitsu status and episode count (GET /anime/:id), AniList's status, episode count and next episode for the MAL id Kitsu maps it to (Page(media(idMal_in:))), the Kitsu episode pages the evidence reader asks for that count (/anime/:id/episodes, 20 to a page, sorted by number; [number, canonicalTitle, airdate]), the entries Kitsu relates it to (/anime/:id/media-relationships, reduced to [role, type, id, subtype, status, episodeCount, and for a TV sequel whose Kitsu episode list was fetched, its first page of titles]) with whether that page held them all, and the picked hianime listing (/api/theme/episode/list/:id through the impersonating transport) reduced by script to [slot, data-number, title] with the title's entities decoded. Fetched on 2026-10-17, paced (hianime ≥3 s apart, Kitsu ≥1.2 s, AniList ≥1.5 s). `appended` marks the three whose listings append extras after Kitsu's last episode.",
+    "source": "113 Kitsu entries — every multi-episode pick recorded under hianime/picker/ and every other show checked while looking for numbering disagreements — each with the Kitsu status and episode count (GET /anime/:id), AniList's status, episode count and next episode for the MAL id Kitsu maps it to (Page(media(idMal_in:))), the Kitsu episode pages the evidence reader asks for that count (/anime/:id/episodes, 20 to a page, sorted by number; [number, canonicalTitle, airdate]), the entries Kitsu relates it to (/anime/:id/media-relationships, reduced to [role, type, id, subtype, status, episodeCount, and for a TV entry related in any role whose Kitsu episode list was fetched, its first page of titles]) with whether that page held them all, and the picked hianime listing (/api/theme/episode/list/:id through the impersonating transport) reduced by script to [slot, data-number, title] with the title's entities decoded. Fetched on 2026-10-17 and 2026-10-18, paced (hianime ≥3 s apart, Kitsu ≥1.2 s, AniList ≥1.5 s). `appended` marks the three whose listings append extras after Kitsu's last episode.",
     "captured": "2026-10-17",
-    "size": 322976,
-    "sha256": "90ac94f21d118d860a42da3c80f6c28273daa877cdcb37d12bbfdaf36cacef8e"
+    "size": 339761,
+    "sha256": "c63a61444932b37338d6a0725e2ed9587312908d14ceee28500328a088727e36"
   },
   "episode-list-1549.json": {
     "source": "GET https://hianime.at/api/theme/episode/list/1549 as above, verbatim: Angels of Death (angels-of-death-1549), the pick for Kitsu 13715 (Satsuriku no Tenshi) — the twelve broadcast episodes, then the four web-only episodes as rows 13 to 16",
     "captured": "2026-10-17",
     "size": 16949,
     "sha256": "6fa06d47ddc89c3cec6100c28193cce330209081704968d57883dde71dd5ba27"
+  },
+  "episode-list-1574.json": {
+    "source": "GET https://hianime.at/api/theme/episode/list/1574 with X-Requested-With: XMLHttpRequest, through the bundled impersonating transport (curl-impersonate --impersonate chrome136 --compressed), verbatim: The Slime Diaries (the-slime-diaries-1574), twelve titled episodes — the TV entry Kitsu relates to Slime's first season as `other`, whose first rows a test appends to that season's listing.",
+    "captured": "2026-10-18",
+    "size": 12870,
+    "sha256": "5175b3b09705df57261995700f581014757fae8964613ab68644c7c363b43ad8"
   },
   "episode-list-487.json": {
     "source": "GET https://hianime.at/api/theme/episode/list/487 with X-Requested-With: XMLHttpRequest, through the bundled impersonating transport (curl-impersonate --impersonate chrome136 --compressed), verbatim: That Time I Got Reincarnated as a Slime Season 2 (that-time-i-got-reincarnated-as-a-slime-season-2-487), the pick for Kitsu 42196 — twelve episodes. The first season's TV sequel, whose first rows a test appends to the first season's listing as hianime would list a merged cour.",
@@ -83,6 +89,24 @@
     "size": 7218,
     "sha256": "ce13c914860a2f357c5e6ad39a780184ab34f904d4772db630804f242ee7008f"
   },
+  "kitsu-episodes-41963-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/41963/episodes as above, verbatim: Satsuriku no Tenshi ONA, the four-episode entry Kitsu relates to Satsuriku no Tenshi as its sequel — the web episodes hianime appends — titled as hianime titles the appended rows, case aside.",
+    "captured": "2026-10-18",
+    "size": 2431,
+    "sha256": "cee376c8fc2fb52b9e0e798b9884288f939136bc4da0f5b59a7f159a60438226"
+  },
+  "kitsu-episodes-43089-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/43089/episodes?page[limit]=20&page[offset]=0&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim, with the proxy client's User-Agent: The Slime Diaries' first page — twelve placeholder rows with neither title nor air date, which the parser drops.",
+    "captured": "2026-10-18",
+    "size": 3374,
+    "sha256": "a88b6508305ae4d963ef4d92a31cfd85fa58d91d7feb40d3f44d0ad52aa93776"
+  },
+  "kitsu-episodes-46241-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/46241/episodes?page[limit]=20&page[offset]=0&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim, with the proxy client's User-Agent: Shangri-La Frontier's first page — the prequel Kitsu relates Season 2 to, whose page the evidence reader asks for as any aired TV relation's.",
+    "captured": "2026-10-18",
+    "size": 5568,
+    "sha256": "4a92756205211db563a7198b69ba60f07bf853a4380bd112dde2a32af2ae2202"
+  },
   "kitsu-episodes-48677-p2.json": {
     "source": "GET https://kitsu.io/api/edge/anime/48677/episodes?page[limit]=20&page[offset]=20&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim: the page holding the count's last episodes (21–25), which Kitsu has neither titled nor dated",
     "captured": "2026-10-18",
@@ -106,6 +130,12 @@
     "captured": "2026-10-17",
     "size": 15472,
     "sha256": "5cb11ddab60d46877d4d1ccbe051f8e8aa50137ebb901b5a1798779af6380913"
+  },
+  "kitsu-episodes-8152-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/8152/episodes as above, verbatim: Noragami OVA, the two-episode entry Kitsu relates to Noragami as a side story — the OADs hianime appends — titled \"God's Possession, God's Curse\" and \"A Promise in Spring\", as hianime titles the appended rows past their \"OAD 01: \" and \"OAD 02: \".",
+    "captured": "2026-10-18",
+    "size": 2830,
+    "sha256": "04e3936a205fe88851f860b0f20e92c4b4eea6a476d10379ed48f4515f967b7d"
   },
   "kitsu-relations-10800.json": {
     "source": "GET https://kitsu.io/api/edge/anime/10800/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",

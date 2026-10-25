@@ -13,8 +13,7 @@ export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
 	connected: Provider[];
 	/** Resolve a provider's bearer, or null if unavailable. May be async
-	 *  so the caller can refresh a near-expiry token before the write
-	 *  (Codex P2 #3416883107). */
+	 *  so the caller can refresh a near-expiry token before the write. */
 	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
 	/** POST the update to one provider. `status` omitted = leave the
 	 *  tracker's current status untouched. */
@@ -34,9 +33,9 @@ export interface PushWatchedDeps {
  * sends progress alone, so a normal next-episode write never overrides
  * the user's status. Critically this preserves a `rewatching`/repeating
  * row: sending `watching` would downgrade it (AniList `CURRENT`, MAL
- * `is_rewatching=false`) — Codex P2 #3387319861.
+ * `is_rewatching=false`).
  *
- * `seriesFinished` gates completion (Codex P2 #3387184082): a
+ * `seriesFinished` gates completion: a
  * currently-airing show only ever has the latest released episode, so
  * only a Kitsu `finished` show completes.
  *
@@ -44,8 +43,8 @@ export interface PushWatchedDeps {
  * mode-independent announced total), NOT the mode-specific playable
  * cap — in `dub` mode the playable cap can be a fraction of the series
  * (e.g. 12 dubbed of 24), and watching the last dubbed episode must
- * not complete the whole series (Codex P2 #3387467149). null/0 means
- * the total is unknown — don't complete (Codex P2 #3386988961).
+ * not complete the whole series. null/0 means
+ * the total is unknown — don't complete.
  *
  * The backend reads `completed` on the progress route as this finale
  * and drops it where the tracker's own episode total is known and
@@ -110,8 +109,7 @@ export async function syncWatchedToTrackers(
 		{
 			connected,
 			// Refresh a near-expiry token before the write so a long-open
-			// session doesn't push progress with a stale bearer (Codex P2
-			// #3416883107).
+			// session doesn't push progress with a stale bearer.
 			bearerFor: (provider) => freshBearerFor(provider),
 			updateProgress
 		},

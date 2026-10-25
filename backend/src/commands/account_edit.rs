@@ -54,9 +54,9 @@ async fn get_entry_via(
     // native id, so the seed read serializes with a mark-watched write
     // (which takes the same lock before its own resolve) across the entire
     // resolve→read — the read can't slip in during the write's resolve
-    // window and observe a value the write is about to change (Codex P2
-    // #3427461062 / #3428252253). A later explicit Save would otherwise
-    // force-write that stale value over the just-synced higher one.
+    // window and observe a value the write is about to change. A later explicit
+    // Save would otherwise force-write that stale value over the just-synced
+    // higher one.
     let _read_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
@@ -95,7 +95,7 @@ async fn set_entry_via(
 ) -> Result<Option<ListEntry>> {
     // Per-show lock keyed on the Kitsu id, taken before resolve so an
     // explicit edit and a concurrent mark-watched write serialize across
-    // their whole resolve→write (Codex P2 #3428252253).
+    // their whole resolve→write.
     let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
@@ -136,7 +136,7 @@ async fn remove_entry_via(
 ) -> Result<bool> {
     // Per-show lock keyed on the Kitsu id, taken before resolve so the
     // delete serializes with a concurrent mark-watched write / editor read
-    // across their whole resolve→write (Codex P2 #3428252253).
+    // across their whole resolve→write.
     let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(false);
@@ -144,7 +144,7 @@ async fn remove_entry_via(
     // The title may already be gone upstream (double-click Remove, or
     // removed in another client). Providers signal that differently —
     // MAL returns Upstream{404}, AniList fails the row-id lookup with a
-    // parse error (Codex P2 #3423108945 / #3423227862) — so don't match
+    // parse error — so don't match
     // on a status. Instead, on ANY delete error, confirm with a live
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
