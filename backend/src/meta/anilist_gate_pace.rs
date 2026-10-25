@@ -173,6 +173,15 @@ pub(super) fn no_requests_left(resp: &reqwest::Response) -> bool {
         == Some(0)
 }
 
+/// `host:port` of `url`, the key a gate is kept under; `url` itself
+/// when it names no host.
+pub(super) fn authority(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| Some(format!("{}:{}", u.host_str()?, u.port_or_known_default()?)))
+        .unwrap_or_else(|| url.to_owned())
+}
+
 #[cfg(test)]
 #[path = "anilist_gate_prop_test.rs"]
 mod prop_tests;
