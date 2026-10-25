@@ -52,11 +52,12 @@ proptest! {
         prop_assert_eq!(apart_glued(pieces.clone()), pieces);
     }
 
-    /// Every number a word writes standing is a run of its digits, and
-    /// under a thousand. A number glued to a Japanese letter stands, up
-    /// to two digits bare and up to three suffixed ("ショー100th"); one
-    /// glued to any other letter is the word's own; each number of a
-    /// span stands either side of its "+".
+    /// Every number a word writes standing is one whole run of its
+    /// digits, and under a thousand. A number glued to a Japanese letter
+    /// stands, up to two digits bare and up to three suffixed
+    /// ("ショー100th"); one glued to any other letter, before it or
+    /// after it, is the word's own; each number of a span stands either
+    /// side of its "+".
     #[test]
     fn a_number_stands_where_japanese_glues_it(
         w in word(),
@@ -67,8 +68,12 @@ proptest! {
         a in 0u32..100,
         b in 0u32..100,
     ) {
+        let runs: Vec<u32> = w
+            .split(|c: char| !c.is_ascii_digit())
+            .filter_map(|run| run.parse().ok())
+            .collect();
         for m in standing_numbers(&w) {
-            prop_assert!(m < 1000 && w.contains(&m.to_string()), "{w}: {m}");
+            prop_assert!(m < 1000 && runs.contains(&m), "{w}: {m}");
         }
         let suffixed = format!("{j}{n}{sfx}");
         prop_assert!(standing_numbers(&suffixed).contains(&n), "{suffixed}");
@@ -76,6 +81,8 @@ proptest! {
         prop_assert_eq!(standing_numbers(&bare).contains(&n), n < 100, "{}", bare);
         let latin = format!("{l}{n}");
         prop_assert!(standing_numbers(&latin).is_empty(), "{latin}");
+        let before_latin = format!("{n}{l}");
+        prop_assert!(standing_numbers(&before_latin).is_empty(), "{before_latin}");
         let span = format!("{a}+{b}");
         let got = standing_numbers(&span);
         prop_assert!(got.contains(&a) && got.contains(&b), "{span}: {got:?}");

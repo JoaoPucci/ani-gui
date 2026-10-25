@@ -255,3 +255,73 @@ proptest! {
         prop_assert_eq!(name(&title), want);
     }
 }
+
+/// Pieces a title glues together as Japanese writes them: names, a
+/// name ending in a number of its own, divisions and bare numbers.
+const HEADS: [&str; 4] = ["ショー", "推しの子", "ショー100", "Show"];
+const PIECES: [&str; 8] = [
+    "第1期",
+    "第2期",
+    "第3期",
+    "第1部",
+    "第2部",
+    "第十二部",
+    "2",
+    "10",
+];
+
+/// A title: a head and up to three pieces, each glued to what comes
+/// before it or a word apart.
+fn glued_title() -> impl Strategy<Value = String> {
+    (
+        proptest::sample::select(HEADS.to_vec()),
+        proptest::collection::vec(
+            (
+                proptest::sample::select(PIECES.to_vec()),
+                proptest::bool::ANY,
+            ),
+            0..4,
+        ),
+    )
+        .prop_map(|(head, pieces)| {
+            pieces.into_iter().fold(head.to_string(), |t, (p, glued)| {
+                if glued {
+                    format!("{t}{p}")
+                } else {
+                    format!("{t} {p}")
+                }
+            })
+        })
+}
+
+proptest! {
+    /// Every rule that reads a title's words reads it as its words read
+    /// apart, a word apart from each: a Japanese division glued to the
+    /// word before it, a number glued after a Japanese letter or a
+    /// division, as written with spaces between. The entry before,
+    /// whether a title starts with another's name, what follows a broad
+    /// listing's stem and the divisions a sibling names beside it all
+    /// answer for a title and another as they do for the two written
+    /// apart.
+    #[test]
+    fn every_reader_reads_a_glued_title_as_written_apart(
+        title in glued_title(),
+        other in glued_title(),
+    ) {
+        use crate::commands::play_native_title_reading::{
+            is_name_and_first_divisions, later_division_markers, past_stem, read_words,
+            starts_with_name_of,
+        };
+        let apart = |t: &str| read_words(t).join(" ");
+        let (t, o) = (apart(&title), apart(&other));
+        prop_assert_eq!(
+            is_name_and_first_divisions(&other, &title),
+            is_name_and_first_divisions(&o, &t),
+            "{} for {}", other, title
+        );
+        prop_assert_eq!(starts_with_name_of(&title, &other), starts_with_name_of(&t, &o), "{} / {}", title, other);
+        let past = |a: &str, b: &str| past_stem(a, b).map(|(rest, m)| (read_words(&rest), m));
+        prop_assert_eq!(past(&title, &other), past(&t, &o), "{} past {}", title, other);
+        prop_assert_eq!(later_division_markers(&title, &other), later_division_markers(&t, &o), "{} beside {}", title, other);
+    }
+}
