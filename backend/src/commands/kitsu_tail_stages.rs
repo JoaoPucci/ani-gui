@@ -4,16 +4,24 @@
 //! themselves so each file stays inside the complexity bar.
 
 use super::read::{
-    anilist_count, entry_tail, is_tv, related, sequel_episodes, tail_episodes, unpaged,
+    anilist_count, entry_tail, is_tv, page_of, related, sequel_episodes, tail_episodes, unpaged,
 };
 use super::KitsuTail;
 use crate::commands::play_native_appended::{
     aligned, aligned_is_final, anilist_ends_at, explained, is_announced, kitsu_ends_at,
-    leaves_names, named_alone, rows_end_at, unlike_the_show_s, EntryTail, Related,
+    leaves_names, named_alone, rows_end_at, unlike_the_show_s, EntryTail, Related, ALIGNED,
 };
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::KitsuRelation;
 use crate::scraper::provider::EpisodeRef;
+
+/// Whether the Kitsu rows read so far already refuse the reading, so
+/// no further page can undo it: see [`KitsuTail::kitsu_rows`].
+fn settled(listing: &[EpisodeRef], count: u32, past: &[EpisodeRef], tail: &EntryTail) -> bool {
+    !rows_end_at(tail, count)
+        || !unlike_the_show_s(past, tail)
+        || (aligned_is_final(count, tail) && !aligned(listing, count, tail))
+}
 
 impl KitsuTail<'_> {
     /// What says whether the show ends at `count`, read in order while
@@ -54,11 +62,15 @@ impl KitsuTail<'_> {
         self.kitsu_rows(listing, count, past, tail).await
     }
 
-    /// `tail` with Kitsu's rows: the count's pages, then the page after
-    /// only while they leave the reading open. A row past the count, a
-    /// row past it named as one of the show's own episodes, or the
-    /// count's last episodes all read and named otherwise than by the
-    /// listing is a refusal no further page undoes.
+    /// `tail` with Kitsu's rows: the pages holding the count's last
+    /// episodes, then the page after them, each read only while the
+    /// rows before it leave the reading open. Kitsu listing an episode
+    /// past the count, a listing row past it named as one of the show's
+    /// own episodes, or the count's last episodes all read and not
+    /// lining up with the listing is a refusal no further page undoes.
+    /// The page after is the one that says nothing follows the count:
+    /// Kitsu's pages are not always dense, and the placeholder rows the
+    /// reader drops hide how full a page was.
     async fn kitsu_rows(
         &self,
         listing: &[EpisodeRef],
@@ -66,18 +78,15 @@ impl KitsuTail<'_> {
         past: &[EpisodeRef],
         mut tail: EntryTail,
     ) -> Option<(EntryTail, bool)> {
-        tail.episodes = tail_episodes(self.count_pages(count).await?);
-        let settled = !rows_end_at(&tail, count)
-            || !unlike_the_show_s(past, &tail)
-            || (aligned_is_final(count, &tail) && !aligned(listing, count, &tail));
-        if settled {
-            return Some((tail, false));
+        let first = page_of(count.saturating_sub(ALIGNED - 1).max(1));
+        for page in first..=page_of(count) + 1 {
+            tail.episodes.extend(tail_episodes(self.page(page).await?));
+            if settled(listing, count, past, &tail) {
+                return Some((tail, false));
+            }
         }
-        let after = self.page_after(count, &tail.episodes).await?;
-        tail.episodes.extend(tail_episodes(after));
-        let open = rows_end_at(&tail, count)
-            && aligned(listing, count, &tail)
-            && unlike_the_show_s(past, &tail);
+        // Nothing settled, so only the alignment is left to say.
+        let open = aligned(listing, count, &tail);
         Some((tail, open))
     }
 

@@ -10,7 +10,7 @@ use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::{KitsuEpisode, KitsuRelation};
 
 /// The 1-based Kitsu page episode `n` is on.
-fn page_of(n: u32) -> u32 {
+pub(super) fn page_of(n: u32) -> u32 {
     n.saturating_sub(1) / KITSU_PAGE + 1
 }
 
@@ -110,36 +110,8 @@ pub(super) fn related(r: KitsuRelation, first_episodes: Option<Vec<SequelEpisode
 }
 
 impl KitsuTail<'_> {
-    /// Kitsu's rows on the pages [`tail_pages`] names: the ones holding
-    /// the count's last episodes.
-    pub(super) async fn count_pages(&self, count: u32) -> Option<Vec<KitsuEpisode>> {
-        let mut episodes = Vec::new();
-        for page in tail_pages(count) {
-            episodes.extend(self.page(page).await?);
-        }
-        Some(episodes)
-    }
-
-    /// Kitsu's rows on the page after the last of the count's, when
-    /// none of `read` is past the count: Kitsu's pages are not always
-    /// dense, and the placeholder rows the reader drops hide how full a
-    /// page was, so only the page after says what follows. None to
-    /// read for a count that ends a page, whose pages already hold the
-    /// page after it.
-    pub(super) async fn page_after(
-        &self,
-        count: u32,
-        read: &[TailEpisode],
-    ) -> Option<Vec<KitsuEpisode>> {
-        let looked_ahead = count % KITSU_PAGE == 0;
-        if looked_ahead || read.iter().any(|e| e.number > count) {
-            return Some(Vec::new());
-        }
-        let last = tail_pages(count).last().copied().unwrap_or(0);
-        self.page(last + 1).await
-    }
-
-    async fn page(&self, page: u32) -> Option<Vec<KitsuEpisode>> {
+    /// Kitsu's rows on the entry's `page`.
+    pub(super) async fn page(&self, page: u32) -> Option<Vec<KitsuEpisode>> {
         crate::commands::kitsu::kitsu_episode_page(self.state, self.kitsu_id, page)
             .await
             .ok()
