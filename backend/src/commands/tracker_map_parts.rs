@@ -17,7 +17,10 @@ pub(super) const MAX_HOPS: usize = 6;
 /// Kitsu's chain of parts from `root`: each the single sequel of the
 /// one before, resolving on the tracker to nothing or to `native`
 /// itself — never to an entry of its own — followed until the counts
-/// reach `tracker_total` or the chain ends.
+/// reach `tracker_total` or the chain ends. Where the counts reach the
+/// total, the next sequel is taken too if it resolves to `native`: a
+/// part mapped to the entry past its total says the parts before are
+/// not the whole of it, and the rules read it so.
 pub(super) async fn kitsu_parts(
     ask: &MapAsk<'_>,
     root: KitsuShow,
@@ -52,7 +55,33 @@ pub(super) async fn kitsu_parts(
             break;
         }
     }
+    if covered >= tracker_total {
+        if let Some(past) = mapped_past_total(ask, &parts, native).await? {
+            parts.push(past);
+        }
+    }
     Ok(parts)
+}
+
+/// The single sequel of the last of `parts` when it resolves to
+/// `native` itself.
+async fn mapped_past_total(
+    ask: &MapAsk<'_>,
+    parts: &[KitsuShow],
+    native: ProviderMediaId,
+) -> Result<Option<KitsuShow>> {
+    let last = parts.last().map(|p| p.id.clone()).unwrap_or_default();
+    let Some(sequel) = single_relation(ask.state, &last, "sequel").await? else {
+        return Ok(None);
+    };
+    let entry = crate::commands::account::resolve_native_media_id(
+        ask.state,
+        ask.kind,
+        &sequel.id,
+        ask.anilist_base,
+    )
+    .await?;
+    Ok((entry == Some(native)).then_some(sequel))
 }
 
 /// The first Kitsu part filed under `native`: `kitsu` itself, or the
