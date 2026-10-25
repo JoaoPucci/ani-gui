@@ -359,3 +359,14 @@ async fn background_fills_leave_the_reserve_to_the_user() {
         .expect("the reserve is the user's");
     assert_eq!(anilist.hits().len(), 3);
 }
+
+#[test]
+fn a_gate_is_kept_by_host_and_port() {
+    use super::authority;
+    assert_eq!(
+        authority("https://graphql.anilist.co"),
+        "graphql.anilist.co:443"
+    );
+    assert_eq!(authority("http://127.0.0.1:5000/x"), "127.0.0.1:5000");
+    assert_eq!(authority("not a url"), "not a url");
+}
