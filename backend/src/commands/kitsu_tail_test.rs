@@ -29,10 +29,14 @@ fn the_pages_read_hold_the_count_s_last_episodes_and_any_past_it() {
     assert_eq!(tail_pages(201), vec![10, 11]);
 }
 
-/// The corpus records, for every counted show, exactly the pages the
-/// reader asks for, so the regression run reads what production reads.
+/// The corpus records, for every counted show, the pages holding the
+/// count's last episodes (with the page after when the count ends a
+/// page), which are the pages the rule's verdict on the recorded data
+/// rests on. The reader also asks for the page after a count that does
+/// not end a page, which the corpus does not hold; the reader's own
+/// tests serve that page.
 #[test]
-fn the_corpus_holds_the_pages_the_reader_reads() {
+fn the_corpus_holds_the_pages_its_verdicts_rest_on() {
     let corpus: serde_json::Value =
         serde_json::from_slice(&fixture("corpus.json")).expect("corpus");
     for show in corpus["shows"].as_array().expect("shows") {
@@ -116,6 +120,34 @@ fn anilist_s_count_is_the_finished_one() {
     );
     assert_eq!(read(AiringStatus::default()), None);
     assert!(!entry_tail(Some("current"), None, &AiringStatus::default(), Vec::new()).finished);
+}
+
+/// A provider's listing as hianime recorded it.
+fn hianime_listing(id: u32) -> Vec<crate::scraper::provider::EpisodeRef> {
+    let body = String::from_utf8(fixture(&format!("episode-list-{id}.json"))).expect("utf-8");
+    crate::scraper::hianime::parse_episode_list(&body).expect("recorded listing")
+}
+
+/// A listing of `count` episodes, episode `n` named `name(n)`, and
+/// one row past the count named as no episode is: the shape the reader
+/// is asked about.
+fn listing_named(
+    count: u32,
+    name: impl Fn(u32) -> String,
+) -> Vec<crate::scraper::provider::EpisodeRef> {
+    (1..=count + 1)
+        .map(|n| crate::scraper::provider::EpisodeRef {
+            id: u64::from(n),
+            number: n,
+            number2: None,
+            title: Some(if n > count {
+                "An Extra of Its Own".to_string()
+            } else {
+                name(n)
+            }),
+            former_tag: None,
+        })
+        .collect()
 }
 
 fn state_with_kitsu(base: &str) -> crate::app::AppState {
@@ -209,11 +241,14 @@ async fn an_uncached_entry_and_page_are_read_from_kitsu() {
     )
     .expect("airing row");
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
-    let tail = source.tail(12).await.expect("read");
+    let tail = source.tail(&hianime_listing(916), 12).await.expect("read");
     assert!(tail.finished && tail.count == Some(12) && tail.anilist_count == Some(12));
     assert_eq!(tail.episodes.len(), 12);
     // Cached: a second read does not ask Kitsu for the page again.
-    let again = source.tail(12).await.expect("read again");
+    let again = source
+        .tail(&hianime_listing(916), 12)
+        .await
+        .expect("read again");
     assert_eq!(again, tail);
 }
 
@@ -222,7 +257,7 @@ async fn an_uncached_entry_and_page_are_read_from_kitsu() {
 async fn an_entry_kitsu_cannot_serve_gives_no_tail() {
     let state = state_with_kitsu("http://127.0.0.1:1");
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
-    assert_eq!(source.tail(12).await, None);
+    assert_eq!(source.tail(&hianime_listing(916), 12).await, None);
 }
 
 /// The tail carries the entries Kitsu relates the show to, read whole,
@@ -269,7 +304,7 @@ async fn noragami_s_tail_carries_its_relations_and_its_sequel_s_titles() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("7881"))
         .expect("an entry")
-        .tail(12)
+        .tail(&hianime_listing(916), 12)
         .await
         .expect("read");
     assert!(tail.related_complete);
@@ -370,7 +405,7 @@ async fn a_full_page_ending_at_the_count_is_followed_by_the_next() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("9"))
         .expect("an entry")
-        .tail(19)
+        .tail(&listing_named(19, |n| format!("Story {n}")), 19)
         .await
         .expect("read");
     assert!(tail.read_past_count);
@@ -457,7 +492,7 @@ async fn the_page_after_is_read_however_full_the_last_one_looked() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("9"))
         .expect("an entry")
-        .tail(19)
+        .tail(&listing_named(19, |n| format!("Story {n}")), 19)
         .await
         .expect("read");
     assert!(
@@ -532,7 +567,7 @@ async fn a_count_that_ends_a_page_reads_no_page_past_the_look_ahead() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("9"))
         .expect("an entry")
-        .tail(20)
+        .tail(&listing_named(20, |n| format!("Story {n}")), 20)
         .await
         .expect("read without a third page");
     assert_eq!(tail.episodes.len(), 20);
@@ -596,7 +631,7 @@ async fn a_sequel_page_keeps_which_episodes_lack_titles() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("7881"))
         .expect("an entry")
-        .tail(12)
+        .tail(&hianime_listing(916), 12)
         .await
         .expect("read");
     let sequel = tail
@@ -641,18 +676,15 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
         ("/anime/48677", None, "kitsu-anime-48677.json"),
         (
             "/anime/48677/episodes",
-            Some("20"),
-            "kitsu-episodes-48677-p2.json",
-        ),
-        (
-            "/anime/48677/episodes",
             Some("40"),
             "kitsu-episodes-48677-p3.json",
         ),
+        // The prequel Kitsu relates it to, an aired TV entry whose
+        // page the reader asks for.
         (
-            "/anime/48677/media-relationships",
+            "/anime/46241/episodes",
             None,
-            "kitsu-relations-48677.json",
+            "kitsu-episodes-46241-p1.json",
         ),
     ] {
         let mock = Mock::given(method("GET")).and(path(route));
@@ -664,6 +696,64 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
             .mount(&kitsu)
             .await;
     }
+    // Kitsu's second page as recorded lists 21 to 25 with neither title
+    // nor date, which no listing lines up with: titled and dated here,
+    // so the season's own episodes leave the reading open and the
+    // relations are read.
+    let mut second: serde_json::Value =
+        serde_json::from_slice(&fixture("kitsu-episodes-48677-p2.json")).expect("page two");
+    for row in second["data"].as_array_mut().expect("rows") {
+        let n = row["attributes"]["number"].as_u64().expect("numbered");
+        row["attributes"]["canonicalTitle"] = format!("Season Two Story {n}").into();
+        row["attributes"]["airdate"] = "2025-03-01".into();
+    }
+    Mock::given(method("GET"))
+        .and(path("/anime/48677/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&second))
+        .mount(&kitsu)
+        .await;
+    // The relations as recorded, with a finished one-episode OVA added
+    // to explain the row past the count: without one the reader stops
+    // before any relation's page, and the announced season's page not
+    // being asked for would say nothing.
+    let mut relations: serde_json::Value =
+        serde_json::from_slice(&fixture("kitsu-relations-48677.json")).expect("relations");
+    // The announced sequel first: Kitsu lists the aired prequel ahead
+    // of it, and the prequel's page titles none of its episodes, so a
+    // reader that stops at the first page refusing the rows would pass
+    // the sequel over for that and not for being announced.
+    relations["data"]
+        .as_array_mut()
+        .expect("data")
+        .sort_by_key(|link| link["attributes"]["role"] != "sequel");
+    let mut link = relations["data"][0].clone();
+    link["id"] = "999001".into();
+    link["attributes"]["role"] = "side_story".into();
+    link["relationships"]["destination"]["data"]["id"] = "999002".into();
+    relations["data"].as_array_mut().expect("data").push(link);
+    let mut ova = relations["included"]
+        .as_array()
+        .expect("included")
+        .iter()
+        .find(|e| e["type"] == "anime")
+        .expect("an anime entry")
+        .clone();
+    ova["id"] = "999002".into();
+    ova["attributes"]["subtype"] = "OVA".into();
+    ova["attributes"]["status"] = "finished".into();
+    ova["attributes"]["episodeCount"] = 1.into();
+    relations["included"]
+        .as_array_mut()
+        .expect("included")
+        .push(ova);
+    let count = relations["meta"]["count"].as_u64().expect("count");
+    relations["meta"]["count"] = (count + 1).into();
+    Mock::given(method("GET"))
+        .and(path("/anime/48677/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&relations))
+        .mount(&kitsu)
+        .await;
     Mock::given(method("GET"))
         .and(path("/anime/49778/episodes"))
         .respond_with(ResponseTemplate::new(503))
@@ -684,7 +774,7 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
     .expect("airing row");
     let tail = KitsuTail::for_entry(&state, Some("48677"))
         .expect("an entry")
-        .tail(25)
+        .tail(&listing_named(25, |n| format!("Season Two Story {n}")), 25)
         .await
         .expect("read without the announced season's page");
     assert!(tail.finished && tail.count == Some(25));
@@ -695,4 +785,123 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
         .expect("the announced sequel");
     assert_eq!(sequel.status.as_deref(), Some("upcoming"));
     assert_eq!(sequel.first_episodes, None);
+    let prequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "prequel")
+        .expect("the aired prequel");
+    assert!(
+        prequel.first_episodes.is_some(),
+        "the aired prequel's page is read beside it"
+    );
 }
+
+/// Every aired TV entry Kitsu relates the show to has its first page
+/// read, whatever the role: Noragami Aragoto's one TV relation is its
+/// prequel, and its page comes back with Noragami's twelve titled
+/// episodes; the OVA Kitsu relates as `other` gets none.
+#[tokio::test]
+async fn every_aired_tv_relation_s_page_is_read() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/10800/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    for (route, file) in [
+        ("/anime/10800", "kitsu-anime-10800.json"),
+        ("/anime/10800/episodes", "kitsu-episodes-10800-p1.json"),
+        (
+            "/anime/10800/media-relationships",
+            "kitsu-relations-10800.json",
+        ),
+        ("/anime/7881/episodes", "kitsu-episodes-7881-p1.json"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+    let airing =
+        crate::meta::anilist_airing::parse_airing_response(&fixture("anilist-airing-10800.json"))
+            .expect("airing")
+            .expect("known");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:10800",
+        &serde_json::to_string(&airing).expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("10800"))
+        .expect("an entry")
+        .tail(&hianime_listing(913), 13)
+        .await
+        .expect("read");
+    let prequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "prequel")
+        .expect("the prequel");
+    let page = prequel.first_episodes.as_ref().expect("the prequel's page");
+    assert_eq!(page.len(), 12);
+    assert_eq!(
+        page[0],
+        SequelEpisode {
+            number: 1,
+            title: Some("A Housecat, a Stray God, and a Tail".into()),
+        }
+    );
+    let ova = tail
+        .related
+        .iter()
+        .find(|r| r.subtype.as_deref() == Some("OVA"))
+        .expect("the OVA");
+    assert_eq!(ova.first_episodes, None);
+}
+
+/// A reading master kept (`appended:v1:`) was proved by a rule that
+/// checked the rows past the count against a TV sequel's names alone,
+/// and turned away only a sequel still airing. The rule now reads
+/// every aired TV entry Kitsu relates the show to, whatever the role,
+/// and refuses an entry of any role airing now, so a reading it proved
+/// may be one the rule refuses: with Kitsu titling Slime's TV sequel,
+/// The Slime Diaries' rows appended to Slime's first season would read
+/// as extras then, and as the Diaries' episodes now. Kept, it would
+/// stand for thirty days whenever the evidence cannot be read. It is
+/// not remembered, and the key it is kept under has moved past
+/// master's.
+#[test]
+fn a_reading_kept_under_the_sequel_only_rule_is_not_remembered() {
+    assert!(
+        !kept_key("41024").starts_with("appended:v1:"),
+        "the key must have moved past master's v1: {}",
+        kept_key("41024")
+    );
+    let state = state_with_kitsu("http://127.0.0.1:1");
+    let before = Remembered {
+        slug: "tensei-shitara-slime-datta-ken-77".into(),
+        count: 24,
+        ids: vec![1, 2, 3],
+    };
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "appended:v1:41024",
+        &serde_json::to_string(&before).expect("serialize"),
+        60,
+    )
+    .expect("put");
+    let tail = KitsuTail::for_entry(&state, Some("41024")).expect("an entry");
+    assert_eq!(tail.remembered(), None);
+    tail.remember(Some(&before));
+    assert_eq!(tail.remembered(), Some(before));
+}
+
+#[path = "kitsu_tail_settled_test.rs"]
+mod settled;
