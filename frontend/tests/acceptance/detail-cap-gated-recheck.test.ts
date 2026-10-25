@@ -364,6 +364,12 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			Array.from(target.querySelectorAll<HTMLButtonElement>('button.seg-btn')).find(
 				(b) => b.textContent?.trim() === label
 			)!;
+		const { read } = watchPageFetches();
+		/** The page-load lookups in sub whose answers the page has read. */
+		const subLookupsRead = () =>
+			read.filter(
+				(r) => r.path === '/api/availability' && r.body.mode === 'sub' && !r.body.bypass_cache
+			).length;
 		app = mount(DetailPage, { target });
 		await until(
 			() => tile(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
@@ -383,9 +389,11 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		);
 
 		releaseSubAgain();
-		// The write happens on the microtask after the response
-		// resolves, so anything that was going to clobber has by now.
-		await new Promise((r) => setTimeout(r, 300));
+		// The page has read the second sub lookup's answer, older and
+		// unconfirmed, and what it set off has run to its next write:
+		// anything that was going to clobber has by now.
+		await until(() => subLookupsRead() === 2, 'the second sub lookup to be read');
+		await afterRead();
 
 		// Both halves of the clobber: the special stays, and the cap is
 		// not rolled back to a number nobody confirmed.
@@ -625,6 +633,8 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const fetches = watchPageFetches();
+		const { sent } = fetches;
 		app = mount(DetailPage, { target });
 		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
 		tile(AIRED)!.click();
@@ -636,10 +646,15 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		startNavigation();
 
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the re-ask: its answer, which would clear
+		// the gate, has been read (or the request was stopped), and what
+		// it set off has run to its next request.
+		await until(() => reAskSettled(fetches), 'the re-ask to be stopped or answered');
+		await afterRead();
 
 		// Clearing the gate here calls startPlay, whose goto would cancel
 		// the navigation the user asked for.
+		expect(sent.filter(asksToPlay(AIRED))).toEqual([]);
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 		expect(goto).not.toHaveBeenCalled();
 	});
