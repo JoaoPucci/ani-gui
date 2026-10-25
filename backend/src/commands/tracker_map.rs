@@ -39,6 +39,8 @@ use crate::error::Result;
 mod airdates;
 #[path = "tracker_map_cache.rs"]
 mod cache;
+#[path = "tracker_map_chain.rs"]
+mod chain_walk;
 #[path = "tracker_map_evidence.rs"]
 mod evidence;
 
