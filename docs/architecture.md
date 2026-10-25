@@ -162,6 +162,8 @@ AniList limits each client's requests — 30 a minute while its API runs degrade
 - **Cool-down.** A 429, or a 503 that names a wait, records "nothing before now plus `Retry-After`", or a full minute when no wait came; so does an answer whose `X-RateLimit-Remaining` is zero. Until then nothing is sent.
 - **Waiting.** A request waits for its turn up to 3 seconds when the user is waiting on it, 2 seconds for a background fill. Past that it fails with the rate-limit error (`error.network.rate_limited`, carrying the seconds left) without being sent. A 429 that arrives anyway is retried once when its window ends inside that wait, and is otherwise returned and logged as the rate limit it is.
 
+A write the user made — a save or removal in the list editor, or the progress a watched episode sends to each tracker — is not dropped when the gate holds it back. The renderer reads the wait from the rate-limit error, shows "AniList is busy, saving in N s" for that long, and sends the write again by itself, up to four attempts in all; the editor's re-send re-reads the tracker's row first. A list save that still cannot land ends with the editor's rate-limited message, and a progress write that cannot be saved for any reason says so ("Couldn't save your progress to AniList"). Background fills show nothing: what they would have filled is asked again on the next view.
+
 A rate limit is not an answer about a show, and nothing caches it as one: a rate-limited episode-thumbnail lookup writes no negative row, a trending fetch AniList did not answer serves Kitsu's list for that load without keeping it as the trending row, and a detail page whose banner lookup got no answer is served without the banner and not cached.
 
 ### When AniList cannot answer
