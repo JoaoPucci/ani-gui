@@ -21,12 +21,15 @@ use crate::meta::anilist_user::AniListProvider;
 const ANY_BODY: &str = r#"{"data":{"Page":{"media":[]},"Media":null}}"#;
 
 /// A mock AniList that serves `limit` requests in any `window` and
-/// answers the rest 429 with `retry_after` seconds, like the real one.
+/// answers the rest 429 with `retry_after` seconds, like the real one
+/// — or, built by [`Limited::refusing_first`], refuses its first
+/// request alone.
 #[derive(Clone)]
 struct Limited {
     limit: usize,
     window: Duration,
     retry_after: u64,
+    refuse_first: bool,
     hits: Arc<Mutex<Vec<(Instant, u16)>>>,
 }
 
@@ -36,7 +39,17 @@ impl Limited {
             limit,
             window,
             retry_after,
+            refuse_first: false,
             hits: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// The first request answered 429 with `retry_after` seconds, every
+    /// later one served.
+    fn refusing_first(retry_after: u64) -> Self {
+        Self {
+            refuse_first: true,
+            ..Self::new(usize::MAX, Duration::ZERO, retry_after)
         }
     }
 
@@ -57,7 +70,12 @@ impl Respond for Limited {
             .iter()
             .filter(|(at, _)| now.duration_since(*at) < self.window)
             .count();
-        let status = if recent >= self.limit { 429 } else { 200 };
+        let refused = if self.refuse_first {
+            hits.is_empty()
+        } else {
+            recent >= self.limit
+        };
+        let status = if refused { 429 } else { 200 };
         hits.push((now, status));
         if status == 429 {
             ResponseTemplate::new(429).insert_header("retry-after", self.retry_after.to_string())
@@ -107,7 +125,7 @@ async fn after_a_429_nothing_reaches_anilist_until_its_retry_after_passes() {
     // That answer is reported as the rate limit it is; a caller who
     // cannot wait is refused without a request; one that can lands
     // after the window, and not before.
-    let anilist = Limited::new(0, Duration::from_millis(1), 2);
+    let anilist = Limited::refusing_first(2);
     let server = serve(anilist.clone()).await;
     let _shared = share_for_tests(
         &server.uri(),
@@ -204,7 +222,7 @@ async fn a_write_held_back_by_the_cool_down_lands_after_it() {
     // A list write that meets the cool-down is refused with the wait
     // left — no request spent — and the same write lands once the
     // window has passed.
-    let anilist = Limited::new(0, Duration::from_millis(1), 2);
+    let anilist = Limited::refusing_first(2);
     let server = serve(anilist.clone()).await;
     let _shared = share_for_tests(
         &server.uri(),
