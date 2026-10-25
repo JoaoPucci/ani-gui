@@ -17,6 +17,7 @@
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
 	import {
+		editorToggle,
 		runEditorRemove,
 		runEditorSave,
 		settleRemove,
@@ -234,12 +235,10 @@
 	});
 
 	function toggle() {
-		// Don't open while disabled — the live entry is still loading or its
-		// read failed, so the form would seed Planning/0 and a Save could
-		// overwrite a real entry whose status we don't actually know yet.
-		if (disabled) return;
-		if (open) {
-			closeEditor(); // guarded: a no-op while a write is in flight (preserves the seed)
+		const act = editorToggle({ open, busy: saving || removing, disabled });
+		if (act === 'ignore') return;
+		if (act === 'close') {
+			closeEditor();
 			return;
 		}
 		// Re-seed from a surviving pending edit (an unfinished partial-save retry

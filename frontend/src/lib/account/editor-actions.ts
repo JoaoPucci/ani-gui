@@ -132,3 +132,17 @@ export function settleRemove(res: RemoveResult, sameShow: boolean): Settled {
 	if (res.kind === 'failed') return { toast: failedToast(res.rateLimited), local: false };
 	return { toast: { kind: 'success', message: m.detail_list_removed() }, local: true };
 }
+
+/** What a click on the editor's trigger does. A disabled editor does
+ *  nothing — its live entry is still loading or its read failed, so the
+ *  form would seed Planning/0 and a Save could overwrite a real entry.
+ *  An open one closes, unless a write is out; a closed one opens. */
+export function editorToggle(state: {
+	open: boolean;
+	busy: boolean;
+	disabled: boolean;
+}): 'open' | 'close' | 'ignore' {
+	if (state.disabled) return 'ignore';
+	if (state.open) return state.busy ? 'ignore' : 'close';
+	return 'open';
+}
