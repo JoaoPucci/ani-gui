@@ -9,6 +9,7 @@
 import type { EntryView } from './types';
 import type { EditorSave, RemoveOutcome, SetOutcome } from './set-entry';
 import { effectiveProgress, effectiveStatus } from './list-entry-edit';
+import { m } from '$lib/paraglide/messages';
 
 /**
  * Outcome of a Save: `noop` when the editor was disabled (so nothing was
@@ -95,4 +96,39 @@ export async function runEditorRemove(
 	} catch {
 		return { kind: 'failed' };
 	}
+}
+
+/** What the editor does with a write's result: the toast that reports
+ *  it, if any, and whether the editor's own state — the button's value,
+ *  the pending edit, the popover — takes the result. */
+export interface Settled {
+	toast: { kind: 'success' | 'error'; message: string } | null;
+	local: boolean;
+}
+
+const NOTHING: Settled = { toast: null, local: false };
+
+function failedToast(rateLimited: boolean | undefined): Settled['toast'] {
+	return {
+		kind: 'error',
+		message: rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+	};
+}
+
+/** How a Save's result settles. `sameShow` is false when the editor has
+ *  moved to another show while the write was out. */
+export function settleSave(res: SaveResult, sameShow: boolean): Settled {
+	if (!sameShow || res.kind === 'noop') return NOTHING;
+	if (res.kind === 'failed') return { toast: failedToast(res.rateLimited), local: false };
+	if (res.kind === 'partial') {
+		return { toast: { kind: 'error', message: m.detail_list_save_partial() }, local: true };
+	}
+	return { toast: { kind: 'success', message: m.detail_list_saved() }, local: true };
+}
+
+/** How a Remove's result settles — see {@link settleSave}. */
+export function settleRemove(res: RemoveResult, sameShow: boolean): Settled {
+	if (!sameShow || res.kind === 'noop') return NOTHING;
+	if (res.kind === 'failed') return { toast: failedToast(res.rateLimited), local: false };
+	return { toast: { kind: 'success', message: m.detail_list_removed() }, local: true };
 }

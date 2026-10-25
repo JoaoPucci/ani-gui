@@ -16,7 +16,12 @@
 <script lang="ts">
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
-	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
+	import {
+		runEditorRemove,
+		runEditorSave,
+		settleRemove,
+		settleSave
+	} from '$lib/account/editor-actions';
 	import { deriveListEntryView, listButtonLabel } from '$lib/account/list-entry-view';
 	import {
 		seedForOpen,
@@ -152,15 +157,11 @@
 			}
 		);
 		saving = false;
-		if (kitsuId !== id) return; // navigated away mid-save — don't touch the new show
-		if (res.kind === 'noop') return;
-		if (res.kind === 'failed') {
-			toastStore.push({
-				kind: 'error',
-				message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-			});
-			return; // keep the popover open to retry
-		}
+		const settled = settleSave(res, kitsuId === id);
+		if (settled.toast) toastStore.push(settled.toast);
+		// A failure keeps the popover open to retry; a show changed mid-save
+		// leaves the new show's state alone.
+		if (!settled.local || res.kind === 'noop' || res.kind === 'failed') return;
 		if (res.kind === 'partial') {
 			// Some trackers took it, others didn't. Apply the landed value to the
 			// button immediately so it reflects what at least one tracker now holds
@@ -180,11 +181,9 @@
 				editStatus,
 				editProgress
 			);
-			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 			onReconcile();
 			return;
 		}
-		toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 		live = res.live;
 		// Every tracker took it — the divergence is gone, so drop any pending retry.
 		pendingEdit = pendingAfterSave(
@@ -298,16 +297,11 @@
 		removing = true;
 		const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled });
 		removing = false;
-		if (kitsuId !== id) return; // navigated away mid-remove
-		if (res.kind === 'noop') return;
-		if (res.kind === 'failed') {
-			toastStore.push({
-				kind: 'error',
-				message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-			});
-			return; // keep the popover open to retry
-		}
-		toastStore.push({ kind: 'success', message: m.detail_list_removed() });
+		const settled = settleRemove(res, kitsuId === id);
+		if (settled.toast) toastStore.push(settled.toast);
+		// A failure keeps the popover open to retry; a show changed mid-remove
+		// leaves the new show's state alone.
+		if (!settled.local) return;
 		live = null;
 		// The entry's gone everywhere, so any pending status retry is moot.
 		pendingEdit = null;

@@ -32,10 +32,14 @@ export interface EditorSave {
 /** How one provider's write is run: once, or held through a rate limit
  *  and run again (`saveWhenTrackerAllows`). The whole read-then-write is
  *  the attempt, so a retry decides off a fresh read. */
-export type RunWrite = <T>(provider: Provider, attempt: () => Promise<T>) => Promise<T>;
+export type RunWrite = <T>(
+	provider: Provider,
+	kitsuId: string,
+	attempt: () => Promise<T>
+) => Promise<T>;
 
 /** Run the write once. */
-export const runOnce: RunWrite = (_provider, attempt) => attempt();
+export const runOnce: RunWrite = (_provider, _kitsuId, attempt) => attempt();
 
 export interface SetEntryDeps {
 	/** Providers currently connected (from the account store). */
@@ -101,7 +105,7 @@ export async function setEntryAcrossTrackers(
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm written
 			try {
-				const res = await runWrite(provider, async () => {
+				const res = await runWrite(provider, kitsuId, async () => {
 					const current = await deps.getEntry(provider, bearer, kitsuId);
 					const edit = buildListEdit({
 						current: current?.status ?? null,
@@ -157,7 +161,7 @@ export async function removeEntryAcrossTrackers(
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
-				return await runWrite(provider, async (): Promise<FanoutResult> => {
+				return await runWrite(provider, kitsuId, async (): Promise<FanoutResult> => {
 					const current = await deps.getEntry(provider, bearer, kitsuId);
 					if (current === null) return 'neither'; // nothing to remove here
 					await deps.removeEntry(provider, bearer, kitsuId);

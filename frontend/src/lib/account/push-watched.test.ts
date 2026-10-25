@@ -62,7 +62,7 @@ describe('pushWatchedToTrackers', () => {
 				if (provider === 'mal') throw new Error('network');
 				return null;
 			}),
-			runWrite: async <T>(provider: Provider, attempt: () => Promise<T>) => {
+			runWrite: async <T>(provider: Provider, _kitsuId: string, attempt: () => Promise<T>) => {
 				ran.push(provider);
 				return attempt();
 			},

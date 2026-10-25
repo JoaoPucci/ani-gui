@@ -25,12 +25,14 @@ export function noticeBusy(provider: Provider, seconds: number): void {
 	});
 }
 
-/** Run a user's write to `provider`, waiting out its rate limit with a
- *  notice — see `saveWhenAllowed`. */
+/** Run a user's write of `kitsuId` to `provider`, waiting out its rate
+ *  limit with a notice — see `saveWhenAllowed`. */
 export function saveWhenTrackerAllows<T>(
 	provider: Provider,
+	kitsuId: string,
 	attempt: () => Promise<T>
 ): Promise<T> {
+	void kitsuId;
 	return saveWhenAllowed(attempt, {
 		notify: (seconds) => noticeBusy(provider, seconds),
 		wait: sleep

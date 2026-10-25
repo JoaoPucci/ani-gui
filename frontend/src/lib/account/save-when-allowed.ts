@@ -15,6 +15,17 @@ export const MAX_SAVE_ATTEMPTS = 4;
 /** The wait assumed when a 429 names none: AniList's one-minute timeout. */
 export const DEFAULT_WAIT_S = 60;
 
+/** The longest a write is held for one refusal. */
+export const MAX_WAIT_S = 120;
+
+/** A held write a newer write for the same show replaced while it
+ *  waited: dropped, neither sent nor reported. */
+export class SupersededError extends Error {
+	constructor() {
+		super('superseded by a newer write');
+	}
+}
+
 /**
  * The seconds a refused write is asked to wait, or `null` when `error`
  * is not a rate limit. A 429 whose body carries no usable
@@ -45,6 +56,8 @@ export interface SaveWaitDeps {
 	wait: (ms: number) => Promise<void>;
 	/** Attempts in all; {@link MAX_SAVE_ATTEMPTS} when omitted. */
 	maxAttempts?: number;
+	/** Whether the write is still the one to send, asked after each wait. */
+	stillWanted?: () => boolean;
 }
 
 /**
