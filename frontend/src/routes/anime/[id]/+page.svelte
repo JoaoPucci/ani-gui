@@ -115,6 +115,7 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
+	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
 	import { fallbackTileTitle } from '$lib/play/tile-title';
@@ -139,6 +140,7 @@
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
+	let config = $state<Config | null>(null);
 	const id = $derived(page.params.id ?? '');
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
@@ -153,12 +155,22 @@
 		isSingleVideo(detail?.subtype ?? null, detail?.episode_count ?? null, detail?.status ?? null)
 	);
 
-	// Availability probe — runs once after detail loads. null = not
-	// yet checked / network error (lazy fallback handles the click);
+	// Availability probe — runs after detail loads, and again when the
+	// audio changes. null = no answer yet for this show in this audio /
+	// network error (lazy fallback handles the click);
 	// true = the provider has at least one candidate; false = the show
 	// isn't in the provider's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
-	let availability = $state<boolean | null>(null);
+	//
+	// It is one field of the provider's row for the show
+	// ($lib/availability/row), which every accepted answer writes
+	// and which is read for the show and audio on screen: an answer
+	// about one audio says nothing about the other. A music title is
+	// unavailable in both by this page's own rule, asked or not.
+	let availabilityRow = $state<AvailabilityRow | null>(null);
+	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const knownRow = $derived(rowFor(availabilityRow, rowKey));
+	const availability = $derived(isMusicSubtype(detail?.subtype ?? null) ? false : knownRow.listed);
 	// True once the availability probe settled (result, error, or the
 	// music-subtype skip). The prefetch warm waits on it: firing while
 	// playableEpisodeCount is still null would treat the cap as
@@ -166,16 +178,16 @@
 	let availabilityResolved = $state(false);
 	// The current lookup's own verdict, for the warm: null while the
 	// question is open or after it failed, never one retained from
-	// an earlier lookup — `availability` above keeps what the page had
-	// on failure, for the call to action, and the warm must not read
-	// the other mode's answer as this one's.
+	// an earlier lookup — `availability` above keeps an earlier answer
+	// in the same audio on failure, for the call to action, and the warm
+	// acts only on what this lookup said.
 	let warmListed = $state<boolean | null>(null);
 
 	// The provider's availableEpisodes for the chosen candidate, populated
 	// alongside availability. This is the authoritative "what's
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, the provider 1161).
-	let playableEpisodeCount = $state<number | null>(null);
+	const playableEpisodeCount = $derived(knownRow.count);
 
 	// The show's versions, when the provider lists it twice ("Versions
 	// of one pick" in docs/title-resolution.md), as the availability
@@ -312,17 +324,13 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
-		if (patch.available !== undefined) {
-			availability = patch.available;
-			// Whether that verdict is a refusal by name travels with it
-			// ($lib/detail/availability-writeback).
-			availabilityRefused = patch.refused === true;
-			// A patch that carries the verdict is the current lookup's
-			// or a re-ask's that won it — either way the warm's too.
-			warmListed = patch.available;
-		}
-		if (patch.count !== undefined) playableEpisodeCount = patch.count;
-		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+		// The writeback and the re-ask have both checked that the answer
+		// is about the show and audio on screen, so it is stamped with
+		// them.
+		availabilityRow = mergeRow(availabilityRow, rowKey, patch);
+		// A patch that carries the verdict is the current lookup's or a
+		// re-ask's that won it — either way the warm's too.
+		if (patch.available !== undefined) warmListed = patch.available;
 		if (patch.versions !== undefined) {
 			// A patch lands only in the context it was asked in — this
 			// show, this audio — so the versions are this mode's.
@@ -456,7 +464,7 @@
 	// special episodes — e.g. ["1061.5"] for One Piece). Spliced
 	// into the episode strip at their numeric position so the user
 	// can navigate to them. Empty when the show has no extras.
-	let extraEpisodes = $state<string[]>([]);
+	const extraEpisodes = $derived(knownRow.extraEpisodes);
 
 	// The cap used for: resume button (defaultEpisode), Download All
 	// total, Download range max, episode-list tile count. Prefers
@@ -572,7 +580,7 @@
 	// Whether `availability`'s verdict is the provider refusing the
 	// title by name: written with the verdict, by whoever owns it
 	// ($lib/detail/availability-writeback).
-	let availabilityRefused = $state(false);
+	const availabilityRefused = $derived(knownRow.refused);
 	// A music title is unavailable in both audios by this page's own
 	// rule, so it never names the other one, whatever the cache holds.
 	$effect(() => {
@@ -811,7 +819,6 @@
 		};
 	});
 
-	let config = $state<Config | null>(null);
 	let configError = $state<string | null>(null);
 
 	// The mode as a value rather than as "whatever `config` currently
@@ -1116,12 +1123,9 @@
 		episodesError = null;
 		similar = null;
 		error = null;
-		availability = null;
-		availabilityRefused = false;
+		availabilityRow = null;
 		availabilityResolved = false;
 		warmListed = null;
-		playableEpisodeCount = null;
-		extraEpisodes = [];
 		showVersions = [];
 		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
@@ -1147,7 +1151,6 @@
 					// unavailable up front instead of letting the probe fuzzy-match
 					// an unrelated anime and play the wrong show. The lookup
 					// effect below stands down for these.
-					availability = false;
 					availabilityResolved = true;
 				}
 				// Override the layout's URL-only default with the
