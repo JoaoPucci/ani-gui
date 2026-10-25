@@ -724,3 +724,85 @@ async fn a_feed_with_an_entry_kitsu_could_not_bridge_is_not_kept_without_it() {
         "the row was kept without the entry Kitsu failed to bridge"
     );
 }
+
+#[tokio::test]
+async fn a_trending_entry_kitsu_has_no_cover_for_takes_anilists_banner_as_its_cover() {
+    let anilist = trending_answer(vec![anilist_entry(101, 21, Some(BANNER))]).await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "m-21",
+                "type": "mappings",
+                "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+                "relationships": { "item": { "data": { "type": "anime", "id": "12" } } },
+            }],
+            "included": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": {
+                    "canonicalTitle": "Show 12",
+                    "titles": {},
+                    "subtype": "TV",
+                    "status": "current",
+                    "posterImage": null,
+                    "coverImage": null,
+                },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    assert_eq!(
+        refs[0]
+            .cover_image
+            .as_ref()
+            .and_then(|c| c.large.as_deref()),
+        Some(BANNER)
+    );
+}
+
+#[tokio::test]
+async fn an_empty_trending_answer_falls_back_without_keeping_the_fallback() {
+    let anilist = trending_answer(Vec::new()).await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "data": [], "included": [] })),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback");
+    assert!(refs.is_empty());
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, "kitsu:v6:trending_anilist").expect("read"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn an_unreadable_trending_row_is_fetched_again() {
+    let (anilist, kitsu) = trending_fixture().await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:v6:trending_anilist",
+        "not json",
+        60,
+    )
+    .expect("row");
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    assert_eq!(refs.len(), 2);
+}
