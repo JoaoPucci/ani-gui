@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
@@ -302,6 +302,7 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		// and taken the overlay down, before the click returned.
 		(reloadButton() as HTMLButtonElement).click();
 		expect(asked.evictions, 'no eviction is asked for').toBe(0);
+		flushSync();
 		expect(reloadButton()).not.toBeNull();
 		// Once the lookup lands, the Reload goes through.
 		settle();
