@@ -10,19 +10,20 @@ use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingLis
 /// Why a lookup came back without a listing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Miss {
-    /// A step answered and the answer was no listing — no usable
-    /// mapping, an unreadable body, an upstream error: negative-cached.
-    Failed,
-    /// AniList refused this client, or its budget held the request
-    /// back. Not an answer, and never cached as one.
-    RateLimited,
+    /// Kitsu answered that the show maps to neither AniList nor MAL:
+    /// an answer, negative-cached.
+    NoIds,
+    /// A step got no answer — Kitsu's mappings or AniList failing,
+    /// refusing this client, or answering what cannot be read. Unknown,
+    /// and never cached as an absence.
+    Unanswered,
 }
 
 /// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
-/// AniList streamingEpisodes → [`StreamingListing`]. A failed step
-/// (no usable mapping, parse failure) is [`Miss::Failed`], which the
-/// caller negative-caches; an AniList rate limit is
-/// [`Miss::RateLimited`], which it does not.
+/// AniList streamingEpisodes → [`StreamingListing`]. A show with
+/// neither id is [`Miss::NoIds`], which the caller negative-caches;
+/// any step without an answer is [`Miss::Unanswered`], which it does
+/// not.
 pub(super) async fn fetch_anilist_eps_thumbs(
     state: &AppState,
     kitsu_id: &str,
@@ -32,11 +33,10 @@ pub(super) async fn fetch_anilist_eps_thumbs(
         .await
         .map_err(|e| {
             tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed");
-            Miss::Failed
+            Miss::Unanswered
         })?;
-    // Neither id: nothing to ask AniList. Err so the empty result
-    // takes the short negative TTL, as a failed lookup does.
-    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::Failed)?;
+    // Neither id: nothing to ask AniList, and that is Kitsu's answer.
+    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::NoIds)?;
     // A fill the page renders without: it spends AniList's budget
     // behind what the user is looking at.
     crate::meta::anilist_gate::in_background(streaming_listing_for_ids(
@@ -47,19 +47,13 @@ pub(super) async fn fetch_anilist_eps_thumbs(
     ))
     .await
     .map_err(|e| {
-        let miss = if matches!(e, crate::error::AniError::RateLimited { .. }) {
-            Miss::RateLimited
-        } else {
-            Miss::Failed
-        };
         tracing::warn!(
             kitsu_id,
             mal_id = ?ids.mal,
             anilist_id = ?ids.anilist,
             error = ?e,
-            ?miss,
-            "anilist thumbs: streamingEpisodes fetch failed",
+            "anilist thumbs: streamingEpisodes fetch got no answer; nothing cached",
         );
-        miss
+        Miss::Unanswered
     })
 }
