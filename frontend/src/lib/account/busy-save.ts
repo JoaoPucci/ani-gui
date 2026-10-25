@@ -40,6 +40,7 @@ export function noticeBusy(provider: Provider, seconds: number): string {
  *  the wait, has said what the tracker should hold for those, and the
  *  held one would undo it. Nothing left, and it is superseded. */
 const started = new Map<string, number>();
+const inFlight = new Map<string, number>();
 const coverage = new Map<string, Partial<Record<WriteField, number>>>();
 const notices = new Map<string, string>();
 
@@ -58,12 +59,26 @@ function takeDownNotice(key: string): void {
 function start(key: string, fields: readonly WriteField[]): number {
 	const generation = (started.get(key) ?? 0) + 1;
 	started.set(key, generation);
+	inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
 	const covered = { ...coverage.get(key) };
 	for (const field of fields) covered[field] = generation;
 	coverage.set(key, covered);
 	// The older write's notice says something this write may change.
 	takeDownNotice(key);
 	return generation;
+}
+
+/** A write for `key` settled. With none left in flight, nothing about
+ *  the key can matter to a later write, and the ledger forgets it. */
+function settle(key: string): void {
+	const left = (inFlight.get(key) ?? 1) - 1;
+	if (left > 0) {
+		inFlight.set(key, left);
+		return;
+	}
+	inFlight.delete(key);
+	started.delete(key);
+	coverage.delete(key);
 }
 
 /** Run a user's write of `kitsuId` to `provider`, waiting out its rate
@@ -89,10 +104,12 @@ export function saveWhenTrackerAllows<T>(
 		},
 		wait: sleep,
 		stillWanted: () => held.left().length > 0
-	}).catch((e: unknown) => {
-		if (e instanceof SupersededError && started.get(key) === generation) takeDownNotice(key);
-		throw e;
-	});
+	})
+		.catch((e: unknown) => {
+			if (e instanceof SupersededError && started.get(key) === generation) takeDownNotice(key);
+			throw e;
+		})
+		.finally(() => settle(key));
 }
 
 /** The error toast for a progress write that could not be saved. */

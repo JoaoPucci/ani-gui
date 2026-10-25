@@ -101,11 +101,9 @@ export async function pushWatchedToTrackers(
 					provider,
 					kitsuId,
 					(held) => {
-						// Only what no newer write of the show has covered — and
-						// never a completion without its episode, which the backend
-						// checks it against: covered episode, nothing sent.
-						const left = held.left();
-						const rest = left.includes('progress') ? keepWrite(body, fields, left) : null;
+						// Only what no newer write of the show has covered, and
+						// never a completion without its episode (`keepWrite`).
+						const rest = keepWrite(body, fields, held.left());
 						if (rest === null) throw new SupersededError();
 						return deps.updateProgress(provider, bearer, rest);
 					},

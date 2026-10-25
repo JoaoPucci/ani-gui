@@ -18,7 +18,7 @@ export interface Flight {
 export function reopenForm(
 	flight: Flight
 ): { status: ListStatus; progress: number; seededStatus?: ListStatus } | null {
-	return flight.sent ? { status: flight.sent.status, progress: flight.sent.progress } : null;
+	return flight.sent ? { ...flight.sent } : null;
 }
 
 export type Flights = ReadonlyMap<string, Flight>;

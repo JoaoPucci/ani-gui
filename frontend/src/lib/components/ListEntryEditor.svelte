@@ -168,7 +168,7 @@
 		const sentProgress = editProgress;
 		flights = withFlight(flights, id, {
 			kind: 'saving',
-			sent: { status: sentStatus, progress: sentProgress }
+			sent: { status: sentStatus, progress: sentProgress, seededStatus }
 		});
 		const res = await runEditorSave(
 			{ syncSetEntry },
