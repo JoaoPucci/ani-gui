@@ -12,7 +12,7 @@ import type { FanoutResult } from './set-entry-outcome';
 import { buildListEdit } from './list-entry-edit';
 import {
 	ALL_FIELDS,
-	keepFields,
+	keepWrite,
 	SupersededError,
 	type HeldWrite,
 	type WriteField
@@ -53,7 +53,7 @@ export async function sendSave(
 		progress: save.progress,
 		total: save.total ?? null
 	});
-	const body = keepFields(edit, fields, to.held.left());
+	const body = keepWrite(edit, fields, to.held.left());
 	if (body === null) throw new SupersededError();
 	return deps.setEntry(to.provider, to.bearer, { kitsu_id: to.kitsuId, ...body });
 }

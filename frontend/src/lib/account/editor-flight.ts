@@ -9,7 +9,16 @@ import type { ListStatus } from './types';
  *  so a reopened editor can show it. */
 export interface Flight {
 	kind: 'saving' | 'removing';
-	sent?: { status: ListStatus; progress: number };
+	sent?: { status: ListStatus; progress: number; seededStatus?: ListStatus };
+}
+
+/** The form a reopened editor shows for the write in flight: what the
+ *  save sent, and the status the form was seeded on when it did. `null`
+ *  for a write that sent no form (a removal). */
+export function reopenForm(
+	flight: Flight
+): { status: ListStatus; progress: number; seededStatus?: ListStatus } | null {
+	return flight.sent ? { status: flight.sent.status, progress: flight.sent.progress } : null;
 }
 
 export type Flights = ReadonlyMap<string, Flight>;

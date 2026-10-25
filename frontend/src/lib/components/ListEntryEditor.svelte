@@ -35,6 +35,7 @@
 	import {
 		flightFor,
 		NO_FLIGHTS,
+		reopenForm,
 		withFlight,
 		withoutFlight,
 		type Flights
@@ -261,10 +262,12 @@
 			closeEditor();
 			return;
 		}
-		if (act === 'reopen' && flight?.sent) {
+		const sent = act === 'reopen' && flight ? reopenForm(flight) : null;
+		if (sent) {
 			// The save still out for this show: show what it sent, locked.
-			editStatus = flight.sent.status;
-			editProgress = flight.sent.progress;
+			editStatus = sent.status;
+			editProgress = sent.progress;
+			if (sent.seededStatus) seededStatus = sent.seededStatus;
 		} else {
 			// Re-seed from a surviving pending edit (an unfinished partial-save
 			// retry for this show) when present, else from the live view.

@@ -43,6 +43,11 @@ const started = new Map<string, number>();
 const coverage = new Map<string, Partial<Record<WriteField, number>>>();
 const notices = new Map<string, string>();
 
+/** How many tracker-and-show keys the ledger holds. */
+export function trackedWriteKeys(): number {
+	return started.size;
+}
+
 function takeDownNotice(key: string): void {
 	const id = notices.get(key);
 	if (id !== undefined) toastStore.dismiss(id);

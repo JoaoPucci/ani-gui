@@ -46,6 +46,15 @@ export function keepFields<B extends { status?: unknown; progress?: unknown }>(
 	return kept.status === undefined && kept.progress === undefined ? null : kept;
 }
 
+/** What is left of a held write's `body` to send — see {@link keepFields}. */
+export function keepWrite<B extends { status?: unknown; progress?: unknown }>(
+	body: B,
+	declared: readonly WriteField[],
+	left: readonly WriteField[]
+): B | null {
+	return keepFields(body, declared, left);
+}
+
 /** A held write a newer write for the same show replaced while it
  *  waited: dropped, neither sent nor reported. */
 export class SupersededError extends Error {

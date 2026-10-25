@@ -9,7 +9,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
-import { keepFields, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
+import { keepWrite, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -105,7 +105,7 @@ export async function pushWatchedToTrackers(
 						// never a completion without its episode, which the backend
 						// checks it against: covered episode, nothing sent.
 						const left = held.left();
-						const rest = left.includes('progress') ? keepFields(body, fields, left) : null;
+						const rest = left.includes('progress') ? keepWrite(body, fields, left) : null;
 						if (rest === null) throw new SupersededError();
 						return deps.updateProgress(provider, bearer, rest);
 					},
