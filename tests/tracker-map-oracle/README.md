@@ -35,7 +35,9 @@ them. How the evidence is gathered (which requests, through which
 caches, a page Kitsu did not list whole), the write path's reads,
 locks, rewatch and monotonic rules, and the cache's keys and windows
 are checked by the Rust tests beside them (`tracker_map_test.rs`,
-`account_mapped_test.rs`, `account_mapped_wire_test.rs`), not here. A
+`account_mapped_test.rs`, `account_mapped_wire_test.rs`), not here.
+So is a read that fails: it never becomes evidence, since the write
+fails with it before any rule runs, and so it has no family here. A
 green comparison says the rules agree with the document; it says
 nothing about those.
 
