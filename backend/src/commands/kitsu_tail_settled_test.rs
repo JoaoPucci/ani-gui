@@ -499,3 +499,28 @@ async fn a_last_episode_the_listing_does_not_name_refuses_without_any_read() {
     assert!(untagged(&rows), "{rows:?}");
     assert_eq!(kept, None);
 }
+
+/// The listing names each of the count's last episodes only by its
+/// number: whatever Kitsu says, nothing shows its numbering to be
+/// Kitsu's, so nothing need be read.
+#[tokio::test]
+async fn last_episodes_named_only_by_number_refuse_without_any_read() {
+    let mut show = noragami();
+    for row in &mut show.episodes[9..12] {
+        row.title = Some(format!("Episode {}", row.number));
+    }
+    let (rows, kept) = fitted_listing(&Answers::recorded(), EVERY_READ, show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// A listing row for one of the count's last episodes named by
+/// punctuation alone names nothing Kitsu's could match.
+#[tokio::test]
+async fn a_last_episode_named_by_punctuation_alone_refuses_without_any_read() {
+    let mut show = noragami();
+    show.episodes[10].title = Some("—".into());
+    let (rows, kept) = fitted_listing(&Answers::recorded(), EVERY_READ, show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
