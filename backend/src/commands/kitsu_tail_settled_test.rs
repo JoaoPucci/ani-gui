@@ -546,3 +546,48 @@ async fn a_row_past_the_count_named_as_a_last_episode_refuses_without_any_read()
     assert!(untagged(&rows), "{rows:?}");
     assert_eq!(kept, None);
 }
+
+/// The budget is what bounds a read in production: a read still out
+/// when it runs out is no evidence, and the reading kept from before
+/// stands. Kitsu's entry is held unanswered; once the request reaches
+/// it the clock is paused, so the budget ends the fit at the budget
+/// exactly, however slow the machine.
+#[tokio::test]
+async fn a_read_the_budget_runs_out_on_is_no_evidence() {
+    use crate::commands::play_native_appended::TAIL_BUDGET;
+    use crate::held::{gate, paused_once, Held};
+    let answers = Answers::recorded();
+    let kitsu = serve(&answers, &["detail"]).await;
+    let (hold, gate) = gate();
+    Mock::given(method("GET"))
+        .and(path("/anime/7881"))
+        .respond_with(Held::new(
+            hold,
+            ResponseTemplate::new(200).set_body_json(&answers.detail),
+        ))
+        .with_priority(2)
+        // The entry is the first read, and held: only the budget can
+        // end a fit that asked for it.
+        .expect(1)
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
+    let show = noragami();
+    let kept = Remembered {
+        slug: show.hit.slug.clone(),
+        count: 12,
+        ids: show.episodes[12..].iter().map(|e| e.id).collect(),
+    };
+    source.remember(Some(&kept));
+    // Bounded twice over, so a source that lost its budget fails here,
+    // by name, instead of waiting on the held read for ever.
+    let fit = tokio::time::timeout(2 * TAIL_BUDGET, fit_appended(show, Some(12), Some(&source)));
+    let fitted = paused_once(fit, gate.asked())
+        .await
+        .ended_by(TAIL_BUDGET, "the fit")
+        .expect("the source's own budget ends the fit");
+    gate.release();
+    assert!(!untagged(&fitted.episodes), "{:?}", fitted.episodes);
+    assert_eq!(source.remembered(), Some(kept));
+}
