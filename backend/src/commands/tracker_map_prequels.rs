@@ -10,7 +10,7 @@ use super::*;
 /// The first Kitsu part filed under `native`: `kitsu` itself, or the
 /// earliest of its single prequels, up the chain, that resolves to
 /// `native` too. Prequels that resolve to nothing are walked through,
-/// as [`kitsu_parts`] takes them forward; one that resolves to another
+/// as [`super::parts_walk::kitsu_parts`] takes them forward; one that resolves to another
 /// entry ends the walk.
 pub(super) async fn first_part_under(
     ask: &MapAsk<'_>,

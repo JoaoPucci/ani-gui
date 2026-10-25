@@ -1,7 +1,8 @@
 //! Kitsu's chains of parts behind the episode map's evidence: the
 //! parts filed under one tracker entry, read forward. The prequel walks
-//! are in `tracker_map_prequels.rs`. Split from `tracker_map_evidence.rs` so each
-//! file stays inside the CRAP gate's per-file bar.
+//! are in `tracker_map_prequels.rs`. Split from
+//! `tracker_map_evidence.rs` so each file stays inside the CRAP gate's
+//! per-file bar.
 
 use super::kitsu_side::single_relation;
 use super::*;
