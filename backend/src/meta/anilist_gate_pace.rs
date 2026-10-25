@@ -111,7 +111,8 @@ impl Ledger {
     }
 
     /// The request that left at `sent` was answered (or failed) at
-    /// `done`: it is counted from then on. AniList counts a request
+    /// `done`: it is counted from then on. One still in flight, or
+    /// dropped before its answer, stays counted from when it left. AniList counts a request
     /// when it arrives, which is after it left by however long the
     /// connection took; counting it from its answer keeps the window
     /// this side ends no earlier than the one AniList keeps.
