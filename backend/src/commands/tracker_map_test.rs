@@ -460,6 +460,45 @@ async fn a_read_that_fails_partway_along_the_chain_fails_the_map() {
 }
 
 #[tokio::test]
+async fn a_sequel_the_tracker_no_longer_serves_ends_the_chain_as_an_answer() {
+    // The tracker names a sequel and then answers that it has no such
+    // entry: that is an answer, not a failed read, and it leaves the
+    // chain short of Kitsu's count, so the map is identity, kept for
+    // the short window.
+    let (kitsu, anilist_server) = ranma_with(
+        ResponseTemplate::new(200).set_body_string(RANMA_ANILIST),
+        ResponseTemplate::new(404).set_body_string(
+            r#"{"errors":[{"message":"Not Found.","status":404}],"data":{"Media":null}}"#,
+        ),
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let map = episode_map_for(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::AniList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_server.uri()),
+        },
+        "186",
+        ProviderMediaId(210),
+        Some(18),
+    )
+    .await
+    .expect("a sequel the tracker says is gone is an answer");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    assert_eq!(
+        ttl_of(
+            &state,
+            &map_key(ProviderKind::AniList, "186", Some((210, Some(18))))
+        ),
+        TRACKER_MAP_UNSETTLED_TTL.as_secs()
+    );
+}
+
+#[tokio::test]
 async fn a_prequel_read_that_fails_fails_the_unresolved_map() {
     let kitsu = MockServer::start().await;
     kitsu_detail(
