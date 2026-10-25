@@ -2,15 +2,15 @@
 //!
 //! AniList limits the API per client — at present 30 requests a
 //! minute while it runs degraded, 90 otherwise — and answers a client
-//! past it with a 429 and a one-minute timeout, during which every
-//! further request is refused too and the timeout runs on. Nothing in
+//! past it with a 429 and a one-minute timeout, during which further
+//! requests are refused too. Nothing in
 //! the app owns that budget on its own: trending, banners, episode
 //! thumbnails, airing, the id bridges and the signed-in account's
 //! reads and writes all spend it, and a cold home page asks for
-//! several of them per card at once. So every transport — the public
-//! GraphQL POST, the `streamingEpisodes` lookup and the authenticated
-//! account POST — sends through the gate kept here for its host, and
-//! the gate does two things:
+//! several of them per card at once. So every GraphQL transport — the
+//! public POST, the `streamingEpisodes` lookup and the authenticated
+//! account POST — sends through the gate kept here for AniList's API
+//! host, and the gate does two things:
 //!
 //! - **Paces.** No more than [`Pace::capacity`] requests leave in any
 //!   [`Pace::window`], [`Pace::min_gap`] apart, so a burst queues
@@ -36,9 +36,10 @@
 //! share one gate: if the budgets are separate, sharing costs some
 //! headroom; if they are one, keeping two would spend it twice.
 //!
-//! The gate is chosen by the request's host. AniList's own host has
-//! one for the life of the process. Any other host — a test's mock
-//! server — gets a fresh gate per call unless a test shares one
+//! The gate is chosen by the request's host. AniList's API host has
+//! one for the life of the process. Any other host — in practice only
+//! a test's mock server — gets a fresh gate per call unless a test
+//! shares one
 //! ([`share_for_tests`]), so tests that never asked for pacing do not
 //! pace each other through a reused mock port.
 
@@ -49,9 +50,11 @@ use tokio::time::Instant;
 
 use crate::error::{AniError, Result};
 
+#[path = "anilist_gate_answer.rs"]
+mod answer;
 #[path = "anilist_gate_pace.rs"]
 mod pace;
-use pace::{not_sent, stay_away};
+use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
 
 tokio::task_local! {
@@ -93,15 +96,18 @@ impl Gate {
     /// Returns the instant the turn was taken, for [`Ledger::settle`].
     async fn admit(&self, class: Class, deadline: Instant) -> Result<Instant> {
         loop {
-            let now = Instant::now();
-            let at = {
+            let (now, at) = {
                 let mut ledger = self.ledger();
+                // Read under the lock: a send settled by another task
+                // between a clock read and the lock would land after
+                // `now`, and this send would go in behind it.
+                let now = Instant::now();
                 let at = ledger.ready_at(&self.pace, class, now);
                 if at <= now {
                     ledger.record_send(&self.pace, now);
                     return Ok(now);
                 }
-                at
+                (now, at)
             };
             if at > deadline {
                 return Err(not_sent(at - now, class));
@@ -124,15 +130,6 @@ fn shared() -> std::sync::MutexGuard<'static, HashMap<String, Arc<Gate>>> {
     SHARED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// `host:port` of `url`, the key a gate is kept under; `url` itself
-/// when it names no host.
-fn authority(url: &str) -> String {
-    url::Url::parse(url)
-        .ok()
-        .and_then(|u| Some(format!("{}:{}", u.host_str()?, u.port_or_known_default()?)))
-        .unwrap_or_else(|| url.to_owned())
 }
 
 fn gate_for(url: &str) -> Arc<Gate> {

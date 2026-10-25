@@ -647,3 +647,17 @@ async fn a_banner_backfill_anilist_is_down_for_does_not_keep_the_detail_without_
         .expect("detail again");
     assert_eq!(next.anilist_banner.as_deref(), Some(BANNER));
 }
+
+#[test]
+fn a_background_fill_gives_up_its_turn_before_the_episode_page_gives_up_on_it() {
+    // The episode route stops waiting for the thumbnail backfill after
+    // its enrichment budget. A gate turn taken at the end of a wait as
+    // long as that budget would send a request the route then drops:
+    // spent against AniList's limit, its answer thrown away.
+    assert!(
+        crate::meta::anilist_gate::ANILIST.background_wait < ANILIST_ENRICHMENT_BUDGET,
+        "{:?} is not under {:?}",
+        crate::meta::anilist_gate::ANILIST.background_wait,
+        ANILIST_ENRICHMENT_BUDGET
+    );
+}
