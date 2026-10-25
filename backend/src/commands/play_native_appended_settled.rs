@@ -1,5 +1,5 @@
 //! When what is in hand already says the listing cannot line up with
-//! Kitsu's last episodes ([`super::aligned`]), so the evidence reader
+//! Kitsu's last episodes ([`aligned`](fn@super::aligned)), so the evidence reader
 //! need read no further; split from the alignment itself so each file
 //! stays inside the complexity bar.
 
@@ -8,7 +8,7 @@ use super::titles::{is_generic, same_title};
 use super::EntryTail;
 use crate::scraper::provider::EpisodeRef;
 
-/// Whether what is in hand already says [`super::aligned`] cannot hold,
+/// Whether what is in hand already says [`aligned`](fn@super::aligned) cannot hold,
 /// whatever rows are still to read:
 ///
 /// - the listing names one of the count's last episodes by nothing a
