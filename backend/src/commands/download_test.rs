@@ -504,7 +504,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "echo $$ > {started}\nprintf 'total_size=0\\nprogress=continue\\n'\nsleep 2.5\ntouch {finished}\nexit 0",
+            "printf 'total_size=0\\nprogress=continue\\n'\necho $$ > {started}\nsleep 2.5\ntouch {finished}\nexit 0",
             started = crate::stub_file::sh_quote(&started),
             finished = crate::stub_file::sh_quote(&finished)
         ),
@@ -556,7 +556,10 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         .expect("the fallback's run reported its end")
         - called;
     assert!(
-        ended <= deadline.max(paused_at) + std::time::Duration::from_millis(2),
+        // The slack covers the real time between the call and the chain
+        // setting its deadline, before the pause, and the timer's ticks;
+        // a deadline that grew by more fails.
+        ended <= deadline.max(paused_at) + std::time::Duration::from_millis(100),
         "the chain ended {ended:?} after the call on tokio's clock, past its {deadline:?} \
          deadline (clock paused at {paused_at:?})"
     );
