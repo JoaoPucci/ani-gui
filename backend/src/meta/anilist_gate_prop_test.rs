@@ -129,3 +129,31 @@ proptest::proptest! {
         proptest::prop_assert!(at >= now);
     }
 }
+
+proptest::proptest! {
+    /// Settling a send moves it to its answer and keeps the ledger in
+    /// order; a send already dropped from the ledger is left alone.
+    #[test]
+    fn a_settled_send_counts_from_its_answer(
+        mut sends in proptest::collection::vec(0u64..10_000, 1..40),
+        pick in proptest::num::usize::ANY,
+        took_ms in 0u64..5_000,
+    ) {
+        sends.sort_unstable();
+        let base = Instant::now();
+        let mut ledger = Ledger::default();
+        for &ms in &sends {
+            ledger.record_send(&ANILIST, base + Duration::from_millis(ms));
+        }
+        let kept: Vec<Instant> = ledger.sent.iter().copied().collect();
+        let sent = kept[pick % kept.len()];
+        let done = sent + Duration::from_millis(took_ms);
+        ledger.settle(sent, done);
+        let after: Vec<Instant> = ledger.sent.iter().copied().collect();
+        proptest::prop_assert_eq!(after.len(), kept.len());
+        proptest::prop_assert!(after.windows(2).all(|w| w[0] <= w[1]));
+        proptest::prop_assert!(after.contains(&done));
+        ledger.settle(base + Duration::from_secs(99_999), base);
+        proptest::prop_assert_eq!(ledger.sent.iter().copied().collect::<Vec<_>>(), after);
+    }
+}
