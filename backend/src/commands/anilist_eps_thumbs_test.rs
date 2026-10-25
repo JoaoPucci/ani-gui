@@ -610,12 +610,14 @@ async fn a_cached_row_that_is_not_a_listing_is_fetched_again() {
 }
 
 #[tokio::test]
-async fn an_anilist_failure_is_cached_as_an_empty_listing() {
+async fn an_anilist_failure_is_asked_again_rather_than_cached() {
+    // A 502 is AniList not answering: each view gets no listing, and
+    // the next one asks again.
     let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(502))
-        .expect(1)
+        .expect(2)
         .mount(&anilist)
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
