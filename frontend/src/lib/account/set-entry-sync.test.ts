@@ -40,6 +40,7 @@ vi.mock('./store.svelte', () => ({
 }));
 
 import { syncRemoveEntry, syncSetEntry } from './set-entry';
+import { saveWhenTrackerAllows } from './busy-save';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { m } from '$lib/paraglide/messages';
 
@@ -171,5 +172,62 @@ describe('a held save a newer write replaces', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
 		expect(setEntry).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('a held save a newer write covers in part', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('re-sends only the status when a progress-only write landed during the wait', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-30', { status: 'paused', statusChanged: true, progress: 5 });
+		await vi.advanceTimersByTimeAsync(0);
+		// The progress write-back of a watched episode, for the same show.
+		await saveWhenTrackerAllows('anilist', 'kitsu-30', async () => null, ['progress']);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 1, failed: 0 });
+		expect(setEntry).toHaveBeenLastCalledWith('anilist', 'tok-a', {
+			kitsu_id: 'kitsu-30',
+			status: 'paused'
+		});
+	});
+
+	it('re-sends only the status when a later save left the status alone', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-31', { status: 'dropped', statusChanged: true, progress: 5 });
+		await vi.advanceTimersByTimeAsync(0);
+		await syncSetEntry('kitsu-31', { status: 'watching', statusChanged: false, progress: 6 });
+		await vi.advanceTimersByTimeAsync(1000);
+		await held;
+		expect(setEntry).toHaveBeenLastCalledWith('anilist', 'tok-a', {
+			kitsu_id: 'kitsu-31',
+			status: 'dropped'
+		});
+	});
+
+	it('is not sent when a newer write starts between its re-read and its write', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		let reads = 0;
+		getEntry.mockImplementation(async () => {
+			reads += 1;
+			// The re-sent attempt's read: a newer save of the whole entry
+			// starts while it is out.
+			if (reads === 2) {
+				void saveWhenTrackerAllows('anilist', 'kitsu-32', async () => null, ['status', 'progress']);
+			}
+			return { status: 'watching', progress: 3 };
+		});
+		const held = syncSetEntry('kitsu-32', { status: 'dropped', statusChanged: true, progress: 5 });
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(setEntry).toHaveBeenCalledTimes(1);
 	});
 });

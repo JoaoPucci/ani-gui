@@ -33,6 +33,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
+import { editorProps, showEditorFor } from './editor-props.svelte';
 
 const KITSU_ID = '42';
 /** The wait the backend relays. Short, so the scenario sees the save
@@ -85,6 +86,10 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 const trigger = () => target.querySelector('button') as HTMLButtonElement;
 const statusSelect = () => target.querySelector('select') as HTMLSelectElement | null;
+const closeButton = () =>
+	Array.from(target.querySelectorAll('button')).find(
+		(b) => b.getAttribute('aria-label') === m.detail_list_close()
+	) ?? null;
 const saveButton = () =>
 	Array.from(target.querySelectorAll('button')).find(
 		(b) => b.textContent?.trim() === m.detail_list_save()
@@ -202,5 +207,79 @@ describe('list editor — AniList holds the save back', () => {
 		// The save carries on and says how it ended.
 		await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
 		expect(saves.at).toHaveLength(2);
+	});
+
+	it('reopens on the save still waiting, locked, rather than a fresh form', async () => {
+		const saves: Saves = { at: [], bodies: [] };
+		useTracker(saves);
+		toasts = mount(ToastHost, { target: stack });
+		editor = mount(ListEntryEditor, {
+			target,
+			props: { kitsuId: KITSU_ID, total: 12, current: { status: 'watching', progress: 3 } }
+		});
+
+		trigger().click();
+		await until(() => statusSelect() !== null, 'the status control');
+		const select = statusSelect()!;
+		select.value = 'dropped';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await until(() => saveButton() !== null, 'the Save control');
+		saveButton()!.click();
+		const busy = m.account_busy_saving({
+			provider: m.account_provider_anilist(),
+			seconds: RETRY_AFTER_S
+		});
+		await until(() => (stack.textContent ?? '').includes(busy), `the notice "${busy}"`);
+		closeButton()!.click();
+		await until(() => statusSelect() === null, 'the popover to close');
+
+		// The user looks again before the save has landed.
+		trigger().click();
+		await until(() => statusSelect() !== null, 'the popover to reopen');
+		expect(saves.at).toHaveLength(1);
+		expect(statusSelect()!.disabled).toBe(true);
+		expect(statusSelect()!.value).toBe('dropped');
+		expect(target.textContent ?? '').toContain(m.detail_list_saving());
+
+		await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
+	});
+});
+
+describe('list editor — a save still waiting on one show', () => {
+	it('does not lock the editor once it is on another show', async () => {
+		const saves: Saves = { at: [], bodies: [] };
+		useTracker(saves);
+		server.use(
+			http.get(`${API_BASE}/api/account/entry/anilist`, () =>
+				HttpResponse.json({ status: 'watching', progress: 3 })
+			)
+		);
+		toasts = mount(ToastHost, { target: stack });
+		showEditorFor(KITSU_ID);
+		editor = mount(ListEntryEditor, { target, props: editorProps });
+
+		trigger().click();
+		await until(() => statusSelect() !== null, 'the status control');
+		const select = statusSelect()!;
+		select.value = 'dropped';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await until(() => saveButton() !== null, 'the Save control');
+		saveButton()!.click();
+		const busy = m.account_busy_saving({
+			provider: m.account_provider_anilist(),
+			seconds: RETRY_AFTER_S
+		});
+		await until(() => (stack.textContent ?? '').includes(busy), `the notice "${busy}"`);
+
+		// The detail route moves the same editor to another show.
+		showEditorFor('43');
+		await until(() => statusSelect() === null, "the first show's popover to close");
+		trigger().click();
+		await until(() => statusSelect() !== null, "the second show's editor to open");
+		expect(statusSelect()!.disabled).toBe(false);
+		expect(saveButton()).not.toBeNull();
+
+		// The first show's save still lands, and says so.
+		await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
 	});
 });

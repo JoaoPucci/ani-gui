@@ -124,3 +124,56 @@ describe('a held write and a newer one for the same show', () => {
 		expect(await pending).toBe('saved');
 	});
 });
+
+describe('a held write and a newer one that covers part of it', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('keeps the fields the newer write left alone, and only those', async () => {
+		// A held save of status and progress; a progress-only write lands
+		// during the wait. The status is still the held save's to send.
+		const seen: (readonly string[])[] = [];
+		const held = vi.fn(async (h: { left: () => readonly string[] }) => {
+			seen.push(h.left());
+			if (seen.length === 1) throw refused(1);
+			return 'status sent';
+		});
+		const pending = saveWhenTrackerAllows('anilist', '21', held, ['status', 'progress']);
+		await vi.advanceTimersByTimeAsync(0);
+		await saveWhenTrackerAllows('anilist', '21', async () => 'progress', ['progress']);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await pending).toBe('status sent');
+		expect(seen).toEqual([['status', 'progress'], ['status']]);
+	});
+
+	it('is superseded once newer writes have covered every field it had', async () => {
+		const held = vi.fn<() => Promise<string>>().mockRejectedValueOnce(refused(1));
+		const pending = saveWhenTrackerAllows('anilist', '22', held, ['status', 'progress']).catch(
+			(e: unknown) => e
+		);
+		await vi.advanceTimersByTimeAsync(0);
+		await saveWhenTrackerAllows('anilist', '22', async () => 'p', ['progress']);
+		await saveWhenTrackerAllows('anilist', '22', async () => 's', ['status', 'progress']);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await pending).toBeInstanceOf(SupersededError);
+		expect(held).toHaveBeenCalledTimes(1);
+	});
+
+	it("takes the older write's notice down as soon as a newer write starts", async () => {
+		const held = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(5))
+			.mockResolvedValue('held');
+		const pending = saveWhenTrackerAllows('anilist', '23', held, ['status', 'progress']);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(busyNotices()).toHaveLength(1);
+		await saveWhenTrackerAllows('anilist', '23', async () => 'p', ['progress']);
+		expect(busyNotices()).toEqual([]);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBe('held');
+	});
+});
