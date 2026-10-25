@@ -31,7 +31,7 @@
 		chipDescriptor(accountStore.byProvider, primaryAccountStore.value)
 	);
 	const visible = $derived(descriptor.kind === 'connected');
-	// Codex P2 #3374957922: route avatar fetches through `/api/image` so the
+	// Route avatar fetches through `/api/image` so the
 	// topbar uses the same cache + privacy boundary the rest of the app does.
 	// Falls back to the account icon when imageProxyUrl returns null (no
 	// avatar set, blob: URL, etc.).

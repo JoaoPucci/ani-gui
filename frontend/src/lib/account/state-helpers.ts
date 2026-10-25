@@ -12,7 +12,7 @@ import type { PersistedAccount, ProviderState } from './types';
 
 /**
  * Extract the bearer from a prior provider state. The backend derives
- * the user_id from the bearer (Codex P1 #3369956138), so the caller
+ * the user_id from the bearer, so the caller
  * only needs the bearer to call dropListCache. Returns null for
  * disconnected / connecting / errored-without-account states.
  */
@@ -23,7 +23,7 @@ export function bearerFor(state: ProviderState): string | null {
 /**
  * Extract the persisted user_id from a prior provider state — used as
  * the fallback identity in the cache DELETE call when the bearer has
- * expired or been revoked (Codex P2 #3369997650). Returns null for
+ * expired or been revoked. Returns null for
  * disconnected / connecting / errored-without-account states.
  */
 export function userIdFor(state: ProviderState): string | null {
@@ -40,7 +40,7 @@ function accountFromState(state: ProviderState): PersistedAccount | null {
 /**
  * Pick the provider state the page should restore to after a failed
  * Connect / Reconnect attempt, given the state the user was in before
- * they clicked the button. Codex P2 #3370011851: unconditionally
+ * they clicked the button. Unconditionally
  * collapsing to `disconnected` after a Reconnect from `expired` (or a
  * Connect from `error` that still carries an account) hides the
  * persisted token and the Disconnect button until the next `hydrate()`
@@ -56,7 +56,7 @@ function accountFromState(state: ProviderState): PersistedAccount | null {
  *    surface; without-account (the orphan-token "Keychain read
  *    failed" path hydrate() sets) preserves the Disconnect
  *    affordance so the user can still purge the unreadable token
- *    file on disk. Codex P2 #3372887747: collapsing the orphan to
+ *    file on disk. Collapsing the orphan to
  *    `disconnected` hides the only way to clean it up.
  *  - `disconnected` / `connecting` → fall through to `disconnected`
  *    (nothing to preserve)

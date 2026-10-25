@@ -69,13 +69,12 @@ use crate::proxy::MediaKind;
 ///   layered picker.
 /// - v4: `cache_key` now includes `year` + `episode_count` so two
 ///   Kitsu entries with the same canonical title (different release
-///   years) can't poison each other's cache row. Closes Codex P2
-///   #3228940641. v3 rows were keyed only by
+///   years) can't poison each other's cache row. v3 rows were keyed only by
 ///   `(title, mode, quality, episode)`, so a single "Mobile Suit
 ///   Gundam" cache row applied to every Gundam re-cut sharing that
 ///   canonical — bumping evicts them.
 /// - v5: picker now reads allmanga's `type`/`status`/`episodeCount`
-///   (b629127, Codex P2 #3242661503) and hard-rejects same-year
+///   (b629127) and hard-rejects same-year
 ///   OVA/Movie/Special candidates and planned-count divergence. A
 ///   v4 row whose stream_url came from one of those OVA picks would
 ///   stay served on cache hit even though the new picker would now

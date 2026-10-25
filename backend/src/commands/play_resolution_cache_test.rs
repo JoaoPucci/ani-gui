@@ -183,7 +183,7 @@ fn cache_key_differs_across_each_axis() {
             None
         ),
     );
-    // Just-year-different is enough — Codex's concern was two
+    // Just-year-different is enough — the collision to guard is two
     // Kitsu entries with same title differing by year. Episode
     // count is the secondary discriminator; pin both axes
     // independently so a regression on either drops a test.

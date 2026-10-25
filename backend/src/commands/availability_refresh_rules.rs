@@ -47,9 +47,9 @@ pub fn may_write_cache(
 /// This is the whole protocol in one call, and every writer of an
 /// availability row goes through it. The lookup is not the only one:
 /// a play resolution stamps the row on success and on a confirmed
-/// miss, and it too holds an answer from before it started writing
-/// (Codex P2 #3674767151). A writer outside this function is a writer
-/// that can put a stale cap back for the row's whole TTL.
+/// miss, and it too holds an answer from before it started writing. A writer
+/// outside this function is a writer that can put a stale cap back for the
+/// row's whole TTL.
 pub async fn hold_if_still_ours(
     refreshes: &AvailabilityRefreshes,
     key: &str,
@@ -75,7 +75,7 @@ pub async fn hold_if_still_ours(
 /// cannot be held apart from the thing it permits: a caller that
 /// tests the guard and then writes — `hold_if_still_ours(..).await
 /// .is_some()` — has already dropped it, and the row is free again
-/// for exactly as long as the write takes (Codex P2 #3675142224).
+/// for exactly as long as the write takes.
 ///
 /// `Some(_)` with whatever the write returned, or `None` when a
 /// refresh answered while this writer was out.

@@ -113,12 +113,11 @@ pub struct UpdateProgressRequest {
     pub score: Option<u8>,
 }
 
-/// Renderer-supplied fallback identity for the cache DELETE path
-/// (Codex P2 #3369997650). Consulted ONLY when the bearer's `me()` call
-/// fails with `InvalidToken` — disconnect-after-expiry needs to clear
-/// the cache but the bearer is no longer trusted upstream. Trusting
-/// this in the live-bearer path would re-enable the cross-origin
-/// poisoning Codex P1 #3369956138 closed.
+/// Renderer-supplied fallback identity for the cache DELETE path. Consulted
+/// ONLY when the bearer's `me()` call fails with `InvalidToken` —
+/// disconnect-after-expiry needs to clear the cache but the bearer is no longer
+/// trusted upstream. Trusting this in the live-bearer path would re-enable the
+/// cross-origin poisoning that taking the id from the bearer closed.
 #[derive(Debug, Deserialize)]
 pub struct DisconnectFallbackQuery {
     /// The user_id the renderer learned from a prior successful
