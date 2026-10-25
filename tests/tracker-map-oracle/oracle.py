@@ -127,6 +127,22 @@ def shared_rule(ev, total):
     return [segment(ev["entry"], total, 1, n, lead)]
 
 
+def chain_files_otherwise(ev, total):
+    """Whether Kitsu's chain of parts reaches the entry's total, at least
+    two of them, through parts other than the entries mapped to it."""
+    covered, taken = 0, []
+    for p in ev["parts"]:
+        if covered >= total:
+            break
+        if not p["episodes"]:
+            return False
+        covered += p["episodes"]
+        taken.append(p["id"])
+    if covered != total or len(taken) < 2:
+        return False
+    return sorted(taken) != sorted(k["id"] for k in ev["sharing"])
+
+
 def split_rule(ev, total):
     """The chain's placement and whether it is contradicted: a Kitsu
     entry mapped to the tracker's entry that is not among the parts
@@ -182,6 +198,8 @@ def predict(ev):
         # it is a rival to them, read from the first part's count.
         sole = all(k["id"] == ours for k in ev["sharing"] + ev["parts"])
         shared = shared_rule(ev, total)
+        if shared and chain_files_otherwise(ev, total):
+            return identity("conflict")
         split, contradicted = split_rule(ev, total)
         if contradicted:
             # A contradicted chain is no explanation of its own, but it
@@ -432,6 +450,25 @@ def split_overfull_family(rng):
     return out
 
 
+def chain_rival_family(rng):
+    """A chain of equal parts reaching the entry's total through a part
+    mapped to nothing, beside a mapped set that sums to the same total
+    with a later part in its place: three to five parts, each mapped part
+    in turn as ours. Among them, twelve-episode parts against a
+    24-episode entry, the first and third mapped. Every case is a
+    conflict."""
+    out = []
+    shapes = [(12, 3, 2)] + [(rng.randint(1, 30), n, rng.randint(2, n - 1)) for n in (3, 4, 5) for _ in range(8)]
+    for count, n, reach in shapes:
+        parts = [kitsu(90 + i, count, months(2016, 4 * i) + "-08", "") for i in range(n)]
+        total = count * reach
+        sharing = [parts[0]] + parts[2 : reach + 1]
+        for ours in sharing:
+            ev = evidence(ours, show(97, total, rng.random() < 0.85), parts=parts[:reach], sharing=sharing)
+            out.append(("chain_rival", ev))
+    return out
+
+
 def extras_family(rng):
     """A prologue, several half-episode recaps, both, as a long shounen's
     tracker counts them — and the lists that leave the surplus
@@ -534,7 +571,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family, shared_overfull_family, split_overfull_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family, shared_overfull_family, split_overfull_family, chain_rival_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:
