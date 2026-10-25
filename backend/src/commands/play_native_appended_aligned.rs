@@ -32,28 +32,31 @@ pub fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
     titles.is_some_and(|t| t.iter().any(|t| !is_generic(t)))
 }
 
-/// Whether every one of Kitsu's last [`ALIGNED`] episodes is among the
-/// rows read, so [`aligned`] reads them all and no further row can
-/// change what it says: each is read by the first row with its number.
-#[must_use]
-pub fn aligned_is_final(count: u32, tail: &EntryTail) -> bool {
-    (first_aligned(count)..=count).all(|n| tail.episodes.iter().any(|e| e.number == n))
-}
-
 /// Whether what is in hand already says [`aligned`] cannot hold,
-/// whatever rows are still to read: the listing has no name for one of
-/// the count's last episodes, or Kitsu's first row read for one of them
-/// is undated, untitled or titled otherwise. Rows read later come after
-/// it, so cannot change which row is first.
+/// whatever rows are still to read:
+///
+/// - the listing names one of the count's last episodes by nothing a
+///   title could match: no name, or punctuation alone;
+/// - Kitsu's first row read for one of them is undated, untitled or
+///   titled otherwise (rows read later come after it, so cannot become
+///   the first);
+/// - the listing names every one of them only by its number: a Kitsu
+///   title matching such a name is a number too, and the rule asks for
+///   one that is more.
 #[must_use]
 pub fn misaligned_so_far(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
-    (first_aligned(count)..=count).any(|n| {
-        let unnamed = usize::try_from(n - 1)
+    let name = |n: u32| {
+        usize::try_from(n - 1)
             .ok()
             .and_then(|i| listing.get(i))
             .and_then(|row| row.title.as_deref())
-            .is_none();
+    };
+    let last = first_aligned(count)..=count;
+    let unmatched = last.clone().any(|n| {
+        let matchable = name(n).is_some_and(|t| same_title(t, t));
         let read = tail.episodes.iter().any(|e| e.number == n);
-        unnamed || (read && named(listing, tail, n).is_none())
-    })
+        !matchable || (read && named(listing, tail, n).is_none())
+    });
+    let numbers_only = last.clone().all(|n| name(n).is_none_or(is_generic));
+    unmatched || (!last.is_empty() && numbers_only)
 }

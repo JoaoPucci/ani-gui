@@ -8,9 +8,8 @@ use super::read::{
 };
 use super::KitsuTail;
 use crate::commands::play_native_appended::{
-    aligned, aligned_is_final, anilist_ends_at, explained, is_announced, kitsu_ends_at,
-    leaves_names, misaligned_so_far, named_alone, rows_end_at, unlike_the_show_s, EntryTail,
-    Related, ALIGNED,
+    aligned, anilist_ends_at, explained, is_announced, kitsu_ends_at, leaves_names,
+    misaligned_so_far, named_alone, rows_end_at, unlike_the_show_s, EntryTail, Related, ALIGNED,
 };
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::KitsuRelation;
@@ -22,13 +21,14 @@ fn settled(listing: &[EpisodeRef], count: u32, past: &[EpisodeRef], tail: &Entry
     !rows_end_at(tail, count)
         || !unlike_the_show_s(past, tail)
         || misaligned_so_far(listing, count, tail)
-        || (aligned_is_final(count, tail) && !aligned(listing, count, tail))
 }
 
 impl KitsuTail<'_> {
     /// What says whether the show ends at `count`, read in order while
     /// what is in hand leaves the reading open: the listing's rows past
-    /// the count (`past`) have names of their own; Kitsu's entry ends
+    /// the count (`past`) have names of their own, and its names for the
+    /// count's last episodes could line up with Kitsu's
+    /// ([`misaligned_so_far`] on the listing alone); Kitsu's entry ends
     /// the show at the count; AniList's answer does; Kitsu's pages list
     /// nothing past it, name its last episodes as `listing` does, and
     /// name no row past it. Returns the tail so far and whether the
@@ -69,8 +69,9 @@ impl KitsuTail<'_> {
     /// episodes, then the page after them, each read only while the
     /// rows before it leave the reading open. Kitsu listing an episode
     /// past the count, a listing row past it named as one of the show's
-    /// own episodes, or the count's last episodes all read and not
-    /// lining up with the listing is a refusal no further page undoes.
+    /// own episodes, or the count's last episodes read so far already
+    /// unable to line up with the listing ([`misaligned_so_far`]) is a
+    /// refusal no further page undoes.
     /// The page after is the one that says nothing follows the count:
     /// Kitsu's pages are not always dense, and the placeholder rows the
     /// reader drops hide how full a page was.
