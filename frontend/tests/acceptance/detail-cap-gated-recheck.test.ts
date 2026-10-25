@@ -289,6 +289,99 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 	});
 
+	it('does not let the page-load lookup overwrite a re-ask that already answered', async () => {
+		// The viewer switches to dub and back before the dub answer
+		// lands, so the sub row stands and the sub lookup goes out again.
+		// A re-ask from a tile the sub count gates answers while that
+		// lookup is still out; the lookup lands after, older and
+		// unconfirmed, and must not undo what the re-ask found.
+		let releaseSubAgain!: () => void;
+		const subAgainHeld = new Promise<void>((r) => (releaseSubAgain = r));
+		const ordinary: string[] = [];
+
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean; mode: string };
+				if (body.bypass_cache) {
+					// The re-ask. Authoritative and newest.
+					return HttpResponse.json({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: ['4.5'],
+						episode_count_approximate: false
+					});
+				}
+				ordinary.push(body.mode);
+				// The dub answer never lands: the viewer is back on sub first.
+				if (body.mode === 'dub') return new Promise<never>(() => {});
+				if (ordinary.filter((m) => m === 'sub').length > 1) {
+					// The second sub lookup, held until the re-ask has
+					// landed — and unconfirmed, so its empty specials list
+					// is "could not look" rather than "there are none".
+					await subAgainHeld;
+					return HttpResponse.json({
+						available: true,
+						episode_count: 2,
+						extra_episodes: [],
+						episode_count_approximate: true
+					});
+				}
+				return HttpResponse.json({
+					available: true,
+					episode_count: CACHED_COUNT,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+
+		const audio = (label: string) =>
+			Array.from(target.querySelectorAll<HTMLButtonElement>('button.seg-btn')).find(
+				(b) => b.textContent?.trim() === label
+			)!;
+		app = mount(DetailPage, { target });
+		await until(
+			() => tile(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
+			`episode ${AIRED} gated by the sub count`
+		);
+
+		audio('DUB').click();
+		await until(() => ordinary.includes('dub'), 'the dub lookup');
+		audio('SUB').click();
+		await until(() => ordinary.length === 3, 'the sub lookup to go out again');
+		expect(tile(AIRED)?.getAttribute('title')).toBe(m.detail_ep_recheck_idle());
+
+		tile(AIRED)!.click();
+		await until(
+			() => target.querySelector('li[data-ep-num="4.5"]') !== null,
+			'the re-ask to land and add the special'
+		);
+
+		releaseSubAgain();
+		// The write happens on the microtask after the response
+		// resolves, so anything that was going to clobber has by now.
+		await new Promise((r) => setTimeout(r, 300));
+
+		// Both halves of the clobber: the special stays, and the cap is
+		// not rolled back to a number nobody confirmed.
+		expect(target.querySelector('li[data-ep-num="4.5"]')).not.toBeNull();
+		expect(tile(4)?.getAttribute('title')).not.toBe(m.detail_ep_recheck_idle());
+	});
+
 	it('splices in a special the recheck found, even when the episode stays gated', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
