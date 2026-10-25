@@ -178,10 +178,10 @@ fn cache_anilist_eps_thumbs_caches_success_listing_by_kitsu_id() {
 
 #[test]
 fn cache_anilist_eps_thumbs_negative_caches_empty_on_error() {
-    // A failed lookup — no usable mapping, an unreadable answer — is
-    // negative-cached as an empty map so the next 5 minutes of
-    // navigation see a cache hit instead of re-burning the budget. A
-    // rate limit is not one of these: it is never written
+    // A show Kitsu maps to neither AniList nor MAL has nothing to ask
+    // AniList about; it is negative-cached as an empty map so the next
+    // 5 minutes of navigation see a cache hit. A lookup that got no
+    // answer is not one of these: it is never written
     // (`a_rate_limited_listing_is_not_cached_as_an_empty_one`).
     // The kitsu_id-level key means a subsequent hit also avoids
     // re-running the Kitsu /mappings lookup.
@@ -302,21 +302,20 @@ async fn thumbs_for_show_returns_cached_listing_without_network() {
 }
 
 #[tokio::test]
-async fn thumbs_for_show_negative_caches_on_cache_miss_with_unreachable_kitsu() {
-    // The miss path: nothing in cache, Kitsu mappings lookup errors
-    // (state.kitsu points at an unbound port). `fetch_anilist_eps_thumbs`
-    // returns Err, `cache_anilist_eps_thumbs` writes an empty map to
-    // the negative cache, and the caller sees the empty result. A
-    // second call hits cache and returns instantly.
+async fn thumbs_for_show_caches_nothing_when_kitsu_is_unreachable() {
+    // The miss path: nothing in cache, Kitsu's mappings lookup errors
+    // (state.kitsu points at an unbound port). Kitsu not answering
+    // says nothing about which ids the show has, so the caller sees
+    // the empty result and nothing is cached: the next view asks
+    // again.
     let state = state_for_cache_only_tests();
     let first = thumbs_for_show(&state, "999").await;
     assert!(first.entries.is_empty());
-    // Verify the negative cache was written.
-    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k999")
-        .expect("cache read")
-        .expect("negative cache hit");
-    let cached: StreamingListing = serde_json::from_str(&body).expect("json");
-    assert_eq!(cached, StreamingListing::default());
+    assert_eq!(
+        meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k999").expect("cache read"),
+        None,
+        "an unanswered mappings lookup was cached as a show without stills"
+    );
 }
 
 #[tokio::test]

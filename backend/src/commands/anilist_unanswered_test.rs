@@ -241,6 +241,26 @@ async fn an_unanswered_write_back_resolve_is_an_error_not_an_unmappable_show() {
     }
 }
 
+// --- Episode thumbnails ---------------------------------------------------
+
+#[tokio::test]
+async fn an_unanswered_thumbnail_listing_is_not_cached_as_empty() {
+    // Kitsu's own stills stand; AniList's fill is asked again next view.
+    for how in BOTH {
+        let kitsu = kitsu(&[("12", &[("myanimelist/anime", "21")])]).await;
+        let anilist = anilist(how).await;
+        let state = state_with_kitsu(&kitsu.uri());
+        let got = crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
+            &state,
+            "12",
+            Some(&anilist.uri()),
+        )
+        .await;
+        assert!(got.entries.is_empty(), "{how:?}");
+        assert_eq!(row(&state, "anilist:eps-thumbs:v2:k12"), None, "{how:?}");
+    }
+}
+
 // --- The trending row and the banner backfill -----------------------------
 
 #[tokio::test]
