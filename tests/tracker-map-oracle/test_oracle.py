@@ -139,7 +139,7 @@ class Generation(unittest.TestCase):
     def test_every_family_is_generated_and_every_shape_predicted(self):
         cases = oracle.gen()
         families = {c["family"].split("-")[0] for c in cases}
-        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull"):
+        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull", "split_overfull"):
             self.assertIn(f, families)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
         self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})

@@ -88,9 +88,10 @@ def chain_rule(ev, count, total):
     return segs
 
 
-def place(parts, ours, total):
+def place(parts, ours, total, taken_out=None):
     """The episodes before `ours` and its count, when the parts up to some
-    one of them sum exactly to `total`, at least two, `ours` among them."""
+    one of them sum exactly to `total`, at least two, `ours` among them.
+    `taken_out`, a list, is given how many parts were taken."""
     covered, found, taken = 0, None, 0
     for p in parts:
         if covered >= total:
@@ -101,6 +102,8 @@ def place(parts, ours, total):
             found = (covered, p["episodes"])
         covered += p["episodes"]
         taken += 1
+    if taken_out is not None:
+        taken_out.append(taken)
     if covered == total and taken >= 2:
         return found
     return None
@@ -125,8 +128,14 @@ def shared_rule(ev, total):
 
 
 def split_rule(ev, total):
-    got = place(ev["parts"], ev["kitsu"]["id"], total)
+    taken = []
+    got = place(ev["parts"], ev["kitsu"]["id"], total, taken)
     if got is None:
+        return None
+    # A part past the sum that Kitsu maps to the entry itself is not the
+    # chain running on into entries of its own.
+    mapped = {k["id"] for k in ev["sharing"]}
+    if any(p["id"] in mapped for p in ev["parts"][taken[0]:]):
         return None
     lead, n = got
     return [segment(ev["entry"], total, 1, n, lead)]
@@ -386,6 +395,27 @@ def shared_overfull_family(rng):
     return out
 
 
+def split_overfull_family(rng):
+    """A chain of Kitsu parts whose first few reach the entry's total,
+    the part after them mapped to the entry too: three to five parts,
+    with each part in turn as ours. Among them, three twelve-episode
+    parts against a 24-episode entry. Beside them, the same chains with
+    the part past the sum mapped nowhere, which split as before."""
+    out = []
+    shapes = [[12, 12, 12]] + [[rng.randint(1, 30) for _ in range(rng.randint(3, 5))] for _ in range(30)]
+    for counts in shapes:
+        n = len(counts)
+        reach = 2 if counts == [12, 12, 12] else rng.randint(2, n - 1)
+        total = sum(counts[:reach])
+        parts = [kitsu(60 + i, counts[i], months(2017, 4 * i) + "-06", "") for i in range(reach + 1)]
+        for tweak in ("mapped", "unmapped"):
+            sharing = list(parts) if tweak == "mapped" else list(parts[:1])
+            for ours in range(reach):
+                ev = evidence(parts[ours], show(67, total, rng.random() < 0.85), parts=parts, sharing=sharing)
+                out.append(("split_overfull-" + tweak, ev))
+    return out
+
+
 def extras_family(rng):
     """A prologue, several half-episode recaps, both, as a long shounen's
     tracker counts them — and the lists that leave the surplus
@@ -488,7 +518,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family, shared_overfull_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family, shared_overfull_family, split_overfull_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:
