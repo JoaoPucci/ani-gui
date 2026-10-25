@@ -28,6 +28,14 @@ export interface EditorSave {
 	total?: number | null;
 }
 
+/** How one provider's write is run: once, or held through a rate limit
+ *  and run again (`saveWhenTrackerAllows`). The whole read-then-write is
+ *  the attempt, so a retry decides off a fresh read. */
+export type RunWrite = <T>(provider: Provider, attempt: () => Promise<T>) => Promise<T>;
+
+/** Run the write once. */
+export const runOnce: RunWrite = (_provider, attempt) => attempt();
+
 export interface SetEntryDeps {
 	/** Providers currently connected (from the account store). */
 	connected: Provider[];
@@ -42,6 +50,8 @@ export interface SetEntryDeps {
 		bearer: string,
 		body: { kitsu_id: string; status?: string; progress?: number }
 	) => Promise<ListEntry | null>;
+	/** How each provider's write is run; {@link runOnce} when omitted. */
+	runWrite?: RunWrite;
 }
 
 export interface RemoveEntryDeps {
@@ -49,6 +59,8 @@ export interface RemoveEntryDeps {
 	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
 	getEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<EntryView | null>;
 	removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
+	/** How each provider's removal is run; {@link runOnce} when omitted. */
+	runWrite?: RunWrite;
 }
 
 /** The outcome of a multi-tracker save, split so the caller can tell a
@@ -82,20 +94,23 @@ export async function setEntryAcrossTrackers(
 	save: EditorSave
 ): Promise<SetOutcome> {
 	if (!kitsuId || deps.connected.length === 0) return { written: 0, failed: 0 };
+	const runWrite = deps.runWrite ?? runOnce;
 	const results = await Promise.all(
 		deps.connected.map(async (provider): Promise<FanoutResult> => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm written
 			try {
-				const current = await deps.getEntry(provider, bearer, kitsuId);
-				const edit = buildListEdit({
-					current: current?.status ?? null,
-					statusChanged: save.statusChanged,
-					status: save.status,
-					progress: save.progress,
-					total: save.total ?? null
+				const res = await runWrite(provider, async () => {
+					const current = await deps.getEntry(provider, bearer, kitsuId);
+					const edit = buildListEdit({
+						current: current?.status ?? null,
+						statusChanged: save.statusChanged,
+						status: save.status,
+						progress: save.progress,
+						total: save.total ?? null
+					});
+					return deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
 				});
-				const res = await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
 				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
 			} catch (e) {
 				// A 429 is still a failure (nothing was written), but flagged so the
@@ -135,15 +150,18 @@ export async function removeEntryAcrossTrackers(
 	kitsuId: string
 ): Promise<RemoveOutcome> {
 	if (!kitsuId || deps.connected.length === 0) return { removed: 0, failed: 0 };
+	const runWrite = deps.runWrite ?? runOnce;
 	const results = await Promise.all(
 		deps.connected.map(async (provider): Promise<FanoutResult> => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
-				const current = await deps.getEntry(provider, bearer, kitsuId);
-				if (current === null) return 'neither'; // nothing to remove here
-				await deps.removeEntry(provider, bearer, kitsuId);
-				return 'ok';
+				return await runWrite(provider, async (): Promise<FanoutResult> => {
+					const current = await deps.getEntry(provider, bearer, kitsuId);
+					if (current === null) return 'neither'; // nothing to remove here
+					await deps.removeEntry(provider, bearer, kitsuId);
+					return 'ok';
+				});
 			} catch (e) {
 				return isRateLimit(e) ? 'ratelimited' : 'failed';
 			}
