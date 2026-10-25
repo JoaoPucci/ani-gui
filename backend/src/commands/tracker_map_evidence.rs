@@ -2,7 +2,8 @@
 //! request per thing the rules read and none they do not.
 
 use super::kitsu_side::{claimed_on_kitsu, sharing_on_kitsu};
-use super::parts_walk::{file_mapped_past, first_part_under, kitsu_parts, MAX_HOPS};
+use super::parts_walk::{file_mapped_past, kitsu_parts, MAX_HOPS};
+use super::prequel_walk::first_part_under;
 use super::*;
 use crate::account::provider::MediaEvidence;
 

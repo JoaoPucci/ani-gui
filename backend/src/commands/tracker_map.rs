@@ -46,6 +46,8 @@ use cache::{cached, remember, remember_for};
 mod kitsu_side;
 #[path = "tracker_map_parts.rs"]
 mod parts_walk;
+#[path = "tracker_map_prequels.rs"]
+mod prequel_walk;
 
 /// The identity map a failed read leaves the write with, logged at
 /// debug: the write proceeds as it did before maps existed.
@@ -155,12 +157,12 @@ async fn build_resolved(
 /// prequel of which resolves is identity, kept for the short window.
 async fn build_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<EpisodeMap> {
     let ours = kitsu_show(ask, kitsu_id).await?;
-    let Some((root, native)) = parts_walk::root_through_prequels(ask, kitsu_id).await? else {
+    let Some((root, native)) = prequel_walk::root_through_prequels(ask, kitsu_id).await? else {
         return Ok(EpisodeMap::identity(Identity::Unexplained));
     };
     // The nearest prequel that resolves may be a later part under the
     // entry: the parts start at the first of them.
-    let root = parts_walk::first_part_under(ask, &root, native).await?;
+    let root = prequel_walk::first_part_under(ask, &root, native).await?;
     let gathered = evidence::gather_under(ask, ours, root, native).await?;
     Ok(map_show(&gathered))
 }
