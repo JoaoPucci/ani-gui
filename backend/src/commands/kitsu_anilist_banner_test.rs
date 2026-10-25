@@ -532,3 +532,87 @@ async fn a_null_cover_show_whose_remembered_banner_is_dead_asks_anilist_once_and
     assert_eq!(detail.anilist_banner, None);
     anilist.verify().await;
 }
+
+#[tokio::test]
+async fn a_rate_limited_trending_fallback_is_not_kept_as_the_feed() {
+    // AniList refusing this client leaves the home page on Kitsu's own
+    // list for this load. That list is not AniList's answer, so it is
+    // not kept under AniList's feed: the next load asks AniList again.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": { "canonicalTitle": "Show 12", "titles": {}, "subtype": "TV" },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let fallback = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback");
+    assert!(fallback.iter().all(|r| r.anilist_banner.is_none()));
+
+    let next = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("next load");
+    assert_eq!(
+        next.first().and_then(|r| r.anilist_banner.as_deref()),
+        Some(BANNER),
+        "the next load read the fallback back instead of asking AniList"
+    );
+}
+
+#[tokio::test]
+async fn a_rate_limited_banner_backfill_does_not_keep_the_detail_without_it() {
+    // The backfill's answer is missing, not "no banner": the detail is
+    // served without one, but not kept that way.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Media": { "bannerImage": BANNER } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_null_cover_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let first = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    assert_eq!(first.anilist_banner, None);
+
+    let next = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail again");
+    assert_eq!(
+        next.anilist_banner.as_deref(),
+        Some(BANNER),
+        "the rate-limited detail was kept without its banner"
+    );
+}

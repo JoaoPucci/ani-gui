@@ -178,9 +178,11 @@ fn cache_anilist_eps_thumbs_caches_success_listing_by_kitsu_id() {
 
 #[test]
 fn cache_anilist_eps_thumbs_negative_caches_empty_on_error() {
-    // The rate-limit-burst story: AniList 429s on cold load, we
-    // negative-cache an empty map so the next 5 minutes of
-    // navigation see a cache hit instead of re-burning the budget.
+    // A failed lookup — no usable mapping, an unreadable answer — is
+    // negative-cached as an empty map so the next 5 minutes of
+    // navigation see a cache hit instead of re-burning the budget. A
+    // rate limit is not one of these: it is never written
+    // (`a_rate_limited_listing_is_not_cached_as_an_empty_one`).
     // The kitsu_id-level key means a subsequent hit also avoids
     // re-running the Kitsu /mappings lookup.
     let pool = crate::cache::open_in_memory().expect("in-mem pool");
@@ -719,5 +721,26 @@ async fn a_later_entry_with_a_still_fills_an_episode_its_first_entry_left_bare()
             .as_ref()
             .and_then(|t| t.original.as_deref()),
         Some("https://cr.cdn/1-dub.jpg")
+    );
+}
+
+#[tokio::test]
+async fn a_rate_limited_listing_is_not_cached_as_an_empty_one() {
+    // AniList refusing this client says nothing about the show's
+    // episodes. Nothing is written, so the next view asks again
+    // instead of reading "no stills" for the error TTL.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert!(got.entries.is_empty());
+    assert_eq!(
+        meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k12").expect("cache read"),
+        None,
+        "a rate limit was cached as an empty listing"
     );
 }
