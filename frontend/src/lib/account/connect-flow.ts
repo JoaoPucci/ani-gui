@@ -124,13 +124,13 @@ export interface DisconnectFlowDeps {
 	 * so an in-flight boot token refresh is superseded and can't
 	 * re-persist / reconnect the account mid-disconnect. Required of every
 	 * caller (the /account page and the topbar chip) so no disconnect path
-	 * can forget it (Codex P2 #3416668470, #3416762784).
+	 * can forget it.
 	 */
 	beginAccountChange(): void;
 	clearPersistedAccount(provider: Provider): Promise<boolean>;
 	dropListCache(provider: Provider, bearer: string, fallbackUserId?: string): Promise<void>;
 	/**
-	 * Codex P2 #3371658227: orphan-token disconnect path. When the
+	 * Orphan-token disconnect path. When the
 	 * prior state had no decoded account (hydrate found the file
 	 * unreadable), there's no bearer to send to dropListCache —
 	 * provider-wide clear is the only path that can drop the rows.
@@ -142,13 +142,13 @@ export interface DisconnectFlowDeps {
  * Disconnect: drop the cache rows BEFORE clearing safeStorage (the
  * cache delete still needs a live bearer to send), then clear the
  * local tokens. Cache-eviction errors stay swallowed — best-effort —
- * but a token-clear failure is fatal: per Codex P2 #3369988183, if
+ * but a token-clear failure is fatal: if
  * `clearPersistedAccount` returns false the bearer is still on disk
  * and `hydrate()` will restore the account on next launch. Telling
  * the user they're disconnected in that state is a lie, so surface
  * the failure to the caller.
  *
- * Order changed from clear-then-drop (PR #1 v1) to drop-then-clear
+ * The order is drop-then-clear, not clear-then-drop,
  * because the cache DELETE now requires the bearer; running it after
  * the safeStorage purge means the renderer has already forgotten it.
  */
@@ -161,8 +161,7 @@ export async function disconnectAccount(
 ): Promise<DisconnectResult> {
 	// Mark the provider as changing synchronously, before any await, so an
 	// in-flight boot token refresh is superseded and can't re-persist /
-	// reconnect during the async cache + token clears below (Codex P2
-	// #3416668470, #3416762784). Centralised here so every disconnect
+	// reconnect during the async cache + token clears below. Centralised here so every disconnect
 	// entry point (the /account page and the topbar chip) is covered.
 	deps.beginAccountChange();
 	const bearer = bearerFor(prevState);
@@ -171,13 +170,13 @@ export async function disconnectAccount(
 		try {
 			// Pass the safeStorage-persisted user_id as fallback so the
 			// backend can still clear the cache when the bearer has
-			// expired (Codex P2 #3369997650).
+			// expired.
 			await deps.dropListCache(provider, bearer, fallbackUserId);
 		} catch {
 			/* eviction failure non-fatal — next sync overwrites */
 		}
 	} else {
-		// Codex P2 #3371658227: no bearer = orphan-token disconnect
+		// No bearer = orphan-token disconnect
 		// (hydrate's unreadable-token error state). The per-user
 		// delete needs a user_id we don't have; fall through to the
 		// provider-wide clear so PRIVACY.md's "list cache dropped on

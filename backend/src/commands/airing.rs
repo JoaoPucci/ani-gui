@@ -36,7 +36,7 @@ const AIRING_TTL_MAX_SECS: u64 = 24 * 60 * 60;
 /// Cache TTL for one airing row. A row written shortly before a
 /// scheduled airing must not outlive the airing by the full fixed
 /// window — the just-dropped episode would stay greyed out until the
-/// TTL expired (Codex P2 #3565710322). Cap at the schedule boundary
+/// TTL expired. Cap at the schedule boundary
 /// plus a short grace; an already-passed timestamp (stale AniList
 /// row, clock skew) collapses to the grace so the next read soon
 /// refetches without hammering per-request.

@@ -536,7 +536,7 @@ describe('rowWorthRetrying', () => {
 		// already open the SEARCH is refused first, and the backend
 		// surfaces that as a transport error — so the probe throws and
 		// this side sees `null`, indistinguishable from the backend
-		// being down (Codex P1 #3677174888).
+		// being down.
 		//
 		// It does not need to be distinguishable. The budget counts
 		// ANSWERS, and none of these is one; the ladder is what bounds

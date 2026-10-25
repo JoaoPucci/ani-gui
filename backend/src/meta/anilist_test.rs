@@ -418,7 +418,7 @@ async fn mal_id_for_media_id_propagates_upstream_5xx() {
 
 // `media_ids_for_mals` is the batched inverse bridge: the Watch-Later
 // rail resolves ALL its Kitsu-unmapped MAL ids in one Page query per
-// 50-chunk instead of one Media query each (Codex P2 #3565216298).
+// 50-chunk instead of one Media query each.
 #[test]
 fn parse_media_ids_by_mal_response_builds_the_idmal_map() {
     let body = br#"{"data":{"Page":{"media":[

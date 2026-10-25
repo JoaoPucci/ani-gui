@@ -86,7 +86,7 @@ describe('makeFetchAvailability', () => {
 
 describe('interactive click-time lookups (render-then-refine)', () => {
 	it('omits the background flag when the caller is user-awaited', async () => {
-		// Codex P1 #3664626750 — the click-time cap lookup reused the
+		// The click-time cap lookup once reused the
 		// background-flagged wrapper, so the scraper gate paced it and
 		// REFUSED it outright while the breaker was open: the fallback
 		// then reproduced the exact lagging-dub phantom episode the

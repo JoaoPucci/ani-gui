@@ -12,8 +12,9 @@
  * whole episodes, so the re-ask reports the show as listed and reports
  * nothing about the cap. Treating that as a whole answer discards the
  * ordinary lookup wholesale, confirmed count and all, and leaves the
- * page on the count the row held before — which after a mode change
- * belongs to the other catalogue (Codex P2 #3674622194).
+ * page on whatever count the row held before — an older one, or none
+ * at all after a mode change, since a count from the other catalogue
+ * is not this one's ($lib/availability/row).
  *
  * So ownership is per field. A re-ask claims the verdict always and the
  * count — with the extras and the show's versions, which the same

@@ -128,10 +128,9 @@ fn migrations_are_idempotent_across_pool_opens() {
 
 #[test]
 fn v002_creates_user_list_cache_with_expected_columns() {
-    // PR #1 of the account integration chain. user_list_cache
-    // holds the per-provider list snapshot used by the home
-    // Watch Later rail (PR #2) and write-back optimistic state
-    // (PR #4). Pin the column shape here so a future migration
+    // user_list_cache holds the per-provider list snapshot used
+    // by the home Watch Later rail and write-back optimistic
+    // state. Pin the column shape here so a future migration
     // can't silently drop a column the cache reader depends on.
     let pool = open_in_memory().unwrap();
     let conn = pool.get().unwrap();

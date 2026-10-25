@@ -149,7 +149,7 @@ describe('decidePlayerKeyAction', () => {
 	});
 
 	it('suppresses auto-repeat for toggle-style actions (Space / n / p / f / m)', () => {
-		// Codex P2 (PR #20 review): KeyboardEvent.keydown auto-repeats
+		// KeyboardEvent.keydown auto-repeats
 		// while the key is held. Without a `repeat` gate, holding
 		// Space would flip play/pause every few ms; holding `f`
 		// would toggle fullscreen continuously. Toggle-style actions
