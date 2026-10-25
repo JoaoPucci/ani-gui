@@ -183,12 +183,15 @@ async fn fit_on(
         .expect("airing row");
     }
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
+    // Every listing here runs two rows past its count.
+    let at = show.episodes.len() - 2;
+    let count = u32::try_from(at).expect("a count");
     source.remember(Some(&Remembered {
         slug: show.hit.slug.clone(),
-        count: 12,
-        ids: show.episodes[12..].iter().map(|e| e.id).collect(),
+        count,
+        ids: show.episodes[at..].iter().map(|e| e.id).collect(),
     }));
-    let fitted = fit_appended(show, Some(12), Some(&source)).await;
+    let fitted = fit_appended(show, Some(count), Some(&source)).await;
     (fitted.episodes, source.remembered())
 }
 
@@ -407,5 +410,67 @@ async fn a_listing_whose_last_episodes_kitsu_names_otherwise_refuses_without_the
     let (rows, kept) =
         fitted_listing(&Answers::recorded(), &["look-ahead", "relations"], show).await;
     assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// A show Kitsu counts `count` episodes of, every one titled "Story n"
+/// and dated, Kitsu's first page holding the first twenty and its
+/// second the rest; the listing names them as Kitsu does and runs two
+/// rows past the count, the first named as Kitsu's first episode.
+fn a_longer_show(count: u32) -> (Answers, PickedShow) {
+    let mut answers = Answers::recorded();
+    answers.detail["data"]["attributes"]["episodeCount"] = count.into();
+    if let Some(airing) = answers.airing.as_mut() {
+        airing.aired = Some(count);
+        airing.next_episode = None;
+    }
+    let row = |n: u32| {
+        serde_json::json!({"id": n.to_string(), "type": "episodes", "attributes": {
+            "number": n, "canonicalTitle": format!("Story {n}"), "airdate": "2020-01-01"}})
+    };
+    answers.page = serde_json::json!({"data": (1..=count.min(20)).map(row).collect::<Vec<_>>()});
+    let mut rows: Vec<EpisodeRef> = (1..=count + 2)
+        .map(|n| EpisodeRef {
+            id: u64::from(n),
+            number: n,
+            number2: None,
+            title: Some(format!("Story {n}")),
+            former_tag: None,
+        })
+        .collect();
+    let at = usize::try_from(count).expect("a count");
+    rows[at].title = Some("Story 1".into());
+    rows[at + 1].title = Some("A Second Extra".into());
+    let show = PickedShow::listed(
+        BrowseHit {
+            slug: "a-longer-show-1".into(),
+            title: "A Longer Show".into(),
+            kind: None,
+            jname: None,
+        },
+        rows,
+    );
+    (answers, show)
+}
+
+/// Twenty episodes, the count ending Kitsu's first page: the page after
+/// is the second, and a row past the count named as the show's first
+/// episode, read on the first, settles the refusal without it.
+#[tokio::test]
+async fn a_count_ending_a_page_settles_on_that_page_without_the_next() {
+    let (answers, show) = a_longer_show(20);
+    let (rows, kept) = fitted_listing(&answers, &["look-ahead", "relations"], show).await;
+    assert!(rows.iter().all(|e| e.number2.is_none()), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// Twenty-one episodes, the count's last three straddling Kitsu's first
+/// two pages: the refusal the first page settles needs neither the
+/// second nor the one after it.
+#[tokio::test]
+async fn a_refusal_the_first_of_the_count_s_pages_settles_needs_no_second() {
+    let (answers, show) = a_longer_show(21);
+    let (rows, kept) = fitted_listing(&answers, &["look-ahead", "relations"], show).await;
+    assert!(rows.iter().all(|e| e.number2.is_none()), "{rows:?}");
     assert_eq!(kept, None);
 }
