@@ -267,7 +267,12 @@ async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
         String::new(),
         MediaKind::Mp4,
     );
-    let state = state_with_proxy_origin();
+    let mut state = state_with_proxy_origin();
+    // The app's refill would hand the check a token once the burst's
+    // first take is a refill interval old, however long the scheduler
+    // held the test before the deadline: a budget that does not refill
+    // keeps the burst spent.
+    state.host_budget = crate::proxy::host_budget::HostBudget::fresh_without_refill();
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
         state.host_budget.admit(&host).await;

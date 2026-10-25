@@ -128,9 +128,10 @@ def aired_in(ev, number, bound):
     return bool(month(aired) and month(aired) == month(bound))
 
 
-def place(parts, ours, total):
+def place(parts, ours, total, taken_out=None):
     """The episodes before `ours` and its count, when the parts up to some
-    one of them sum exactly to `total`, at least two, `ours` among them."""
+    one of them sum exactly to `total`, at least two, `ours` among them.
+    `taken_out`, a list, is given how many parts were taken."""
     covered, found, taken = 0, None, 0
     for p in parts:
         if covered >= total:
@@ -141,6 +142,8 @@ def place(parts, ours, total):
             found = (covered, p["episodes"])
         covered += p["episodes"]
         taken += 1
+    if taken_out is not None:
+        taken_out.append(taken)
     if covered == total and taken >= 2:
         return found
     return None
@@ -154,6 +157,9 @@ def shared_rule(ev, total):
     starts = [p["start"] for p in parts]
     if len(set(starts)) != len(starts):
         return None
+    # The whole set explains the entry, not a prefix of it.
+    if any(not p["episodes"] for p in parts) or sum(p["episodes"] for p in parts) != total:
+        return None
     got = place(parts, ev["kitsu"]["id"], total)
     if got is None:
         return None
@@ -161,12 +167,34 @@ def shared_rule(ev, total):
     return [segment(ev["entry"], total, 1, n, lead)]
 
 
+def chain_files_otherwise(ev, total):
+    """Whether Kitsu's chain of parts reaches the entry's total, at least
+    two of them, through parts other than the entries mapped to it."""
+    covered, taken = 0, []
+    for p in ev["parts"]:
+        if covered >= total:
+            break
+        if not p["episodes"]:
+            return False
+        covered += p["episodes"]
+        taken.append(p["id"])
+    if covered != total or len(taken) < 2:
+        return False
+    return sorted(taken) != sorted(k["id"] for k in ev["sharing"])
+
+
 def split_rule(ev, total):
-    got = place(ev["parts"], ev["kitsu"]["id"], total)
+    """The chain's placement and whether it is contradicted: a Kitsu
+    entry mapped to the tracker's entry that is not among the parts
+    taken says the parts are not the whole of the entry."""
+    taken = []
+    got = place(ev["parts"], ev["kitsu"]["id"], total, taken)
     if got is None:
-        return None
+        return None, False
+    ids = {p["id"] for p in ev["parts"][: taken[0]]}
+    contradicted = any(k["id"] not in ids for k in ev["sharing"])
     lead, n = got
-    return [segment(ev["entry"], total, 1, n, lead)]
+    return [segment(ev["entry"], total, 1, n, lead)], contradicted
 
 
 def listed_number(text):
@@ -209,14 +237,22 @@ def predict(ev):
         # no other Kitsu entry is filed under the entry; beside Kitsu parts
         # it is a rival to them, read from the first part's count.
         sole = all(k["id"] == ours for k in ev["sharing"] + ev["parts"])
-        split = split_rule(ev, total)
+        shared = shared_rule(ev, total)
+        if shared and chain_files_otherwise(ev, total):
+            return identity("conflict")
+        split, contradicted = split_rule(ev, total)
+        if contradicted:
+            # A contradicted chain is no explanation of its own, but it
+            # still stands as a rival to a shared set that places the
+            # show otherwise.
+            split = split if shared else None
         rival = None
-        if split and ev["parts"]:
+        if split and not contradicted and ev["parts"]:
             first = ev["parts"][0]["episodes"]
             if first and first < total:
                 rival = extras_rule(ev, first, total)
         for shape, segs in (
-            ("shared_entry", shared_rule(ev, total)),
+            ("shared_entry", shared),
             ("split_parts", split),
             ("extras", rival),
             ("extras", extras_rule(ev, count, total) if sole else None),
@@ -406,6 +442,73 @@ def later_part_family(rng):
     return out
 
 
+def shared_overfull_family(rng):
+    """Entries sharing a tracker entry whose first few sum to its total
+    while the whole set does not: three to five parts, the total the sum
+    of a proper prefix of them, with every part in turn as ours. Among
+    them, three twelve-episode entries against a 24-episode entry."""
+    out = []
+    shapes = [[12, 12, 12]] + [[rng.randint(1, 30) for _ in range(rng.randint(3, 5))] for _ in range(40)]
+    for counts in shapes:
+        n = len(counts)
+        parts = [kitsu(30 + i, counts[i], months(2019, 4 * i) + "-04", months(2019, 4 * i + 3) + "-26") for i in range(n)]
+        total = sum(counts[: rng.randint(2, n - 1)]) if counts != [12, 12, 12] else 24
+        for ours in range(n):
+            ev = evidence(parts[ours], show(37, total, rng.random() < 0.85), sharing=list(parts))
+            out.append(("shared_overfull", ev))
+    return out
+
+
+def split_overfull_family(rng):
+    """A chain of Kitsu parts whose first few reach the entry's total,
+    the part after them mapped to the entry too: three to five parts,
+    with each part in turn as ours. Among them, three twelve-episode
+    parts against a 24-episode entry. Beside them, the same chains with a
+    mapped entry outside the chain, or a page of mappings Kitsu did not
+    list whole, both identity; and with the part past the sum mapped
+    nowhere, which split as before."""
+    out = []
+    shapes = [[12, 12, 12]] + [[rng.randint(1, 30) for _ in range(rng.randint(3, 5))] for _ in range(30)]
+    for counts in shapes:
+        n = len(counts)
+        reach = 2 if counts == [12, 12, 12] else rng.randint(2, n - 1)
+        total = sum(counts[:reach])
+        parts = [kitsu(60 + i, counts[i], months(2017, 4 * i) + "-06", "") for i in range(reach + 1)]
+        outside = kitsu(69, counts[-1], months(2030, 1) + "-06", "")
+        incomplete = {"id": "", "episodes": None, "start": None, "end": None}
+        for tweak in ("mapped", "unmapped", "outside", "incomplete"):
+            chain, sharing = parts, list(parts)
+            if tweak == "unmapped":
+                sharing = list(parts[:1])
+            elif tweak == "outside":
+                chain, sharing = parts[:reach], list(parts[:reach]) + [outside]
+            elif tweak == "incomplete":
+                sharing = [incomplete]
+            for ours in range(reach):
+                ev = evidence(parts[ours], show(67, total, rng.random() < 0.85), parts=chain, sharing=sharing)
+                out.append(("split_overfull-" + tweak, ev))
+    return out
+
+
+def chain_rival_family(rng):
+    """A chain of equal parts reaching the entry's total through a part
+    mapped to nothing, beside a mapped set that sums to the same total
+    with a later part in its place: three to five parts, each mapped part
+    in turn as ours. Among them, twelve-episode parts against a
+    24-episode entry, the first and third mapped. Every case is a
+    conflict."""
+    out = []
+    shapes = [(12, 3, 2)] + [(rng.randint(1, 30), n, rng.randint(2, n - 1)) for n in (3, 4, 5) for _ in range(8)]
+    for count, n, reach in shapes:
+        parts = [kitsu(90 + i, count, months(2016, 4 * i) + "-08", "") for i in range(n)]
+        total = count * reach
+        sharing = [parts[0]] + parts[2 : reach + 1]
+        for ours in sharing:
+            ev = evidence(ours, show(97, total, rng.random() < 0.85), parts=parts[:reach], sharing=sharing)
+            out.append(("chain_rival", ev))
+    return out
+
+
 def extras_family(rng):
     """A prologue, several half-episode recaps, both, as a long shounen's
     tracker counts them — and the lists that leave the surplus
@@ -564,7 +667,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, dated_family, plain_family, later_part_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, dated_family, plain_family, later_part_family, shared_overfull_family, split_overfull_family, chain_rival_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:

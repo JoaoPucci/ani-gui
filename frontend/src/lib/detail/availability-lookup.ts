@@ -88,9 +88,10 @@ export function startAvailabilityLookup(
 			if (cancelled) return;
 			// An unsettled answer reached the provider and established
 			// nothing: its `available: false` is not a verdict, so the
-			// page keeps what it had, as it does when the lookup fails —
-			// unless it is a refusal by name, which is the verdict that
-			// the catalogue does not carry the show.
+			// page keeps what it had for this audio
+			// ($lib/availability/row), as it does when the lookup fails
+			// — unless it is a refusal by name, which is the verdict
+			// that the catalogue does not carry the show.
 			const available = availabilityVerdict(r);
 			if (available === null) return;
 			// Whatever a re-ask has since established is the re-ask's —
@@ -109,8 +110,9 @@ export function startAvailabilityLookup(
 			deps.apply(patch);
 		})
 		.catch(() => {
-			// Nothing established. The page keeps what it had, and the
-			// lazy failure path in the click handler still surfaces it.
+			// Nothing established. The page keeps what it had for this
+			// audio, and the lazy failure path in the click handler still
+			// surfaces it.
 		})
 		.finally(() => {
 			if (!cancelled) deps.setResolved(true);

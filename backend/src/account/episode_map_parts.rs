@@ -20,8 +20,9 @@ pub(super) fn part_of_entry(entry: &TrackerShow, total: u32, count: u32, lead: u
 
 /// Where the show being mapped sits in `parts`, given in order, when
 /// the parts up to some one of them sum exactly to the entry's total
-/// and the show is among those: the episodes before its, and its count.
-fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(u32, u32)> {
+/// and the show is among those: the episodes before its, its count,
+/// and how many parts were taken.
+fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(u32, u32, usize)> {
     let mut covered = 0u32;
     let mut place = None;
     let mut taken = 0usize;
@@ -36,15 +37,16 @@ fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(
         covered = covered.checked_add(count)?;
         taken += 1;
     }
-    (covered == tracker_total && taken >= 2)
+    let (lead, count) = (covered == tracker_total && taken >= 2)
         .then_some(place)
-        .flatten()
+        .flatten()?;
+    Some((lead, count, taken))
 }
 
 /// The shared-entry rule: every Kitsu entry mapped to the tracker's
 /// entry, in the order of their distinct start dates (each a real,
-/// full calendar date), sums exactly to
-/// its total, the show among them. The show's episodes are the entry's
+/// full calendar date), all of them together sum exactly to its total,
+/// the show among them. The show's episodes are the entry's
 /// after the parts before it; only the last part's last episode is the
 /// entry's.
 pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
@@ -64,7 +66,18 @@ pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Ve
     if parts.windows(2).any(|w| w[0].start == w[1].start) {
         return None;
     }
-    let (lead, count) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
+    // The whole set explains the entry, not a prefix of it: an entry
+    // mapped after the parts that reach the total says those parts are
+    // not the whole of it.
+    let sum = parts.iter().try_fold(0u32, |sum, p| {
+        p.episodes
+            .filter(|n| *n > 0)
+            .and_then(|n| sum.checked_add(n))
+    })?;
+    if sum != tracker_total {
+        return None;
+    }
+    let (lead, count, _) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
     Some(vec![part_of_entry(
         &evidence.entry,
         tracker_total,
@@ -78,13 +91,23 @@ pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Ve
 /// entry of its own on the tracker — sums exactly to the entry's total
 /// as far as the sum reaches, the show among those parts. The chain's
 /// order is Kitsu's own.
-pub(super) fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
+///
+/// The parts past the sum are the chain running on into entries of its
+/// own. A Kitsu entry mapped to the tracker's entry that is not among
+/// the parts taken — a later part of the chain, or one outside it, or a
+/// page of mappings Kitsu did not list whole — says the parts are not
+/// the whole of the entry: the placement comes back marked
+/// contradicted.
+pub(super) fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<(Vec<Segment>, bool)> {
     let parts: Vec<&KitsuShow> = evidence.parts.iter().collect();
-    let (lead, count) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
-    Some(vec![part_of_entry(
-        &evidence.entry,
-        tracker_total,
-        count,
-        lead,
-    )])
+    let (lead, count, taken) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
+    let taken_parts = &parts[..taken];
+    let contradicted = evidence
+        .sharing
+        .iter()
+        .any(|mapped| !taken_parts.iter().any(|part| part.id == mapped.id));
+    Some((
+        vec![part_of_entry(&evidence.entry, tracker_total, count, lead)],
+        contradicted,
+    ))
 }

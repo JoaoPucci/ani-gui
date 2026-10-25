@@ -65,8 +65,12 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
             explanations.push((Shape::Chain, segments));
         }
     } else {
-        if let Some(segments) = shared_entry(evidence, tracker_total) {
-            explanations.push((Shape::SharedEntry, segments));
+        let shared = shared_entry(evidence, tracker_total);
+        if shared.is_some() && chain_files_otherwise(evidence, tracker_total) {
+            return EpisodeMap::identity(Identity::Conflict);
+        }
+        if let Some(segments) = &shared {
+            explanations.push((Shape::SharedEntry, segments.clone()));
         }
         // The extras rule reads a surplus over the show's own count, so it
         // explains the entry only where no other Kitsu entry is filed
@@ -77,19 +81,12 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
             .iter()
             .chain(&evidence.parts)
             .all(|k| k.id == ours);
-        if let Some(segments) = split_parts(evidence, tracker_total) {
-            explanations.push((Shape::SplitParts, segments));
-            // The entry's list explaining the surplus over the first part
-            // is a rival explanation of the same episodes.
-            let rival = if evidence.parts.first().is_some_and(|p| p.id == ours) {
-                extras(evidence, kitsu_count, tracker_total)
-            } else {
-                first_part_extras(evidence, tracker_total)
-            };
-            if let Some(rival) = rival {
-                explanations.push((Shape::Extras, rival));
-            }
-        }
+        explanations.extend(split_explanations(
+            evidence,
+            kitsu_count,
+            tracker_total,
+            shared.is_some(),
+        ));
         if sole {
             if let Some(segments) = extras(evidence, kitsu_count, tracker_total) {
                 explanations.push((Shape::Extras, segments));
@@ -106,6 +103,68 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
         }
         _ => EpisodeMap::identity(Identity::Conflict),
     }
+}
+
+/// Whether Kitsu's chain of parts reaches the entry's total, at least
+/// two of them, through parts other than the entries mapped to it: the
+/// chain then files the entry's episodes otherwise than the mapped set
+/// does, whichever part the show is.
+fn chain_files_otherwise(evidence: &Evidence, tracker_total: u32) -> bool {
+    let mut covered = 0u32;
+    let mut taken = Vec::new();
+    for part in &evidence.parts {
+        if covered >= tracker_total {
+            break;
+        }
+        let Some(count) = part.episodes.filter(|n| *n > 0) else {
+            return false;
+        };
+        covered = covered.saturating_add(count);
+        taken.push(part.id.as_str());
+    }
+    let reaches = covered == tracker_total && taken.len() >= 2;
+    reaches
+        && (taken.len() != evidence.sharing.len()
+            || evidence
+                .sharing
+                .iter()
+                .any(|k| !taken.contains(&k.id.as_str())))
+}
+
+/// What the split-parts rule explains, with the extras rule as its
+/// rival: the chain's placement, or none where a mapped entry the chain
+/// does not take contradicts it. A contradicted chain is no explanation
+/// of its own, but it still stands as a rival to a shared set that
+/// places the show otherwise (`shared`).
+fn split_explanations(
+    evidence: &Evidence,
+    kitsu_count: u32,
+    tracker_total: u32,
+    shared: bool,
+) -> Vec<(Shape, Vec<Segment>)> {
+    let Some((segments, contradicted)) = split_parts(evidence, tracker_total) else {
+        return Vec::new();
+    };
+    if contradicted {
+        return if shared {
+            vec![(Shape::SplitParts, segments)]
+        } else {
+            Vec::new()
+        };
+    }
+    let mut found = vec![(Shape::SplitParts, segments)];
+    // The entry's list explaining the surplus over the first part is a
+    // rival explanation of the same episodes.
+    let ours = evidence.kitsu.id.as_str();
+    let rival = if evidence.parts.first().is_some_and(|p| p.id == ours) {
+        extras(evidence, kitsu_count, tracker_total)
+    } else {
+        first_part_extras(evidence, tracker_total)
+    };
+    if let Some(rival) = rival {
+        found.push((Shape::Extras, rival));
+    }
+    found
 }
 
 #[cfg(test)]

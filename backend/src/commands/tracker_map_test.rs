@@ -1285,11 +1285,18 @@ async fn the_last_of_five_parts_under_one_entry_is_filed_after_the_four_before_i
 /// 2020, each the single sequel of the one before; `mal` is each
 /// part's MyAnimeList mapping, if any.
 async fn mount_chain(kitsu: &MockServer, chain: &[(&str, Option<u32>)]) {
+    let chain: Vec<(&str, Option<u32>, Option<u32>)> =
+        chain.iter().map(|(id, mal)| (*id, *mal, None)).collect();
+    mount_chain_mapped(kitsu, &chain).await;
+}
+
+/// [`mount_chain`] with each part's MyAnimeList and AniList mappings.
+async fn mount_chain_mapped(kitsu: &MockServer, chain: &[(&str, Option<u32>, Option<u32>)]) {
     let dated = |i: usize| (format!("{}-01-01", 2020 + i), format!("{}-03-25", 2020 + i));
-    for (i, (id, mal)) in chain.iter().enumerate() {
+    for (i, (id, mal, anilist)) in chain.iter().enumerate() {
         let mut related = Vec::new();
         let before = i.checked_sub(1).map(|j| (chain[j].0, dated(j)));
-        let after = chain.get(i + 1).map(|(n, _)| (*n, dated(i + 1)));
+        let after = chain.get(i + 1).map(|(n, ..)| (*n, dated(i + 1)));
         if let Some((p, (s, e))) = &before {
             related.push(("prequel", *p, 12, s.clone(), e.clone()));
         }
@@ -1308,7 +1315,7 @@ async fn mount_chain(kitsu: &MockServer, chain: &[(&str, Option<u32>)]) {
         Mock::given(method("GET"))
             .and(path(format!("/anime/{id}")))
             .and(query_param("include", "mappings"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(mappings(id, *mal, None)))
+            .respond_with(ResponseTemplate::new(200).set_body_string(mappings(id, *mal, *anilist)))
             .mount(kitsu)
             .await;
     }
@@ -1424,4 +1431,111 @@ async fn a_part_four_unresolved_prequels_after_its_entry_is_filed_under_it() {
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments[0].entry_total, 72);
     assert_eq!(map.segments[0].lead, 60);
+}
+
+#[tokio::test]
+async fn a_chain_with_a_part_mapped_to_the_entry_past_its_total_is_no_split() {
+    // Three parts of twelve, one after the other, all mapped to
+    // MyAnimeList 904, a 24-episode entry. The first two reach the
+    // entry's total, but the third is mapped to it too: the parts are
+    // not the whole of the entry, and the second part's finale must not
+    // complete it.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "52",
+        detail("52", Some(12), "2021-01-01", "2021-03-25"),
+        1,
+    )
+    .await;
+    mount_chain(
+        &kitsu,
+        &[("51", Some(904)), ("52", Some(904)), ("53", Some(904))],
+    )
+    .await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        904,
+        &mapped_body(&["51", "52", "53"]),
+    )
+    .await;
+    let mal_server = mal_entry(904, 24).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let map = episode_map_for(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: None,
+        },
+        "52",
+        ProviderMediaId(904),
+        Some(24),
+    )
+    .await;
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+}
+
+#[tokio::test]
+async fn a_part_past_the_total_mapped_only_through_the_other_tracker_still_contradicts_the_chain() {
+    // Three parts of twelve against MyAnimeList 905, a 24-episode entry.
+    // The first two map to it; the third maps only to AniList 5300, which
+    // AniList records as MAL 905. Kitsu's page of the entries mapped to
+    // 905 lists the first two alone, so only the walk past the total
+    // finds the third mapped to the entry: the second part's finale must
+    // not complete it.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "42",
+        detail("42", Some(12), "2021-01-01", "2021-03-25"),
+        1,
+    )
+    .await;
+    mount_chain_mapped(
+        &kitsu,
+        &[
+            ("41", Some(905), None),
+            ("42", Some(905), None),
+            ("43", None, Some(5_300)),
+        ],
+    )
+    .await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        905,
+        &mapped_body(&["41", "42"]),
+    )
+    .await;
+    let anilist_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MalIdByMedia"))
+        .and(body_string_contains("5300"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"idMal":905}}}"#),
+        )
+        .mount(&anilist_server)
+        .await;
+    let mal_server = mal_entry(905, 24).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let anilist_uri = anilist_server.uri();
+    let map = episode_map_for(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_uri),
+        },
+        "42",
+        ProviderMediaId(905),
+        Some(24),
+    )
+    .await;
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
 }

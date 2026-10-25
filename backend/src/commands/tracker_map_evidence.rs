@@ -3,7 +3,8 @@
 
 use super::airdates::kitsu_airdates;
 use super::kitsu_side::{claimed_on_kitsu, sharing_on_kitsu};
-use super::parts_walk::{first_part_under, kitsu_parts, MAX_HOPS};
+use super::parts_walk::{file_mapped_past, kitsu_parts, MAX_HOPS};
+use super::prequel_walk::first_part_under;
 use super::*;
 use crate::account::episode_map_rules::chain_dates_needed;
 use crate::account::provider::MediaEvidence;
@@ -110,9 +111,13 @@ async fn gather_longer(
     native: ProviderMediaId,
     entry: MediaEvidence,
 ) -> Result<Evidence> {
-    let sharing = sharing_on_kitsu(ask.state, ask.kind, &entry.show).await?;
+    let mut sharing = sharing_on_kitsu(ask.state, ask.kind, &entry.show).await?;
     let parts = match entry.show.episodes {
-        Some(total) => kitsu_parts(ask, root, native, total).await?,
+        Some(total) => {
+            let parts = kitsu_parts(ask, root, native, total).await?;
+            file_mapped_past(ask, &parts, native, total, &mut sharing).await?;
+            parts
+        }
         None => vec![root],
     };
     Ok(Evidence {
