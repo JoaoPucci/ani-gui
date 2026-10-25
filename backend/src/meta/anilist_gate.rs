@@ -154,3 +154,11 @@ pub(crate) struct SharedForTests(String);
 impl Drop for SharedForTests {
     fn drop(&mut self) {}
 }
+
+#[cfg(test)]
+#[path = "anilist_gate_prop_test.rs"]
+mod prop_tests;
+
+#[cfg(test)]
+#[path = "anilist_gate_test.rs"]
+mod tests;
