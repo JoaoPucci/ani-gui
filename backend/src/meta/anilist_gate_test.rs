@@ -362,7 +362,7 @@ async fn background_fills_leave_the_reserve_to_the_user() {
 
 #[test]
 fn a_gate_is_kept_by_host_and_port() {
-    use super::pace::authority;
+    use super::answer::authority;
     assert_eq!(
         authority("https://graphql.anilist.co"),
         "graphql.anilist.co:443"
