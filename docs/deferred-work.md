@@ -264,25 +264,6 @@ starting it, and delete it when you find it done.
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
   only, since nothing builds or launches the Windows app in CI.
-- **Frontend tests that sleep, then assert something did not
-  happen.** Many acceptance cases (`frontend/tests/acceptance/`) wait
-  a fixed 10 to 1,500 ms and then assert that no request went out, no
-  notice showed or no state changed. On a slow run the page may not
-  have reached the point where it would have done the thing, and the
-  negative passes without having checked anything. They never fail
-  falsely, so no run has surfaced them. The backend's tests of this
-  shape were converted to positive witnesses, and so were the frontend
-  cases the version picker (#255), the request lanes (#257) and the
-  sweep of the older acceptance cases reached. Cases added since that
-  sweep are not converted, among them those the navigation-state,
-  Reload and per-audio verdict fixes added (#267, #268, #269).
-
-  A 0 ms timer is a sleep of the same kind wherever the page's
-  requests pass through MSW: one turn of the event loop is not known
-  to carry them to a handler. Where every stand-in lives in memory, as
-  in the unit tests and in acceptance cases built on a fake
-  EventSource alone, one turn drains every microtask and settles the
-  question.
 
 ## Correctness in the app (continued)
 
