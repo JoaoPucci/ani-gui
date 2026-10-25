@@ -180,17 +180,20 @@ impl AniListProvider {
         tokens: &Tokens,
         body: &serde_json::Value,
     ) -> Result<bytes::Bytes> {
-        let resp = self
-            .client
-            .post(self.api_url())
-            .header("user-agent", ANILIST_USER_AGENT)
-            .header("content-type", "application/json")
-            .header("accept", "application/json")
-            .bearer_auth(&tokens.access_token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|_| AniError::Network)?;
+        // AniList counts this client, not the token: the account's
+        // requests spend the same budget, through the same gate, as
+        // the public ones.
+        let send = || {
+            self.client
+                .post(self.api_url())
+                .header("user-agent", ANILIST_USER_AGENT)
+                .header("content-type", "application/json")
+                .header("accept", "application/json")
+                .bearer_auth(&tokens.access_token)
+                .json(body)
+                .send()
+        };
+        let resp = super::anilist_gate::send(self.api_url(), send).await?;
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(AniError::InvalidToken);

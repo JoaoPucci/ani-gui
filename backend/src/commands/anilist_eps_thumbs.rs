@@ -75,28 +75,48 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
             return listing;
         }
     }
-    let outcome = fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await;
-    cache_anilist_eps_thumbs(&state.cache_pool, kitsu_id, &outcome);
-    outcome.unwrap_or_default()
+    match fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await {
+        // AniList refusing this client says nothing about the show:
+        // nothing is kept, and the next view asks again.
+        Err(Miss::RateLimited) => StreamingListing::default(),
+        outcome => {
+            let outcome = outcome.map_err(|_| ());
+            cache_anilist_eps_thumbs(&state.cache_pool, kitsu_id, &outcome);
+            outcome.unwrap_or_default()
+        }
+    }
+}
+
+/// Why a lookup came back without a listing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Miss {
+    /// A step answered and the answer was no listing — no usable
+    /// mapping, an unreadable body, an upstream error: negative-cached.
+    Failed,
+    /// AniList refused this client, or its budget held the request
+    /// back. Not an answer, and never cached as one.
+    RateLimited,
 }
 
 /// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
-/// AniList streamingEpisodes → [`StreamingListing`]. Any failure step
-/// (no usable mapping, AniList rate limit, parse failure) yields
-/// `Err(())` so the caller can negative-cache an empty result.
+/// AniList streamingEpisodes → [`StreamingListing`]. A failed step
+/// (no usable mapping, parse failure) is [`Miss::Failed`], which the
+/// caller negative-caches; an AniList rate limit is
+/// [`Miss::RateLimited`], which it does not.
 async fn fetch_anilist_eps_thumbs(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> std::result::Result<StreamingListing, ()> {
+) -> std::result::Result<StreamingListing, Miss> {
     let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
-        .map_err(
-            |e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed"),
-        )?;
+        .map_err(|e| {
+            tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed");
+            Miss::Failed
+        })?;
     // Neither id: nothing to ask AniList. Err so the empty result
     // takes the short negative TTL, as a failed lookup does.
-    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
+    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::Failed)?;
     // A fill the page renders without: it spends AniList's budget
     // behind what the user is looking at.
     crate::meta::anilist_gate::in_background(streaming_listing_for_ids(
@@ -107,13 +127,20 @@ async fn fetch_anilist_eps_thumbs(
     ))
     .await
     .map_err(|e| {
+        let miss = if matches!(e, crate::error::AniError::RateLimited { .. }) {
+            Miss::RateLimited
+        } else {
+            Miss::Failed
+        };
         tracing::warn!(
             kitsu_id,
             mal_id = ?ids.mal,
             anilist_id = ?ids.anilist,
             error = ?e,
-            "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
+            ?miss,
+            "anilist thumbs: streamingEpisodes fetch failed",
         );
+        miss
     })
 }
 

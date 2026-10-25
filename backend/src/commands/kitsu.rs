@@ -109,6 +109,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     if let Err(ref e) = anilist {
         tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
     }
+    // Kitsu's list stands in for this load only: it is not AniList's
+    // answer, so it is not kept under AniList's feed.
+    let answered = anilist.is_ok();
     let bridged = match anilist {
         Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu(state, v).await,
         _ => Vec::new(),
@@ -129,7 +132,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // the list parser, so sanitize music here too.
     let hits = drop_music(hits);
     if let Ok(body) = serde_json::to_string(&hits) {
-        let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
+        if answered {
+            let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
+        }
         warm_signed_image_urls(state, &body);
     }
     Ok(hits)
@@ -1250,13 +1255,21 @@ async fn anime_detail_read(
     // round-trips on cold cache (Kitsu's mappings, then AniList), or
     // three when AniList lacks the MAL id and is asked again by
     // AniList's own id; the result is cached for the detail row's
-    // lifetime.
+    // lifetime — when there is one. A lookup that got no answer (a
+    // rate limit, a failed request) is not "no banner": the detail is
+    // served without one but not kept, so the next read asks again.
+    let mut answered = true;
     if detail.cover_image.is_none() {
         // A show the trending row listed already brought its banner
         // with that one request; only an unlisted show asks AniList.
         let banner = match super::anilist_banner_memo::remembered(&state.cache_pool, id) {
             Some(b) => Some(b),
-            None => anilist_banner_for(state, id, anilist_base).await,
+            None => anilist_banner_for(state, id, anilist_base)
+                .await
+                .unwrap_or_else(|()| {
+                    answered = false;
+                    None
+                }),
         }
         // AniList can answer with a URL its CDN has said is gone; no
         // cover is better than a dead one, and the renderer's poster
@@ -1275,7 +1288,7 @@ async fn anime_detail_read(
 
     let body = serde_json::to_string(&detail).ok();
     super::kitsu_gone::publish_served(state, id, fetched, || {
-        if let Some(body) = &body {
+        if let Some(body) = body.as_ref().filter(|_| answered) {
             let ttl = anime_detail_ttl(detail.status.as_deref());
             let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
         }
@@ -1287,16 +1300,17 @@ async fn anime_detail_read(
 }
 
 /// AniList's `bannerImage` for a Kitsu anime, reached through the
-/// ids Kitsu's mappings carry. `None` on any failure or when AniList
-/// has no banner — the caller keeps its null-cover fallback.
+/// ids Kitsu's mappings carry. `Ok(None)` when AniList has no banner;
+/// `Err` when a step got no answer — the caller keeps its null-cover
+/// fallback either way, and keeps the row only on an answer.
 async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> Option<String> {
+) -> std::result::Result<Option<String>, ()> {
     let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
-        .ok()?;
+        .map_err(|_| ())?;
     // The detail renders without it: a background fill.
     crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
         &state.meta_http,
@@ -1305,8 +1319,7 @@ async fn anilist_banner_for(
         anilist_base,
     ))
     .await
-    .ok()
-    .flatten()
+    .map_err(|_| ())
 }
 
 #[cfg(test)]
