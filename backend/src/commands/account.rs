@@ -50,7 +50,7 @@ type ShowLockMap = Mutex<HashMap<(ProviderKind, String), ShowLock>>;
 /// `push_progress` reads `current_progress` before the upsert, and the
 /// route callers fire `syncWatchedToTrackers` without awaiting — so two
 /// fan-out calls for the same show can both read the same count and the
-/// later-landing lower write would regress it (Codex P2 #3387237642).
+/// later-landing lower write would regress it.
 /// Providers only upsert (no compare-and-set), so the fix is to hold a
 /// per-show lock across the read + reconcile + write, making the
 /// monotonic guard atomic. The map indirection keeps distinct shows
@@ -97,9 +97,9 @@ impl AccountWriteLocks {
 /// the whole [`AppState`] so MAL can pull the process-wide refresh
 /// coalesce cache off it — without that shared cache, two concurrent
 /// handlers each build their own `MalProvider` with its own mutex and
-/// both POST the same stale refresh token (Codex P2 #3379969316).
+/// both POST the same stale refresh token.
 ///
-/// PR #4+ (in-house) eventually adds the third branch. Today InHouse
+/// An in-house provider would add the third branch. Today InHouse
 /// returns `None` — the routes that dispatch by slug guard against
 /// unsupported kinds at the slug-parse step, but defending here too
 /// keeps the dispatcher honest.
@@ -197,7 +197,7 @@ pub async fn list_all_and_cache(
     Ok(entries)
 }
 
-/// Read the cached list. Used by PR #2's home Watch Later rail to
+/// Read the cached list. Used by the home Watch Later rail to
 /// avoid an upstream round-trip on every paint.
 pub fn cached_list(
     state: &Arc<AppState>,
@@ -212,13 +212,12 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
     crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
 }
 
-/// Drop every cached row for `kind` regardless of `user_id`. Codex P2
-/// #3371658227: the renderer's safeStorage-orphan-disconnect path has
-/// no `user_id` to pass — the token file existed but the keychain
-/// couldn't decrypt it on hydrate — so we can't run the per-user
-/// clear. The API boundary still gates this on the renderer-only
-/// internal secret so a cross-origin tab can't wipe a stranger's
-/// cache by guessing nothing.
+/// Drop every cached row for `kind` regardless of `user_id`. The renderer's
+/// safeStorage-orphan-disconnect path has no `user_id` to pass — the token file
+/// existed but the keychain couldn't decrypt it on hydrate — so we can't run
+/// the per-user clear. The API boundary still gates this on the renderer-only
+/// internal secret so a cross-origin tab can't wipe a stranger's cache by
+/// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
     crate::account::cache::clear_provider(&state.cache_pool, kind)
 }
@@ -233,8 +232,8 @@ fn write_through_cache(
 }
 
 /// Write a single just-synced entry back into the cache so the local
-/// snapshot reflects the change without a full resync (Codex P2
-/// #3412673593). Leaves the rest of the user's cached list intact.
+/// snapshot reflects the change without a full resync. Leaves the rest of the
+/// user's cached list intact.
 pub fn upsert_cached_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -248,7 +247,7 @@ pub fn upsert_cached_entry(
 /// [`Tokens`] envelope. `expires_at_epoch_s` is zero because the
 /// header doesn't carry expiry — that's tracked in the renderer's
 /// token store and acted on (refresh / reauth) before the handler is
-/// called. PR #4 adds a richer header that round-trips the expiry.
+/// called.
 #[must_use]
 pub fn tokens_from_bearer(bearer: &str) -> Tokens {
     Tokens {
@@ -302,14 +301,14 @@ pub fn status_from_snake(s: &str) -> Option<ListStatus> {
 /// Cap on the renderer-supplied Watch-Later bridge batch. The home
 /// rail's largest plausible Plan-to-Watch is a few hundred titles;
 /// 500 leaves comfortable headroom while bounding the fan-out cost
-/// per request to a fixed worst case. Codex P1 #3373789621: under
+/// per request to a fixed worst case. Under
 /// the permissive CORS layer a cross-origin page could otherwise
 /// POST an unbounded `mal_ids` array and burn N concurrent Kitsu
 /// requests per call.
 pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 
 /// Concurrent in-flight Kitsu `/mappings` lookups during the
-/// Watch-Later bridge. Codex P2 #3373969321: `lookup_by_mal_id` is
+/// Watch-Later bridge. `lookup_by_mal_id` is
 /// uncached so a single rail load could fire up to
 /// [`WATCH_LATER_BRIDGE_MAX_IDS`] requests in parallel and trip
 /// Kitsu's upstream rate limit (the AniList trending bridge tops
@@ -322,13 +321,12 @@ const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 
 /// Bridge a list of MAL ids to Kitsu refs, preserving input order
 /// and dropping ids Kitsu can't map. Used by the home page's Watch
-/// Later rail (plan §6.6) so cached `user_list_cache` rows render
-/// with the same Kitsu metadata + availability filter as the rest
-/// of the home.
+/// Later rail so cached `user_list_cache` rows render with the same
+/// Kitsu metadata + availability filter as the rest of the home.
 ///
 /// Concurrency is capped at [`WATCH_LATER_BRIDGE_CONCURRENCY`] via
 /// `buffered(N)` so we don't queue up to 500 outbound Kitsu
-/// requests at once (Codex P2 #3373969321).
+/// requests at once.
 ///
 /// Truncates `mal_ids` at [`WATCH_LATER_BRIDGE_MAX_IDS`] before
 /// fan-out — the upstream gate (route handler) rejects oversize
@@ -468,7 +466,7 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         phase1.into_iter().map(|(card, _)| card).collect();
     // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
     // titles) — resolve ALL of them to AniList ids in one batched
-    // Page(idMal_in:) query per 50-chunk (Codex P2 #3565216298: the
+    // Page(idMal_in:) query per 50-chunk (a
     // per-miss Media(idMal:) call could burn AniList's 30 req/min
     // budget on a single big rail load), then look each up under
     // Kitsu's anilist/anime mapping. Same gap resolve_native_media_id
@@ -620,7 +618,7 @@ pub(crate) async fn resolve_native_media_id(
 }
 
 /// Build a validated [`EntryUpdate`] from the renderer's wire fields.
-/// Rejects two malformed shapes (Codex P2 #3381617932):
+/// Rejects two malformed shapes:
 ///
 /// - an all-absent update (no status, progress, or score) — since
 ///   both providers' `update_entry` upsert, an empty update would
@@ -657,19 +655,19 @@ pub fn build_entry_update(
 /// fields still worth sending (or `None` when nothing actionable
 /// remains, so the caller skips the write entirely).
 ///
-/// Progress (Codex P1 #3386909281): if the requested count wouldn't
+/// Progress: if the requested count wouldn't
 /// advance `current` (a replay / the Previous button) the progress field
 /// is dropped — never decrease the count.
 ///
 /// Status: the fan-out only ever sends `Completed` (a finished finale),
 /// otherwise it sends no status. This helper fills the rest in:
 ///   - a `Completed` write is always kept, even at unchanged progress —
-///     finishing a series is a valid forward move (Codex P2 #3387051891);
+///     finishing a series is a valid forward move;
 ///   - a status-less *advancing* progress write promotes a planning row
 ///     (or a not-yet-on-the-list show) to `Watching` so a Plan-to-Watch
-///     title leaves Watch Later (Codex P2 #3387383171), but leaves any
+///     title leaves Watch Later, but leaves any
 ///     other status untouched — preserving `Rewatching`/`Completed`/
-///     `Paused` (Codex P2 #3387319861);
+///     `Paused`;
 ///   - a non-advancing `Watching` is dropped (it could only downgrade or
 ///     no-op).
 pub fn reconcile_monotonic(
@@ -691,22 +689,21 @@ pub fn reconcile_monotonic(
             update.status = None;
         }
     }
-    // Preserve a rewatching/repeating row at the finale (Codex P2
-    // #3415780486): the fan-out sends Completed when a finished series'
-    // last episode is watched, but completing a row that's mid-rewatch
-    // would clear AniList REPEATING / MAL is_rewatching. Drop the
-    // Completed status so the rewatch state survives; any advancing
-    // progress field still flows below.
+    // Preserve a rewatching/repeating row at the finale: the fan-out sends
+    // Completed when a finished series' last episode is watched, but completing
+    // a row that's mid-rewatch would clear AniList REPEATING / MAL
+    // is_rewatching. Drop the Completed status so the rewatch state survives;
+    // any advancing progress field still flows below.
     if update.status == Some(ListStatus::Completed)
         && current.map(|c| c.status) == Some(ListStatus::Rewatching)
     {
         update.status = None;
     }
     // Promote a planning / not-yet-listed row to Watching on ANY watch
-    // event, advancing or not (Codex P2 #3387568872: a planning row
+    // event, advancing or not (a planning row
     // already at the same/higher count must still leave Watch Later),
     // but leave every other status untouched — preserving
-    // rewatching/paused/completed (Codex P2 #3387319861).
+    // rewatching/paused/completed.
     if is_watch_event && update.status.is_none() {
         let promote = match current {
             None => true,
@@ -763,7 +760,7 @@ async fn push_progress_with_anilist_base(
     // Kitsu id, so this write serializes with the editor's seed read (which
     // takes the same lock) across the whole resolve→read/write — closing the
     // window where a read could resolve, win the lock, and read a value this
-    // write is about to change (Codex P2 #3428252253). Held across the GET +
+    // write is about to change. Held across the GET +
     // upsert since providers only upsert (no compare-and-set).
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _write_guard = show_lock.lock().await;
@@ -790,7 +787,7 @@ async fn push_progress_with_anilist_base(
 /// real one). The per-show lock is held by the caller
 /// ([`push_progress_with_anilist_base`]) across resolve → this read →
 /// reconcile → write → cache write-through, so the read-then-write
-/// monotonic guard is atomic (Codex P2 #3387237642): the route callers
+/// monotonic guard is atomic: the route callers
 /// fire syncWatchedToTrackers without awaiting, so two writes for the
 /// same show would otherwise both read the same count and the
 /// later-landing lower one would regress it.
@@ -802,7 +799,7 @@ pub(crate) async fn push_progress_via(
     native: ProviderMediaId,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
-    // Monotonic guard (Codex P1 #3386909281 / P2 #3387051891): reconcile
+    // Monotonic guard: reconcile
     // the write against the tracker's current count so a replay can't
     // regress progress or downgrade a finished show, while still letting
     // a completion through at unchanged progress. Reading current
@@ -848,7 +845,7 @@ pub(crate) async fn push_progress_read(
 /// The cache is written HERE, under the per-show lock — not in the
 /// route afterwards. Deferring it released the lock first, so a stale
 /// mark-watched write-through could land after an explicit downward
-/// correction and clobber it (Codex P2 #3423108941 / #3423044438).
+/// correction and clobber it.
 /// Inside the lock it's serialized with the explicit editor's
 /// force-upsert, so no stale write lingers; the monotonic upsert still
 /// guards two racing mark-watched writes. Best-effort.

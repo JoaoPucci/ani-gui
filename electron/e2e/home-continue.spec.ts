@@ -478,7 +478,7 @@ test('Episode click takes over a started background prefetch instead of waiting 
 });
 
 test('Continue card during the availability-probe window is not a /search link', async () => {
-	// Codex P2 #3348970892: while the per-row probe is in flight,
+	// While the per-row probe is in flight,
 	// historyMatches[entry.id] is still undefined and the prior code
 	// fell into the /search fallback branch, so a click during the
 	// window navigated to search even when the row's Kitsu match was
@@ -502,7 +502,7 @@ test('Continue card during the availability-probe window is not a /search link',
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		await expect(strip).toBeVisible({ timeout: 10_000 });
 		// During the probe-pending window the row should not be a
-		// search link — that's the regression Codex flagged. Allow a
+		// search link — that's the regression this guards. Allow a
 		// short settle so the renderer has time to mount its loading
 		// state, but keep the assertion well inside the probe delay.
 		await page.waitForTimeout(500);

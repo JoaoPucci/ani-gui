@@ -1,10 +1,6 @@
-//! `UserListProvider` trait — every concrete provider (AniList today,
-//! MAL in PR #3, future in-house) implements this.
-//!
-//! Read methods (`me`, `list_all`) implement in PR #1.
-//! Write methods (`update_entry`, `delete_entry`) stub-return
-//! `AniError::Metadata` in PR #1; concrete impls land in PR #4
-//! (write-back).
+//! `UserListProvider` trait — every concrete provider (AniList, MAL,
+//! a future in-house one) implements this: the reads (`me`,
+//! `list_all`) and the write-back (`update_entry`, `delete_entry`).
 //!
 //! Timestamps are i64 epoch seconds to avoid pulling `chrono` into the
 //! backend. AniList returns `Int` timestamps natively; MAL returns
@@ -20,7 +16,7 @@ use crate::error::Result;
 
 /// Which provider an instance belongs to.
 ///
-/// Codex P2 #3369980190: serde rename targets match `slug()` exactly,
+/// Serde rename targets match `slug()` exactly,
 /// so a `ProviderKind::AniList` field on a serialized `UserProfile` /
 /// `ListEntry` round-trips through the renderer's `Provider` type
 /// (`'anilist' | 'mal' | 'inhouse'`). The default snake_case derive
@@ -140,7 +136,7 @@ pub struct ListEntry {
     pub title: String,
 }
 
-/// Update payload for write-back (PR #4).
+/// Update payload for write-back.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryUpdate {
     /// New status — leave `None` to keep current.
@@ -182,8 +178,7 @@ pub trait UserListProvider: Send + Sync {
     /// Providers paginate internally.
     async fn list_all(&self, tokens: &Tokens) -> Result<Vec<ListEntry>>;
 
-    /// Write `update` to one media id. PR #1 stubs to
-    /// `Err(AniError::Metadata)`; PR #4 implements.
+    /// Write `update` to one media id.
     async fn update_entry(
         &self,
         tokens: &Tokens,
@@ -191,17 +186,15 @@ pub trait UserListProvider: Send + Sync {
         update: EntryUpdate,
     ) -> Result<ListEntry>;
 
-    /// Remove an entry. PR #1 stubs to `Err(AniError::Metadata)`;
-    /// PR #4 implements.
+    /// Remove an entry.
     async fn delete_entry(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<()>;
 
     /// The authenticated user's current list entry for `id` (status +
     /// watched count), or `None` when the show isn't on their list yet.
     /// Bearer-scoped single read. Drives the write-back reconcile: keep
-    /// progress monotonic so a replay never regresses it (Codex P1
-    /// #3386909281), and read the status so a progress write can promote
-    /// a planning row to watching while preserving rewatching/completed
-    /// (Codex P2 #3387319861 / #3387383171).
+    /// progress monotonic so a replay never regresses it, and read the status
+    /// so a progress write can promote a planning row to watching while
+    /// preserving rewatching/completed.
     async fn current_entry(
         &self,
         tokens: &Tokens,

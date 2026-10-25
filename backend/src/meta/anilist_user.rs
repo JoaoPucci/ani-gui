@@ -1,9 +1,8 @@
 //! AniList concrete [`UserListProvider`] implementation — OAuth +
 //! `Viewer` profile + `MediaListCollection` user-list fetch.
 //!
-//! Reads only in PR #1. Write-back (`update_entry`, `delete_entry`)
-//! lands in PR #4; the stubs here return [`AniError::Metadata`] until
-//! then.
+//! Implements the reads (`me`, `list_all`) and the write-back
+//! (`update_entry`, `delete_entry`).
 //!
 //! AniList specifics worth keeping next to the code:
 //!
@@ -46,7 +45,7 @@ const ANILIST_USER_AGENT: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)
 /// GraphQL: authenticated user's profile. Mirrors §4.1 of the
 /// account-integration plan. `meanScore` on this surface is the
 /// 0..=100 percentage AniList returns regardless of the user's
-/// chosen scoring system — Codex P2 #3370087028. The read side
+/// chosen scoring system. The read side
 /// rescales to the trait's 0..=10 contract.
 const VIEWER_GQL: &str = "query Viewer { \
         Viewer { \
@@ -379,8 +378,7 @@ impl UserListProvider for AniListProvider {
         // AniList answers with `{ deleted: Boolean }`; `false` is its
         // documented failure signal. Surface it as an error so a future
         // retry/cache layer doesn't drop the local row + stop retrying
-        // for an entry the provider never removed (Codex P2
-        // #3381101376).
+        // for an entry the provider never removed.
         if parse_delete_result(&bytes)? {
             Ok(())
         } else {
@@ -549,7 +547,7 @@ fn parse_viewer_response(body: &[u8]) -> Result<UserProfile> {
             // regardless of the user's chosen scoring system —
             // POINT_100, POINT_10, POINT_5, etc. all surface here as a
             // percentage. The trait's contract is 0..=10, so divide.
-            // Codex P2 #3370087028: prior pass-through showed 65.5/10
+            // Prior pass-through showed 65.5/10
             // for a 100-point user with a 65.5% mean.
             mean_score_0_to_10: a.mean_score.map(|s| s / 10.0),
         }
@@ -757,7 +755,7 @@ fn parse_save_entry_response(body: &[u8]) -> Result<ListEntry> {
 
 /// Pure parser for the `DeleteMediaListEntry` mutation response.
 /// Returns the `deleted` flag; the caller treats `false` as a failed
-/// delete (Codex P2 #3381101376).
+/// delete.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] when the envelope isn't the documented
@@ -828,11 +826,11 @@ const ANILIST_FALLBACK_EXPIRY_S: i64 = 31_536_000;
 /// trait carries it as `Option<String>` so MAL's real refresh tokens
 /// fit the same struct.
 ///
-/// `expires_in` is documented but inconsistently present — Codex P1
-/// #3371176290. When absent we try to decode the JWT `exp` claim from
-/// the access_token (no signature verification — we only trust the
-/// issuer-stated wall-clock window for the local hydrate gate); if
-/// that fails too, we fall back to [`ANILIST_FALLBACK_EXPIRY_S`].
+/// `expires_in` is documented but inconsistently present. When absent we try to
+/// decode the JWT `exp` claim from the access_token (no signature
+/// verification — we only trust the issuer-stated wall-clock window for
+/// the local hydrate gate); if that fails too, we fall back to
+/// [`ANILIST_FALLBACK_EXPIRY_S`].
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the response isn't the

@@ -1,7 +1,7 @@
 //! `InternalSecret` — random per-process secret that gates renderer-
 //! only backend paths.
 //!
-//! Codex P2 #3370011855: the `delete_list_cache` fallback path accepts
+//! The `delete_list_cache` fallback path accepts
 //! a renderer-supplied `fallback_user_id` when the bearer has expired.
 //! Under the permissive CORS layer that opens a cross-origin cache-
 //! wipe vector — any tab in the user's browser can send `Authorization:

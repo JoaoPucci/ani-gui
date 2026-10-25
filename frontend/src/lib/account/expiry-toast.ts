@@ -45,7 +45,7 @@ export interface ExpirySyncDeps {
  * "session expired" warning the moment the user reconnects (or
  * disconnects) the provider — even when they fix the session from
  * /account or the chip popover directly instead of pressing the
- * toast action. Codex P2 #3375219208: pinned toasts (`duration:
+ * toast action. Pinned toasts (`duration:
  * null`) require explicit dismiss; without this tracker the stale
  * warning lingers after recovery.
  */

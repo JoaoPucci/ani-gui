@@ -105,7 +105,7 @@ describe('refreshAccount', () => {
 	});
 
 	it('fails (does not throw) when persistAccount rejects', async () => {
-		// Codex P2 #3421439995: persistAccount now routes through the
+		// persistAccount now routes through the
 		// token-write queue, which preserves a rejected write for the
 		// caller. A rejection must surface as `failed`, not escape
 		// refreshAccount and abort the caller's best-effort flow.
@@ -121,7 +121,7 @@ describe('refreshAccount', () => {
 	});
 
 	it('is superseded (no persist) when the generation moves during the refresh', async () => {
-		// Codex P2 #3416616176 / #3416668470: the user disconnected or
+		// The user disconnected or
 		// re-authed while refreshTokens was in flight — the provider's
 		// generation counter advanced. Must NOT persist the stale account
 		// back. The bump simulates a disconnect/re-auth landing mid-await,
@@ -142,7 +142,7 @@ describe('refreshAccount', () => {
 	});
 
 	it('is superseded when the generation moves during the persist await', async () => {
-		// Codex P2 #3416732381: a disconnect/re-auth can land in the gap
+		// A disconnect/re-auth can land in the gap
 		// between the post-network check and the persist completing. The
 		// post-persist re-check must also catch it, so onRefreshed never
 		// reconnects the superseded account.
@@ -221,7 +221,7 @@ describe('refreshExpiredAccounts', () => {
 	});
 
 	it('skips a provider whose account change is in progress (disconnecting)', async () => {
-		// Codex P2 #3421609159: the accountChanging gate must cover the
+		// The accountChanging gate must cover the
 		// expired-refresh path too, not just freshBearerFor. If the user
 		// disconnects an expired MAL account just as hydrate fires its
 		// refresh, refreshAccount would capture the already-bumped
@@ -331,7 +331,7 @@ describe('freshBearer', () => {
 	});
 
 	it('falls back to the existing bearer when persistAccount rejects (no throw)', async () => {
-		// Codex P2 #3421439995: a rejected safeStorage write must not escape
+		// A rejected safeStorage write must not escape
 		// freshBearer and abort the caller's best-effort write-back / refresh.
 		const deps = freshDeps({ persistAccount: vi.fn().mockRejectedValue(new Error('io_error')) });
 		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
