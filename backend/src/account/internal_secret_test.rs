@@ -1,6 +1,6 @@
 //! Tests for the renderer-only `InternalSecret` gate.
 //!
-//! Codex P2 #3370011855: the disconnect-after-expiry cache wipe path
+//! The disconnect-after-expiry cache wipe path
 //! accepts a renderer-supplied `fallback_user_id`. Under the permissive
 //! CORS layer that's a cross-origin tab away from poisoning another
 //! user's local cache. The fix is a per-process random secret only the

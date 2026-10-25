@@ -24,7 +24,7 @@ describe('shipped i18n is built from the namespace sources', () => {
 	//
 	// Without this, editing a namespace source changes nothing that
 	// ships: the build compiles whatever merged bundle happens to be on
-	// disk. Codex caught exactly that — locale sources dropped the
+	// disk. That happened once: locale sources dropped the
 	// yt-dlp recommendation while the shipped English bundle kept it.
 	it('the build script regenerates the merged bundles', () => {
 		const scripts = pkg.scripts as Record<string, string>;

@@ -29,11 +29,11 @@ fn now_secs() -> i64 {
 /// Used after a tracker write so the cached status reflects the change
 /// immediately — a Plan-to-Watch title started via mark-watched flips
 /// to Watching and drops out of the Watch Later rail's planning filter
-/// without waiting for a full resync (Codex P2 #3412673593). Unlike
+/// without waiting for a full resync. Unlike
 /// [`crate::account::cache::write_entries`], this does NOT clear the
 /// rest of the user's list.
 ///
-/// Monotonic on `progress` (Codex P2 #3416732383): the write-through
+/// Monotonic on `progress`: the write-through
 /// runs outside `push_progress`'s per-show lock, so two concurrent
 /// mark-watched writes can land in either order. The `ON CONFLICT`
 /// guard keeps the higher progress, so a stale lower-progress write
@@ -95,7 +95,7 @@ fn upsert(
         ""
     } else {
         // Monotonic on progress so two racing mark-watched writes can't
-        // regress the count (Codex P2 #3416732383). Coordination with the
+        // regress the count. Coordination with the
         // explicit editor's force-upsert is handled by the per-show lock:
         // push_progress now writes the cache under that lock (see
         // push_progress_via), so a stale write can't land after an

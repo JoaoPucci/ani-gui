@@ -178,7 +178,7 @@ async fn get_entry_via_reads_live_current_entry() {
 
 #[tokio::test]
 async fn get_entry_via_waits_for_an_in_flight_write_on_the_same_show() {
-    // Codex P2 #3427461062: a mark-watched sync holds the per-show lock
+    // A mark-watched sync holds the per-show lock
     // while it reconciles and writes the newer progress. The editor's seed
     // read must take the SAME lock, or it can read a value mid-overwrite —
     // and a later explicit Save would then force-write that stale value back
@@ -286,7 +286,7 @@ async fn remove_entry_via_deletes_then_drops_cache_row() {
 
 #[tokio::test]
 async fn remove_entry_via_treats_a_failed_delete_as_removed_when_the_entry_is_gone() {
-    // Codex P2 #3423227862: AniList doesn't report an already-absent row
+    // AniList doesn't report an already-absent row
     // as Upstream{404} — its delete fails at the row-id lookup (a
     // parse/GraphQL error). So the idempotency check can't key off 404;
     // instead, on ANY delete error, confirm with a live read — if the
@@ -359,7 +359,7 @@ async fn remove_entry_via_propagates_a_delete_error_when_the_entry_is_still_pres
 
 #[tokio::test]
 async fn remove_entry_via_treats_a_404_delete_as_already_removed() {
-    // Codex P2 #3423108945: the title was already gone upstream (MAL 404 —
+    // The title was already gone upstream (MAL 404 —
     // the user double-clicked Remove, or removed it in another client).
     // The DELETE route is documented idempotent, so once the live read
     // confirms it's absent the call returns true and drops the cache row.
