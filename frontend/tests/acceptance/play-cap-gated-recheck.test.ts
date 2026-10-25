@@ -551,6 +551,7 @@ describe('play route — a navigation the viewer starts while a dimmed episode i
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 		);
 
+		const { sent, read, failed } = watchPageFetches();
 		app = mount(PlayPage, { target });
 		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
 		card(AIRED)!.click();
@@ -558,8 +559,24 @@ describe('play route — a navigation the viewer starts while a dimmed episode i
 
 		startNavigation();
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the re-ask: its answer, which would clear
+		// the gate, has been read (or the request was stopped), and what
+		// it set off has run to its next request.
+		await until(
+			() =>
+				[...read, ...failed].some(
+					(r) => r.path === '/api/availability' && r.body.bypass_cache === true
+				),
+			'the re-ask to be stopped or answered'
+		);
+		await afterRead();
 
+		expect(
+			sent.filter(
+				(r) => r.path === '/api/play' && r.body.episode === String(AIRED) && !r.body.prefetch
+			),
+			'no switch is asked for'
+		).toEqual([]);
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 		expect(goto).not.toHaveBeenCalled();
 	});
