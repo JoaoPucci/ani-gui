@@ -46,6 +46,9 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
         }
     } else {
         let shared = shared_entry(evidence, tracker_total);
+        if shared.is_some() && chain_files_otherwise(evidence, tracker_total) {
+            return EpisodeMap::identity(Identity::Conflict);
+        }
         if let Some(segments) = &shared {
             explanations.push((Shape::SharedEntry, segments.clone()));
         }
@@ -80,6 +83,32 @@ pub fn map_show(evidence: &Evidence) -> EpisodeMap {
         }
         _ => EpisodeMap::identity(Identity::Conflict),
     }
+}
+
+/// Whether Kitsu's chain of parts reaches the entry's total, at least
+/// two of them, through parts other than the entries mapped to it: the
+/// chain then files the entry's episodes otherwise than the mapped set
+/// does, whichever part the show is.
+fn chain_files_otherwise(evidence: &Evidence, tracker_total: u32) -> bool {
+    let mut covered = 0u32;
+    let mut taken = Vec::new();
+    for part in &evidence.parts {
+        if covered >= tracker_total {
+            break;
+        }
+        let Some(count) = part.episodes.filter(|n| *n > 0) else {
+            return false;
+        };
+        covered = covered.saturating_add(count);
+        taken.push(part.id.as_str());
+    }
+    let reaches = covered == tracker_total && taken.len() >= 2;
+    reaches
+        && (taken.len() != evidence.sharing.len()
+            || evidence
+                .sharing
+                .iter()
+                .any(|k| !taken.contains(&k.id.as_str())))
 }
 
 /// What the split-parts rule explains, with the extras rule as its
