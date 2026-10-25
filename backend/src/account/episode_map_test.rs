@@ -393,6 +393,36 @@ fn a_shared_entry_whose_parts_do_not_sum_to_it_explains_nothing() {
 }
 
 #[test]
+fn a_shared_entry_is_explained_only_by_every_part_mapped_to_it() {
+    // Three distinctly dated twelve-episode Kitsu entries mapped to one
+    // finished 24-episode entry: the first two alone sum to it, but the
+    // three together are 36, so the set does not explain the entry and
+    // the second's finale must not complete it.
+    let sharing = vec![
+        kitsu("1", Some(12), "2020-01-05", "2020-03-29"),
+        kitsu("2", Some(12), "2020-07-05", "2020-09-27"),
+        kitsu("3", Some(12), "2021-01-10", "2021-04-04"),
+    ];
+    for ours in ["1", "2", "3"] {
+        let ev = Evidence {
+            kitsu: sharing
+                .iter()
+                .find(|k| k.id == ours)
+                .cloned()
+                .expect("a part"),
+            entry: show(700, Some(24), true, "2020-01-05", "2021-04-04"),
+            sharing: sharing.clone(),
+            ..Default::default()
+        };
+        assert_eq!(
+            map_show(&ev),
+            identity(Identity::Unexplained),
+            "part {ours}"
+        );
+    }
+}
+
+#[test]
 fn a_shared_entry_needs_distinct_known_start_dates_to_order_its_parts() {
     let mut same_day = final_chapters("46038");
     same_day.sharing[0].start = Some("2023-03-03".into());
