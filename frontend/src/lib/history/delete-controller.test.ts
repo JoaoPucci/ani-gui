@@ -48,8 +48,7 @@ describe('executeKitsuGroupDelete', () => {
 		await deleteAndForget('aa-1', { history, matches, historyDelete });
 
 		// Pin sequential order — aa-1 fully resolves before aa-2 starts.
-		// A Promise.all regression would interleave starts (Codex P2
-		// #3369156513 root cause).
+		// A Promise.all regression would interleave starts.
 		const aa1Start = callOrder.indexOf('start:aa-1');
 		const aa1End = callOrder.indexOf('end:aa-1');
 		const aa2Start = callOrder.indexOf('start:aa-2');

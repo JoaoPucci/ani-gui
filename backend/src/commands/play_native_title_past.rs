@@ -84,3 +84,7 @@ pub(crate) fn without_stem_number(stem: &[String]) -> Option<(String, u32)> {
     let n = small_number(last)?;
     (!before.is_empty()).then(|| (before.join(" "), n))
 }
+
+#[cfg(test)]
+#[path = "play_native_title_past_test.rs"]
+mod tests;

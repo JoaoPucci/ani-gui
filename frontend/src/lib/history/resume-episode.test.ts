@@ -273,7 +273,7 @@ describe('an interactive lookup that is itself approximate', () => {
 });
 
 describe('a cap published while an approximate one is being revalidated', () => {
-	// Codex P2 #3666727714 covered the null-snapshot branch; this is
+	// The null-snapshot branch is covered above; this is
 	// the approximate-snapshot branch, which never consulted the live
 	// reader at all. The background probe can publish an EXACT cap
 	// while the revalidation is in flight, and falling back to the

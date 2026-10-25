@@ -30,7 +30,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { settle } from '$lib/transitions/settle';
@@ -94,6 +94,8 @@
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { createShowReleases } from '$lib/play/show-release';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
@@ -109,7 +111,7 @@
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
 	import { bufferAheadSeconds } from '$lib/play/buffer-ahead';
 	import { scheduleHeldRetry } from '$lib/play/held-retry';
-	import { runwaySeconds } from '$lib/play/stale-stream';
+	import { runwaySeconds, recoveryAfterEviction } from '$lib/play/stale-stream';
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
@@ -136,6 +138,14 @@
 	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
+	import {
+		deadEnd,
+		deadEndMessage,
+		watchDeadEndOtherAudio,
+		type EpisodeStanding
+	} from '$lib/play/reload-offer';
+	import type { OtherAudio } from '$lib/play/error-copy';
+	import { isMusicSubtype } from '$lib/history/resolve';
 	import {
 		claimPlay,
 		playArgsFor,
@@ -943,8 +953,8 @@
 	 * `switchToEpisode`, pulling the user back into playback on a page
 	 * they left. Nothing about the question changed; nobody is asking.
 	 *
-	 * Cannot collide with a real context, which always carries the
-	 * `id:mode` separator.
+	 * Cannot collide with a real context, which always carries `:`
+	 * separators between its parts.
 	 */
 	/**
 	 * Which visit to this route the answer belongs to.
@@ -955,7 +965,7 @@
 	 * and a click abandoned two navigations ago finds the context it
 	 * left behind and acts on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
-	 * asked it (Codex P2 #3674767163).
+	 * asked it.
 	 *
 	 * Derived from the route param rather than the loaded detail: the
 	 * detail is briefly null on any load, and treating that as a
@@ -976,6 +986,23 @@
 	onDestroy(() => {
 		gone = true;
 	});
+	/**
+	 * A navigation the viewer started. The page stays on screen until
+	 * it lands, with the same show and visit, and an action answering
+	 * in that window that went on to switch would cancel the
+	 * navigation they asked for with its own `goto`. Actions that end
+	 * in a switch claim navigation as they start, and their re-checks
+	 * carry the epoch in their context ($lib/navigation/claims).
+	 *
+	 * Only a navigation that leaves this page counts: another path,
+	 * which includes another show, or out of the app. A switch's own
+	 * `goto` changes only the query, so it ends no pending action; the
+	 * poster link back to the show's page leaves, and does. A re-check
+	 * superseded by a navigation that leaves drops what it learned
+	 * about the show, as one superseded by a move to another show does.
+	 */
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate((nav) => navigationClaims.started(nav));
 	/**
 	 * Write back what the re-ask learned about the show.
 	 *
@@ -1001,8 +1028,16 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
+		// The writeback and the re-ask have both checked that the answer
+		// is about the show and audio on screen, so it is stamped with
+		// them for the dead-end reading below.
+		if (patch.available !== undefined) listedFor = verdictKey();
+		if (patch.count !== undefined) countedFor = verdictKey();
 		if (patch.available !== undefined) {
 			showListed = patch.available;
+			// Whether that verdict is a refusal by name travels with it
+			// ($lib/detail/availability-writeback).
+			showRefused = patch.refused === true;
 			// A patch that carries the verdict is the current lookup's
 			// or a re-ask's that won it — either way the warm's too.
 			warmListed = patch.available;
@@ -1040,7 +1075,8 @@
 			// to write back.
 			return capGateAnswerFrom(r);
 		},
-		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		currentContext: () =>
+			gone ? GONE : `${visit}:${navigationClaims.epoch}:${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
@@ -1108,7 +1144,7 @@
 			},
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
-			currentContext: () => (gone ? GONE : `${visit}:${id ?? ''}`),
+			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
 			play: () => void switchToEpisode(n),
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
@@ -1131,7 +1167,7 @@
 	// True once the availability probe settled (result or error). The
 	// strip warm waits on it — until then the playable cap is null and
 	// beyondPlayable reads it as unbounded, so the warm would resolve
-	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+	// aired-but-uncatalogued padded tiles.
 	let availabilityResolved = $state(false);
 	// The current lookup's own verdict, for the warm: null while the
 	// question is open or after it failed, never one retained from an
@@ -1144,6 +1180,15 @@
 	 *  cannot express "there is nothing here" — it just stays where it
 	 *  was and keeps every episode under it looking playable. */
 	let showListed = $state<boolean | null>(null);
+	/** The show and audio `showListed` and `playableEpisodeCount` were
+	 *  answered for ({@link standingOf}). */
+	let listedFor = $state<string | null>(null);
+	let countedFor = $state<string | null>(null);
+	const verdictKey = () => `${detail?.id ?? ''}:${capGateMode()}`;
+	/** Whether `showListed`'s verdict is the provider refusing the
+	 *  title by name, which the detail page's notice never answers with
+	 *  the other audio. */
+	let showRefused = $state(false);
 	// Non-integer episode tags the provider has streamable (recaps).
 	let extraEpisodes = $state<string[]>([]);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
@@ -1151,7 +1196,7 @@
 	// Probe the provider for the playable episode count IN THE PLAYBACK
 	// MODE — dub catalogues lag sub, so a sub-mode probe would cap a
 	// dub session too high and Download All could request undubbed
-	// episodes (Codex P2 #3566111944). Re-runs when the mode flips
+	// episodes. Re-runs when the mode flips
 	// (config landing, sub/dub toggle), resetting the resolved flag so
 	// the warm holds during the refetch. The cache stamp from the play
 	// handler that brought us here is usually in place, so this is
@@ -1233,6 +1278,42 @@
 		};
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
+	/** What the page knows about episode `n`, for the plays it refuses
+	 *  ($lib/play/reload-offer). */
+	function standingOf(n: number): EpisodeStanding {
+		// A verdict or a count is about the show and audio it was asked
+		// for: the provider catalogues sub and dub apart, and settings
+		// landing on dub after the default sub answer leave that answer
+		// standing. For another audio it claims nothing, as before any
+		// answer.
+		const here = verdictKey();
+		return {
+			listed: listedFor === here ? showListed : null,
+			unaired: epAirState(n, airing).unaired,
+			beyondPlayable: countedFor === here && beyondPlayable(n, playableEpisodeCount)
+		};
+	}
+	/** Whether the episode on screen is one a play cannot reach. The
+	 *  player-error overlay's Reload, and the automatic recovery, would
+	 *  re-resolve it through the switch that refuses it, so neither is
+	 *  offered then: the overlay says why instead ($lib/play/reload-offer). */
+	const reloadEnd = $derived(deadEnd(standingOf(episodeNum)));
+	// What the cache says about the other audio while the overlay names
+	// a dead end; a late answer to an old question is dropped.
+	let deadEndOtherAudio = $state<OtherAudio>(null);
+	$effect(() => {
+		const end = reloadEnd;
+		const q = {
+			kitsuId: id,
+			mode: availabilityMode,
+			episode: episodeNum,
+			music: isMusicSubtype(detail?.subtype ?? null),
+			refused: showRefused
+		};
+		deadEndOtherAudio = null;
+		if (!end || !playerError) return;
+		return watchDeadEndOtherAudio(end, q, (answer) => (deadEndOtherAudio = answer));
+	});
 
 	// How far the strip renders tiles: with airing data present it
 	// extends past the provider's count to the announced total, so the
@@ -1647,6 +1728,7 @@
 			}
 		});
 		playerError = null;
+		failedStreamError = null;
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -1688,10 +1770,14 @@
 			// can fire before detail/config land, in which case we surface
 			// the overlay (whose Reload button will pick up the work
 			// once the metadata is in) instead of burning the budget on
-			// a recovery that would silently bail.
+			// a recovery that would silently bail. Nor does it start for
+			// an episode no play can reach, or while the airing lookup is
+			// out: the switch would decline it ($lib/play/reload-offer).
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, switchBusy })
+				canRecoverFromStaleStream({ detail, switchBusy }) &&
+				reloadEnd === null &&
+				!airingIsPending
 			) {
 				hasAutoRetried = true;
 				void recoverFromStaleStream(`video ${reason}`);
@@ -1822,7 +1908,12 @@
 				// fast initial fatal errors can land before detail/config
 				// populate; surface the overlay instead of consuming the
 				// budget on a no-op recovery.
-				if (action.act === 'recover' && canRecoverFromStaleStream({ detail, switchBusy })) {
+				if (
+					action.act === 'recover' &&
+					canRecoverFromStaleStream({ detail, switchBusy }) &&
+					reloadEnd === null &&
+					!airingIsPending
+				) {
 					hasAutoRetried = true;
 					void recoverFromStaleStream(`hls ${data.details}`);
 					return;
@@ -1846,6 +1937,11 @@
 		}
 	});
 
+	// Every show this page showed, recorded as the route names it: by
+	// the time the page is destroyed the route names where the viewer
+	// went ($lib/play/show-release).
+	const showReleases = createShowReleases(clearForShow);
+	$effect.pre(() => showReleases.showing(() => id));
 	onDestroy(() => {
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
@@ -1855,7 +1951,7 @@
 		sourceScope.flush();
 		teardown();
 		releasePlayerVideo(ownVideo);
-		if (id) clearForShow(id);
+		showReleases.leave();
 	});
 
 	// describeError / describePlayFailure live in $lib/play/error-copy
@@ -1960,7 +2056,7 @@
 		if (airingIsPending) return;
 		// ...and for the availability probe, or the null playable cap
 		// reads as unbounded and the warm resolves padded tiles
-		// the provider hasn't catalogued (Codex P2 #3566100686).
+		// the provider hasn't catalogued.
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
@@ -2003,27 +2099,29 @@
 		}
 	});
 
+	/** Switches started on this page, so a recovery can tell whether
+	 *  one started while its eviction was out, and whether its own
+	 *  fresh resolve started at all (recoverFromStaleStream). */
+	let switchesStarted = 0;
+	/** The playback error of the stream on screen, kept while it is off
+	 *  screen for a replacement that has not attached: a recovery
+	 *  clears it as it begins. Anything that leaves that stream on
+	 *  screen — a switch that fails, or whose navigation does — puts it
+	 *  back. Forgotten when a stream attaches. */
+	let failedStreamError: string | null = null;
+
 	async function switchToEpisode(targetEp: number) {
 		if (!detail || switchBusy) return;
 		// Single choke point for every navigation path — tile clicks,
 		// prev/next, auto-play-next: an unaired target is a doomed
 		// resolution, no matter who asked. While the airing lookup is
 		// in flight everything reads as aired (airing is null), so
-		// switches hold until the answer lands (Codex P2 #3565988145);
+		// switches hold until the answer lands;
 		// aired-but-uncatalogued targets above the provider's count are
-		// equally doomed (catalog lag).
-		// A delisted show comes back without a count, so the cap check
-		// below cannot catch it — the cap is whatever it already was.
-		// Every path lands here, including auto-play-next, which no
-		// card state would cover.
-		if (showListed === false) return;
-		if (
-			epAirState(targetEp, airing).unaired ||
-			airingIsPending ||
-			beyondPlayable(targetEp, playableEpisodeCount)
-		) {
-			return;
-		}
+		// equally doomed (catalog lag), and so is any episode of a
+		// delisted show ($lib/play/reload-offer). Every path lands here,
+		// including auto-play-next, which no card state would cover.
+		if (airingIsPending || deadEnd(standingOf(targetEp)) !== null) return;
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = playMode(config);
@@ -2031,10 +2129,11 @@
 		// taken at the click ($lib/play/owned-play): the route's component
 		// is reused across shows and across a round trip back, so a late
 		// answer is judged against them. (`detail` loads only on mount.)
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
 		const show = detail;
 		const guess = fromGuess;
@@ -2053,8 +2152,13 @@
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
 		markStarted(owner.showId, targetEp, undefined, row);
+		switchesStarted += 1;
 		switchBusy = true;
 		switchProgress = null;
+		// Cleared for the stream the switch brings; kept to put back if
+		// the switch fails, or its navigation does, and the failed stream
+		// stays on screen.
+		const errorBefore = playerError ?? failedStreamError;
 		playerError = null;
 		try {
 			// Hits the play-cache: ep+1 was prefetched on mount, so the
@@ -2080,6 +2184,10 @@
 			// failure says nothing: it is about a visit the viewer left.
 			if (outcome.kind === 'failed') {
 				playFailure = { episode: targetEp, message: outcome.message };
+				// Nothing replaced the stream on screen: its error still
+				// stands, with its Reload, or with the dead end it is at
+				// ($lib/play/reload-offer).
+				playerError ??= errorBefore;
 				return;
 			}
 			if (outcome.kind === 'abandoned') return;
@@ -2092,8 +2200,7 @@
 			// distinct session-classes, so each gets its own shot.
 			// Resetting on a same-episode landing (the auto-recovery path,
 			// and the manual Reload path) would let chronically expired CDN
-			// URLs loop unbounded through eviction + resolve. See Codex P1
-			// #3366915811.
+			// URLs loop unbounded through eviction + resolve.
 			if (
 				outcome.current &&
 				shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })
@@ -2137,7 +2244,11 @@
 				resolve('/play/[id]', { id: owner.showId }) +
 					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
 				{ replaceState: true }
-			).catch(() => {});
+			).catch(() => {
+				// Nothing replaced the stream on screen: its error stands —
+				// unless the rejection came from the viewer navigating away.
+				if (owner.isCurrent()) playerError ??= errorBefore;
+			});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} finally {
 			switchBusy = false;
@@ -2158,13 +2269,28 @@
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
 		if (!detail) return;
+		// A switch or re-check holds the switch lock: Reload waits for it.
+		// A switch replaces the stream, and one that fails, like a
+		// re-check that does not switch, leaves the error and its Reload
+		// on screen. (The automatic path never starts under the lock.)
+		if (switchBusy) return;
 		// The visit this recovery is for ($lib/play/owned-play): a page
 		// moved on while the eviction was out must not resolve afresh.
+		// Nor must one a switch overtook: the recovery does not hold the
+		// switch lock while it evicts ($lib/play/stale-stream,
+		// recoveryAfterEviction).
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
+		const atSwitch = switchesStarted;
+		// What the overlay says now, or one worded from the reason when it
+		// says nothing, to put back while the stream that failed is still
+		// on screen.
+		const restore = playerError ?? m.play_error_playback_technical({ detail: reason });
+		failedStreamError = restore;
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2209,10 +2335,28 @@
 		// sibling prefetches are warming work; losing them costs only
 		// the next slow play, which is acceptable for the retry.
 		// The viewer left while the eviction was out: a fresh resolve
-		// would only navigate them back.
-		if (!owner.isCurrent()) return;
+		// would only navigate them back. Or a switch overtook it, and its
+		// session is the one on its way.
+		const turn = recoveryAfterEviction({
+			left: !owner.isCurrent(),
+			switchedSince: switchesStarted !== atSwitch,
+			switchBusyNow: switchBusy
+		});
+		// A re-check holds the lock and may not switch: the stale stream
+		// is still on screen, so its error is offered again — with its
+		// Reload, or with the dead end it is at.
+		if (turn === 'offer-reload') playerError = restore;
+		if (turn !== 'resolve') return;
 		clearForShow(id);
+		// The error went off screen as the recovery began; a fresh
+		// resolve that fails leaves the failed stream, so it comes back.
+		// So does one the switch declines before it starts — the airing
+		// lookup still out, or a dead end: the show delisted, the episode
+		// past the cap, where it comes back naming the dead end, with no
+		// Reload.
+		const switchesBefore = switchesStarted;
 		await switchToEpisode(episodeNum);
+		if (switchesStarted === switchesBefore) playerError ??= restore;
 	}
 
 	/** Wired to the Reload button on the player-error overlay. Bypasses
@@ -2618,16 +2762,50 @@
 			     users / bug reports still have it. -->
 			<div class="player-empty player-error">
 				<p class="player-error-headline">{m.play_error_stream_headline()}</p>
-				<p class="player-error-body">{m.play_error_stream_body()}</p>
-				<button type="button" class="player-error-reload" onclick={onReloadStream}>
-					<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-						<path
-							d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-6-6 5.94 5.94 0 014.22 1.78L13 11h7V4z"
-							fill="currentColor"
-						/>
-					</svg>
-					<span>{m.play_error_stream_reload()}</span>
-				</button>
+				{#if reloadEnd}
+					<!-- An episode no play can reach: a Reload would only be
+					     refused, so the overlay says why and sends the viewer
+					     to the show's page, where the audio switch is. -->
+					<p class="player-error-body">
+						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
+					</p>
+					<a
+						class="player-error-action"
+						href={resolve('/anime/[id]', { id })}
+						onclick={(e) => {
+							// Replace, like the now-playing link: the show's page
+							// is "up" from the player.
+							e.preventDefault();
+							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+						}}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+							<path
+								d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"
+								fill="currentColor"
+							/>
+						</svg>
+						<span>{m.play_error_stream_back_to_show()}</span>
+					</a>
+				{:else}
+					<!-- Held while the airing lookup is out: the switch the
+					     Reload hands to would decline it ($lib/play/reload-offer). -->
+					<p class="player-error-body">{m.play_error_stream_body()}</p>
+					<button
+						type="button"
+						class="player-error-action player-error-reload"
+						disabled={airingIsPending}
+						onclick={onReloadStream}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+							<path
+								d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-6-6 5.94 5.94 0 014.22 1.78L13 11h7V4z"
+								fill="currentColor"
+							/>
+						</svg>
+						<span>{m.play_error_stream_reload()}</span>
+					</button>
+				{/if}
 				<p class="player-error-detail">{playerError}</p>
 			</div>
 		{:else}
@@ -4700,7 +4878,7 @@
 		margin: 0;
 		line-height: 1.5;
 	}
-	.player-error-reload {
+	.player-error-action {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
@@ -4714,20 +4892,27 @@
 		font-family: var(--font-body);
 		font-size: var(--type-body);
 		font-weight: 600;
+		text-decoration: none;
 		cursor: pointer;
 		transition:
 			transform var(--dur-fast) var(--ease-out-soft),
 			filter var(--dur-fast) var(--ease-out-soft);
 	}
-	.player-error-reload:hover {
+	.player-error-action:hover {
 		filter: brightness(1.1);
 	}
-	.player-error-reload:active {
+	.player-error-action:active {
 		transform: scale(0.97);
 	}
-	.player-error-reload:focus-visible {
+	.player-error-action:focus-visible {
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
+	}
+	.player-error-action:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		transform: none;
+		filter: none;
 	}
 	.player-error-detail {
 		font-size: var(--type-meta);

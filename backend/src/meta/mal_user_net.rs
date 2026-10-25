@@ -46,7 +46,7 @@ pub(super) struct CoalescedRefresh {
 /// constructed by `provider_for_kind` sees the same mutex + cache —
 /// without this, two concurrent handler calls each construct their
 /// own `MalProvider`, each with its own private mutex, and both POST
-/// the same stale refresh token (Codex P2 #3379969316).
+/// the same stale refresh token.
 #[derive(Clone, Default)]
 pub struct MalRefreshState {
     inner: Arc<Mutex<Option<CoalescedRefresh>>>,

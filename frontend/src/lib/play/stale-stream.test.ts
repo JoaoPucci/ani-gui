@@ -4,6 +4,7 @@ import {
 	decideStreamFailureResponse,
 	HOLD_MIN_BUFFER_SECONDS,
 	isHostSlowStreamError,
+	recoveryAfterEviction,
 	shouldAttemptStaleStreamRetry,
 	shouldResetStaleStreamBudget,
 	STALL_NUDGE_BUDGET
@@ -118,7 +119,7 @@ describe('shouldAttemptStaleStreamRetry', () => {
 
 describe('shouldResetStaleStreamBudget', () => {
 	it('resets when the user switches to a different episode', () => {
-		// Codex P1 #3366915811 motivation. User clicks Next / Prev / a
+		// User clicks Next / Prev / a
 		// specific episode → switchToEpisode(targetEp) lands a fresh
 		// session for a different episode. The new episode is a new
 		// session-class, so its own one-shot budget starts here.
@@ -127,7 +128,7 @@ describe('shouldResetStaleStreamBudget', () => {
 	});
 
 	it('does NOT reset when the target equals the current episode (internal recovery)', () => {
-		// The bug the P1 caught: the auto-retry calls
+		// The bug this pins: the auto-retry calls
 		// switchToEpisode(episodeNum) with the SAME episode to swap the
 		// rotated URL out. Resetting hasAutoRetried here would let the
 		// next stale URL trigger another silent retry, unbounded — if
@@ -142,7 +143,7 @@ describe('canRecoverFromStaleStream', () => {
 	const detail = {} as unknown;
 
 	it('is true when detail is populated and no switch is in flight', () => {
-		// Codex P2 #3366950890 — only detail is hard-required for the
+		// Only detail is hard-required for the
 		// eviction payload (canonical_title, alt_titles, episode_count,
 		// year). settings has graceful fallbacks (sub/best) inside the
 		// recovery flow, mirroring switchToEpisode's pattern.
@@ -150,7 +151,7 @@ describe('canRecoverFromStaleStream', () => {
 	});
 
 	it('is false when detail is null (kitsuAnimeDetail still in flight)', () => {
-		// Codex P2 #3366926564 — playStream can land before
+		// playStream can land before
 		// kitsuAnimeDetail does, especially when the prefetch warmed
 		// the session cache. If a network error fires in that window,
 		// the recovery path can't run (it needs detail.canonical_title
@@ -161,7 +162,7 @@ describe('canRecoverFromStaleStream', () => {
 	});
 
 	it('is false when switchToEpisode is already in flight (switchBusy)', () => {
-		// Codex P2 #3366970113 — a stale network error from the OLD
+		// A stale network error from the OLD
 		// video URL can fire while the user's Next/Prev click is mid-
 		// flight (switchBusy === true). Today's recovery path would
 		// call clearForShow(id), aborting the foreground switch's
@@ -378,5 +379,47 @@ describe('decideStreamFailureResponse — with buffered media in hand', () => {
 				bufferAheadSeconds: 120
 			})
 		).toBe('surface');
+	});
+});
+
+describe('recoveryAfterEviction', () => {
+	const quiet = {
+		left: false,
+		switchedSince: false,
+		switchBusyNow: false
+	};
+
+	it('resolves the episode afresh when nothing happened meanwhile', () => {
+		expect(recoveryAfterEviction(quiet)).toBe('resolve');
+	});
+
+	it('stands down for a page left', () => {
+		expect(recoveryAfterEviction({ ...quiet, left: true })).toBe('stand-down');
+	});
+
+	it('stands down for a switch that started meanwhile', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchedSince: true, switchBusyNow: true })).toBe(
+			'stand-down'
+		);
+		expect(recoveryAfterEviction({ ...quiet, switchedSince: true })).toBe('stand-down');
+	});
+});
+
+describe('recoveryAfterEviction, with the switch lock held', () => {
+	const quiet = {
+		left: false,
+		switchedSince: false,
+		switchBusyNow: false
+	};
+
+	// A re-check holds the lock without a switch of its own until it
+	// clears its episode, and it may not. The stream is still the stale
+	// one, so the viewer gets Reload back rather than a dead video.
+	it('offers Reload again while a re-check holds the lock', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchBusyNow: true })).toBe('offer-reload');
+	});
+
+	it('stands down for a page left, whatever holds the lock', () => {
+		expect(recoveryAfterEviction({ ...quiet, left: true, switchBusyNow: true })).toBe('stand-down');
 	});
 });
