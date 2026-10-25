@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 517574e129b912acebb643984ad943877bdbc2c0fd5a2bf60fdbab9c43360fb7 # shrinks to (count, rows, read, later) = (1, [EpisodeRef { id: 7, number: 1, number2: None, former_tag: None, title: Some("Episode 1") }, EpisodeRef { id: 14, number: 2, number2: None, former_tag: None, title: Some("Story 2") }], [TailEpisode { number: 1, title: Some("Episode 1"), airdate: Some("2020-01-01") }], [])

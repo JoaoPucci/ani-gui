@@ -1,13 +1,15 @@
 //! The evidence the appended-extras rule reads
 //! ([`super::play_native_appended`]), from what a detail page visit
 //! already caches: Kitsu's entry, the Kitsu episode pages holding the
-//! count's last episodes, and AniList's airing answer — and, past
-//! those, the entries Kitsu relates the show to, with a TV sequel's
-//! first episode page. Each is read
-//! from the cache first and fetched only when it is missing.
+//! count's last episodes and the page after them, and AniList's airing
+//! answer — and, past those, the entries Kitsu relates the show to,
+//! with each aired TV entry's first episode page. Each is read from
+//! the cache first and fetched only when it is missing, and only while
+//! what is already in hand leaves the reading open.
 
 use super::play_native_appended::{EntryTail, Remembered, TailSource};
 use crate::app::AppState;
+use crate::scraper::provider::EpisodeRef;
 
 /// How many episodes Kitsu lists to a page, as the backend asks for
 /// them.
@@ -39,13 +41,20 @@ impl std::fmt::Debug for KitsuTail<'_> {
 }
 
 /// Where the reading the evidence last proved for an entry is kept.
+///
+/// v2: the rule reads every aired TV entry Kitsu relates the show to,
+/// whatever the role, and refuses an entry of any role airing now. A
+/// v1 reading was proved against a TV sequel alone and may be one the
+/// rule now refuses, so it is not read.
 fn kept_key(kitsu_id: &str) -> String {
-    format!("appended:v1:{kitsu_id}")
+    format!("appended:v2:{kitsu_id}")
 }
 
 #[path = "kitsu_tail_read.rs"]
 mod read;
 pub use read::{entry_tail, tail_pages};
+#[path = "kitsu_tail_stages.rs"]
+mod stages;
 
 /// How long a proved reading is kept: as long as the title-match
 /// rows a play stores.
@@ -76,24 +85,18 @@ impl TailSource for KitsuTail<'_> {
         }
     }
 
-    async fn tail(&self, count: u32) -> Option<EntryTail> {
-        let detail = super::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
-            .await
-            .ok()?;
-        let airing = super::airing::airing_get(self.state, self.kitsu_id)
-            .await
-            .ok()?;
-        let episodes = self.read_pages(count).await?;
-        let (related, related_complete) = self.read_related().await?;
-        let mut tail = entry_tail(
-            detail.status.as_deref(),
-            detail.episode_count,
-            &airing,
-            episodes,
-        );
-        tail.related = related;
-        tail.related_complete = related_complete;
-        Some(tail)
+    /// Each read is made only while what is in hand leaves the reading
+    /// open, and a refusal it already settles is returned at once: a
+    /// later read failing must not hand the listing back to a reading
+    /// kept from before. See `end_of_show` and `relations_of` for the
+    /// order and the checks.
+    async fn tail(&self, listing: &[EpisodeRef], count: u32) -> Option<EntryTail> {
+        let past = listing.get(usize::try_from(count).ok()?..)?;
+        let (tail, open) = self.end_of_show(listing, count, past).await?;
+        if !open {
+            return Some(tail);
+        }
+        self.relations_of(tail, past).await
     }
 }
 
