@@ -246,7 +246,9 @@ impl HostBudget {
     /// test that counts what a fetch spent against the app's own refill
     /// counts the moment between the takes too — every fifteen
     /// milliseconds a hundredth of a token — so its count rides on how
-    /// busy the machine running it is.
+    /// busy the machine running it is. A take that has to wait for a
+    /// token sleeps up to a refill interval at a time, a day here, so a
+    /// test may wait on this budget only under a deadline of its own.
     #[cfg(test)]
     #[must_use]
     pub(crate) fn fresh_without_refill() -> Arc<Self> {
