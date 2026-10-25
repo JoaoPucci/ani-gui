@@ -44,6 +44,7 @@ vi.mock('./store.svelte', () => ({
 }));
 
 import { syncWatchedToTrackers } from './push-watched';
+import { saveWhenTrackerAllows } from './busy-save';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { m } from '$lib/paraglide/messages';
 
@@ -126,5 +127,46 @@ describe('a held progress write a newer one replaces', () => {
 			{ kitsu_id: 'kitsu-12', progress: 4 }
 		]);
 		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+});
+
+describe('a held finale a newer progress write covers', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is dropped whole: its completion does not travel without its episode', async () => {
+		// The backend only lets `completed` through beside the episode it
+		// checks against the tracker's own total; a completion re-sent alone
+		// would skip that check.
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const finale = syncWatchedToTrackers('kitsu-50', 12, 12, true);
+		await vi.advanceTimersByTimeAsync(0);
+		await syncWatchedToTrackers('kitsu-50', 11);
+		await vi.advanceTimersByTimeAsync(1000);
+		await finale;
+		const sent = updateProgress.mock.calls.map((c) => (c as unknown[])[2]);
+		expect(sent).toEqual([
+			{ kitsu_id: 'kitsu-50', progress: 12, status: 'completed' },
+			{ kitsu_id: 'kitsu-50', progress: 11 }
+		]);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+
+	it('keeps its episode when a newer write covered only the status', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const finale = syncWatchedToTrackers('kitsu-51', 12, 12, true);
+		await vi.advanceTimersByTimeAsync(0);
+		await saveWhenTrackerAllows('anilist', 'kitsu-51', async () => null, ['status']);
+		await vi.advanceTimersByTimeAsync(1000);
+		await finale;
+		expect(updateProgress).toHaveBeenLastCalledWith('anilist', 'tok-a', {
+			kitsu_id: 'kitsu-51',
+			progress: 12
+		});
 	});
 });
