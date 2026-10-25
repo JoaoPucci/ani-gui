@@ -157,3 +157,32 @@ proptest::proptest! {
         proptest::prop_assert_eq!(ledger.sent.iter().copied().collect::<Vec<_>>(), after);
     }
 }
+
+proptest::proptest! {
+    /// With each send settled at its answer, however late: when a
+    /// request leaves, fewer than the capacity of the requests before
+    /// it were answered inside the window ending then. AniList counts
+    /// a request somewhere between its leaving and its answer, so no
+    /// window AniList keeps holds more than the capacity either.
+    #[test]
+    fn settled_sends_never_crowd_a_window(
+        capacity in 1usize..12,
+        window_ms in 1u64..5_000,
+        mut arrivals in proptest::collection::vec((0u64..20_000, 0u64..3_000), 0..60),
+    ) {
+        arrivals.sort_unstable();
+        let pace = small_pace(capacity, 0, window_ms, 0);
+        let base = Instant::now();
+        let mut ledger = Ledger::default();
+        let mut answered: Vec<Instant> = Vec::new();
+        for (arrived_ms, took_ms) in arrivals {
+            let at = ledger.ready_at(&pace, Class::Interactive, base + Duration::from_millis(arrived_ms));
+            let crowd = answered.iter().filter(|&&done| done + pace.window > at).count();
+            proptest::prop_assert!(crowd < capacity, "{crowd} answered in the window a send left into");
+            ledger.record_send(&pace, at);
+            let done = at + Duration::from_millis(took_ms);
+            ledger.settle(at, done);
+            answered.push(done);
+        }
+    }
+}

@@ -370,3 +370,32 @@ fn a_gate_is_kept_by_host_and_port() {
     assert_eq!(authority("http://127.0.0.1:5000/x"), "127.0.0.1:5000");
     assert_eq!(authority("not a url"), "not a url");
 }
+
+#[tokio::test]
+async fn a_429_without_a_wait_holds_anilist_back_for_its_documented_minute() {
+    // AniList documents a one-minute timeout. A 429 that names no wait
+    // is reported as it came — no wait to pass on — and nothing is sent
+    // for that minute.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let _shared = share_for_tests(&server.uri(), ANILIST);
+    let first = public(&server.uri()).await;
+    assert!(
+        matches!(
+            first,
+            Err(AniError::RateLimited {
+                retry_after_secs: None
+            })
+        ),
+        "{first:?}"
+    );
+    let held = public(&server.uri()).await;
+    assert!(
+        matches!(held, Err(AniError::RateLimited { retry_after_secs: Some(s) }) if (59..=60).contains(&s)),
+        "{held:?}"
+    );
+}
