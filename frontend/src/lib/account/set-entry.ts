@@ -6,7 +6,7 @@
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
 import { failureResult, outcomeFlags, tallyFanout, type FanoutResult } from './set-entry-outcome';
-import { SupersededError } from './save-when-allowed';
+import { ALL_FIELDS, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 import { buildListEdit } from './list-entry-edit';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
@@ -36,11 +36,13 @@ export interface EditorSave {
 export type RunWrite = <T>(
 	provider: Provider,
 	kitsuId: string,
-	attempt: () => Promise<T>
+	attempt: (held: HeldWrite) => Promise<T>,
+	fields?: readonly WriteField[]
 ) => Promise<T>;
 
 /** Run the write once. */
-export const runOnce: RunWrite = (_provider, _kitsuId, attempt) => attempt();
+export const runOnce: RunWrite = (_provider, _kitsuId, attempt, fields = ALL_FIELDS) =>
+	attempt({ left: () => fields });
 
 export interface SetEntryDeps {
 	/** Providers currently connected (from the account store). */
@@ -87,6 +89,12 @@ export interface SetOutcome {
 	superseded?: boolean;
 }
 
+/** The fields a save is the user's word on: the status only when they
+ *  set it, the progress always. */
+export function savedFields(save: EditorSave): readonly WriteField[] {
+	return save.statusChanged ? ALL_FIELDS : ['progress'];
+}
+
 /**
  * Write the editor's save to every connected tracker, deciding per
  * provider off that provider's live entry: send `status` only where the
@@ -109,17 +117,22 @@ export async function setEntryAcrossTrackers(
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm written
 			try {
-				const res = await runWrite(provider, kitsuId, async () => {
-					const current = await deps.getEntry(provider, bearer, kitsuId);
-					const edit = buildListEdit({
-						current: current?.status ?? null,
-						statusChanged: save.statusChanged,
-						status: save.status,
-						progress: save.progress,
-						total: save.total ?? null
-					});
-					return deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
-				});
+				const res = await runWrite(
+					provider,
+					kitsuId,
+					async () => {
+						const current = await deps.getEntry(provider, bearer, kitsuId);
+						const edit = buildListEdit({
+							current: current?.status ?? null,
+							statusChanged: save.statusChanged,
+							status: save.status,
+							progress: save.progress,
+							total: save.total ?? null
+						});
+						return deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
+					},
+					savedFields(save)
+				);
 				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
 			} catch (e) {
 				// A 429 is still a failure (nothing was written), but flagged so the

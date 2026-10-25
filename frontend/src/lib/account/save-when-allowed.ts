@@ -18,6 +18,18 @@ export const DEFAULT_WAIT_S = 60;
 /** The longest a write is held for one refusal. */
 export const MAX_WAIT_S = 120;
 
+/** What a write sets on a tracker's entry. */
+export type WriteField = 'status' | 'progress';
+
+/** Every field: a write that covers the whole entry. */
+export const ALL_FIELDS: readonly WriteField[] = ['status', 'progress'];
+
+/** A write's view, from inside an attempt, of the fields still its own
+ *  to send. */
+export interface HeldWrite {
+	left: () => readonly WriteField[];
+}
+
 /** A held write a newer write for the same show replaced while it
  *  waited: dropped, neither sent nor reported. */
 export class SupersededError extends Error {

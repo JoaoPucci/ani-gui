@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { pushWatchedToTrackers, watchedStatus } from './push-watched';
 import type { Provider } from './types';
+import type { HeldWrite, WriteField } from './save-when-allowed';
 
 function deps(overrides: Partial<Parameters<typeof pushWatchedToTrackers>[0]> = {}) {
 	const calls: Array<{ provider: Provider; bearer: string; body: unknown }> = [];
@@ -62,9 +63,14 @@ describe('pushWatchedToTrackers', () => {
 				if (provider === 'mal') throw new Error('network');
 				return null;
 			}),
-			runWrite: async <T>(provider: Provider, _kitsuId: string, attempt: () => Promise<T>) => {
+			runWrite: async <T>(
+				provider: Provider,
+				_kitsuId: string,
+				attempt: (held: HeldWrite) => Promise<T>,
+				fields: readonly WriteField[] = ['progress']
+			) => {
 				ran.push(provider);
-				return attempt();
+				return attempt({ left: () => fields });
 			},
 			reportFailure: (provider: Provider) => reported.push(provider)
 		};

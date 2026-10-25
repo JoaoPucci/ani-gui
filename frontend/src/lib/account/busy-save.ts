@@ -4,7 +4,14 @@
 // that one stays free of the toast store and the message bundle.
 
 import type { Provider } from './types';
-import { saveWhenAllowed, sleep, SupersededError } from './save-when-allowed';
+import {
+	ALL_FIELDS,
+	saveWhenAllowed,
+	sleep,
+	SupersededError,
+	type HeldWrite,
+	type WriteField
+} from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { m } from '$lib/paraglide/messages';
 
@@ -39,17 +46,21 @@ const generations = new Map<string, number>();
 export function saveWhenTrackerAllows<T>(
 	provider: Provider,
 	kitsuId: string,
-	attempt: () => Promise<T>
+	attempt: (held: HeldWrite) => Promise<T>,
+	fields: readonly WriteField[] = ALL_FIELDS
 ): Promise<T> {
 	const key = `${provider}:${kitsuId}`;
 	const generation = (generations.get(key) ?? 0) + 1;
 	generations.set(key, generation);
+	const held: HeldWrite = {
+		left: () => (generations.get(key) === generation ? fields : [])
+	};
 	let notice: string | null = null;
 	const takeDown = () => {
 		if (notice !== null) toastStore.dismiss(notice);
 		notice = null;
 	};
-	return saveWhenAllowed(attempt, {
+	return saveWhenAllowed(() => attempt(held), {
 		notify: (seconds) => {
 			takeDown();
 			notice = noticeBusy(provider, seconds);

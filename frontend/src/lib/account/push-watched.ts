@@ -9,7 +9,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
-import { SupersededError } from './save-when-allowed';
+import { SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -25,7 +25,12 @@ export interface PushWatchedDeps {
 		body: { kitsu_id: string; progress: number; status?: string }
 	) => Promise<ListEntry | null>;
 	/** How each provider's write is run; once when omitted. */
-	runWrite?: <T>(provider: Provider, kitsuId: string, attempt: () => Promise<T>) => Promise<T>;
+	runWrite?: <T>(
+		provider: Provider,
+		kitsuId: string,
+		attempt: (held: HeldWrite) => Promise<T>,
+		fields?: readonly WriteField[]
+	) => Promise<T>;
 	/** Tell the user `provider` did not take the write. */
 	reportFailure?: (provider: Provider) => void;
 }
@@ -84,13 +89,20 @@ export async function pushWatchedToTrackers(
 	const body = status
 		? { kitsu_id: kitsuId, progress: episode, status }
 		: { kitsu_id: kitsuId, progress: episode };
-	const runWrite = deps.runWrite ?? ((_provider, _kitsuId, attempt) => attempt());
+	const fields: readonly WriteField[] = status ? ['status', 'progress'] : ['progress'];
+	const runWrite =
+		deps.runWrite ?? ((_provider, _kitsuId, attempt) => attempt({ left: () => fields }));
 	await Promise.all(
 		deps.connected.map(async (provider) => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return;
 			try {
-				await runWrite(provider, kitsuId, () => deps.updateProgress(provider, bearer, body));
+				await runWrite(
+					provider,
+					kitsuId,
+					() => deps.updateProgress(provider, bearer, body),
+					fields
+				);
 			} catch (e) {
 				// A single tracker failing must not block the others or
 				// reject the caller; it is reported to the user instead —
