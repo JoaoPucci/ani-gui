@@ -46,7 +46,7 @@ pub(crate) async fn push_progress_mapped(
     };
     let Some(native) = native else {
         return match episode_map_for_unresolved(ask, kitsu_id)
-            .await
+            .await?
             .target(episode)
         {
             Target::Mapped(write) => write_mapped(ask, &write, &update).await,
@@ -60,7 +60,7 @@ pub(crate) async fn push_progress_mapped(
     let guard = lock.lock().await;
     let media = ask.provider.tracked_media(ask.tokens, native).await?;
     match episode_map_for(ask, kitsu_id, native, media.episodes)
-        .await
+        .await?
         .target(episode)
     {
         Target::Identity => {

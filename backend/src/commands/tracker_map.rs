@@ -80,35 +80,38 @@ pub(crate) async fn episode_map_for(
     kitsu_id: &str,
     native: ProviderMediaId,
     tracker_total: Option<u32>,
-) -> EpisodeMap {
+) -> Result<EpisodeMap> {
     let key = map_key(ask.kind, kitsu_id, Some((native.0, tracker_total)));
     if let Some(map) = cached(ask.state, &key) {
-        return map;
+        return Ok(map);
     }
     let map = match build_resolved(ask, kitsu_id, native, tracker_total).await {
         Ok(map) => map,
-        Err(err) => return unlearnt(kitsu_id, &err),
+        Err(err) => return Ok(unlearnt(kitsu_id, &err)),
     };
     remember(ask.state, &key, &map);
-    map
+    Ok(map)
 }
 
 /// The map for Kitsu's `kitsu_id` when Kitsu's mappings resolve it to
 /// nothing on the tracker: a later Kitsu part filed under the entry a
 /// prequel resolves to, when Kitsu's prequel chain reaches one.
-pub(crate) async fn episode_map_for_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> EpisodeMap {
+pub(crate) async fn episode_map_for_unresolved(
+    ask: &MapAsk<'_>,
+    kitsu_id: &str,
+) -> Result<EpisodeMap> {
     let key = map_key(ask.kind, kitsu_id, None);
     if let Some(map) = cached(ask.state, &key) {
-        return map;
+        return Ok(map);
     }
     let map = match build_unresolved(ask, kitsu_id).await {
         Ok(map) => map,
-        Err(err) => return unlearnt(kitsu_id, &err),
+        Err(err) => return Ok(unlearnt(kitsu_id, &err)),
     };
     // The key names no entry for such a show, so a recount of the entry
     // it is filed under reaches no new key: it is asked for daily.
     remember_for(ask.state, &key, &map, TRACKER_MAP_UNSETTLED_TTL);
-    map
+    Ok(map)
 }
 
 /// Kitsu's entry as the map reads it, from the detail row the detail

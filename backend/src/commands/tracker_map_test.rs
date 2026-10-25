@@ -186,7 +186,8 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
         ProviderMediaId(210),
         Some(18),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::Chain);
     assert_eq!(
         map.segments
@@ -221,7 +222,8 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
         ProviderMediaId(210),
         Some(18),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(again, map);
 }
 
@@ -254,7 +256,8 @@ async fn agreeing_counts_are_identity_kept_for_the_long_window_with_no_tracker_r
         ProviderMediaId(210),
         Some(161),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::CountsAgree));
     assert_eq!(
         ttl_of(
@@ -283,7 +286,8 @@ async fn an_unknown_count_is_identity_kept_for_a_day() {
         ProviderMediaId(70),
         Some(12),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::CountUnknown));
     assert_eq!(
         ttl_of(
@@ -317,7 +321,8 @@ async fn a_read_that_fails_is_identity_and_kept_nowhere() {
             ProviderMediaId(210),
             Some(18),
         )
-        .await;
+        .await
+        .expect("the map");
         assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
     }
     assert_eq!(
@@ -371,7 +376,8 @@ async fn a_difference_nothing_explains_is_identity_kept_for_a_day() {
         ProviderMediaId(210),
         Some(100),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
     assert_eq!(
         ttl_of(
@@ -458,7 +464,8 @@ async fn the_final_chapters_second_special_on_mal_shares_the_entry_after_the_fir
         ProviderMediaId(51_535),
         Some(2),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::SharedEntry);
     assert_eq!(map.segments.len(), 1);
     assert_eq!(map.segments[0].entry, 51_535);
@@ -577,7 +584,8 @@ async fn tower_of_god_s_later_part_is_filed_under_its_prequel_s_anilist_entry() 
         },
         "49244",
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments.len(), 1);
     assert_eq!(map.segments[0].entry, 153_406);
@@ -623,7 +631,8 @@ async fn a_show_with_no_prequel_that_resolves_is_identity_kept_for_a_day() {
         },
         "5",
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
     assert_eq!(
         ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "5", None)),
@@ -744,7 +753,9 @@ async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_befor
         tokens: &tokens,
         anilist_base: Some(&anilist_uri),
     };
-    let map = episode_map_for(&ask, "50289", ProviderMediaId(52_684), Some(182)).await;
+    let map = episode_map_for(&ask, "50289", ProviderMediaId(52_684), Some(182))
+        .await
+        .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments[0].lead, 130);
     assert_eq!(map.segments[0].entry_total, 182);
@@ -761,7 +772,9 @@ async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_befor
         state: &state,
         ..ask
     };
-    let map = episode_map_for(&ask, "46552", ProviderMediaId(52_684), Some(182)).await;
+    let map = episode_map_for(&ask, "46552", ProviderMediaId(52_684), Some(182))
+        .await
+        .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments[0].lead, 0);
 }
@@ -921,11 +934,15 @@ async fn a_cached_map_is_built_again_once_the_entry_s_total_moves() {
         tokens: &tokens,
         anilist_base: None,
     };
-    let first = episode_map_for(&ask, "186", ProviderMediaId(210), Some(18)).await;
+    let first = episode_map_for(&ask, "186", ProviderMediaId(210), Some(18))
+        .await
+        .expect("the map");
     assert_eq!(first.shape, Shape::Chain);
     // AniList recounts 210 as 161: the counts agree now, and the old
     // row is not what answers.
-    let moved = episode_map_for(&ask, "186", ProviderMediaId(210), Some(161)).await;
+    let moved = episode_map_for(&ask, "186", ProviderMediaId(210), Some(161))
+        .await
+        .expect("the map");
     assert_eq!(moved, EpisodeMap::identity(Identity::CountsAgree));
 }
 
@@ -1083,7 +1100,8 @@ async fn a_third_part_with_no_entry_is_filed_after_every_part_before_it_under_th
         },
         "63",
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments.len(), 1);
     assert_eq!(map.segments[0].entry, 900);
@@ -1169,7 +1187,8 @@ async fn the_last_of_five_parts_under_one_entry_is_filed_after_the_four_before_i
         ProviderMediaId(901),
         Some(60),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments.len(), 1);
     assert_eq!(map.segments[0].entry_total, 60);
@@ -1277,7 +1296,8 @@ async fn a_part_with_no_entry_between_two_under_the_entry_leaves_the_first_in_th
         ProviderMediaId(902),
         Some(48),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments[0].entry_total, 48);
     assert_eq!(map.segments[0].lead, 36);
@@ -1322,7 +1342,8 @@ async fn a_part_four_unresolved_prequels_after_its_entry_is_filed_under_it() {
         },
         "76",
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map.shape, Shape::SplitParts);
     assert_eq!(map.segments[0].entry_total, 72);
     assert_eq!(map.segments[0].lead, 60);
@@ -1370,7 +1391,8 @@ async fn a_chain_with_a_part_mapped_to_the_entry_past_its_total_is_no_split() {
         ProviderMediaId(904),
         Some(24),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
 }
 
@@ -1431,6 +1453,7 @@ async fn a_part_past_the_total_mapped_only_through_the_other_tracker_still_contr
         ProviderMediaId(905),
         Some(24),
     )
-    .await;
+    .await
+    .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
 }
