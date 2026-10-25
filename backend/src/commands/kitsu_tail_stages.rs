@@ -9,7 +9,8 @@ use super::read::{
 use super::KitsuTail;
 use crate::commands::play_native_appended::{
     aligned, aligned_is_final, anilist_ends_at, explained, is_announced, kitsu_ends_at,
-    leaves_names, named_alone, rows_end_at, unlike_the_show_s, EntryTail, Related, ALIGNED,
+    leaves_names, misaligned_so_far, named_alone, rows_end_at, unlike_the_show_s, EntryTail,
+    Related, ALIGNED,
 };
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::KitsuRelation;
@@ -20,6 +21,7 @@ use crate::scraper::provider::EpisodeRef;
 fn settled(listing: &[EpisodeRef], count: u32, past: &[EpisodeRef], tail: &EntryTail) -> bool {
     !rows_end_at(tail, count)
         || !unlike_the_show_s(past, tail)
+        || misaligned_so_far(listing, count, tail)
         || (aligned_is_final(count, tail) && !aligned(listing, count, tail))
 }
 
@@ -37,7 +39,8 @@ impl KitsuTail<'_> {
         count: u32,
         past: &[EpisodeRef],
     ) -> Option<(EntryTail, bool)> {
-        if !named_alone(past) {
+        // The listing alone can settle it, before anything is read.
+        if !named_alone(past) || misaligned_so_far(listing, count, &EntryTail::default()) {
             return Some((EntryTail::default(), false));
         }
         let detail = crate::commands::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)

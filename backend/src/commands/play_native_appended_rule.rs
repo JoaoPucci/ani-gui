@@ -2,9 +2,9 @@
 //! ([`super`]), split from it so each file stays inside the
 //! complexity bar.
 
+use super::aligned::aligned;
 use super::explained::explained;
 use super::names::own_names;
-use super::titles::{is_generic, same_title};
 use super::{appended_count, tag_past, EntryTail};
 use crate::scraper::provider::EpisodeRef;
 
@@ -71,30 +71,4 @@ pub fn anilist_ends_at(tail: &EntryTail, count: u32) -> bool {
 #[must_use]
 pub fn rows_end_at(tail: &EntryTail, count: u32) -> bool {
     tail.read_past_count && tail.episodes.iter().all(|e| e.number <= count)
-}
-
-/// Whether every one of Kitsu's last [`ALIGNED`] episodes is among the
-/// rows read, so [`aligned`] reads them all and no further row can
-/// change what it says: each is read by the first row with its number.
-#[must_use]
-pub fn aligned_is_final(count: u32, tail: &EntryTail) -> bool {
-    let first = count.saturating_sub(ALIGNED - 1).max(1);
-    (first..=count).all(|n| tail.episodes.iter().any(|e| e.number == n))
-}
-
-/// Whether the listing names Kitsu's last [`ALIGNED`] episodes as
-/// Kitsu does, and Kitsu dates each of them; titles that are only
-/// numbers line up whatever a row holds, so one at least must be more.
-#[must_use]
-pub fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
-    let first = count.saturating_sub(ALIGNED - 1).max(1);
-    let named = |n: u32| -> Option<&str> {
-        let kitsu = tail.episodes.iter().find(|e| e.number == n)?;
-        kitsu.airdate.as_ref()?;
-        let row = listing.get(usize::try_from(n - 1).ok()?)?;
-        let title = kitsu.title.as_deref()?;
-        same_title(title, row.title.as_deref()?).then_some(title)
-    };
-    let titles: Option<Vec<&str>> = (first..=count).map(named).collect();
-    titles.is_some_and(|t| t.iter().any(|t| !is_generic(t)))
 }

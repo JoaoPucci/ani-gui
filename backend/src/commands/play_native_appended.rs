@@ -219,10 +219,10 @@ fn kept_for_a_version(picked: &PickedShow, kept: &Remembered) -> bool {
 
 #[path = "play_native_appended_rule.rs"]
 mod rule;
-pub use rule::{
-    aligned, aligned_is_final, anilist_ends_at, appended_extras, kitsu_ends_at, rows_end_at,
-    ALIGNED,
-};
+pub use rule::{anilist_ends_at, appended_extras, kitsu_ends_at, rows_end_at, ALIGNED};
+#[path = "play_native_appended_aligned.rs"]
+mod aligned;
+pub use aligned::{aligned, aligned_is_final, misaligned_so_far};
 #[path = "play_native_appended_names.rs"]
 mod names;
 pub use names::{is_announced, leaves_names, named_alone, unlike_the_show_s};
