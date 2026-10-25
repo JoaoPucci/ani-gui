@@ -1237,8 +1237,7 @@ async fn two_downloads_of_one_target_do_not_overlap() {
 }
 
 #[cfg(unix)]
-#[cfg(unix)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
     // The two waits are the same wait as far as the user is concerned:
     // a queued download sitting behind one that already owns the file.
@@ -1306,23 +1305,33 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
     .expect("the first call reached its tool");
 
     let mut sink = |_l: &str| {};
-    let queued = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        spawn_download_tool(
-            &StreamSource {
-                master_url: "https://cdn.example/x/master.m3u8".into(),
-                referer: None,
-                subtitles: Vec::new(),
-            },
-            &dir,
-            "Queued Show Episode 1",
-            None,
-            &path_env,
-            std::time::Duration::from_millis(300),
-            &mut sink,
+    // The first call holds the file until the test lets it go, so the
+    // duplicate's deadline is all that ends its wait. The clock is
+    // paused for the wait ([`crate::held::paused_once`]), so it returns
+    // at the deadline it applies, which must be the one it is given.
+    let deadline = std::time::Duration::from_millis(300);
+    let queued = crate::held::paused_once(
+        tokio::time::timeout(
+            // Only a guard against hanging the suite.
+            std::time::Duration::from_secs(5),
+            spawn_download_tool(
+                &StreamSource {
+                    master_url: "https://cdn.example/x/master.m3u8".into(),
+                    referer: None,
+                    subtitles: Vec::new(),
+                },
+                &dir,
+                "Queued Show Episode 1",
+                None,
+                &path_env,
+                deadline,
+                &mut sink,
+            ),
         ),
+        std::future::ready(()),
     )
-    .await;
+    .await
+    .ended_by(deadline, "the queued download's wait");
     let queued = queued.expect("the queued download must end at its own deadline");
     assert!(
         matches!(queued, Err(AniError::Timeout)),
