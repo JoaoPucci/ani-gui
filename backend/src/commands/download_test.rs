@@ -486,17 +486,18 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // as one.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    // Each tool fits inside the deadline on its own, so a deadline per
-    // tool lets the chain succeed; the two together do not. ffmpeg
-    // marks a finished run, so a chain that ran to its end and only
-    // then reported the timeout leaves the mark behind.
+    // Each tool fits inside the 1.2 s deadline on its own, so a
+    // deadline per tool lets the chain succeed; the two together, 1.5 s,
+    // do not. ffmpeg marks a finished run, so a chain that ran to its end
+    // and only then reported the timeout leaves the mark behind, and so
+    // does a deadline grown past 1.5 s.
     let finished = dest.path().join("ffmpeg-finished");
     stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "sleep 1; touch {finished}; exit 0",
+            "sleep 0.5; touch {finished}; exit 0",
             finished = crate::stub_file::sh_quote(&finished)
         ),
     );
@@ -513,7 +514,7 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
             "Show Episode 1",
             None,
             &bin.path().display().to_string(),
-            std::time::Duration::from_millis(1500),
+            std::time::Duration::from_millis(1200),
             &mut |_l: &str| {},
         ),
     )
