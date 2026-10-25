@@ -27,15 +27,15 @@ fn settled(listing: &[EpisodeRef], count: u32, past: &[EpisodeRef], tail: &Entry
 impl KitsuTail<'_> {
     /// What says whether the show ends at `count`, read in order while
     /// what is in hand leaves the reading open: the listing's rows past
-    /// the count (`past`) have names of their own, and its names for the
+    /// the count (`past`) have names of their own, its names for the
     /// count's last episodes could line up with Kitsu's
-    /// ([`misaligned_so_far`] on the listing alone) and none of them is
-    /// a row past the count's ([`past_named_as_a_last_episode`]);
+    /// ([`misaligned_so_far`] on the listing alone), and no row past
+    /// the count carries one of them ([`past_named_as_a_last_episode`]);
     /// Kitsu's entry ends the show at the count; AniList's answer does;
-    /// Kitsu's pages list
-    /// nothing past it, name its last episodes as `listing` does, and
-    /// name no row past it. Returns the tail so far and whether the
-    /// reading is still open; `None` when a read failed first.
+    /// Kitsu's pages list nothing past it, name its last episodes as
+    /// `listing` does, and name no row past it. Returns the tail so far
+    /// and whether the reading is still open; `None` when a read failed
+    /// first.
     pub(super) async fn end_of_show(
         &self,
         listing: &[EpisodeRef],
