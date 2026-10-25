@@ -198,10 +198,13 @@ describe('settling a result', () => {
 });
 
 describe('editorToggle', () => {
-	it('opens a closed editor, and not while it is disabled or a write is out', () => {
+	it('opens a closed editor, and not while it is disabled', () => {
 		expect(editorToggle({ open: false, busy: false, disabled: false })).toBe('open');
 		expect(editorToggle({ open: false, busy: false, disabled: true })).toBe('ignore');
-		expect(editorToggle({ open: false, busy: true, disabled: false })).toBe('ignore');
+	});
+
+	it('reopens a closed editor whose write is still out, showing that write rather than a fresh form', () => {
+		expect(editorToggle({ open: false, busy: true, disabled: false })).toBe('reopen');
 	});
 
 	it('closes an open editor even while its write waits — the write carries on', () => {
