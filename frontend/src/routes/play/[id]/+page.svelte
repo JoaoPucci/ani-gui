@@ -2341,10 +2341,12 @@
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
-		// So does one the switch declines before it starts — the airing
-		// lookup still out, or a dead end: the show delisted, the episode
-		// past the cap, where it comes back naming the dead end, with no
-		// Reload.
+		// So does one the switch declines before it starts — a dead end
+		// learned while the eviction was out: the show delisted, the
+		// episode past the cap, where it comes back naming the dead end,
+		// with no Reload. (No recovery starts while the airing lookup is
+		// out, and it goes back out only for another show, which the
+		// viewer leaving has already turned away above.)
 		const switchesBefore = switchesStarted;
 		await switchToEpisode(episodeNum);
 		if (switchesStarted === switchesBefore) playerError ??= restore;
