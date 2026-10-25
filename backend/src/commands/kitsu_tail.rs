@@ -1,10 +1,11 @@
 //! The evidence the appended-extras rule reads
 //! ([`super::play_native_appended`]), from what a detail page visit
 //! already caches: Kitsu's entry, the Kitsu episode pages holding the
-//! count's last episodes, and AniList's airing answer — and, past
-//! those, the entries Kitsu relates the show to, with each aired TV
-//! entry's first episode page. Each is read
-//! from the cache first and fetched only when it is missing.
+//! count's last episodes and the page after them, and AniList's airing
+//! answer — and, past those, the entries Kitsu relates the show to,
+//! with each aired TV entry's first episode page. Each is read from
+//! the cache first and fetched only when it is missing, and only while
+//! what is already in hand leaves the reading open.
 
 use super::play_native_appended::{EntryTail, Remembered, TailSource};
 use crate::app::AppState;

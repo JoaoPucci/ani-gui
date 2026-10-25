@@ -15,8 +15,10 @@ pub(super) fn page_of(n: u32) -> u32 {
 }
 
 /// The Kitsu pages that hold the count's last [`ALIGNED`] episodes,
-/// and the one an episode past the count would be on: the page after
-/// when the count ends a page.
+/// and, when the count ends a page, the page after it: the pages the
+/// recorded corpus holds for a counted show. The reader reads these
+/// and, for a count that does not end a page, the page after the last
+/// of them too (see `kitsu_rows`).
 #[must_use]
 pub fn tail_pages(count: u32) -> Vec<u32> {
     let first = count.saturating_sub(ALIGNED - 1).max(1);
@@ -28,7 +30,7 @@ pub fn tail_pages(count: u32) -> Vec<u32> {
 }
 
 /// The tail Kitsu's `status` and `count`, AniList's `airing` answer
-/// and the rows of the pages [`tail_pages`] names give. AniList's
+/// and Kitsu's `episodes` rows give. AniList's
 /// count is the one it gives a show it calls finished: an aired count
 /// with nothing scheduled after it.
 #[must_use]
