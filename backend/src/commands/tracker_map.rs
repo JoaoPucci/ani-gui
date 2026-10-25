@@ -160,7 +160,8 @@ async fn build_resolved(
 /// Build the map for a show that resolves to nothing: through its
 /// prequels to the entry it may be filed under, back to the first part
 /// filed under that entry, then the parts from there. A show no
-/// prequel of which resolves is identity, kept for the short window.
+/// prequel of which resolves, or whose entry the tracker answers is
+/// gone, is identity, kept for the short window.
 async fn build_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<EpisodeMap> {
     let ours = kitsu_show(ask, kitsu_id).await?;
     let Some((root, native)) = prequel_walk::root_through_prequels(ask, kitsu_id).await? else {
@@ -169,7 +170,9 @@ async fn build_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<EpisodeMap
     // The nearest prequel that resolves may be a later part under the
     // entry: the parts start at the first of them.
     let root = prequel_walk::first_part_under(ask, &root, native).await?;
-    let gathered = evidence::gather_under(ask, ours, root, native).await?;
+    let Some(gathered) = evidence::gather_under(ask, ours, root, native).await? else {
+        return Ok(EpisodeMap::identity(Identity::Unexplained));
+    };
     Ok(map_show(&gathered))
 }
 

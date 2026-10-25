@@ -499,6 +499,69 @@ async fn a_sequel_the_tracker_no_longer_serves_ends_the_chain_as_an_answer() {
 }
 
 #[tokio::test]
+async fn an_entry_the_tracker_no_longer_serves_leaves_an_unresolved_show_identity() {
+    // Kitsu files show 5 after its prequel 4, which Kitsu maps to MAL 40;
+    // MAL answers that 40 is gone. That is an answer: the show is filed
+    // under nothing, identity for the short window, rather than a write
+    // that fails on every watch.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "5",
+        detail("5", Some(12), "2024-01-05", "2024-03-28"),
+        1,
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/5/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(relationship(
+            "prequel",
+            "4",
+            12,
+            "2023-01-05",
+            "2023-03-28",
+        )))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/4"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(mappings("4", Some(40), None)))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/4/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(EMPTY_PAGE))
+        .mount(&kitsu)
+        .await;
+    let mal_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/40"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"error":"not_found"}"#))
+        .expect(1)
+        .mount(&mal_server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let map = episode_map_for_unresolved(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&mal_server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
+        "5",
+    )
+    .await
+    .expect("an entry the tracker says is gone is an answer");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    assert_eq!(
+        ttl_of(&state, &map_key(ProviderKind::MyAnimeList, "5", None)),
+        TRACKER_MAP_UNSETTLED_TTL.as_secs()
+    );
+}
+
+#[tokio::test]
 async fn a_prequel_read_that_fails_fails_the_unresolved_map() {
     let kitsu = MockServer::start().await;
     kitsu_detail(
