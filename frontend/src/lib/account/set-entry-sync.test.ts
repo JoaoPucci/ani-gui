@@ -249,3 +249,26 @@ describe('a held removal a newer write covers in part', () => {
 		expect(removeEntry).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('a held completion a newer write covers the episode of', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is dropped whole rather than re-sent without its episode', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-70', {
+			status: 'completed',
+			statusChanged: true,
+			progress: 12,
+			total: 12
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		await saveWhenTrackerAllows('anilist', 'kitsu-70', async () => null, ['progress']);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(setEntry).toHaveBeenCalledTimes(1);
+	});
+});

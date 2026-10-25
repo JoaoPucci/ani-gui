@@ -4,7 +4,8 @@ import {
 	noticeBusy,
 	providerName,
 	reportProgressNotSaved,
-	saveWhenTrackerAllows
+	saveWhenTrackerAllows,
+	trackedWriteKeys
 } from './busy-save';
 import { SupersededError } from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
@@ -175,5 +176,33 @@ describe('a held write and a newer one that covers part of it', () => {
 		expect(busyNotices()).toEqual([]);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(await pending).toBe('held');
+	});
+});
+
+describe('the write ledger', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('forgets a show once its last write in flight settles, and not before', async () => {
+		const before = trackedWriteKeys();
+		const held = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(1))
+			.mockResolvedValue('held');
+		const pending = saveWhenTrackerAllows('anilist', '60', held, ['status', 'progress']);
+		await vi.advanceTimersByTimeAsync(0);
+		// A newer progress-only write settles while the older one still waits:
+		// the older one's status is still its own, so the show is kept.
+		await saveWhenTrackerAllows('anilist', '60', async () => 'p', ['progress']);
+		expect(trackedWriteKeys()).toBe(before + 1);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await pending).toBe('held');
+		expect(trackedWriteKeys()).toBe(before);
+		await saveWhenTrackerAllows('anilist', '61', async () => 'x').catch(() => {});
+		expect(trackedWriteKeys()).toBe(before);
 	});
 });

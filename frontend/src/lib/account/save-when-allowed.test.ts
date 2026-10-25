@@ -5,6 +5,7 @@ import {
 	busyWaitSecs,
 	DEFAULT_WAIT_S,
 	keepFields,
+	keepWrite,
 	MAX_SAVE_ATTEMPTS,
 	MAX_WAIT_S,
 	saveWhenAllowed,
@@ -155,5 +156,25 @@ describe('keepFields', () => {
 	it('is nothing once neither a status nor a progress is left', () => {
 		expect(keepFields({ kitsu_id: '12', progress: 5 }, ['progress'], [])).toBeNull();
 		expect(keepFields({ status: 'paused', progress: 5 }, ['status', 'progress'], [])).toBeNull();
+	});
+});
+
+describe('keepWrite', () => {
+	it('never sends a completion without its episode', () => {
+		const finale = { kitsu_id: '12', status: 'completed', progress: 12 };
+		expect(keepWrite(finale, ['status', 'progress'], ['status'])).toBeNull();
+		expect(keepWrite(finale, ['progress'], [])).toBeNull();
+		expect(keepWrite(finale, ['status', 'progress'], ['progress'])).toEqual({
+			kitsu_id: '12',
+			progress: 12
+		});
+	});
+
+	it('is keepFields for any other status', () => {
+		const body = { kitsu_id: '12', status: 'paused', progress: 5 };
+		expect(keepWrite(body, ['status', 'progress'], ['status'])).toEqual({
+			kitsu_id: '12',
+			status: 'paused'
+		});
 	});
 });
