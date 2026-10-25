@@ -93,15 +93,18 @@ impl Gate {
     /// Returns the instant the turn was taken, for [`Ledger::settle`].
     async fn admit(&self, class: Class, deadline: Instant) -> Result<Instant> {
         loop {
-            let now = Instant::now();
-            let at = {
+            let (now, at) = {
                 let mut ledger = self.ledger();
+                // Read under the lock: a send settled by another task
+                // between a clock read and the lock would land after
+                // `now`, and this send would go in behind it.
+                let now = Instant::now();
                 let at = ledger.ready_at(&self.pace, class, now);
                 if at <= now {
                     ledger.record_send(&self.pace, now);
                     return Ok(now);
                 }
-                at
+                (now, at)
             };
             if at > deadline {
                 return Err(not_sent(at - now, class));
