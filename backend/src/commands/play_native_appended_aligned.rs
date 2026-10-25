@@ -36,7 +36,7 @@ pub fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
 /// whatever rows are still to read:
 ///
 /// - the listing names one of the count's last episodes by nothing a
-///   title could match: no name, or punctuation alone;
+///   title could match: no name, or one with no letter or digit;
 /// - Kitsu's first row read for one of them is undated, untitled or
 ///   titled otherwise (rows read later come after it, so cannot become
 ///   the first);
@@ -59,4 +59,25 @@ pub fn misaligned_so_far(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -
     });
     let numbers_only = last.clone().all(|n| name(n).is_none_or(is_generic));
     unmatched || (!last.is_empty() && numbers_only)
+}
+
+/// Whether a row past the count (`past`) carries the listing's name
+/// for one of the count's last episodes. For the listing to line up,
+/// Kitsu titles that episode the same, and the row then carries one of
+/// the show's own names: the rule refuses either way, and the listing
+/// alone says so.
+#[must_use]
+pub fn past_named_as_a_last_episode(
+    listing: &[EpisodeRef],
+    count: u32,
+    past: &[EpisodeRef],
+) -> bool {
+    (first_aligned(count)..=count)
+        .filter_map(|n| usize::try_from(n - 1).ok().and_then(|i| listing.get(i)))
+        .filter_map(|row| row.title.as_deref())
+        .any(|name| {
+            past.iter()
+                .filter_map(|row| row.title.as_deref())
+                .any(|title| same_title(name, title))
+        })
 }

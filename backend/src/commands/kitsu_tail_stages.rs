@@ -9,7 +9,8 @@ use super::read::{
 use super::KitsuTail;
 use crate::commands::play_native_appended::{
     aligned, anilist_ends_at, explained, is_announced, kitsu_ends_at, leaves_names,
-    misaligned_so_far, named_alone, rows_end_at, unlike_the_show_s, EntryTail, Related, ALIGNED,
+    misaligned_so_far, named_alone, past_named_as_a_last_episode, rows_end_at, unlike_the_show_s,
+    EntryTail, Related, ALIGNED,
 };
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::KitsuRelation;
@@ -28,8 +29,10 @@ impl KitsuTail<'_> {
     /// what is in hand leaves the reading open: the listing's rows past
     /// the count (`past`) have names of their own, and its names for the
     /// count's last episodes could line up with Kitsu's
-    /// ([`misaligned_so_far`] on the listing alone); Kitsu's entry ends
-    /// the show at the count; AniList's answer does; Kitsu's pages list
+    /// ([`misaligned_so_far`] on the listing alone) and none of them is
+    /// a row past the count's ([`past_named_as_a_last_episode`]);
+    /// Kitsu's entry ends the show at the count; AniList's answer does;
+    /// Kitsu's pages list
     /// nothing past it, name its last episodes as `listing` does, and
     /// name no row past it. Returns the tail so far and whether the
     /// reading is still open; `None` when a read failed first.
@@ -40,7 +43,10 @@ impl KitsuTail<'_> {
         past: &[EpisodeRef],
     ) -> Option<(EntryTail, bool)> {
         // The listing alone can settle it, before anything is read.
-        if !named_alone(past) || misaligned_so_far(listing, count, &EntryTail::default()) {
+        if !named_alone(past)
+            || misaligned_so_far(listing, count, &EntryTail::default())
+            || past_named_as_a_last_episode(listing, count, past)
+        {
             return Some((EntryTail::default(), false));
         }
         let detail = crate::commands::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
