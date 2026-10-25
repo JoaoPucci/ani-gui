@@ -55,13 +55,36 @@ pub(super) async fn kitsu_parts(
     Ok(parts)
 }
 
-/// The single sequel of the last of `parts` when it resolves to
+/// Where `parts` reach `total` exactly, at least two of them, file the
+/// next sequel among the entries mapped to the entry when it resolves to
 /// `native` itself: a part mapped to the entry past the parts that reach
-/// its total, which says they are not the whole of it. Kitsu's page of
-/// the entries mapped to the tracker's id need not list it — it may be
-/// mapped through the other tracker's id — so the gatherer files it
-/// among them.
-pub(super) async fn mapped_past_total(
+/// its total says they are not the whole of it. Kitsu's page of the
+/// entries mapped to the tracker's id need not list it — it may be
+/// mapped through the other tracker's id — so it is filed here.
+pub(super) async fn file_mapped_past(
+    ask: &MapAsk<'_>,
+    parts: &[KitsuShow],
+    native: ProviderMediaId,
+    total: u32,
+    sharing: &mut Vec<KitsuShow>,
+) -> Result<()> {
+    let sum = parts
+        .iter()
+        .try_fold(0u32, |sum, p| p.episodes.and_then(|n| sum.checked_add(n)));
+    if parts.len() < 2 || sum != Some(total) {
+        return Ok(());
+    }
+    if let Some(past) = mapped_past_total(ask, parts, native).await? {
+        if !sharing.iter().any(|mapped| mapped.id == past.id) {
+            sharing.push(past);
+        }
+    }
+    Ok(())
+}
+
+/// The single sequel of the last of `parts` when it resolves to
+/// `native` itself.
+async fn mapped_past_total(
     ask: &MapAsk<'_>,
     parts: &[KitsuShow],
     native: ProviderMediaId,
