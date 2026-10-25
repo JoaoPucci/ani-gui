@@ -43,8 +43,9 @@ pub(crate) struct Pace {
 /// second apart, five of each minute held for the user. A refusal
 /// with no wait is AniList's documented one-minute timeout. An
 /// interactive read waits up to three seconds — the retry cap the
-/// public transport has always had — and a background fill two, the
-/// budget the episode-thumbnail backfill already runs under.
+/// public transport has always had — and a background fill one: under
+/// the two seconds the episode page gives its thumbnail backfill, so a
+/// turn is never taken for a request the page has stopped waiting for.
 pub(crate) const ANILIST: Pace = Pace {
     window: Duration::from_secs(60),
     capacity: 25,
@@ -52,7 +53,7 @@ pub(crate) const ANILIST: Pace = Pace {
     min_gap: Duration::from_millis(250),
     default_cool_down: Duration::from_secs(60),
     interactive_wait: Duration::from_secs(3),
-    background_wait: Duration::from_secs(2),
+    background_wait: Duration::from_secs(1),
 };
 
 impl Pace {
