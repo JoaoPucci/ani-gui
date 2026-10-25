@@ -128,17 +128,17 @@ def shared_rule(ev, total):
 
 
 def split_rule(ev, total):
+    """The chain's placement and whether it is contradicted: a Kitsu
+    entry mapped to the tracker's entry that is not among the parts
+    taken says the parts are not the whole of the entry."""
     taken = []
     got = place(ev["parts"], ev["kitsu"]["id"], total, taken)
     if got is None:
-        return None
-    # A part past the sum that Kitsu maps to the entry itself is not the
-    # chain running on into entries of its own.
-    mapped = {k["id"] for k in ev["sharing"]}
-    if any(p["id"] in mapped for p in ev["parts"][taken[0]:]):
-        return None
+        return None, False
+    ids = {p["id"] for p in ev["parts"][: taken[0]]}
+    contradicted = any(k["id"] not in ids for k in ev["sharing"])
     lead, n = got
-    return [segment(ev["entry"], total, 1, n, lead)]
+    return [segment(ev["entry"], total, 1, n, lead)], contradicted
 
 
 def listed_number(text):
@@ -181,14 +181,20 @@ def predict(ev):
         # no other Kitsu entry is filed under the entry; beside Kitsu parts
         # it is a rival to them, read from the first part's count.
         sole = all(k["id"] == ours for k in ev["sharing"] + ev["parts"])
-        split = split_rule(ev, total)
+        shared = shared_rule(ev, total)
+        split, contradicted = split_rule(ev, total)
+        if contradicted:
+            # A contradicted chain is no explanation of its own, but it
+            # still stands as a rival to a shared set that places the
+            # show otherwise.
+            split = split if shared else None
         rival = None
-        if split and ev["parts"]:
+        if split and not contradicted and ev["parts"]:
             first = ev["parts"][0]["episodes"]
             if first and first < total:
                 rival = extras_rule(ev, first, total)
         for shape, segs in (
-            ("shared_entry", shared_rule(ev, total)),
+            ("shared_entry", shared),
             ("split_parts", split),
             ("extras", rival),
             ("extras", extras_rule(ev, count, total) if sole else None),
@@ -399,8 +405,10 @@ def split_overfull_family(rng):
     """A chain of Kitsu parts whose first few reach the entry's total,
     the part after them mapped to the entry too: three to five parts,
     with each part in turn as ours. Among them, three twelve-episode
-    parts against a 24-episode entry. Beside them, the same chains with
-    the part past the sum mapped nowhere, which split as before."""
+    parts against a 24-episode entry. Beside them, the same chains with a
+    mapped entry outside the chain, or a page of mappings Kitsu did not
+    list whole, both identity; and with the part past the sum mapped
+    nowhere, which split as before."""
     out = []
     shapes = [[12, 12, 12]] + [[rng.randint(1, 30) for _ in range(rng.randint(3, 5))] for _ in range(30)]
     for counts in shapes:
@@ -408,10 +416,18 @@ def split_overfull_family(rng):
         reach = 2 if counts == [12, 12, 12] else rng.randint(2, n - 1)
         total = sum(counts[:reach])
         parts = [kitsu(60 + i, counts[i], months(2017, 4 * i) + "-06", "") for i in range(reach + 1)]
-        for tweak in ("mapped", "unmapped"):
-            sharing = list(parts) if tweak == "mapped" else list(parts[:1])
+        outside = kitsu(69, counts[-1], months(2030, 1) + "-06", "")
+        incomplete = {"id": "", "episodes": None, "start": None, "end": None}
+        for tweak in ("mapped", "unmapped", "outside", "incomplete"):
+            chain, sharing = parts, list(parts)
+            if tweak == "unmapped":
+                sharing = list(parts[:1])
+            elif tweak == "outside":
+                chain, sharing = parts[:reach], list(parts[:reach]) + [outside]
+            elif tweak == "incomplete":
+                sharing = [incomplete]
             for ours in range(reach):
-                ev = evidence(parts[ours], show(67, total, rng.random() < 0.85), parts=parts, sharing=sharing)
+                ev = evidence(parts[ours], show(67, total, rng.random() < 0.85), parts=chain, sharing=sharing)
                 out.append(("split_overfull-" + tweak, ev))
     return out
 
