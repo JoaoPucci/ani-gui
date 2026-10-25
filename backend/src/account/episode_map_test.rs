@@ -455,6 +455,44 @@ fn parts_that_reach_the_entry_explain_nothing_beside_a_later_part_mapped_to_it()
 }
 
 #[test]
+fn parts_that_reach_the_entry_explain_nothing_beside_another_entry_mapped_to_it() {
+    // A chain of two twelve-episode parts reaches a 24-episode entry,
+    // but a third twelve-episode Kitsu entry, outside the chain, is
+    // mapped to the entry too: the mapped counts are 36, so neither
+    // reading explains the entry.
+    let a = kitsu("1", Some(12), "2020-01-05", "2020-03-29");
+    let b = kitsu("2", Some(12), "2020-07-05", "2020-09-27");
+    let outside = kitsu("9", Some(12), "2021-01-10", "2021-04-04");
+    for ours in [&a, &b] {
+        let ev = Evidence {
+            kitsu: ours.clone(),
+            entry: show(700, Some(24), true, "2020-01-05", "2021-04-04"),
+            sharing: vec![a.clone(), b.clone(), outside.clone()],
+            parts: vec![a.clone(), b.clone()],
+            ..Default::default()
+        };
+        assert_eq!(
+            map_show(&ev),
+            identity(Identity::Unexplained),
+            "part {}",
+            ours.id
+        );
+    }
+    // Where Kitsu's page of the entries mapped to the tracker's entry did
+    // not hold them all, a part the walk found mapped to the entry past
+    // the total still says the parts before it are not the whole of it.
+    let c = kitsu("3", Some(12), "2021-01-10", "2021-04-04");
+    let ev = Evidence {
+        kitsu: b.clone(),
+        entry: show(700, Some(24), true, "2020-01-05", "2021-04-04"),
+        sharing: vec![KitsuShow::default()],
+        parts: vec![a.clone(), b.clone(), c],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+}
+
+#[test]
 fn a_shared_entry_needs_distinct_known_start_dates_to_order_its_parts() {
     let mut same_day = final_chapters("46038");
     same_day.sharing[0].start = Some("2023-03-03".into());
