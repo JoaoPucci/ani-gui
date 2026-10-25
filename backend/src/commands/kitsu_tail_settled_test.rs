@@ -474,3 +474,28 @@ async fn a_refusal_the_first_of_the_count_s_pages_settles_needs_no_second() {
     assert!(rows.iter().all(|e| e.number2.is_none()), "{rows:?}");
     assert_eq!(kept, None);
 }
+
+/// One of the count's last episodes, read, that Kitsu does not date:
+/// the listing's numbering is not shown to be Kitsu's, whatever the
+/// episodes still to read say, so the pages after are not read.
+#[tokio::test]
+async fn an_undated_last_episode_read_refuses_without_the_pages_still_to_read() {
+    let (mut answers, mut show) = a_longer_show(21);
+    answers.page["data"][18]["attributes"]["airdate"] = serde_json::Value::Null;
+    show.episodes[21].title = Some("An Extra of Its Own".into());
+    let (rows, kept) = fitted_listing(&answers, &["look-ahead", "relations"], show).await;
+    assert!(rows.iter().all(|e| e.number2.is_none()), "{rows:?}");
+    assert_eq!(kept, None);
+}
+
+/// A listing row for one of the count's last episodes with no name
+/// cannot line up with Kitsu's: nothing need be read, and Kitsu being
+/// down changes nothing.
+#[tokio::test]
+async fn a_last_episode_the_listing_does_not_name_refuses_without_any_read() {
+    let mut show = noragami();
+    show.episodes[10].title = None;
+    let (rows, kept) = fitted_listing(&Answers::recorded(), EVERY_READ, show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
