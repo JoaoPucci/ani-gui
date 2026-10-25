@@ -191,7 +191,13 @@ async fn fit_on(
         count,
         ids: show.episodes[at..].iter().map(|e| e.id).collect(),
     }));
+    // Kitsu answering takes however long the machine makes it take.
+    // A paused clock is the slowest machine there is: whenever the fit
+    // waits on an answer, tokio moves time on to the next timer. What a
+    // case reads must not depend on how long that is.
+    tokio::time::pause();
     let fitted = fit_appended(show, Some(count), Some(&source)).await;
+    tokio::time::resume();
     (fitted.episodes, source.remembered())
 }
 
