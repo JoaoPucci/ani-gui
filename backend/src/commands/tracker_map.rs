@@ -12,8 +12,9 @@
 //! that was missing, inconclusive or still moving — an unknown count, a
 //! difference nothing explains, an entry still airing — for
 //! [`TRACKER_MAP_UNSETTLED_TTL`]. A read that fails is kept nowhere:
-//! it says nothing about the show, and the write it was for proceeds as
-//! if nothing had been learnt.
+//! it says nothing about the show, so the write it was for fails with
+//! that read's error (a rate limit keeps its wait) rather than going
+//! ahead as identity.
 //!
 //! Nothing here runs on a write whose map is cached, and a cached
 //! identity map costs the write one cache read. The evidence is
@@ -49,11 +50,12 @@ mod parts_walk;
 #[path = "tracker_map_prequels.rs"]
 mod prequel_walk;
 
-/// The identity map a failed read leaves the write with, logged at
-/// debug: the write proceeds as it did before maps existed.
-fn unlearnt(kitsu_id: &str, err: &crate::error::AniError) -> EpisodeMap {
-    tracing::debug!(kitsu_id, error = ?err, "tracker map: evidence not read; identity");
-    EpisodeMap::identity(Identity::Unexplained)
+/// A read the map rests on failed, logged at debug. The map is neither
+/// built nor kept, and the write it was for fails with the read's error:
+/// an answer that never arrived is unknown, not the absence of a
+/// mapping, so the write does not go ahead as identity.
+fn unread(kitsu_id: &str, err: &crate::error::AniError) {
+    tracing::debug!(kitsu_id, error = ?err, "tracker map: evidence not read; write fails");
 }
 
 /// Who is asking for a map, and through what: the app's state, the
@@ -85,10 +87,9 @@ pub(crate) async fn episode_map_for(
     if let Some(map) = cached(ask.state, &key) {
         return Ok(map);
     }
-    let map = match build_resolved(ask, kitsu_id, native, tracker_total).await {
-        Ok(map) => map,
-        Err(err) => return Ok(unlearnt(kitsu_id, &err)),
-    };
+    let map = build_resolved(ask, kitsu_id, native, tracker_total)
+        .await
+        .inspect_err(|err| unread(kitsu_id, err))?;
     remember(ask.state, &key, &map);
     Ok(map)
 }
@@ -104,10 +105,9 @@ pub(crate) async fn episode_map_for_unresolved(
     if let Some(map) = cached(ask.state, &key) {
         return Ok(map);
     }
-    let map = match build_unresolved(ask, kitsu_id).await {
-        Ok(map) => map,
-        Err(err) => return Ok(unlearnt(kitsu_id, &err)),
-    };
+    let map = build_unresolved(ask, kitsu_id)
+        .await
+        .inspect_err(|err| unread(kitsu_id, err))?;
     // The key names no entry for such a show, so a recount of the entry
     // it is filed under reaches no new key: it is asked for daily.
     remember_for(ask.state, &key, &map, TRACKER_MAP_UNSETTLED_TTL);
