@@ -86,7 +86,8 @@ jobs:
         # we invoke playwright through. The list mirrors what the
         # AppImage runtime expects on a clean runner.
         run: |
-          sudo apt-get update
+          # Distro sources only: see tests/arch/apt_sources.sh.
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
           sudo apt-get install -y \
             musl-tools \
             xvfb \

@@ -100,7 +100,8 @@ jobs:
         # provider transport resolves a curl binary, and the player /
         # download surfaces probe for mpv, ffmpeg and aria2.
         run: |
-          sudo apt-get update
+          # Distro sources only: see tests/arch/apt_sources.sh.
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
           sudo apt-get install -y curl mpv ffmpeg aria2
 
       - if: needs.filter.outputs.relevant == 'true'
