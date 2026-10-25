@@ -399,4 +399,29 @@ proptest! {
             prop_assert_eq!(misaligned_so_far(&rows, count, &tail), !aligned(&rows, count, &tail));
         }
     }
+
+    /// The check settles exactly when nothing still to read could line
+    /// the listing up: with every unread last episode read the best way
+    /// it could be, dated and titled as the listing names it, the rule
+    /// says what the check said before it.
+    #[test]
+    fn the_check_settles_exactly_when_nothing_unread_could_line_up(
+        (count, rows, read, _later) in alignment_case()
+    ) {
+        let first = count.saturating_sub(ALIGNED - 1).max(1);
+        let mut best = read.clone();
+        for n in first..=count {
+            if !read.iter().any(|e| e.number == n) {
+                best.push(TailEpisode {
+                    number: n,
+                    title: rows[n as usize - 1].title.clone(),
+                    airdate: Some("2020-01-01".into()),
+                });
+            }
+        }
+        prop_assert_eq!(
+            misaligned_so_far(&rows, count, &read_so_far(read)),
+            !aligned(&rows, count, &read_so_far(best))
+        );
+    }
 }

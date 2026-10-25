@@ -524,3 +524,16 @@ async fn a_last_episode_named_by_punctuation_alone_refuses_without_any_read() {
     assert!(untagged(&rows), "{rows:?}");
     assert_eq!(kept, None);
 }
+
+/// A row past the count named as the listing names one of the count's
+/// last episodes: for the listing to line up, Kitsu must title that
+/// episode the same, and then the row carries one of the show's own
+/// names. Either way it refuses, so nothing need be read.
+#[tokio::test]
+async fn a_row_past_the_count_named_as_a_last_episode_refuses_without_any_read() {
+    let mut show = noragami();
+    show.episodes[12].title = show.episodes[11].title.clone();
+    let (rows, kept) = fitted_listing(&Answers::recorded(), EVERY_READ, show).await;
+    assert!(untagged(&rows), "{rows:?}");
+    assert_eq!(kept, None);
+}
