@@ -142,6 +142,25 @@ jobs:
         name: Fetch the crates before the network is refused
         working-directory: backend
         run: cargo fetch --locked
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Build the tests before TMPDIR changes
+        working-directory: backend
+        # The tests run under the hostile TMPDIR the next step sets;
+        # the compilers do not have to. A C build script (ring's) runs
+        # clang, which cannot make its temporary files under that name
+        # on macOS, so a run that has to rebuild it from scratch (any
+        # change to Cargo.lock) failed before a single test ran. The
+        # build here uses the same flags and offline environment as
+        # the test step, so that step finds everything built and
+        # compiles nothing.
+        env:
+          RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
+          http_proxy: http://proxy.invalid:9
+          https_proxy: http://proxy.invalid:9
+          all_proxy: http://proxy.invalid:9
+          no_proxy: 127.0.0.1,localhost,::1
+          CARGO_NET_OFFLINE: 'true'
+        run: cargo test --workspace --all-features --no-run
       - if: needs.filter.outputs.relevant == 'true' && runner.os != 'Windows'
         name: Point TMPDIR at a directory a shell reads specially
         # Nearly every path the backend tests stage comes from the
