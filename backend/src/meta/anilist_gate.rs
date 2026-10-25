@@ -50,9 +50,11 @@ use tokio::time::Instant;
 
 use crate::error::{AniError, Result};
 
+#[path = "anilist_gate_answer.rs"]
+mod answer;
 #[path = "anilist_gate_pace.rs"]
 mod pace;
-use pace::{authority, not_sent, stay_away};
+use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
 
 tokio::task_local! {
