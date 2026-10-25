@@ -599,13 +599,35 @@ async fn push_progress_skips_unmappable_show_without_writing() {
     // built by the dispatcher hits the real MAL host, so a stray write
     // attempt would surface as Network/Upstream, not Ok(None) — proving
     // the short-circuit fires before any upstream call.
-    use wiremock::matchers::{method, path};
+    // Kitsu answers every read the episode map makes for such a show:
+    // its detail and no relations, so no prequel files it under an
+    // entry either. A read left unanswered would fail the write.
+    use wiremock::matchers::{method, path, query_param};
     let kitsu = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/999"))
+        .and(query_param("include", "mappings"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
                 .set_body_string(r#"{"data":{"id":"999","type":"anime"},"included":[]}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .and(query_param("fields[anime]", crate::meta::kitsu::ANIME_FIELDS))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"id":"999","type":"anime","attributes":{"canonicalTitle":"Show 999",
+                "episodeCount":12,"startDate":"2024-01-05","endDate":"2024-03-28","status":"finished",
+                "subtype":"TV","coverImage":{"original":"https://media.kitsu.app/c/999.jpg"}}}}"#,
+        ))
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999/media-relationships"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":[],"included":[],"meta":{"count":0}}"#),
         )
         .mount(&kitsu)
         .await;
