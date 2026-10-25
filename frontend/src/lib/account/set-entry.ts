@@ -10,6 +10,7 @@ import { buildListEdit } from './list-entry-edit';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { saveWhenTrackerAllows } from './busy-save';
 
 /**
  * A deliberate edit from the detail-page editor. `status` is the value shown
@@ -180,7 +181,13 @@ export async function removeEntryAcrossTrackers(
 export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<SetOutcome> {
 	const connected = accountStore.connected;
 	const outcome = await setEntryAcrossTrackers(
-		{ connected, bearerFor: (provider) => freshBearerFor(provider), getEntry, setEntry },
+		{
+			connected,
+			bearerFor: (provider) => freshBearerFor(provider),
+			getEntry,
+			setEntry,
+			runWrite: saveWhenTrackerAllows
+		},
 		kitsuId,
 		save
 	);
@@ -194,7 +201,13 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<S
 export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 	const connected = accountStore.connected;
 	const outcome = await removeEntryAcrossTrackers(
-		{ connected, bearerFor: (provider) => freshBearerFor(provider), getEntry, removeEntry },
+		{
+			connected,
+			bearerFor: (provider) => freshBearerFor(provider),
+			getEntry,
+			removeEntry,
+			runWrite: saveWhenTrackerAllows
+		},
 		kitsuId
 	);
 	for (const provider of connected) invalidateWatchLater(provider);

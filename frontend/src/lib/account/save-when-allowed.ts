@@ -1,5 +1,13 @@
 // A tracker write the user made, held until the tracker will take it.
-// Not wired yet: every write runs once, as before.
+//
+// AniList limits how many requests this machine may send a minute; the
+// backend keeps that budget and, when a write would spend past it or
+// AniList is cooling down, refuses it at once with HTTP 429 and the
+// seconds until it may go (`retry_after_secs`), sending nothing. A write
+// the user made — a list-editor save or removal, a watched episode's
+// progress — is not dropped on that answer: it waits the advertised
+// time, says so, and goes again, a bounded number of times. The last
+// refusal, or any other failure, is the caller's to report.
 
 /** Attempts a refused write gets in all, the first included. */
 export const MAX_SAVE_ATTEMPTS = 4;
@@ -7,11 +15,27 @@ export const MAX_SAVE_ATTEMPTS = 4;
 /** The wait assumed when a 429 names none: AniList's one-minute timeout. */
 export const DEFAULT_WAIT_S = 60;
 
-/** The seconds a refused write is asked to wait, or `null` when `error`
- *  is not a rate limit. */
+/**
+ * The seconds a refused write is asked to wait, or `null` when `error`
+ * is not a rate limit. A 429 whose body carries no usable
+ * `retry_after_secs` waits {@link DEFAULT_WAIT_S}. Read by shape — an
+ * `AccountApiError` carries `status` and the raw body in `detail` — so
+ * a mocked api module cannot break it.
+ */
 export function busyWaitSecs(error: unknown): number | null {
-	void error;
-	return null;
+	if (!(error instanceof Error)) return null;
+	const { status, detail } = error as Error & { status?: unknown; detail?: unknown };
+	if (status !== 429) return null;
+	return advertisedSecs(typeof detail === 'string' ? detail : '') ?? DEFAULT_WAIT_S;
+}
+
+function advertisedSecs(body: string): number | null {
+	try {
+		const secs: unknown = JSON.parse(body)?.retry_after_secs;
+		return typeof secs === 'number' && Number.isFinite(secs) && secs >= 0 ? Math.ceil(secs) : null;
+	} catch {
+		return null;
+	}
 }
 
 export interface SaveWaitDeps {
@@ -23,13 +47,27 @@ export interface SaveWaitDeps {
 	maxAttempts?: number;
 }
 
-/** Run `attempt` once. */
+/**
+ * Run `attempt`, and while it is refused as a rate limit, notify, wait
+ * the advertised time and run it again — up to the attempt cap. Returns
+ * the first answer that lands; rethrows the last refusal, or the first
+ * failure that is not a rate limit, as it came.
+ */
 export async function saveWhenAllowed<T>(
 	attempt: () => Promise<T>,
 	deps: SaveWaitDeps
 ): Promise<T> {
-	void deps;
-	return attempt();
+	const max = deps.maxAttempts ?? MAX_SAVE_ATTEMPTS;
+	for (let tried = 1; ; tried += 1) {
+		try {
+			return await attempt();
+		} catch (e) {
+			const secs = busyWaitSecs(e);
+			if (secs === null || tried >= max) throw e;
+			deps.notify(secs);
+			await deps.wait(secs * 1000);
+		}
+	}
 }
 
 /** A real timer, wrapped in an arrow: `setTimeout` called off an object

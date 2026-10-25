@@ -8,6 +8,7 @@ import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -117,7 +118,11 @@ export async function syncWatchedToTrackers(
 			// Refresh a near-expiry token before the write so a long-open
 			// session doesn't push progress with a stale bearer.
 			bearerFor: (provider) => freshBearerFor(provider),
-			updateProgress
+			updateProgress,
+			// A write AniList holds back waits with a notice and goes again;
+			// one that still cannot be saved is said, not dropped.
+			runWrite: saveWhenTrackerAllows,
+			reportFailure: reportProgressNotSaved
 		},
 		kitsuId,
 		episode,
