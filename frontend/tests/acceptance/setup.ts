@@ -277,6 +277,7 @@ server.events.on('response:mocked', ({ request, requestId, response }) => {
 	// teardown — is charged nothing more, however it is answered.
 	if (!response.ok || entry?.late || entry?.settled) return;
 	const sender = entry ? entry.sender : owner.getStore();
+	const mark = { abandoned: false };
 	const check = (async () => {
 		const asked = (await request
 			.clone()
@@ -287,13 +288,20 @@ server.events.on('response:mocked', ({ request, requestId, response }) => {
 			.clone()
 			.json()
 			.catch(() => null);
+		// One its teardown stopped waiting for was charged for that.
+		if (mark.abandoned) return;
 		if (!isSession(answer)) charge(sender, `${label(request)} — a play answered with no session`);
 	})();
 	const checks = answerChecks.get(sender) ?? new Set<Promise<void>>();
 	answerChecks.set(sender, checks);
 	checks.add(check);
+	marks.set(check, mark);
 	void check.finally(() => checks.delete(check));
 });
+
+/** Each check's mark: set once its teardown stopped waiting for it,
+ *  after which nothing it finds is charged. */
+const marks = new WeakMap<Promise<void>, { abandoned: boolean }>();
 
 /** The answer checks still reading a body, by the scenario whose play
  *  they check. */
@@ -306,26 +314,35 @@ const ANSWER_CHECK_GRACE_MS = 1000;
  *  the grace. */
 async function settleAnswerChecks(sender: Scenario | undefined) {
 	const checks = answerChecks.get(sender);
-	if (!checks || checks.size === 0) return;
+	if (!checks) return;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timedOut = new Promise<'timeout'>((r) => {
 		timer = setTimeout(() => r('timeout'), ANSWER_CHECK_GRACE_MS);
 	});
-	const outcome = await Promise.race([Promise.all(checks).then(() => 'done' as const), timedOut]);
+	// Until none is left: a check can join the set while the wait runs.
+	let outcome: 'done' | 'timeout' = 'done';
+	while (checks.size > 0 && outcome === 'done') {
+		outcome = await Promise.race([Promise.all(checks).then(() => 'done' as const), timedOut]);
+	}
 	clearTimeout(timer);
 	if (outcome === 'timeout') {
+		for (const check of checks) {
+			const mark = marks.get(check);
+			if (mark) mark.abandoned = true;
+		}
 		charge(sender, `a play's answer still being read ${ANSWER_CHECK_GRACE_MS} ms after teardown`);
 	}
 	answerChecks.delete(sender);
 }
 
 /**
- * Closes `scenario`'s account: each request it sent while it ran and
- * that is still in flight is charged to it, unless its page aborted
- * it, and marked so that whatever it does later is charged to no one.
- * Returns everything the scenario is failed on, and forgets it.
+ * Charges `scenario` for each request it sent while it ran that is
+ * still in flight, unless its page aborted it, and marks each so that
+ * whatever it does later is charged to no one. Runs before the
+ * teardown waits on anything, so a request answered during the wait
+ * was still unanswered when the page went, and is charged for that.
  */
-function closeAccount(scenario: Scenario): string[] {
+function sweepInFlight(scenario: Scenario) {
 	for (const entry of inFlight.values()) {
 		if (entry.sender !== scenario || entry.late || entry.settled) continue;
 		entry.settled = true;
@@ -333,6 +350,11 @@ function closeAccount(scenario: Scenario): string[] {
 			charge(scenario, `${label(entry.request)} — still unanswered after its page unmounted`);
 		}
 	}
+}
+
+/** Reports what `scenario` is failed on, and forgets it; what of its
+ *  own comes later is named at the file's end. */
+function closeAccount(scenario: Scenario): string[] {
 	scenario.reported = true;
 	const lines = failures.get(scenario) ?? [];
 	failures.delete(scenario);
@@ -444,6 +466,9 @@ afterEach(async () => {
 	if (scenario) scenario.ended = true;
 	// One turn for what the unmount set off.
 	await new Promise((r) => setTimeout(r, 0));
+	// What is still in flight now was unanswered when the page went,
+	// whatever answers it while the teardown waits below.
+	if (scenario) sweepInFlight(scenario);
 	// A play answered in time is checked in time, however long its body
 	// takes to read.
 	await settleAnswerChecks(scenario);
