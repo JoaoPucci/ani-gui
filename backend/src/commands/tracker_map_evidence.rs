@@ -89,15 +89,23 @@ pub(super) async fn gather(
 /// The evidence for `ours` filed under the tracker entry `native`, which
 /// Kitsu's `root` resolves to: the entry itself, the Kitsu entries
 /// mapped to it, Kitsu's chain of parts from `root`, and the tracker's
-/// own episode list.
+/// own episode list. `None` when the tracker answers that the entry is
+/// gone: Kitsu can map a prequel to an id the tracker no longer serves,
+/// and that answer files the show under nothing.
 pub(super) async fn gather_under(
     ask: &MapAsk<'_>,
     ours: KitsuShow,
     root: KitsuShow,
     native: ProviderMediaId,
-) -> Result<Evidence> {
-    let entry = ask.provider.media_evidence(ask.tokens, native).await?;
-    gather_longer(ask, ours, root, native, entry).await
+) -> Result<Option<Evidence>> {
+    let entry = match ask.provider.media_evidence(ask.tokens, native).await {
+        Ok(entry) => entry,
+        Err(err) if err.is_not_found_shaped() => return Ok(None),
+        Err(err) => return Err(err),
+    };
+    gather_longer(ask, ours, root, native, entry)
+        .await
+        .map(Some)
 }
 
 /// [`gather_under`] with the entry already read.
