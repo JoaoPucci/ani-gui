@@ -1359,6 +1359,70 @@ async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
     );
 }
 
+#[tokio::test]
+async fn an_air_dates_read_that_fails_fails_the_map_and_is_kept_nowhere() {
+    // Sonic X as above, with the episode page that holds episode 53
+    // answering 503: the chain rule's dates are unknown, so the map is
+    // not built, not kept, and the write fails with the read's error.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "1633",
+        detail("1633", Some(78), "2003-04-06", "2004-03-28"),
+        1,
+    )
+    .await;
+    kitsu_mapped(&kitsu, "anilist/anime", 129_610, EMPTY_PAGE).await;
+    Mock::given(method("GET"))
+        .and(path("/anime/1633/episodes"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&kitsu)
+        .await;
+    let anilist_server = MockServer::start().await;
+    anilist_media(
+        &anilist_server,
+        1816,
+        r#"{"data":{"Media":{"id":1816,"idMal":1816,"episodes":52,"status":"FINISHED","format":"TV",
+            "startDate":{"year":2003,"month":4,"day":6},"endDate":{"year":2004,"month":3,"day":28},
+            "relations":{"edges":[{"relationType":"SEQUEL","node":{"id":129610,"type":"ANIME","format":"TV"}}]},
+            "streamingEpisodes":[]}}}"#,
+    )
+    .await;
+    anilist_media(
+        &anilist_server,
+        129_610,
+        r#"{"data":{"Media":{"id":129610,"idMal":null,"episodes":26,"status":"FINISHED","format":"TV",
+            "startDate":{"year":2005,"month":9,"day":10},"endDate":{"year":2006,"month":5,"day":6},
+            "relations":{"edges":[]},"streamingEpisodes":[]}}}"#,
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::AniList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: None,
+    };
+    let err = episode_map_for(&ask, "1633", ProviderMediaId(1816), Some(52))
+        .await
+        .expect_err("unread air dates are no answer");
+    assert!(
+        matches!(err, crate::error::AniError::Upstream { status: 503 }),
+        "{err:?}"
+    );
+    assert_eq!(
+        meta_cache_get(
+            &state.cache_pool,
+            &map_key(ProviderKind::AniList, "1633", Some((1816, Some(52))))
+        )
+        .expect("read"),
+        None
+    );
+}
+
 #[test]
 fn a_map_built_before_the_chain_rule_read_kitsu_s_episode_dates_is_never_served() {
     // #264 wrote its maps under v1, with a chain rule that refused every
