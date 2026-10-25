@@ -12,14 +12,16 @@
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
-use crate::meta::anilist_media::MediaRef;
-use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
+use crate::meta::anilist_streaming_eps::StreamingListing;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
 #[path = "anilist_eps_contain.rs"]
 mod contain;
+#[path = "anilist_eps_fetch.rs"]
+mod fetch;
 #[path = "anilist_eps_fit.rs"]
 mod fit;
+use fetch::{fetch_anilist_eps_thumbs, Miss};
 #[path = "anilist_eps_titles.rs"]
 mod titles;
 
@@ -85,63 +87,6 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
             outcome.unwrap_or_default()
         }
     }
-}
-
-/// Why a lookup came back without a listing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Miss {
-    /// A step answered and the answer was no listing — no usable
-    /// mapping, an unreadable body, an upstream error: negative-cached.
-    Failed,
-    /// AniList refused this client, or its budget held the request
-    /// back. Not an answer, and never cached as one.
-    RateLimited,
-}
-
-/// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
-/// AniList streamingEpisodes → [`StreamingListing`]. A failed step
-/// (no usable mapping, parse failure) is [`Miss::Failed`], which the
-/// caller negative-caches; an AniList rate limit is
-/// [`Miss::RateLimited`], which it does not.
-async fn fetch_anilist_eps_thumbs(
-    state: &AppState,
-    kitsu_id: &str,
-    anilist_base: Option<&str>,
-) -> std::result::Result<StreamingListing, Miss> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id)
-        .await
-        .map_err(|e| {
-            tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed");
-            Miss::Failed
-        })?;
-    // Neither id: nothing to ask AniList. Err so the empty result
-    // takes the short negative TTL, as a failed lookup does.
-    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::Failed)?;
-    // A fill the page renders without: it spends AniList's budget
-    // behind what the user is looking at.
-    crate::meta::anilist_gate::in_background(streaming_listing_for_ids(
-        &state.meta_http,
-        ids.mal,
-        ids.anilist,
-        anilist_base,
-    ))
-    .await
-    .map_err(|e| {
-        let miss = if matches!(e, crate::error::AniError::RateLimited { .. }) {
-            Miss::RateLimited
-        } else {
-            Miss::Failed
-        };
-        tracing::warn!(
-            kitsu_id,
-            mal_id = ?ids.mal,
-            anilist_id = ?ids.anilist,
-            error = ?e,
-            ?miss,
-            "anilist thumbs: streamingEpisodes fetch failed",
-        );
-        miss
-    })
 }
 
 /// Returns `true` when at least one episode in the page has a
