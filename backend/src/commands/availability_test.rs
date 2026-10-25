@@ -245,7 +245,7 @@ fn negative_ttl_floors_at_one_hour_when_the_premiere_passed() {
 
 #[test]
 fn negative_ttl_current_show_caps_at_the_ongoing_window() {
-    // Codex P2 #3565701272: for an already-premiered show,
+    // For an already-premiered show,
     // next_airing_at points at the FOLLOWING episode — stretching
     // the negative to it would hide a catalog-lagged show for
     // almost a week after episode 1 appears. Current shows cap at
@@ -1770,7 +1770,7 @@ const ANILIST_UNRELEASED_BODY: &str = r#"{"data":{"Media":{
     "nextAiringEpisode":{"episode":1,"airingAt":1784215800}
 }}}"#;
 
-// Codex P2 #3566017944: the premiere-aware negative TTL only
+// The premiere-aware negative TTL only
 // works when an airing:v2 row exists, but only the detail/play
 // pages fetch the airing endpoint. When the FIRST negative probe
 // for an upcoming title comes from the list-view warmer (or races
@@ -2133,8 +2133,26 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v22:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v22:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v23:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v23:kid-1:dub");
+}
+
+/// A verdict stamped while the appended-extras rule checked a TV
+/// sequel's names alone, and refused only a sequel still airing, is
+/// not served: its cap and extras may come from a reading the rule now
+/// refuses — were the rows past Noragami Aragoto's count titled as its
+/// prequel Noragami's first episodes, they would have read as `13.1`
+/// and `13.2` then and as whole episodes now (as recorded they read as
+/// extras under either rule) — and a row says nothing of which rule
+/// stamped it. The key sits above the one master moved to for the
+/// versions of a season.
+#[test]
+fn a_verdict_stamped_before_every_related_tv_entry_was_read_is_not_read() {
+    let current = cache_key("10800", "sub");
+    assert!(
+        !current.starts_with("availability:v22:"),
+        "the key must have moved past master's v22: {current}"
+    );
 }
 
 /// A verdict stamped before the extras a provider appends after a

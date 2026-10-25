@@ -2,9 +2,9 @@
 //! ([`super`]), split from it so each file stays inside the
 //! complexity bar.
 
+use super::aligned::aligned;
 use super::explained::explained;
 use super::names::own_names;
-use super::titles::{is_generic, same_title};
 use super::{appended_count, tag_past, EntryTail};
 use crate::scraper::provider::EpisodeRef;
 
@@ -22,11 +22,12 @@ pub const ALIGNED: u32 = 3;
 ///   does, at least one of them by more than its number, and Kitsu
 ///   dates them ([`aligned`]), so its numbering is Kitsu's up to the
 ///   count;
-/// - every row past the count has a name of its own, which no TV
-///   sequel's first episodes carry ([`own_names`]);
+/// - every row past the count has a name of its own, which none of
+///   the first episodes of any aired TV entry Kitsu relates the show
+///   to carries, whatever the relation's role ([`own_names`]);
 /// - Kitsu relates the entry to a finished OVA, ONA or special exactly
-///   as long as the rows past the count, and to no sequel still to
-///   finish ([`explained`]).
+///   as long as the rows past the count, and to no entry airing now,
+///   whatever its role or format, a music video aside ([`explained`]).
 ///
 /// `None` otherwise, and for a listing [`appended_count`] turns away.
 #[must_use]
@@ -48,25 +49,26 @@ pub fn appended_extras(
 /// Whether Kitsu and AniList both end the show at `count`, and Kitsu's
 /// rows read show nothing past it.
 fn ends_at(tail: &EntryTail, count: u32) -> bool {
-    tail.finished
-        && tail.count == Some(count)
-        && tail.anilist_count == Some(count)
-        && tail.read_past_count
-        && tail.episodes.iter().all(|e| e.number <= count)
+    kitsu_ends_at(tail, count) && anilist_ends_at(tail, count) && rows_end_at(tail, count)
 }
 
-/// Whether the listing names Kitsu's last [`ALIGNED`] episodes as
-/// Kitsu does, and Kitsu dates each of them; titles that are only
-/// numbers line up whatever a row holds, so one at least must be more.
-fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
-    let first = count.saturating_sub(ALIGNED - 1).max(1);
-    let named = |n: u32| -> Option<&str> {
-        let kitsu = tail.episodes.iter().find(|e| e.number == n)?;
-        kitsu.airdate.as_ref()?;
-        let row = listing.get(usize::try_from(n - 1).ok()?)?;
-        let title = kitsu.title.as_deref()?;
-        same_title(title, row.title.as_deref()?).then_some(title)
-    };
-    let titles: Option<Vec<&str>> = (first..=count).map(named).collect();
-    titles.is_some_and(|t| t.iter().any(|t| !is_generic(t)))
+/// Whether Kitsu calls the show finished at `count`. Read from Kitsu's
+/// entry alone, so the evidence reader asks for nothing more when it
+/// does not.
+#[must_use]
+pub fn kitsu_ends_at(tail: &EntryTail, count: u32) -> bool {
+    tail.finished && tail.count == Some(count)
+}
+
+/// Whether AniList ends the show at `count`, with nothing scheduled.
+#[must_use]
+pub fn anilist_ends_at(tail: &EntryTail, count: u32) -> bool {
+    tail.anilist_count == Some(count)
+}
+
+/// Whether the Kitsu rows read are the ones that would show an episode
+/// past `count`, and show none.
+#[must_use]
+pub fn rows_end_at(tail: &EntryTail, count: u32) -> bool {
+    tail.read_past_count && tail.episodes.iter().all(|e| e.number <= count)
 }

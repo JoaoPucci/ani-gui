@@ -484,6 +484,9 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // ffmpeg fallback only what remains — otherwise a download can
     // stay active for nearly two hours under a deadline documented
     // as one.
+    // The tools must die at the deadline itself: no other test's probe
+    // may slow the tree kill meanwhile.
+    let _probe_scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     // Each tool fits inside the deadline on its own, so a deadline per
@@ -501,30 +504,65 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "echo $$ > {started}; sleep 2.5; touch {finished}; exit 0",
+            "printf 'total_size=0\\nprogress=continue\\n'\necho $$ > {started}\nsleep 2.5\ntouch {finished}\nexit 0",
             started = crate::stub_file::sh_quote(&started),
             finished = crate::stub_file::sh_quote(&finished)
         ),
     );
-    let got = tokio::time::timeout(
-        // Only a guard against hanging the suite.
-        std::time::Duration::from_secs(30),
-        spawn_download_tool(
-            &StreamSource {
-                master_url: "https://cdn.example/x/master.m3u8".into(),
-                referer: None,
-                subtitles: Vec::new(),
-            },
-            dest.path(),
-            "Show Episode 1",
-            None,
-            &bin.path().display().to_string(),
-            std::time::Duration::from_secs(3),
-            &mut |_l: &str| {},
+    // The timings leave a slow runner room to reach the fallback. Once
+    // it has started, the clock is paused ([`crate::held::paused_once`]),
+    // so the deadline ends the chain at the moment it applies, which must
+    // be the one it is given, from the call on. That moment is read off
+    // the chain's last speed report, which it gives as the run ends,
+    // before it takes the tool's tree down: the teardown's own polling
+    // moves a paused clock on by however long the kill takes.
+    let deadline = std::time::Duration::from_secs(3);
+    let called = tokio::time::Instant::now();
+    let mut reported: Vec<tokio::time::Instant> = Vec::new();
+    let fallback_started = async {
+        while std::fs::read_to_string(&started).map_or(true, |pid| pid.trim().is_empty()) {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let got = crate::held::paused_once(
+        tokio::time::timeout(
+            // Only a guard against hanging the suite.
+            std::time::Duration::from_secs(30),
+            spawn_download_tool(
+                &StreamSource {
+                    master_url: "https://cdn.example/x/master.m3u8".into(),
+                    referer: None,
+                    subtitles: Vec::new(),
+                },
+                dest.path(),
+                "Show Episode 1",
+                None,
+                &bin.path().display().to_string(),
+                deadline,
+                &mut |line: &str| {
+                    if line.starts_with(crate::commands::download_progress::RATE_STATUS) {
+                        reported.push(tokio::time::Instant::now());
+                    }
+                },
+            ),
         ),
+        fallback_started,
     )
-    .await
-    .expect("the chain returned");
+    .await;
+    let paused_at = got.paused_at();
+    let got = got.out.expect("the chain returned");
+    let ended = *reported
+        .last()
+        .expect("the fallback's run reported its end")
+        - called;
+    assert!(
+        // The slack covers the real time between the call and the chain
+        // setting its deadline, before the pause, and the timer's ticks;
+        // a deadline that grew by more fails.
+        ended <= deadline.max(paused_at) + std::time::Duration::from_millis(100),
+        "the chain ended {ended:?} after the call on tokio's clock, past its {deadline:?} \
+         deadline (clock paused at {paused_at:?})"
+    );
     assert!(
         started.exists(),
         "the fallback ran: a chain cut off before it proves nothing about its deadline: {got:?}"
@@ -1253,8 +1291,7 @@ async fn two_downloads_of_one_target_do_not_overlap() {
 }
 
 #[cfg(unix)]
-#[cfg(unix)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
     // The two waits are the same wait as far as the user is concerned:
     // a queued download sitting behind one that already owns the file.
@@ -1322,23 +1359,33 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
     .expect("the first call reached its tool");
 
     let mut sink = |_l: &str| {};
-    let queued = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        spawn_download_tool(
-            &StreamSource {
-                master_url: "https://cdn.example/x/master.m3u8".into(),
-                referer: None,
-                subtitles: Vec::new(),
-            },
-            &dir,
-            "Queued Show Episode 1",
-            None,
-            &path_env,
-            std::time::Duration::from_millis(300),
-            &mut sink,
+    // The first call holds the file until the test lets it go, so the
+    // duplicate's deadline is all that ends its wait. The clock is
+    // paused for the wait ([`crate::held::paused_once`]), so it returns
+    // at the deadline it applies, which must be the one it is given.
+    let deadline = std::time::Duration::from_millis(300);
+    let queued = crate::held::paused_once(
+        tokio::time::timeout(
+            // Only a guard against hanging the suite.
+            std::time::Duration::from_secs(5),
+            spawn_download_tool(
+                &StreamSource {
+                    master_url: "https://cdn.example/x/master.m3u8".into(),
+                    referer: None,
+                    subtitles: Vec::new(),
+                },
+                &dir,
+                "Queued Show Episode 1",
+                None,
+                &path_env,
+                deadline,
+                &mut sink,
+            ),
         ),
+        std::future::ready(()),
     )
-    .await;
+    .await
+    .ended_by(deadline, "the queued download's wait");
     let queued = queued.expect("the queued download must end at its own deadline");
     assert!(
         matches!(queued, Err(AniError::Timeout)),
@@ -3105,23 +3152,30 @@ async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_r
         url: format!("{}{route}", server.uri()),
     };
     let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
-    let written = tokio::time::timeout(
-        // The tracks are held until after the phase, so its deadline is
-        // all that ends it; a call that waited on them would never
-        // return. The guard is loose on purpose: it bounds the
-        // deadline's size without counting a loaded machine's delays
-        // against it.
-        std::time::Duration::from_secs(10),
-        write_sidecar_subtitles_within(
-            &reqwest::Client::new(),
-            &tracks,
-            None,
-            dest.path(),
-            "Show Episode 14",
-            std::time::Duration::from_millis(300),
+    // The tracks are held until after the phase, so its deadline is all
+    // that ends it; a call that waited on them would never return. Once
+    // a track is held the clock is paused ([`crate::held::paused_once`]),
+    // so the phase returns at the deadline it applies, which must be the
+    // one it is given.
+    let deadline = std::time::Duration::from_millis(300);
+    let client = reqwest::Client::new();
+    let written = crate::held::paused_once(
+        tokio::time::timeout(
+            // Only a guard against hanging the suite.
+            std::time::Duration::from_secs(10),
+            write_sidecar_subtitles_within(
+                &client,
+                &tracks,
+                None,
+                dest.path(),
+                "Show Episode 14",
+                deadline,
+            ),
         ),
+        stalled.asked(),
     )
     .await
+    .ended_by(deadline, "the sidecar phase")
     .expect("the phase returned at its deadline, its tracks still held");
     stalled.release();
     assert!(written.is_empty(), "nothing arrived in time: {written:?}");
@@ -3165,23 +3219,38 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
         track("en", &server, "/subs/en.vtt"),
         track("es", &stalling, "/subs/es.vtt"),
     ];
-    let written = tokio::time::timeout(
-        // The late track is held until after the phase, so its deadline
-        // is all that ends it; five times that deadline is a loose
-        // bound on its size.
-        std::time::Duration::from_secs(10),
-        write_sidecar_subtitles_within(
-            &reqwest::Client::new(),
-            &tracks,
-            None,
-            dest.path(),
-            "Show Episode 15",
-            // Room for the quick track on a loaded machine; the late one
-            // never answers inside it, however long it is.
-            std::time::Duration::from_secs(2),
+    // The late track is held until after the phase, so its deadline is
+    // all that ends it. Once it is held and the quick track has been
+    // staged, the clock is paused ([`crate::held::paused_once`]), so the
+    // phase returns at the deadline it applies, which must be the one it
+    // is given.
+    // Room for the quick track on a loaded machine; the late one never
+    // answers inside it, however long it is.
+    let deadline = std::time::Duration::from_secs(2);
+    let client = reqwest::Client::new();
+    let staged = async {
+        stalled.asked().await;
+        while std::fs::read_dir(dest.path()).map_or(true, |mut d| d.next().is_none()) {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let written = crate::held::paused_once(
+        tokio::time::timeout(
+            // Only a guard against hanging the suite.
+            std::time::Duration::from_secs(10),
+            write_sidecar_subtitles_within(
+                &client,
+                &tracks,
+                None,
+                dest.path(),
+                "Show Episode 15",
+                deadline,
+            ),
         ),
+        staged,
     )
     .await
+    .ended_by(deadline, "the sidecar phase")
     .expect("the phase returned at its deadline, the late track still held");
     stalled.release();
     let en = dest.path().join("Show Episode 15.en.vtt");

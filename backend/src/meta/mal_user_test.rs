@@ -113,9 +113,8 @@ fn auth_url_emits_pkce_plain_challenge_and_method() {
 fn auth_url_returns_error_for_s256_pkce_so_route_layer_surfaces_clean_4xx() {
     // MAL's authorize endpoint rejects code_challenge_method=S256.
     // Provider returns Err(AniError::Metadata) so the auth-url route
-    // handler returns a clean 4xx — never a panic (Codex P2
-    // #3375623160) and never a 200 with `url: ""` that would fail
-    // silently later in the connect flow (Codex P2 #3375657046).
+    // handler returns a clean 4xx — never a panic and never a 200 with `url: ""` that would fail
+    // silently later in the connect flow.
     let mut pkce = Pkce::new_plain();
     pkce.method = PkceMethod::S256;
     let err = production_provider()
@@ -699,7 +698,7 @@ async fn list_all_score_of_zero_means_unrated() {
 async fn list_all_drops_off_origin_paging_next() {
     // Page 1 returns `paging.next` pointing at an attacker host;
     // list_all MUST NOT follow it (would leak the bearer +
-    // X-MAL-CLIENT-ID off-origin). Codex P2 #3375623170.
+    // X-MAL-CLIENT-ID off-origin).
     let server = wiremock::MockServer::start().await;
     let body = r#"{
         "data": [{
@@ -832,7 +831,7 @@ async fn refresh_coalesces_concurrent_calls_with_same_refresh_token() {
 
 #[tokio::test]
 async fn refresh_coalesces_across_provider_instances_sharing_one_refresh_state() {
-    // Codex P2 #3379969316: the account dispatcher builds a fresh
+    // The account dispatcher builds a fresh
     // `MalProvider` per handler call, so the coalesce state must live
     // OUTSIDE the provider (on AppState) and be shared by Arc/clone.
     // Two distinct provider instances handed the same `MalRefreshState`
@@ -1035,7 +1034,7 @@ async fn current_entry_reads_status_and_num_episodes_watched() {
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
         .and(query_param("fields", "my_list_status"))
-        // nsfw=true so R18 titles aren't hidden (Codex P2 #3387530453).
+        // nsfw=true so R18 titles aren't hidden.
         .and(query_param("nsfw", "true"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
             r#"{"id":21,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":10}}"#,

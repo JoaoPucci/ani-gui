@@ -35,6 +35,8 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
+import { goto } from '$app/navigation';
+import { forgetNavigationListeners, startNavigation } from './navigation';
 
 function episode(n: number, airdate: string | null) {
 	return {
@@ -105,11 +107,9 @@ function serve(
 		http.post(`${API_BASE}/api/play`, async ({ request }) => {
 			played.push((await request.json()) as { episode?: string; prefetch?: boolean });
 			return HttpResponse.json({
-				id: 'session-1',
-				kind: 'hls',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/master.m3u8`,
+				media_kind: 'hls'
 			});
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
@@ -119,6 +119,8 @@ function serve(
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	vi.mocked(goto).mockClear();
+	forgetNavigationListeners();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	refreshes = [];
@@ -241,5 +243,48 @@ describe('play route — clicking an episode the strip calls unaired', () => {
 		await until(() => refreshes.includes('airing'), 'the schedule refreshed past its cache');
 		await until(() => refreshes.includes('episodes'), 'the episode page refreshed');
 		await until(() => playedEpisode(3), 'the player to switch to episode 3');
+	});
+});
+
+// The page stays on screen until a navigation the viewer started
+// lands. A check answering in that window that went on to play would
+// cancel the navigation they asked for.
+describe('a navigation the viewer starts while the check is out', () => {
+	it('on the detail route, plays nothing and goes nowhere', async () => {
+		let release!: () => void;
+		const hold = new Promise<void>((r) => (release = r));
+		setParams({ id: '7006' });
+		serve('7006', { airsOnRefresh: true, hold });
+		app = mount(DetailPage, { target });
+		await until(() => tile(3)?.classList.contains('ep-tile-unaired') === true, 'tile 3 unaired');
+
+		tile(3)!.click();
+		await until(() => refreshes.length === 2, 'the check to go out');
+		startNavigation();
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+
+		expect(playedEpisode(3)).toBe(false);
+		expect(goto).not.toHaveBeenCalled();
+		expect(target.querySelector('[role="status"].backdrop')).toBeNull();
+	});
+
+	it('on the play route, switches to nothing and goes nowhere', async () => {
+		let release!: () => void;
+		const hold = new Promise<void>((r) => (release = r));
+		setParams({ id: '7007' });
+		setUrl('/play/7007', { episode: '1' });
+		serve('7007', { airsOnRefresh: true, hold });
+		app = mount(PlayPage, { target });
+		await until(() => tile(3)?.classList.contains('ep-card-unaired') === true, 'card 3 unaired');
+
+		tile(3)!.click();
+		await until(() => refreshes.length === 2, 'the check to go out');
+		startNavigation();
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+
+		expect(playedEpisode(3)).toBe(false);
+		expect(goto).not.toHaveBeenCalled();
 	});
 });

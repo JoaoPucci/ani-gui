@@ -45,7 +45,7 @@ export interface DockHeightInput {
 /** Compute the DownloadBar's total rendered height for a given row
  *  count. ToastHost calls this with `downloadStore.active.length` so
  *  the toast offset scales with active downloads — single-row
- *  clearance was the original bug (Codex PR-11 review). Returns 0
+ *  clearance hid toasts behind a taller dock. Returns 0
  *  for non-positive row counts; the formula is linear in `rows`. */
 export function dockHeightForRows(input: DockHeightInput): number {
 	const rows = input.rows;

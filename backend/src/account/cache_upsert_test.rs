@@ -22,7 +22,7 @@ fn entry(provider: ProviderKind, media_id: u32, status: ListStatus) -> ListEntry
 
 #[test]
 fn upsert_entry_updates_one_row_without_touching_others() {
-    // Codex P2 #3412673593: after a tracker write, the single updated
+    // After a tracker write, the single updated
     // entry must be written back so the Watch Later rail (status ===
     // 'planning' filter) drops a just-started show. upsert_entry touches
     // only its own (provider, user_id, media_id) row — unlike
@@ -53,7 +53,7 @@ fn upsert_entry_updates_one_row_without_touching_others() {
 
 #[test]
 fn upsert_entry_does_not_regress_progress() {
-    // Codex P2 #3416732383: two mark-watched writes for the same show can
+    // Two mark-watched writes for the same show can
     // race the cache write-through (it runs outside push_progress's
     // per-show lock). The upsert must be monotonic — a stale, lower-
     // progress write landing last must NOT overwrite the newer row.

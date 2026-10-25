@@ -55,6 +55,11 @@ function stagedDeps(): Set<string> {
 	return found;
 }
 
+// Read while the file is collected, not inside the test that compares
+// it: a test's 5 s budget is wall time, and a cold read queued behind
+// another build's disk writes can spend it before anything is compared.
+const STAGED = stagedDeps();
+
 function assertCommonShape(entry: { name: string; license: string; url: string }, label: string) {
 	expect(entry.name, `${label}: name`).toBeTruthy();
 	expect(typeof entry.name, `${label}: name is string`).toBe('string');
@@ -102,7 +107,7 @@ describe('credits — bundled tools', () => {
 		// script in both places at once precisely because nothing tied
 		// them together.
 		const credited = new Set(BUNDLED_TOOLS.map((t) => t.name));
-		const staged = stagedDeps();
+		const staged = STAGED;
 
 		expect(staged.size, 'the fetchers should declare something').toBeGreaterThan(0);
 		for (const dep of staged) {

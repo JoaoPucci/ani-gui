@@ -565,11 +565,9 @@ describe('a play for one show that answers after the page moved on', () => {
 	const OTHER_ID = '777';
 	const OTHER_TITLE = 'Another Show';
 	const SESSION = JSON.stringify({
-		id: 'session-late',
-		kind: 'mp4',
-		has_subtitles: false,
-		quality: '1080',
-		mode: 'sub'
+		session_id: 'session-late',
+		media_url: `${API_BASE}/s/session-late/file.mp4`,
+		media_kind: 'mp4'
 	});
 	const HAS_IT = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } };
 
@@ -864,7 +862,7 @@ describe('a play whose page is left before it answers', () => {
 		vi.mocked(goto).mockClear();
 		stream.dispatch(
 			'done',
-			JSON.stringify({ id: 's', kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' })
+			JSON.stringify({ session_id: 's', media_url: `${API_BASE}/s/s/file.mp4`, media_kind: 'mp4' })
 		);
 		await playJudged();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();

@@ -716,13 +716,11 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   // server.listen() is async — the `listening` event fires after
   // server.ready resolves, and only then is the socket accepting.
   // An already-authorised browser profile that redirects immediately
-  // would otherwise race the bind and hit ECONNREFUSED. Codex P2
-  // #3370057919.
+  // would otherwise race the bind and hit ECONNREFUSED.
   try {
     await server.ready;
   } catch (err) {
-    // Same drain rationale as the openExternal branch below
-    // (Codex P2 #3371719725): when server.ready rejects the bind
+    // Same drain rationale as the openExternal branch below: when server.ready rejects the bind
     // helper also synchronously rejects server.promise; attach a
     // no-op handler so Node doesn't surface an unhandledRejection
     // after we return.
@@ -733,7 +731,7 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
     if (msg.startsWith("port_busy")) kind = "port_busy";
     return { ok: false, kind, message: msg };
   }
-  // Codex P2 #3371658225: shell.openExternal returns a Promise — on
+  // shell.openExternal returns a Promise — on
   // hosts with no default browser (or where xdg-open / the desktop
   // portal can't dispatch the URL) it rejects, and the prior fire-
   // and-forget call left the OAuth server running while the renderer
@@ -743,7 +741,7 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   try {
     await shell.openExternal(authUrl);
   } catch (err) {
-    // Codex P2 #3371719725: server.stop() rejects server.promise with
+    // server.stop() rejects server.promise with
     // "cancelled". We're about to bail without awaiting it, so attach
     // a no-op drain first — otherwise Node surfaces an
     // unhandledRejection on hosts where openExternal fails (no
@@ -798,7 +796,7 @@ ipcMain.handle("ani-gui:account:cancel-oauth", () => {
  * thrown result as "fall back to disconnected and tell the user".
  */
 /**
- * Codex P2 #3370070913: `safeStorage.isEncryptionAvailable()` returns
+ * `safeStorage.isEncryptionAvailable()` returns
  * true even when Electron falls back to its hardcoded `basic_text`
  * backend on Linux installs without libsecret/kwallet/gnome-keyring
  * (or in headless test environments). That backend XORs the payload
@@ -853,7 +851,7 @@ ipcMain.on("ani-gui:account:get-token", (event, provider) => {
     if (!isRealEncryptionBackend()) {
       // The token file exists but the OS keychain that wrote it is no
       // longer reachable (or never was). Refuse to decrypt rather than
-      // surfacing a plaintext-fallback token — Codex P2 #3370070913.
+      // surfacing a plaintext-fallback token.
       event.returnValue = { ok: false, kind: "encryption_unavailable" };
       return;
     }

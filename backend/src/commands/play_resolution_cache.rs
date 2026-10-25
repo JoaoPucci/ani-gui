@@ -69,13 +69,12 @@ use crate::proxy::MediaKind;
 ///   layered picker.
 /// - v4: `cache_key` now includes `year` + `episode_count` so two
 ///   Kitsu entries with the same canonical title (different release
-///   years) can't poison each other's cache row. Closes Codex P2
-///   #3228940641. v3 rows were keyed only by
+///   years) can't poison each other's cache row. v3 rows were keyed only by
 ///   `(title, mode, quality, episode)`, so a single "Mobile Suit
 ///   Gundam" cache row applied to every Gundam re-cut sharing that
 ///   canonical — bumping evicts them.
 /// - v5: picker now reads allmanga's `type`/`status`/`episodeCount`
-///   (b629127, Codex P2 #3242661503) and hard-rejects same-year
+///   (b629127) and hard-rejects same-year
 ///   OVA/Movie/Special candidates and planned-count divergence. A
 ///   v4 row whose stream_url came from one of those OVA picks would
 ///   stay served on cache hit even though the new picker would now
@@ -179,7 +178,15 @@ use crate::proxy::MediaKind;
 // version reads, and a HEAD-passing hit would keep serving it; bumping
 // re-resolves. Keyed past the v21 and v22 above, whose rows name no
 // versions either.
-const SCHEMA: &str = "v23";
+// v24: the appended-extras rule checks the rows past the count against
+// every aired TV entry Kitsu relates the show to, whatever the role,
+// refuses an entry of any role airing now, and never reads a stitched
+// listing. A v23 row for an extra the narrower rule read can hold a
+// stream this one reads as a whole episode, under the extra's number,
+// and a HEAD-passing hit for a request naming that extra — a history
+// row's Continue, a link — would keep playing and recording it as the
+// extra; bumping re-resolves.
+const SCHEMA: &str = "v24";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

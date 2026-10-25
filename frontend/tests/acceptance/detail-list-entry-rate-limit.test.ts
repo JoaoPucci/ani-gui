@@ -119,7 +119,6 @@ function useShowHandlers(entryReads: { count: number }) {
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
 		// The page warms the first episode's stream and reads the download
 		// folder on mount; neither is what this scenario is about.
-		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
 		// The tracker is over its limit for the whole scenario: every read
 		// is refused with the wait the backend relays from `Retry-After`.

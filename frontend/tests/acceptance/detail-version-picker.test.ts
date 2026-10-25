@@ -378,4 +378,24 @@ describe('detail route — the versions of a show listed twice', () => {
 		await until(() => versionGroup() !== null, 'the version choice the recheck found');
 		expect(checked(m.detail_version_uncensored())).toBe('true');
 	});
+
+	it("keeps the show's verdict for the version chosen on the page", async () => {
+		// The availability answer is the pick's: asked with no version,
+		// it covers every version, which number the same episodes. So a
+		// choice made on the page leaves the count it answered standing
+		// — nothing would ask again for the version, and a verdict read
+		// as unknown for it would list episodes past the count to play.
+		const h = useShowHandlers(TWO_VERSIONS, [], 8);
+		app = mount(DetailPage, { target });
+		await until(() => versionGroup() !== null, 'the version choice');
+		await until(() => tiles() === 8, 'the strip cut to the count');
+		const probes = h.probes();
+
+		versionRadio(m.detail_version_standard())!.click();
+		flushSync();
+		expect(checked(m.detail_version_standard())).toBe('true');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(tiles()).toBe(8);
+		expect(h.probes()).toBe(probes);
+	});
 });

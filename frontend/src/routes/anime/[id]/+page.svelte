@@ -23,7 +23,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
 		altTitlesFromKitsu,
@@ -99,6 +99,8 @@
 		getOrFire,
 		makeKey
 	} from '$lib/play/play-cache';
+	import { createShowReleases } from '$lib/play/show-release';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import {
@@ -113,6 +115,7 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
+	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
 	import { fallbackTileTitle } from '$lib/play/tile-title';
@@ -137,6 +140,7 @@
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
+	let config = $state<Config | null>(null);
 	const id = $derived(page.params.id ?? '');
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
@@ -151,30 +155,39 @@
 		isSingleVideo(detail?.subtype ?? null, detail?.episode_count ?? null, detail?.status ?? null)
 	);
 
-	// Availability probe — runs once after detail loads. null = not
-	// yet checked / network error (lazy fallback handles the click);
+	// Availability probe — runs after detail loads, and again when the
+	// audio changes. null = no answer yet for this show in this audio /
+	// network error (lazy fallback handles the click);
 	// true = the provider has at least one candidate; false = the show
 	// isn't in the provider's catalog (Kitsu indexes Western animation
 	// like "Arcane Season 2" too — the play CTA there is a dead end).
-	let availability = $state<boolean | null>(null);
+	//
+	// It is one field of the provider's row for the show
+	// ($lib/availability/row), which every accepted answer writes
+	// and which is read for the show and audio on screen: an answer
+	// about one audio says nothing about the other. A music title is
+	// unavailable in both by this page's own rule, asked or not.
+	let availabilityRow = $state<AvailabilityRow | null>(null);
+	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const knownRow = $derived(rowFor(availabilityRow, rowKey));
+	const availability = $derived(isMusicSubtype(detail?.subtype ?? null) ? false : knownRow.listed);
 	// True once the availability probe settled (result, error, or the
 	// music-subtype skip). The prefetch warm waits on it: firing while
 	// playableEpisodeCount is still null would treat the cap as
-	// unbounded and resolve aired-but-uncatalogued padded tiles
-	// (Codex P2 #3566100686).
+	// unbounded and resolve aired-but-uncatalogued padded tiles.
 	let availabilityResolved = $state(false);
 	// The current lookup's own verdict, for the warm: null while the
 	// question is open or after it failed, never one retained from
-	// an earlier lookup — `availability` above keeps what the page had
-	// on failure, for the call to action, and the warm must not read
-	// the other mode's answer as this one's.
+	// an earlier lookup — `availability` above keeps an earlier answer
+	// in the same audio on failure, for the call to action, and the warm
+	// acts only on what this lookup said.
 	let warmListed = $state<boolean | null>(null);
 
 	// The provider's availableEpisodes for the chosen candidate, populated
 	// alongside availability. This is the authoritative "what's
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, the provider 1161).
-	let playableEpisodeCount = $state<number | null>(null);
+	const playableEpisodeCount = $derived(knownRow.count);
 
 	// The show's versions, when the provider lists it twice ("Versions
 	// of one pick" in docs/title-resolution.md), as the availability
@@ -210,8 +223,11 @@
 	 *
 	 * It BLOCKS, like every other long action here. `actionBusy`
 	 * raises the same overlay a play click does, so there is no window
-	 * in which a second tile can be clicked, the route can change, or
-	 * the episode page can move under the lookup. A cleared count
+	 * in which a second tile can be clicked. The route can still change
+	 * under it — Back, or a link reached from the keyboard, which the
+	 * overlay does not hold — and the context the answer is checked
+	 * against says so: another show, a page left, or a navigation
+	 * started that leaves it (`navigationClaims`). A cleared count
 	 * falls straight through into startPlay, which holds the overlay
 	 * up — the caption just changes from checking to the usual play
 	 * progress.
@@ -236,8 +252,8 @@
 	 * they left. Nothing about the question changed; there is simply
 	 * nobody left asking.
 	 *
-	 * Cannot collide with a real context, which always carries the
-	 * `id:mode` separator.
+	 * Cannot collide with a real context, which always carries `:`
+	 * separators between its parts.
 	 */
 	/**
 	 * Which visit to this route the answer belongs to.
@@ -248,7 +264,7 @@
 	 * and a click abandoned two navigations ago finds the context it
 	 * left behind and acts on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
-	 * asked it (Codex P2 #3674767163).
+	 * asked it.
 	 *
 	 * Derived from the route param rather than the loaded detail: the
 	 * detail is briefly null on any load, and treating that as a
@@ -269,6 +285,23 @@
 	onDestroy(() => {
 		gone = true;
 	});
+	/**
+	 * A navigation the viewer started. The page stays on screen until
+	 * it lands, with the same show and visit, and an action answering
+	 * in that window that went on to play would cancel the navigation
+	 * they asked for with its own `goto`. Actions that end in a play
+	 * claim navigation as they start, and their re-checks carry the
+	 * epoch in their context ($lib/navigation/claims).
+	 *
+	 * Only a navigation that leaves this page counts: another path,
+	 * which includes another show, or out of the app. One that changes
+	 * only the query — the episode pager, which the overlay covers from
+	 * the pointer but not from the keyboard, or a link to the URL on
+	 * screen — keeps the show on screen, and the action stays the
+	 * viewer's.
+	 */
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate((nav) => navigationClaims.started(nav));
 	/**
 	 * Write back what the re-ask learned about the show.
 	 *
@@ -291,17 +324,13 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
-		if (patch.available !== undefined) {
-			availability = patch.available;
-			// Whether that verdict is a refusal by name travels with it
-			// ($lib/detail/availability-writeback).
-			availabilityRefused = patch.refused === true;
-			// A patch that carries the verdict is the current lookup's
-			// or a re-ask's that won it — either way the warm's too.
-			warmListed = patch.available;
-		}
-		if (patch.count !== undefined) playableEpisodeCount = patch.count;
-		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+		// The writeback and the re-ask have both checked that the answer
+		// is about the show and audio on screen, so it is stamped with
+		// them.
+		availabilityRow = mergeRow(availabilityRow, rowKey, patch);
+		// A patch that carries the verdict is the current lookup's or a
+		// re-ask's that won it — either way the warm's too.
+		if (patch.available !== undefined) warmListed = patch.available;
 		if (patch.versions !== undefined) {
 			// A patch lands only in the context it was asked in — this
 			// show, this audio — so the versions are this mode's.
@@ -341,7 +370,8 @@
 			// to write back.
 			return capGateAnswerFrom(r);
 		},
-		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		currentContext: () =>
+			gone ? GONE : `${visit}:${navigationClaims.epoch}:${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			// Overlay stays up; startPlay owns it from here.
@@ -413,7 +443,7 @@
 			},
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
-			currentContext: () => (gone ? GONE : `${visit}:${id ?? ''}`),
+			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
 			play: () => onPickEpisode(n),
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
@@ -434,7 +464,7 @@
 	// special episodes — e.g. ["1061.5"] for One Piece). Spliced
 	// into the episode strip at their numeric position so the user
 	// can navigate to them. Empty when the show has no extras.
-	let extraEpisodes = $state<string[]>([]);
+	const extraEpisodes = $derived(knownRow.extraEpisodes);
 
 	// The cap used for: resume button (defaultEpisode), Download All
 	// total, Download range max, episode-list tile count. Prefers
@@ -502,7 +532,7 @@
 	// True once the airing question is answered for this show — fetched,
 	// failed (stays unknown/ungated), or skipped for finished shows. The
 	// prefetch warm waits on it so it can't race ahead of the schedule
-	// and burn scraper slots on unaired episodes (Codex P2 #3565590966).
+	// and burn scraper slots on unaired episodes.
 	let airingResolved = $state(false);
 	$effect(() => {
 		const currentId = id;
@@ -532,7 +562,7 @@
 
 	// In-flight beat between mount and the airing answer: tiles and
 	// the primary actions stay inert so a quick click can't race the
-	// schedule (Codex P2 #3565710325). Resolved-unknown stays ungated.
+	// schedule. Resolved-unknown stays ungated.
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 
 	// CTA area render state. 'ready' includes the settled-but-unknown
@@ -550,7 +580,7 @@
 	// Whether `availability`'s verdict is the provider refusing the
 	// title by name: written with the verdict, by whoever owns it
 	// ($lib/detail/availability-writeback).
-	let availabilityRefused = $state(false);
+	const availabilityRefused = $derived(knownRow.refused);
 	// A music title is unavailable in both audios by this page's own
 	// rule, so it never names the other one, whatever the cache holds.
 	$effect(() => {
@@ -789,7 +819,6 @@
 		};
 	});
 
-	let config = $state<Config | null>(null);
 	let configError = $state<string | null>(null);
 
 	// The mode as a value rather than as "whatever `config` currently
@@ -811,8 +840,7 @@
 	// nothing about the dub catalogue. Reading the mode inside the
 	// load callback made it invisible to the effect, so nothing
 	// reissued the question and the page kept no cap at all — every
-	// aired dub tile playable until the user navigated (Codex P2
-	// #3674916858). The play route already worked this way.
+	// aired dub tile playable until the user navigated. The play route already worked this way.
 	//
 	// Network errors leave availability null — the lazy click-failure
 	// path then handles it.
@@ -863,9 +891,15 @@
 	async function readResumeAgain(entry: HistoryEntry) {
 		const showId = id;
 		if (!showId) return;
-		// No measured cap means no listing stood behind the lookup.
+		const atVisit = visit;
+		// No measured cap means no listing stood behind the lookup. The
+		// warm comes after the row is read, so only for a page still on
+		// this visit: a viewer who left meanwhile has had the show's
+		// plays released ($lib/play/show-release).
 		const warm =
-			playableEpisodeCount === null && detail ? (ep: number) => warmResume(ep) : undefined;
+			playableEpisodeCount === null && detail
+				? (ep: number) => (!gone && visit === atVisit ? warmResume(ep, showId) : Promise.resolve())
+				: undefined;
 		const next = await refreshedResume(
 			entry,
 			showId,
@@ -884,12 +918,12 @@
 	}
 
 	// A resolve of the resume episode that records no watch.
-	function warmResume(ep: number) {
+	// `showId` is the show the row was read for, which the play cache
+	// is keyed and cleared by.
+	function warmResume(ep: number, showId: string) {
 		const d = detail;
 		const title = playTitle();
-		// The route's id, which the play cache is keyed and cleared by.
-		const showId = id;
-		if (!d || !title || !showId) return Promise.resolve();
+		if (!d || !title) return Promise.resolve();
 		const mode = playMode(config);
 		const quality = playQuality(config);
 		// The version a click on the row would play: its warm puts that
@@ -1060,13 +1094,17 @@
 		{ key: 'worst', label: m.app_quality_worst }
 	];
 
-	// Cancel in-flight prefetches for this show on unmount. Prevents
-	// abandoned resolves from holding provider slots after the
-	// user navigates away — clearForShow aborts each entry's signal
-	// which closes the SSE EventSource and rejects the promise.
-	onDestroy(() => {
-		if (id) clearForShow(id);
-	});
+	// Cancel the plays of every show this page showed on unmount —
+	// warms and clicks alike. Prevents abandoned resolves from holding
+	// provider slots after the user navigates away — clearForShow
+	// aborts each entry's signal which closes the SSE EventSource and
+	// rejects the promise.
+	// Each show is recorded as the route names it: by the time the
+	// page is destroyed the route names where the user went
+	// ($lib/play/show-release).
+	const showReleases = createShowReleases(clearForShow);
+	$effect.pre(() => showReleases.showing(() => id));
+	onDestroy(showReleases.leave);
 
 	// Re-fetch detail + similar when the URL `id` changes. SvelteKit
 	// reuses this component for /anime/[a] → /anime/[b] navigations
@@ -1085,12 +1123,9 @@
 		episodesError = null;
 		similar = null;
 		error = null;
-		availability = null;
-		availabilityRefused = false;
+		availabilityRow = null;
 		availabilityResolved = false;
 		warmListed = null;
-		playableEpisodeCount = null;
-		extraEpisodes = [];
 		showVersions = [];
 		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
@@ -1116,7 +1151,6 @@
 					// unavailable up front instead of letting the probe fuzzy-match
 					// an unrelated anime and play the wrong show. The lookup
 					// effect below stands down for these.
-					availability = false;
 					availabilityResolved = true;
 				}
 				// Override the layout's URL-only default with the
@@ -1188,15 +1222,14 @@
 		if (isMusicSubtype(detail?.subtype ?? null)) return;
 		// Wait for the airing answer before warming anything — firing
 		// on mount with airing still unknown would resolve the whole
-		// visible schedule, greyed-out future episodes included
-		// (Codex P2 #3565590966). airingPending (not raw
+		// visible schedule, greyed-out future episodes included. airingPending (not raw
 		// airingResolved) so a show without a Kitsu status — where no
 		// airing fetch ever starts — doesn't deadlock the warm.
 		if (airingIsPending) return;
 		// ...and for the availability probe: until it settles,
 		// playableEpisodeCount is null and beyondPlayable reads the
 		// cap as unbounded, so the warm would resolve
-		// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
+		// aired-but-uncatalogued padded tiles.
 		if (!availabilityResolved) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
@@ -1214,7 +1247,7 @@
 		// Aired per AniList AND catalogued by the provider — the grid can
 		// render aired-but-uncatalogued tiles (displayCap), and warming
 		// those is the same doomed resolution the availability probe
-		// already capped out (Codex P2 #3565988141).
+		// already capped out.
 		// Which tiles to warm — and how wide, given the caching
 		// setting — is the module's decision; the page only feeds it
 		// the runtime inputs.
@@ -1430,8 +1463,7 @@
 		// inputs: no resume entry → 1, mid-show → last + 1, at cap →
 		// last (Replay branch). The cap clamps to the aired count so a
 		// user watched through the aired episodes gets Replay of the
-		// last aired one instead of Continue into an unaired episode
-		// (Codex P2 #3565649454).
+		// last aired one instead of Continue into an unaired episode.
 		const last = resumeEntry ? parseHistoryEpisode(resumeEntry.ep_no) : null;
 		return pickResumeEpisode(last, airedCap(episodeCap, airing), leftPartWay(last));
 	}
@@ -1484,10 +1516,11 @@
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
 		// against them, and records the show the viewer clicked.
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
 		const show = detail;
 		const playArgs = playArgsFor({
@@ -1535,9 +1568,7 @@
 			// op is idempotent.
 			// Completion is decided against the FULL finite series total
 			// (Kitsu's mode-independent count), NOT episodeCap — in dub
-			// mode the playable cap is only the dubbed slice (Codex P2
-			// #3387467149) — and only for a finished series (Codex P2
-			// #3387184082).
+			// mode the playable cap is only the dubbed slice — and only for a finished series.
 			// The episode the session plays: the request may have named it
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, ep);
@@ -1577,7 +1608,7 @@
 	// so availability === true while zero episodes have aired. The
 	// tiles and prefetch are gated by epAirState, but pickNextEpisode's
 	// no-history branch returns 1 regardless of the cap — block the
-	// primary CTA too (Codex P2 #3565666393).
+	// primary CTA too.
 	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
 
 	/** Waits, busy, while the resume row is being read again — it is
@@ -1585,7 +1616,10 @@
 	 *  click still belongs to this visit after. */
 	async function resumeRowSettled(): Promise<boolean> {
 		const atVisit = visit;
-		const current = () => visit === atVisit && !gone;
+		// A navigation away started during the wait leaves the click behind
+		// too: the play claims afresh after it, too late to notice.
+		const here = navigationClaims.claim();
+		const current = () => visit === atVisit && !gone && here();
 		resumeWaiting = true;
 		try {
 			await settledWithin(resumeRefresh, RESUME_WAIT_MS, current);
@@ -1625,7 +1659,7 @@
 		// what the backend picker compares against the provider's planned
 		// `episodeCount`. The modal's range cap (the provider's released-
 		// so-far count) is a separate concern, passed via DownloadConfirm's
-		// `availableEpisodes` prop. Codex P2 #3243357083.
+		// `availableEpisodes` prop.
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: defaultEpisode(),

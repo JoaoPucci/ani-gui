@@ -381,7 +381,7 @@ async fn watch_later_bridge_falls_back_to_anilist_mapping_for_unmapped_mal_id() 
         .await;
     let anilist = wiremock::MockServer::start().await;
     // Wire shape is the batched Page(idMal_in:) query — one request
-    // covers every Kitsu-missing id in the load (Codex P2 #3565216298),
+    // covers every Kitsu-missing id in the load,
     // replacing the per-id Media(idMal:) call this mock originally
     // spoke. The behavior under assertion (the card bridges) is
     // unchanged.
@@ -462,7 +462,7 @@ async fn watch_later_bridge_batches_anilist_lookups_into_one_request() {
     // Two Kitsu-unmapped MAL ids must cost exactly ONE AniList call
     // (the batched Page(idMal_in:) query), not one per miss — a rail
     // load full of fresh seasonal titles would otherwise blow through
-    // AniList's 30 req/min budget (Codex P2 #3565216298).
+    // AniList's 30 req/min budget.
     use wiremock::matchers::{method, path, query_param};
     let kitsu = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
@@ -652,7 +652,7 @@ fn test_tokens() -> Tokens {
 
 #[tokio::test]
 async fn push_progress_via_folds_the_cache_write_through_under_the_lock() {
-    // Codex P2 #3423108941 / #3423044438: the mark-watched cache
+    // The mark-watched cache
     // write-through must run under push_progress's per-show lock (not
     // deferred to the route afterwards), so a stale write can't land
     // after an explicit edit. push_progress_via writes the cache itself;
@@ -709,7 +709,7 @@ async fn push_progress_via_folds_the_cache_write_through_under_the_lock() {
 
 #[test]
 fn account_write_locks_share_one_mutex_per_show() {
-    // Codex P2 #3387237642 / #3428252253: serialization only works if
+    // Serialization only works if
     // every call for the same (provider, show) gets the SAME mutex, and
     // distinct shows get distinct ones. The key is the Kitsu id so the
     // lock can be taken BEFORE native-id resolution — the editor's seed
@@ -733,7 +733,7 @@ fn account_write_locks_share_one_mutex_per_show() {
 
 #[tokio::test]
 async fn push_progress_waits_for_the_show_lock_before_resolving() {
-    // Codex P2 #3428252253: the mark-watched write must take the per-show
+    // The mark-watched write must take the per-show
     // lock BEFORE resolve_native_media_id, keyed on the Kitsu id, so it
     // serializes with the editor's seed read (same lock) across the
     // resolve window. Hold the Kitsu-id lock and assert push_progress
@@ -787,7 +787,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         })
     };
 
-    // Codex P2 #3387383171: a progress write to a not-yet-listed show
+    // A progress write to a not-yet-listed show
     // creates it as Watching.
     assert_eq!(
         reconcile_monotonic(progress_only(1), None),
@@ -799,7 +799,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         Some(watching(6))
     );
 
-    // Codex P2 #3387568872: a planning row already at the same/higher
+    // A planning row already at the same/higher
     // count still promotes to Watching (status-only) — the progress is
     // dropped as non-advancing but the title must leave Watch Later.
     assert_eq!(
@@ -810,7 +810,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         })
     );
 
-    // Codex P2 #3387319861: an advancing write must NOT touch a
+    // An advancing write must NOT touch a
     // rewatching (or already-watching) row's status — progress only.
     assert_eq!(
         reconcile_monotonic(progress_only(6), entry(ListStatus::Rewatching, 5)),
@@ -821,7 +821,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         Some(progress_only(6))
     );
 
-    // Codex P1 #3386909281: a non-advancing progress write is dropped
+    // A non-advancing progress write is dropped
     // entirely — never regress.
     assert_eq!(
         reconcile_monotonic(progress_only(3), entry(ListStatus::Watching, 10)),
@@ -832,7 +832,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         None
     );
 
-    // Codex P2 #3387051891: a Completed write at unchanged progress is
+    // A Completed write at unchanged progress is
     // still needed — keep the status, drop only the non-advancing
     // progress field.
     let finale = EntryUpdate {
@@ -868,7 +868,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
 #[test]
 fn reconcile_monotonic_preserves_rewatching_at_finale() {
     use crate::account::provider::{CurrentEntry, EntryUpdate};
-    // Codex P2 #3415780486: the fan-out sends Completed when the user
+    // The fan-out sends Completed when the user
     // finishes a finished series. If the tracker row is already
     // rewatching/repeating, completing it would clear AniList REPEATING
     // / MAL is_rewatching — contradicting the preserve-rewatching rule.
@@ -909,7 +909,7 @@ fn reconcile_monotonic_preserves_rewatching_at_finale() {
 
 #[test]
 fn build_entry_update_rejects_empty_and_unknown_status() {
-    // Codex P2 #3381617932: an all-absent update, or a status typo
+    // An all-absent update, or a status typo
     // that silently parses to None, would still call update_entry —
     // and since both providers upsert, that creates a list row with
     // upstream defaults. Reject both so a malformed fan-out request
@@ -1008,7 +1008,7 @@ fn tokens_from_bearer_drops_expiry_and_refresh() {
 
 #[test]
 fn watch_later_bridge_max_ids_is_a_sane_ceiling() {
-    // Codex P1 #3373789621: the route gates on this constant.
+    // The route gates on this constant.
     // 500 covers the largest plausible Plan-to-Watch (a heavy
     // listmaker with curated picks tops out around 200-300) and
     // bounds per-request fan-out cost. Pinned here so a future
@@ -1018,7 +1018,7 @@ fn watch_later_bridge_max_ids_is_a_sane_ceiling() {
 
 #[test]
 fn upsert_cached_entry_writes_through_to_the_cache() {
-    // Codex P2 #3412673593: the write-back path upserts the just-synced
+    // The write-back path upserts the just-synced
     // entry so the Watch Later rail sees the new status without a full
     // resync. Exercise the commands wrapper end-to-end against an
     // in-memory pool.
