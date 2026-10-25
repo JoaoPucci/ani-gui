@@ -267,3 +267,42 @@ proptest::proptest! {
         proptest::prop_assert!(precedes_entry(&ascii, &[entry.as_str()]), "{}", ascii);
     }
 }
+
+/// `s` with its ASCII digits written full-width.
+fn full_width(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_digit() {
+                char::from_u32(c as u32 - '0' as u32 + '０' as u32).unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+proptest::proptest! {
+    /// Digits name the same part in either width, on either side: a
+    /// stem and a title past it answer as their ASCII forms do,
+    /// whichever of them, or both, write their digits full-width.
+    #[test]
+    fn a_part_is_read_alike_in_either_width_on_either_side(
+        s in stem(),
+        n in 0u32..100,
+        k in 2u32..200,
+        form in 0usize..4,
+    ) {
+        let stem_of = format!("{s} {n}");
+        let rest = match form {
+            0 => format!(" Season {k}"),
+            1 => format!(" {} Stage", suffixed(k)),
+            2 => format!(" Part {k}"),
+            _ => format!(" {k}"),
+        };
+        let title = format!("{stem_of}{rest}");
+        let want = part_ordinal(&stem_of, &title);
+        proptest::prop_assert_eq!(part_ordinal(&stem_of, &full_width(&title)), want, "{}", title);
+        proptest::prop_assert_eq!(part_ordinal(&full_width(&stem_of), &title), want, "{}", title);
+        proptest::prop_assert_eq!(part_ordinal(&full_width(&stem_of), &full_width(&title)), want, "{}", title);
+    }
+}

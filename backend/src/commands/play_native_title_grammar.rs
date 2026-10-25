@@ -159,3 +159,7 @@ pub(crate) fn untagged_normalized(title: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+#[cfg(test)]
+#[path = "play_native_title_grammar_test.rs"]
+mod tests;

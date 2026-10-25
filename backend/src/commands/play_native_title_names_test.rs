@@ -207,3 +207,51 @@ fn past_the_stem_a_half_is_read_with_its_ordinal() {
     let titles = ["怪獣８号"];
     assert!(EntryTitles::new(&titles).another_entry("怪獣８号 - First Half 0th"));
 }
+
+/// Word ordinals written alone, and words that are no division.
+const ALONE: [&str; 4] = ["Second", "Third", "Seventh", "First"];
+const SUBJECTS: [&str; 4] = ["Son", "Coming", "Encounter", "Story"];
+
+proptest! {
+    /// A word ordinal standing alone with a word of the name after it is
+    /// a word of the name, wherever it stands: the name keeps it, the
+    /// title reads as nothing but the divisions it carries besides (a
+    /// first one read as the whole, as [`reading`] reads one), the
+    /// words past a division keep it, and a sibling that adds it past a
+    /// broad listing's season names no later division.
+    #[test]
+    fn a_word_ordinal_inside_a_name_is_a_word_of_it(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        ordinal in proptest::sample::select(ALONE.to_vec()),
+        subject in proptest::sample::select(SUBJECTS.to_vec()),
+        s in 1u32..10,
+    ) {
+        use crate::commands::play_native_title_reading::later_division_markers;
+        let title = format!("The {ordinal} {subject}");
+        let want: Vec<String> = ["the", ordinal, subject].iter().map(|w| w.to_lowercase()).collect();
+        prop_assert_eq!(name(&title), want);
+        prop_assert!(reading(&title).is_empty(), "{}", title);
+        // a first division is read as the whole, as any is
+        let seasoned: Vec<u32> = if s == 1 { vec![] } else { vec![s] };
+        prop_assert_eq!(reading(&format!("{title} Season {s}")), seasoned);
+        let rest = undivided_rest(&format!("{name_of} Season {s}: {ordinal} {subject}"));
+        prop_assert_eq!(rest, vec![ordinal.to_lowercase(), subject.to_lowercase()]);
+        let wide = format!("{name_of} Season {s}");
+        let sibling = format!("{wide} {ordinal} {subject}");
+        prop_assert!(later_division_markers(&sibling, &wide).is_empty(), "{}", sibling);
+    }
+
+    /// A word ordinal standing alone with nothing but divisions after it
+    /// — a "Half" read with its ordinal among them — is a division, and
+    /// ends the name.
+    #[test]
+    fn a_word_ordinal_before_divisions_alone_ends_the_name(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        ordinal in proptest::sample::select(ALONE.to_vec()),
+        half in proptest::sample::select(ALONE.to_vec()),
+    ) {
+        let title = format!("{name_of} {ordinal} {half} Half");
+        let want: Vec<String> = name_of.split(' ').map(str::to_lowercase).collect();
+        prop_assert_eq!(name(&title), want);
+    }
+}
