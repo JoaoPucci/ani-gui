@@ -13,7 +13,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
-import { afterRead, watchPageFetches } from './page-fetches';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -156,6 +156,17 @@ function useTwoLookups(reads: string[]) {
 		)
 	);
 }
+
+/** The page reading the resume row again. */
+const isNumberRead = (r: PageFetch) => /^\/api\/history\/[^/]+\/number$/.test(r.path);
+
+/** Whether the page is done with every read of the row it sent from
+ *  `from` on, and sent one: each answer has been read, or the request
+ *  was stopped. */
+const rowReadsTaken = (f: ReturnType<typeof watchPageFetches>, from = 0) => {
+	const reads = f.sent.slice(from).filter(isNumberRead);
+	return reads.length > 0 && reads.every((r) => f.read.includes(r) || f.failed.includes(r));
+};
 
 /** The page's primary action, found by what it says. */
 const playButton = (label: string) =>
@@ -373,6 +384,7 @@ describe('detail route — a navigation started while Play waits for the row', (
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
 		);
+		const fetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(
 			() => FakeEventSource.instances.some((i) => i.url.includes('episode=24.5')),
@@ -381,13 +393,22 @@ describe('detail route — a navigation started while Play waits for the row', (
 		playButton(m.detail_play_button_resume({ episode: '25' }))?.click();
 		startNavigation();
 		repaired = true;
+		const sentAtDone = fetches.sent.length;
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
 			warm.dispatch(
 				'done',
 				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
 			);
 		}
-		await new Promise((r) => setTimeout(r, 300));
+		// The warm's answer has the row read again, and Play waits on
+		// that read. Once the page has taken its answer, and what that
+		// set off has run to its next request, the wait is over: a click
+		// that came out of it and played would have opened its stream.
+		await until(
+			() => rowReadsTaken(fetches, sentAtDone),
+			'the row read again after the warm to be answered'
+		);
+		await afterRead();
 
 		const clicked = FakeEventSource.instances.filter(
 			(i) => /episode=(13|25)\b/.test(i.url) && !i.url.includes('prefetch=1')
@@ -414,12 +435,18 @@ describe('detail route — the row read again after the viewer left', () => {
 				return HttpResponse.json({ ep_no: '24.5' });
 			})
 		);
+		const fetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => asked, 'the row read again');
 		unmount(app);
 		app = null;
 		answer();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the read: its answer, which a warm would
+		// follow, has been read, or leaving stopped it. What that set off
+		// has run to its next request, so a warm fired for the page left
+		// would have opened its stream.
+		await until(() => rowReadsTaken(fetches), 'the row read again to be answered or stopped');
+		await afterRead();
 
 		const warms = FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'));
 		expect(warms).toEqual([]);
@@ -445,12 +472,17 @@ describe('detail route — the row read again after the viewer left', () => {
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () => HttpResponse.json(null)),
 			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER_ID}`, () => HttpResponse.json(null))
 		);
+		const fetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => asked, 'the row read again');
 		setParams({ id: OTHER_ID });
 		await until(() => (target.textContent ?? '').includes('Other Show'), 'the other show');
 		answer();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the read the visit left behind: its
+		// answer has been read, or the move stopped it, and what that set
+		// off has run to its next request.
+		await until(() => rowReadsTaken(fetches), 'the row read again to be answered or stopped');
+		await afterRead();
 
 		const warms = FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'));
 		expect(warms).toEqual([]);
