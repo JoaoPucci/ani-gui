@@ -6,7 +6,7 @@
  * cross-channel ordering guarantee, so a boot-time refresh's persist
  * could commit *after* a racing disconnect's clear and resurrect on
  * disk a token the user just removed — the next `hydrate()` then
- * reconnects the account (Codex P2 #3416883099). The renderer's
+ * reconnects the account. The renderer's
  * generation re-check (`refresh-flow.ts`) only suppresses the in-memory
  * store update; it cannot undo a disk write that already landed.
  *

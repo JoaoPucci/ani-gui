@@ -18,7 +18,7 @@ describe('resolveResumeSettings', () => {
 	});
 
 	it('awaits the shared settings promise when config has not landed', async () => {
-		// Codex P2 #3664626754 — a cached Kitsu match can release its
+		// A cached Kitsu match can release its
 		// card before settingsGet resolves. Capturing the sub/best
 		// fallbacks at that instant gives a DUB user the wrong variant
 		// for both the cap lookup and playback; the click must wait

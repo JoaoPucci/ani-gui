@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { KitsuAnimeRef } from '$lib/api';
 import { buildDownloadArgs } from './build-args';
 
-// Codex P2 #3243357083: the detail page was conflating Kitsu's
+// The detail page was conflating Kitsu's
 // announced total with the provider's currently-released count when
 // composing DownloadArgs. The backend picker now compares `expected`
 // against the provider's planned `episodeCount` (b629127), so passing

@@ -95,7 +95,7 @@ fn read_filters_by_provider_and_user() {
     );
 }
 
-/// Codex P2 #3371658227 introduced clear_provider for the orphan-
+/// clear_provider exists for the orphan-
 /// token disconnect path (no decoded user_id available). Pin that
 /// it scopes to the provider — sibling providers' rows survive — and
 /// that it removes every row for the target provider regardless of
@@ -227,7 +227,7 @@ fn unknown_status_in_db_is_silently_skipped_on_read() {
 
 #[test]
 fn write_entries_replaces_full_snapshot_dropping_stale_rows() {
-    // Codex P2 #3369918713: a fresh provider list no longer
+    // A fresh provider list no longer
     // containing a previously-cached entry must remove the stale
     // row. Otherwise an item the user deleted on AniList would
     // linger in the Watch Later rail until disconnect cleared the
@@ -302,7 +302,7 @@ fn write_entries_only_drops_the_same_user_rows() {
 
 #[test]
 fn provider_kind_serializes_to_slug_form_not_default_snake_case() {
-    // Codex P2 #3369980190: the default serde rename_all = "snake_case"
+    // The default serde rename_all = "snake_case"
     // would have emitted "ani_list" / "my_anime_list" / "in_house",
     // which mismatch the route slugs ("anilist" / "mal" / "inhouse")
     // the frontend uses to key its account store. Pin the wire form
