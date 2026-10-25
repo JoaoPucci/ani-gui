@@ -484,6 +484,10 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // ffmpeg fallback only what remains — otherwise a download can
     // stay active for nearly two hours under a deadline documented
     // as one.
+    // The finish mark is read as soon as the chain returns, so the
+    // tools must die at the deadline itself: no other test's probe may
+    // slow the tree kill meanwhile.
+    let _probe_scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     // Each tool fits inside the 1.2 s deadline on its own, so a
