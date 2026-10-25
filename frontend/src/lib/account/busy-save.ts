@@ -33,16 +33,39 @@ export function noticeBusy(provider: Provider, seconds: number): string {
 	});
 }
 
-/** The latest write issued per tracker and show. A write held back by a
- *  rate limit is sent again only while it is still the latest: a newer
- *  write for the same show — issued or landed during the wait — has
- *  said what the tracker should hold, and the held one would undo it. */
-const generations = new Map<string, number>();
+/** Per tracker and show: the count of writes started, the newest write
+ *  to cover each field, and the busy notice on screen. A write held
+ *  back by a rate limit sends again only the fields no newer write for
+ *  the same show has covered — a newer write, issued or landed during
+ *  the wait, has said what the tracker should hold for those, and the
+ *  held one would undo it. Nothing left, and it is superseded. */
+const started = new Map<string, number>();
+const coverage = new Map<string, Partial<Record<WriteField, number>>>();
+const notices = new Map<string, string>();
+
+function takeDownNotice(key: string): void {
+	const id = notices.get(key);
+	if (id !== undefined) toastStore.dismiss(id);
+	notices.delete(key);
+}
+
+/** Record a write of `fields` starting for `key`; returns its number. */
+function start(key: string, fields: readonly WriteField[]): number {
+	const generation = (started.get(key) ?? 0) + 1;
+	started.set(key, generation);
+	const covered = { ...coverage.get(key) };
+	for (const field of fields) covered[field] = generation;
+	coverage.set(key, covered);
+	// The older write's notice says something this write may change.
+	takeDownNotice(key);
+	return generation;
+}
 
 /** Run a user's write of `kitsuId` to `provider`, waiting out its rate
- *  limit with a notice — see `saveWhenAllowed`. Each wait replaces the
- *  write's earlier notice; a write a newer one superseded ends in
- *  `SupersededError`, unsent, and its notice is taken down. */
+ *  limit with a notice — see `saveWhenAllowed`. The attempt asks its
+ *  `HeldWrite` which of `fields` are still its own, and sends only
+ *  those; a write with none left ends in `SupersededError`, unsent. Each
+ *  wait replaces the show's notice, and a newer write takes it down. */
 export function saveWhenTrackerAllows<T>(
 	provider: Provider,
 	kitsuId: string,
@@ -50,25 +73,19 @@ export function saveWhenTrackerAllows<T>(
 	fields: readonly WriteField[] = ALL_FIELDS
 ): Promise<T> {
 	const key = `${provider}:${kitsuId}`;
-	const generation = (generations.get(key) ?? 0) + 1;
-	generations.set(key, generation);
+	const generation = start(key, fields);
 	const held: HeldWrite = {
-		left: () => (generations.get(key) === generation ? fields : [])
-	};
-	let notice: string | null = null;
-	const takeDown = () => {
-		if (notice !== null) toastStore.dismiss(notice);
-		notice = null;
+		left: () => fields.filter((field) => coverage.get(key)?.[field] === generation)
 	};
 	return saveWhenAllowed(() => attempt(held), {
 		notify: (seconds) => {
-			takeDown();
-			notice = noticeBusy(provider, seconds);
+			takeDownNotice(key);
+			notices.set(key, noticeBusy(provider, seconds));
 		},
 		wait: sleep,
-		stillWanted: () => generations.get(key) === generation
+		stillWanted: () => held.left().length > 0
 	}).catch((e: unknown) => {
-		if (e instanceof SupersededError) takeDown();
+		if (e instanceof SupersededError && started.get(key) === generation) takeDownNotice(key);
 		throw e;
 	});
 }

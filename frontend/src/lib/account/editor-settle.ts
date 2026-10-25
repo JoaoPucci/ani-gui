@@ -48,14 +48,14 @@ export function settleRemove(res: RemoveResult, sameShow: boolean): Settled {
  *  form would seed Planning/0 and a Save could overwrite a real entry.
  *  An open one closes, even while its write waits out a rate limit: the
  *  write carries on and its toast reports how it ended. A closed one
- *  opens, unless a write is still out — it would seed a form the
- *  write's result is about to move. */
+ *  opens; while its write is still out it reopens on that write, locked,
+ *  rather than seeding a fresh form the result is about to move. */
 export function editorToggle(state: {
 	open: boolean;
 	busy: boolean;
 	disabled: boolean;
-}): 'open' | 'close' | 'ignore' {
+}): 'open' | 'reopen' | 'close' | 'ignore' {
 	if (state.disabled) return 'ignore';
 	if (state.open) return 'close';
-	return state.busy ? 'ignore' : 'open';
+	return state.busy ? 'reopen' : 'open';
 }

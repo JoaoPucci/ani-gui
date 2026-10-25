@@ -7,7 +7,7 @@ import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
 import { failureResult, outcomeFlags, tallyFanout, type FanoutResult } from './set-entry-outcome';
 import { ALL_FIELDS, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
-import { buildListEdit } from './list-entry-edit';
+import { sendRemoval, sendSave } from './set-entry-send';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
@@ -120,17 +120,7 @@ export async function setEntryAcrossTrackers(
 				const res = await runWrite(
 					provider,
 					kitsuId,
-					async () => {
-						const current = await deps.getEntry(provider, bearer, kitsuId);
-						const edit = buildListEdit({
-							current: current?.status ?? null,
-							statusChanged: save.statusChanged,
-							status: save.status,
-							progress: save.progress,
-							total: save.total ?? null
-						});
-						return deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
-					},
+					(held) => sendSave(deps, { provider, bearer, kitsuId, held }, save, savedFields(save)),
 					savedFields(save)
 				);
 				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
@@ -180,12 +170,9 @@ export async function removeEntryAcrossTrackers(
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
-				return await runWrite(provider, kitsuId, async (): Promise<FanoutResult> => {
-					const current = await deps.getEntry(provider, bearer, kitsuId);
-					if (current === null) return 'neither'; // nothing to remove here
-					await deps.removeEntry(provider, bearer, kitsuId);
-					return 'ok';
-				});
+				return await runWrite(provider, kitsuId, (held) =>
+					sendRemoval(deps, { provider, bearer, kitsuId, held })
+				);
 			} catch (e) {
 				return failureResult(e, e instanceof SupersededError);
 			}

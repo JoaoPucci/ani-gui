@@ -30,6 +30,22 @@ export interface HeldWrite {
 	left: () => readonly WriteField[];
 }
 
+/**
+ * `body` without the fields a newer write has covered: of the fields
+ * the write `declared`, those not `left` are dropped, and anything it
+ * sets without declaring — the status a new row is created with — is
+ * kept. `null` when neither a status nor a progress is left to send.
+ */
+export function keepFields<B extends { status?: unknown; progress?: unknown }>(
+	body: B,
+	declared: readonly WriteField[],
+	left: readonly WriteField[]
+): B | null {
+	const kept = { ...body };
+	for (const field of declared) if (!left.includes(field)) delete kept[field];
+	return kept.status === undefined && kept.progress === undefined ? null : kept;
+}
+
 /** A held write a newer write for the same show replaced while it
  *  waited: dropped, neither sent nor reported. */
 export class SupersededError extends Error {

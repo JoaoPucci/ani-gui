@@ -9,7 +9,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
-import { SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
+import { keepFields, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -100,7 +100,12 @@ export async function pushWatchedToTrackers(
 				await runWrite(
 					provider,
 					kitsuId,
-					() => deps.updateProgress(provider, bearer, body),
+					(held) => {
+						// Only what no newer write of the show has covered.
+						const left = keepFields(body, fields, held.left());
+						if (left === null) throw new SupersededError();
+						return deps.updateProgress(provider, bearer, left);
+					},
 					fields
 				);
 			} catch (e) {
