@@ -102,6 +102,8 @@ enum Break {
     SequelUntitled(u32),
     SequelMissing(u32),
     SequelNamed(u32),
+    OtherTvAiring,
+    OtherTvUntitled,
     RelationsInPart,
 }
 
@@ -126,6 +128,8 @@ fn a_break(count: u32, past: u32) -> impl Strategy<Value = Break> {
         1 => (1..=past + 2).prop_map(Break::SequelUntitled),
         1 => (1..=past + 2).prop_map(Break::SequelMissing),
         1 => (1..=past).prop_map(Break::SequelNamed),
+        1 => Just(Break::OtherTvAiring),
+        1 => Just(Break::OtherTvUntitled),
         1 => Just(Break::RelationsInPart),
     ]
 }
@@ -173,9 +177,35 @@ fn broken(count: u32, past: u32, b: &Break) -> (Vec<EpisodeRef>, EntryTail) {
         Break::SequelNamed(i) => {
             sequel_episode(&mut tail, *i).title = rows[at(count + i)].title.clone();
         }
+        Break::OtherTvAiring => tail.related.push(other_tv("current", Some("Other 1"))),
+        Break::OtherTvUntitled => tail.related.push(other_tv("finished", None)),
         Break::RelationsInPart => tail.related_complete = false,
     }
     (rows, tail)
+}
+
+/// A TV entry Kitsu relates as `other`, with `status`, its first
+/// episode titled `first` and the rest titled.
+fn other_tv(status: &str, first: Option<&str>) -> Related {
+    Related {
+        role: "other".into(),
+        anime: true,
+        subtype: Some("TV".into()),
+        status: Some(status.into()),
+        episode_count: Some(12),
+        first_episodes: Some(
+            (1..=12)
+                .map(|n| SequelEpisode {
+                    number: n,
+                    title: if n == 1 {
+                        first.map(str::to_string)
+                    } else {
+                        Some(format!("Other {n}"))
+                    },
+                })
+                .collect(),
+        ),
+    }
 }
 
 /// The sequel's episode `n` in the conclusive evidence.
@@ -272,5 +302,159 @@ proptest! {
             let n: f64 = tag.parse().expect("a number");
             prop_assert_eq!(n.to_string(), tag);
         }
+    }
+}
+
+/// A title for episode `n` of the kind a listing or Kitsu gives: none,
+/// one that reduces to nothing, only the number, the episode's own
+/// name in one casing or another, or another name.
+fn some_title(n: u32) -> impl Strategy<Value = Option<String>> {
+    prop_oneof![
+        Just(None),
+        Just(Some("—".to_string())),
+        Just(Some(format!("Episode {n}"))),
+        Just(Some(format!("Story {n}"))),
+        Just(Some(format!("story {n}"))),
+        Just(Some("Another Name".to_string())),
+    ]
+}
+
+/// Kitsu's rows for the episodes in `numbers`, each titled and dated as
+/// it may be.
+fn kitsu_rows(numbers: Vec<u32>) -> impl Strategy<Value = Vec<TailEpisode>> {
+    numbers
+        .into_iter()
+        .map(|n| {
+            (some_title(n), any::<bool>()).prop_map(move |(title, dated)| TailEpisode {
+                number: n,
+                title,
+                airdate: dated.then(|| "2020-01-01".to_string()),
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
+/// A count, a listing of it with the count's last episodes named as
+/// they may be, the rows of Kitsu's read so far, and rows still to
+/// read: Kitsu's for any of the count's last episodes, read or not.
+fn alignment_case(
+) -> impl Strategy<Value = (u32, Vec<EpisodeRef>, Vec<TailEpisode>, Vec<TailEpisode>)> {
+    (1u32..40).prop_flat_map(|count| {
+        let first = count.saturating_sub(ALIGNED - 1).max(1);
+        let last: Vec<u32> = (first..=count).collect();
+        let names = last.iter().map(|&n| some_title(n)).collect::<Vec<_>>();
+        let read =
+            proptest::sample::subsequence(last.clone(), 0..=last.len()).prop_flat_map(kitsu_rows);
+        let later =
+            proptest::sample::subsequence(last.clone(), 0..=last.len()).prop_flat_map(kitsu_rows);
+        (Just(count), names, read, later).prop_map(move |(count, names, read, later)| {
+            let mut rows = listing(count, 1);
+            for (row, name) in rows[first as usize - 1..].iter_mut().zip(names) {
+                row.title = name;
+            }
+            (count, rows, read, later)
+        })
+    })
+}
+
+fn read_so_far(episodes: Vec<TailEpisode>) -> EntryTail {
+    EntryTail {
+        episodes,
+        ..EntryTail::default()
+    }
+}
+
+proptest! {
+    // The cases that decide these are a few named shapes of three
+    // episodes; enough runs to meet each of them.
+    #![proptest_config(ProptestConfig::with_cases(4096))]
+
+    /// What the misalignment check says is settled stays settled:
+    /// whatever Kitsu rows are read after, the listing does not line
+    /// up with Kitsu's last episodes.
+    #[test]
+    fn a_misalignment_settled_so_far_holds_whatever_is_read_after(
+        (count, rows, read, later) in alignment_case()
+    ) {
+        let so_far = read_so_far(read.clone());
+        if misaligned_so_far(&rows, count, &so_far) {
+            let mut all = read;
+            all.extend(later);
+            prop_assert!(!aligned(&rows, count, &read_so_far(all)));
+        }
+    }
+
+    /// Once every one of the count's last episodes is read, the check
+    /// says exactly what the rule does: nothing still to read could
+    /// change it.
+    #[test]
+    fn with_every_last_episode_read_the_check_is_the_rule(
+        (count, rows, read, later) in alignment_case()
+    ) {
+        let mut all = read;
+        all.extend(later);
+        let first = count.saturating_sub(ALIGNED - 1).max(1);
+        let tail = read_so_far(all);
+        if (first..=count).all(|n| tail.episodes.iter().any(|e| e.number == n)) {
+            prop_assert_eq!(misaligned_so_far(&rows, count, &tail), !aligned(&rows, count, &tail));
+        }
+    }
+
+    /// The check settles exactly when nothing still to read could line
+    /// the listing up: with every unread last episode read the best way
+    /// it could be, dated and titled as the listing names it, the rule
+    /// says what the check said before it.
+    #[test]
+    fn the_check_settles_exactly_when_nothing_unread_could_line_up(
+        (count, rows, read, _later) in alignment_case()
+    ) {
+        let first = count.saturating_sub(ALIGNED - 1).max(1);
+        let mut best = read.clone();
+        for n in first..=count {
+            if !read.iter().any(|e| e.number == n) {
+                best.push(TailEpisode {
+                    number: n,
+                    title: rows[n as usize - 1].title.clone(),
+                    airdate: Some("2020-01-01".into()),
+                });
+            }
+        }
+        prop_assert_eq!(
+            misaligned_so_far(&rows, count, &read_so_far(read)),
+            !aligned(&rows, count, &read_so_far(best))
+        );
+    }
+
+    /// A row past the count carrying the listing's name for one of the
+    /// count's last episodes is refused whatever Kitsu titles them:
+    /// either the listing does not line up, or the row is named as one
+    /// of the show's own episodes.
+    #[test]
+    fn a_row_past_the_count_named_as_a_last_episode_is_refused_whatever_kitsu_says(
+        count in 1u32..40,
+        past in 1u32..=MAX_APPENDED,
+        renamed in 0u32..MAX_APPENDED,
+        named_as in 0u32..ALIGNED,
+        titles in proptest::collection::vec(prop_oneof![
+            Just(None),
+            Just(Some("Episode".to_string())),
+            Just(Some("story".to_string())),
+            Just(Some("Another Name".to_string())),
+        ], ALIGNED as usize),
+    ) {
+        let mut rows = listing(count, past);
+        let first = count.saturating_sub(ALIGNED - 1).max(1);
+        let n = (first + named_as).min(count);
+        let at = (count + renamed % past) as usize;
+        rows[at].title = rows[n as usize - 1].title.clone();
+        let mut tail = conclusive(count, past);
+        for (i, title) in titles.into_iter().enumerate() {
+            let m = first + u32::try_from(i).expect("small");
+            if let Some(row) = tail.episodes.iter_mut().find(|e| e.number == m) {
+                row.title = title.map(|t| if t == "story" { format!("story {m}") } else { t });
+            }
+        }
+        prop_assert!(past_named_as_a_last_episode(&rows, count, &rows[count as usize..]));
+        prop_assert_eq!(appended_extras(&rows, count, &tail), None);
     }
 }
