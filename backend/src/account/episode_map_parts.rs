@@ -43,8 +43,8 @@ fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(
 
 /// The shared-entry rule: every Kitsu entry mapped to the tracker's
 /// entry, in the order of their distinct start dates (each a real,
-/// full calendar date), sums exactly to
-/// its total, the show among them. The show's episodes are the entry's
+/// full calendar date), sums exactly to its total — all of them, not
+/// the first few — the show among them. The show's episodes are the entry's
 /// after the parts before it; only the last part's last episode is the
 /// entry's.
 pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Vec<Segment>> {
@@ -62,6 +62,17 @@ pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Ve
     }
     parts.sort_by(|a, b| a.start.cmp(&b.start));
     if parts.windows(2).any(|w| w[0].start == w[1].start) {
+        return None;
+    }
+    // The whole set explains the entry, not a prefix of it: an entry
+    // mapped after the parts that reach the total says those parts are
+    // not the whole of it.
+    let sum = parts.iter().try_fold(0u32, |sum, p| {
+        p.episodes
+            .filter(|n| *n > 0)
+            .and_then(|n| sum.checked_add(n))
+    })?;
+    if sum != tracker_total {
         return None;
     }
     let (lead, count) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
