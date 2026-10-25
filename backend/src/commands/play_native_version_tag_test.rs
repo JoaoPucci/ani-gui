@@ -459,6 +459,7 @@ proptest::proptest! {
         title in proptest::prop_oneof![
             (0..PLAIN.len(), 0..UNCLOSED.len()).prop_map(|(t, u)| format!("{} {}", PLAIN[t], UNCLOSED[u])),
             (0..PLAIN.len(), 0..OPENS.len()).prop_map(|(t, o)| format!("{} {}Uncensored", PLAIN[t], OPENS[o])),
+            (0..PLAIN.len(), 0..OPENS.len(), 0..CLOSES.len()).prop_map(|(t, o, c)| format!("{} {}Extra{}", PLAIN[t], OPENS[o], CLOSES[c])),
             proptest::prelude::any::<String>(),
         ],
     ) {
