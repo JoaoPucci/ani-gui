@@ -625,6 +625,7 @@ async fn a_banner_backfill_anilist_is_down_for_does_not_keep_the_detail_without_
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(503))
         .up_to_n_times(1)
+        .expect(1)
         .with_priority(1)
         .mount(&anilist)
         .await;

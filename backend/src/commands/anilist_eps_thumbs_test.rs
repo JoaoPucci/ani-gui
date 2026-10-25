@@ -177,7 +177,7 @@ fn cache_anilist_eps_thumbs_caches_success_listing_by_kitsu_id() {
 }
 
 #[test]
-fn cache_anilist_eps_thumbs_negative_caches_empty_on_error() {
+fn cache_anilist_eps_thumbs_negative_caches_a_show_with_no_ids() {
     // A show Kitsu maps to neither AniList nor MAL has nothing to ask
     // AniList about; it is negative-cached as an empty map so the next
     // 5 minutes of navigation see a cache hit. A lookup that got no
@@ -320,9 +320,9 @@ async fn thumbs_for_show_caches_nothing_when_kitsu_is_unreachable() {
 
 #[tokio::test]
 async fn thumbs_for_show_returns_empty_on_cached_negative() {
-    // The negative-cached branch: an earlier failed lookup wrote
-    // an empty map. Subsequent calls hit cache and return empty
-    // without retrying the network.
+    // The negative-cached branch: an earlier lookup found the show
+    // mapped to neither tracker and wrote an empty map. Subsequent
+    // calls hit cache and return empty without retrying the network.
     let state = state_for_cache_only_tests();
     cache_anilist_eps_thumbs(&state.cache_pool, "778", &Err(()));
     let got = thumbs_for_show(&state, "778").await;
@@ -743,5 +743,28 @@ async fn a_rate_limited_listing_is_not_cached_as_an_empty_one() {
         meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k12").expect("cache read"),
         None,
         "a rate limit was cached as an empty listing"
+    );
+}
+
+#[tokio::test]
+async fn an_anilist_answer_that_cannot_be_read_is_asked_again_rather_than_cached() {
+    // A 200 whose body is not AniList's shape says nothing about the
+    // show's episodes: each view gets no listing, and the next asks
+    // again.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("not json"))
+        .expect(2)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    for _ in 0..2 {
+        let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+        assert_eq!(got, StreamingListing::default());
+    }
+    assert_eq!(
+        meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k12").expect("cache read"),
+        None
     );
 }
