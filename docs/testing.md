@@ -135,7 +135,11 @@ the model's prediction on each; every shape it has found is pinned in
 
 The rule for a reported mispick: it becomes a recorded fixture under
 `tests/fixtures/hianime/picker/` — with a `MANIFEST.json` entry and an
-expectation in the fixture test's table — in the PR that fixes it. The
+expectation in the fixture test's table — in the PR that fixes it. A
+shape the fuzzer finds on a synthetic pool is no reported mispick and
+has no provider response to record: it is pinned as a case in
+`tests/picker-oracle/cases/fuzz-found.json`. Neither replaces the
+other; the oracle's README has the full rule. The
 golden and the allowlist change only in a PR that changes the picker,
 with the reason in the commit body. The model follows the docs: when
 the model and the docs disagree, fix whichever is wrong and say which;

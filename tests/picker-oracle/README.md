@@ -128,8 +128,11 @@ possible causes, and the first thing to do is decide which:
    and the model together — the model follows the docs, never the
    picker.
 3. **The picker departs from the docs.** Either fix the picker — a
-   recorded fixture first, per the rule below — or, when the departure
-   is accepted for now, add an allowlist entry in the same change:
+   failing case first: for a reported mispick, its recorded fixture,
+   per the rule below; for a shape the generated set or the fuzzer
+   found, a case in `cases/` (`fuzz-found.json` for the fuzzer's) —
+   or, when the departure is accepted for now, add an allowlist entry
+   in the same change:
 
    ```json
    {"id": "countless/0123456789",
@@ -161,6 +164,18 @@ miss in an `Expectation` table (`AUDITED_RIGHT`,
 `UNDATED_REFUSED` or `DATED_REFUSED` — in the pull request that fixes
 it. That recording then holds the fix: the golden
 records its outcome, and the fixture test asserts its pick.
+
+A reported mispick is a real show the app picked wrong, and its
+recording is what the provider actually sent. A shape the fuzzer finds
+on a synthetic pool is not one: there is no provider response to
+record, and a fixture made up for it would misrepresent what the
+provider sends. It is pinned as a case in `cases/fuzz-found.json`
+instead, which the generated set walks in CI; where the recorded
+corpus already holds a real title of the same shape, that recording's
+golden and table expectation hold it too. Neither stands in for the
+other: a reported mispick is recorded even when a case already covers
+its shape, and a fuzz-found shape is pinned as a case even when no real
+listing shows it.
 
 ## What the model computes, and what it tables
 
