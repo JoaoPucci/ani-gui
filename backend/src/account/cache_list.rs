@@ -5,7 +5,7 @@
 use super::*;
 
 /// Read every cached entry for `(provider, user_id)`. Used by the
-/// home Watch Later rail (PR #2) and the /account page stats.
+/// home Watch Later rail and the /account page stats.
 pub fn list_entries(
     pool: &SqlitePool,
     kind: ProviderKind,

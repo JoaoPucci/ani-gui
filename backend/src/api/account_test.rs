@@ -75,9 +75,9 @@ fn bearer_from_headers_accepts_extra_whitespace_after_scheme() {
 //   - exercise paths whose explicit InvalidToken branch fires when
 //     the upstream call returns an error (the delete fallback gate).
 //
-// Coverage push for the `account.rs` ratchet under Codex P2
-// #3370011855 — the new security gate landed without test cover for
-// the handler body, which pushed CRAP over the ceiling.
+// Coverage for the `account.rs` ratchet: the security gate on the
+// disconnect fallback landed without test cover for the handler body,
+// which pushed CRAP over the ceiling.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -283,7 +283,7 @@ async fn delete_entry_requires_bearer() {
 
 #[tokio::test]
 async fn delete_entry_returns_not_found_when_no_provider_maps_the_show() {
-    // Codex P2 #3427461070: an unmappable provider removed nothing, so the
+    // An unmappable provider removed nothing, so the
     // route must NOT answer 204 — the renderer's removeEntryAcrossTrackers
     // counts any resolved DELETE as a successful removal, which would let an
     // unmappable provider's 204 mask a real provider's failed delete. We
@@ -456,14 +456,14 @@ fn me_failure_allows_fallback_for_invalid_token() {
 
 #[test]
 fn me_failure_allows_fallback_for_network_outage() {
-    // Codex P2 #3370096596: offline disconnects must still be able to
+    // Offline disconnects must still be able to
     // clear the local cache rows docs/PRIVACY.md promises to drop.
     assert!(me_failure_allows_renderer_fallback(&AniError::Network));
 }
 
 #[test]
 fn me_failure_allows_fallback_for_upstream_5xx() {
-    // Codex P2 #3370096596: a transient AniList 5xx during disconnect
+    // A transient AniList 5xx during disconnect
     // shouldn't strand the cache rows.
     assert!(me_failure_allows_renderer_fallback(&AniError::Upstream {
         status: 503
@@ -478,7 +478,7 @@ fn me_failure_rejects_fallback_for_other_variants() {
     assert!(!me_failure_allows_renderer_fallback(&AniError::Metadata));
 }
 
-/// Codex P2 #3372942241: when a connected user is offline or
+/// When a connected user is offline or
 /// AniList is throwing 5xx, the cached endpoint must still serve
 /// the local rows it was added to provide (Watch Later rail).
 /// Mirror the disconnect fallback: try `me()` first for upstream-
@@ -530,7 +530,7 @@ async fn get_cached_list_serves_rows_when_offline_with_secret_fallback() {
 
 #[tokio::test]
 async fn delete_list_cache_fallback_rejects_when_secret_header_missing() {
-    // Codex P2 #3370011855: the disconnect-after-expiry fallback
+    // The disconnect-after-expiry fallback
     // requires the per-process internal secret. A cross-origin tab
     // can send `Bearer garbage` plus a guessed user_id under
     // permissive CORS, but it can't know the 32 bytes of entropy.
