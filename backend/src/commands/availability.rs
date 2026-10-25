@@ -1491,8 +1491,10 @@ async fn seed_airing_for_negative_with_base(
     }
     // Errors degrade to the schedule-less fallback TTL — same outcome
     // as before the seed existed.
-    let _ =
-        crate::commands::airing::airing_get_with_anilist_base(state, kitsu_id, anilist_base).await;
+    let _ = crate::meta::anilist_gate::in_background(
+        crate::commands::airing::airing_get_with_anilist_base(state, kitsu_id, anilist_base),
+    )
+    .await;
 }
 
 /// Best-effort read of the show's next scheduled airing from the
@@ -1665,6 +1667,12 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// same list reads the now-populated cache and filters known-
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
+    // Nobody waits on a warm: every AniList request it makes is a
+    // background fill.
+    crate::meta::anilist_gate::in_background(warm_items(state, items)).await;
+}
+
+async fn warm_items(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
     use tokio::time::sleep;
     let seed_ids = schedule_seed_ids(&state, &items);
     crate::commands::airing::seed_airing_rows_batch(&state, &seed_ids, None).await;
