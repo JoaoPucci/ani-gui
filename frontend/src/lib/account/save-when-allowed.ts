@@ -18,49 +18,7 @@ export const DEFAULT_WAIT_S = 60;
 /** The longest a write is held for one refusal. */
 export const MAX_WAIT_S = 120;
 
-/** What a write sets on a tracker's entry. */
-export type WriteField = 'status' | 'progress';
-
-/** Every field: a write that covers the whole entry. */
-export const ALL_FIELDS: readonly WriteField[] = ['status', 'progress'];
-
-/** A write's view, from inside an attempt, of the fields still its own
- *  to send. */
-export interface HeldWrite {
-	left: () => readonly WriteField[];
-}
-
-/**
- * `body` without the fields a newer write has covered: of the fields
- * the write `declared`, those not `left` are dropped, and anything it
- * sets without declaring — the status a new row is created with — rides
- * along with a declared field that is left, never on its own. `null`
- * when none of the declared fields is left, or nothing is left to send.
- */
-export function keepFields<B extends { status?: unknown; progress?: unknown }>(
-	body: B,
-	declared: readonly WriteField[],
-	left: readonly WriteField[]
-): B | null {
-	if (!declared.some((field) => left.includes(field))) return null;
-	const kept = { ...body };
-	for (const field of declared) if (!left.includes(field)) delete kept[field];
-	return kept.status === undefined && kept.progress === undefined ? null : kept;
-}
-
-/** What is left of a held write's `body` to send — {@link keepFields},
- *  except that a completion never goes without its episode: the backend
- *  holds a `completed` to the episode beside it, so a completion whose
- *  progress a newer write covered is dropped with it. */
-export function keepWrite<B extends { status?: unknown; progress?: unknown }>(
-	body: B,
-	declared: readonly WriteField[],
-	left: readonly WriteField[]
-): B | null {
-	const episodeGone = declared.includes('progress') && !left.includes('progress');
-	if (body.status === 'completed' && episodeGone) return null;
-	return keepFields(body, declared, left);
-}
+export { ALL_FIELDS, keepFields, keepWrite, type HeldWrite, type WriteField } from './write-fields';
 
 /** A held write a newer write for the same show replaced while it
  *  waited: dropped, neither sent nor reported. */
