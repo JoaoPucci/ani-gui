@@ -299,7 +299,7 @@ async fn an_unknown_count_is_identity_kept_for_a_day() {
 }
 
 #[tokio::test]
-async fn a_read_that_fails_is_identity_and_kept_nowhere() {
+async fn a_read_that_fails_fails_the_map_and_is_kept_nowhere() {
     let kitsu = MockServer::start().await;
     Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(503))
@@ -309,7 +309,7 @@ async fn a_read_that_fails_is_identity_and_kept_nowhere() {
     let state = state_with_kitsu(&kitsu.uri());
     let server = MockServer::start().await;
     for _ in 0..2 {
-        let map = episode_map_for(
+        let err = episode_map_for(
             &MapAsk {
                 state: &state,
                 kind: ProviderKind::MyAnimeList,
@@ -322,8 +322,11 @@ async fn a_read_that_fails_is_identity_and_kept_nowhere() {
             Some(18),
         )
         .await
-        .expect("the map");
-        assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+        .expect_err("a read that failed says nothing about the show");
+        assert!(
+            matches!(err, crate::error::AniError::Upstream { status: 503 }),
+            "{err:?}"
+        );
     }
     assert_eq!(
         meta_cache_get(
@@ -333,6 +336,232 @@ async fn a_read_that_fails_is_identity_and_kept_nowhere() {
         .expect("read"),
         None
     );
+}
+
+/// Ranma ½ on AniList with Kitsu's detail served and the entry's own
+/// evidence read answered by `entry`, and Nettou-hen's by `sequel`.
+async fn ranma_with(entry: ResponseTemplate, sequel: ResponseTemplate) -> (MockServer, MockServer) {
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "186",
+        detail("186", Some(161), "1989-04-15", "1992-09-25"),
+        1,
+    )
+    .await;
+    kitsu_mapped(&kitsu, "anilist/anime", 149_939, EMPTY_PAGE).await;
+    let anilist_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("streamingEpisodes"))
+        .and(body_string_contains("\"mediaId\":210"))
+        .respond_with(entry)
+        .mount(&anilist_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("streamingEpisodes"))
+        .and(body_string_contains("\"mediaId\":149939"))
+        .respond_with(sequel)
+        .mount(&anilist_server)
+        .await;
+    (kitsu, anilist_server)
+}
+
+#[tokio::test]
+async fn a_rate_limited_evidence_read_fails_the_map_with_its_wait() {
+    let (kitsu, anilist_server) = ranma_with(
+        ResponseTemplate::new(429).insert_header("retry-after", "30"),
+        ResponseTemplate::new(200).set_body_string(NETTOU_HEN_ANILIST),
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let err = episode_map_for(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::AniList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_server.uri()),
+        },
+        "186",
+        ProviderMediaId(210),
+        Some(18),
+    )
+    .await
+    .expect_err("a rate-limited read is no answer");
+    assert!(
+        matches!(
+            err,
+            crate::error::AniError::RateLimited {
+                retry_after_secs: Some(30)
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        meta_cache_get(
+            &state.cache_pool,
+            &map_key(ProviderKind::AniList, "186", Some((210, Some(18))))
+        )
+        .expect("read"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_read_that_fails_partway_along_the_chain_fails_the_map() {
+    for (sequel, expected) in [
+        (ResponseTemplate::new(500), "upstream"),
+        (
+            ResponseTemplate::new(200).set_body_string("<html>busy</html>"),
+            "unreadable",
+        ),
+    ] {
+        let (kitsu, anilist_server) = ranma_with(
+            ResponseTemplate::new(200).set_body_string(RANMA_ANILIST),
+            sequel,
+        )
+        .await;
+        let state = state_with_kitsu(&kitsu.uri());
+        let provider = anilist(&anilist_server.uri());
+        let err = episode_map_for(
+            &MapAsk {
+                state: &state,
+                kind: ProviderKind::AniList,
+                provider: &provider,
+                tokens: &tokens(),
+                anilist_base: Some(&anilist_server.uri()),
+            },
+            "186",
+            ProviderMediaId(210),
+            Some(18),
+        )
+        .await
+        .expect_err("a chain read only in part is no answer");
+        match expected {
+            "upstream" => assert!(
+                matches!(err, crate::error::AniError::Upstream { status: 500 }),
+                "{err:?}"
+            ),
+            _ => assert!(
+                matches!(err, crate::error::AniError::ParseFailed { .. }),
+                "{err:?}"
+            ),
+        }
+        assert_eq!(
+            meta_cache_get(
+                &state.cache_pool,
+                &map_key(ProviderKind::AniList, "186", Some((210, Some(18))))
+            )
+            .expect("read"),
+            None
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_prequel_read_that_fails_fails_the_unresolved_map() {
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "5",
+        detail("5", Some(12), "2024-01-05", "2024-03-28"),
+        1,
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/5/media-relationships"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let server = MockServer::start().await;
+    let err = episode_map_for_unresolved(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &mal(&server.uri()),
+            tokens: &tokens(),
+            anilist_base: None,
+        },
+        "5",
+    )
+    .await
+    .expect_err("an unread prequel is no answer");
+    assert!(
+        matches!(err, crate::error::AniError::Upstream { status: 503 }),
+        "{err:?}"
+    );
+    assert_eq!(
+        meta_cache_get(
+            &state.cache_pool,
+            &map_key(ProviderKind::MyAnimeList, "5", None)
+        )
+        .expect("read"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn ranma_s_nineteenth_episode_is_not_written_while_the_evidence_is_rate_limited() {
+    let (kitsu, anilist_server) = ranma_with(
+        ResponseTemplate::new(429).insert_header("retry-after", "30"),
+        ResponseTemplate::new(200).set_body_string(NETTOU_HEN_ANILIST),
+    )
+    .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("query Tracked"))
+        .and(body_string_contains("\"mediaId\":210"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"episodes":18,"mediaListEntry":{"status":"CURRENT","progress":16}}}}"#,
+        ))
+        .mount(&anilist_server)
+        .await;
+    // A write sent anyway is answered, so the case shows it went out.
+    Mock::given(method("POST"))
+        .and(body_string_contains("SaveMediaListEntry"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"SaveMediaListEntry":{"mediaId":210,"status":"CURRENT","progress":18,"score":0,"updatedAt":1,"repeat":0,"media":{"idMal":null,"title":{"romaji":"Ranma","english":null,"userPreferred":"Ranma"}}}}}"#,
+        ))
+        .mount(&anilist_server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let err = crate::commands::account_mapped::push_progress_mapped(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::AniList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: Some(&anilist_server.uri()),
+        },
+        "186",
+        Some(ProviderMediaId(210)),
+        crate::account::provider::EntryUpdate {
+            progress_episodes: Some(19),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect_err("the write waits for the map");
+    assert!(
+        matches!(
+            err,
+            crate::error::AniError::RateLimited {
+                retry_after_secs: Some(30)
+            }
+        ),
+        "{err:?}"
+    );
+    let saves: Vec<String> = anilist_server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .filter(|b| b.contains("SaveMediaListEntry"))
+        .collect();
+    assert!(saves.is_empty(), "nothing is written: {saves:?}");
 }
 
 #[tokio::test]
