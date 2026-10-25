@@ -18,8 +18,8 @@ const DIVISIONS: [&str; 6] = [
 ];
 const SUFFIXES: [&str; 4] = ["st", "nd", "rd", "th"];
 const TAGS: [&str; 4] = ["TV", "2011", "ＴＶ", "OVA"];
-const OPENS: [&str; 4] = ["(", "[", "（", "［"];
-const CLOSES: [&str; 4] = [")", "]", "）", "］"];
+const OPENS: [&str; 5] = ["(", "[", "（", "［", "【"];
+const CLOSES: [&str; 5] = [")", "]", "）", "］", "】"];
 
 /// One word as a title glues it: a head of either script or none, any
 /// glued divisions, any glued number, or any text without whitespace.
