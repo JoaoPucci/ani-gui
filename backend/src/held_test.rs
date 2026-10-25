@@ -325,6 +325,13 @@ impl<T> Timed<T> {
     }
 }
 
+impl<T> Timed<T> {
+    /// When the clock was paused, from the call.
+    pub(crate) fn paused_at(&self) -> std::time::Duration {
+        self.paused_at
+    }
+}
+
 /// Run `subject` on the real clock until `reached` resolves — the
 /// requests it makes have reached the holds that keep them — then on a
 /// paused clock to its end, and resume the clock. Paused, tokio moves

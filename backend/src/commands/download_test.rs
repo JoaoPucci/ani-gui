@@ -504,30 +504,62 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "echo $$ > {started}; sleep 2.5; touch {finished}; exit 0",
+            "echo $$ > {started}\nprintf 'total_size=0\\nprogress=continue\\n'\nsleep 2.5\ntouch {finished}\nexit 0",
             started = crate::stub_file::sh_quote(&started),
             finished = crate::stub_file::sh_quote(&finished)
         ),
     );
-    let got = tokio::time::timeout(
-        // Only a guard against hanging the suite.
-        std::time::Duration::from_secs(30),
-        spawn_download_tool(
-            &StreamSource {
-                master_url: "https://cdn.example/x/master.m3u8".into(),
-                referer: None,
-                subtitles: Vec::new(),
-            },
-            dest.path(),
-            "Show Episode 1",
-            None,
-            &bin.path().display().to_string(),
-            std::time::Duration::from_secs(3),
-            &mut |_l: &str| {},
+    // The timings leave a slow runner room to reach the fallback. Once
+    // it has started, the clock is paused ([`crate::held::paused_once`]),
+    // so the deadline ends the chain at the moment it applies, which must
+    // be the one it is given, from the call on. That moment is read off
+    // the chain's last speed report, which it gives as the run ends,
+    // before it takes the tool's tree down: the teardown's own polling
+    // moves a paused clock on by however long the kill takes.
+    let deadline = std::time::Duration::from_secs(3);
+    let called = tokio::time::Instant::now();
+    let mut reported: Vec<tokio::time::Instant> = Vec::new();
+    let fallback_started = async {
+        while std::fs::read_to_string(&started).map_or(true, |pid| pid.trim().is_empty()) {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    };
+    let got = crate::held::paused_once(
+        tokio::time::timeout(
+            // Only a guard against hanging the suite.
+            std::time::Duration::from_secs(30),
+            spawn_download_tool(
+                &StreamSource {
+                    master_url: "https://cdn.example/x/master.m3u8".into(),
+                    referer: None,
+                    subtitles: Vec::new(),
+                },
+                dest.path(),
+                "Show Episode 1",
+                None,
+                &bin.path().display().to_string(),
+                deadline,
+                &mut |line: &str| {
+                    if line.starts_with(crate::commands::download_progress::RATE_STATUS) {
+                        reported.push(tokio::time::Instant::now());
+                    }
+                },
+            ),
         ),
+        fallback_started,
     )
-    .await
-    .expect("the chain returned");
+    .await;
+    let paused_at = got.paused_at();
+    let got = got.out.expect("the chain returned");
+    let ended = *reported
+        .last()
+        .expect("the fallback's run reported its end")
+        - called;
+    assert!(
+        ended <= deadline.max(paused_at) + std::time::Duration::from_millis(2),
+        "the chain ended {ended:?} after the call on tokio's clock, past its {deadline:?} \
+         deadline (clock paused at {paused_at:?})"
+    );
     assert!(
         started.exists(),
         "the fallback ran: a chain cut off before it proves nothing about its deadline: {got:?}"
