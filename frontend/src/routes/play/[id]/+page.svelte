@@ -2344,9 +2344,10 @@
 		// So does one the switch declines before it starts — a dead end
 		// learned while the eviction was out: the show delisted, the
 		// episode past the cap, where it comes back naming the dead end,
-		// with no Reload. (No recovery starts while the airing lookup is
-		// out, and it goes back out only for another show, which the
-		// viewer leaving has already turned away above.)
+		// with no Reload; or a show with no title to resolve. (No
+		// recovery starts while the airing lookup is out, and it goes
+		// back out only for another show, which the viewer leaving has
+		// already turned away above.)
 		const switchesBefore = switchesStarted;
 		await switchToEpisode(episodeNum);
 		if (switchesStarted === switchesBefore) playerError ??= restore;
