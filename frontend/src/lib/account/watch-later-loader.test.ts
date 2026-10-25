@@ -116,7 +116,7 @@ describe('loadWatchLater', () => {
 		expect(out).toHaveLength(1);
 	});
 
-	// Codex P2 #3373907898: backend rejects >500 mal_ids before
+	// Backend rejects >500 mal_ids before
 	// fan-out. Without a client-side slice, a heavy listmaker with
 	// 501+ planned titles would 4xx the bridge call and lose the
 	// entire rail (loader.catch sets watchLater=[]). Slicing here
@@ -140,7 +140,7 @@ describe('loadWatchLater', () => {
 		expect(arg[arg.length - 1]).toBe(WATCH_LATER_BRIDGE_MAX_IDS);
 	});
 
-	// Codex P2 #3415603155: a swallowed per-provider failure must not
+	// A swallowed per-provider failure must not
 	// masquerade as an empty list. When EVERY connected provider's
 	// cached fetch throws (e.g. the lone AniList account while the
 	// cached endpoint is 500/offline), the loader rejects so the rail

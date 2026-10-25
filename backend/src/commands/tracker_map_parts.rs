@@ -6,15 +6,13 @@
 use super::kitsu_side::single_relation;
 use super::*;
 
-/// How many sequel hops a chain is followed, on the tracker or on
-/// Kitsu. The longest real chain found across Kitsu's catalogue has
+/// How many hops a chain is followed, on the tracker or on Kitsu, and
+/// in either direction: forward through sequels, or back through
+/// prequels to the entry a show is filed under and the first part
+/// under it. The longest real chain found across Kitsu's catalogue has
 /// six segments; a chain still short of the count after this many is
 /// not one the rules can settle.
 pub(super) const MAX_HOPS: usize = 6;
-
-/// How many prequels an unresolved show is walked up through to find
-/// the entry it may be filed under.
-const MAX_PREQUEL_HOPS: usize = 3;
 
 /// Kitsu's chain of parts from `root`: each the single sequel of the
 /// one before, resolving on the tracker to nothing or to `native`
@@ -59,15 +57,18 @@ pub(super) async fn kitsu_parts(
 
 /// The first Kitsu part filed under `native`: `kitsu` itself, or the
 /// earliest of its single prequels, up the chain, that resolves to
-/// `native` too.
+/// `native` too. Prequels that resolve to nothing are walked through,
+/// as [`kitsu_parts`] takes them forward; one that resolves to another
+/// entry ends the walk.
 pub(super) async fn first_part_under(
     ask: &MapAsk<'_>,
     kitsu: &KitsuShow,
     native: ProviderMediaId,
 ) -> Result<KitsuShow> {
     let mut root = kitsu.clone();
-    for _ in 0..MAX_PREQUEL_HOPS {
-        let Some(prequel) = single_relation(ask.state, &root.id, "prequel").await? else {
+    let mut current = kitsu.id.clone();
+    for _ in 0..MAX_HOPS {
+        let Some(prequel) = single_relation(ask.state, &current, "prequel").await? else {
             break;
         };
         let resolves = crate::commands::account::resolve_native_media_id(
@@ -77,10 +78,14 @@ pub(super) async fn first_part_under(
             ask.anilist_base,
         )
         .await?;
-        if resolves != Some(native) {
-            break;
+        match resolves {
+            Some(entry) if entry == native => {
+                current = prequel.id.clone();
+                root = prequel;
+            }
+            Some(_) => break,
+            None => current = prequel.id,
         }
-        root = prequel;
     }
     Ok(root)
 }
@@ -92,7 +97,7 @@ pub(super) async fn root_through_prequels(
     kitsu_id: &str,
 ) -> Result<Option<(KitsuShow, ProviderMediaId)>> {
     let mut current = kitsu_id.to_owned();
-    for _ in 0..MAX_PREQUEL_HOPS {
+    for _ in 0..MAX_HOPS {
         let Some(prequel) = single_relation(ask.state, &current, "prequel").await? else {
             return Ok(None);
         };

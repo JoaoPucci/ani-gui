@@ -70,24 +70,23 @@ const ERROR_PAGE = `<!doctype html>
  *     bind completes. The caller MUST await this before opening the
  *     consent URL in the OS browser — otherwise an already-authorised
  *     browser profile that redirects immediately can race the bind
- *     and hit ECONNREFUSED. Codex P2 #3370057919.
+ *     and hit ECONNREFUSED.
  *   - `promise`: resolves with `{ code, state }` on a successful
  *     callback, or rejects with a descriptive Error on timeout /
  *     port-in-use / explicit cancel.
  *   - `stop()`: cancel before a callback lands (e.g. user closes the
  *     consent page in the OS browser).
  */
-// Loopback families the callback server binds. Codex P2 #3370110077:
-// `server.listen(port, "localhost")` resolves to a single address via
-// Node's `dns.lookup()` — usually the OS-preferred family — but the
-// browser's redirect to `localhost:53682` can choose the OTHER family
-// on dual-stack systems, leaving the callback refused. Bind both
-// literals so either family routes home.
+// Loopback families the callback server binds. `server.listen(port,
+// "localhost")` resolves to a single address via Node's `dns.lookup()` —
+// usually the OS-preferred family — but the browser's redirect to
+// `localhost:53682` can choose the OTHER family on dual-stack systems, leaving
+// the callback refused. Bind both literals so either family routes home.
 const LOOPBACK_HOSTS = ["127.0.0.1", "::1"];
 
 // errno codes that mean "this loopback family isn't configured on this
 // host" — IPv6 disabled in the kernel, ::1 not bound to lo, etc.
-// Codex P2 #3371498414: a hardened server with IPv6 off must still be
+// A hardened server with IPv6 off must still be
 // able to start the OAuth flow on 127.0.0.1 alone. If the missing
 // family WAS what the OS resolver would have returned for `localhost`,
 // the kernel that disabled the family won't return it from getaddrinfo
@@ -179,7 +178,7 @@ function startOAuthServer() {
     //
     //  - EADDRNOTAVAIL / EAFNOSUPPORT: the OS doesn't have this
     //    loopback family configured (IPv6 off, ::1 unbound, etc.).
-    //    Per Codex P2 #3371498414, tolerate this — if the family is
+    //    Tolerate this: if the family is
     //    absent, the OS's getaddrinfo for `localhost` won't return it
     //    to the browser either, so the surviving family is what the
     //    redirect actually hits.

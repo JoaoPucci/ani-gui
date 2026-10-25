@@ -15,7 +15,7 @@ describe('createCapAuthority', () => {
 	});
 
 	it('pins the click-time cap against a later background probe result', () => {
-		// Codex P2 #3665110124 — a cold-cache card clicked while its
+		// A cold-cache card clicked while its
 		// paced background probe is still queued gets an EXACT cap from
 		// the interactive lookup; the background probe landing later
 		// must not overwrite it. The backend may answer a
@@ -52,7 +52,7 @@ describe('createCapAuthority', () => {
 });
 
 describe('createCapAuthority — count and provenance move together', () => {
-	// Codex P2 #3666727714. The count was pinned but the flag was not,
+	// The count was pinned but the flag was not,
 	// so the two could come from different answers: an exact click of
 	// 12 followed by an approximate loader result of 13 produced
 	// {count: 12, approximate: true}. The next click then revalidates

@@ -377,6 +377,35 @@ def split_family(rng):
     return out
 
 
+def later_part_family(rng):
+    """A later Kitsu part with no entry of its own, filed through its
+    prequels: the parts under the entry run from the first of them, three
+    to six long, the earlier ones mapped to the entry and so beside it as
+    entries sharing it, or one of them mapped to nothing."""
+    out = []
+    for _ in range(120):
+        n = rng.randint(3, 6)
+        counts = [rng.randint(1, 30) for _ in range(n)]
+        parts = [kitsu(80 + i, counts[i], months(2016, 4 * i) + "-02", "") for i in range(n)]
+        total = sum(counts)
+        tweak = rng.choice(["ok", "ok", "ok", "short", "from_nearest", "unmapped_middle"])
+        sharing = parts[:-1]
+        if tweak == "unmapped_middle":
+            # A part between the first and ours has no entry of its own:
+            # still one of the parts, not one of the entries sharing it.
+            sharing = [p for i, p in enumerate(parts[:-1]) if i != 1]
+        elif tweak == "short":
+            total += 1
+        elif tweak == "from_nearest":
+            # The parts as a walk that stopped at the nearest prequel
+            # would gather them: the earlier ones left out, though they
+            # still share the entry.
+            parts = parts[-2:]
+        ev = evidence(parts[-1], show(88, total, rng.random() < 0.85), parts=parts, sharing=sharing)
+        out.append(("later_part-" + tweak, ev))
+    return out
+
+
 def extras_family(rng):
     """A prologue, several half-episode recaps, both, as a long shounen's
     tracker counts them — and the lists that leave the surplus
@@ -535,7 +564,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, dated_family, plain_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, dated_family, plain_family, later_part_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:

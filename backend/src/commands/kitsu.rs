@@ -328,7 +328,7 @@ pub async fn kitsu_episodes_with(
     // Skip the AniList lookup entirely when every row Kitsu returned
     // already has a thumbnail — the merge would be a no-op and the
     // round-trip would only burn a cold-cache `/mappings` call + an
-    // AniList rate-limit slot. Codex P2 #3368787400.
+    // AniList rate-limit slot.
     if !anilist_eps_thumbs::needs_backfill(&eps) {
         return Ok(eps);
     }
@@ -337,7 +337,6 @@ pub async fn kitsu_episodes_with(
     // is 120s — long enough that a slow upstream would stall
     // /api/kitsu/episodes when the route should just degrade to
     // Kitsu-only data. On timeout, return the Kitsu page directly.
-    // Codex P2 #3368793002.
     let anilist = match tokio::time::timeout(
         ANILIST_ENRICHMENT_BUDGET,
         anilist_eps_thumbs::thumbs_for_show(state, anime_id),
