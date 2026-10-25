@@ -53,6 +53,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { readPosition } from '../../src/lib/play/watch-position';
+import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { m } from '../../src/lib/paraglide/messages';
 import { forgetNavigationListeners, startNavigation, startQueryNavigation } from './navigation';
 
 const KITSU_ID = '42';
@@ -123,6 +125,23 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 async function actedOn(answers: Promise<unknown>[], what: string) {
 	await until(() => answers.length > 0, what);
 	await Promise.allSettled([answers[answers.length - 1]]);
+}
+
+/** Resolves once a re-check that finds its episode still past the
+ *  cap has answered: the page releases the lock and says so in the
+ *  same turn, so the toast is the moment it has acted on the answer.
+ *  Call before the re-check is released; toasts already up from
+ *  earlier cases are not taken for its own. */
+function recheckAnswered(): () => Promise<void> {
+	const earlier = new Set(toastStore.items.map((t) => t.id));
+	return () =>
+		until(
+			() =>
+				toastStore.items.some(
+					(t) => !earlier.has(t.id) && t.message === m.detail_ep_recheck_still_gated()
+				),
+			"the re-check's answer"
+		);
 }
 
 function kitsuEpisodes(count: number) {
@@ -276,9 +295,15 @@ describe('play route — a navigation the viewer started is theirs', () => {
 
 		startNavigation();
 		const streamsAtNavigation = FakeEventSource.instances.length;
+		const playsAtNavigation = ownedPlays.length;
 		releaseEvict();
-		await new Promise((r) => setTimeout(r, 200));
+		await actedOn(seen.evictions, 'the eviction');
 
+		// As for a page left: the switch a fresh resolve starts with is
+		// what the eviction's turn would have run.
+		expect(ownedPlays.length, 'no switch is started for the page being left').toBe(
+			playsAtNavigation
+		);
 		expect(FakeEventSource.instances.length).toBe(streamsAtNavigation);
 		expect(goto).not.toHaveBeenCalled();
 	});
@@ -302,7 +327,7 @@ describe('play route — a navigation the viewer started is theirs', () => {
 		expect(tile).not.toBeNull();
 		tile.click();
 		startNavigation();
-		await new Promise((r) => setTimeout(r, 100));
+		await actedOn(ownedPlays, "the switch's answer");
 
 		expect(goto).not.toHaveBeenCalled();
 	});
@@ -379,10 +404,14 @@ describe('play route — a recovery overtaken by a switch', () => {
 				(i) => i.url.includes('episode=2') && !i.url.includes('prefetch=1')
 			).length;
 		const before = clickedStreams();
+		const playsBefore = ownedPlays.length;
 
 		releaseEvict();
-		await new Promise((r) => setTimeout(r, 200));
+		await actedOn(seen.evictions, 'the eviction');
 
+		// A recovery that went on would start its switch in the turn the
+		// eviction answers; the stream it opens comes later.
+		expect(ownedPlays.length, 'the recovery starts no switch').toBe(playsBefore);
 		expect(clickedStreams()).toBe(before);
 		expect(goto).toHaveBeenCalledTimes(1);
 	});
@@ -419,7 +448,9 @@ describe('play route — a recovery overtaken by a switch', () => {
 		await until(() => switchStream() !== undefined, "the switch's session request");
 
 		releaseEvict();
-		await new Promise((r) => setTimeout(r, 100));
+		// A recovery that went on would clear the show's plays, the
+		// switch's among them, in the turn its eviction answers.
+		await actedOn(seen.evictions, 'the eviction');
 		expect(switchStream()!.closed).toBe(false);
 
 		switchStream()!.dispatch('done', session('session-3'));
@@ -427,11 +458,7 @@ describe('play route — a recovery overtaken by a switch', () => {
 	});
 
 	it('a Reload clicked during a switch leaves the switch alone and keeps its overlay', async () => {
-		let evictAsked = false;
-		useShowHandlers(() => {
-			evictAsked = true;
-			return new HttpResponse(null, { status: 204 });
-		});
+		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 		await until(() => playerVideoInSlot(), 'the video in its slot');
@@ -458,12 +485,16 @@ describe('play route — a recovery overtaken by a switch', () => {
 		await until(() => reload() !== null, 'the Reload button');
 		const shown = target.querySelector('.player-error-detail')?.textContent;
 		reload()!.click();
-		await new Promise((r) => setTimeout(r, 100));
+		// The Reload decides in the click itself: the recovery checks the
+		// lock before it clears the overlay or asks for an eviction, and
+		// the eviction is counted as the page asks for it, not as the
+		// handler hears it.
+		flushSync();
 
 		// The switch owns the lock and replaces the stream: Reload waits
 		// for it, and the error stays on screen with its Reload in case
 		// the switch fails.
-		expect(evictAsked).toBe(false);
+		expect(seen.evictions, 'the Reload asks no eviction').toHaveLength(0);
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 
 		switchStreams()[0].dispatch('done', session('session-3'));
@@ -520,10 +551,14 @@ describe('play route — a recovery overtaken by a switch', () => {
 		(target.querySelector('li[data-ep-num="5"] button') as HTMLButtonElement).click();
 		await until(() => asked, 'the re-check to go out');
 
+		// The eviction answers while the re-check still holds the lock,
+		// and the re-check answers after it.
 		releaseEvict();
-		await new Promise((r) => setTimeout(r, 100));
+		await actedOn(seen.evictions, 'the eviction');
+		const answered = recheckAnswered();
 		releaseAsk();
-		await new Promise((r) => setTimeout(r, 200));
+		await answered();
+		flushSync();
 
 		const reload = target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
 		expect(reload).not.toBeNull();
@@ -593,9 +628,11 @@ describe('play route — a recovery overtaken by a switch', () => {
 		(target.querySelector('li[data-ep-num="5"] button') as HTMLButtonElement).click();
 		await until(() => asked, 'the re-check to go out');
 		releaseEvict();
-		await new Promise((r) => setTimeout(r, 100));
+		await actedOn(seen.evictions, "the Reload's eviction");
+		const answered = recheckAnswered();
 		releaseAsk();
-		await new Promise((r) => setTimeout(r, 200));
+		await answered();
+		flushSync();
 
 		expect(reload()).not.toBeNull();
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
@@ -761,13 +798,21 @@ describe('play route — a failed switch away from a failed stream', () => {
 				(i) => i.url.includes('episode=3') && !i.url.includes('prefetch=1')
 			);
 		await until(() => switchStream() !== undefined, "the switch's session request");
+		const playsAtRelease = ownedPlays.length;
+		const theSwitch = ownedPlays[playsAtRelease - 1];
 		releaseEvict();
 		switchStream()!.dispatch(
 			'error',
 			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
-		await new Promise((r) => setTimeout(r, 200));
+		// Both answers are in and acted on: the switch's failure puts the
+		// error back, and the Reload's eviction stands the recovery down
+		// rather than starting the switch a fresh resolve begins with.
+		await actedOn(seen.evictions, "the Reload's eviction");
+		await Promise.allSettled([theSwitch]);
+		flushSync();
 
+		expect(ownedPlays.length, 'the overtaken Reload starts no switch').toBe(playsAtRelease);
 		expect(reload()).not.toBeNull();
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 	});
