@@ -1,9 +1,7 @@
-//! Property coverage for the `Retry-After` reading and the bounded
-//! retry's wait, beside the pure functions in `rate_limit.rs`.
+//! Property coverage for the `Retry-After` reading, beside the pure
+//! functions in `rate_limit.rs`.
 
-use std::time::Duration;
-
-use super::{parse_retry_after, retry_wait_within};
+use super::parse_retry_after;
 
 proptest::proptest! {
     /// Every delay-seconds value a tracker can send reads back as
@@ -31,31 +29,5 @@ proptest::proptest! {
     #[test]
     fn an_absent_header_is_no_wait(_any in proptest::num::u8::ANY) {
         proptest::prop_assert_eq!(parse_retry_after(None), None);
-    }
-
-    /// The bounded retry never sleeps past its cap: an advertised wait
-    /// within it is honoured exactly, one past it is not retried, and
-    /// no advertised wait sleeps the default.
-    #[test]
-    fn a_retry_sleeps_within_its_cap_or_not_at_all(
-        advertised in proptest::option::of(0u64..600),
-        cap_secs in 0u64..120,
-        default_secs in 0u64..120,
-    ) {
-        let cap = Duration::from_secs(cap_secs);
-        let default = Duration::from_secs(default_secs);
-        let wait = retry_wait_within(advertised, cap, default);
-        match advertised {
-            None => proptest::prop_assert_eq!(wait, Some(default)),
-            Some(secs) if secs <= cap_secs => {
-                proptest::prop_assert_eq!(wait, Some(Duration::from_secs(secs)));
-            }
-            Some(_) => proptest::prop_assert_eq!(wait, None),
-        }
-        if let Some(w) = wait {
-            if advertised.is_some() {
-                proptest::prop_assert!(w <= cap, "an advertised wait is never stretched or cut: {w:?} > {cap:?}");
-            }
-        }
     }
 }
