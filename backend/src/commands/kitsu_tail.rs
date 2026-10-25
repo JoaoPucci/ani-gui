@@ -35,6 +35,16 @@ impl<'a> KitsuTail<'a> {
             anilist_base: None,
         })
     }
+
+    /// The same source asking a mock AniList at `base`.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_anilist_base(self, base: &'a str) -> Self {
+        Self {
+            anilist_base: Some(base),
+            ..self
+        }
+    }
 }
 
 impl std::fmt::Debug for KitsuTail<'_> {

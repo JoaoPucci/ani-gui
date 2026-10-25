@@ -616,3 +616,34 @@ async fn a_rate_limited_banner_backfill_does_not_keep_the_detail_without_it() {
         "the rate-limited detail was kept without its banner"
     );
 }
+
+#[tokio::test]
+async fn a_banner_backfill_anilist_is_down_for_does_not_keep_the_detail_without_it() {
+    // Down is no answer either: the detail is served without a banner
+    // and asked again next read.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Media": { "bannerImage": BANNER } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_null_cover_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let first = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    assert_eq!(first.anilist_banner, None);
+    let next = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail again");
+    assert_eq!(next.anilist_banner.as_deref(), Some(BANNER));
+}
