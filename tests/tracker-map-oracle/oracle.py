@@ -114,6 +114,9 @@ def shared_rule(ev, total):
     starts = [p["start"] for p in parts]
     if len(set(starts)) != len(starts):
         return None
+    # The whole set explains the entry, not a prefix of it.
+    if any(not p["episodes"] for p in parts) or sum(p["episodes"] for p in parts) != total:
+        return None
     got = place(parts, ev["kitsu"]["id"], total)
     if got is None:
         return None
@@ -366,6 +369,23 @@ def later_part_family(rng):
     return out
 
 
+def shared_overfull_family(rng):
+    """Entries sharing a tracker entry whose first few sum to its total
+    while the whole set does not: three to five parts, the total the sum
+    of a proper prefix of them, with every part in turn as ours. Among
+    them, three twelve-episode entries against a 24-episode entry."""
+    out = []
+    shapes = [[12, 12, 12]] + [[rng.randint(1, 30) for _ in range(rng.randint(3, 5))] for _ in range(40)]
+    for counts in shapes:
+        n = len(counts)
+        parts = [kitsu(30 + i, counts[i], months(2019, 4 * i) + "-04", months(2019, 4 * i + 3) + "-26") for i in range(n)]
+        total = sum(counts[: rng.randint(2, n - 1)]) if counts != [12, 12, 12] else 24
+        for ours in range(n):
+            ev = evidence(parts[ours], show(37, total, rng.random() < 0.85), sharing=list(parts))
+            out.append(("shared_overfull", ev))
+    return out
+
+
 def extras_family(rng):
     """A prologue, several half-episode recaps, both, as a long shounen's
     tracker counts them — and the lists that leave the surplus
@@ -468,7 +488,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family, shared_overfull_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:
