@@ -175,6 +175,12 @@ impl<T> Timed<T> {
 /// time on only to the next timer, so the subject's own deadline is
 /// what ends it, at that deadline exactly, and a deadline that grew is
 /// seen to have. The test must run on a current-thread runtime.
+///
+/// Paused, the clock also jumps past any request still out on the real
+/// network, so the subject's outcome says only that a deadline ended it.
+/// A test that reads the outcome as well waits, in `reached`, for every
+/// answer the subject still needs, or reads the outcome from a call on
+/// the real clock.
 pub(crate) async fn paused_once<F: std::future::Future>(
     subject: F,
     reached: impl std::future::Future<Output = ()>,
@@ -245,8 +251,8 @@ async fn a_wait_timed_once_its_request_is_held_returns_at_its_deadline() {
         gate.asked(),
     )
     .await;
-    assert!(timed.out.is_err(), "the deadline ended it");
-    timed.ended_by(deadline, "a wait ended by its deadline");
+    let out = timed.ended_by(deadline, "a wait ended by its deadline");
+    assert!(out.is_err(), "the deadline ended it");
     gate.release();
     held.await.expect("released");
 }
@@ -265,5 +271,5 @@ async fn a_wait_whose_deadline_grew_is_seen_past_the_one_it_was_given() {
     .await;
     gate.release();
     let _ = held.await;
-    timed.ended_by(std::time::Duration::from_millis(300), "a grown deadline");
+    let _ = timed.ended_by(std::time::Duration::from_millis(300), "a grown deadline");
 }
