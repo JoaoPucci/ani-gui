@@ -423,6 +423,38 @@ fn a_shared_entry_is_explained_only_by_every_part_mapped_to_it() {
 }
 
 #[test]
+fn parts_that_reach_the_entry_explain_nothing_beside_a_later_part_mapped_to_it() {
+    // The same three entries as one chain of sequels, the third
+    // gathered too since it is mapped to the entry: the counts reach the
+    // entry's 24 at the second, but a part mapped to the entry is not a
+    // sequel running on past it into entries of its own, so the parts
+    // that reach the total are not the whole of the entry.
+    let sharing = vec![
+        kitsu("1", Some(12), "2020-01-05", "2020-03-29"),
+        kitsu("2", Some(12), "2020-07-05", "2020-09-27"),
+        kitsu("3", Some(12), "2021-01-10", "2021-04-04"),
+    ];
+    for ours in ["1", "2"] {
+        let ev = Evidence {
+            kitsu: sharing
+                .iter()
+                .find(|k| k.id == ours)
+                .cloned()
+                .expect("a part"),
+            entry: show(700, Some(24), true, "2020-01-05", "2021-04-04"),
+            sharing: sharing.clone(),
+            parts: sharing.clone(),
+            ..Default::default()
+        };
+        assert_eq!(
+            map_show(&ev),
+            identity(Identity::Unexplained),
+            "part {ours}"
+        );
+    }
+}
+
+#[test]
 fn a_shared_entry_needs_distinct_known_start_dates_to_order_its_parts() {
     let mut same_day = final_chapters("46038");
     same_day.sharing[0].start = Some("2023-03-03".into());

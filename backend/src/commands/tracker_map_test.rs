@@ -1320,3 +1320,49 @@ async fn a_part_four_unresolved_prequels_after_its_entry_is_filed_under_it() {
     assert_eq!(map.segments[0].entry_total, 72);
     assert_eq!(map.segments[0].lead, 60);
 }
+
+#[tokio::test]
+async fn a_chain_with_a_part_mapped_to_the_entry_past_its_total_is_no_split() {
+    // Three parts of twelve, one after the other, all mapped to
+    // MyAnimeList 904, a 24-episode entry. The first two reach the
+    // entry's total, but the third is mapped to it too: the parts are
+    // not the whole of the entry, and the second part's finale must not
+    // complete it.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "52",
+        detail("52", Some(12), "2021-01-01", "2021-03-25"),
+        1,
+    )
+    .await;
+    mount_chain(
+        &kitsu,
+        &[("51", Some(904)), ("52", Some(904)), ("53", Some(904))],
+    )
+    .await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        904,
+        &mapped_body(&["51", "52", "53"]),
+    )
+    .await;
+    let mal_server = mal_entry(904, 24).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let map = episode_map_for(
+        &MapAsk {
+            state: &state,
+            kind: ProviderKind::MyAnimeList,
+            provider: &provider,
+            tokens: &tokens(),
+            anilist_base: None,
+        },
+        "52",
+        ProviderMediaId(904),
+        Some(24),
+    )
+    .await;
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+}
