@@ -52,7 +52,7 @@ use crate::error::{AniError, Result};
 
 #[path = "anilist_gate_pace.rs"]
 mod pace;
-use pace::{not_sent, stay_away};
+use pace::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
 
 tokio::task_local! {
@@ -128,15 +128,6 @@ fn shared() -> std::sync::MutexGuard<'static, HashMap<String, Arc<Gate>>> {
     SHARED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// `host:port` of `url`, the key a gate is kept under; `url` itself
-/// when it names no host.
-fn authority(url: &str) -> String {
-    url::Url::parse(url)
-        .ok()
-        .and_then(|u| Some(format!("{}:{}", u.host_str()?, u.port_or_known_default()?)))
-        .unwrap_or_else(|| url.to_owned())
 }
 
 fn gate_for(url: &str) -> Arc<Gate> {
