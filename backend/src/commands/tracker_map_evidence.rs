@@ -25,13 +25,19 @@ async fn tracker_chain(
             break;
         }
         let mut series = Vec::new();
+        let mut gone = false;
         for id in &current {
-            let next = ask.provider.media_evidence(ask.tokens, *id).await?;
-            if next.series {
-                series.push(next);
+            match ask.provider.media_evidence(ask.tokens, *id).await {
+                Ok(next) if next.series => series.push(next),
+                Ok(_) => {}
+                // The tracker answering that a sequel it names is gone is
+                // an answer: the hop cannot be settled, so the chain ends
+                // here. Any other failure is no answer, and fails the map.
+                Err(err) if err.is_not_found_shaped() => gone = true,
+                Err(err) => return Err(err),
             }
         }
-        if series.len() != 1 {
+        if gone || series.len() != 1 {
             break;
         }
         let next = series.remove(0);
