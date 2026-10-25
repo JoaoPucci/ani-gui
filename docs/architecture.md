@@ -164,6 +164,20 @@ AniList limits each client's requests — 30 a minute while its API runs degrade
 
 A rate limit is not an answer about a show, and nothing caches it as one: a rate-limited episode-thumbnail lookup writes no negative row, a trending fetch AniList did not answer serves Kitsu's list for that load without keeping it as the trending row, and a detail page whose banner lookup got no answer is served without the banner and not cached.
 
+### When AniList cannot answer
+
+AniList refusing this client, or being down, is no answer: what it would have said is unknown. Nothing reads that as "no", and nothing caches it as an absence — the next read asks again, at the gate's pace. Where Kitsu holds the same data it is already the primary source and AniList only fills its gaps; where it does not, Kitsu is not substituted.
+
+| AniList input | What reads it | Without an answer | Kitsu in its place |
+|---|---|---|---|
+| Trending order | The home hero and Trending strip | Kitsu's currently-airing list, ranked by user count, for that load only — not kept as the trending row | A stand-in, not the same data: Kitsu's count is cumulative where AniList's trending follows the past hour |
+| `bannerImage` | The hero and detail band, when Kitsu has no cover | The blurred poster; the detail is served but not cached | Kitsu's cover is the first choice already; AniList is the fallback for its gap |
+| `streamingEpisodes` stills | Episode tiles Kitsu has no still for | Kitsu's stills stand, placeholders elsewhere; nothing cached | Kitsu's stills are the first choice already |
+| Airing schedule (aired count, next airing, the schedule ahead) | Unaired-tile gating on the detail and play pages; availability row windows; the appended-extras evidence | No tile is gated; availability rows take the window their Kitsu status gives; the evidence stays unread, so a reading kept from before stands or the listing is left as it is | None. Kitsu's per-episode air dates lag and are often missing for a show on air, and a count read from them could grey an episode that is out. Kitsu's `status` already decides "finished": a finished show skips the airing read, and availability windows branch on it |
+| The aired count of a show AniList calls finished | The appended-extras evidence, beside Kitsu's own count | The rule does not conclude | None: the rule needs both sources to end the show at the count, and Kitsu cannot vouch twice |
+| MAL ↔ AniList id translation | The tracker write-back's target; the Watch Later bridge | The write fails with the rate-limit or upstream error; the card is left out for that load, with no dead end recorded | Kitsu's mappings are asked first already. A failed translation is not replaced by the other id Kitsu carries: the write would land on whatever entry that id names |
+| The signed-in account's profile, list and entries | The account pages, the list editor, progress write-back | The error is returned as it is | None |
+
 ## Caching
 
 | Asset | Storage | TTL |
