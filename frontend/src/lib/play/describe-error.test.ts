@@ -19,11 +19,24 @@ const KEYS: string[] = JSON.parse(
 	readFileSync(new URL('../../../../backend/error-keys.json', import.meta.url), 'utf-8')
 );
 
+// Every locale's catalogue is read while the file is collected, not
+// inside a test: a test's 5 s budget is wall time, and cold reads queued
+// behind another build's disk writes can spend it before a message is
+// compared.
+const CATALOGUES = new Map<string, Record<string, string>>(
+	locales.map((locale) => [
+		locale,
+		JSON.parse(
+			readFileSync(new URL(`../../../messages/${locale}/backend.json`, import.meta.url), 'utf-8')
+		)
+	])
+);
+
 /** The per-key catalogue of one locale, as authored. */
 function catalogue(locale: string): Record<string, string> {
-	return JSON.parse(
-		readFileSync(new URL(`../../../messages/${locale}/backend.json`, import.meta.url), 'utf-8')
-	);
+	const texts = CATALOGUES.get(locale);
+	if (!texts) throw new Error(`no catalogue was read for ${locale}`);
+	return texts;
 }
 
 /** The message name a key compiles to: `error.a.b` → `error_a_b`. */

@@ -107,9 +107,12 @@ pub struct Remembered {
 /// past the count ([`appended_count`]).
 #[async_trait::async_trait]
 pub trait TailSource: Send + Sync + std::fmt::Debug {
-    /// The entry's tail, as far as it is known for `count`; `None`
-    /// when nothing could be read.
-    async fn tail(&self, count: u32) -> Option<EntryTail>;
+    /// The entry's tail, as far as it is known for `listing` and the
+    /// `count` it runs past; `None` when a read failed while what had
+    /// been read left the reading open. A tail whose reads stopped
+    /// early, because what was in hand already refuses the reading, is
+    /// no `None`: the refusal stands whatever a later read would say.
+    async fn tail(&self, listing: &[EpisodeRef], count: u32) -> Option<EntryTail>;
 
     /// The reading the evidence last proved for the entry, if any.
     fn remembered(&self) -> Option<Remembered> {
@@ -124,9 +127,14 @@ pub trait TailSource: Send + Sync + std::fmt::Debug {
 /// The count to ask the evidence about, when `listing` has the shape
 /// appended extras give it: Kitsu counts the entry, every row is
 /// numbered by its position and carries no tag of its own — a recap's
-/// fraction, a continuation's offset, a stitched or cut listing's
-/// re-display each mean another reading is already in force — and the
-/// listing runs past the count by at most [`MAX_APPENDED`] rows.
+/// fraction or a continuation's offset means another reading is
+/// already in force — and the listing runs past the count by at most
+/// [`MAX_APPENDED`] rows. The shape alone does not tell a stitched
+/// listing from a single one: parts numbered from 1 stitch into
+/// untagged rows numbered by position, so [`fit_appended`] turns a
+/// stitched pick away before asking. A cut spanning listing is cut to
+/// the entry's own episodes, and runs no whole episode past the count;
+/// a recap it keeps after them is tagged, which this check turns away.
 #[must_use]
 pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u32> {
     let count = expected.filter(|c| *c > 0)?;
@@ -141,9 +149,10 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 /// `picked` with the extras its provider appended read as extras,
 /// when the evidence proves them, or when the evidence cannot be read
 /// and the source keeps that reading for these very rows; `picked`
-/// itself otherwise — no source, a listing of another shape, evidence
-/// that reads and falls short of proof (which forgets a kept reading),
-/// or no evidence and nothing kept.
+/// itself otherwise — no source, a stitched listing, a listing of
+/// another shape (either of which, given a count, forgets a reading
+/// kept for its slug), evidence that reads and falls short of proof
+/// (which forgets a kept reading), or no evidence and nothing kept.
 pub async fn fit_appended(
     picked: PickedShow,
     expected: Option<u32>,
@@ -152,7 +161,13 @@ pub async fn fit_appended(
     let Some(source) = source else {
         return picked;
     };
-    let Some(count) = appended_count(&picked.episodes, expected) else {
+    // A stitched listing is numbered by position like a single one, but
+    // the rows a chain fits past the count are its later part's own
+    // episodes: it is never read for appended extras.
+    let shaped = (!picked.stitched)
+        .then(|| appended_count(&picked.episodes, expected))
+        .flatten();
+    let Some(count) = shaped else {
         // The show's listing no longer runs past a count — Kitsu took
         // the rows in, or the listing changed shape — so a reading
         // kept for it no longer stands.
@@ -167,7 +182,8 @@ pub async fn fit_appended(
         count,
         ids: past_ids(&picked.episodes, count),
     };
-    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(count)).await {
+    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(&picked.episodes, count)).await
+    {
         Ok(Some(tail)) => {
             let fitted = appended_extras(&picked.episodes, count, &tail);
             source.remember(fitted.as_ref().map(|_| &reading));
@@ -203,12 +219,19 @@ fn kept_for_a_version(picked: &PickedShow, kept: &Remembered) -> bool {
 
 #[path = "play_native_appended_rule.rs"]
 mod rule;
-pub use rule::{appended_extras, ALIGNED};
+pub use rule::{anilist_ends_at, appended_extras, kitsu_ends_at, rows_end_at, ALIGNED};
+#[path = "play_native_appended_aligned.rs"]
+mod aligned;
+pub use aligned::aligned;
+#[path = "play_native_appended_settled.rs"]
+mod settled;
+pub use settled::{misaligned_so_far, past_named_as_a_last_episode};
 #[path = "play_native_appended_names.rs"]
 mod names;
-pub use names::is_announced;
+pub use names::{is_announced, leaves_names, named_alone, unlike_the_show_s};
 #[path = "play_native_appended_explained.rs"]
 mod explained;
+pub use explained::explained;
 #[path = "play_native_appended_titles.rs"]
 mod titles;
 pub use titles::same_title;

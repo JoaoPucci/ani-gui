@@ -26,6 +26,16 @@ afterEach(() => {
 
 const PREFS: HeroPrefs = { framing: 'top', source: 'kitsu', controls: true };
 
+// The component's source, for the layout case below. Read while the
+// file is collected, not inside the case: a case's budget is wall time,
+// and a cold read can wait behind another build's disk writes. Vitest
+// runs from frontend/; happy-dom's import.meta.url is not a file URL,
+// so the path is resolved from the working directory.
+const SOURCE = readFileSync(
+	resolve(process.cwd(), 'src/lib/hero/HeroFramingSwitch.svelte'),
+	'utf8'
+);
+
 function mountSwitch(origin: HeroOrigin | null, prefs: HeroPrefs = PREFS) {
 	const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
 	const onchoose = vi.fn<(next: HeroPrefs) => void>();
@@ -82,13 +92,7 @@ describe('hero framing switch', () => {
 		// the component's style block, in the shape of tests/lint: the
 		// group's rule does not wrap and nothing caps its width, and the
 		// readout is the one item that shrinks, clipping with an ellipsis.
-		// Vitest runs from frontend/; happy-dom's import.meta.url is not a
-		// file URL, so the path is resolved from the working directory.
-		const source = readFileSync(
-			resolve(process.cwd(), 'src/lib/hero/HeroFramingSwitch.svelte'),
-			'utf8'
-		);
-		const style = source.slice(source.indexOf('<style>'));
+		const style = SOURCE.slice(SOURCE.indexOf('<style>'));
 		const rule = (selector: string) => {
 			const at = style.indexOf(`${selector} {`);
 			expect(at, selector).toBeGreaterThan(-1);

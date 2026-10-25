@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveResumeEpisode } from './resume-episode';
 import { loadContinueWatchingState } from './continue-watching-loader';
+// Imported statically, so they load while the file is collected. Loaded
+// from inside the test, their transform ran against its 5 s budget,
+// which a machine busy with other builds can spend before the click
+// path is reached; nothing here mocks them, so nothing needs the delay.
+import { makeFetchAvailability } from './availability-from-match';
+import { resolveResumeSettings } from './resume-settings';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
@@ -107,8 +113,6 @@ describe('acceptance: click-time lookup rides the interactive lane with awaited 
 		// mid-click with DUB, the cap lookup goes out through the real
 		// makeFetchAvailability with the interactive flag, and the
 		// episode is picked against the answered cap.
-		const { makeFetchAvailability } = await import('./availability-from-match');
-		const { resolveResumeSettings } = await import('./resume-settings');
 		const checkAvailability = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
 
 		const settings = await resolveResumeSettings(
