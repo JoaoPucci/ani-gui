@@ -424,4 +424,37 @@ proptest! {
             !aligned(&rows, count, &read_so_far(best))
         );
     }
+
+    /// A row past the count carrying the listing's name for one of the
+    /// count's last episodes is refused whatever Kitsu titles them:
+    /// either the listing does not line up, or the row is named as one
+    /// of the show's own episodes.
+    #[test]
+    fn a_row_past_the_count_named_as_a_last_episode_is_refused_whatever_kitsu_says(
+        count in 1u32..40,
+        past in 1u32..=MAX_APPENDED,
+        renamed in 0u32..MAX_APPENDED,
+        named_as in 0u32..ALIGNED,
+        titles in proptest::collection::vec(prop_oneof![
+            Just(None),
+            Just(Some("Episode".to_string())),
+            Just(Some("story".to_string())),
+            Just(Some("Another Name".to_string())),
+        ], ALIGNED as usize),
+    ) {
+        let mut rows = listing(count, past);
+        let first = count.saturating_sub(ALIGNED - 1).max(1);
+        let n = (first + named_as).min(count);
+        let at = (count + renamed % past) as usize;
+        rows[at].title = rows[n as usize - 1].title.clone();
+        let mut tail = conclusive(count, past);
+        for (i, title) in titles.into_iter().enumerate() {
+            let m = first + u32::try_from(i).expect("small");
+            if let (Some(row), Some(title)) = (tail.episodes.iter_mut().find(|e| e.number == m), title) {
+                row.title = Some(if title == "story" { format!("story {m}") } else { title });
+            }
+        }
+        prop_assert!(past_named_as_a_last_episode(&rows, count, &rows[count as usize..]));
+        prop_assert_eq!(appended_extras(&rows, count, &tail), None);
+    }
 }
