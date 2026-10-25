@@ -146,8 +146,10 @@ describe('keepFields', () => {
 			status: 'paused'
 		});
 		// A status the write sets without declaring it — the one a new row is
-		// created with — stays.
-		expect(keepFields(body, ['progress'], [])).toEqual({ kitsu_id: '12', status: 'paused' });
+		// created with — rides along with a declared field that is left…
+		expect(keepFields(body, ['progress'], ['progress'])).toEqual(body);
+		// …and never goes on its own once none of the declared fields is.
+		expect(keepFields(body, ['progress'], [])).toBeNull();
 	});
 
 	it('is nothing once neither a status nor a progress is left', () => {
