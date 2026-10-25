@@ -92,13 +92,20 @@ const saveButton = () =>
 
 /** AniList's list as the backend relays it: the row, and a save that is
  *  held back once with the wait before it is taken. */
-function useTracker(saves: { at: number[] }) {
+/** Each save the backend received: when, and the body the editor sent. */
+interface Saves {
+	at: number[];
+	bodies: unknown[];
+}
+
+function useTracker(saves: Saves) {
 	server.use(
 		http.get(`${API_BASE}/api/account/entry/anilist`, () =>
 			HttpResponse.json({ status: 'watching', progress: 3 })
 		),
-		http.post(`${API_BASE}/api/account/set/anilist`, () => {
+		http.post(`${API_BASE}/api/account/set/anilist`, async ({ request }) => {
 			saves.at.push(Date.now());
+			saves.bodies.push(await request.json());
 			if (saves.at.length === 1) {
 				return HttpResponse.json(
 					{
@@ -125,7 +132,7 @@ function useTracker(saves: { at: number[] }) {
 
 describe('list editor — AniList holds the save back', () => {
 	it('says AniList is busy, waits the advertised time, and saves by itself', async () => {
-		const saves = { at: [] as number[] };
+		const saves: Saves = { at: [], bodies: [] };
 		useTracker(saves);
 		toasts = mount(ToastHost, { target: stack });
 		editor = mount(ListEntryEditor, {
@@ -152,8 +159,48 @@ describe('list editor — AniList holds the save back', () => {
 		await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
 		expect(saves.at).toHaveLength(2);
 		expect(saves.at[1] - saves.at[0]).toBeGreaterThanOrEqual(RETRY_AFTER_S * 1000 - 50);
+		// Both carry the user's edit: the one held back, and the one that landed.
+		for (const body of saves.bodies) {
+			expect(body).toMatchObject({ kitsu_id: KITSU_ID, status: 'dropped' });
+		}
 		// Nothing says the save failed.
 		expect(stack.textContent ?? '').not.toContain(m.detail_list_rate_limited());
 		expect(stack.textContent ?? '').not.toContain(m.detail_list_save_failed());
+	});
+
+	it('can be dismissed while the save waits, and still reports the save', async () => {
+		const saves: Saves = { at: [], bodies: [] };
+		useTracker(saves);
+		toasts = mount(ToastHost, { target: stack });
+		editor = mount(ListEntryEditor, {
+			target,
+			props: { kitsuId: KITSU_ID, total: 12, current: { status: 'watching', progress: 3 } }
+		});
+
+		trigger().click();
+		await until(() => statusSelect() !== null, 'the status control');
+		const select = statusSelect()!;
+		select.value = 'dropped';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await until(() => saveButton() !== null, 'the Save control');
+		saveButton()!.click();
+		const busy = m.account_busy_saving({
+			provider: m.account_provider_anilist(),
+			seconds: RETRY_AFTER_S
+		});
+		await until(() => (stack.textContent ?? '').includes(busy), `the notice "${busy}"`);
+
+		// The user closes the popover rather than watch it wait.
+		const close = Array.from(target.querySelectorAll('button')).find(
+			(b) => b.getAttribute('aria-label') === m.detail_list_close()
+		);
+		close!.click();
+		await until(() => statusSelect() === null, 'the popover to close');
+		// Closed while the save still waits, not by its landing.
+		expect(saves.at).toHaveLength(1);
+
+		// The save carries on and says how it ended.
+		await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
+		expect(saves.at).toHaveLength(2);
 	});
 });

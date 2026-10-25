@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the live-store collaborators so syncSetEntry / syncRemoveEntry are
 // the only real code under test: read connected providers off the store,
@@ -127,5 +127,49 @@ describe('a save the tracker holds back', () => {
 		expect(out).toEqual({ removed: 1, failed: 0 });
 		expect(removeEntry).toHaveBeenCalledTimes(2);
 		expect(toastStore.items.map((t) => t.message)).toContain(busyNotice());
+	});
+});
+
+describe('a save the tracker keeps refusing', () => {
+	it('fails rate-limited once every attempt was refused', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValue(refused(0));
+		const out = await syncSetEntry('kitsu-12', {
+			status: 'dropped',
+			statusChanged: true,
+			progress: 3
+		});
+		expect(out).toEqual({ written: 0, failed: 1, rateLimited: true });
+		expect(setEntry).toHaveBeenCalledTimes(4);
+	});
+
+	it('fails without another attempt on a failure that is not a rate limit', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(0)).mockRejectedValueOnce(new Error('offline'));
+		const out = await syncSetEntry('kitsu-12', {
+			status: 'dropped',
+			statusChanged: true,
+			progress: 3
+		});
+		expect(out).toEqual({ written: 0, failed: 1 });
+		expect(setEntry).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('a held save a newer write replaces', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is neither written nor failed, and says it was superseded', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-12', { status: 'dropped', statusChanged: true, progress: 5 });
+		await vi.advanceTimersByTimeAsync(0);
+		await syncSetEntry('kitsu-12', { status: 'watching', statusChanged: true, progress: 6 });
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(setEntry).toHaveBeenCalledTimes(2);
 	});
 });

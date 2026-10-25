@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the live-store collaborators so the glue under test is the only
 // real code: syncWatchedToTrackers must read the connected providers
@@ -103,5 +103,28 @@ describe('syncWatchedToTrackers', () => {
 		expect(errors).toEqual([
 			m.account_progress_save_failed({ provider: m.account_provider_mal() })
 		]);
+	});
+});
+
+describe('a held progress write a newer one replaces', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is not re-sent and is not reported as a failure', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const six = syncWatchedToTrackers('kitsu-12', 6);
+		await vi.advanceTimersByTimeAsync(0);
+		await syncWatchedToTrackers('kitsu-12', 4);
+		await vi.advanceTimersByTimeAsync(1000);
+		await six;
+		const sent = updateProgress.mock.calls.map((c) => (c as unknown[])[2]);
+		expect(sent).toEqual([
+			{ kitsu_id: 'kitsu-12', progress: 6 },
+			{ kitsu_id: 'kitsu-12', progress: 4 }
+		]);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
 	});
 });

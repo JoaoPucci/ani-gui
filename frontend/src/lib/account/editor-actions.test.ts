@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runEditorRemove, runEditorSave } from './editor-actions';
+import {
+	editorToggle,
+	runEditorRemove,
+	runEditorSave,
+	settleRemove,
+	settleSave
+} from './editor-actions';
+import { m } from '$lib/paraglide/messages';
 import type { EditorSave } from './set-entry';
 
 const baseSave: EditorSave = { status: 'watching', statusChanged: false, progress: 6 };
@@ -133,5 +140,72 @@ describe('rate-limit flag passthrough', () => {
 			kind: 'failed',
 			rateLimited: true
 		});
+	});
+});
+
+describe('settling a result', () => {
+	it('reports a save that ends after the editor moved to another show, and leaves that show alone', () => {
+		const live = { status: 'watching' as const, progress: 6 };
+		expect(settleSave({ kind: 'saved', live }, false)).toEqual({
+			toast: { kind: 'success', message: m.detail_list_saved() },
+			local: false
+		});
+		expect(settleSave({ kind: 'partial', live }, false)).toEqual({
+			toast: { kind: 'error', message: m.detail_list_save_partial() },
+			local: false
+		});
+		expect(settleSave({ kind: 'failed', rateLimited: true }, false)).toEqual({
+			toast: { kind: 'error', message: m.detail_list_rate_limited() },
+			local: false
+		});
+		expect(settleRemove({ kind: 'removed' }, false)).toEqual({
+			toast: { kind: 'success', message: m.detail_list_removed() },
+			local: false
+		});
+	});
+
+	it('takes the result locally on the same show', () => {
+		const live = { status: 'watching' as const, progress: 6 };
+		expect(settleSave({ kind: 'saved', live }, true).local).toBe(true);
+		expect(settleSave({ kind: 'partial', live }, true).local).toBe(true);
+		expect(settleSave({ kind: 'failed' }, true)).toEqual({
+			toast: { kind: 'error', message: m.detail_list_save_failed() },
+			local: false
+		});
+		expect(settleRemove({ kind: 'removed' }, true).local).toBe(true);
+		expect(settleSave({ kind: 'noop' }, true)).toEqual({ toast: null, local: false });
+	});
+
+	it('shows the rate-limited message for a save every attempt of which was refused', async () => {
+		const res = await runEditorSave(
+			{ syncSetEntry: async () => ({ written: 0, failed: 1, rateLimited: true }) },
+			{ kitsuId: 'kitsu-12', disabled: false, save: baseSave }
+		);
+		expect(settleSave(res, true).toast).toEqual({
+			kind: 'error',
+			message: m.detail_list_rate_limited()
+		});
+	});
+
+	it('says nothing for a save a newer write superseded, and takes nothing', async () => {
+		const res = await runEditorSave(
+			{ syncSetEntry: async () => ({ written: 0, failed: 0, superseded: true }) },
+			{ kitsuId: 'kitsu-12', disabled: false, save: baseSave }
+		);
+		expect(res).toEqual({ kind: 'superseded' });
+		expect(settleSave(res, true)).toEqual({ toast: null, local: false });
+	});
+});
+
+describe('editorToggle', () => {
+	it('opens a closed editor, and not while it is disabled or a write is out', () => {
+		expect(editorToggle({ open: false, busy: false, disabled: false })).toBe('open');
+		expect(editorToggle({ open: false, busy: false, disabled: true })).toBe('ignore');
+		expect(editorToggle({ open: false, busy: true, disabled: false })).toBe('ignore');
+	});
+
+	it('closes an open editor even while its write waits — the write carries on', () => {
+		expect(editorToggle({ open: true, busy: true, disabled: false })).toBe('close');
+		expect(editorToggle({ open: true, busy: false, disabled: false })).toBe('close');
 	});
 });

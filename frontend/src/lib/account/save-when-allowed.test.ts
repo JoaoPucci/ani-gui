@@ -5,7 +5,9 @@ import {
 	busyWaitSecs,
 	DEFAULT_WAIT_S,
 	MAX_SAVE_ATTEMPTS,
-	saveWhenAllowed
+	MAX_WAIT_S,
+	saveWhenAllowed,
+	SupersededError
 } from './save-when-allowed';
 
 /** The backend's answer to a write it held back: 429 with the wait. */
@@ -97,5 +99,39 @@ describe('saveWhenAllowed', () => {
 			saveWhenAllowed(attempt, { notify: () => {}, wait, maxAttempts: 2 })
 		).rejects.toBeTruthy();
 		expect(attempt).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('the cap on one wait', () => {
+	it('holds a write no longer than the cap, whatever the 429 asks', () => {
+		expect(MAX_WAIT_S).toBe(120);
+		expect(busyWaitSecs(refused(500))).toBe(MAX_WAIT_S);
+		expect(busyWaitSecs(refused(120))).toBe(120);
+		expect(busyWaitSecs(refused(119.5))).toBe(120);
+	});
+});
+
+describe('a write no longer wanted after its wait', () => {
+	it('is dropped as superseded, and not sent again', async () => {
+		const notify = vi.fn();
+		const attempt = vi.fn<() => Promise<string>>().mockRejectedValue(refused(3));
+		await expect(
+			saveWhenAllowed(attempt, { notify, wait: async () => {}, stillWanted: () => false })
+		).rejects.toBeInstanceOf(SupersededError);
+		expect(attempt).toHaveBeenCalledTimes(1);
+	});
+
+	it('goes again while it is still wanted', async () => {
+		const attempt = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(3))
+			.mockResolvedValueOnce('saved');
+		expect(
+			await saveWhenAllowed(attempt, {
+				notify: () => {},
+				wait: async () => {},
+				stillWanted: () => true
+			})
+		).toBe('saved');
 	});
 });
