@@ -326,7 +326,10 @@ impl<T> Timed<T> {
 }
 
 impl<T> Timed<T> {
-    /// When the clock was paused, from the call.
+    /// When the clock was paused, from the call. Read only by the
+    /// fallback-deadline case, which stages shell stubs and so runs on
+    /// Unix alone; gated with it so Windows builds carry no dead code.
+    #[cfg(unix)]
     pub(crate) fn paused_at(&self) -> std::time::Duration {
         self.paused_at
     }
