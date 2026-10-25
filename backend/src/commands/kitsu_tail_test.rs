@@ -29,8 +29,12 @@ fn the_pages_read_hold_the_count_s_last_episodes_and_any_past_it() {
     assert_eq!(tail_pages(201), vec![10, 11]);
 }
 
-/// The corpus records, for every counted show, exactly the pages the
-/// reader asks for, so the regression run reads what production reads.
+/// The corpus records, for every counted show, the pages holding the
+/// count's last episodes (with the page after when the count ends a
+/// page), which are the pages the rule's verdict on the recorded data
+/// rests on. The reader also asks for the page after a count that does
+/// not end a page, which the corpus does not hold; the reader's own
+/// tests serve that page.
 #[test]
 fn the_corpus_holds_the_pages_the_reader_reads() {
     let corpus: serde_json::Value =
