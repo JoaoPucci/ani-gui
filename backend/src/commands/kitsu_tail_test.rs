@@ -36,7 +36,7 @@ fn the_pages_read_hold_the_count_s_last_episodes_and_any_past_it() {
 /// not end a page, which the corpus does not hold; the reader's own
 /// tests serve that page.
 #[test]
-fn the_corpus_holds_the_pages_the_reader_reads() {
+fn the_corpus_holds_the_pages_its_verdicts_rest_on() {
     let corpus: serde_json::Value =
         serde_json::from_slice(&fixture("corpus.json")).expect("corpus");
     for show in corpus["shows"].as_array().expect("shows") {
