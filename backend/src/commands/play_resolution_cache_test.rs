@@ -205,7 +205,39 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v23:"), "got {k}");
+    assert!(k.starts_with("play:v24:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_every_related_tv_entry_was_read_is_not_served() {
+    // The appended-extras rule checked the rows past the count against
+    // a TV sequel's names alone, refused only a sequel still airing,
+    // and read a stitched listing too. A v23 row for an extra it read
+    // and this rule refuses (Noragami Aragoto's `13.1`, were its rows
+    // titled as its prequel's first episodes) holds a stream the rule
+    // now reads as a whole episode, under the extra's number, and a
+    // HEAD-passing hit for a request naming that extra — a history
+    // row's Continue, a link — would keep playing and recording it as
+    // the extra. Master keys its rows `play:v23:`; this schema sits
+    // above it.
+    let pool = pool();
+    let current = cache_key(
+        "Noragami Aragoto",
+        "sub",
+        "best",
+        "13.1",
+        None,
+        Some(13),
+        None,
+    );
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v23:", 1);
+    assert_ne!(
+        previous, current,
+        "the schema must have moved past master's v23"
+    );
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }
 
 #[test]

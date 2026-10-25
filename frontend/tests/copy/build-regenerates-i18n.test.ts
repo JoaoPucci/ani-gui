@@ -14,6 +14,15 @@ import pkg from '../../package.json';
 
 const WORKFLOWS = fileURLToPath(new URL('../../../.github/workflows', import.meta.url));
 
+// Read while the file is collected, like the package.json import above,
+// not inside a test. A test's 5 s budget is wall time and is meant for
+// its assertions; a cold read of a dozen files can spend all of it
+// waiting behind another build's writes in the disk queue, and the test
+// then times out on a busy machine without having asserted anything.
+const workflows = readdirSync(WORKFLOWS)
+	.filter((f) => /\.ya?ml$/.test(f))
+	.map((file) => ({ file, lines: readFileSync(join(WORKFLOWS, file), 'utf8').split('\n') }));
+
 describe('shipped i18n is built from the namespace sources', () => {
 	// `messages/<locale>.json` is GENERATED from
 	// `messages/<locale>/<ns>.json` by tools/build-messages.mjs, and it
@@ -51,9 +60,9 @@ describe('shipped i18n is built from the namespace sources', () => {
 	// `i18n:compile`, so untracking the generated bundle turned a green
 	// job red. CI has to go through the scripts that regenerate.
 	it('no workflow invokes the vitest binary directly', () => {
+		expect(workflows.length, 'no workflow files found?').toBeGreaterThan(0);
 		const offenders: string[] = [];
-		for (const file of readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f))) {
-			const lines = readFileSync(join(WORKFLOWS, file), 'utf8').split('\n');
+		for (const { file, lines } of workflows) {
 			lines.forEach((line, i) => {
 				// `run:` steps only — `name:` labels may say "vitest".
 				if (/^\s*run:.*\bvitest\b/.test(line) && !line.includes('i18n:compile')) {

@@ -201,16 +201,14 @@ function openStreamFor(episode: number): FakeEventSource | undefined {
 		.at(-1);
 }
 
-function land(es: FakeEventSource, episode: number, mode: 'sub' | 'dub') {
+function land(es: FakeEventSource, episode: number) {
 	es.landed = true;
 	es.dispatch(
 		'done',
 		JSON.stringify({
-			id: `session-${episode}-${FakeEventSource.instances.length}`,
-			kind: 'hls',
-			has_subtitles: false,
-			quality: '1080',
-			mode,
+			session_id: `session-${episode}-${FakeEventSource.instances.length}`,
+			media_url: `${API_BASE}/s/session-${episode}-${FakeEventSource.instances.length}/master.m3u8`,
+			media_kind: 'hls',
 			episode: `${episode}`
 		})
 	);
@@ -223,7 +221,6 @@ function land(es: FakeEventSource, episode: number, mode: 'sub' | 'dub') {
 async function watch(show: Show, from: number, ...episodes: number[]) {
 	setUrl(`/play/${KITSU_ID}`, { episode: `${from}` });
 	serve(show);
-	const mode = show.mode ?? 'sub';
 	app = mount(PlayPage, { target });
 	for (const episode of episodes) {
 		await until(() => card(episode) !== null, `the card for episode ${episode}`);
@@ -233,7 +230,7 @@ async function watch(show: Show, from: number, ...episodes: number[]) {
 		// session the page already holds opens none.
 		await until(() => {
 			const es = openStreamFor(episode);
-			if (es) land(es, episode, mode);
+			if (es) land(es, episode);
 			return writes.length >= before + TRACKERS.length;
 		}, `both trackers' writes for episode ${episode}`);
 	}

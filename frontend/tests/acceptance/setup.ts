@@ -16,6 +16,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
+import { isSession } from './session-contract';
 
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
@@ -169,12 +170,21 @@ interface InFlight {
 	 *  that already. */
 	late: boolean;
 	/** Accounted for: charged as undescribed, or still in flight when
-	 *  its sender's teardown reported — charged for that, or aborted by
-	 *  its page. Nothing it does later is charged again. */
+	 *  its sender's teardown swept what it left — charged for that, or
+	 *  aborted by its page. Nothing it does later is charged again. */
 	settled: boolean;
 }
 
 const owner = new AsyncLocalStorage<Scenario>();
+const PLAY_PATH = new URL(`${API_BASE}/api/play`).pathname;
+/** A play request: `/api/play` on any lane, whose bases are origins. */
+const isPlay = (request: Request) =>
+	request.method === 'POST' && new URL(request.url).pathname === PLAY_PATH;
+/** The in-flight record of each play that has ended, kept for its
+ *  answer to be checked ({@link inFlight} forgets it at `request:end`).
+ *  A play answered with a network error or sent on to the network
+ *  raises no `response:mocked`, and its record stays for the file. */
+const endedPlays = new Map<string, InFlight>();
 /** Every request MSW has seen start, by request id, until it ends. One
  *  that never ends — nothing answered it, or its handler threw, which
  *  MSW ends with no `request:end` — stays, settled, for the file. */
@@ -229,16 +239,121 @@ server.events.on('unhandledException', ({ request, requestId }) =>
 	undescribedRequest(request, requestId, 'its handler threw')
 );
 server.events.on('request:end', ({ requestId }) => {
+	const entry = inFlight.get(requestId);
+	// MSW raises `response:mocked` after `request:end`: what a play's
+	// answer is checked against is kept for it.
+	if (entry && isPlay(entry.request)) endedPlays.set(requestId, entry);
 	inFlight.delete(requestId);
 });
 
 /**
- * Closes `scenario`'s account: each request it sent while it ran and
- * that is still in flight is charged to it, unless its page aborted
- * it, and marked so that whatever it does later is charged to no one.
- * Returns everything the scenario is failed on, and forgets it.
+ * A play the viewer asked for — a POST `/api/play` with no `prefetch`
+ * — that a scenario answers with success must be answered with a
+ * session, as `CreateSessionResponse` declares it (./session-contract):
+ * the page reads `session_id`, `media_url` and `media_kind` off it and
+ * opens the player there, and reads whatever else it carries. An
+ * empty 204, an older shape, or a kind api.ts does not list passes for
+ * one only because nothing reads the player it opened, and a handler
+ * that answers every play that way also answers a stray one, which the
+ * guard would otherwise catch. A failure status is a scenario's own
+ * description of a backend that failed, and passes.
+ *
+ * The answer's body is read after MSW has answered, so the check
+ * outlives the event: each is kept with its sender, whose teardown
+ * waits for it before it reports, so an answer whose body is still
+ * arriving as its scenario ends fails that scenario.
+ *
+ * What this does not see: a handler that answers every play with a
+ * real session still answers a stray one, and a play landed through a
+ * fake EventSource never crosses this boundary.
  */
-function closeAccount(scenario: Scenario): string[] {
+server.events.on('response:mocked', ({ request, requestId, response }) => {
+	if (!isPlay(request)) return;
+	// Read whichever holds it, so the order of MSW's events does not
+	// decide what the guard knows.
+	const entry = inFlight.get(requestId) ?? endedPlays.get(requestId);
+	endedPlays.delete(requestId);
+	// Accounted for already — sent late, or charged at its sender's
+	// teardown — is charged nothing more, however it is answered.
+	if (!response.ok || entry?.late || entry?.settled) return;
+	const sender = entry ? entry.sender : owner.getStore();
+	const mark = { abandoned: false };
+	const check = (async () => {
+		try {
+			await checkAnswer();
+		} catch {
+			// A read that throws, of either body, is charged as no session.
+			if (!mark.abandoned) charge(sender, `${label(request)} — a play answered with no session`);
+		}
+	})();
+	async function checkAnswer() {
+		const asked = (await request
+			.clone()
+			.json()
+			.catch(() => null)) as { prefetch?: boolean } | null;
+		if (asked?.prefetch === true) return;
+		const answer: unknown = await response
+			.clone()
+			.json()
+			.catch(() => null);
+		// One its teardown stopped waiting for was charged for that.
+		if (mark.abandoned) return;
+		if (!isSession(answer)) charge(sender, `${label(request)} — a play answered with no session`);
+	}
+	const checks = answerChecks.get(sender) ?? new Set<Promise<void>>();
+	answerChecks.set(sender, checks);
+	checks.add(check);
+	marks.set(check, mark);
+	void check.finally(() => checks.delete(check));
+});
+
+/** Each check's mark: set once its teardown stopped waiting for it,
+ *  after which nothing it finds is charged. */
+const marks = new WeakMap<Promise<void>, { abandoned: boolean }>();
+
+/** The answer checks still reading a body, by the scenario whose play
+ *  they check. */
+const answerChecks = new Map<Scenario | undefined, Set<Promise<void>>>();
+/** How long a teardown waits for its answer checks. One still reading
+ *  then is charged for that, whether or not its body finishes later. */
+const ANSWER_CHECK_GRACE_MS = 1000;
+
+/** Waits for `sender`'s answer checks, and charges the sender once if
+ *  any outlives the grace. Checks never reject. */
+async function settleAnswerChecks(sender: Scenario | undefined) {
+	const checks = answerChecks.get(sender);
+	if (!checks) return;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timedOut = new Promise<'timeout'>((r) => {
+		timer = setTimeout(() => r('timeout'), ANSWER_CHECK_GRACE_MS);
+	});
+	// Until none is left. A check can still join while this waits only
+	// for a play whose `request:end` came before the sweep and whose
+	// `response:mocked`, a microtask behind it, has not yet: the sweep
+	// settles every play still in flight.
+	let outcome: 'done' | 'timeout' = 'done';
+	while (checks.size > 0 && outcome === 'done') {
+		outcome = await Promise.race([Promise.all(checks).then(() => 'done' as const), timedOut]);
+	}
+	clearTimeout(timer);
+	if (outcome === 'timeout') {
+		for (const check of checks) {
+			const mark = marks.get(check);
+			if (mark) mark.abandoned = true;
+		}
+		charge(sender, `a play's answer still being read ${ANSWER_CHECK_GRACE_MS} ms after teardown`);
+	}
+	answerChecks.delete(sender);
+}
+
+/**
+ * Charges `scenario` for each request it sent while it ran that is
+ * still in flight, unless its page aborted it, and marks each so that
+ * whatever it does later is charged to no one. Runs before the
+ * teardown waits on anything, so a request answered during the wait
+ * was still unanswered when the page went, and is charged for that.
+ */
+function sweepInFlight(scenario: Scenario) {
 	for (const entry of inFlight.values()) {
 		if (entry.sender !== scenario || entry.late || entry.settled) continue;
 		entry.settled = true;
@@ -246,6 +361,11 @@ function closeAccount(scenario: Scenario): string[] {
 			charge(scenario, `${label(entry.request)} — still unanswered after its page unmounted`);
 		}
 	}
+}
+
+/** Reports what `scenario` is failed on, and forgets it; what of its
+ *  own comes later is named at the file's end. */
+function closeAccount(scenario: Scenario): string[] {
 	scenario.reported = true;
 	const lines = failures.get(scenario) ?? [];
 	failures.delete(scenario);
@@ -357,6 +477,12 @@ afterEach(async () => {
 	if (scenario) scenario.ended = true;
 	// One turn for what the unmount set off.
 	await new Promise((r) => setTimeout(r, 0));
+	// What is still in flight now was unanswered when the page went,
+	// whatever answers it while the teardown waits below.
+	if (scenario) sweepInFlight(scenario);
+	// A play answered in time is checked in time, however long its body
+	// takes to read.
+	await settleAnswerChecks(scenario);
 	server.resetHandlers();
 	// Everything is collected before anything throws, so nothing of
 	// this scenario's is left to fail another.
@@ -365,6 +491,13 @@ afterEach(async () => {
 
 afterAll(async () => {
 	await new Promise((r) => setTimeout(r, LATE_REQUEST_GRACE_MS));
+	// What is still being read of answers no teardown waited for — a
+	// play sent outside any scenario, or answered after its sender's.
+	// Until the map is empty, should a check join under a new key.
+	while (answerChecks.size > 0) {
+		const [sender] = answerChecks.keys();
+		await settleAnswerChecks(sender);
+	}
 	try {
 		failOn(strays.splice(0), 'requests no running scenario sent');
 	} finally {
