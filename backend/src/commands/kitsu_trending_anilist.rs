@@ -64,13 +64,15 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     if let Err(ref e) = anilist {
         tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
     }
-    // Kitsu's list stands in for this load only: it is not AniList's
-    // answer, so it is not kept under AniList's feed.
-    let answered = anilist.is_ok();
-    let bridged = match anilist {
-        Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu(state, v).await,
-        _ => Vec::new(),
+    // The row is kept only when it is AniList's answer, bridged in
+    // full: Kitsu's list stands in for this load only, and a row
+    // missing an entry Kitsu failed to bridge is asked for again.
+    let (bridged, complete) = match anilist {
+        Ok(v) if !v.is_empty() => bridge_answered(state, v).await,
+        Ok(_) => (Vec::new(), true),
+        Err(_) => (Vec::new(), false),
     };
+    let keep = complete && !bridged.is_empty();
     // Only AniList's own answer says anything about a banner; Kitsu's
     // fallback list below never carries one.
     crate::commands::anilist_banner_memo::remember(&state.cache_pool, &bridged);
@@ -87,7 +89,7 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // the list parser, so sanitize music here too.
     let hits = drop_music(hits);
     if let Ok(body) = serde_json::to_string(&hits) {
-        if answered {
+        if keep {
             let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
         }
         warm_signed_image_urls(state, &body);
@@ -113,10 +115,22 @@ const ANILIST_TRENDING_LIMIT: u8 = 25;
 /// resulting Kitsu /mappings calls fan out at once. 25 lookups
 /// against a single endpoint is fine and the cache layer absorbs
 /// the cost on subsequent visits.
+#[cfg(test)]
 pub(in crate::commands) async fn bridge_anilist_to_kitsu(
     state: &AppState,
     anilist: Vec<crate::meta::anilist::AniListAnimeRef>,
 ) -> Vec<KitsuAnimeRef> {
+    bridge_answered(state, anilist).await.0
+}
+
+/// [`bridge_anilist_to_kitsu`], and whether Kitsu answered every
+/// lookup an entry it left out needed: `false` when an entry was
+/// dropped because a lookup failed rather than because Kitsu maps it
+/// on neither site.
+async fn bridge_answered(
+    state: &AppState,
+    anilist: Vec<crate::meta::anilist::AniListAnimeRef>,
+) -> (Vec<KitsuAnimeRef>, bool) {
     use futures_util::stream::{FuturesOrdered, StreamExt};
 
     let mut futures = FuturesOrdered::new();
@@ -131,12 +145,19 @@ pub(in crate::commands) async fn bridge_anilist_to_kitsu(
                 .clone()
                 .filter(|url| !crate::meta::images::is_dead(&pool, url));
             let by_mal = match entry.id_mal {
-                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
-                None => None,
+                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await,
+                None => Ok(None),
             };
             let mut kref = match by_mal {
-                Some(k) => k,
-                None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
+                Ok(Some(k)) => k,
+                // No MAL mapping, or Kitsu not saying: the AniList
+                // mapping decides, and the entry is a dead end only
+                // when both lookups answered.
+                by_mal => match kitsu.lookup_by_anilist_id(entry.id).await {
+                    Ok(Some(k)) => k,
+                    Ok(None) => return Err(by_mal.is_ok()),
+                    Err(_) => return Err(false),
+                },
             };
             // AniList's banner rides beside Kitsu's cover, free: this
             // request already carried it.
@@ -157,14 +178,18 @@ pub(in crate::commands) async fn bridge_anilist_to_kitsu(
                     });
                 }
             }
-            Some(kref)
+            Ok(kref)
         });
     }
+    // Each entry is its ref, or `Err(answered)`: left out, and whether
+    // Kitsu answered both lookups that left it out.
     let mut out = Vec::new();
-    while let Some(maybe_ref) = futures.next().await {
-        if let Some(r) = maybe_ref {
-            out.push(r);
+    let mut complete = true;
+    while let Some(bridged) = futures.next().await {
+        match bridged {
+            Ok(r) => out.push(r),
+            Err(answered) => complete &= answered,
         }
     }
-    out
+    (out, complete)
 }
