@@ -183,7 +183,7 @@ describe('buildListEdit', () => {
 		// A pending partial-save retry forces statusChanged=true, so re-choosing
 		// the original value (e.g. Planning after Planning→Watching partially
 		// landed) is a deliberate write that reverts the tracker that moved —
-		// not a no-op. (Codex P2 #3442415909)
+		// not a no-op.
 		expect(
 			buildListEdit({
 				current: 'watching',

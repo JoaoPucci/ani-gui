@@ -842,7 +842,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     //     v7 negative written for an unreleased show carries the old
     //     flat 7-day window and would keep the title blocked well
     //     past its premiere; bumping re-probes those rows so the new
-    //     TTL applies to existing installs too. Codex P2 #3566444127.
+    //     TTL applies to existing installs too.
     // v7: resolver now also queries Kitsu's abbreviatedTitles as
     //     fallback titles. Shows whose canonical/localized titles only
     //     matched a wrong allmanga sibling (Yu-Gi-Oh! 5D's: every
@@ -851,15 +851,14 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     //     check_availability short-circuits on cached false rows before
     //     the picker runs, so those rows would keep pruning the show for
     //     the full negative TTL; bumping forces a re-probe with the new
-    //     resolver input so list/detail filters self-heal. Codex P2
-    //     #3487673727.
+    //     resolver input so list/detail filters self-heal.
     // v6: picker gained a year-closeness tie-break for same-episode-count
     //     sibling cours (Stone Ocean Part 1 & Part 2, both 12 eps). A v5
     //     row probed under the old order-dependent pick could carry the
     //     wrong cour's episode_count / extra_episodes; bumping evicts
     //     them so list/detail availability re-derives from the new pick.
     // v5: picker now reads allmanga's `type`/`status`/`episodeCount`
-    //     (b629127, Codex P2 #3242661503) and hard-rejects same-year
+    //     (b629127) and hard-rejects same-year
     //     OVA/Movie/Special and planned-count divergence. v4 rows
     //     could be true-positive "available" for a 1-ep OVA that the
     //     new picker correctly rejects — bumping forces a re-probe
@@ -869,8 +868,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     //     distance (see pick_by_ep_count_v2). v3 rows were decided by
     //     the old ep-count-only picker and could be true-positive
     //     "available" for the wrong allmanga show — bumping evicts
-    //     them so list filters re-derive from the new picker. Closes
-    //     Codex P2 #3228864283.
+    //     them so list filters re-derive from the new picker.
     // v3: SHOW_GQL fix — availableEpisodesDetail is a scalar, not
     //     an object; the v2-rollout query subselected `{ sub dub }`
     //     and got empty lists back, so episode_count fell through
@@ -1074,8 +1072,7 @@ pub async fn check_availability(
         // Held from before that reading until after the write, so it
         // still describes the row when the write lands. Reading it and
         // acting on it are otherwise separated by the airing fetch
-        // below, and a refresh can begin and finish inside that gap
-        // (Codex P2 #3674395584).
+        // below, and a refresh can begin and finish inside that gap.
         let row = cache_key(id, mode);
         let Some(_writing) = hold_if_still_ours(
             &state.availability_refreshes,
@@ -1385,8 +1382,7 @@ fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch
     // The schedule stretch is only valid PRE-premiere: for a current
     // show, next_airing_at points at the FOLLOWING episode, and
     // stretching the negative to it would hide a catalog-lagged show
-    // for almost a week after episode 1 appears (Codex P2
-    // #3565701272). Current/unknown rows cap at the ongoing window.
+    // for almost a week after episode 1 appears. Current/unknown rows cap at the ongoing window.
     let pre_premiere = matches!(status, Some("unreleased" | "tba" | "upcoming"));
     let scheduled = match next_airing_at {
         // Already aired (or the airing row is stale) — re-probe soon.

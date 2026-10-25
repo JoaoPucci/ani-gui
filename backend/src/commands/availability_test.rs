@@ -245,7 +245,7 @@ fn negative_ttl_floors_at_one_hour_when_the_premiere_passed() {
 
 #[test]
 fn negative_ttl_current_show_caps_at_the_ongoing_window() {
-    // Codex P2 #3565701272: for an already-premiered show,
+    // For an already-premiered show,
     // next_airing_at points at the FOLLOWING episode — stretching
     // the negative to it would hide a catalog-lagged show for
     // almost a week after episode 1 appears. Current shows cap at
@@ -1770,7 +1770,7 @@ const ANILIST_UNRELEASED_BODY: &str = r#"{"data":{"Media":{
     "nextAiringEpisode":{"episode":1,"airingAt":1784215800}
 }}}"#;
 
-// Codex P2 #3566017944: the premiere-aware negative TTL only
+// The premiere-aware negative TTL only
 // works when an airing:v2 row exists, but only the detail/play
 // pages fetch the airing endpoint. When the FIRST negative probe
 // for an upcoming title comes from the list-view warmer (or races

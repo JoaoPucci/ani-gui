@@ -13,7 +13,7 @@ import { epAirState, type AiringStatus } from './episode-airing';
  * True when episode `n` sits above the provider's playable count — aired
  * per AniList, but not streamable yet (catalog lag: aired=5 while
  * the provider lists 2). `displayCap` renders such tiles; clicks and
- * prefetches must not fire on them (Codex P2 #3565988141/#3565988143).
+ * prefetches must not fire on them.
  * Floor-compare mirrors `epAirState`: decimal extras come from
  * the provider itself, so a streamable "2.5" recap isn't gated by a
  * playable count of 2. Unknown count never gates.
@@ -49,8 +49,7 @@ export function displayCap(
  * must respect BOTH what Kitsu indexed and what the provider has
  * catalogued: with the padded strip, `knownAvailableEpisodes` is
  * usually null, and clamping only to the aired count let a default
- * "All" download start a range whose tail the provider doesn't carry yet
- * (Codex P2 #3566042284).
+ * "All" download start a range whose tail the provider doesn't carry yet.
  */
 export function minCap(a: number | null, b: number | null): number | null {
 	if (a === null) return b;
@@ -63,7 +62,7 @@ export function minCap(a: number | null, b: number | null): number | null {
  * CTA computes its target as `pickNextEpisode(last, cap)` — without
  * the clamp, a user watched through the aired count gets "Continue"
  * into an unaired episode, the same doomed resolution the tiles
- * disable (Codex P2 #3565649454). Unknown airing data passes the cap
+ * disable. Unknown airing data passes the cap
  * through untouched.
  */
 export function airedCap(cap: number | null, airing: AiringStatus | null): number | null {
@@ -75,7 +74,7 @@ export function airedCap(cap: number | null, airing: AiringStatus | null): numbe
 /**
  * Filter a prefetch target list down to aired episodes. The detail
  * page's background warm must not spend scraper slots resolving
- * greyed-out future episodes (Codex P2 #3565590966); unknown airing
+ * greyed-out future episodes; unknown airing
  * data passes everything through, mirroring `epAirState`.
  */
 export function airedTargets(targets: number[], airing: AiringStatus | null): number[] {
