@@ -21,7 +21,8 @@ export function refusedByName(r: Pick<AvailabilityResponse, 'unsettled'>): boole
 }
 
 /** Whether the answer establishes nothing about the show: its
- *  `available` is no verdict, and the reader keeps what it had. True
+ *  `available` is no verdict, and the reader keeps what it had for
+ *  that show and audio ($lib/availability/row). True
  *  for every unsettled answer but a refusal by name — `true` from a
  *  backend before reasons included. */
 export function establishesNothing(r: Pick<AvailabilityResponse, 'unsettled'>): boolean {

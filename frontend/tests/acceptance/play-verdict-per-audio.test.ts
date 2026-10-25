@@ -5,10 +5,10 @@
 // dub has the default sub question asked first, then the dub one. The
 // sub answer says nothing about dub. While the dub answer is not in —
 // still out, failed, or back without a verdict — the page knows
-// nothing about dub, and the player-error overlay behaves as it does
-// whenever availability is not yet known: no dead end is claimed for
-// the show being delisted or for an episode past a count, so the
-// overlay keeps its Reload and the Reload goes through.
+// nothing about dub, and behaves as it does whenever availability is
+// not yet known: no episode is refused for the show being delisted or
+// for sitting past a count, and the player-error overlay keeps its
+// Reload.
 //
 // The stream is an mp4 session — happy-dom has no MediaSource — and
 // the failure is simulated the way Chromium reports it: a MediaError
@@ -161,6 +161,10 @@ const overlay = () => target.querySelector('.player-error');
 const reloadButton = () =>
 	overlay()?.querySelector<HTMLButtonElement>('button.player-error-reload') ?? null;
 const body = () => overlay()?.querySelector('.player-error-body')?.textContent?.trim() ?? null;
+const tile = (n: number) =>
+	Array.from(target.querySelectorAll<HTMLButtonElement>('button.ep-card')).find((b) =>
+		(b.textContent ?? '').includes(m.play_episode_card_num({ episode: String(n) }))
+	) ?? null;
 
 /** The overlay offers the Reload, and the Reload goes through. */
 async function expectReloadWorks(seen: Seen) {
@@ -178,6 +182,8 @@ describe('play route — a verdict for sub does not gate dub', () => {
 		it(`a show delisted in sub, with the dub answer ${dub}: Reload stays`, async () => {
 			const seen = useHandlers({ available: false, episode_count: null }, dub);
 			await failStreamAfterAudioChange(seen, 1);
+			// The strip does not hold the show delisted in dub either.
+			expect(tile(2)?.disabled).toBe(false);
 			await expectReloadWorks(seen);
 		});
 	}

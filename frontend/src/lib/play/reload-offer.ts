@@ -32,7 +32,9 @@
  * unsupported-format failure and a stream the engine stopped for
  * looping on a fragment (the fresh resolve can land on another
  * stream), and a failure while the page has not yet heard whether
- * the provider lists the show (the switch may well take it). A webview
+ * the provider lists the show in the chosen audio (the switch may well
+ * take it) — an answer about the other audio says nothing about this
+ * one ($lib/availability/row). A webview
  * without HLS keeps it too, though only because nothing known refuses
  * the switch: a fresh resolve has no reason to land on another kind of
  * stream.
