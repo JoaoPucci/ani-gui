@@ -47,6 +47,11 @@ pub struct PickedShow {
     pub hit: BrowseHit,
     /// The show's episodes, as returned by the probe.
     pub episodes: Vec<EpisodeRef>,
+    /// Whether `episodes` is several provider listings stitched into
+    /// one ([`super::play_native_split_chain`]): each part numbered on
+    /// from the one before it, so its rows can be untagged and
+    /// numbered by position like a single listing's.
+    pub stitched: bool,
     /// Every version of the pick, in the provider's order, the one
     /// `hit` names among them — empty unless the pick has copies under
     /// another version tag (see `play_native_versions`).
@@ -62,6 +67,7 @@ impl PickedShow {
         Self {
             hit,
             episodes: crate::commands::play_native_merge::mark_offset_recaps(episodes),
+            stitched: false,
             versions: Vec::new(),
         }
     }

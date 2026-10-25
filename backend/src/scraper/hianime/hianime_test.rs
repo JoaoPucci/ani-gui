@@ -952,6 +952,7 @@ async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
             jname: None,
         },
         episodes,
+        stitched: false,
         versions: Vec::new(),
     };
     let resolved =
