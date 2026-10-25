@@ -450,8 +450,8 @@ proptest! {
         let mut tail = conclusive(count, past);
         for (i, title) in titles.into_iter().enumerate() {
             let m = first + u32::try_from(i).expect("small");
-            if let (Some(row), Some(title)) = (tail.episodes.iter_mut().find(|e| e.number == m), title) {
-                row.title = Some(if title == "story" { format!("story {m}") } else { title });
+            if let Some(row) = tail.episodes.iter_mut().find(|e| e.number == m) {
+                row.title = title.map(|t| if t == "story" { format!("story {m}") } else { t });
             }
         }
         prop_assert!(past_named_as_a_last_episode(&rows, count, &rows[count as usize..]));
