@@ -182,7 +182,9 @@ async fn fit_on(
         )
         .expect("airing row");
     }
-    let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
+    let source = KitsuTail::for_entry(&state, Some("7881"))
+        .expect("an entry")
+        .unbounded();
     // Every listing here runs two rows past its count.
     let at = show.episodes.len() - 2;
     let count = u32::try_from(at).expect("a count");
@@ -194,7 +196,8 @@ async fn fit_on(
     // Kitsu answering takes however long the machine makes it take.
     // A paused clock is the slowest machine there is: whenever the fit
     // waits on an answer, tokio moves time on to the next timer. What a
-    // case reads must not depend on how long that is.
+    // case reads must not depend on how long that is, so the source has
+    // no budget for the clock to run out.
     tokio::time::pause();
     let fitted = fit_appended(show, Some(count), Some(&source)).await;
     tokio::time::resume();
