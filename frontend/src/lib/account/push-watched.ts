@@ -9,6 +9,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
+import { SupersededError } from './save-when-allowed';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -90,10 +91,12 @@ export async function pushWatchedToTrackers(
 			if (!bearer) return;
 			try {
 				await runWrite(provider, kitsuId, () => deps.updateProgress(provider, bearer, body));
-			} catch {
+			} catch (e) {
 				// A single tracker failing must not block the others or
-				// reject the caller; it is reported to the user instead.
-				deps.reportFailure?.(provider);
+				// reject the caller; it is reported to the user instead —
+				// unless a newer write of the show replaced it while it
+				// waited, which is no failure.
+				if (!(e instanceof SupersededError)) deps.reportFailure?.(provider);
 			}
 		})
 	);

@@ -5,7 +5,8 @@
 
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
-import { isRateLimit, tallyFanout, type FanoutResult } from './set-entry-outcome';
+import { failureResult, outcomeFlags, tallyFanout, type FanoutResult } from './set-entry-outcome';
+import { SupersededError } from './save-when-allowed';
 import { buildListEdit } from './list-entry-edit';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
@@ -81,6 +82,9 @@ export interface SetOutcome {
 	 *  call with a 429 (rate limit). Lets the editor show a "rate-limited, try
 	 *  again" toast instead of the generic failure copy. */
 	rateLimited?: boolean;
+	/** Present (and `true`) when a tracker's write was dropped for a newer
+	 *  write of the same show while it waited — neither written nor failed. */
+	superseded?: boolean;
 }
 
 /**
@@ -120,12 +124,12 @@ export async function setEntryAcrossTrackers(
 			} catch (e) {
 				// A 429 is still a failure (nothing was written), but flagged so the
 				// editor can say "rate-limited" rather than a generic error.
-				return isRateLimit(e) ? 'ratelimited' : 'failed';
+				return failureResult(e, e instanceof SupersededError);
 			}
 		})
 	);
 	const t = tallyFanout(results);
-	return { written: t.ok, failed: t.failed, ...(t.rateLimited ? { rateLimited: true } : {}) };
+	return { written: t.ok, failed: t.failed, ...outcomeFlags(results) };
 }
 
 /** The outcome of a multi-tracker removal, split so the caller can tell a
@@ -140,6 +144,8 @@ export interface RemoveOutcome {
 	/** Present (and `true`) when a connected tracker rejected a call with a 429
 	 *  (rate limit) — see {@link SetOutcome.rateLimited}. */
 	rateLimited?: boolean;
+	/** See {@link SetOutcome.superseded}. */
+	superseded?: boolean;
 }
 
 /**
@@ -168,12 +174,12 @@ export async function removeEntryAcrossTrackers(
 					return 'ok';
 				});
 			} catch (e) {
-				return isRateLimit(e) ? 'ratelimited' : 'failed';
+				return failureResult(e, e instanceof SupersededError);
 			}
 		})
 	);
 	const t = tallyFanout(results);
-	return { removed: t.ok, failed: t.failed, ...(t.rateLimited ? { rateLimited: true } : {}) };
+	return { removed: t.ok, failed: t.failed, ...outcomeFlags(results) };
 }
 
 /**

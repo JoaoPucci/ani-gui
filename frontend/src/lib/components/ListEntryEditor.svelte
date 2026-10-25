@@ -130,39 +130,44 @@
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
 	// adding (which opens on the default Plan to Watch) needs an explicit click.
-	// Ignored while a write is in flight: dismissing mid-save would drop the
-	// pre-save seed, so a retry after a partial result couldn't re-send the
-	// status to the tracker that failed.
+	// Allowed while a write is out (it can wait out a tracker's rate limit for
+	// a while): the write carries on with what it captured when it started,
+	// and its toast reports how it ended.
 	function closeEditor() {
-		if (saving || removing) return;
 		open = false;
 	}
 
-	// Blocking, NOT optimistic: the popover stays open showing "Saving…" with
-	// the controls disabled until the write confirms, so the button never shows
-	// a value that isn't really on a tracker and the user can't pile up edits
-	// while a result is pending. On success we apply the confirmed value, toast,
-	// close, and reconcile (multi-tracker truth). On failure we keep the popover
-	// open with an error so the edit can be retried.
+	// Blocking, NOT optimistic: the popover shows "Saving…" with the controls
+	// disabled until the write confirms, so the button never shows a value that
+	// isn't really on a tracker and the user can't pile up edits while a result
+	// is pending. The user may dismiss it meanwhile (a save can wait out a
+	// tracker's rate limit); it cannot be reopened until the save settles. On
+	// success we apply the confirmed value, toast, close, and reconcile
+	// (multi-tracker truth). On failure we toast and leave the popover as it is
+	// so the edit can be retried.
 	async function save() {
 		if (disabled || saving || removing) return;
 		const id = kitsuId;
 		saving = true;
 		const statusChanged = statusWriteIntended(pendingActive, editStatus, seededStatus);
+		// What this save sends, captured now: the popover can be dismissed while
+		// the save waits, and the form is not what it sent by the time it lands.
+		const sentStatus = editStatus;
+		const sentProgress = editProgress;
 		const res = await runEditorSave(
 			{ syncSetEntry },
 			{
 				kitsuId: id,
 				disabled,
-				save: { status: editStatus, statusChanged, progress: editProgress, total }
+				save: { status: sentStatus, statusChanged, progress: sentProgress, total }
 			}
 		);
 		saving = false;
 		const settled = settleSave(res, kitsuId === id);
 		if (settled.toast) toastStore.push(settled.toast);
-		// A failure keeps the popover open to retry; a show changed mid-save
+		// A failure keeps the popover as it is to retry; a show changed mid-save
 		// leaves the new show's state alone.
-		if (!settled.local || res.kind === 'noop' || res.kind === 'failed') return;
+		if (!settled.local || (res.kind !== 'partial' && res.kind !== 'saved')) return;
 		if (res.kind === 'partial') {
 			// Some trackers took it, others didn't. Apply the landed value to the
 			// button immediately so it reflects what at least one tracker now holds
@@ -179,8 +184,8 @@
 				id,
 				'partial',
 				statusChanged,
-				editStatus,
-				editProgress
+				sentStatus,
+				sentProgress
 			);
 			onReconcile();
 			return;
@@ -192,8 +197,8 @@
 			id,
 			'saved',
 			statusChanged,
-			editStatus,
-			editProgress
+			sentStatus,
+			sentProgress
 		);
 		open = false;
 		onReconcile();
@@ -229,8 +234,8 @@
 		}
 		// (2) Same show, transiently disabled: a save that refreshes a near-expiry
 		// token flips accountStore and kicks a loud re-read that briefly disables
-		// us. Don't close mid-write — that would drop the pre-save seed a partial
-		// retry needs. Once the write settles this re-runs and closes if needed.
+		// us. Don't close mid-write on that account — the user is watching the
+		// save. Once the write settles this re-runs and closes if needed.
 		if (disabled && !saving && !removing) open = false;
 	});
 
@@ -335,7 +340,6 @@
 					type="button"
 					class="le-close"
 					aria-label={m.detail_list_close()}
-					disabled={busy}
 					onclick={closeEditor}>✕</button
 				>
 			</header>

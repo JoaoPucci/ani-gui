@@ -29,7 +29,8 @@ export class SupersededError extends Error {
 /**
  * The seconds a refused write is asked to wait, or `null` when `error`
  * is not a rate limit. A 429 whose body carries no usable
- * `retry_after_secs` waits {@link DEFAULT_WAIT_S}. Read by shape — an
+ * `retry_after_secs` waits {@link DEFAULT_WAIT_S}, and none waits longer
+ * than {@link MAX_WAIT_S}. Read by shape — an
  * `AccountApiError` carries `status` and the raw body in `detail` — so
  * a mocked api module cannot break it.
  */
@@ -37,7 +38,8 @@ export function busyWaitSecs(error: unknown): number | null {
 	if (!(error instanceof Error)) return null;
 	const { status, detail } = error as Error & { status?: unknown; detail?: unknown };
 	if (status !== 429) return null;
-	return advertisedSecs(typeof detail === 'string' ? detail : '') ?? DEFAULT_WAIT_S;
+	const secs = advertisedSecs(typeof detail === 'string' ? detail : '') ?? DEFAULT_WAIT_S;
+	return Math.min(secs, MAX_WAIT_S);
 }
 
 function advertisedSecs(body: string): number | null {
@@ -64,7 +66,8 @@ export interface SaveWaitDeps {
  * Run `attempt`, and while it is refused as a rate limit, notify, wait
  * the advertised time and run it again — up to the attempt cap. Returns
  * the first answer that lands; rethrows the last refusal, or the first
- * failure that is not a rate limit, as it came.
+ * failure that is not a rate limit, as it came. A write `stillWanted`
+ * disowns after a wait ends in {@link SupersededError}, unsent.
  */
 export async function saveWhenAllowed<T>(
 	attempt: () => Promise<T>,
@@ -79,6 +82,7 @@ export async function saveWhenAllowed<T>(
 			if (secs === null || tried >= max) throw e;
 			deps.notify(secs);
 			await deps.wait(secs * 1000);
+			if (deps.stillWanted && !deps.stillWanted()) throw new SupersededError();
 		}
 	}
 }

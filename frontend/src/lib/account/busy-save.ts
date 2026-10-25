@@ -4,7 +4,7 @@
 // that one stays free of the toast store and the message bundle.
 
 import type { Provider } from './types';
-import { saveWhenAllowed, sleep } from './save-when-allowed';
+import { saveWhenAllowed, sleep, SupersededError } from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { m } from '$lib/paraglide/messages';
 
@@ -16,26 +16,49 @@ export function providerName(provider: Provider): string {
 }
 
 /** The toast shown while `provider` waits `seconds` to take a write: up
- *  for as long as the wait, and no shorter than the stack's default. */
-export function noticeBusy(provider: Provider, seconds: number): void {
-	toastStore.push({
+ *  for as long as the wait, and no shorter than the stack's default.
+ *  Returns its id. */
+export function noticeBusy(provider: Provider, seconds: number): string {
+	return toastStore.push({
 		kind: 'info',
 		message: m.account_busy_saving({ provider: providerName(provider), seconds }),
 		duration: Math.max(4000, seconds * 1000)
 	});
 }
 
+/** The latest write issued per tracker and show. A write held back by a
+ *  rate limit is sent again only while it is still the latest: a newer
+ *  write for the same show — issued or landed during the wait — has
+ *  said what the tracker should hold, and the held one would undo it. */
+const generations = new Map<string, number>();
+
 /** Run a user's write of `kitsuId` to `provider`, waiting out its rate
- *  limit with a notice — see `saveWhenAllowed`. */
+ *  limit with a notice — see `saveWhenAllowed`. Each wait replaces the
+ *  write's earlier notice; a write a newer one superseded ends in
+ *  `SupersededError`, unsent, and its notice is taken down. */
 export function saveWhenTrackerAllows<T>(
 	provider: Provider,
 	kitsuId: string,
 	attempt: () => Promise<T>
 ): Promise<T> {
-	void kitsuId;
+	const key = `${provider}:${kitsuId}`;
+	const generation = (generations.get(key) ?? 0) + 1;
+	generations.set(key, generation);
+	let notice: string | null = null;
+	const takeDown = () => {
+		if (notice !== null) toastStore.dismiss(notice);
+		notice = null;
+	};
 	return saveWhenAllowed(attempt, {
-		notify: (seconds) => noticeBusy(provider, seconds),
-		wait: sleep
+		notify: (seconds) => {
+			takeDown();
+			notice = noticeBusy(provider, seconds);
+		},
+		wait: sleep,
+		stillWanted: () => generations.get(key) === generation
+	}).catch((e: unknown) => {
+		if (e instanceof SupersededError) takeDown();
+		throw e;
 	});
 }
 

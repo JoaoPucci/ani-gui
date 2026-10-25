@@ -23,12 +23,17 @@ export type SaveResult =
 	// the furthest-along value across providers, so the button keeps `live`;
 	// the caller warns that not every tracker synced.
 	| { kind: 'partial'; live: EntryView; rateLimited?: boolean }
-	| { kind: 'failed'; rateLimited?: boolean };
+	| { kind: 'failed'; rateLimited?: boolean }
+	// A newer write of the show replaced this one while it waited: nothing
+	// to report, and nothing for the editor to take.
+	| { kind: 'superseded' };
 
 /** Outcome of a Remove. `removed` clears the entry; see {@link SaveResult}.
  *  `failed` carries `rateLimited` so the editor can show a retry-specific
  *  toast when a tracker 429'd. */
-export type RemoveResult = { kind: 'noop' | 'removed' } | { kind: 'failed'; rateLimited?: boolean };
+export type RemoveResult =
+	| { kind: 'noop' | 'removed' | 'superseded' }
+	| { kind: 'failed'; rateLimited?: boolean };
 
 /**
  * Run the editor's Save against every connected tracker (via the injected
@@ -67,6 +72,7 @@ export async function runEditorSave(
 				? { kind: 'partial', live, rateLimited: true }
 				: { kind: 'partial', live };
 		}
+		if (failed === 0 && outcome.superseded) return { kind: 'superseded' };
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
 		return { kind: 'failed' };
@@ -91,6 +97,9 @@ export async function runEditorRemove(
 		// `failed === 0` means no present tracker was left behind — whether we
 		// deleted the row (`removed > 0`) or it was already absent everywhere
 		// (`removed === 0`). Both satisfy "not on any list", so clear the entry.
+		if (outcome.failed === 0 && outcome.removed === 0 && outcome.superseded) {
+			return { kind: 'superseded' };
+		}
 		if (outcome.failed === 0) return { kind: 'removed' };
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
@@ -115,34 +124,39 @@ function failedToast(rateLimited: boolean | undefined): Settled['toast'] {
 	};
 }
 
-/** How a Save's result settles. `sameShow` is false when the editor has
- *  moved to another show while the write was out. */
+/** How a Save's result settles. The result is always reported — a save
+ *  that waited out a rate limit can end after the user moved on — but
+ *  the editor takes it only when it is still on the show (`sameShow`).
+ *  A superseded save says and takes nothing. */
 export function settleSave(res: SaveResult, sameShow: boolean): Settled {
-	if (!sameShow || res.kind === 'noop') return NOTHING;
+	if (res.kind === 'noop' || res.kind === 'superseded') return NOTHING;
 	if (res.kind === 'failed') return { toast: failedToast(res.rateLimited), local: false };
 	if (res.kind === 'partial') {
-		return { toast: { kind: 'error', message: m.detail_list_save_partial() }, local: true };
+		return { toast: { kind: 'error', message: m.detail_list_save_partial() }, local: sameShow };
 	}
-	return { toast: { kind: 'success', message: m.detail_list_saved() }, local: true };
+	return { toast: { kind: 'success', message: m.detail_list_saved() }, local: sameShow };
 }
 
 /** How a Remove's result settles — see {@link settleSave}. */
 export function settleRemove(res: RemoveResult, sameShow: boolean): Settled {
-	if (!sameShow || res.kind === 'noop') return NOTHING;
+	if (res.kind === 'noop' || res.kind === 'superseded') return NOTHING;
 	if (res.kind === 'failed') return { toast: failedToast(res.rateLimited), local: false };
-	return { toast: { kind: 'success', message: m.detail_list_removed() }, local: true };
+	return { toast: { kind: 'success', message: m.detail_list_removed() }, local: sameShow };
 }
 
 /** What a click on the editor's trigger does. A disabled editor does
  *  nothing — its live entry is still loading or its read failed, so the
  *  form would seed Planning/0 and a Save could overwrite a real entry.
- *  An open one closes, unless a write is out; a closed one opens. */
+ *  An open one closes, even while its write waits out a rate limit: the
+ *  write carries on and its toast reports how it ended. A closed one
+ *  opens, unless a write is still out — it would seed a form the
+ *  write's result is about to move. */
 export function editorToggle(state: {
 	open: boolean;
 	busy: boolean;
 	disabled: boolean;
 }): 'open' | 'close' | 'ignore' {
 	if (state.disabled) return 'ignore';
-	if (state.open) return state.busy ? 'ignore' : 'close';
-	return 'open';
+	if (state.open) return 'close';
+	return state.busy ? 'ignore' : 'open';
 }
