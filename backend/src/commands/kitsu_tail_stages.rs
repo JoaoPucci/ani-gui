@@ -61,9 +61,13 @@ impl KitsuTail<'_> {
         if !kitsu_ends_at(&tail, count) {
             return Some((tail, false));
         }
-        let airing = crate::commands::airing::airing_get(self.state, self.kitsu_id)
-            .await
-            .ok()?;
+        let airing = crate::commands::airing::airing_get_with_anilist_base(
+            self.state,
+            self.kitsu_id,
+            self.anilist_base,
+        )
+        .await
+        .ok()?;
         tail.anilist_count = anilist_count(&airing);
         if !anilist_ends_at(&tail, count) {
             return Some((tail, false));
