@@ -10,7 +10,7 @@
 //! Crunchyroll promotional crops AniList carries.
 
 use crate::app::AppState;
-use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
+use crate::cache::ttl::{ANILIST_STREAMING_EPS_NO_IDS_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::meta::anilist_streaming_eps::StreamingListing;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
@@ -35,7 +35,7 @@ fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
 
 /// Writes the outcome of an AniList lookup to the cache. `Ok(listing)`
 /// uses the full [`ANILIST_STREAMING_EPS_TTL`]; `Err(())` uses the
-/// short [`ANILIST_STREAMING_EPS_ERROR_TTL`]: a show Kitsu maps to
+/// short [`ANILIST_STREAMING_EPS_NO_IDS_TTL`]: a show Kitsu maps to
 /// neither tracker. A lookup that got no answer never comes here.
 fn cache_anilist_eps_thumbs(
     pool: &crate::cache::SqlitePool,
@@ -47,7 +47,7 @@ fn cache_anilist_eps_thumbs(
         Ok(l) => (l.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
         Err(()) => (
             StreamingListing::default(),
-            ANILIST_STREAMING_EPS_ERROR_TTL.as_secs(),
+            ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
         ),
     };
     if let Ok(body) = serde_json::to_string(&listing) {

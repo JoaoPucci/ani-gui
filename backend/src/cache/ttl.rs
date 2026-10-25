@@ -33,7 +33,7 @@ pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60
 /// a new mapping can change. A lookup that got no answer (AniList or
 /// Kitsu failing or refusing) is never cached; the AniList gate
 /// (`meta::anilist_gate`) is what keeps its retries under the limit.
-pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60); // 5min
+pub const ANILIST_STREAMING_EPS_NO_IDS_TTL: Duration = Duration::from_secs(5 * 60); // 5min
 
 /// TTL for title-match cache (Kitsu/AniList → provider id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
