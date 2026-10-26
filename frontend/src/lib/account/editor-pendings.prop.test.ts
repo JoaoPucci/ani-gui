@@ -4,8 +4,8 @@ import fc from 'fast-check';
 import {
 	heldPending,
 	listingKey,
+	listingsCompatible,
 	NO_SHOW_PENDINGS,
-	pendingUnder,
 	settlePending,
 	type Listing,
 	type ShowPendings
@@ -15,14 +15,22 @@ import type { PendingEdit } from './list-entry-pending';
 const ids = fc.constantFrom('A', 'B');
 const listing: fc.Arbitrary<Listing | undefined> = fc.option(
 	fc.dictionary(
-		fc.constantFrom('anilist', 'mal'),
-		fc.record({ user: fc.constantFrom('u1', 'u2') }),
-		{
-			maxKeys: 2
-		}
+		fc.constantFrom('anilist', 'mal', 'inhouse'),
+		fc.record({ user: fc.constantFrom<string | null>('u1', 'u2', null) }),
+		{ maxKeys: 3 }
 	),
 	{ nil: undefined }
 );
+
+/** The rule, written out apart from the code: the same listing, or no
+ *  shared tracker under another user and one shared under the same. */
+function compatible(a?: Listing, b?: Listing): boolean {
+	if (a === undefined || b === undefined) return a === b;
+	if (listingKey(a) === listingKey(b)) return true;
+	const shared = Object.keys(a).filter((p) => p in b);
+	const same = (p: string) => a[p].user !== null && a[p].user === b[p].user;
+	return shared.every((p) => a[p].user === b[p].user) && shared.some(same);
+}
 const pending: fc.Arbitrary<PendingEdit | null> = fc.option(
 	fc.record({
 		kitsuId: ids,
@@ -71,31 +79,42 @@ describe('listingKey, by property', () => {
 	});
 });
 
-describe('settlePending, by property', () => {
-	it("sets the settled listing's retry and leaves every other listing's as it was", () => {
+describe('listingsCompatible, by property', () => {
+	it('is the rule: the same listing, or no tracker switched and one still shared', () => {
 		fc.assert(
-			fc.property(
-				run,
-				ids,
-				listing,
-				pending,
-				listing,
-				ids,
-				(steps, id, listed, p, other, otherId) => {
-					const before = replay(steps);
-					const after = settlePending(before, id, listed, () => p);
-					expect(pendingUnder(after, id, listed)).toEqual(p);
-					if (otherId !== id || listingKey(other) !== listingKey(listed)) {
-						expect(pendingUnder(after, otherId, other)).toEqual(
-							pendingUnder(before, otherId, other)
-						);
-					}
-				}
-			)
+			fc.property(listing, listing, (a, b) => {
+				expect(listingsCompatible(a, b)).toBe(compatible(a, b));
+			})
 		);
 	});
 
-	it('hands the settled listing its own retry, and nothing else', () => {
+	it('is symmetric, and takes in every listing as itself', () => {
+		fc.assert(
+			fc.property(listing, listing, (a, b) => {
+				expect(listingsCompatible(a, b)).toBe(listingsCompatible(b, a));
+				expect(listingsCompatible(a, a)).toBe(true);
+			})
+		);
+	});
+});
+
+describe('settlePending, by property', () => {
+	it('replaces every retry the settling listing is compatible with, and leaves every other one', () => {
+		fc.assert(
+			fc.property(run, ids, listing, pending, (steps, id, listed, p) => {
+				const before = replay(steps);
+				const after = settlePending(before, id, listed, () => p);
+				const kept = (before.get(id) ?? []).filter((e) => !compatible(listed, e.listed));
+				const want = p === null ? kept : [...kept, { pending: p, listed }];
+				expect(after.get(id) ?? []).toEqual(want);
+				for (const other of ['A', 'B'].filter((o) => o !== id)) {
+					expect(after.get(other)).toEqual(before.get(other));
+				}
+			})
+		);
+	});
+
+	it('hands the settlement the newest retry it is compatible with', () => {
 		fc.assert(
 			fc.property(run, ids, listing, (steps, id, listed) => {
 				const before = replay(steps);
@@ -104,7 +123,10 @@ describe('settlePending, by property', () => {
 					seen = prev;
 					return prev;
 				});
-				expect(seen).toEqual(pendingUnder(before, id, listed));
+				const newest = [...(before.get(id) ?? [])]
+					.reverse()
+					.find((e) => compatible(listed, e.listed));
+				expect(seen).toEqual(newest?.pending ?? null);
 			})
 		);
 	});
@@ -129,14 +151,15 @@ describe('heldPending, by property', () => {
 				const holds = (l?: Listing) => !l || Object.values(l).some((a) => a.user === holder);
 				// The model: replay the run, then take the last retry left for the
 				// show whose listing holds.
-				const live = new Map<string, { listed?: Listing; pending: PendingEdit }>();
+				const live: { listed?: Listing; pending: PendingEdit }[] = [];
 				for (const [sid, l, p] of steps) {
 					if (sid !== id) continue;
-					const key = listingKey(l);
-					live.delete(key);
-					if (p) live.set(key, { listed: l, pending: p });
+					const kept = live.filter((e) => !compatible(l, e.listed));
+					live.length = 0;
+					live.push(...kept);
+					if (p) live.push({ listed: l, pending: p });
 				}
-				const newest = [...live.values()].reverse().find((e) => holds(e.listed));
+				const newest = [...live].reverse().find((e) => holds(e.listed));
 				expect(heldPending(ps, id, holds)).toEqual(newest?.pending ?? null);
 			})
 		);

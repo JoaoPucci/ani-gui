@@ -50,6 +50,7 @@ import ListEntryEditor from '../../src/lib/components/ListEntryEditor.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { accountStore } from '../../src/lib/account/store.svelte';
+import { syncRemoveEntry } from '../../src/lib/account/set-entry';
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -84,7 +85,20 @@ afterEach(() => {
 	target.remove();
 	accountStore.setDisconnected('anilist');
 	accountStore.setDisconnected('mal');
+	accountStore.setDisconnected('inhouse');
 });
+
+/** Connect `provider` as `user`. */
+function connect(provider: 'anilist' | 'mal' | 'inhouse', user: string) {
+	accountStore.setConnected(provider, {
+		access_token: `${provider}-${user}`,
+		refresh_token: null,
+		expires_at_epoch_s: 4_000_000_000,
+		user_id: user,
+		username: 'tester',
+		avatar_url: null
+	});
+}
 
 async function settle() {
 	for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 5));
@@ -98,6 +112,7 @@ const statusSelect = () => target.querySelector('select') as HTMLSelectElement |
 // steppers, so this is an exact match rather than a substring — in a
 // locale where one label contains the other, `includes` would pick
 // whichever came first in the DOM.
+const removeButton = () => target.querySelector('.le-remove') as HTMLButtonElement | null;
 const saveButton = () =>
 	Array.from(target.querySelectorAll('button')).find(
 		(b) => b.textContent?.trim() === m.detail_list_save()
@@ -264,5 +279,81 @@ describe('list editor after a partial save', () => {
 		await settle();
 		expect(partial.calls).toHaveLength(3);
 		expect(partial.calls[2]).toEqual({ status: 'dropped', statusChanged: true });
+	});
+
+	describe('a retry and a later write under a different set of trackers', () => {
+		/** A partial status save under AniList and MyAnimeList, leaving a
+		 *  retry for Dropped, on show `kitsuId`. */
+		async function partialRetry(kitsuId: string) {
+			app = mount(ListEntryEditor, {
+				target,
+				props: { kitsuId, total: 12, current: { status: 'watching', progress: 3 } }
+			});
+			await settle();
+			trigger().click();
+			await settle();
+			const select = statusSelect()!;
+			select.value = 'dropped';
+			select.dispatchEvent(new Event('change', { bubbles: true }));
+			await settle();
+			saveButton()!.click();
+			await settle();
+			trigger().click();
+			await settle();
+		}
+
+		/** A plain Save: is it still the retry's status write? */
+		async function plainSaveIsAStatusWrite(): Promise<boolean> {
+			partial.answers.push({ written: 3, failed: 0 });
+			trigger().click();
+			await settle();
+			saveButton()!.click();
+			await settle();
+			return partial.calls[partial.calls.length - 1].statusChanged;
+		}
+
+		it('a clean save once a third tracker is connected settles the retry', async () => {
+			await partialRetry('44');
+			connect('inhouse', 'user-k');
+			partial.answers.push({ written: 3, failed: 0 });
+			trigger().click();
+			await settle();
+			saveButton()!.click();
+			await settle();
+			expect(partial.calls).toHaveLength(2);
+			expect(await plainSaveIsAStatusWrite()).toBe(false);
+		});
+
+		it('a clean save once a tracker is disconnected settles the retry', async () => {
+			await partialRetry('45');
+			accountStore.setDisconnected('mal');
+			partial.answers.push({ written: 1, failed: 0 });
+			trigger().click();
+			await settle();
+			saveButton()!.click();
+			await settle();
+			expect(await plainSaveIsAStatusWrite()).toBe(false);
+		});
+
+		it('a removal once a tracker is disconnected settles the retry', async () => {
+			await partialRetry('46');
+			accountStore.setDisconnected('mal');
+			vi.mocked(syncRemoveEntry).mockResolvedValueOnce({ removed: 1, failed: 0 });
+			trigger().click();
+			await settle();
+			removeButton()!.click();
+			await settle();
+			expect(await plainSaveIsAStatusWrite()).toBe(false);
+		});
+
+		it('a removal under the same accounts clears its own retry', async () => {
+			await partialRetry('47');
+			vi.mocked(syncRemoveEntry).mockResolvedValueOnce({ removed: 2, failed: 0 });
+			trigger().click();
+			await settle();
+			removeButton()!.click();
+			await settle();
+			expect(await plainSaveIsAStatusWrite()).toBe(false);
+		});
 	});
 });
