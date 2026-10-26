@@ -508,10 +508,31 @@ proptest! {
         }
     }
 
-    /// Whatever the evidence, the air dates the gatherer is told it
-    /// needs are all the map reads of them.
+    /// The episodes needed are exactly the ones the documented chain
+    /// rule reads Kitsu's episode list for: where the counts build an
+    /// exact, unclaimed chain from an entry with episodes and every
+    /// link's four dates are real, each bound the dates alone leave
+    /// outside Kitsu's run, as its segment's first or last Kitsu episode
+    /// ([`model::dates_needed_model`]); none otherwise.
     #[test]
-    fn any_evidence_maps_the_same_from_the_dates_needed_alone(ev in any_evidence()) {
+    fn the_dates_needed_are_the_unplaced_bounds_of_a_dated_exact_chain(
+        ev in chain_prone_evidence()
+    ) {
+        let want = match (ev.kitsu.episodes, ev.entry.episodes) {
+            (Some(count), Some(total)) if total > 0 => model::dates_needed_model(&ev, count, total),
+            _ => std::collections::BTreeSet::new(),
+        };
+        prop_assert_eq!(chain_dates_needed(&ev), want);
+    }
+
+    /// Whatever the evidence, the air dates the gatherer is told it
+    /// needs are all the map reads of them — over free evidence, and
+    /// over evidence prone to exact chains whose dates need placing,
+    /// where the dates needed are not empty.
+    #[test]
+    fn any_evidence_maps_the_same_from_the_dates_needed_alone(
+        ev in prop_oneof![any_evidence(), chain_prone_evidence()]
+    ) {
         let needed = chain_dates_needed(&ev);
         let mut restricted = ev.clone();
         restricted.kitsu_airdates.retain(|n, _| needed.contains(n));
@@ -915,7 +936,9 @@ proptest! {
     }
 
     /// The split-parts rule yields at most its own placement and the
-    /// extras rival to it, the placement first. A contradicted chain
+    /// extras rival to it, the placement first; the rival is the extras
+    /// rule at the show's count where the show is the first part, and
+    /// the first part's extras otherwise. A contradicted chain
     /// explains nothing of its own: it stands only as a rival to a
     /// shared set, and then alone.
     #[test]
@@ -939,6 +962,16 @@ proptest! {
                 }
                 if *contradicted {
                     prop_assert!(found.len() <= 1);
+                } else {
+                    // The rival is the extras rule read at the show's own
+                    // count where the show is the first part, and from the
+                    // first part otherwise.
+                    let rival = if ev.parts.first().is_some_and(|p| p.id == ev.kitsu.id) {
+                        extras(&ev, kitsu_count, total)
+                    } else {
+                        first_part_extras(&ev, total)
+                    };
+                    prop_assert_eq!(found.get(1).map(|(_, s)| s.clone()), rival);
                 }
             }
         }

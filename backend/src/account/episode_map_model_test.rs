@@ -7,7 +7,7 @@
 //! property that holds the code to one of these is not the code
 //! restated.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use proptest::prelude::*;
 
@@ -121,6 +121,17 @@ pub(crate) fn next_day((year, month, day): Ymd) -> Ymd {
     }
 }
 
+/// The real date one day before `date`.
+pub(crate) fn prev_day((year, month, day): Ymd) -> Ymd {
+    if day > 1 {
+        (year, month, day - 1)
+    } else if month > 1 {
+        (year, month - 1, month_length(year, month - 1))
+    } else {
+        (year - 1, 12, 31)
+    }
+}
+
 /// A real full date with its year in `years`, any day of its month.
 pub(crate) fn real_date_in(years: std::ops::RangeInclusive<i32>) -> impl Strategy<Value = Ymd> {
     (years, 1u32..=12).prop_flat_map(|(y, m)| (Just(y), Just(m), 1..=month_length(y, m)))
@@ -157,29 +168,47 @@ pub(crate) struct Run<'a> {
     pub(crate) airdates: &'a BTreeMap<u32, String>,
 }
 
-/// Whether a run lies inside Kitsu's, as `docs/title-resolution.md`
-/// states the chain rule: all four dates real dates or months; the
-/// start neither before Kitsu's start by month (or at most two days
-/// before it) nor after Kitsu's end by month, the end neither after
-/// Kitsu's end by month (or at most two days after it) nor before
-/// Kitsu's start by month; and a bound that is not inside placed by
-/// Kitsu's own episode — the segment's first for the start, its last
-/// for the end — dated in the bound's month.
-pub(crate) fn run_inside(run: &Run<'_>) -> bool {
-    let (Some(ks), Some(ke), Some(s), Some(e)) = (
-        month_of(run.kitsu_start),
-        month_of(run.kitsu_end),
-        month_of(run.start),
-        month_of(run.end),
-    ) else {
-        return false;
-    };
+/// The bounds of a run the dates alone leave outside Kitsu's, as the
+/// chain rule in `docs/title-resolution.md` states it before Kitsu's
+/// episode list is read: each as the Kitsu episode whose own air date
+/// could place it — `from` for the start, `to` for the end, the start
+/// first — and the month that episode would have to be dated in, the
+/// bound's own. `None` unless all four dates are real dates or months.
+///
+/// A start is inside when it is neither before Kitsu's start by month
+/// (or at most two days before it) nor after Kitsu's end by month; an
+/// end when it is neither after Kitsu's end by month (or at most two
+/// days after it) nor before Kitsu's start by month.
+pub(crate) fn unplaced(run: &Run<'_>) -> Option<Vec<(u32, (i32, u32))>> {
+    let (ks, ke, s, e) = (
+        month_of(run.kitsu_start)?,
+        month_of(run.kitsu_end)?,
+        month_of(run.start)?,
+        month_of(run.end)?,
+    );
     let start_inside = (s >= ks || within_two_days(run.start, run.kitsu_start)) && s <= ke;
     let end_inside = (e <= ke || within_two_days(run.kitsu_end, run.end)) && e >= ks;
-    let placed = |n: u32, month: (i32, u32)| {
-        month_of(run.airdates.get(&n).map(String::as_str)) == Some(month)
-    };
-    (start_inside || placed(run.from, s)) && (end_inside || placed(run.to, e))
+    let mut out = Vec::new();
+    if !start_inside {
+        out.push((run.from, s));
+    }
+    if !end_inside {
+        out.push((run.to, e));
+    }
+    Some(out)
+}
+
+/// Whether a run lies inside Kitsu's, as `docs/title-resolution.md`
+/// states the chain rule: all four dates real dates or months, and
+/// every bound [`unplaced`] leaves outside placed by Kitsu's own
+/// episode — the segment's first for the start, its last for the end —
+/// dated in the bound's month.
+pub(crate) fn run_inside(run: &Run<'_>) -> bool {
+    unplaced(run).is_some_and(|bounds| {
+        bounds
+            .iter()
+            .all(|(n, month)| month_of(run.airdates.get(n).map(String::as_str)) == Some(*month))
+    })
 }
 
 /// One link of an exact chain: the entry, its count, and the Kitsu
@@ -250,6 +279,38 @@ pub(crate) fn segment_of(link: &Link<'_>) -> Segment {
     }
 }
 
+/// The run of `link`, filed in `ev`, as [`unplaced`] reads it.
+pub(crate) fn run_of<'a>(ev: &'a Evidence, link: &Link<'a>) -> Run<'a> {
+    Run {
+        kitsu_start: ev.kitsu.start.as_deref(),
+        kitsu_end: ev.kitsu.end.as_deref(),
+        start: link.show.start.as_deref(),
+        end: link.show.end.as_deref(),
+        from: link.from,
+        to: link.to,
+        airdates: &ev.kitsu_airdates,
+    }
+}
+
+/// The Kitsu episodes whose air dates the chain rule reads, as
+/// `docs/title-resolution.md` states it: where the counts build an
+/// exact, unclaimed chain ([`exact_chain_model`]) and every link's four
+/// dates are real, every bound [`unplaced`] leaves outside, as the
+/// first or last Kitsu episode of its segment; none otherwise.
+pub(crate) fn dates_needed_model(ev: &Evidence, count: u32, total: u32) -> BTreeSet<u32> {
+    let Some(links) = exact_chain_model(ev, count, total) else {
+        return BTreeSet::new();
+    };
+    let mut needed = BTreeSet::new();
+    for link in &links {
+        let Some(bounds) = unplaced(&run_of(ev, link)) else {
+            return BTreeSet::new();
+        };
+        needed.extend(bounds.iter().map(|(n, _)| *n));
+    }
+    needed
+}
+
 #[test]
 fn the_model_counts_leap_years_one_by_one() {
     let mut leaps = 0;
@@ -261,10 +322,12 @@ fn the_model_counts_leap_years_one_by_one() {
 
 proptest! {
     /// The model's day count steps by one from each real date to the
-    /// next, across months, years and leap days.
+    /// next, across months, years and leap days, and the day before the
+    /// next is the date itself.
     #[test]
     fn the_model_counts_one_day_per_day(date in real_date_in(0..=9998)) {
         prop_assert_eq!(ordinal(next_day(date)) - ordinal(date), 1);
+        prop_assert_eq!(prev_day(next_day(date)), date);
         prop_assert!(is_real_date(&text(date)));
         prop_assert!(is_real_date(&text(next_day(date))));
     }

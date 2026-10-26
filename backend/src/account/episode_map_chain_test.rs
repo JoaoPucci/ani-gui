@@ -39,7 +39,6 @@ proptest! {
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::dates::unplaced_bounds;
 use super::{chain, chain_dates_needed, exact_chain};
 use crate::account::episode_map::{Evidence, KitsuShow, Shape, TrackerShow};
 
@@ -294,25 +293,17 @@ proptest! {
         prop_assert_eq!(chain(&ev, count, total), want);
     }
 
-    /// The dates needed are none without an exact chain, and otherwise
-    /// only episodes that bound a segment the dates leave unplaced.
+    /// The dates needed are exactly the documented rule's: where the
+    /// counts build an exact, unclaimed chain and every link's four
+    /// dates are real, each bound the dates alone leave outside Kitsu's
+    /// run, as its segment's first or last Kitsu episode; none otherwise
+    /// — decided by the model calendar and chain, not by the dates rule.
     #[test]
     fn the_dates_needed_are_an_exact_chain_s_unplaced_bounds((ev, count, total) in chain_case()) {
-        let needed = chain_dates_needed(&ev, count, total);
-        let Some((segments, shows)) = exact_chain(&ev, count, total) else {
-            prop_assert!(needed.is_empty());
-            return Ok(());
-        };
-        let bounds: BTreeSet<u32> = segments.iter().flat_map(|s| [s.kitsu_from, s.kitsu_to]).collect();
-        let unplaced: BTreeSet<u32> = shows
-            .iter()
-            .zip(&segments)
-            .filter_map(|(show, s)| unplaced_bounds(&ev, show, s))
-            .flatten()
-            .map(|(n, _)| n)
-            .collect();
-        prop_assert!(needed.is_subset(&bounds), "{needed:?} not in {bounds:?}");
-        prop_assert!(needed.is_subset(&unplaced), "{needed:?} not in {unplaced:?}");
+        prop_assert_eq!(
+            chain_dates_needed(&ev, count, total),
+            model::dates_needed_model(&ev, count, total)
+        );
     }
 
     /// Kitsu's air dates for the episodes the gatherer is told it needs
@@ -327,29 +318,31 @@ proptest! {
     }
 
     /// An exact, unclaimed chain with every date known is admitted once
-    /// each needed episode is dated in its bound's month.
+    /// each needed episode is dated in its bound's month, the months
+    /// taken from the model's unplaced bounds.
     #[test]
     fn an_exact_chain_dated_where_needed_is_admitted(mut ev in dated_exact_chain()) {
         let count = ev.kitsu.episodes.unwrap_or(0);
         let total = ev.entry.episodes.unwrap_or(0);
-        let Some((segments, shows)) = exact_chain(&ev, count, total) else {
+        let Some(links) = model::exact_chain_model(&ev, count, total) else {
             prop_assert!(false, "the chain is exact and unclaimed");
             unreachable!()
         };
         let mut months: BTreeMap<u32, String> = BTreeMap::new();
-        for (show, s) in shows.iter().zip(&segments) {
-            let unplaced = unplaced_bounds(&ev, show, s);
+        for link in &links {
+            let unplaced = model::unplaced(&model::run_of(&ev, link));
             prop_assert!(unplaced.is_some(), "every date is known");
-            for (n, bound) in unplaced.unwrap_or_default() {
-                let month = format!("{}-01", &bound[..7]);
+            for (n, (y, m)) in unplaced.unwrap_or_default() {
+                let month = format!("{y:04}-{m:02}-01");
                 // A one-episode segment whose start and end are both
                 // unplaced, in different months, no single date places.
-                if months.get(&n).is_some_and(|m| *m != month) {
+                if months.get(&n).is_some_and(|d| *d != month) {
                     return Ok(());
                 }
                 months.insert(n, month);
             }
         }
+        let segments: Vec<_> = links.iter().map(model::segment_of).collect();
         prop_assert_eq!(
             super::super::chain_dates_needed(&ev),
             months.keys().copied().collect::<BTreeSet<u32>>()

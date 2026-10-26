@@ -154,6 +154,20 @@ class CaseTable(unittest.TestCase):
         self.assertEqual(targets(predict(ev), 161)[160], [149939, 143, False, [[210, 18, True]]])
 
 
+    def test_only_ascii_digits_read_as_a_date_or_a_number(self):
+        # The map reads ASCII digits alone; other scripts' digits are no
+        # date, no day to count slack from, and no listed number.
+        arabic = "\u0662\u0660\u0662\u0660"  # 2020 in Arabic-Indic digits
+        self.assertEqual(oracle.month("2020-01"), "2020-01")
+        self.assertIsNone(oracle.month(arabic + "-01"))
+        self.assertIsNone(oracle.month(arabic + "-01-01"))
+        self.assertTrue(oracle.slack("2020-01-01", "2020-01-03"))
+        self.assertFalse(oracle.slack(arabic + "-01-01", "2020-01-03"))
+        self.assertFalse(oracle.slack("2020-01-01", arabic + "-01-03"))
+        self.assertEqual(oracle.listed_number("3"), (3, None))
+        self.assertIsNone(oracle.listed_number("\u0663"))
+        self.assertIsNone(oracle.listed_number("3.\u0665"))
+
 class Generation(unittest.TestCase):
     def test_the_set_is_reproducible_and_ids_unique(self):
         a, b = oracle.gen(), oracle.gen()

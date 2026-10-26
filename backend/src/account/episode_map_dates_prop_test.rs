@@ -96,25 +96,30 @@ fn any_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
 }
 
 /// A run with one bound a few days outside Kitsu's, across a month
-/// boundary: a start `n` days before Kitsu's start, or an end `n` days
-/// after Kitsu's end, the other bound well inside, where the two days'
-/// slack decides — with Kitsu's air dates or none.
+/// boundary where `n` reaches past it: a start `n` days (0–5) before
+/// Kitsu's start on one of its month's first three days, or an end `n`
+/// days after Kitsu's end on one of its month's last three, the other
+/// bound well inside — so that the two days' slack decides — with
+/// Kitsu's air dates or none.
 fn slack_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
     (
-        model::edge_date_in(2020..=2020),
+        (2020i32..=2020, 1u32..=12, 0u32..3),
         0usize..=5,
         any::<bool>(),
         prop_oneof![Just(BTreeMap::new()), any_airdates()],
         1u32..=4,
         0u32..=2,
     )
-        .prop_map(|(earlier, n, at_start, air, from, len)| {
-            let later = (0..n).fold(earlier, |d, _| model::next_day(d));
+        .prop_map(|((y, m, k), n, at_start, air, from, len)| {
             let (before, after) = ("2019-06-15".to_string(), "2021-06-15".to_string());
             let (ks, ke, s, e) = if at_start {
-                (text(later), after.clone(), text(earlier), after)
+                let kitsu = (y, m, 1 + k);
+                let start = (0..n).fold(kitsu, |d, _| model::prev_day(d));
+                (text(kitsu), after.clone(), text(start), after)
             } else {
-                (before.clone(), text(earlier), before, text(later))
+                let kitsu = (y, m, model::month_length(y, m) - k);
+                let end = (0..n).fold(kitsu, |d, _| model::next_day(d));
+                (before.clone(), text(kitsu), before, text(end))
             };
             (
                 evidence(Some(ks), Some(ke), air),

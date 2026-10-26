@@ -37,7 +37,7 @@ def month(date):
     (`YYYY-MM-DD`) or month (`YYYY-MM`)."""
     import datetime
 
-    if not date or not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", date):
+    if not date or not re.fullmatch(r"[0-9]{4}-[0-9]{2}(-[0-9]{2})?", date):
         return None
     try:
         datetime.date(int(date[:4]), int(date[5:7]), int(date[8:]) if len(date) == 10 else 1)
@@ -114,7 +114,7 @@ def slack(earlier, later):
     import datetime
 
     try:
-        full = re.compile(r"\d{4}-\d{2}-\d{2}")
+        full = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
         a = datetime.date.fromisoformat(earlier) if earlier and full.fullmatch(earlier) else None
         b = datetime.date.fromisoformat(later) if later and full.fullmatch(later) else None
     except ValueError:
@@ -203,7 +203,7 @@ def split_rule(ev, total):
 
 def listed_number(text):
     """A listed number as (whole, fraction digits or None)."""
-    m = re.fullmatch(r"(\d+)(?:\.(\d+))?", text)
+    m = re.fullmatch(r"([0-9]+)(?:\.([0-9]+))?", text)
     if not m:
         return None
     fraction = (m.group(2) or "").rstrip("0") or None
