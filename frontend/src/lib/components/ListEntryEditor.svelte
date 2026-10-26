@@ -27,19 +27,16 @@
 	import {
 		seedForOpen,
 		pendingAfterSave,
-		statusWriteIntended,
-		type PendingEdit
+		statusWriteIntended
 	} from '$lib/account/list-entry-pending';
 	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
-	import {
-		flightFor,
-		NO_FLIGHTS,
-		reopenForm,
-		withFlight,
-		withoutFlight,
-		type Flights
-	} from '$lib/account/editor-flight';
+	import { onDestroy } from 'svelte';
+	import { reopenForm, type Flight } from '$lib/account/editor-flight';
+	import { editorFlights } from '$lib/account/editor-flights.svelte';
+	import { adoptedLanding, stillHere, type Watched } from '$lib/account/editor-lifecycle';
+	import { listAccounts } from '$lib/account/held-account';
+	import { accountStore } from '$lib/account/store.svelte';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';
 
@@ -115,11 +112,13 @@
 	// shows (it reuses this component), this lets us close a form that's now
 	// stale against a different kitsuId — see the auto-close effect.
 	let openedFor = $state<string | null>(null);
-	// Writes in flight, per show: the route reuses this editor across shows,
-	// and a save still out for one (it can wait out a tracker's rate limit)
-	// locks that show's editor and no other.
-	let flights = $state.raw<Flights>(NO_FLIGHTS);
-	const flight = $derived(flightFor(flights, kitsuId));
+	// Writes in flight, per show, in a store that outlives this instance: the
+	// route reuses this editor across shows and unmounts it whenever it leaves
+	// one, while a save can wait out a tracker's rate limit for minutes. A save
+	// still out for a show locks that show's editor — this instance or one
+	// mounted later — and no other, until it lands or its trackers' accounts
+	// change.
+	const flight = $derived(editorFlights.locking(kitsuId));
 	const saving = $derived(flight?.kind === 'saving');
 	const removing = $derived(flight?.kind === 'removing');
 	let trigger = $state<HTMLButtonElement | null>(null);
@@ -135,11 +134,41 @@
 	// reopen the live view has moved to the landed value, which would otherwise
 	// make the status look unchanged). Cleared on a clean save/remove. See
 	// list-entry-pending.ts.
-	let pendingEdit = $state<PendingEdit | null>(null);
+	// Kept in the same store as the flights, so it survives a remount too.
+	const pendingEdit = $derived(editorFlights.pendingFor(kitsuId));
 	// True while a partial-save retry is unresolved for the open show: it forces
 	// the next Save to write status to every tracker (so re-picking the original
 	// status reverts the one that moved, and a plain retry re-sends the intent).
-	const pendingActive = $derived(pendingEdit !== null && pendingEdit.kitsuId === kitsuId);
+	const pendingActive = $derived(pendingEdit !== null);
+
+	// This instance, for the writes it starts; and whether it is gone, so a
+	// write that settles after it unmounts updates the store but not it.
+	const self = Symbol('list editor');
+	let destroyed = false;
+	onDestroy(() => {
+		destroyed = true;
+	});
+
+	// A flight another instance started — one since unmounted — that ends on
+	// the show on screen leaves that instance's page to re-read nothing: this
+	// one re-reads its own. Watched on the flight itself, not on whether it
+	// still locks: an account change lifting the lock is no landing.
+	let watched: Watched = { kitsuId: '', flight: null };
+	// The flight the popover was reopened on — showing its sent form, or for a
+	// removal the entry it takes away — until the user edits it; `null` for a
+	// form opened fresh or one the user has edited, which a landing leaves.
+	let openedOn: Flight | null = null;
+	const watchedFlight = $derived(editorFlights.flightOf(kitsuId));
+	$effect(() => {
+		const next: Watched = { kitsuId, flight: watchedFlight };
+		const landing = adoptedLanding(watched, next, self, open ? openedOn : null);
+		watched = next;
+		// Reopened on that flight and not edited since: the re-read entry
+		// replaces what it shows, so close. A form opened fresh, or one the user
+		// has edited, stays.
+		if (landing.close) open = false;
+		if (landing.reconcile) onReconcile();
+	});
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
 	// adding (which opens on the default Plan to Watch) needs an explicit click.
@@ -166,10 +195,13 @@
 		// the save waits, and the form is not what it sent by the time it lands.
 		const sentStatus = editStatus;
 		const sentProgress = editProgress;
-		flights = withFlight(flights, id, {
+		const started: Flight = {
 			kind: 'saving',
-			sent: { status: sentStatus, progress: sentProgress, seededStatus }
-		});
+			sent: { status: sentStatus, progress: sentProgress, seededStatus },
+			owner: self,
+			listed: listAccounts(accountStore.connected)
+		};
+		editorFlights.begin(id, started);
 		const res = await runEditorSave(
 			{ syncSetEntry },
 			{
@@ -178,45 +210,27 @@
 				save: { status: sentStatus, statusChanged, progress: sentProgress, total }
 			}
 		);
-		flights = withoutFlight(flights, id);
-		const settled = settleSave(res, kitsuId === id);
-		if (settled.toast) toastStore.push(settled.toast);
-		// A failure keeps the popover as it is to retry; a show changed mid-save
-		// leaves the new show's state alone.
-		if (!settled.local || (res.kind !== 'partial' && res.kind !== 'saved')) return;
-		if (res.kind === 'partial') {
-			// Some trackers took it, others didn't. Apply the landed value to the
-			// button immediately so it reflects what at least one tracker now holds
-			// even if the reconcile read is delayed or rate-limited. Keep the popover
-			// open so an in-place retry re-sends the status to the trackers that
-			// failed; the pending edit below carries that intent across a
-			// dismiss/reopen too.
-			live = res.live;
-			// Remember the intended status so a dismiss→reopen→retry still re-sends it
-			// (and marks the next save as a deliberate status write via pendingActive),
-			// even though the reopened form seeds from the landed `live`.
-			pendingEdit = pendingAfterSave(
-				pendingEdit,
-				id,
-				'partial',
-				statusChanged,
-				sentStatus,
-				sentProgress
-			);
-			onReconcile();
-			return;
-		}
-		live = res.live;
-		// Every tracker took it — the divergence is gone, so drop any pending retry.
-		pendingEdit = pendingAfterSave(
-			pendingEdit,
-			id,
-			'saved',
-			statusChanged,
-			sentStatus,
-			sentProgress
+		editorFlights.end(id, started);
+		// The pending retry is the show's, in the store: kept whether or not this
+		// instance is still here to show it.
+		const outcome = res.kind === 'superseded' ? 'noop' : res.kind;
+		// Only retries under accounts compatible with this save's: one made
+		// under a switched account is not this save's to replace or clear.
+		editorFlights.settlePending(id, started.listed, (prev) =>
+			pendingAfterSave(prev, id, outcome, statusChanged, sentStatus, sentProgress)
 		);
-		open = false;
+		// The toast always; this instance's own state only while it is alive and
+		// on the show the save was for.
+		const settled = settleSave(res, stillHere({ destroyed, kitsuId }, id));
+		if (settled.toast) toastStore.push(settled.toast);
+		if (!settled.local || (res.kind !== 'partial' && res.kind !== 'saved')) return;
+		// Some trackers took it (partial) or all did: apply the landed value to
+		// the button now, even if the reconcile read is delayed or rate-limited.
+		// A partial keeps the popover open so an in-place retry re-sends the
+		// status to the trackers that failed; the pending retry carries that
+		// intent across a dismiss/reopen too.
+		live = res.live;
+		if (res.kind === 'saved') open = false;
 		onReconcile();
 	}
 
@@ -263,6 +277,7 @@
 			return;
 		}
 		const sent = act === 'reopen' && flight ? reopenForm(flight) : null;
+		openedOn = act === 'reopen' ? flight : null;
 		if (sent) {
 			// The save still out for this show: show what it sent, locked.
 			editStatus = sent.status;
@@ -291,6 +306,7 @@
 	const busy = $derived(saving || removing);
 
 	function pickStatus(s: ListStatus) {
+		openedOn = null; // the user's form now, not the flight's
 		editStatus = s;
 		// Completed snaps to the full count and Planning zeroes — but a plain
 		// status change does NOT clamp the existing count to the settable cap: a
@@ -301,6 +317,7 @@
 	}
 
 	function step(delta: number) {
+		openedOn = null; // the user's form now, not the flight's
 		editProgress = effectiveProgress(
 			editStatus,
 			clampProgress(editProgress + delta, settableCap),
@@ -309,6 +326,7 @@
 	}
 
 	function onProgressInput(e: Event) {
+		openedOn = null; // the user's form now, not the flight's
 		editProgress = effectiveProgress(
 			editStatus,
 			clampProgress(Number.parseInt((e.currentTarget as HTMLInputElement).value, 10), settableCap),
@@ -322,17 +340,23 @@
 	async function remove() {
 		if (disabled || flight) return;
 		const id = kitsuId;
-		flights = withFlight(flights, id, { kind: 'removing' });
+		const started: Flight = {
+			kind: 'removing',
+			owner: self,
+			listed: listAccounts(accountStore.connected)
+		};
+		editorFlights.begin(id, started);
 		const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled });
-		flights = withoutFlight(flights, id);
-		const settled = settleRemove(res, kitsuId === id);
+		editorFlights.end(id, started);
+		// The entry's gone everywhere, so any pending status retry is moot.
+		// (Retries under compatible accounts: a switched account's is not this removal's.)
+		if (res.kind === 'removed') editorFlights.settlePending(id, started.listed, () => null);
+		const settled = settleRemove(res, stillHere({ destroyed, kitsuId }, id));
 		if (settled.toast) toastStore.push(settled.toast);
-		// A failure keeps the popover open to retry; a show changed mid-remove
-		// leaves the new show's state alone.
+		// A failure keeps the popover open to retry; a show changed mid-remove,
+		// or an editor since unmounted, leaves the state on screen alone.
 		if (!settled.local) return;
 		live = null;
-		// The entry's gone everywhere, so any pending status retry is moot.
-		pendingEdit = null;
 		open = false;
 		onReconcile();
 	}

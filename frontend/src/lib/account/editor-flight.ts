@@ -1,15 +1,22 @@
 // The list editor's writes in flight, kept per show. The detail route
 // reuses one editor across shows, so a save still out for one show —
 // waiting out a tracker's rate limit, say — must lock that show's
-// editor and no other. Pure: the component holds the map and swaps it.
+// editor and no other. Pure: the app-lifetime store
+// `editor-flights.svelte.ts` holds the map and swaps it.
 
 import type { ListStatus } from './types';
+import type { ListedAccount } from './held-account';
 
 /** One show's write in flight: which kind, and for a save what it sent,
  *  so a reopened editor can show it. */
 export interface Flight {
 	kind: 'saving' | 'removing';
 	sent?: { status: ListStatus; progress: number; seededStatus?: ListStatus };
+	/** The editor instance that started it. */
+	owner?: symbol;
+	/** The account each tracker was listed under when the write's fan-out
+	 *  listed them. */
+	listed?: Readonly<Record<string, ListedAccount>>;
 }
 
 /** The form a reopened editor shows for the write in flight: what the
@@ -37,9 +44,12 @@ export function withFlight(flights: Flights, kitsuId: string, flight: Flight): F
 	return next;
 }
 
-/** `flights` with `kitsuId`'s write settled. */
-export function withoutFlight(flights: Flights, kitsuId: string): Flights {
+/** `flights` with `kitsuId`'s write settled. Given the `flight` that
+ *  settled, only that one: a newer write recorded for the show since is
+ *  left in place. */
+export function withoutFlight(flights: Flights, kitsuId: string, flight?: Flight): Flights {
 	if (!flights.has(kitsuId)) return flights;
+	if (flight && flights.get(kitsuId) !== flight) return flights;
 	const next = new Map(flights);
 	next.delete(kitsuId);
 	return next;

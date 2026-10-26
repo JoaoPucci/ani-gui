@@ -35,3 +35,23 @@ describe('a held write with nothing left', () => {
 		expect(getEntry).not.toHaveBeenCalled();
 	});
 });
+
+describe('a held removal a newer write overtakes while its read is out', () => {
+	it('reads the row, then removes nothing', async () => {
+		let left: readonly ('status' | 'progress')[] = ['status', 'progress'];
+		const getEntry = vi.fn(async () => {
+			// A newer progress write is issued while the read is out.
+			left = ['status'];
+			return { status: 'watching' as const, progress: 3 };
+		});
+		const removeEntry = vi.fn(async () => undefined);
+		await expect(
+			sendRemoval(
+				{ getEntry, removeEntry },
+				{ provider: 'anilist', bearer: 't', kitsuId: '12', held: { left: () => left } }
+			)
+		).rejects.toBeInstanceOf(SupersededError);
+		expect(getEntry).toHaveBeenCalledTimes(1);
+		expect(removeEntry).not.toHaveBeenCalled();
+	});
+});

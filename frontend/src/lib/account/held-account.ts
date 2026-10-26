@@ -45,3 +45,25 @@ export function followAccount(provider: Provider, listed?: ListedAccount): () =>
 	}
 	return () => accountUser(provider) === account;
 }
+
+/** Where `provider`'s account stands against the user a write `listed`
+ *  it under: still that user (`same`), another user connected in its
+ *  place (`other`), or no account to compare — disconnected, being
+ *  changed, or listed under none (`gone`). */
+export function accountStanding(
+	provider: Provider,
+	listed: ListedAccount
+): 'same' | 'other' | 'gone' {
+	return standingOf(listed.user, accountUser(provider));
+}
+
+/** Where a tracker's user `now` stands against the user a write was
+ *  `listed` under: `gone` when either is unknown, else `same` or
+ *  `other`. */
+export function standingOf(
+	listed: string | null | undefined,
+	now: string | null | undefined
+): 'same' | 'other' | 'gone' {
+	if (listed === null || listed === undefined || now === null || now === undefined) return 'gone';
+	return now === listed ? 'same' : 'other';
+}
