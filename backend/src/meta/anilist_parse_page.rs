@@ -6,11 +6,13 @@ use super::*;
 
 /// Whether a `{ data: { Page: { pageInfo: { hasNextPage } } } }`
 /// response says AniList cut the page: more media matched than it holds.
-/// A page that does not say is whole.
+/// The query asks for the flag, so a page that leaves out `pageInfo` or
+/// `hasNextPage`, or gives either as null, does not say whether it was
+/// cut: no answer, never a whole page.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't the expected
-/// envelope.
+/// envelope, or its page does not state `hasNextPage` as a boolean.
 pub fn page_has_next(body: &[u8]) -> Result<bool> {
     #[derive(Deserialize)]
     struct Wrap {
@@ -23,23 +25,18 @@ pub fn page_has_next(body: &[u8]) -> Result<bool> {
     }
     #[derive(Deserialize)]
     struct Page {
-        #[serde(rename = "pageInfo", default)]
-        info: Option<Info>,
+        #[serde(rename = "pageInfo")]
+        info: Info,
     }
     #[derive(Deserialize)]
     struct Info {
-        #[serde(rename = "hasNextPage", default)]
-        has_next: Option<bool>,
+        #[serde(rename = "hasNextPage")]
+        has_next: bool,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist page info: {e}"),
     })?;
-    Ok(parsed
-        .data
-        .page
-        .info
-        .and_then(|i| i.has_next)
-        .unwrap_or(false))
+    Ok(parsed.data.page.info.has_next)
 }
 
 /// The `(id, idMal)` of every media in a `{ data: { Page: { media:
