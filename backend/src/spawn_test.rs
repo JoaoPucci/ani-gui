@@ -255,8 +255,10 @@ const CASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 /// probe registered whose script is about to be removed — every later
 /// teardown in the binary would run that missing script and send no
 /// kill.
+#[cfg(unix)]
 struct Released(std::path::PathBuf);
 
+#[cfg(unix)]
 impl Drop for Released {
     fn drop(&mut self) {
         let _ = std::fs::write(&self.0, b"");
