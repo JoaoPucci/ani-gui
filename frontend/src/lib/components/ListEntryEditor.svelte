@@ -154,16 +154,18 @@
 	// one re-reads its own. Watched on the flight itself, not on whether it
 	// still locks: an account change lifting the lock is no landing.
 	let watched: Watched = { kitsuId: '', flight: null };
-	// The flight whose sent form the popover was opened on; `null` for a form
-	// opened fresh.
+	// The flight the popover was reopened on — showing its sent form, or for a
+	// removal the entry it takes away — until the user edits it; `null` for a
+	// form opened fresh or one the user has edited, which a landing leaves.
 	let openedOn: Flight | null = null;
 	const watchedFlight = $derived(editorFlights.flightOf(kitsuId));
 	$effect(() => {
 		const next: Watched = { kitsuId, flight: watchedFlight };
 		const landing = adoptedLanding(watched, next, self, open ? openedOn : null);
 		watched = next;
-		// Open on that flight's sent form, which the re-read entry replaces: close.
-		// A form the user opened fresh, or is editing, stays.
+		// Reopened on that flight and not edited since: the re-read entry
+		// replaces what it shows, so close. A form opened fresh, or one the user
+		// has edited, stays.
 		if (landing.close) open = false;
 		if (landing.reconcile) onReconcile();
 	});
@@ -282,7 +284,7 @@
 			return;
 		}
 		const sent = act === 'reopen' && flight ? reopenForm(flight) : null;
-		openedOn = sent ? flight : null;
+		openedOn = act === 'reopen' ? flight : null;
 		if (sent) {
 			// The save still out for this show: show what it sent, locked.
 			editStatus = sent.status;
@@ -311,6 +313,7 @@
 	const busy = $derived(saving || removing);
 
 	function pickStatus(s: ListStatus) {
+		openedOn = null; // the user's form now, not the flight's
 		editStatus = s;
 		// Completed snaps to the full count and Planning zeroes — but a plain
 		// status change does NOT clamp the existing count to the settable cap: a
@@ -321,6 +324,7 @@
 	}
 
 	function step(delta: number) {
+		openedOn = null; // the user's form now, not the flight's
 		editProgress = effectiveProgress(
 			editStatus,
 			clampProgress(editProgress + delta, settableCap),
@@ -329,6 +333,7 @@
 	}
 
 	function onProgressInput(e: Event) {
+		openedOn = null; // the user's form now, not the flight's
 		editProgress = effectiveProgress(
 			editStatus,
 			clampProgress(Number.parseInt((e.currentTarget as HTMLInputElement).value, 10), settableCap),
