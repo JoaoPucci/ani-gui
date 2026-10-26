@@ -77,3 +77,7 @@ pub(super) fn chain(
     }
     Some(segments)
 }
+
+#[cfg(test)]
+#[path = "episode_map_chain_test.rs"]
+mod tests;

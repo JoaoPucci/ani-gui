@@ -115,3 +115,7 @@ pub fn parse_media_ids_recording_mal(body: &[u8], mal_id: u32) -> Result<Vec<u32
     ids.dedup();
     Ok(ids)
 }
+
+#[cfg(test)]
+#[path = "anilist_parse_page_prop_test.rs"]
+mod prop_tests;

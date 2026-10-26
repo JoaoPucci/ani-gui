@@ -152,3 +152,7 @@ pub(super) fn parse_media_evidence_response(body: &[u8]) -> Result<MediaEvidence
         listed,
     })
 }
+
+#[cfg(test)]
+#[path = "anilist_user_evidence_prop_test.rs"]
+mod prop_tests;
