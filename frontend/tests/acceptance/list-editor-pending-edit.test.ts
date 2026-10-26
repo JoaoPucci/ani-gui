@@ -47,6 +47,7 @@ vi.mock('$lib/account/set-entry', () => ({
 import ListEntryEditor from '../../src/lib/components/ListEntryEditor.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
+import { accountStore } from '../../src/lib/account/store.svelte';
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -55,6 +56,21 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	partial.calls = [];
 	server.use();
+	// The two trackers the partial save went to. The fan-out is mocked, but
+	// the editor still reads which accounts the save was made under.
+	for (const [provider, user] of [
+		['anilist', 'user-a'],
+		['mal', 'user-m']
+	] as const) {
+		accountStore.setConnected(provider, {
+			access_token: `${provider}-bearer`,
+			refresh_token: null,
+			expires_at_epoch_s: 4_000_000_000,
+			user_id: user,
+			username: 'tester',
+			avatar_url: null
+		});
+	}
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -63,6 +79,8 @@ afterEach(() => {
 	if (app) unmount(app);
 	app = null;
 	target.remove();
+	accountStore.setDisconnected('anilist');
+	accountStore.setDisconnected('mal');
 });
 
 async function settle() {
