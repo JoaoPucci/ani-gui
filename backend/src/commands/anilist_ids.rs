@@ -7,17 +7,22 @@
 //! rail asks for many MAL ids at once. Every one of these is a public
 //! AniList request against the 30-per-minute budget the rest of the
 //! app shares, so each answer is kept in `meta_cache`, one row per
-//! id in each direction:
+//! id in each direction, and one for every media recording a MAL id:
 //!
 //! - `anilist:media-id-for-mal:v1:<mal_id>` — AniList's `mediaId`
 //! - `anilist:mal-id-for-media:v1:<media_id>` — the `idMal` it records
+//! - `anilist:media-ids-recording-mal:v1:<mal_id>` — every media that
+//!   records the MAL id, which the episode map reads for ownership
 //!
-//! A row's body is the translated id, or empty for "AniList does not
-//! index this" — an id is never empty, so the two cannot be confused.
-//! A positive is kept for [`ANILIST_ID_MAP_TTL`], a negative for
+//! A translation row's body is the translated id, or empty for "AniList
+//! does not index this" — an id is never empty, so the two cannot be
+//! confused; the listing row's is the ids joined by commas, empty for
+//! none. A positive is kept for [`ANILIST_ID_MAP_TTL`], a negative for
 //! [`ANILIST_ID_MAP_MISS_TTL`]; a failed request is kept nowhere. The
 //! batch writes every id it learns, so the detail page's single
-//! translation for a show the rail already bridged costs nothing.
+//! translation for a show the rail already bridged costs nothing; a MAL
+//! id several media record it leaves to the single translation, whose
+//! answer is the one that counts.
 
 use std::collections::HashMap;
 
@@ -98,13 +103,16 @@ pub(crate) async fn mal_id_for_media_id(
     Ok(id)
 }
 
-/// AniList's `mediaId` for each of many MAL ids; ids AniList does not
-/// index are absent from the map. Only the ids with no live row reach
+/// AniList's `mediaId` for each of many MAL ids, as the single
+/// translation ([`media_id_for_mal`]) answers it; ids AniList does not
+/// index are absent from the map. A MAL id several media record is
+/// translated singly, since the batch lists them all and only the
+/// single query says which one the id translates to. Only the ids with no live row reach
 /// AniList, and every id the request answers for — by a media, or by
 /// its absence from a page AniList did return — is remembered.
 ///
 /// # Errors
-/// Same as [`crate::meta::anilist::media_ids_for_mals`]. Nothing is
+/// Same as [`crate::meta::anilist::media_listed_for_mals`]. Nothing is
 /// remembered from a failed request.
 pub(crate) async fn media_ids_for_mals(
     state: &AppState,
@@ -125,11 +133,21 @@ pub(crate) async fn media_ids_for_mals(
     if unknown.is_empty() {
         return Ok(map);
     }
-    let fetched =
-        crate::meta::anilist::media_ids_for_mals(&state.meta_http, &unknown, anilist_base).await?;
+    let listed =
+        crate::meta::anilist::media_listed_for_mals(&state.meta_http, &unknown, anilist_base)
+            .await?;
     for mal_id in unknown {
-        let media_id = fetched.get(&mal_id).copied();
-        remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);
+        let media_id = match listed.get(&mal_id).map(Vec::as_slice) {
+            None | Some([]) => None,
+            Some([one]) => Some(*one),
+            // Several media record the id: which one it translates to
+            // is the single translation's answer, never the batch's
+            // order.
+            Some(_) => media_id_for_mal(state, mal_id, anilist_base).await?,
+        };
+        if listed.get(&mal_id).is_none_or(|ids| ids.len() < 2) {
+            remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);
+        }
         if let Some(media_id) = media_id {
             map.insert(mal_id, media_id);
         }
