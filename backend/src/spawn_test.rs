@@ -313,3 +313,70 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
     );
     assert!(late.is_ok(), "and is withdrawn once the run has ended");
 }
+
+/// Linux only: ETXTBSY on exec of a write-open file is a Linux
+/// guarantee. macOS permits the exec, so there is no race to wait out
+/// and the assertion below would describe nothing.
+///
+/// A case stages its probe a moment before a teardown runs it, and a
+/// fork anywhere else in the test binary in that moment carries the
+/// script's write descriptor into the child until the child execs.
+/// A teardown that execs the probe then is told the file is busy, and
+/// a teardown that takes that for done sends no kill at all: the tree
+/// the probe stands in for outlives its teardown, and the case that
+/// waits on the probe's run never sees it. The teardown waits a busy
+/// probe out, as every spawn of a freshly staged tool does.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_busy_probe_is_waited_out_rather_than_skipped() {
+    use std::os::unix::fs::PermissionsExt;
+    let _scope = TREE_KILL_PROBE_SCOPE.blocking_lock();
+    let dir = tempfile::tempdir().expect("probe dir");
+    let ran = dir.path().join("ran");
+    let probe = dir.path().join("probe");
+    // Any other case's tree is killed at once, as a real teardown
+    // would; the placeholder's run is only recorded.
+    std::fs::write(
+        &probe,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" != 4000001 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > {ran}\nexit 0\n",
+            ran = crate::stub_file::sh_quote(&ran),
+        ),
+    )
+    .expect("write probe");
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&probe)
+        .expect("hold the probe open for writing");
+    // Self-evidencing: the race is live on this host, or the case
+    // below proves nothing.
+    let plain = std::process::Command::new(&probe).status();
+    assert!(
+        matches!(
+            plain.as_ref().err().map(std::io::Error::kind),
+            Some(std::io::ErrorKind::ExecutableFileBusy)
+        ),
+        "a write-open probe must be busy for this case to mean anything: {plain:?}"
+    );
+    *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe.clone());
+    // Let go once the teardown has found the probe busy: one that came
+    // to it after the release would run it at once and retry nothing.
+    let queue = crate::held::queue(probe.display().to_string());
+    let releaser = std::thread::spawn(move || {
+        queue.joined_blocking(|| false);
+        drop(held);
+    });
+    // The pid is only the probe's argument: this probe signals nothing.
+    kill_process_tree(4_000_001);
+    let released = releaser.join();
+    *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+    assert!(
+        released.is_ok(),
+        "the teardown never found the probe busy, so it never waited"
+    );
+    assert!(
+        ran.exists(),
+        "a busy probe must be waited out, not taken for a kill sent"
+    );
+}
