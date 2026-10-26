@@ -184,6 +184,18 @@ pub async fn list_all_and_cache(
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
+    list_all_and_cache_via(state, kind, provider.as_ref(), tokens, user_id).await
+}
+
+/// [`list_all_and_cache`] with the provider injected, so tests drive it
+/// against a wiremock-backed provider.
+pub(crate) async fn list_all_and_cache_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    user_id: &str,
+) -> Result<Vec<ListEntry>> {
     let entries = provider.list_all(tokens).await?;
     write_through_cache(&state.cache_pool, kind, user_id, &entries)?;
     Ok(entries)
