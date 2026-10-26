@@ -1,8 +1,9 @@
-// A show's pending partial-save retries, one per listing — the accounts
-// the save that left it was made under. A retry is that listing's
-// intent: a save or removal settles, replaces or clears the retry of
-// its own listing and no other, and the editor is offered the newest
-// retry whose listing still holds. Pure: the app-lifetime store
+// A show's pending partial-save retries, each with its listing — the
+// accounts the save that left it was made under. A retry is that
+// listing's intent: a save or removal settles, replaces or clears every
+// retry whose listing is compatible with its own (`listingsCompatible`),
+// and no other, and the editor is offered the newest retry whose
+// listing still holds. Pure: the app-lifetime store
 // `editor-flights.svelte.ts` holds the map.
 
 import type { ListedAccount } from './held-account';
@@ -32,13 +33,26 @@ export function listingKey(listed?: Listing): string {
 		.join('&');
 }
 
-/** Whether a write under `a` settles a retry left under `b`: whether the
- *  two listings are the same accounts. */
+/**
+ * Whether a write under `a` settles a retry left under `b`: the same
+ * listing, or one a tracker connected or disconnected since made larger
+ * or smaller with no account switched — no tracker the two share is
+ * listed under different users, and at least one they share is listed
+ * under the same, known user. Symmetric.
+ */
 export function listingsCompatible(a?: Listing, b?: Listing): boolean {
-	return listingKey(a) === listingKey(b);
+	if (listingKey(a) === listingKey(b)) return true;
+	if (a === undefined || b === undefined) return false;
+	const shared = Object.keys(a).filter((provider) => provider in b);
+	const switched = shared.some((provider) => a[provider].user !== b[provider].user);
+	const kept = shared.some(
+		(provider) => a[provider].user != null && a[provider].user === b[provider].user
+	);
+	return !switched && kept;
 }
 
-/** `listed`'s own retry for `kitsuId`, whether or not it holds. */
+/** The newest retry for `kitsuId` a write under `listed` settles,
+ *  whether or not it holds. */
 export function pendingUnder(
 	pendings: ShowPendings,
 	kitsuId: string,
@@ -52,10 +66,10 @@ export function pendingUnder(
 }
 
 /**
- * `pendings` once a write under `listed` settled for `kitsuId`: that
- * listing's retry becomes `next(its retry)` — set, replaced, or cleared
- * for `null` — and becomes the show's newest; every other listing's is
- * left as it was.
+ * `pendings` once a write under `listed` settled for `kitsuId`: every
+ * retry compatible with `listed` goes, `next(the newest of them)` — when
+ * not `null` — becomes the show's newest, and every other retry is left
+ * as it was.
  */
 export function settlePending(
 	pendings: ShowPendings,
