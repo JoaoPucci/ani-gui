@@ -5,6 +5,10 @@
 use super::*;
 use crate::account::episode_map::TrackerShow;
 
+#[path = "anilist_user_evidence_text.rs"]
+mod text;
+use text::{fuzzy_date, listed_number_of};
+
 /// GraphQL: the media as the episode map reads it — total, status,
 /// run, relations (type and format decide which are series sequels)
 /// and the titles of its streaming episodes, whose numbers identify a
@@ -17,37 +21,6 @@ pub(super) const MEDIA_EVIDENCE_GQL: &str = "query Evidence($mediaId: Int!) { \
             streamingEpisodes { title } \
         } \
     }";
-
-/// AniList's fuzzy date as `YYYY-MM-DD`, or as much of it as is known
-/// (`YYYY-MM`, `YYYY`); `None` without a year, or where the month or day
-/// names no real calendar date — an impossible date is no date, never
-/// one carried into a neighbouring month.
-fn fuzzy_date(year: Option<u32>, month: Option<u32>, day: Option<u32>) -> Option<String> {
-    let year = format!("{:04}", year?);
-    let Some(month) = month else {
-        return (year.len() == 4).then_some(year);
-    };
-    let out = match day {
-        Some(day) => format!("{year}-{month:02}-{day:02}"),
-        None => format!("{year}-{month:02}"),
-    };
-    crate::account::episode_map_calendar::parse_date(&out).map(|_| out)
-}
-
-/// The number a streaming-episode title carries — `"Episode 6.5 -
-/// Ekwari"` is `"6.5"`, `"Episode 0 - Prologue"` is `"0"` — or `None`
-/// for a title that does not open on `Episode <number>`.
-fn listed_number_of(title: &str) -> Option<String> {
-    let trimmed = title.trim();
-    let rest = trimmed
-        .strip_prefix("Episode ")
-        .or_else(|| trimmed.strip_prefix("episode "))?;
-    let number: String = rest
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    (!number.is_empty() && number.starts_with(|c: char| c.is_ascii_digit())).then_some(number)
-}
 
 /// A field the query asks for, read as given: `None` when it is null.
 /// Named by `deserialize_with`, which leaves a missing field the
