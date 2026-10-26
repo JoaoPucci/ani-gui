@@ -419,13 +419,20 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
     let Some(target_id) = target_id else {
         return Ok(None);
     };
-    let anime = parsed.included.into_iter().find(|r| r.id == target_id);
+    // The lookup asks for the mapped anime to be included: a reply
+    // that leaves it out says nothing of the show, and reading it as
+    // no match would be kept as a dead end.
+    let anime = parsed
+        .included
+        .into_iter()
+        .find(|r| r.id == target_id)
+        .ok_or_else(|| AniError::ParseFailed {
+            detail: format!("kitsu mappings parse: anime {target_id} not included"),
+        })?;
     // Single chokepoint for every MAL→Kitsu bridge (AniList trending feed +
     // Watch Later rail): a music-subtype mapping resolves to None so it never
     // reaches a list surface or the availability warmer.
-    Ok(anime
-        .map(into_ref)
-        .filter(|r| !is_music_subtype(r.subtype.as_deref())))
+    Ok(Some(into_ref(anime)).filter(|r| !is_music_subtype(r.subtype.as_deref())))
 }
 
 /// Pull the `myanimelist/anime` external id out of a Kitsu anime

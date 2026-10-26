@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::anilist::{post_graphql_public, ANILIST_API};
 use crate::error::{AniError, Result};
+use crate::meta::present::Present;
 
 /// Airing progress for a show as AniList schedules it. Drives the
 /// detail page's unaired-episode placeholders: tiles past `aired`
@@ -172,7 +173,10 @@ struct MediaShape {
     id: Option<u32>,
     #[serde(rename = "idMal", default)]
     id_mal: Option<u32>,
-    status: Option<String>,
+    // Every airing query asks for the status, and AniList answers
+    // every field it was asked for, null when it has nothing: a node
+    // without it is no answer about the show's airing.
+    status: Present<String>,
     episodes: Option<u32>,
     #[serde(rename = "nextAiringEpisode")]
     next_airing_episode: Option<ScheduleNode>,
@@ -202,6 +206,8 @@ struct ScheduleNode {
 ///     aired = None, deliberately: gating on a guess would hide real
 ///     episodes.
 fn derive_status(media: MediaShape) -> AiringStatus {
+    let status = media.status.into_inner();
+    let episodes = media.episodes;
     let upcoming: Vec<UpcomingEpisode> = media
         .airing_schedule
         .map(|s| {
@@ -222,8 +228,8 @@ fn derive_status(media: MediaShape) -> AiringStatus {
             upcoming,
         }
     } else {
-        let aired = match media.status.as_deref() {
-            Some("FINISHED") => media.episodes,
+        let aired = match status.as_deref() {
+            Some("FINISHED") => episodes,
             Some("NOT_YET_RELEASED") => Some(0),
             _ => None,
         };
@@ -251,7 +257,7 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: crate::meta::present::Present<MediaShape>,
+        media: Present<MediaShape>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist airing response: {e}"),
