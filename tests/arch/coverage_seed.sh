@@ -17,16 +17,23 @@
 # seed each time, which is where the properties earn their variety.
 #
 # The rules are syntactic:
-#   - no workflow line names `cargo llvm-cov`: the runs go through the
-#     script, and both coverage workflows name it;
+#   - no workflow line names cargo and, later, `llvm-cov` as a word
+#     of its own (`cargo llvm-cov`, `cargo +1.88 llvm-cov`, a doubled
+#     space): the runs go through the script, and both coverage
+#     workflows run it on a `run: sh tools/rust-lcov.sh` line of its
+#     own;
 #   - tools/rust-lcov.sh exports PROPTEST_RNG_SEED as a number, on a
 #     line of its own at column zero;
-#   - frontend/vite.config.ts names FAST_CHECK_SEED and the seed setup
-#     file, and the setup file hands the seed to fast-check.
+#   - frontend/vite.config.ts names FAST_CHECK_SEED and loads the
+#     seed setup file on a `setupFiles: ['tests/property-seed.ts'],`
+#     line of its own, and the setup file hands the seed to fast-check.
 #
 # What this does NOT check: that a step running the script is the one
 # whose coverage the gate reads, or that a property's inputs depend on
-# nothing but the seed (a HashMap's iteration order, the clock).
+# nothing but the seed (a HashMap's iteration order, the clock, a
+# test that reaches the network), or a cargo invocation the line does
+# not spell out (a command assembled from variables, a script other
+# than tools/rust-lcov.sh).
 # Running the script is checked in tests/bash/arch/rust_lcov.bats.
 
 set -eu
@@ -43,13 +50,13 @@ fail() {
 if [ -d .github/workflows ]; then
     for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
         [ -f "$wf" ] || continue
-        if grep -n 'cargo llvm-cov' "$wf" >/dev/null; then
+        if grep -Eq 'cargo.*[[:space:]]llvm-cov' "$wf"; then
             fail "$wf runs cargo llvm-cov itself; run tools/rust-lcov.sh so the seed is pinned"
         fi
     done
     for wf in .github/workflows/crap.yml .github/workflows/rust.yml; do
         [ -f "$wf" ] || continue
-        grep -q 'tools/rust-lcov\.sh' "$wf" || fail "$wf does not run tools/rust-lcov.sh"
+        grep -Eq '^ +run: sh tools/rust-lcov\.sh$' "$wf" || fail "$wf does not run tools/rust-lcov.sh"
     done
 fi
 
@@ -62,7 +69,7 @@ fi
 if [ -f frontend/vite.config.ts ]; then
     grep -q 'FAST_CHECK_SEED' frontend/vite.config.ts ||
         fail 'frontend/vite.config.ts does not hand the coverage run FAST_CHECK_SEED'
-    grep -q 'tests/property-seed\.ts' frontend/vite.config.ts ||
+    grep -Eq "^[[:space:]]*setupFiles: \\['tests/property-seed\\.ts'\\],\$" frontend/vite.config.ts ||
         fail 'frontend/vite.config.ts does not load tests/property-seed.ts'
 fi
 if [ ! -f frontend/tests/property-seed.ts ]; then

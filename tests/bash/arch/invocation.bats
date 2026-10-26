@@ -730,6 +730,17 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "the bats job runs when the coverage script changes" {
+    # rust_lcov.bats executes tools/rust-lcov.sh, which makes the
+    # script a subject under test: a change touching only it must
+    # select the bats job, or a script that lost its pinned seed lands
+    # with the cases that check it skipped.
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'tools/rust-lcov.sh'
+    [ "$status" -eq 0 ]
+}
+
 @test "the bats job runs when any workflow changes" {
     # The producer-uniqueness case scans every file under
     # .github/workflows/, which makes the whole directory a subject: a
