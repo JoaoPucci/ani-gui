@@ -24,6 +24,12 @@ export function providerName(provider: Provider): string {
 	return provider;
 }
 
+/** How long the busy notice stays up for a wait of `seconds`: the wait
+ *  itself, and no shorter than a plain toast. */
+export function noticeDurationMs(seconds: number): number {
+	return Math.max(4000, seconds * 1000);
+}
+
 /** The toast shown while `provider` waits `seconds` to take a write: up
  *  for as long as the wait, and no shorter than the stack's default.
  *  Returns its id. */
@@ -31,7 +37,7 @@ export function noticeBusy(provider: Provider, seconds: number): string {
 	return toastStore.push({
 		kind: 'info',
 		message: m.account_busy_saving({ provider: providerName(provider), seconds }),
-		duration: Math.max(4000, seconds * 1000)
+		duration: noticeDurationMs(seconds)
 	});
 }
 
