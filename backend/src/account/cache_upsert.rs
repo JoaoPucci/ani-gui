@@ -98,7 +98,7 @@ fn upsert(
         // regress the count. Coordination with the
         // explicit editor's force-upsert is handled by the per-show lock:
         // push_progress now writes the cache under that lock (see
-        // push_progress_via), so a stale write can't land after an
+        // push_progress_from), so a stale write can't land after an
         // explicit correction.
         " WHERE excluded.progress >= user_list_cache.progress"
     };

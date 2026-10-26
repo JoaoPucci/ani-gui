@@ -20,6 +20,7 @@ const { updateProgress, byProvider } = vi.hoisted(() => ({
 				access_token: string;
 				refresh_token?: string | null;
 				expires_at_epoch_s?: number;
+				user_id?: string;
 			};
 		}
 	>
@@ -46,6 +47,7 @@ vi.mock('./store.svelte', () => ({
 import { syncWatchedToTrackers } from './push-watched';
 import { saveWhenTrackerAllows } from './busy-save';
 import { toastStore } from '$lib/toasts/store.svelte';
+import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
 
 /** The backend holding a write back: 429 with the wait, by shape (the
@@ -168,5 +170,50 @@ describe('a held finale a newer progress write covers', () => {
 			kitsu_id: 'kitsu-51',
 			progress: 12
 		});
+	});
+});
+
+describe('a held progress write whose tracker account changes during the wait', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		accountStore.accountGeneration.anilist = 0;
+	});
+
+	it('is not sent to the account now connected, and is not reported', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const write = syncWatchedToTrackers('kitsu-50', 6);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b', user_id: 'u-b' } };
+		await vi.advanceTimersByTimeAsync(1000);
+		await write;
+		expect(updateProgress).toHaveBeenCalledTimes(1);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+
+	it('re-sends with the bearer the same account holds by then', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const write = syncWatchedToTrackers('kitsu-51', 6);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a2', user_id: 'u-a' } };
+		await vi.advanceTimersByTimeAsync(1000);
+		await write;
+		expect(updateProgress).toHaveBeenLastCalledWith('anilist', 'tok-a2', expect.anything());
+	});
+});
+
+describe('a progress write whose account goes before it starts', () => {
+	it('is not sent when the disconnect completes while its bearer is resolved', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		const write = syncWatchedToTrackers('kitsu-73', 6);
+		byProvider.anilist = { kind: 'disconnected' };
+		await write;
+		expect(updateProgress).not.toHaveBeenCalled();
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
 	});
 });

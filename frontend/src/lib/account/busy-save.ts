@@ -13,6 +13,7 @@ import {
 	type WriteField
 } from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
+import { followAccount, type ListedAccount } from './held-account';
 import { m } from '$lib/paraglide/messages';
 
 /** A tracker's display name; the provider id for one without a name. */
@@ -90,14 +91,24 @@ export function saveWhenTrackerAllows<T>(
 	provider: Provider,
 	kitsuId: string,
 	attempt: (held: HeldWrite) => Promise<T>,
-	fields: readonly WriteField[] = ALL_FIELDS
+	fields: readonly WriteField[] = ALL_FIELDS,
+	listed?: ListedAccount
 ): Promise<T> {
 	const key = `${provider}:${kitsuId}`;
+	// Started even when it will not go: a write dropped for its account
+	// still counts as the newer one for the fields it set.
 	const generation = start(key, fields);
+	// The tracker account the write was made for. Changed since — or
+	// being changed as it was made — nothing of it is left, and it goes
+	// no further: not its re-read, not its write.
+	const sameAccount = followAccount(provider, listed);
 	const held: HeldWrite = {
-		left: () => fields.filter((field) => coverage.get(key)?.[field] === generation)
+		left: () =>
+			sameAccount() ? fields.filter((field) => coverage.get(key)?.[field] === generation) : []
 	};
-	return saveWhenAllowed(() => attempt(held), {
+	const run = () =>
+		held.left().length > 0 ? attempt(held) : Promise.reject(new SupersededError());
+	return saveWhenAllowed(run, {
 		notify: (seconds) => {
 			takeDownNotice(key);
 			notices.set(key, noticeBusy(provider, seconds));

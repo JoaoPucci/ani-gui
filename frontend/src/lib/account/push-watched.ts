@@ -9,6 +9,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
+import { listAccounts } from './held-account';
 import { keepWrite, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
@@ -100,12 +101,15 @@ export async function pushWatchedToTrackers(
 				await runWrite(
 					provider,
 					kitsuId,
-					(held) => {
+					async (held) => {
+						// The bearer the account holds now: a held write waits
+						// long enough for its token to be refreshed meanwhile.
+						const now = (await deps.bearerFor(provider)) ?? bearer;
 						// Only what no newer write of the show has covered, and
 						// never a completion without its episode (`keepWrite`).
 						const rest = keepWrite(body, fields, held.left());
 						if (rest === null) throw new SupersededError();
-						return deps.updateProgress(provider, bearer, rest);
+						return deps.updateProgress(provider, now, rest);
 					},
 					fields
 				);
@@ -133,6 +137,8 @@ export async function syncWatchedToTrackers(
 	seriesFinished: boolean = false
 ): Promise<void> {
 	const connected = accountStore.connected;
+	// The account each tracker is listed under, read before any await.
+	const listed = listAccounts(connected);
 	await pushWatchedToTrackers(
 		{
 			connected,
@@ -142,7 +148,8 @@ export async function syncWatchedToTrackers(
 			updateProgress,
 			// A write AniList holds back waits with a notice and goes again;
 			// one that still cannot be saved is said, not dropped.
-			runWrite: saveWhenTrackerAllows,
+			runWrite: (provider, id, attempt, fields) =>
+				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider]),
 			reportFailure: reportProgressNotSaved
 		},
 		kitsuId,

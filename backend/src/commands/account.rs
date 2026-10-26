@@ -63,6 +63,8 @@ type ShowLockMap = Mutex<HashMap<(ProviderKind, String), ShowLock>>;
 #[derive(Clone, Default)]
 pub struct AccountWriteLocks {
     inner: Arc<ShowLockMap>,
+    /// Which connection of each tracker a cache write belongs to.
+    pub(crate) epochs: super::account_epoch::AccountEpochs,
 }
 
 impl AccountWriteLocks {
@@ -172,20 +174,70 @@ pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> R
     provider.me(tokens).await
 }
 
-/// Fetch the full user list (all statuses) and write it through the
-/// cache. Returns the freshly-fetched entries (not the cache contents
-/// — caller can fan them out to surfaces without an extra read).
-pub async fn list_all_and_cache(
+/// The bearer's own list: its owner from `me()` — the only identity the
+/// backend trusts — then its full list (all statuses), written through
+/// the cache under that owner. Returns the freshly-fetched entries.
+///
+/// # Errors
+/// [`AniError::Metadata`] for a kind with no provider; otherwise those
+/// of `me()` and the list read.
+pub async fn list_for_bearer(
     state: &Arc<AppState>,
     kind: ProviderKind,
     tokens: &Tokens,
-    user_id: &str,
 ) -> Result<Vec<ListEntry>> {
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
+    list_for_bearer_via(state, kind, provider.as_ref(), tokens).await
+}
+
+/// [`list_for_bearer`] with the provider injected.
+pub(crate) async fn list_for_bearer_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+) -> Result<Vec<ListEntry>> {
+    // The connection the request arrived in, before its first wait.
+    let began = state.account_write_locks.epochs.current(kind);
+    let profile = provider.me(tokens).await?;
+    list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
+}
+
+/// The list read and its write-through for `user_id`, with the provider
+/// injected, so tests drive it against a wiremock-backed provider.
+#[cfg(test)]
+pub(crate) async fn list_all_and_cache_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    user_id: &str,
+) -> Result<Vec<ListEntry>> {
+    let began = state.account_write_locks.epochs.current(kind);
+    list_all_and_cache_from(state, kind, provider, tokens, user_id, began).await
+}
+
+/// The list read and its write-through for a request that arrived in connection
+/// epoch `began`: a disconnect since purged the cache, and the answer
+/// must not fill it again for that account.
+async fn list_all_and_cache_from(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    user_id: &str,
+    began: u64,
+) -> Result<Vec<ListEntry>> {
     let entries = provider.list_all(tokens).await?;
-    write_through_cache(&state.cache_pool, kind, user_id, &entries)?;
+    state
+        .account_write_locks
+        .epochs
+        .write_if_current(kind, began, || {
+            write_through_cache(&state.cache_pool, kind, user_id, &entries)
+        })
+        .transpose()?;
     Ok(entries)
 }
 
@@ -201,7 +253,9 @@ pub fn cached_list(
 
 /// Drop every cached row for `(kind, user_id)` — called on disconnect.
 pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> Result<()> {
-    crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
+    state.account_write_locks.epochs.purge(kind, || {
+        crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
+    })
 }
 
 /// Drop every cached row for `kind` regardless of `user_id`. The renderer's
@@ -211,7 +265,9 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
 /// internal secret so a cross-origin tab can't wipe a stranger's cache by
 /// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
-    crate::account::cache::clear_provider(&state.cache_pool, kind)
+    state.account_write_locks.epochs.purge(kind, || {
+        crate::account::cache::clear_provider(&state.cache_pool, kind)
+    })
 }
 
 fn write_through_cache(
@@ -226,7 +282,7 @@ fn write_through_cache(
 /// Write a single just-synced entry back into the cache so the local
 /// snapshot reflects the change without a full resync. Leaves the rest of the
 /// user's cached list intact.
-pub fn upsert_cached_entry(
+pub(crate) fn upsert_cached_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
     user_id: &str,
@@ -748,6 +804,34 @@ async fn push_progress_with_anilist_base(
     update: EntryUpdate,
     anilist_base: Option<&str>,
 ) -> Result<Option<ListEntry>> {
+    let provider = provider_for_kind(state, kind);
+    push_progress_resolved_via(
+        state,
+        kind,
+        provider.as_deref(),
+        tokens,
+        kitsu_id,
+        update,
+        anilist_base,
+    )
+    .await
+}
+
+/// [`push_progress_with_anilist_base`] with the provider injected:
+/// the per-show lock, the native-id resolve, then the monotonic
+/// write-back. `None` is a kind with no provider, which
+/// fails only once the show resolves.
+pub(crate) async fn push_progress_resolved_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: Option<&dyn UserListProvider>,
+    tokens: &Tokens,
+    kitsu_id: &str,
+    update: EntryUpdate,
+    anilist_base: Option<&str>,
+) -> Result<Option<ListEntry>> {
+    // The connection the request arrived in, before its first wait.
+    let began = state.account_write_locks.epochs.current(kind);
     // Take the per-show lock BEFORE resolving the native id, keyed on the
     // Kitsu id, so this write serializes with the editor's seed read (which
     // takes the same lock) across the whole resolve→read/write — closing the
@@ -759,21 +843,16 @@ async fn push_progress_with_anilist_base(
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
         return Ok(None);
     };
-    let Some(provider) = provider_for_kind(state, kind) else {
+    let Some(provider) = provider else {
         return Err(AniError::Metadata);
     };
-    push_progress_via(state, kind, provider.as_ref(), tokens, native, update).await
+    push_progress_from(state, kind, provider, tokens, native, update, began).await
 }
 
-/// The monotonic write-back with the provider injected, so tests drive
-/// it against a wiremock-backed provider (the public path builds the
-/// real one). The per-show lock is held by the caller
-/// ([`push_progress_with_anilist_base`]) across resolve → this read →
-/// reconcile → write → cache write-through, so the read-then-write
-/// monotonic guard is atomic: the route callers
-/// fire syncWatchedToTrackers without awaiting, so two writes for the
-/// same show would otherwise both read the same count and the
-/// later-landing lower one would regress it.
+/// The monotonic write-back for an already-resolved show, with the
+/// provider injected and the connection epoch noted here: a test seam
+/// for [`push_progress_from`].
+#[cfg(test)]
 async fn push_progress_via(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -781,6 +860,28 @@ async fn push_progress_via(
     tokens: &Tokens,
     native: ProviderMediaId,
     update: EntryUpdate,
+) -> Result<Option<ListEntry>> {
+    let began = state.account_write_locks.epochs.current(kind);
+    push_progress_from(state, kind, provider, tokens, native, update, began).await
+}
+
+/// The monotonic write-back for a request that arrived in connection
+/// epoch `began`: a disconnect since purged the cache, and the
+/// write-through must not undo that. The per-show lock is held by the
+/// caller ([`push_progress_resolved_via`]) across resolve → this read →
+/// reconcile → write → cache write-through, so the read-then-write
+/// monotonic guard is atomic: the route callers fire
+/// syncWatchedToTrackers without awaiting, so two writes for the same
+/// show would otherwise both read the same count and the later-landing
+/// lower one would regress it.
+async fn push_progress_from(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+    began: u64,
 ) -> Result<Option<ListEntry>> {
     // Monotonic guard: reconcile
     // the write against the tracker's current count so a replay can't
@@ -812,7 +913,12 @@ async fn push_progress_via(
     // force-upsert, so no stale write lingers; the monotonic upsert still
     // guards two racing mark-watched writes. Best-effort.
     if let Ok(profile) = provider.me(tokens).await {
-        let _ = upsert_cached_entry(state, kind, &profile.user_id, &entry);
+        let _ = state
+            .account_write_locks
+            .epochs
+            .write_if_current(kind, began, || {
+                upsert_cached_entry(state, kind, &profile.user_id, &entry)
+            });
     }
     Ok(Some(entry))
 }
