@@ -7,6 +7,8 @@ use crate::error::AniError;
 use crate::scraper::provider::BrowseHit;
 use crate::scraper::table_provider::{listing_of, Asked, TableProvider};
 
+use proptest::strategy::Strategy as _;
+
 const YEAR: u32 = 2020;
 
 fn hit(slug: &str, title: &str) -> BrowseHit {
@@ -348,5 +350,123 @@ async fn a_tagged_broad_listing_beside_a_dead_sibling_answers_as_its_plain_copy(
             matches!(err, AniError::Upstream { status: 404 }),
             "{wide} beside dead {sibling}: {err:?}"
         );
+    }
+}
+
+// ── a tag read a character at a time ────────────────────────────────
+
+/// `word` with each character, chosen by a bit of `wide`, in its
+/// full-width form, and each, chosen by a bit of `upper`, in upper case.
+fn spelled(word: &str, wide: u32, upper: u32) -> String {
+    word.chars()
+        .enumerate()
+        .map(|(i, c)| {
+            let c = if (upper >> i) & 1 == 1 {
+                c.to_ascii_uppercase()
+            } else {
+                c
+            };
+            if (wide >> i) & 1 == 1 {
+                char::from_u32(c as u32 + 0xFEE0).unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+const OPENS: [char; 5] = ['(', '[', '（', '［', '【'];
+const CLOSES: [char; 5] = [')', ']', '）', '］', '】'];
+const PLAIN: [&str; 4] = [
+    "Show",
+    "Show Season 2",
+    "Show 2nd Season Part 2",
+    "ショー第2期",
+];
+
+proptest::proptest! {
+    /// Each character of a version tag is read in its ASCII form on its
+    /// own, so a tag mixing widths ("(ｕncensored)") is the tag as one
+    /// written all in either width is.
+    #[test]
+    fn a_version_tag_mixing_widths_is_the_tag(
+        wide in 0u32..1024,
+        upper in 0u32..1024,
+        open in 0..OPENS.len(),
+        close in 0..CLOSES.len(),
+        t in 0..PLAIN.len(),
+    ) {
+        use super::{version_of, without_version_tag};
+        use crate::commands::play_native_title_grammar::normalized;
+        use crate::commands::play_native_versions::VersionKind;
+        let plain = PLAIN[t];
+        let tag = spelled("uncensored", wide, upper);
+        let tagged = format!("{plain} {}{tag}{}", OPENS[open], CLOSES[close]);
+        proptest::prop_assert_eq!(version_of(&tagged), (normalized(plain), VersionKind::Uncensored), "{}", tagged);
+        proptest::prop_assert_eq!(without_version_tag(&tagged), plain, "{}", tagged);
+        // a word that is not the tag in either width is no tag in any mix
+        let other = format!("{plain} ({})", spelled("uncensor", wide, upper));
+        proptest::prop_assert_eq!(version_of(&other).1, VersionKind::Standard, "{}", other);
+    }
+}
+
+// ── a tag inside other bracketed words ──────────────────────────────
+
+/// Bracketed words left open before a tag, as a provider might write a
+/// subtitle it never closes.
+const UNCLOSED: [&str; 4] = ["(Shin", "[Extra", "（Ｘ", "【Kai"];
+
+proptest::proptest! {
+    /// A bracket that holds no tag is read past its opener only, as the
+    /// catalogue-tag reader reads it, so a tag inside other bracketed
+    /// words is still the tag: "Show (Shin (Uncensored)" is "Show (Shin"
+    /// under the tag.
+    #[test]
+    fn a_version_tag_inside_other_bracketed_words_is_the_tag(
+        pre in 0..UNCLOSED.len(),
+        open in 0..OPENS.len(),
+        close in 0..CLOSES.len(),
+        t in 0..PLAIN.len(),
+    ) {
+        use super::{version_of, without_version_tag};
+        use crate::commands::play_native_title_grammar::normalized;
+        use crate::commands::play_native_versions::VersionKind;
+        let plain = format!("{} {}", PLAIN[t], UNCLOSED[pre]);
+        let tagged = format!("{plain} {}Uncensored{}", OPENS[open], CLOSES[close]);
+        proptest::prop_assert_eq!(version_of(&tagged), (normalized(&plain), VersionKind::Uncensored), "{}", tagged);
+        proptest::prop_assert_eq!(without_version_tag(&tagged), plain, "{}", tagged);
+    }
+}
+
+#[test]
+fn a_version_tag_inside_a_closed_bracket_is_the_tag_as_a_catalogue_tag_is() {
+    use super::version_of;
+    use crate::commands::play_native_title_grammar::untagged;
+    use crate::commands::play_native_versions::VersionKind;
+    // the two readers move past "[Extra " alike and find the tag inside
+    assert_eq!(untagged("Show [Extra (TV)]"), "show [extra ]");
+    let (title, kind) = version_of("Show [Extra (Uncensored)]");
+    assert_eq!(kind, VersionKind::Uncensored);
+    assert_eq!(title, "show [extra ]");
+}
+
+proptest::proptest! {
+    /// A title without a version tag is read as written: whatever
+    /// brackets it opens and leaves unclosed, or closes around other
+    /// words, nothing of it is taken away.
+    #[test]
+    fn a_title_without_a_version_tag_is_read_as_written(
+        title in proptest::prop_oneof![
+            (0..PLAIN.len(), 0..UNCLOSED.len()).prop_map(|(t, u)| format!("{} {}", PLAIN[t], UNCLOSED[u])),
+            (0..PLAIN.len(), 0..OPENS.len()).prop_map(|(t, o)| format!("{} {}Uncensored", PLAIN[t], OPENS[o])),
+            (0..PLAIN.len(), 0..OPENS.len(), 0..CLOSES.len()).prop_map(|(t, o, c)| format!("{} {}Extra{}", PLAIN[t], OPENS[o], CLOSES[c])),
+            proptest::prelude::any::<String>(),
+        ],
+    ) {
+        use super::{version_of, without_version_tag};
+        use crate::commands::play_native_versions::VersionKind;
+        if version_of(&title).1 == VersionKind::Standard {
+            proptest::prop_assert_eq!(without_version_tag(&title), title.trim());
+        }
     }
 }

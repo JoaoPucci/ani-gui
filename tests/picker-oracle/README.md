@@ -30,6 +30,7 @@ says which pool.
 | `oracle.py` | The model and the comparison. Standard library only. |
 | `test_oracle.py` | The model's own tests: rows transcribed from the docs' tables predict as the tables say; the generated set is reproducible; the comparison refuses what it must. |
 | `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for three rows the driver cannot express (below); the others are the shapes that surfaced while reviewing picker changes. |
+| `alphanumeric.txt` | The characters Rust's `char::is_alphanumeric` accepts, as ranges: the letters and digits the picker splits a title's words on, which the model reads instead of Python's narrower `str.isalnum`. A driver test holds it to the pinned toolchain and prints the table to write when a bump moves it. |
 | `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. |
 | `fixtures-golden.json` | Every recorded fixture's outcome, one show per line. |
 
@@ -44,7 +45,7 @@ From the repository root, with `python3` (3.12 or later) and the Rust
 toolchain:
 
 ```sh
-# The model against the docs' tables (about a minute)
+# The model against the docs' tables (about five minutes)
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 
 # The picker against the model: generate, run, compare
@@ -63,8 +64,8 @@ python3 -I tests/picker-oracle/oracle.py cmp \
 (cd backend && cargo test --lib write_the_fixture_golden -- --ignored)
 ```
 
-Generating the set takes about six seconds and writes some 65,000
-pools (18 MB); the picker walks them in about twenty seconds in the
+Generating the set takes about twenty seconds and writes some 65,000
+pools (18 MB); the picker walks them in about thirty-five seconds in the
 debug profile. The generated set is not committed: it is a deterministic
 function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
