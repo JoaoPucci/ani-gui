@@ -20,3 +20,7 @@ pub mod mal_user;
 mod mal_user_net;
 mod mal_user_parse;
 pub(crate) mod rate_limit;
+
+#[cfg(test)]
+#[path = "shape_test.rs"]
+mod shape_tests;

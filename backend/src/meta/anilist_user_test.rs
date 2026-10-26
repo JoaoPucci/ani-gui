@@ -979,3 +979,37 @@ async fn exchange_code_surfaces_429_as_rate_limited() {
         "expected RateLimited {{ retry_after_secs: Some(60) }}, got {err:?}"
     );
 }
+
+/// A reply that is JSON but not the document asked for is no answer:
+/// the viewer's entry, the media's length and a page of the list each
+/// fail it, so it is never read as "not on the list" or an empty list.
+#[test]
+fn replies_without_their_document_are_no_answer() {
+    for body in [r#"{}"#, r#"{"data":{}}"#, r#"{"data":{"Media":{}}}"#] {
+        assert!(
+            parse_media_entry_response(body.as_bytes()).is_err(),
+            "media entry read {body}"
+        );
+        assert!(
+            parse_tracked_media_response(body.as_bytes()).is_err(),
+            "tracked media read {body}"
+        );
+    }
+    for body in [
+        r#"{"data":{"MediaListCollection":{"hasNextChunk":false}}}"#,
+        r#"{"data":{"MediaListCollection":{"hasNextChunk":false,"lists":[{}]}}}"#,
+    ] {
+        assert!(
+            parse_media_list_page(body.as_bytes()).is_err(),
+            "list page read {body}"
+        );
+    }
+    // The media with no entry is AniList's answer: not on the list.
+    let off_list = r#"{"data":{"Media":{"mediaListEntry":null,"episodes":12}}}"#;
+    assert_eq!(
+        parse_media_entry_response(off_list.as_bytes()).expect("an answer"),
+        None
+    );
+    let empty = r#"{"data":{"MediaListCollection":{"hasNextChunk":false,"lists":[]}}}"#;
+    assert!(parse_media_list_page(empty.as_bytes()).is_ok());
+}
