@@ -401,17 +401,17 @@ Comparing Kitsu's 22,504 entries with the entries the app resolves each to (`tes
 
 | | AniList | MyAnimeList |
 |---|---|---|
-| A chain of the tracker's entries | 24 | 4 |
-| A chain whose dates fall outside Kitsu's run (identity) | 13 | 5 |
+| A chain of the tracker's entries | 26 | 4 |
+| A chain whose dates fall outside Kitsu's run, or that a missing date leaves unplaced (identity) | 15 | 5 |
 | A chain a Kitsu entry of its own claims a part of (identity) | 3 | 5 |
 | Kitsu entries sharing one entry, summing exactly | — | 3 shows (7 Kitsu entries) |
-| Kitsu entries sharing one entry, not summing all together (identity) | 12 | 4 |
+| Kitsu entries sharing one entry, not summing all together (identity) | 9 | 4 |
 | Kitsu parts filed under one entry | 17 shows | 14 shows |
 | Parts whose later part Kitsu maps to an id the tracker no longer serves (identity) | 2 | 2 |
 | Extras the tracker's list identifies | 8 | — |
 | Extras that do not account for the surplus (identity) | 2 | — |
 | Extras and Kitsu parts explaining the same surplus differently (identity) | 1 show (2 Kitsu entries) | — |
-| A shorter entry nothing explains (identity, clamped) | 108 | 110 |
+| A shorter entry nothing explains (identity, clamped) | 104 | 110 |
 | A longer entry nothing identifies (identity, never completed) | 152 | 187 |
 
 Most of the last row are long-running streaming series whose Kitsu count lags the tracker's. No tracker was found counting half-episode recaps Kitsu omits on a long series: where a long show has recaps, Kitsu and MyAnimeList count them alike, and the extras rule's several-recap case is covered by the model alone.
