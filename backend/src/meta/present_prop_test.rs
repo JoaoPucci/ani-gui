@@ -111,4 +111,33 @@ proptest! {
         let number = with_field(around, Some(serde_json::Value::from(7)));
         prop_assert!(serde_json::from_str::<Reply<Nested>>(&number).is_err(), "{}", number);
     }
+
+    /// Present nested in Present, as AniList's `Media` and the fields
+    /// inside it are: the inner field missing fails the reply though
+    /// the outer one is there, the inner null reads as None inside
+    /// Some, and the outer null reads as None without asking for the
+    /// inner field at all.
+    #[test]
+    fn a_nested_present_field_is_missing_null_or_itself(
+        n in any::<u32>(),
+        around in surroundings(),
+    ) {
+        #[derive(Deserialize)]
+        struct Outer {
+            inner: Present<u32>,
+        }
+        let read = |field: Option<serde_json::Value>| {
+            serde_json::from_str::<Reply<Outer>>(&with_field(around.clone(), field))
+        };
+        let empty = read(Some(serde_json::json!({})));
+        prop_assert!(empty.is_err(), "an outer with no inner field");
+        let other = read(Some(serde_json::json!({ "other": n })));
+        prop_assert!(other.is_err(), "an outer with only other fields");
+        let null_inner = read(Some(serde_json::json!({ "inner": null }))).expect("an answer");
+        prop_assert_eq!(null_inner.f.into_inner().map(|o| o.inner.into_inner()), Some(None));
+        let given = read(Some(serde_json::json!({ "inner": n }))).expect("an answer");
+        prop_assert_eq!(given.f.into_inner().map(|o| o.inner.into_inner()), Some(Some(n)));
+        let null_outer = read(Some(serde_json::Value::Null)).expect("an answer");
+        prop_assert!(null_outer.f.into_inner().is_none());
+    }
 }
