@@ -208,3 +208,7 @@ fn parse_batch(body: &[u8], by_mal: bool) -> Result<BatchPage> {
             .collect(),
     })
 }
+
+#[cfg(test)]
+#[path = "anilist_airing_batch_prop_test.rs"]
+mod prop_tests;
