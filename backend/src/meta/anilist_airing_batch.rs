@@ -201,10 +201,21 @@ fn parse_batch(body: &[u8], by_mal: bool) -> Result<BatchPage> {
     let key_name = if by_mal { "idMal" } else { "id" };
     let mut media = Vec::with_capacity(page.media.len());
     for node in page.media {
-        // A node that leaves out the key it was asked for cannot say whose
-        // schedule it is; one whose key is null names no show.
-        if node.get(key_name).is_none() {
-            return Err(failed(format!("a node without {key_name}")));
+        // A node that leaves out a field it was asked for cannot say whose
+        // schedule it is, or how far the show has aired; one whose key is
+        // null names no show.
+        if !node.is_object() {
+            return Err(failed("a node that is not an object".into()));
+        }
+        let asked = [
+            key_name,
+            "status",
+            "episodes",
+            "nextAiringEpisode",
+            "airingSchedule",
+        ];
+        if let Some(missing) = asked.iter().find(|f| node.get(**f).is_none()) {
+            return Err(failed(format!("a node without {missing}")));
         }
         let m: MediaShape = serde_json::from_value(node).map_err(|e| failed(e.to_string()))?;
         let key = if by_mal { m.id_mal } else { m.id };
