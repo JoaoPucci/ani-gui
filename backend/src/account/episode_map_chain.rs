@@ -51,9 +51,11 @@ pub(super) fn chain(
             break;
         }
         let count = hop.episodes.filter(|n| *n > 0)?;
-        segments.push(whole_entry(hop, count, covered + 1, covered + count));
+        // A total past what u32 counts sums to no Kitsu count.
+        let to = covered.checked_add(count)?;
+        segments.push(whole_entry(hop, count, covered + 1, to));
         shows.push(hop);
-        covered += count;
+        covered = to;
     }
     if covered != kitsu_count || segments.len() < 2 {
         return None;
