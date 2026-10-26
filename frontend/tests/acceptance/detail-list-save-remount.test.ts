@@ -242,4 +242,40 @@ describe('detail route — a held list save across an editor remount', () => {
 		await expectLockedOnTheHeldSave(seen);
 		await expectLandedAndReconciled(seen);
 	});
+
+	it('does not re-read when an account switch lifts the lock, only when the write settles', async () => {
+		const seen: Seen = { reads: {}, saves: 0 };
+		useShows(seen);
+		detail = mount(DetailPage, { target });
+		await startHeldSave();
+		unmount(detail);
+		detail = null;
+		target.textContent = '';
+		detail = mount(DetailPage, { target });
+		await until(() => trigger() !== null && !trigger()!.disabled, 'the list control again');
+		const readsBefore = seen.reads[SHOW_A] ?? 0;
+
+		// AniList is now another user's: the held save is no longer this
+		// account's to send, and the lock lifts — but nothing has landed.
+		accountStore.setConnected('anilist', {
+			access_token: 'other-bearer',
+			refresh_token: null,
+			expires_at_epoch_s: 4_000_000_000,
+			user_id: 'user-2',
+			username: 'someone else',
+			avatar_url: null
+		});
+		// The page reads the entry once for the new account, as on any account
+		// change; the lifted lock adds no read of its own.
+		await new Promise((r) => setTimeout(r, 800));
+		expect(seen.reads[SHOW_A] ?? 0).toBe(readsBefore + 1);
+
+		// The held write settles at the end of its wait, superseded unsent;
+		// that is when the editor has the page re-read.
+		await until(
+			() => (seen.reads[SHOW_A] ?? 0) > readsBefore + 1,
+			'the re-read once the write settled'
+		);
+		expect(seen.saves).toBe(1);
+	});
 });

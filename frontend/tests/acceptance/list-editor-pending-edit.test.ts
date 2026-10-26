@@ -161,4 +161,51 @@ describe('list editor after a partial save', () => {
 		expect(partial.calls[1].status).toBe('dropped');
 		expect(partial.calls[1].statusChanged).toBe(true);
 	});
+
+	it("does not carry a retry made under one account into another account's editor", async () => {
+		app = mount(ListEntryEditor, {
+			target,
+			props: {
+				kitsuId: '42',
+				total: 12,
+				current: { status: 'watching', progress: 3 }
+			}
+		});
+		await settle();
+		trigger().click();
+		await settle();
+		const select = statusSelect()!;
+		select.value = 'dropped';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await settle();
+		saveButton()!.click();
+		await settle();
+		trigger().click();
+		await settle();
+
+		// Both trackers are now other users' accounts.
+		for (const [provider, user] of [
+			['anilist', 'user-a2'],
+			['mal', 'user-m2']
+		] as const) {
+			accountStore.setConnected(provider, {
+				access_token: `${provider}-other`,
+				refresh_token: null,
+				expires_at_epoch_s: 4_000_000_000,
+				user_id: user,
+				username: 'someone else',
+				avatar_url: null
+			});
+		}
+
+		// Reopened, the form seeds from the live view, and a plain Save is not
+		// a status write: the retry was the other accounts'.
+		trigger().click();
+		await settle();
+		expect(statusSelect()?.value).toBe('dropped');
+		saveButton()!.click();
+		await settle();
+		expect(partial.calls).toHaveLength(2);
+		expect(partial.calls[1].statusChanged).toBe(false);
+	});
 });
