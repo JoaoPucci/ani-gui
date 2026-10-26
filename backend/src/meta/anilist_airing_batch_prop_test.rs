@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use proptest::prelude::*;
 
-use super::{parse_batch, BatchPage};
+use super::{parse_airing_batch_response, parse_batch, BatchPage};
 use crate::meta::anilist_airing::AiringStatus;
 
 /// A status told apart by its `aired`, so a test can see which node a
@@ -123,11 +123,34 @@ proptest! {
         prop_assert_eq!(got, want);
     }
 
-    /// Whatever bytes arrive, the parser answers or refuses; it never
-    /// panics.
+    /// Whatever bytes arrive, the parsers answer or refuse; they never
+    /// panic, and the id-keyed public parser answers exactly what the
+    /// page parser does, keyed by id.
     #[test]
     fn the_parser_never_panics(body in prop::collection::vec(any::<u8>(), 0..200), by_mal in any::<bool>()) {
         let _ = parse_batch(&body, by_mal);
+        let public = parse_airing_batch_response(&body).ok();
+        let page = parse_batch(&body, false)
+            .ok()
+            .map(|p| p.media.into_iter().collect::<std::collections::HashMap<_, _>>());
+        prop_assert_eq!(public, page);
+    }
+
+    /// For a well-formed page, the public parser keeps every node with
+    /// an id: the page parser's nodes, keyed by id.
+    #[test]
+    fn the_public_parser_is_the_page_parser_keyed_by_id(
+        ids in prop::collection::vec(0u32..50, 0..20),
+    ) {
+        let nodes: Vec<String> = ids
+            .iter()
+            .map(|id| format!(r#"{{"id":{id},"status":"FINISHED","episodes":{id},"nextAiringEpisode":null}}"#))
+            .collect();
+        let body = format!(r#"{{"data":{{"Page":{{"media":[{}]}}}}}}"#, nodes.join(","));
+        let public = parse_airing_batch_response(body.as_bytes()).expect("well formed");
+        let page: std::collections::HashMap<_, _> =
+            parse_batch(body.as_bytes(), false).expect("well formed").media.into_iter().collect();
+        prop_assert_eq!(public, page);
     }
 }
 
