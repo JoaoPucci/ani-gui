@@ -403,7 +403,6 @@ fn chain_prone_evidence() -> BoxedStrategy<Evidence> {
             ev
         })
         .boxed()
-        .boxed()
 }
 
 /// Evidence one of the rules fires on, then one field of it nudged: a
