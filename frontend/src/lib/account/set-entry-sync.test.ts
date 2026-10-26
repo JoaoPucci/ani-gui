@@ -17,7 +17,10 @@ const { getEntry, setEntry, removeEntry, invalidateWatchLater, byProvider } = vi
 	setEntry: vi.fn(async () => ({ progress_episodes: 3 })),
 	removeEntry: vi.fn(async () => undefined),
 	invalidateWatchLater: vi.fn(),
-	byProvider: {} as Record<string, { kind: string; account?: { access_token: string } }>
+	byProvider: {} as Record<
+		string,
+		{ kind: string; account?: { access_token: string; user_id?: string } }
+	>
 }));
 vi.mock('./entry-api', () => ({ getEntry, setEntry, removeEntry }));
 vi.mock('./api', () => ({
@@ -285,13 +288,13 @@ describe('a held write whose tracker account changes during the wait', () => {
 
 	it('is neither read nor sent again when the account is disconnected or switched', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		setEntry.mockRejectedValueOnce(refused(1));
 		const held = syncSetEntry('kitsu-40', save);
 		await vi.advanceTimersByTimeAsync(0);
 		// The user disconnects AniList and signs in as someone else.
 		accountStore.accountGeneration.anilist += 1;
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b', user_id: 'u-b' } };
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
 		expect(getEntry).toHaveBeenCalledTimes(1);
@@ -301,7 +304,7 @@ describe('a held write whose tracker account changes during the wait', () => {
 
 	it('is not sent while the account is being changed', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		setEntry.mockRejectedValueOnce(refused(1));
 		const held = syncSetEntry('kitsu-41', save);
 		await vi.advanceTimersByTimeAsync(0);
@@ -313,12 +316,12 @@ describe('a held write whose tracker account changes during the wait', () => {
 
 	it('is not written when the account changes while its re-sent read is out', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		setEntry.mockRejectedValueOnce(refused(1));
 		let reads = 0;
 		getEntry.mockImplementation(async () => {
 			reads += 1;
-			if (reads === 2) accountStore.accountGeneration.anilist += 1;
+			if (reads === 2) byProvider.anilist = { kind: 'disconnected' };
 			return { status: 'watching', progress: 3 };
 		});
 		const held = syncSetEntry('kitsu-42', save);
@@ -329,12 +332,14 @@ describe('a held write whose tracker account changes during the wait', () => {
 
 	it('re-sends with the bearer the same account holds by then', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		setEntry.mockRejectedValueOnce(refused(1));
 		const held = syncSetEntry('kitsu-43', save);
 		await vi.advanceTimersByTimeAsync(0);
-		// A refresh of the same account's token: no change of account.
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a2' } };
+		// A refresh of the same account's token. The store's setConnected
+		// moves the generation on for it, though the account is the same.
+		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a2', user_id: 'u-a' } };
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(await held).toEqual({ written: 1, failed: 0 });
 		expect(setEntry).toHaveBeenLastCalledWith('anilist', 'tok-a2', expect.anything());
@@ -342,11 +347,11 @@ describe('a held write whose tracker account changes during the wait', () => {
 
 	it('removes nothing once the account has changed', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		removeEntry.mockRejectedValueOnce(refused(1));
 		const held = syncRemoveEntry('kitsu-44');
 		await vi.advanceTimersByTimeAsync(0);
-		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'disconnected' };
 		await vi.advanceTimersByTimeAsync(1000);
 		await held;
 		expect(removeEntry).toHaveBeenCalledTimes(1);

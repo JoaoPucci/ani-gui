@@ -20,6 +20,7 @@ const { updateProgress, byProvider } = vi.hoisted(() => ({
 				access_token: string;
 				refresh_token?: string | null;
 				expires_at_epoch_s?: number;
+				user_id?: string;
 			};
 		}
 	>
@@ -180,12 +181,12 @@ describe('a held progress write whose tracker account changes during the wait', 
 
 	it('is not sent to the account now connected, and is not reported', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
 		const write = syncWatchedToTrackers('kitsu-50', 6);
 		await vi.advanceTimersByTimeAsync(0);
 		accountStore.accountGeneration.anilist += 1;
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b', user_id: 'u-b' } };
 		await vi.advanceTimersByTimeAsync(1000);
 		await write;
 		expect(updateProgress).toHaveBeenCalledTimes(1);
@@ -194,11 +195,12 @@ describe('a held progress write whose tracker account changes during the wait', 
 
 	it('re-sends with the bearer the same account holds by then', async () => {
 		vi.useFakeTimers();
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
 		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
 		const write = syncWatchedToTrackers('kitsu-51', 6);
 		await vi.advanceTimersByTimeAsync(0);
-		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a2' } };
+		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a2', user_id: 'u-a' } };
 		await vi.advanceTimersByTimeAsync(1000);
 		await write;
 		expect(updateProgress).toHaveBeenLastCalledWith('anilist', 'tok-a2', expect.anything());
