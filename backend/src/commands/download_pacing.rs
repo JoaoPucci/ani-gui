@@ -281,6 +281,13 @@ impl<'a> Pacing<'a> {
     /// resumed, so that if playback starts under it, it is already
     /// the one connection the allowance grants.
     pub(crate) async fn lane(&self) -> SemaphorePermit<'a> {
+        if let Ok(permit) = self.lane.try_acquire() {
+            return permit;
+        }
+        // Taken: say so to a test holding it, which can then tell this
+        // wait from a transfer still on its way to the lane.
+        #[cfg(test)]
+        crate::held::queued(&crate::held::lock_key(self.lane));
         self.lane
             .acquire()
             .await
@@ -294,10 +301,7 @@ impl<'a> Pacing<'a> {
     /// own playback check went idle.
     pub(crate) async fn paced_turn(&self) -> Option<SemaphorePermit<'a>> {
         tokio::select! {
-            permit = self.lane.acquire() => {
-                let permit = permit.expect("the paced lane is never closed");
-                self.is_live().then_some(permit)
-            }
+            permit = self.lane() => self.is_live().then_some(permit),
             () = self.until_live_changes(true) => None,
         }
     }
