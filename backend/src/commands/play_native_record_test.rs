@@ -86,8 +86,9 @@ fn row_id(state: &AppState, show_id: &str) -> Option<String> {
 #[tokio::test]
 async fn a_slow_kitsu_does_not_hold_the_row_back() {
     let kitsu = MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
     Mock::given(method("GET"))
-        .respond_with(ResponseTemplate::new(500).set_delay(Duration::from_secs(2)))
+        .respond_with(crate::held::Held::new(hold, ResponseTemplate::new(500)))
         .expect(1)
         .mount(&kitsu)
         .await;
@@ -96,12 +97,12 @@ async fn a_slow_kitsu_does_not_hold_the_row_back() {
     // A title with a cour is one the guard reads Kitsu for.
     let watch = part_two();
 
-    let recording = {
+    let mut recording = {
         let state = Arc::clone(&state);
         let watch = watch.clone();
         tokio::spawn(async move { record_watch(&state, &watch, Some("45412")).await })
     };
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    guard_reading_kitsu(&gate, &mut recording).await;
 
     let rows = crate::history::read_all(&state.history_path).expect("rows");
     let row = rows.iter().find(|r| r.id == watch.show_id);
@@ -117,14 +118,28 @@ async fn a_slow_kitsu_does_not_hold_the_row_back() {
             .is_some(),
         "the stamp is written while the guard waits"
     );
+    gate.release();
     recording.await.expect("recording");
     // A failed read is no evidence against the pairing: the id stands.
     assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
 }
 
-/// The Kitsu detail the guard reads, served after `delay`, naming
-/// `slug` as the entry's.
-async fn serve_detail(kitsu: &MockServer, id: &str, slug: &str, delay: Duration) {
+/// Returns once the recording's cour guard has its Kitsu read out on
+/// `gate`; fails the test if the recording ends without one.
+async fn guard_reading_kitsu(
+    gate: &crate::held::Gate,
+    recording: &mut tokio::task::JoinHandle<()>,
+) {
+    tokio::select! {
+        () = gate.asked() => {}
+        ended = &mut *recording => panic!("the recording ended without reading Kitsu: {ended:?}"),
+    }
+}
+
+/// The Kitsu detail the guard reads, naming `slug` as the entry's,
+/// held until the gate it returns is released ([`crate::held`]).
+async fn serve_detail(kitsu: &MockServer, id: &str, slug: &str) -> crate::held::Gate {
+    let (hold, gate) = crate::held::gate();
     let mut body: serde_json::Value = serde_json::from_slice(include_bytes!(
         "../../../tests/fixtures/kitsu/anime_one_piece_detail.json"
     ))
@@ -132,13 +147,13 @@ async fn serve_detail(kitsu: &MockServer, id: &str, slug: &str, delay: Duration)
     body["data"]["id"] = serde_json::Value::from(id);
     body["data"]["attributes"]["slug"] = serde_json::Value::from(slug);
     Mock::given(method("GET"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(body)
-                .set_delay(delay),
-        )
+        .respond_with(crate::held::Held::new(
+            hold,
+            ResponseTemplate::new(200).set_body_json(body),
+        ))
         .mount(kitsu)
         .await;
+    gate
 }
 
 /// An id the guard refuses is never on the row, not even while the
@@ -147,28 +162,30 @@ async fn serve_detail(kitsu: &MockServer, id: &str, slug: &str, delay: Duration)
 #[tokio::test]
 async fn a_refused_id_is_never_on_the_row() {
     let kitsu = MockServer::start().await;
-    serve_detail(
-        &kitsu,
-        "44294",
-        "jojo-no-kimyou-na-bouken-stone-ocean",
-        Duration::from_secs(1),
-    )
-    .await;
+    let gate = serve_detail(&kitsu, "44294", "jojo-no-kimyou-na-bouken-stone-ocean").await;
     let td = tempfile::tempdir().expect("tempdir");
     let state = Arc::new(state_at(td.path(), &kitsu.uri()));
     let watch = part_two();
 
-    let recording = {
+    let mut recording = {
         let state = Arc::clone(&state);
         let watch = watch.clone();
         tokio::spawn(async move { record_watch(&state, &watch, Some("44294")).await })
     };
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    guard_reading_kitsu(&gate, &mut recording).await;
+    assert!(
+        crate::history::read_all(&state.history_path)
+            .expect("rows")
+            .iter()
+            .any(|r| r.id == watch.show_id),
+        "the row is on disk while the guard waits"
+    );
     assert_eq!(
         row_id(&state, &watch.show_id),
         None,
         "while the guard waits"
     );
+    gate.release();
     recording.await.expect("recording");
     assert_eq!(row_id(&state, &watch.show_id), None, "once it refused");
 }
@@ -292,24 +309,24 @@ fn left_behind(state: &AppState, show_id: &str) -> Vec<String> {
 }
 
 /// A watch of Part 2 from its own page, its recording held on the
-/// guard's Kitsu read for a second.
+/// guard's Kitsu read: it returns once that read is out, and the read
+/// answers when the returned gate is released.
 async fn recording_held_on_kitsu(
     state: &Arc<AppState>,
     kitsu: &MockServer,
-) -> tokio::task::JoinHandle<()> {
-    serve_detail(
+) -> (tokio::task::JoinHandle<()>, crate::held::Gate) {
+    let gate = serve_detail(
         kitsu,
         "45412",
         "jojo-no-kimyou-na-bouken-stone-ocean-part-2",
-        Duration::from_secs(1),
     )
     .await;
-    let recording = {
+    let mut recording = {
         let state = Arc::clone(state);
         tokio::spawn(async move { record_watch(&state, &part_two(), Some("45412")).await })
     };
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    recording
+    guard_reading_kitsu(&gate, &mut recording).await;
+    (recording, gate)
 }
 
 #[tokio::test]
@@ -317,12 +334,13 @@ async fn a_delete_while_the_guard_reads_kitsu_leaves_nothing_of_the_show() {
     let kitsu = MockServer::start().await;
     let td = tempfile::tempdir().expect("tempdir");
     let state = Arc::new(state_at(td.path(), &kitsu.uri()));
-    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+    let (recording, gate) = recording_held_on_kitsu(&state, &kitsu).await;
 
     assert!(
         crate::commands::history::history_delete(&state, &part_two().show_id).expect("delete"),
         "the row was there to delete"
     );
+    gate.release();
     recording.await.expect("recording");
 
     assert_eq!(
@@ -336,9 +354,10 @@ async fn a_clear_while_the_guard_reads_kitsu_leaves_nothing_of_the_show() {
     let kitsu = MockServer::start().await;
     let td = tempfile::tempdir().expect("tempdir");
     let state = Arc::new(state_at(td.path(), &kitsu.uri()));
-    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+    let (recording, gate) = recording_held_on_kitsu(&state, &kitsu).await;
 
     crate::commands::history::history_clear(&state).expect("clear");
+    gate.release();
     recording.await.expect("recording");
 
     assert_eq!(
@@ -367,9 +386,10 @@ async fn removing_another_show_leaves_a_pending_recording_whole() {
         },
     )
     .expect("seed another row");
-    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+    let (recording, gate) = recording_held_on_kitsu(&state, &kitsu).await;
 
     assert!(crate::commands::history::history_delete(&state, "one-piece-69").expect("delete"));
+    gate.release();
     recording.await.expect("recording");
 
     let show = part_two().show_id;
@@ -395,9 +415,10 @@ async fn a_delete_while_the_guard_reads_kitsu_takes_the_pages_skip_times() {
     let state = Arc::new(state_at(td.path(), &kitsu.uri()));
     crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:45412:9:1", "[]", 3600)
         .expect("seed skip times");
-    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+    let (recording, gate) = recording_held_on_kitsu(&state, &kitsu).await;
 
     assert!(crate::commands::history::history_delete(&state, &part_two().show_id).expect("delete"));
+    gate.release();
     recording.await.expect("recording");
 
     assert_eq!(
@@ -456,13 +477,14 @@ async fn a_later_watch_keeps_its_row_from_an_earlier_watchs_verdict() {
         "45413",
         "jojo-no-kimyou-na-bouken-stone-ocean-part-2",
     );
-    let a = recording_held_on_kitsu(&state, &kitsu).await;
+    let (a, gate) = recording_held_on_kitsu(&state, &kitsu).await;
 
     record_watch(&state, &part_two(), Some("45413")).await;
     assert_eq!(
         row_id(&state, &part_two().show_id).as_deref(),
         Some("45413")
     );
+    gate.release();
     a.await.expect("recording");
 
     assert_eq!(
@@ -489,18 +511,12 @@ async fn a_later_watchs_mapping_survives_an_earlier_watchs_refusal() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = Arc::new(state_at(td.path(), &kitsu.uri()));
     // A, from a page whose slug names no part: refused for Part 2.
-    serve_detail(
-        &kitsu,
-        "45412",
-        "jojo-no-kimyou-na-bouken-stone-ocean",
-        Duration::from_secs(1),
-    )
-    .await;
-    let a = {
+    let gate = serve_detail(&kitsu, "45412", "jojo-no-kimyou-na-bouken-stone-ocean").await;
+    let mut a = {
         let state = Arc::clone(&state);
         tokio::spawn(async move { record_watch(&state, &part_two(), Some("45412")).await })
     };
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    guard_reading_kitsu(&gate, &mut a).await;
     // B, under a title that names no part, from a page the cache knows.
     cache_detail(&state, "45413", "jojo-no-kimyou-na-bouken-stone-ocean");
     let b = Watch {
@@ -511,6 +527,7 @@ async fn a_later_watchs_mapping_survives_an_earlier_watchs_refusal() {
     let mapping =
         || crate::commands::kitsu::allmanga_kitsu_get(&state, &part_two().show_id).expect("read");
     assert_eq!(mapping().as_deref(), Some("45413"));
+    gate.release();
     a.await.expect("recording");
 
     assert_eq!(
