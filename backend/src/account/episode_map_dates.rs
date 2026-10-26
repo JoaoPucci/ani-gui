@@ -70,3 +70,7 @@ pub(super) fn inside_kitsu_run(evidence: &Evidence, show: &TrackerShow, segment:
             .all(|(n, bound)| dated_in(evidence, *n, Some(bound)))
     })
 }
+
+#[cfg(test)]
+#[path = "episode_map_dates_prop_test.rs"]
+mod tests;

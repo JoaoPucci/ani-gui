@@ -294,6 +294,17 @@ fn any_kitsu_show(id: &'static str) -> impl Strategy<Value = KitsuShow> {
     })
 }
 
+/// Kitsu's air dates as its episode list could give them: a few
+/// episode numbers, small or anywhere in the range, each dated with any
+/// text a date field could carry.
+fn any_airdates() -> impl Strategy<Value = std::collections::BTreeMap<u32, String>> {
+    prop::collection::btree_map(
+        prop_oneof![3 => 0u32..=12, 1 => any::<u32>()],
+        any_date().prop_filter_map("a date", |d| d),
+        0..4,
+    )
+}
+
 /// Evidence as the gatherer could hand it over, every field free.
 fn any_evidence() -> impl Strategy<Value = Evidence> {
     (
@@ -304,27 +315,30 @@ fn any_evidence() -> impl Strategy<Value = Evidence> {
         proptest::option::of(prop::collection::vec("[0-9.]{0,5}", 0..6)),
         prop::collection::vec(any_kitsu_show("s"), 0..4),
         prop::collection::vec(any_kitsu_show("p"), 0..4),
+        any_airdates(),
     )
-        .prop_map(|(kitsu, entry, mut chain, claim, listed, sharing, parts)| {
-            for (i, hop) in chain.iter_mut().enumerate() {
-                hop.id = 2 + u32::try_from(i).unwrap_or(0);
-            }
-            let claimed = if claim {
-                chain.iter().map(|s| s.id).take(1).collect()
-            } else {
-                Vec::new()
-            };
-            Evidence {
-                kitsu,
-                entry,
-                chain,
-                claimed,
-                listed,
-                sharing,
-                parts,
-                ..Default::default()
-            }
-        })
+        .prop_map(
+            |(kitsu, entry, mut chain, claim, listed, sharing, parts, kitsu_airdates)| {
+                for (i, hop) in chain.iter_mut().enumerate() {
+                    hop.id = 2 + u32::try_from(i).unwrap_or(0);
+                }
+                let claimed = if claim {
+                    chain.iter().map(|s| s.id).take(1).collect()
+                } else {
+                    Vec::new()
+                };
+                Evidence {
+                    kitsu,
+                    entry,
+                    chain,
+                    claimed,
+                    listed,
+                    sharing,
+                    kitsu_airdates,
+                    parts,
+                }
+            },
+        )
 }
 
 proptest! {
@@ -340,6 +354,31 @@ proptest! {
         if let Some(count) = ev.kitsu.episodes.filter(|n| *n <= 500) {
             check_mapped(&map, count)?;
         }
+    }
+
+    /// The gatherer is told it needs air dates only where Kitsu's count
+    /// and the entry's are known, positive and the entry's the smaller,
+    /// and then exactly the dates the chain rule asks for.
+    #[test]
+    fn dates_are_needed_only_where_the_entry_may_open_a_chain(ev in any_evidence()) {
+        let needed = chain_dates_needed(&ev);
+        match (ev.kitsu.episodes.filter(|n| *n > 0), ev.entry.episodes.filter(|n| *n > 0)) {
+            (Some(count), Some(total)) if total < count => prop_assert_eq!(
+                needed,
+                super::chain_rule::chain_dates_needed(&ev, count, total)
+            ),
+            _ => prop_assert!(needed.is_empty()),
+        }
+    }
+
+    /// Whatever the evidence, the air dates the gatherer is told it
+    /// needs are all the map reads of them.
+    #[test]
+    fn any_evidence_maps_the_same_from_the_dates_needed_alone(ev in any_evidence()) {
+        let needed = chain_dates_needed(&ev);
+        let mut restricted = ev.clone();
+        restricted.kitsu_airdates.retain(|n, _| needed.contains(n));
+        prop_assert_eq!(map_show(&restricted), map_show(&ev));
     }
 }
 
