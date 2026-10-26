@@ -91,8 +91,10 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // stand in, for this load. Neither is written: the row still
     // holds AniList's last answer, and the next load asks again.
     if bridged.is_empty() {
-        if let Some((hits, body)) = last_anilist_list(state, KEY) {
-            warm_signed_image_urls(state, &body);
+        if let Some(hits) = last_anilist_list(state, KEY) {
+            if let Ok(body) = serde_json::to_string(&hits) {
+                warm_signed_image_urls(state, &body);
+            }
             return Ok(drop_music(hits));
         }
     }
@@ -115,12 +117,34 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
 }
 
 /// The list under `key` as AniList last gave it, expired or not — an
-/// expired row is kept until a new answer replaces it. `None` when no
+/// expired row is kept until a new answer replaces it — less any banner
+/// since found gone. `None` when no
 /// AniList list was ever kept, or the row cannot be read.
-fn last_anilist_list(state: &AppState, key: &str) -> Option<(Vec<KitsuAnimeRef>, String)> {
+fn last_anilist_list(state: &AppState, key: &str) -> Option<Vec<KitsuAnimeRef>> {
     let row = crate::cache::meta_cache_row(&state.cache_pool, key).ok()??;
     let hits = serde_json::from_str::<Vec<KitsuAnimeRef>>(&row.body).ok()?;
-    Some((hits, row.body))
+    Some(
+        hits.into_iter()
+            .map(|r| without_gone_banner(&state.cache_pool, r))
+            .collect(),
+    )
+}
+
+/// `r` without an AniList banner the image proxy has found gone since
+/// the list was kept — as its banner, and as the cover the bridge
+/// filled in from it. A fresh answer drops such a banner at the
+/// bridge; a stale list can be served for longer than that.
+fn without_gone_banner(pool: &crate::cache::SqlitePool, mut r: KitsuAnimeRef) -> KitsuAnimeRef {
+    let Some(banner) = r.anilist_banner.clone() else {
+        return r;
+    };
+    if crate::meta::images::is_dead(pool, &banner) {
+        r.anilist_banner = None;
+        if r.cover_image.as_ref().and_then(|c| c.large.as_deref()) == Some(banner.as_str()) {
+            r.cover_image = None;
+        }
+    }
+    r
 }
 
 /// AniList trending page size — N entries fetched, then bridged to
