@@ -81,7 +81,7 @@ pub async fn airing_status(
 /// airing for a whole rail. Includes `id` so the response maps back
 /// to the requested shows.
 const AIRING_BATCH_GQL: &str = "query AiringBatch($ids: [Int]) { \
-        Page(page: 1, perPage: 50) { \
+        Page(page: 1, perPage: 50) { pageInfo { hasNextPage } \
             media(id_in: $ids, type: ANIME) { \
                 id status episodes nextAiringEpisode { episode airingAt } \
                 airingSchedule(notYetAired: true, perPage: 25) { \
@@ -96,7 +96,7 @@ const AIRING_BATCH_GQL: &str = "query AiringBatch($ids: [Int]) { \
 /// same `media` field: AniList ANDs `id_in` with `idMal_in`. Selects
 /// `idMal` so the response maps back.
 const AIRING_BATCH_BY_MAL_GQL: &str = "query AiringBatchByMal($malIds: [Int]) { \
-        Page(page: 1, perPage: 50) { \
+        Page(page: 1, perPage: 50) { pageInfo { hasNextPage } \
             media(idMal_in: $malIds, type: ANIME) { \
                 idMal status episodes nextAiringEpisode { episode airingAt } \
                 airingSchedule(notYetAired: true, perPage: 25) { \
@@ -122,7 +122,11 @@ pub async fn airing_status_batch(
 }
 
 /// [`airing_status_batch`] keyed by MAL id: the map is keyed by the
-/// MAL ids AniList returned.
+/// MAL ids AniList returned. Several media can record one MAL id: such
+/// an id is answered by the single lookup by MAL id
+/// ([`airing_status`]), as the detail page asks it, never by whichever
+/// node the page listed last — and left out when that lookup fails. A
+/// page AniList cut (`hasNextPage`) is split and asked again.
 ///
 /// # Errors
 /// As [`airing_status_batch`].
@@ -147,20 +151,78 @@ async fn fetch_batch(
     base_override: Option<&str>,
 ) -> Result<std::collections::HashMap<u32, AiringStatus>> {
     let url = base_override.unwrap_or(ANILIST_API);
-    let (all, query, var) = match ids {
-        BatchIds::AniList(ids) => (ids, AIRING_BATCH_GQL, "ids"),
-        BatchIds::Mal(ids) => (ids, AIRING_BATCH_BY_MAL_GQL, "malIds"),
+    let (all, query, var, by_mal) = match ids {
+        BatchIds::AniList(ids) => (ids, AIRING_BATCH_GQL, "ids", false),
+        BatchIds::Mal(ids) => (ids, AIRING_BATCH_BY_MAL_GQL, "malIds", true),
     };
     let mut out = std::collections::HashMap::with_capacity(all.len());
-    for chunk in all.chunks(50) {
+    let mut singly: Vec<u32> = Vec::new();
+    let mut chunks: Vec<&[u32]> = all.chunks(50).rev().collect();
+    while let Some(chunk) = chunks.pop() {
         let body = serde_json::json!({
             "query": query,
             "variables": { var: chunk },
         });
         let bytes = post_graphql_public(client, url, &body).await?;
-        out.extend(parse_batch(&bytes, matches!(ids, BatchIds::Mal(_)))?);
+        let page = parse_batch(&bytes, by_mal)?;
+        if page.cut {
+            match chunk.len() {
+                1 => singly.extend_from_slice(chunk),
+                n => {
+                    let (first, rest) = chunk.split_at(n / 2);
+                    chunks.push(rest);
+                    chunks.push(first);
+                }
+            }
+            continue;
+        }
+        let (once, several) = page.by_key();
+        out.extend(once);
+        singly.extend(several);
+    }
+    singly.sort_unstable();
+    singly.dedup();
+    for key in singly {
+        let (anilist_id, mal_id) = if by_mal {
+            (None, Some(key))
+        } else {
+            (Some(key), None)
+        };
+        match airing_status(client, anilist_id, mal_id, base_override).await {
+            Ok(Some(status)) => {
+                out.insert(key, status);
+            }
+            Ok(None) => {}
+            Err(err) => tracing::debug!(key, error = ?err, "anilist airing: single lookup failed"),
+        }
     }
     Ok(out)
+}
+
+/// One page of a batch answer: each media node's key (`idMal` or `id`)
+/// and status, and whether AniList cut the page.
+struct BatchPage {
+    media: Vec<(u32, AiringStatus)>,
+    cut: bool,
+}
+
+impl BatchPage {
+    /// The keys one node answers, with their status, and the keys
+    /// several nodes answer, which only a single lookup can settle.
+    fn by_key(self) -> (std::collections::HashMap<u32, AiringStatus>, Vec<u32>) {
+        let mut once = std::collections::HashMap::new();
+        let mut several = Vec::new();
+        for (key, status) in self.media {
+            if several.contains(&key) {
+                continue;
+            }
+            if once.insert(key, status).is_some() {
+                once.remove(&key);
+                several.push(key);
+            }
+        }
+        (once, several)
+    }
 }
 
 /// Raw serde shape of one `Media` node, shared by the single and
@@ -268,11 +330,11 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
 pub fn parse_airing_batch_response(
     body: &[u8],
 ) -> Result<std::collections::HashMap<u32, AiringStatus>> {
-    parse_batch(body, false)
+    Ok(parse_batch(body, false)?.media.into_iter().collect())
 }
 
-/// Batch parser keyed by `idMal` (`by_mal`) or `id`.
-fn parse_batch(body: &[u8], by_mal: bool) -> Result<std::collections::HashMap<u32, AiringStatus>> {
+/// Batch parser keyed by `idMal` (`by_mal`) or `id`, in page order.
+fn parse_batch(body: &[u8], by_mal: bool) -> Result<BatchPage> {
     #[derive(Deserialize)]
     struct Wrap {
         data: Data,
@@ -284,22 +346,31 @@ fn parse_batch(body: &[u8], by_mal: bool) -> Result<std::collections::HashMap<u3
     }
     #[derive(Deserialize)]
     struct Page {
+        #[serde(rename = "pageInfo", default)]
+        info: Option<Info>,
         #[serde(default)]
         media: Vec<MediaShape>,
+    }
+    #[derive(Deserialize)]
+    struct Info {
+        #[serde(rename = "hasNextPage", default)]
+        has_next: Option<bool>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist airing batch response: {e}"),
     })?;
-    Ok(parsed
-        .data
-        .page
-        .media
-        .into_iter()
-        .filter_map(|m| {
-            let key = if by_mal { m.id_mal } else { m.id };
-            key.map(|k| (k, derive_status(m)))
-        })
-        .collect())
+    let page = parsed.data.page;
+    Ok(BatchPage {
+        cut: page.info.and_then(|i| i.has_next).unwrap_or(false),
+        media: page
+            .media
+            .into_iter()
+            .filter_map(|m| {
+                let key = if by_mal { m.id_mal } else { m.id };
+                key.map(|k| (k, derive_status(m)))
+            })
+            .collect(),
+    })
 }
 
 #[cfg(test)]
