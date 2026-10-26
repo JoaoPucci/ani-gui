@@ -383,3 +383,61 @@ fn concurrent_opens_of_a_fresh_cache_all_succeed() {
         );
     }
 }
+
+/// Detail rows earlier builds kept with no cover and no banner may have
+/// been kept after a banner lookup that got no answer, read then as "no
+/// banner" and kept for up to a week. Nothing in a row tells that from
+/// AniList answering that it has none, so opening the cache drops every
+/// such row once, and each of those shows' detail is fetched again; the
+/// rows with a cover or a banner, and every other row, stay. The detail
+/// key itself does not move, so removing a show from history still
+/// finds its row by prefix.
+#[test]
+fn detail_rows_with_no_banner_are_dropped_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let now = now_secs();
+    let put = |conn: &rusqlite::Connection, key: &str, body: &str| {
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+            rusqlite::params![key, body, now],
+        )
+        .unwrap();
+    };
+    let detail = |cover: &str, banner: &str| {
+        format!(r#"{{"id":"1","canonical_title":"x","cover_image":{cover}{banner}}}"#)
+    };
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    let covered = crate::commands::kitsu::anime_detail_key("2");
+    let backfilled = crate::commands::kitsu::anime_detail_key("3");
+    {
+        // The cache as the build before this one left it: migrated, and
+        // its earlier plays already marked.
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations(&mut conn).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        put(&conn, &bannerless, &detail("null", ""));
+        put(
+            &conn,
+            &covered,
+            &detail(r#"{"large":"https://k/c.jpg"}"#, ""),
+        );
+        put(
+            &conn,
+            &backfilled,
+            &detail("null", r#","anilist_banner":"https://a/b.jpg""#),
+        );
+        put(&conn, "kitsu:relations:v2:1", r#"{"cover_image":null}"#);
+    }
+    let pool = open_pool(&path).unwrap();
+    let kept = |key: &str| meta_cache_get(&pool, key).unwrap().is_some();
+    assert!(!kept(&bannerless), "a detail row with no banner is dropped");
+    assert!(kept(&covered) && kept(&backfilled), "rows with one stay");
+    assert!(kept("kitsu:relations:v2:1"), "other rows stay");
+    // Once: a banner-less row written after the upgrade is the new
+    // build's own, kept only on an answer, and stays.
+    meta_cache_put(&pool, &bannerless, &detail("null", ""), 604_800).unwrap();
+    drop(pool);
+    let pool = open_pool(&path).unwrap();
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_some());
+}
