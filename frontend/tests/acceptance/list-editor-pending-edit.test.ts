@@ -27,7 +27,9 @@ vi.mock('$app/state', () => ({
 // scenario can answer "one took it, one did not" without standing up
 // two provider stubs.
 const partial = vi.hoisted(() => ({
-	calls: [] as { status: string; statusChanged: boolean }[]
+	calls: [] as { status: string; statusChanged: boolean }[],
+	/** Answers for the next saves, in order; a partial once they run out. */
+	answers: [] as { written: number; failed: number }[]
 }));
 vi.mock('$lib/account/set-entry', () => ({
 	syncSetEntry: vi.fn(
@@ -38,7 +40,7 @@ vi.mock('$lib/account/set-entry', () => ({
 			partial.calls.push({ status: save.status, statusChanged: save.statusChanged });
 			// One tracker took it, one did not — which is what makes this a
 			// partial rather than a save or a failure.
-			return { written: 1, failed: 1 };
+			return partial.answers.shift() ?? { written: 1, failed: 1 };
 		}
 	),
 	syncRemoveEntry: vi.fn()
@@ -55,6 +57,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	partial.calls = [];
+	partial.answers = [];
 	server.use();
 	// The two trackers the partial save went to. The fan-out is mocked, but
 	// the editor still reads which accounts the save was made under.
@@ -207,5 +210,59 @@ describe('list editor after a partial save', () => {
 		await settle();
 		expect(partial.calls).toHaveLength(2);
 		expect(partial.calls[1].statusChanged).toBe(false);
+	});
+
+	it("keeps one account's retry through another account's save, and offers it again when that account is back", async () => {
+		const connectAs = (anilist: string, mal: string) => {
+			for (const [provider, user] of [
+				['anilist', anilist],
+				['mal', mal]
+			] as const) {
+				accountStore.setConnected(provider, {
+					access_token: `${provider}-${user}`,
+					refresh_token: null,
+					expires_at_epoch_s: 4_000_000_000,
+					user_id: user,
+					username: 'tester',
+					avatar_url: null
+				});
+			}
+		};
+		app = mount(ListEntryEditor, {
+			target,
+			props: { kitsuId: '43', total: 12, current: { status: 'watching', progress: 3 } }
+		});
+		await settle();
+
+		// A partial save under the first accounts leaves a retry for Dropped.
+		trigger().click();
+		await settle();
+		const select = statusSelect()!;
+		select.value = 'dropped';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await settle();
+		saveButton()!.click();
+		await settle();
+		trigger().click();
+		await settle();
+
+		// Other accounts save the show cleanly: their save has no retry of its
+		// own to clear, and the first accounts' is not theirs to clear.
+		connectAs('user-a2', 'user-m2');
+		partial.answers.push({ written: 2, failed: 0 });
+		trigger().click();
+		await settle();
+		saveButton()!.click();
+		await settle();
+		expect(partial.calls).toHaveLength(2);
+
+		// The first accounts are back: their retry is offered again.
+		connectAs('user-a', 'user-m');
+		trigger().click();
+		await settle();
+		saveButton()!.click();
+		await settle();
+		expect(partial.calls).toHaveLength(3);
+		expect(partial.calls[2]).toEqual({ status: 'dropped', statusChanged: true });
 	});
 });
