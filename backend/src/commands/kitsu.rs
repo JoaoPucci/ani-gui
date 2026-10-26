@@ -109,9 +109,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     if let Err(ref e) = anilist {
         tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
     }
-    let bridged = match anilist {
-        Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu(state, v).await,
-        _ => Vec::new(),
+    let (bridged, unanswered) = match anilist {
+        Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu_answered(state, v).await,
+        _ => (Vec::new(), false),
     };
     // Only AniList's own answer says anything about a banner; Kitsu's
     // fallback list below never carries one.
@@ -128,8 +128,16 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // Bridged refs come from lookup_by_mal_id (single-resource parse), not
     // the list parser, so sanitize music here too.
     let hits = drop_music(hits);
+    // An entry whose bridge went unanswered is off this strip for a
+    // failure, not for having no Kitsu entry: the strip is kept only
+    // until it is worth asking again.
+    let ttl = if unanswered {
+        crate::cache::ttl::UNANSWERED_TTL
+    } else {
+        TRENDING_TTL
+    };
     if let Ok(body) = serde_json::to_string(&hits) {
-        let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
+        let _ = meta_cache_put(&state.cache_pool, KEY, &body, ttl.as_secs());
         warm_signed_image_urls(state, &body);
     }
     Ok(hits)
@@ -153,10 +161,14 @@ const ANILIST_TRENDING_LIMIT: u8 = 25;
 /// resulting Kitsu /mappings calls fan out at once. 25 lookups
 /// against a single endpoint is fine and the cache layer absorbs
 /// the cost on subsequent visits.
-pub(super) async fn bridge_anilist_to_kitsu(
+///
+/// Returns, beside the refs, whether any entry's lookup went
+/// unanswered: an entry Kitsu answered for with no mapping is dropped
+/// as having none, one whose lookup failed is dropped for the failure.
+async fn bridge_anilist_to_kitsu_answered(
     state: &AppState,
     anilist: Vec<crate::meta::anilist::AniListAnimeRef>,
-) -> Vec<KitsuAnimeRef> {
+) -> (Vec<KitsuAnimeRef>, bool) {
     use futures_util::stream::{FuturesOrdered, StreamExt};
 
     let mut futures = FuturesOrdered::new();
@@ -171,12 +183,18 @@ pub(super) async fn bridge_anilist_to_kitsu(
                 .clone()
                 .filter(|url| !crate::meta::images::is_dead(&pool, url));
             let by_mal = match entry.id_mal {
-                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
-                None => None,
+                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await,
+                None => Ok(None),
             };
             let mut kref = match by_mal {
-                Some(k) => k,
-                None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
+                Ok(Some(k)) => k,
+                // Not MAL-mapped, or the MAL lookup went unanswered: the
+                // AniList mapping may still answer for it.
+                by_mal => match kitsu.lookup_by_anilist_id(entry.id).await {
+                    Ok(Some(k)) => k,
+                    Ok(None) => return Err(by_mal.is_err()),
+                    Err(_) => return Err(true),
+                },
             };
             // AniList's banner rides beside Kitsu's cover, free: this
             // request already carried it.
@@ -197,16 +215,29 @@ pub(super) async fn bridge_anilist_to_kitsu(
                     });
                 }
             }
-            Some(kref)
+            Ok(kref)
         });
     }
     let mut out = Vec::new();
-    while let Some(maybe_ref) = futures.next().await {
-        if let Some(r) = maybe_ref {
-            out.push(r);
+    let mut unanswered = false;
+    while let Some(bridged) = futures.next().await {
+        match bridged {
+            Ok(r) => out.push(r),
+            // Dropped: for a failure when `true`, for no mapping else.
+            Err(failed) => unanswered |= failed,
         }
     }
-    out
+    (out, unanswered)
+}
+
+/// [`bridge_anilist_to_kitsu_answered`]'s refs alone, for the cases
+/// that read only what was bridged.
+#[cfg(test)]
+pub(super) async fn bridge_anilist_to_kitsu(
+    state: &AppState,
+    anilist: Vec<crate::meta::anilist::AniListAnimeRef>,
+) -> Vec<KitsuAnimeRef> {
+    bridge_anilist_to_kitsu_answered(state, anilist).await.0
 }
 
 /// Top-rated anime (averageRating ≥ 70/100). Cache key:
@@ -1152,8 +1183,9 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
 
 /// The detail page's read: [`kitsu_anime_detail`] plus the AniList
 /// banner the trending row remembered for the show, if it listed it.
-/// Internal callers of the detail read have no use for the banner and
-/// skip the lookup.
+/// Internal callers skip reading that remembered banner; the detail
+/// read itself still asks AniList for one when Kitsu has no cover and
+/// the row is not cached.
 ///
 /// # Errors
 /// Those of [`kitsu_anime_detail`].
@@ -1254,8 +1286,9 @@ async fn anime_detail_read(
     // round-trips on cold cache (Kitsu's mappings, then AniList), or
     // three when AniList lacks the MAL id and is asked again by
     // AniList's own id. An answer, banner or none, is cached for the
-    // detail row's lifetime; a question that went unanswered keeps no
-    // row, so the next visit asks again.
+    // detail row's lifetime; a question that went unanswered keeps the
+    // row only for UNANSWERED_TTL, so the banner is asked for again
+    // within minutes, not after a week.
     // Whether the banner question, when there is one, was answered: a
     // row kept without the banner because the question went unanswered
     // would show none for as long as it lives.
@@ -1289,8 +1322,12 @@ async fn anime_detail_read(
 
     let body = serde_json::to_string(&detail).ok();
     super::kitsu_gone::publish_served(state, id, fetched, || {
-        if let Some(body) = body.as_ref().filter(|_| answered) {
-            let ttl = anime_detail_ttl(detail.status.as_deref());
+        if let Some(body) = &body {
+            let ttl = if answered {
+                anime_detail_ttl(detail.status.as_deref())
+            } else {
+                crate::cache::ttl::UNANSWERED_TTL.as_secs()
+            };
             let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
         }
     })?;

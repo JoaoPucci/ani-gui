@@ -372,8 +372,10 @@ pub fn parse_anime_response(body: &[u8]) -> Result<KitsuAnimeRef> {
 
 /// Parse the response of a `/mappings?include=item` lookup into the
 /// referenced anime. Returns `None` when the lookup found no mapping
-/// (empty `data`) or the `included` array doesn't contain the
-/// referenced anime resource.
+/// (empty `data`, or a mapping whose item is null) or the anime is a
+/// music entry; fails when a mapping carries no item or names an anime
+/// the reply does not include, since such a reply says nothing of the
+/// show.
 ///
 /// Used by [`KitsuClient::lookup_by_mal_id`] — the AniList trending
 /// bridge feeds MAL ids in and gets full Kitsu refs out, in a single
@@ -389,20 +391,19 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
         #[serde(default)]
         included: Vec<AnimeResource>,
     }
+    // The lookup asks for each mapping's item: a mapping without one
+    // is no answer, where an item given as null maps to nothing.
     #[derive(Deserialize)]
     struct Mapping {
-        #[serde(default)]
-        relationships: Option<MappingRelationships>,
+        relationships: MappingRelationships,
     }
     #[derive(Deserialize)]
     struct MappingRelationships {
-        #[serde(default)]
-        item: Option<Item>,
+        item: Item,
     }
     #[derive(Deserialize)]
     struct Item {
-        #[serde(default)]
-        data: Option<ItemRef>,
+        data: crate::meta::present::Present<ItemRef>,
     }
     #[derive(Deserialize)]
     struct ItemRef {
@@ -415,7 +416,7 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
     let target_id = parsed
         .data
         .into_iter()
-        .find_map(|m| m.relationships?.item?.data.map(|r| r.id));
+        .find_map(|m| m.relationships.item.data.into_inner().map(|r| r.id));
     let Some(target_id) = target_id else {
         return Ok(None);
     };
