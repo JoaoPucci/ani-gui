@@ -56,8 +56,7 @@ pub(crate) async fn push_progress_mapped(
     // The resolved entry's read — whose total the map is checked against
     // — and an identity write on it are one read-then-write, under the
     // entry's lock.
-    let lock = entry_lock(ask, native.0);
-    let guard = lock.lock().await;
+    let guard = hold_entry(ask, native.0).await;
     let media = ask.provider.tracked_media(ask.tokens, native).await?;
     match episode_map_for(ask, kitsu_id, native, media.episodes)
         .await?
@@ -87,11 +86,13 @@ pub(crate) async fn push_progress_mapped(
     }
 }
 
-/// The lock guarding read-then-write on tracker entry `entry`.
-fn entry_lock(ask: &MapAsk<'_>, entry: u32) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+/// Wait for, and hold, the lock guarding read-then-write on tracker
+/// entry `entry`.
+async fn hold_entry(ask: &MapAsk<'_>, entry: u32) -> tokio::sync::OwnedMutexGuard<()> {
     ask.state
         .account_write_locks
-        .for_entry(ask.kind, ProviderMediaId(entry))
+        .hold_entry(ask.kind, ProviderMediaId(entry))
+        .await
 }
 
 /// The user's row on tracker entry `entry`.
@@ -108,8 +109,7 @@ async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
 /// and writing it under its own lock. The monotonic reconcile keeps it
 /// from lowering a row and keeps a rewatch.
 async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()> {
-    let lock = entry_lock(ask, earlier.entry);
-    let _guard = lock.lock().await;
+    let _guard = hold_entry(ask, earlier.entry).await;
     let row = row_on(ask, earlier.entry).await?;
     let done = row.is_some_and(|r| {
         r.progress_episodes >= earlier.total
@@ -148,8 +148,7 @@ async fn write_mapped(
     write: &MappedWrite,
     update: &EntryUpdate,
 ) -> Result<Option<ListEntry>> {
-    let lock = entry_lock(ask, write.entry);
-    let mut guard = lock.lock().await;
+    let mut guard = hold_entry(ask, write.entry).await;
     let mut row = row_on(ask, write.entry).await?;
     let starts_segment = row.is_none_or(|r| r.progress_episodes == 0);
     if starts_segment && !write.earlier.is_empty() {
@@ -157,7 +156,7 @@ async fn write_mapped(
         for earlier in &write.earlier {
             bring_to_total(ask, earlier).await?;
         }
-        guard = lock.lock().await;
+        guard = hold_entry(ask, write.entry).await;
         row = row_on(ask, write.entry).await?;
     }
     let written = write_episode(ask, write, update, row).await;
