@@ -5,7 +5,7 @@
 // `editor-flight.ts` and `editor-lifecycle.ts`; this holds the state.
 
 import type { Provider } from './types';
-import { accountStanding, type ListedAccount } from './held-account';
+import { accountStanding } from './held-account';
 import {
 	flightFor,
 	NO_FLIGHTS,
@@ -14,18 +14,19 @@ import {
 	type Flight,
 	type Flights
 } from './editor-flight';
+import { flightHolds, listingHolds } from './editor-lifecycle';
 import {
-	flightHolds,
-	listingHolds,
-	NO_PENDINGS,
-	withPending,
-	type Pendings
-} from './editor-lifecycle';
+	heldPending,
+	NO_SHOW_PENDINGS,
+	settlePending,
+	type Listing,
+	type ShowPendings
+} from './editor-pendings';
 import type { PendingEdit } from './list-entry-pending';
 
 class EditorFlightStore {
 	flights = $state.raw<Flights>(NO_FLIGHTS);
-	pendings = $state.raw<Pendings>(NO_PENDINGS);
+	pendings = $state.raw<ShowPendings>(NO_SHOW_PENDINGS);
 
 	/** The write in flight that still locks `kitsuId`'s editor: one whose
 	 *  trackers are still connected as the users it listed. Reactive to
@@ -60,22 +61,24 @@ class EditorFlightStore {
 	 *  not, the retry is hidden, not cleared — it is that account's intent,
 	 *  and comes back with it. Reactive to the account store. */
 	pendingFor(kitsuId: string): PendingEdit | null {
-		const stored = this.pendings.get(kitsuId);
-		if (!stored) return null;
-		const holds = listingHolds(stored.listed, (provider, listed) =>
-			accountStanding(provider as Provider, listed)
+		return heldPending(this.pendings, kitsuId, (listed) =>
+			listingHolds(listed, (provider, account) => accountStanding(provider as Provider, account))
 		);
-		return holds ? stored.pending : null;
 	}
 
-	/** Set `kitsuId`'s pending retry, with the accounts the save that left it
-	 *  was listed under; `null` clears it. */
-	setPending(
+	/** A write under `listed` settled for `kitsuId`: its own listing's retry
+	 *  becomes `next(that retry)`; no other listing's is touched. */
+	settlePending(
 		kitsuId: string,
-		pending: PendingEdit | null,
-		listed?: Readonly<Record<string, ListedAccount>>
+		listed: Listing | undefined,
+		next: (prev: PendingEdit | null) => PendingEdit | null
 	): void {
-		this.pendings = withPending(this.pendings, kitsuId, pending ? { pending, listed } : null);
+		this.pendings = settlePending(this.pendings, kitsuId, listed, next);
+	}
+
+	/** Set `listed`'s retry for `kitsuId`; `null` clears it. */
+	setPending(kitsuId: string, pending: PendingEdit | null, listed?: Listing): void {
+		this.settlePending(kitsuId, listed, () => pending);
 	}
 }
 
