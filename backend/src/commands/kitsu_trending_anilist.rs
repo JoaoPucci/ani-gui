@@ -21,9 +21,10 @@ use super::*;
 ///      (1h). AniList trending updates faster than that, but home
 ///      doesn't need sub-hour freshness.
 ///
-/// Falls back to [`kitsu_trending`] (currently-airing-by-user-count)
-/// when AniList errors or returns zero usable entries — the page
-/// still loads, just with the older static feed.
+/// When AniList errors or nothing it returns can be bridged, the last
+/// list AniList gave is served, however stale, and left as it is. Only
+/// when no AniList list was ever kept does [`kitsu_trending`]
+/// (currently-airing-by-user-count) stand in, for that load.
 ///
 /// # Errors
 /// Bubbles AniList / Kitsu transport failures only when the fallback
@@ -77,8 +78,18 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // fallback list below never carries one.
     crate::commands::anilist_banner_memo::remember(&state.cache_pool, &bridged);
 
-    // AniList errored or every entry failed to bridge — fall back
-    // so home still has SOMETHING to render.
+    // Nothing bridged — AniList did not answer, answered nothing, or
+    // Kitsu could not bridge it. The last list AniList gave stands,
+    // however stale: it is AniList's order, which Kitsu's airing list
+    // is not. Only with no AniList list kept at all does Kitsu's list
+    // stand in, for this load. Neither is written: the row still
+    // holds AniList's last answer, and the next load asks again.
+    if bridged.is_empty() {
+        if let Some((hits, body)) = last_anilist_list(state, KEY) {
+            warm_signed_image_urls(state, &body);
+            return Ok(drop_music(hits));
+        }
+    }
     let hits = if bridged.is_empty() {
         kitsu_trending(state).await?
     } else {
@@ -95,6 +106,15 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
         warm_signed_image_urls(state, &body);
     }
     Ok(hits)
+}
+
+/// The list under `key` as AniList last gave it, expired or not — an
+/// expired row is kept until a new answer replaces it. `None` when no
+/// AniList list was ever kept, or the row cannot be read.
+fn last_anilist_list(state: &AppState, key: &str) -> Option<(Vec<KitsuAnimeRef>, String)> {
+    let row = crate::cache::meta_cache_row(&state.cache_pool, key).ok()??;
+    let hits = serde_json::from_str::<Vec<KitsuAnimeRef>>(&row.body).ok()?;
+    Some((hits, row.body))
 }
 
 /// AniList trending page size — N entries fetched, then bridged to
