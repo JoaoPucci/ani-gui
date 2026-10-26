@@ -1697,12 +1697,13 @@ async fn an_exact_chain_past_kitsu_s_run_is_read_with_kitsu_s_own_air_dates() {
     let state = state_with_kitsu(&kitsu.uri());
     let provider = anilist(&anilist_server.uri());
     let tokens = tokens();
+    let base = kitsu.uri();
     let ask = MapAsk {
         state: &state,
         kind: ProviderKind::AniList,
         provider: &provider,
         tokens: &tokens,
-        anilist_base: None,
+        anilist_base: Some(&base),
     };
     let map = episode_map_for(&ask, "1633", ProviderMediaId(1816), Some(52))
         .await
@@ -1759,12 +1760,13 @@ async fn an_air_dates_read_that_fails_fails_the_map_and_is_kept_nowhere() {
     let state = state_with_kitsu(&kitsu.uri());
     let provider = anilist(&anilist_server.uri());
     let tokens = tokens();
+    let base = kitsu.uri();
     let ask = MapAsk {
         state: &state,
         kind: ProviderKind::AniList,
         provider: &provider,
         tokens: &tokens,
-        anilist_base: None,
+        anilist_base: Some(&base),
     };
     let err = episode_map_for(&ask, "1633", ProviderMediaId(1816), Some(52))
         .await
