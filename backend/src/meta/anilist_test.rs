@@ -653,3 +653,39 @@ async fn a_404_without_an_absent_media_stays_an_upstream_failure() {
         .unwrap_err();
     assert!(matches!(err, AniError::Upstream { status: 404 }));
 }
+
+#[tokio::test]
+async fn media_listed_for_mals_splits_a_batch_whose_page_overflows() {
+    // Several media can record one MAL id, so a batch of MAL ids can
+    // match more media than a page holds. AniList says so with
+    // hasNextPage; the batch splits until every page is whole, rather
+    // than reading the ids the cut page left out as not indexed.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("[1,2]"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[{"id":10,"idMal":1}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("[1]"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":10,"idMal":1},{"id":11,"idMal":1}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("[2]"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":20,"idMal":2}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = media_listed_for_mals(&client, &[1, 2], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1), Some(&vec![10, 11]));
+    assert_eq!(got.get(&2), Some(&vec![20]));
+}
