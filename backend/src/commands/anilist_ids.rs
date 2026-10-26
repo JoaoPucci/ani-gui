@@ -35,10 +35,6 @@ fn media_id_key(mal_id: u32) -> String {
     format!("anilist:media-id-for-mal:v1:{mal_id}")
 }
 
-fn recording_key(mal_id: u32) -> String {
-    format!("anilist:media-ids-recording-mal:v1:{mal_id}")
-}
-
 fn mal_id_key(media_id: u32) -> String {
     format!("anilist:mal-id-for-media:v1:{media_id}")
 }
@@ -163,40 +159,9 @@ pub(crate) async fn media_ids_for_mals(
     Ok(map)
 }
 
-/// Every AniList media that records MAL's `mal_id`, in AniList id
-/// order; empty when none does. Kept under its own row, its ids joined
-/// by commas (empty for none), for as long as the single translations.
-///
-/// # Errors
-/// Same as [`crate::meta::anilist::media_ids_recording_mal`]. Nothing is
-/// remembered from a failed request.
-pub(crate) async fn media_ids_recording_mal(
-    state: &AppState,
-    mal_id: u32,
-    anilist_base: Option<&str>,
-) -> Result<Vec<u32>> {
-    let key = recording_key(mal_id);
-    if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
-        let ids: Option<Vec<u32>> = body
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.parse().ok())
-            .collect();
-        if let Some(ids) = ids {
-            return Ok(ids);
-        }
-    }
-    let ids = crate::meta::anilist::media_ids_recording_mal(&state.meta_http, mal_id, anilist_base)
-        .await?;
-    let body: Vec<String> = ids.iter().map(u32::to_string).collect();
-    let ttl = if ids.is_empty() {
-        ANILIST_ID_MAP_MISS_TTL
-    } else {
-        ANILIST_ID_MAP_TTL
-    };
-    let _ = meta_cache_put(&state.cache_pool, &key, &body.join(","), ttl.as_secs());
-    Ok(ids)
-}
+#[path = "anilist_ids_listing.rs"]
+mod listing;
+pub(crate) use listing::media_ids_recording_mal;
 
 #[cfg(test)]
 #[path = "anilist_ids_test.rs"]
