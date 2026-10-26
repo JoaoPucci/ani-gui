@@ -54,10 +54,11 @@ class EditorFlightStore {
 		return flightFor(this.flights, kitsuId);
 	}
 
-	/** `kitsuId`'s pending retry, while its trackers are still connected as
-	 *  the users its save was made under: a retry made for one account is
-	 *  not another's, nor a disconnected one's. Reactive to the account
-	 *  store. */
+	/** `kitsuId`'s pending retry, while the accounts its save was made
+	 *  under still hold (`listingHolds`): some tracker it listed is still
+	 *  connected as that user and none is another user's. While they do
+	 *  not, the retry is hidden, not cleared — it is that account's intent,
+	 *  and comes back with it. Reactive to the account store. */
 	pendingFor(kitsuId: string): PendingEdit | null {
 		const stored = this.pendings.get(kitsuId);
 		if (!stored) return null;
