@@ -37,6 +37,13 @@ pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60
 /// resets.
 pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60); // 5min
 
+/// How long a row built while a question it depends on went
+/// unanswered is kept: long enough that a burst of reads (a rail, a
+/// play's lookups) does not ask the failing service again each time,
+/// short enough that the answer it lacks is asked for again within
+/// minutes rather than after the row's own lifetime.
+pub const UNANSWERED_TTL: Duration = Duration::from_secs(5 * 60); // 5min
+
 /// TTL for title-match cache (Kitsu/AniList → provider id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
