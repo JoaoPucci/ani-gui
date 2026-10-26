@@ -19,9 +19,11 @@ use crate::error::{AniError, Result};
 #[path = "mal_user_parse_status.rs"]
 mod status;
 pub(super) use status::{
-    parse_iso8601_to_epoch, parse_list_status_response, parse_my_list_status_entry,
-    parse_tracked_media,
+    parse_list_status_response, parse_my_list_status_entry, parse_tracked_media,
 };
+#[path = "mal_user_parse_time.rs"]
+mod time;
+pub(super) use time::parse_iso8601_to_epoch;
 
 /// Parse MAL's OAuth token-exchange response into [`Tokens`]. Both
 /// `exchange_code` and `refresh` use this — the wire shape is
