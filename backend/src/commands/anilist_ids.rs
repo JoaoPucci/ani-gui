@@ -107,7 +107,8 @@ pub(crate) async fn mal_id_for_media_id(
 /// translation ([`media_id_for_mal`]) answers it; ids AniList does not
 /// index are absent from the map. A MAL id several media record is
 /// translated singly, since the batch lists them all and only the
-/// single query says which one the id translates to. Only the ids with no live row reach
+/// single query says which one the id translates to; one whose single
+/// translation fails is left out, and kept nowhere. Only the ids with no live row reach
 /// AniList, and every id the request answers for — by a media, or by
 /// its absence from a page AniList did return — is remembered.
 ///
@@ -142,8 +143,15 @@ pub(crate) async fn media_ids_for_mals(
             Some([one]) => Some(*one),
             // Several media record the id: which one it translates to
             // is the single translation's answer, never the batch's
-            // order.
-            Some(_) => media_id_for_mal(state, mal_id, anilist_base).await?,
+            // order. A single translation that fails leaves the id out,
+            // and kept nowhere, for the next load to ask again.
+            Some(_) => match media_id_for_mal(state, mal_id, anilist_base).await {
+                Ok(media_id) => media_id,
+                Err(err) => {
+                    tracing::debug!(mal_id, error = ?err, "anilist: single translation failed");
+                    continue;
+                }
+            },
         };
         if listed.get(&mal_id).is_none_or(|ids| ids.len() < 2) {
             remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);

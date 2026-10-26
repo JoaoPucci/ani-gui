@@ -396,3 +396,40 @@ async fn a_batch_takes_a_mal_id_several_media_record_as_the_single_translation_d
         Some(137728)
     );
 }
+
+#[tokio::test]
+async fn a_batch_whose_single_translation_fails_keeps_the_rest_and_remembers_nothing_of_it() {
+    // MAL 51039 is recorded by two media, and its single translation
+    // fails; MAL 7 the batch answers. The batch still answers 7 and
+    // remembers it, and keeps nothing for 51039, which the next load
+    // asks again.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdsByMals"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039},{"id":5,"idMal":7}]}}}"#,
+        ))
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdByMal("))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&anilist)
+        .await;
+    let state = state();
+    let map = media_ids_for_mals(&state, &[51039, 7], Some(&anilist.uri()))
+        .await
+        .expect("the batch answered");
+    assert_eq!(map.get(&7), Some(&5));
+    assert_eq!(map.get(&51039), None);
+    assert!(
+        meta_cache_row(&state.cache_pool, "anilist:media-id-for-mal:v1:7")
+            .expect("read")
+            .is_some()
+    );
+    assert!(
+        meta_cache_row(&state.cache_pool, "anilist:media-id-for-mal:v1:51039")
+            .expect("read")
+            .is_none()
+    );
+}

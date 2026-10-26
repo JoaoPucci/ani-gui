@@ -32,6 +32,44 @@ pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
     Ok(parsed.data.media.and_then(|m| m.id_mal))
 }
 
+/// Whether a `{ data: { Page: { pageInfo: { hasNextPage } } } }`
+/// response says AniList cut the page: more media matched than it holds.
+/// A page that does not say is whole.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn page_has_next(body: &[u8]) -> Result<bool> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Data,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Page")]
+        page: Page,
+    }
+    #[derive(Deserialize)]
+    struct Page {
+        #[serde(rename = "pageInfo", default)]
+        info: Option<Info>,
+    }
+    #[derive(Deserialize)]
+    struct Info {
+        #[serde(rename = "hasNextPage", default)]
+        has_next: Option<bool>,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("anilist page info: {e}"),
+    })?;
+    Ok(parsed
+        .data
+        .page
+        .info
+        .and_then(|i| i.has_next)
+        .unwrap_or(false))
+}
+
 /// The `(id, idMal)` of every media in a `{ data: { Page: { media:
 /// [{ id, idMal }] } } }` response.
 fn page_media(body: &[u8]) -> Result<Vec<(u32, Option<u32>)>> {
