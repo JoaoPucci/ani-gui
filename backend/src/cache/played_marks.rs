@@ -27,7 +27,9 @@
 //! The same one-time pass drops the detail rows earlier builds kept
 //! with no cover and no banner (see `DROP_BANNERLESS_DETAILS`), moving
 //! `user_version` from 1 to 2; a cache already at 1 runs that step
-//! alone.
+//! alone. A cache an earlier build opens again after this one, at 2,
+//! is not swept a second time: rows that build keeps for a failed
+//! banner lookup stay until they expire.
 //!
 //! It runs once per cache file, gated by SQLite's `user_version`, which
 //! clearing the cache's rows leaves standing: a rerun would read the
@@ -58,9 +60,10 @@ const BANNERLESS_DROPPED: i64 = 2;
 const DROP_BANNERLESS_DETAILS: &str = "\
 DELETE FROM meta_cache
 WHERE substr(key, 1, 15) = 'kitsu:v5:anime:'
-  AND json_valid(body)
-  AND json_type(body, '$.cover_image') IS NOT 'object'
-  AND json_type(body, '$.anilist_banner') IS NOT 'text'";
+  AND CASE WHEN json_valid(body) THEN
+        json_type(body, '$.cover_image') IS NOT 'object'
+        AND json_type(body, '$.anilist_banner') IS NOT 'text'
+      ELSE 0 END";
 
 const MARK_EARLIER_PLAYS: &str = "\
 INSERT OR REPLACE INTO meta_cache(key, body, fetched_at, ttl_seconds)
