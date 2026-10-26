@@ -34,10 +34,14 @@ impl TreeKillChild {
     /// clock, and on tokio's) is past its ceiling.
     pub(super) fn past_ceiling(&self, started: (std::time::Instant, tokio::time::Instant)) -> bool {
         #[cfg(test)]
-        if self.tokio_clock {
-            return started.1.elapsed() >= self.ceiling;
-        }
-        started.0.elapsed() >= self.ceiling
+        let on_tokio = self.tokio_clock;
+        #[cfg(not(test))]
+        let on_tokio = false;
+        ceiling_passed(
+            (started.0.elapsed(), started.1.elapsed()),
+            on_tokio,
+            self.ceiling,
+        )
     }
 
     /// A guard over `child` whose tree is `tree`, for a case that
@@ -54,4 +58,16 @@ impl TreeKillChild {
     pub(crate) fn tree_running(&mut self) -> bool {
         self.tree.as_mut().is_some_and(|t| t.running())
     }
+}
+
+/// Whether a teardown that has waited `waited` — on the wall clock, and
+/// on tokio's — is past `ceiling`, measured on tokio's clock when
+/// `on_tokio` holds and on the wall clock otherwise.
+fn ceiling_passed(
+    waited: (std::time::Duration, std::time::Duration),
+    on_tokio: bool,
+    ceiling: std::time::Duration,
+) -> bool {
+    let waited = if on_tokio { waited.1 } else { waited.0 };
+    waited >= ceiling
 }
