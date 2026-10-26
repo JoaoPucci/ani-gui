@@ -63,6 +63,8 @@ type ShowLockMap = Mutex<HashMap<(ProviderKind, String), ShowLock>>;
 #[derive(Clone, Default)]
 pub struct AccountWriteLocks {
     inner: Arc<ShowLockMap>,
+    /// Which connection of each tracker a cache write belongs to.
+    pub(crate) epochs: super::account_epoch::AccountEpochs,
 }
 
 impl AccountWriteLocks {
@@ -196,8 +198,17 @@ pub(crate) async fn list_all_and_cache_via(
     tokens: &Tokens,
     user_id: &str,
 ) -> Result<Vec<ListEntry>> {
+    // A disconnect while the read is out purges the cache; its answer
+    // must not fill it again for that account.
+    let began = state.account_write_locks.epochs.current(kind);
     let entries = provider.list_all(tokens).await?;
-    write_through_cache(&state.cache_pool, kind, user_id, &entries)?;
+    state
+        .account_write_locks
+        .epochs
+        .write_if_current(kind, began, || {
+            write_through_cache(&state.cache_pool, kind, user_id, &entries)
+        })
+        .transpose()?;
     Ok(entries)
 }
 
@@ -213,7 +224,9 @@ pub fn cached_list(
 
 /// Drop every cached row for `(kind, user_id)` — called on disconnect.
 pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> Result<()> {
-    crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
+    state.account_write_locks.epochs.purge(kind, || {
+        crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
+    })
 }
 
 /// Drop every cached row for `kind` regardless of `user_id`. The renderer's
@@ -223,7 +236,9 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
 /// internal secret so a cross-origin tab can't wipe a stranger's cache by
 /// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
-    crate::account::cache::clear_provider(&state.cache_pool, kind)
+    state.account_write_locks.epochs.purge(kind, || {
+        crate::account::cache::clear_provider(&state.cache_pool, kind)
+    })
 }
 
 fn write_through_cache(
@@ -794,6 +809,9 @@ async fn push_progress_via(
     native: ProviderMediaId,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
+    // The connection this write began in: a disconnect while it is out
+    // purges the cache, and its write-through must not undo that.
+    let began = state.account_write_locks.epochs.current(kind);
     // Monotonic guard: reconcile
     // the write against the tracker's current count so a replay can't
     // regress progress or downgrade a finished show, while still letting
@@ -824,7 +842,12 @@ async fn push_progress_via(
     // force-upsert, so no stale write lingers; the monotonic upsert still
     // guards two racing mark-watched writes. Best-effort.
     if let Ok(profile) = provider.me(tokens).await {
-        let _ = upsert_cached_entry(state, kind, &profile.user_id, &entry);
+        let _ = state
+            .account_write_locks
+            .epochs
+            .write_if_current(kind, began, || {
+                upsert_cached_entry(state, kind, &profile.user_id, &entry)
+            });
     }
     Ok(Some(entry))
 }

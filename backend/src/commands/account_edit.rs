@@ -99,6 +99,9 @@ async fn set_entry_via(
     // their whole resolve→write.
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _write_guard = show_lock.lock().await;
+    // The connection this save began in: a disconnect while it is out
+    // purges the cache, and its write-through must not undo that.
+    let began = state.account_write_locks.epochs.current(kind);
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
@@ -108,7 +111,12 @@ async fn set_entry_via(
     // rail/editor reflect a downward correction immediately. Best-effort
     // — the authoritative tracker write already succeeded.
     if let Ok(profile) = provider.me(tokens).await {
-        let _ = cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry);
+        let _ = state
+            .account_write_locks
+            .epochs
+            .write_if_current(kind, began, || {
+                cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry)
+            });
     }
     Ok(Some(entry))
 }
