@@ -167,7 +167,10 @@ async fn kitsu_mapped(server: &MockServer, site: &str, id: u32, body: &str) {
 /// case does not answer for itself.
 async fn no_anilist_answer(server: &MockServer) {
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Media":null,"Page":{"media":[]}}}"#),
+        )
         .with_priority(10)
         .mount(server)
         .await;
@@ -1100,14 +1103,7 @@ async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_befor
         .await;
     // AniList's id for MAL 52684, and Kitsu's entries mapped to it: the
     // map reads both to learn which Kitsu entries own the MAL entry.
-    Mock::given(method("POST"))
-        .and(body_string_contains("MediaIdByMal"))
-        .and(body_string_contains("52684"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":185729}}}"#),
-        )
-        .mount(&anilist_server)
-        .await;
+    anilist_id_for_mal(&anilist_server, 52_684, 185_729).await;
     kitsu_mapped(
         &kitsu,
         "anilist/anime",
@@ -1235,8 +1231,9 @@ async fn kitsu_claims_an_anilist_entry_by_its_own_id_or_by_the_mal_id_it_records
 }
 
 /// AniList, served from `server`, giving `media` as its id for MAL's
-/// `mal`.
+/// `mal`, and as the one media recording it.
 async fn anilist_id_for_mal(server: &MockServer, mal: u32, media: u32) {
+    anilist_media_recording_mal(server, mal, &[media]).await;
     Mock::given(method("POST"))
         .and(body_string_contains("MediaIdByMal"))
         .and(body_string_contains(format!("\"idMal\":{mal}")))
@@ -1244,6 +1241,24 @@ async fn anilist_id_for_mal(server: &MockServer, mal: u32, media: u32) {
             ResponseTemplate::new(200)
                 .set_body_string(format!(r#"{{"data":{{"Media":{{"id":{media}}}}}}}"#)),
         )
+        .mount(server)
+        .await;
+}
+
+/// AniList, served from `server`, listing `media` as every media that
+/// records MAL's `mal`.
+async fn anilist_media_recording_mal(server: &MockServer, mal: u32, media: &[u32]) {
+    let listed: Vec<String> = media
+        .iter()
+        .map(|id| format!(r#"{{"id":{id},"idMal":{mal}}}"#))
+        .collect();
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdsByMals"))
+        .and(body_string_contains(format!("[{mal}]")))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+            r#"{{"data":{{"Page":{{"media":[{}]}}}}}}"#,
+            listed.join(",")
+        )))
         .mount(server)
         .await;
 }
@@ -1313,6 +1328,53 @@ async fn kitsu_claims_a_mal_entry_through_an_entry_mapped_only_by_anilist() {
     assert_eq!(
         shared.iter().map(|k| k.id.as_str()).collect::<Vec<_>>(),
         ["13"]
+    );
+}
+
+#[tokio::test]
+async fn kitsu_claims_a_mal_entry_through_any_anilist_media_recording_it() {
+    // AniList 700 and 702 both record MAL 70; asked for one, AniList
+    // answers 700. Kitsu's 15 maps only to 702, so the write's id
+    // resolution takes 15 to MAL 70 through 702: 15 owns 70, though
+    // nothing maps to 700.
+    let kitsu = MockServer::start().await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 70, EMPTY_PAGE).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 700, EMPTY_PAGE).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 702, &mapped_body(&["15"])).await;
+    anilist_media_recording_mal(&kitsu, 70, &[700, 702]).await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdByMal"))
+        .and(body_string_contains("\"idMal\":70"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":700}}}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    mal_id_for_anilist(&kitsu, 702, 70).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal("http://unused-mal");
+    let tokens = tokens();
+    let base = kitsu.uri();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::MyAnimeList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: Some(&base),
+    };
+    let show = TrackerShow {
+        id: 70,
+        ..Default::default()
+    };
+    assert!(super::owners::claimed_on_kitsu(&ask, &show)
+        .await
+        .expect("read"));
+    let shared = super::owners::sharing_on_kitsu(&ask, &show)
+        .await
+        .expect("read");
+    assert_eq!(
+        shared.iter().map(|k| k.id.as_str()).collect::<Vec<_>>(),
+        ["15"]
     );
 }
 
@@ -2005,14 +2067,7 @@ async fn a_part_past_the_total_mapped_only_through_the_other_tracker_still_contr
         .await;
     // AniList's id for MAL 905, and Kitsu's page of the entries mapped
     // to it, which lists the third part.
-    Mock::given(method("POST"))
-        .and(body_string_contains("MediaIdByMal"))
-        .and(body_string_contains("905"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":5300}}}"#),
-        )
-        .mount(&anilist_server)
-        .await;
+    anilist_id_for_mal(&anilist_server, 905, 5_300).await;
     kitsu_mapped(&kitsu, "anilist/anime", 5_300, &mapped_body(&["43"])).await;
     let mal_server = mal_entry(905, 24).await;
     let state = state_with_kitsu(&kitsu.uri());
