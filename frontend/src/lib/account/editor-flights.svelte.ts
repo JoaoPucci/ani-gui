@@ -5,7 +5,7 @@
 // `editor-flight.ts` and `editor-lifecycle.ts`; this holds the state.
 
 import type { Provider } from './types';
-import { followAccount, type ListedAccount } from './held-account';
+import { accountStanding, type ListedAccount } from './held-account';
 import {
 	flightFor,
 	NO_FLIGHTS,
@@ -34,7 +34,7 @@ class EditorFlightStore {
 		const flight = flightFor(this.flights, kitsuId);
 		if (!flight) return null;
 		const holds = flightHolds(flight, (provider, listed) =>
-			followAccount(provider as Provider, listed)()
+			accountStanding(provider as Provider, listed)
 		);
 		return holds ? flight : null;
 	}
@@ -62,7 +62,7 @@ class EditorFlightStore {
 		const stored = this.pendings.get(kitsuId);
 		if (!stored) return null;
 		const holds = listingHolds(stored.listed, (provider, listed) =>
-			followAccount(provider as Provider, listed)()
+			accountStanding(provider as Provider, listed)
 		);
 		return holds ? stored.pending : null;
 	}

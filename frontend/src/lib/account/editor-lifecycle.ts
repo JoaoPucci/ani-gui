@@ -10,30 +10,37 @@ import type { Flight } from './editor-flight';
 import type { ListedAccount } from './held-account';
 import type { PendingEdit } from './list-entry-pending';
 
+/** Where a listed tracker's account stands against the user it was
+ *  listed under — see `accountStanding` in `held-account.ts`. */
+export type Standing = 'same' | 'other' | 'gone';
+
 /**
  * Whether `flight` still locks its show's editor: some tracker it listed
- * is still connected as the user it was listed under (`stillFor`). Once
- * none is, its held writes are superseded anyway and the editor is free.
- * A flight with no listing locks.
+ * is still connected as the user it was listed under — a held write to
+ * it is still out. Once none is, its held writes are superseded anyway
+ * and the editor is free. A flight with no listing locks.
  */
 export function flightHolds(
 	flight: Flight,
-	stillFor: (provider: string, listed: ListedAccount) => boolean
+	standing: (provider: string, listed: ListedAccount) => Standing
 ): boolean {
-	return listingHolds(flight.listed, stillFor);
+	if (!flight.listed) return true;
+	return Object.entries(flight.listed).some(([p, account]) => standing(p, account) === 'same');
 }
 
-/** Whether a write's `listed` accounts still hold: some tracker is still
- *  connected as the user it was listed under. No listing holds. */
+/** Whether a pending retry's `listed` accounts still hold: some tracker
+ *  is still connected as the user it was listed under. No listing
+ *  holds. */
 export function listingHolds(
 	listed: Readonly<Record<string, ListedAccount>> | undefined,
-	stillFor: (provider: string, listed: ListedAccount) => boolean
+	standing: (provider: string, listed: ListedAccount) => Standing
 ): boolean {
 	if (!listed) return true;
-	return Object.entries(listed).some(([provider, account]) => stillFor(provider, account));
+	return Object.entries(listed).some(([p, account]) => standing(p, account) === 'same');
 }
 
-/** What an editor instance shows: its show, and the flight locking it. */
+/** What an editor instance watches: its show, and the flight in flight
+ *  for it — still locking or not. */
 export interface Watched {
 	kitsuId: string;
 	flight: Flight | null;
@@ -55,16 +62,16 @@ export function adoptedFlightLanded(prev: Watched, next: Watched, self: symbol):
 }
 
 /** What an instance does when a flight another instance started ends on
- *  its show: re-read the entry, and close an open popover — it shows the
- *  sent form, which the re-read entry replaces. */
+ *  its show: re-read the entry, and close the popover when it is open on
+ *  a flight's sent form (`shown`) — the re-read entry replaces it. */
 export function adoptedLanding(
 	prev: Watched,
 	next: Watched,
 	self: symbol,
-	open: boolean
+	shown: Flight | null
 ): { reconcile: boolean; close: boolean } {
 	const landed = adoptedFlightLanded(prev, next, self);
-	return { reconcile: landed, close: landed && open };
+	return { reconcile: landed, close: landed && shown !== null };
 }
 
 /** Whether a write's continuation may touch its instance's own state:

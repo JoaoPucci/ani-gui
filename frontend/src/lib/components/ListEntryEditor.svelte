@@ -157,7 +157,7 @@
 	const watchedFlight = $derived(editorFlights.flightOf(kitsuId));
 	$effect(() => {
 		const next: Watched = { kitsuId, flight: watchedFlight };
-		const landing = adoptedLanding(watched, next, self, open);
+		const landing = adoptedLanding(watched, next, self, open ? watched.flight : null);
 		watched = next;
 		// The popover shows the sent form, which the re-read entry replaces.
 		if (landing.close) open = false;

@@ -19,13 +19,13 @@ describe('flightHolds', () => {
 			kind: 'saving',
 			listed: { anilist: { user: 'u1' }, mal: { user: 'u2' } }
 		};
-		expect(flightHolds(flight, (p) => p === 'mal')).toBe(true);
-		expect(flightHolds(flight, () => false)).toBe(false);
+		expect(flightHolds(flight, (p) => (p === 'mal' ? 'same' : 'other'))).toBe(true);
+		expect(flightHolds(flight, () => 'gone')).toBe(false);
 	});
 
 	it('locks a flight with no listing, and not one that listed no tracker', () => {
-		expect(flightHolds({ kind: 'saving' }, () => false)).toBe(true);
-		expect(flightHolds({ kind: 'saving', listed: {} }, () => true)).toBe(false);
+		expect(flightHolds({ kind: 'saving' }, () => 'gone')).toBe(true);
+		expect(flightHolds({ kind: 'saving', listed: {} }, () => 'same')).toBe(false);
 	});
 });
 
@@ -93,11 +93,14 @@ describe('adoptedLanding', () => {
 	const next = { kitsuId: 'A', flight: null };
 
 	it('re-reads, and closes a popover showing the sent form', () => {
-		expect(adoptedLanding(prev, next, self, true)).toEqual({ reconcile: true, close: true });
-		expect(adoptedLanding(prev, next, self, false)).toEqual({ reconcile: true, close: false });
+		expect(adoptedLanding(prev, next, self, prev.flight)).toEqual({ reconcile: true, close: true });
+		expect(adoptedLanding(prev, next, self, null)).toEqual({ reconcile: true, close: false });
 	});
 
 	it('does neither when nothing landed', () => {
-		expect(adoptedLanding(prev, prev, self, true)).toEqual({ reconcile: false, close: false });
+		expect(adoptedLanding(prev, prev, self, prev.flight)).toEqual({
+			reconcile: false,
+			close: false
+		});
 	});
 });
