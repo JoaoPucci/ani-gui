@@ -1,6 +1,11 @@
 //! Property coverage for the pure parts of the airing batch, beside
 //! `anilist_airing_batch.rs`: the partition of a page's nodes by key,
 //! and the page parser.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,8 +24,8 @@ fn status(aired: u32) -> AiringStatus {
 }
 
 /// Up to 40 nodes over a few keys, so repeats are common.
-fn nodes() -> impl Strategy<Value = Vec<(u32, u32)>> {
-    prop::collection::vec((0u32..8, any::<u32>()), 0..40)
+fn nodes() -> BoxedStrategy<Vec<(u32, u32)>> {
+    prop::collection::vec((0u32..8, any::<u32>()), 0..40).boxed()
 }
 
 proptest! {
