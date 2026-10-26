@@ -100,12 +100,15 @@ export async function pushWatchedToTrackers(
 				await runWrite(
 					provider,
 					kitsuId,
-					(held) => {
+					async (held) => {
+						// The bearer the account holds now: a held write waits
+						// long enough for its token to be refreshed meanwhile.
+						const now = (await deps.bearerFor(provider)) ?? bearer;
 						// Only what no newer write of the show has covered, and
 						// never a completion without its episode (`keepWrite`).
 						const rest = keepWrite(body, fields, held.left());
 						if (rest === null) throw new SupersededError();
-						return deps.updateProgress(provider, bearer, rest);
+						return deps.updateProgress(provider, now, rest);
 					},
 					fields
 				);

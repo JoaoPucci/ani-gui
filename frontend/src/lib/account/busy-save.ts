@@ -13,6 +13,7 @@ import {
 	type WriteField
 } from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
+import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
 
 /** A tracker's display name; the provider id for one without a name. */
@@ -94,10 +95,20 @@ export function saveWhenTrackerAllows<T>(
 ): Promise<T> {
 	const key = `${provider}:${kitsuId}`;
 	const generation = start(key, fields);
+	// The tracker account the write was made for. Disconnected, switched
+	// or being changed since, the write is no longer the user's to send:
+	// nothing of it is left, and it goes no further — not its re-read,
+	// not its write.
+	const account = accountStore.accountGeneration[provider];
+	const sameAccount = () =>
+		accountStore.accountGeneration[provider] === account && !accountStore.accountChanging[provider];
 	const held: HeldWrite = {
-		left: () => fields.filter((field) => coverage.get(key)?.[field] === generation)
+		left: () =>
+			sameAccount() ? fields.filter((field) => coverage.get(key)?.[field] === generation) : []
 	};
-	return saveWhenAllowed(() => attempt(held), {
+	const run = () =>
+		held.left().length > 0 ? attempt(held) : Promise.reject(new SupersededError());
+	return saveWhenAllowed(run, {
 		notify: (seconds) => {
 			takeDownNotice(key);
 			notices.set(key, noticeBusy(provider, seconds));

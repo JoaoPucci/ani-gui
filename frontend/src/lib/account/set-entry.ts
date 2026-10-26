@@ -95,6 +95,17 @@ export function savedFields(save: EditorSave): readonly WriteField[] {
 	return save.statusChanged ? ALL_FIELDS : ['progress'];
 }
 
+/** The bearer `provider`'s account holds as an attempt starts: a held
+ *  write waits long enough for the token to be refreshed meanwhile.
+ *  The one the write started with when none is to be had. */
+async function bearerNow(
+	deps: { bearerFor: (provider: Provider) => string | null | Promise<string | null> },
+	provider: Provider,
+	started: string
+): Promise<string> {
+	return (await deps.bearerFor(provider)) ?? started;
+}
+
 /**
  * Write the editor's save to every connected tracker, deciding per
  * provider off that provider's live entry: send `status` only where the
@@ -120,7 +131,13 @@ export async function setEntryAcrossTrackers(
 				const res = await runWrite(
 					provider,
 					kitsuId,
-					(held) => sendSave(deps, { provider, bearer, kitsuId, held }, save, savedFields(save)),
+					async (held) =>
+						sendSave(
+							deps,
+							{ provider, bearer: await bearerNow(deps, provider, bearer), kitsuId, held },
+							save,
+							savedFields(save)
+						),
 					savedFields(save)
 				);
 				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
@@ -170,8 +187,13 @@ export async function removeEntryAcrossTrackers(
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
-				return await runWrite(provider, kitsuId, (held) =>
-					sendRemoval(deps, { provider, bearer, kitsuId, held })
+				return await runWrite(provider, kitsuId, async (held) =>
+					sendRemoval(deps, {
+						provider,
+						bearer: await bearerNow(deps, provider, bearer),
+						kitsuId,
+						held
+					})
 				);
 			} catch (e) {
 				return failureResult(e, e instanceof SupersededError);
