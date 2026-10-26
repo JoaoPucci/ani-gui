@@ -488,6 +488,12 @@ fn a_batch_node_missing_a_field_it_was_asked_for_is_no_answer() {
             "{field}"
         );
     }
+    // A schedule that leaves out its nodes says nothing of what is coming.
+    let no_nodes = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":5,"status":"RELEASING","episodes":12,"nextAiringEpisode":null,"airingSchedule":{}}]}}}"#;
+    assert!(matches!(
+        parse_airing_batch_response(no_nodes),
+        Err(AniError::ParseFailed { .. })
+    ));
     let nulls = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":5,"status":null,"episodes":null,"nextAiringEpisode":null,"airingSchedule":null}]}}}"#;
     assert_eq!(
         parse_airing_batch_response(nulls).expect("an answer").len(),
