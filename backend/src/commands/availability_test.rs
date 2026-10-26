@@ -2409,7 +2409,8 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
     // the generation is captured INSIDE the call — the refresh has
     // to land while this one is still out for the guard to mean
     // anything.
-    let server = Arc::new(TableProvider::new().delaying(std::time::Duration::from_millis(300)));
+    let (hold, provider) = crate::held::gate();
+    let server = Arc::new(TableProvider::new().holding(hold));
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let row = cache_key("888", "sub");
@@ -2422,7 +2423,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
         "kitsu_id": "888"
     }))
     .expect("args");
-    let bg = {
+    let mut bg = {
         let state = state.clone();
         let server = Arc::clone(&server);
         tokio::spawn(async move {
@@ -2430,8 +2431,12 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
         })
     };
 
-    // The user's re-ask answers while that one is still in flight.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // The user's re-ask answers while that one is still in flight:
+    // its request to the provider is held until the refresh is in.
+    tokio::select! {
+        () = provider.asked() => {}
+        ended = &mut bg => panic!("the lookup ended without asking the provider: {ended:?}"),
+    }
     state.availability_refreshes.bump(&row);
     write_cache_full(
         &state,
@@ -2449,6 +2454,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
             versions: Vec::new(),
         },
     );
+    provider.release();
 
     bg.await.expect("the background lookup finishes");
 

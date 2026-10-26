@@ -135,7 +135,7 @@ function useShowHandlers(evict: () => Promise<Response> | Response) {
 }
 
 const session = (id: string) =>
-	JSON.stringify({ id, kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' });
+	JSON.stringify({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' });
 
 describe('play route — a page that has gone sends nobody back to it', () => {
 	it('a recovery still evicting when the page is left resolves nothing and goes nowhere', async () => {
