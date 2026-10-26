@@ -556,11 +556,14 @@ async fn an_identity_write_waits_for_its_entry_s_lock() {
 
 #[tokio::test]
 async fn an_earlier_segment_s_write_waits_for_its_entry_s_lock() {
+    // Ranma's map under a Kitsu id that resolves to nothing, so the
+    // write takes no lock on 210 before its segment's entry: the first
+    // wait on 210 is the earlier segment being brought to its total.
     let state = state();
-    seed(&state, "186", &ranma_map());
+    seed(&state, "18600", &ranma_map());
     let tracker = Tracker::with(&[(210, 18), (149_939, 143)], &[(210, Watching, 15)]);
     let (before, _) =
-        push_behind_entry_lock(&state, &tracker, 210, "186", Some(210), watched(19)).await;
+        push_behind_entry_lock(&state, &tracker, 210, "18600", None, watched(19)).await;
     assert_eq!(before, 0);
     assert_eq!(tracker.writes().len(), 2);
 }
