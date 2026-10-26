@@ -117,8 +117,10 @@ fn page_body((mappings, included, meta): &Page) -> Vec<u8> {
 /// the last inlined resource for an id is the one read, and a music
 /// entry is dropped.
 fn model((mappings, included, _): &Page) -> Option<Vec<(String, Option<u32>)>> {
+    // The last readable resource for an id is the one read; an id with
+    // no readable resource cannot be shown.
     let mut inlined: HashMap<&str, &Inlined> = HashMap::new();
-    for r in included.iter().filter(|r| r.kind == "anime") {
+    for r in included.iter().filter(|r| r.kind == "anime" && r.readable) {
         inlined.insert(&r.id, r);
     }
     let mut seen: Vec<&str> = Vec::new();
@@ -133,7 +135,7 @@ fn model((mappings, included, _): &Page) -> Option<Vec<(String, Option<u32>)>> {
                     continue;
                 }
                 seen.push(id);
-                let r = inlined.get(id.as_str()).filter(|r| r.readable)?;
+                let r = inlined.get(id.as_str())?;
                 if !r.subtype.is_some_and(|s| s.eq_ignore_ascii_case("music")) {
                     out.push((r.id.clone(), r.episodes));
                 }
