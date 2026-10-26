@@ -21,13 +21,13 @@ fn any_kind() -> BoxedStrategy<ProviderKind> {
     .boxed()
 }
 
-/// What a key is built from, over ranges small enough that two draws
-/// often share a part: the tracker, a Kitsu id as Kitsu sends one, and
-/// the entry the show resolved to with its total, or nothing.
 /// What a cache key is built from: the tracker, the Kitsu id, and what
 /// the map was built against.
 type KeyParts = (ProviderKind, String, Option<(u32, Option<u32>)>);
 
+/// What a key is built from, over ranges small enough that two draws
+/// often share a part: the tracker, a Kitsu id as Kitsu sends one, and
+/// the entry the show resolved to with its total, or nothing.
 fn key_parts() -> BoxedStrategy<KeyParts> {
     (
         any_kind(),
