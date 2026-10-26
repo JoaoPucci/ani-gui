@@ -75,11 +75,6 @@ class EditorFlightStore {
 	): void {
 		this.pendings = settlePending(this.pendings, kitsuId, listed, next);
 	}
-
-	/** Set `listed`'s retry for `kitsuId`; `null` clears it. */
-	setPending(kitsuId: string, pending: PendingEdit | null, listed?: Listing): void {
-		this.settlePending(kitsuId, listed, () => pending);
-	}
 }
 
 export const editorFlights = new EditorFlightStore();

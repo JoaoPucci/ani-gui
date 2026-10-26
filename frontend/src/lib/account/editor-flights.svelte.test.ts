@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { editorFlights } from './editor-flights.svelte';
+import { NO_SHOW_PENDINGS } from './editor-pendings';
 import { accountStore } from './store.svelte';
 import { withoutFlight, withFlight, NO_FLIGHTS, type Flight } from './editor-flight';
 
@@ -20,7 +21,7 @@ beforeEach(() => {
 afterEach(() => {
 	accountStore.setDisconnected('anilist');
 	editorFlights.flights = NO_FLIGHTS;
-	editorFlights.setPending('A', null);
+	editorFlights.pendings = NO_SHOW_PENDINGS;
 });
 
 describe('editorFlights', () => {
@@ -52,10 +53,10 @@ describe('editorFlights', () => {
 
 	it('keeps a pending retry per show', () => {
 		const pending = { kitsuId: 'A', intendedStatus: 'paused' as const, intendedProgress: 5 };
-		editorFlights.setPending('A', pending);
+		editorFlights.settlePending('A', undefined, () => pending);
 		expect(editorFlights.pendingFor('A')).toEqual(pending);
 		expect(editorFlights.pendingFor('B')).toBeNull();
-		editorFlights.setPending('A', null);
+		editorFlights.settlePending('A', undefined, () => null);
 		expect(editorFlights.pendingFor('A')).toBeNull();
 	});
 });
@@ -73,14 +74,14 @@ describe('a pending retry and the account its save was made under', () => {
 	const pending = { kitsuId: 'A', intendedStatus: 'paused' as const, intendedProgress: 5 };
 
 	it('is kept while the tracker is still that user, a reconnect included', () => {
-		editorFlights.setPending('A', pending, { anilist: { user: 'u1' } });
+		editorFlights.settlePending('A', { anilist: { user: 'u1' } }, () => pending);
 		expect(editorFlights.pendingFor('A')).toEqual(pending);
 		accountStore.setConnected('anilist', account('u1'));
 		expect(editorFlights.pendingFor('A')).toEqual(pending);
 	});
 
 	it('is absent once the tracker is disconnected or is another user', () => {
-		editorFlights.setPending('A', pending, { anilist: { user: 'u1' } });
+		editorFlights.settlePending('A', { anilist: { user: 'u1' } }, () => pending);
 		accountStore.setConnected('anilist', account('u2'));
 		expect(editorFlights.pendingFor('A')).toBeNull();
 		accountStore.setDisconnected('anilist');
@@ -103,7 +104,7 @@ describe('flightOf', () => {
 describe('a pending retry whose account comes back', () => {
 	it('is hidden while the account does not hold, and offered again once it does', () => {
 		const pending = { kitsuId: 'A', intendedStatus: 'paused' as const, intendedProgress: 5 };
-		editorFlights.setPending('A', pending, { anilist: { user: 'u1' } });
+		editorFlights.settlePending('A', { anilist: { user: 'u1' } }, () => pending);
 		accountStore.setConnected('anilist', account('u2'));
 		expect(editorFlights.pendingFor('A')).toBeNull();
 		accountStore.setConnected('anilist', account('u1'));
