@@ -1253,14 +1253,24 @@ async fn anime_detail_read(
     // null-cover fallback (blurred poster) on the frontend. Two extra
     // round-trips on cold cache (Kitsu's mappings, then AniList), or
     // three when AniList lacks the MAL id and is asked again by
-    // AniList's own id; the result is cached for the detail row's
-    // lifetime.
+    // AniList's own id. An answer, banner or none, is cached for the
+    // detail row's lifetime; a question that went unanswered keeps no
+    // row, so the next visit asks again.
+    // Whether the banner question, when there is one, was answered: a
+    // row kept without the banner because the question went unanswered
+    // would show none for as long as it lives.
+    let mut answered = true;
     if detail.cover_image.is_none() {
         // A show the trending row listed already brought its banner
         // with that one request; only an unlisted show asks AniList.
         let banner = match super::anilist_banner_memo::remembered(&state.cache_pool, id) {
             Some(b) => Some(b),
-            None => anilist_banner_for(state, id, anilist_base).await,
+            None => anilist_banner_for(state, id, anilist_base)
+                .await
+                .unwrap_or_else(|()| {
+                    answered = false;
+                    None
+                }),
         }
         // AniList can answer with a URL its CDN has said is gone; no
         // cover is better than a dead one, and the renderer's poster
@@ -1279,7 +1289,7 @@ async fn anime_detail_read(
 
     let body = serde_json::to_string(&detail).ok();
     super::kitsu_gone::publish_served(state, id, fetched, || {
-        if let Some(body) = &body {
+        if let Some(body) = body.as_ref().filter(|_| answered) {
             let ttl = anime_detail_ttl(detail.status.as_deref());
             let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
         }
@@ -1291,20 +1301,21 @@ async fn anime_detail_read(
 }
 
 /// AniList's `bannerImage` for a Kitsu anime, reached through the
-/// ids Kitsu's mappings carry. `None` on any failure or when AniList
-/// has no banner — the caller keeps its null-cover fallback.
+/// ids Kitsu's mappings carry: `Ok(None)` when AniList has no banner
+/// or the show maps to nothing on AniList, `Err` when either question
+/// went unanswered. The caller keeps its null-cover fallback either
+/// way, but keeps the row only on an answer.
 async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> Option<String> {
+) -> std::result::Result<Option<String>, ()> {
     let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
-        .ok()?;
+        .map_err(|_| ())?;
     crate::meta::anilist_media::banner_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
         .await
-        .ok()
-        .flatten()
+        .map_err(|_| ())
 }
 
 #[cfg(test)]
