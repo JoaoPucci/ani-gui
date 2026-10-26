@@ -26,6 +26,11 @@ export default defineConfig({
 	// Component tests would add a separate workspace later.
 	test: {
 		environment: 'node',
+		// The coverage run generates the same property inputs every time
+		// (see tests/property-seed.ts); the ordinary run keeps a fresh
+		// seed.
+		setupFiles: ['tests/property-seed.ts'],
+		env: process.argv.includes('--coverage') ? { FAST_CHECK_SEED: '20261026' } : {},
 		include: ['src/**/*.{test,spec}.ts', 'tests/**/*.{test,spec}.ts'],
 		// The acceptance tier runs under its own config: it needs a DOM
 		// and browser module resolution, and picking it up here would
