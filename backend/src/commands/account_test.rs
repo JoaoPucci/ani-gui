@@ -1577,3 +1577,108 @@ async fn a_list_read_that_lands_after_a_disconnect_does_not_refill_the_cache() {
         "the disconnected account's list came back"
     );
 }
+
+#[tokio::test]
+async fn a_progress_write_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_account_back(
+) {
+    use crate::account::cache::list_entries;
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .and(query_param("include", "mappings"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"id":"12","type":"anime","attributes":{"canonicalTitle":"x"}},"included":[{"id":"1","type":"mappings","attributes":{"externalSite":"myanimelist/anime","externalId":"21"}}]}"#,
+        ))
+        .mount(&kitsu)
+        .await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21}"#))
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"watching","num_episodes_watched":5,"is_rewatching":false}"#,
+        ))
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"s"}"#),
+        )
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let tokens = test_tokens();
+    let lock = state
+        .account_write_locks
+        .for_show(ProviderKind::MyAnimeList, "12");
+    let guard = lock.lock().await;
+    let write = push_progress_resolved_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        Some(&provider),
+        &tokens,
+        "12",
+        crate::account::provider::EntryUpdate {
+            progress_episodes: Some(5),
+            ..Default::default()
+        },
+        None,
+    );
+    let disconnect = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        clear_provider_cache(&state, ProviderKind::MyAnimeList).expect("purge");
+        drop(guard);
+    };
+    let (written, ()) = tokio::join!(write, disconnect);
+    written.expect("the tracker took the write");
+    let cached = list_entries(&state.cache_pool, ProviderKind::MyAnimeList, "4242").unwrap();
+    assert!(
+        cached.is_empty(),
+        "the disconnected account's row came back"
+    );
+}
+
+#[tokio::test]
+async fn a_list_read_whose_owner_lookup_spans_a_disconnect_does_not_refill_the_cache() {
+    use crate::account::cache::list_entries;
+    use wiremock::matchers::{method, path};
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"id":4242,"name":"s"}"#)
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":[{"node":{"id":21,"title":"x"},"list_status":{"status":"watching","num_episodes_watched":2,"score":0,"updated_at":"2024-01-01T00:00:00+00:00"}}],"paging":{}}"#,
+        ))
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu("http://unused-kitsu");
+    let provider = mal_provider(&mal.uri());
+    let tokens = test_tokens();
+    let read = list_for_bearer_via(&state, ProviderKind::MyAnimeList, &provider, &tokens);
+    let disconnect = async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        clear_cache(&state, ProviderKind::MyAnimeList, "4242").expect("purge");
+    };
+    let (read, ()) = tokio::join!(read, disconnect);
+    assert_eq!(read.expect("the tracker answered").len(), 1);
+    let cached = list_entries(&state.cache_pool, ProviderKind::MyAnimeList, "4242").unwrap();
+    assert!(
+        cached.is_empty(),
+        "the disconnected account's list came back"
+    );
+}

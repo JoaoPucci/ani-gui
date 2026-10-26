@@ -480,3 +480,43 @@ async fn a_save_started_after_a_reconnect_is_cached_again() {
     .expect("saved");
     assert_eq!(cached_rows(&state), 1);
 }
+
+#[tokio::test]
+async fn a_save_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_account_back() {
+    // The save arrives while another write of the show holds the lock;
+    // the user disconnects while it waits. Its request began before the
+    // purge, so its answer must not write the account back.
+    let kitsu = mappable_kitsu().await;
+    let mal = mal_slow_patch(0).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let tokens = test_tokens();
+    let lock = state
+        .account_write_locks
+        .for_show(ProviderKind::MyAnimeList, "12");
+    let guard = lock.lock().await;
+    let save = set_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &tokens,
+        "12",
+        EntryUpdate {
+            progress_episodes: Some(3),
+            ..Default::default()
+        },
+    );
+    let disconnect = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        crate::commands::account::clear_cache(&state, ProviderKind::MyAnimeList, "4242")
+            .expect("purge");
+        drop(guard);
+    };
+    let (saved, ()) = tokio::join!(save, disconnect);
+    saved.expect("the tracker took the write");
+    assert_eq!(
+        cached_rows(&state),
+        0,
+        "the disconnected account's row came back"
+    );
+}
