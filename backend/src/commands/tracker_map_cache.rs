@@ -71,3 +71,7 @@ pub(super) fn remember_for(state: &AppState, key: &str, map: &EpisodeMap, ttl: D
         let _ = meta_cache_put(&state.cache_pool, key, &body, ttl.as_secs());
     }
 }
+
+#[cfg(test)]
+#[path = "tracker_map_cache_prop_test.rs"]
+mod prop_tests;

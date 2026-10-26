@@ -77,3 +77,33 @@ proptest! {
         prop_assert_eq!(parse_date(&month_only), want);
     }
 }
+
+/// The Gregorian leap rule, stated on its own: every fourth year, but
+/// not a century unless it is a fourth century.
+fn is_leap(year: i32) -> bool {
+    year.rem_euclid(400) == 0 || (year.rem_euclid(4) == 0 && year.rem_euclid(100) != 0)
+}
+
+proptest! {
+    /// Every month of every year is 28 to 31 days long, and a year's
+    /// twelve months sum to 366 days in a leap year and 365 otherwise.
+    #[test]
+    fn a_year_s_months_sum_to_its_length(year: i32, month: u32) {
+        prop_assert!((28..=31).contains(&days_in_month(year, month)));
+        let total: u32 = (1..=12).map(|m| days_in_month(year, m)).sum();
+        prop_assert_eq!(total, if is_leap(year) { 366 } else { 365 });
+    }
+
+    /// February alone moves with the year: every other month has the
+    /// same length in a leap year as in a common one.
+    #[test]
+    fn only_february_depends_on_the_year(year: i32, month in 1u32..=12) {
+        let want = match month {
+            2 if is_leap(year) => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        prop_assert_eq!(days_in_month(year, month), want);
+    }
+}
