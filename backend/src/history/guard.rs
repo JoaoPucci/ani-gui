@@ -63,7 +63,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, PoisonError, TryLockError};
 
 use super::{read_all, upsert, write_atomic, HistoryEntry};
 use crate::error::Result;
@@ -142,7 +142,17 @@ pub struct Held<'a> {
 pub fn hold<T>(path: &Path, work: impl FnOnce(&mut Held<'_>) -> T) -> T {
     // A writer that panicked left the file at its last whole write,
     // which is all the lock protects.
-    let mut histories = HISTORIES.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut histories = match HISTORIES.try_lock() {
+        Ok(histories) => histories,
+        Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(TryLockError::WouldBlock) => {
+            // Taken: say so to a test holding it, which can then tell
+            // this wait from a caller still on its way.
+            #[cfg(test)]
+            crate::held::queued(&path.display().to_string());
+            HISTORIES.lock().unwrap_or_else(PoisonError::into_inner)
+        }
+    };
     let removals = histories.entry(path.to_path_buf()).or_default();
     work(&mut Held { path, removals })
 }

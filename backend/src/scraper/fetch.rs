@@ -531,6 +531,10 @@ impl CurlImpersonateFetch {
                     if e.kind() == std::io::ErrorKind::ExecutableFileBusy && busy_retries < 10 =>
                 {
                     busy_retries += 1;
+                    // Busy: say so to a test holding it, which can then
+                    // let it go knowing the retry is what it tests.
+                    #[cfg(test)]
+                    crate::held::queued(&self.exe.display().to_string());
                     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 }
                 Ok(Err(e)) => {
