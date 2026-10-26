@@ -46,3 +46,28 @@ export function keepWrite<B extends { status?: unknown; progress?: unknown }>(
 	if (body.status === 'completed' && episodeGone) return null;
 	return keepFields(body, declared, left);
 }
+
+/** Which write, by number, last covered each field of one show. */
+export type Coverage = Readonly<Partial<Record<WriteField, number>>>;
+
+/** `covered` once write number `generation` of `fields` has started: it
+ *  is the newest to cover each of them. */
+export function coverFields(
+	covered: Coverage | undefined,
+	fields: readonly WriteField[],
+	generation: number
+): Coverage {
+	const next: Partial<Record<WriteField, number>> = { ...covered };
+	for (const field of fields) next[field] = generation;
+	return next;
+}
+
+/** The fields of write number `generation` that no newer write has
+ *  covered since: those it is still the newest to cover. */
+export function fieldsLeft(
+	covered: Coverage | undefined,
+	fields: readonly WriteField[],
+	generation: number
+): readonly WriteField[] {
+	return fields.filter((field) => covered?.[field] === generation);
+}

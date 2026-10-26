@@ -54,9 +54,16 @@ export function accountStanding(
 	provider: Provider,
 	listed: ListedAccount
 ): 'same' | 'other' | 'gone' {
-	const now = accountUser(provider);
-	if (listed.user === null || listed.user === undefined || now === null || now === undefined) {
-		return 'gone';
-	}
-	return now === listed.user ? 'same' : 'other';
+	return standingOf(listed.user, accountUser(provider));
+}
+
+/** Where a tracker's user `now` stands against the user a write was
+ *  `listed` under: `gone` when either is unknown, else `same` or
+ *  `other`. */
+export function standingOf(
+	listed: string | null | undefined,
+	now: string | null | undefined
+): 'same' | 'other' | 'gone' {
+	if (listed === null || listed === undefined || now === null || now === undefined) return 'gone';
+	return now === listed ? 'same' : 'other';
 }

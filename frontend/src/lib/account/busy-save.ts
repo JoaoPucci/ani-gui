@@ -12,6 +12,7 @@ import {
 	type HeldWrite,
 	type WriteField
 } from './save-when-allowed';
+import { coverFields, fieldsLeft, type Coverage } from './write-fields';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { followAccount, type ListedAccount } from './held-account';
 import { m } from '$lib/paraglide/messages';
@@ -42,7 +43,7 @@ export function noticeBusy(provider: Provider, seconds: number): string {
  *  held one would undo it. Nothing left, and it is superseded. */
 const started = new Map<string, number>();
 const inFlight = new Map<string, number>();
-const coverage = new Map<string, Partial<Record<WriteField, number>>>();
+const coverage = new Map<string, Coverage>();
 const notices = new Map<string, string>();
 
 /** How many tracker-and-show keys the ledger holds. */
@@ -61,9 +62,7 @@ function start(key: string, fields: readonly WriteField[]): number {
 	const generation = (started.get(key) ?? 0) + 1;
 	started.set(key, generation);
 	inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
-	const covered = { ...coverage.get(key) };
-	for (const field of fields) covered[field] = generation;
-	coverage.set(key, covered);
+	coverage.set(key, coverFields(coverage.get(key), fields, generation));
 	// The older write's notice says something this write may change.
 	takeDownNotice(key);
 	return generation;
@@ -103,8 +102,7 @@ export function saveWhenTrackerAllows<T>(
 	// no further: not its re-read, not its write.
 	const sameAccount = followAccount(provider, listed);
 	const held: HeldWrite = {
-		left: () =>
-			sameAccount() ? fields.filter((field) => coverage.get(key)?.[field] === generation) : []
+		left: () => (sameAccount() ? fieldsLeft(coverage.get(key), fields, generation) : [])
 	};
 	const run = () =>
 		held.left().length > 0 ? attempt(held) : Promise.reject(new SupersededError());
