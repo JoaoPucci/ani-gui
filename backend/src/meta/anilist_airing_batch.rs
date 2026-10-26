@@ -217,6 +217,10 @@ fn parse_batch(body: &[u8], by_mal: bool) -> Result<BatchPage> {
         if let Some(missing) = asked.iter().find(|f| node.get(**f).is_none()) {
             return Err(failed(format!("a node without {missing}")));
         }
+        let schedule = node.get("airingSchedule").filter(|v| !v.is_null());
+        if schedule.is_some_and(|v| v.get("nodes").is_none()) {
+            return Err(failed("a schedule without its nodes".into()));
+        }
         let m: MediaShape = serde_json::from_value(node).map_err(|e| failed(e.to_string()))?;
         let key = if by_mal { m.id_mal } else { m.id };
         if let Some(k) = key {
