@@ -213,8 +213,10 @@ pub(crate) async fn list_for_bearer_via(
     provider: &dyn UserListProvider,
     tokens: &Tokens,
 ) -> Result<Vec<ListEntry>> {
+    // The connection the request arrived in, before its first wait.
+    let began = state.account_write_locks.epochs.current(kind);
     let profile = provider.me(tokens).await?;
-    list_all_and_cache_via(state, kind, provider, tokens, &profile.user_id).await
+    list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
 }
 
 /// [`list_all_and_cache`] with the provider injected, so tests drive it
@@ -226,9 +228,21 @@ pub(crate) async fn list_all_and_cache_via(
     tokens: &Tokens,
     user_id: &str,
 ) -> Result<Vec<ListEntry>> {
-    // A disconnect while the read is out purges the cache; its answer
-    // must not fill it again for that account.
     let began = state.account_write_locks.epochs.current(kind);
+    list_all_and_cache_from(state, kind, provider, tokens, user_id, began).await
+}
+
+/// [`list_all_and_cache_via`] for a request that arrived in connection
+/// epoch `began`: a disconnect since purged the cache, and the answer
+/// must not fill it again for that account.
+async fn list_all_and_cache_from(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    user_id: &str,
+    began: u64,
+) -> Result<Vec<ListEntry>> {
     let entries = provider.list_all(tokens).await?;
     state
         .account_write_locks
@@ -823,8 +837,8 @@ async fn push_progress_with_anilist_base(
 }
 
 /// [`push_progress_with_anilist_base`] with the provider injected:
-/// the per-show lock, the native-id resolve, then
-/// [`push_progress_via`]. `None` is a kind with no provider, which
+/// the per-show lock, the native-id resolve, then the monotonic
+/// write-back. `None` is a kind with no provider, which
 /// fails only once the show resolves.
 pub(crate) async fn push_progress_resolved_via(
     state: &Arc<AppState>,
@@ -835,6 +849,8 @@ pub(crate) async fn push_progress_resolved_via(
     update: EntryUpdate,
     anilist_base: Option<&str>,
 ) -> Result<Option<ListEntry>> {
+    // The connection the request arrived in, before its first wait.
+    let began = state.account_write_locks.epochs.current(kind);
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _write_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
@@ -843,7 +859,7 @@ pub(crate) async fn push_progress_resolved_via(
     let Some(provider) = provider else {
         return Err(AniError::Metadata);
     };
-    push_progress_via(state, kind, provider, tokens, native, update).await
+    push_progress_from(state, kind, provider, tokens, native, update, began).await
 }
 
 /// The monotonic write-back with the provider injected, so tests drive
@@ -855,6 +871,7 @@ pub(crate) async fn push_progress_resolved_via(
 /// fire syncWatchedToTrackers without awaiting, so two writes for the
 /// same show would otherwise both read the same count and the
 /// later-landing lower one would regress it.
+#[cfg(test)]
 async fn push_progress_via(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -863,9 +880,22 @@ async fn push_progress_via(
     native: ProviderMediaId,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
-    // The connection this write began in: a disconnect while it is out
-    // purges the cache, and its write-through must not undo that.
     let began = state.account_write_locks.epochs.current(kind);
+    push_progress_from(state, kind, provider, tokens, native, update, began).await
+}
+
+/// The monotonic write-back for a request that arrived in connection epoch
+/// `began`: a disconnect since purged the cache, and the write-through
+/// must not undo that.
+async fn push_progress_from(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+    began: u64,
+) -> Result<Option<ListEntry>> {
     // Monotonic guard: reconcile
     // the write against the tracker's current count so a replay can't
     // regress progress or downgrade a finished show, while still letting
