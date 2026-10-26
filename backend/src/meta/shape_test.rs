@@ -245,3 +245,22 @@ fn a_mal_list_status_needs_its_status_and_progress() {
         );
     }
 }
+
+#[test]
+fn a_mal_list_row_or_saved_status_needs_its_episode_count() {
+    // MAL sends a list status's episode count on every list page row
+    // and every saved status; missing, the row would read as none
+    // watched.
+    let page = r#"{"data":[{"node":{"id":1,"title":"Show"},
+        "list_status":{"status":"watching"}}],"paging":{}}"#;
+    assert!(
+        mal_user_parse::parse_list_page(page.as_bytes()).is_err(),
+        "MAL list page read {page} as an answer"
+    );
+    let saved = r#"{"status":"watching"}"#;
+    fails(
+        "MAL saved status",
+        saved,
+        mal_user_parse::parse_list_status_response(saved.as_bytes(), 1),
+    );
+}
