@@ -396,3 +396,74 @@ describe('a held write and the account around it, further', () => {
 		expect(setEntry).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe('a write whose account goes before it starts', () => {
+	it('is not sent when the disconnect completes while its bearer is resolved', async () => {
+		// The fan-out has listed the tracker; the disconnect finishes in
+		// the await for its bearer, which still hands back the old token.
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		const held = syncSetEntry('kitsu-70', {
+			status: 'dropped' as const,
+			statusChanged: true,
+			progress: 5
+		});
+		byProvider.anilist = { kind: 'disconnected' };
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(getEntry).not.toHaveBeenCalled();
+		expect(setEntry).not.toHaveBeenCalled();
+	});
+
+	it('removes nothing when the disconnect completes while its bearer is resolved', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		const held = syncRemoveEntry('kitsu-71');
+		byProvider.anilist = { kind: 'disconnected' };
+		await held;
+		expect(getEntry).not.toHaveBeenCalled();
+		expect(removeEntry).not.toHaveBeenCalled();
+	});
+
+	it('is not sent for another user who signed in while its bearer is resolved', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		const held = syncSetEntry('kitsu-72', {
+			status: 'dropped' as const,
+			statusChanged: true,
+			progress: 5
+		});
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b', user_id: 'u-b' } };
+		await held;
+		expect(setEntry).not.toHaveBeenCalled();
+	});
+});
+
+describe('a write dropped mid-change still counts as the newer write', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		accountStore.accountChanging.anilist = false;
+	});
+
+	it('keeps an older held write from re-sending what the dropped one set', async () => {
+		// An older save waits; the user saves again while a disconnect is
+		// under way, and that save is dropped. The disconnect then fails and
+		// the account stays: the older save must not put back what the
+		// user changed since.
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const older = syncSetEntry('kitsu-80', {
+			status: 'dropped' as const,
+			statusChanged: true,
+			progress: 5
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.accountChanging.anilist = true;
+		await syncSetEntry('kitsu-80', {
+			status: 'watching' as const,
+			statusChanged: true,
+			progress: 6
+		});
+		accountStore.accountChanging.anilist = false;
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await older).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(setEntry).toHaveBeenCalledTimes(1);
+	});
+});

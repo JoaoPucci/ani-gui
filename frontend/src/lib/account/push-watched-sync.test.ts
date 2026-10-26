@@ -206,3 +206,14 @@ describe('a held progress write whose tracker account changes during the wait', 
 		expect(updateProgress).toHaveBeenLastCalledWith('anilist', 'tok-a2', expect.anything());
 	});
 });
+
+describe('a progress write whose account goes before it starts', () => {
+	it('is not sent when the disconnect completes while its bearer is resolved', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		const write = syncWatchedToTrackers('kitsu-73', 6);
+		byProvider.anilist = { kind: 'disconnected' };
+		await write;
+		expect(updateProgress).not.toHaveBeenCalled();
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+});
