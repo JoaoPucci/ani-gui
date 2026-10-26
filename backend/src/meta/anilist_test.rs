@@ -689,3 +689,34 @@ async fn media_listed_for_mals_splits_a_batch_whose_page_overflows() {
     assert_eq!(got.get(&1), Some(&vec![10, 11]));
     assert_eq!(got.get(&2), Some(&vec![20]));
 }
+
+#[tokio::test]
+async fn one_mal_id_recorded_by_more_media_than_a_page_holds_is_no_answer() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[{"id":10,"idMal":1}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let err = media_listed_for_mals(&client, &[1], Some(&server.uri()))
+        .await
+        .expect_err("a cut page for one id");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let err = media_ids_recording_mal(&client, 1, Some(&server.uri()))
+        .await
+        .expect_err("a cut page for one id");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[test]
+fn a_page_that_does_not_say_it_was_cut_is_whole() {
+    assert!(!page_has_next(br#"{"data":{"Page":{"media":[]}}}"#).expect("ok"));
+    assert!(!page_has_next(br#"{"data":{"Page":{"pageInfo":{},"media":[]}}}"#).expect("ok"));
+    assert!(page_has_next(br#"{"data":{"Page":{"pageInfo":{"hasNextPage":true}}}}"#).expect("ok"));
+    assert!(matches!(
+        page_has_next(b"<html>"),
+        Err(AniError::ParseFailed { .. })
+    ));
+}
