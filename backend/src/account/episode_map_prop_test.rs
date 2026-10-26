@@ -912,3 +912,33 @@ proptest! {
         prop_assert_eq!(map.conclusive(), want);
     }
 }
+
+proptest! {
+    /// Evidence that disagrees with itself settles nothing: when the
+    /// show's own count is not the count its part carries in Kitsu's
+    /// chain of parts (or in the mapped set), a map that files it
+    /// still covers exactly the show's own episodes, or is identity.
+    #[test]
+    fn a_part_whose_count_is_not_the_show_s_own_files_nothing_past_the_show(
+        (ev, ours) in parts_evidence(),
+        own in 1u32..=60,
+        shared in any::<bool>(),
+    ) {
+        let mut ev = ev;
+        ev.kitsu.episodes = Some(own);
+        if shared {
+            ev.sharing = ev.parts.clone();
+        }
+        let part = ev.parts[ours].episodes;
+        let map = map_show(&ev);
+        if !matches!(map.shape, Shape::Identity(_)) {
+            prop_assert_eq!(map.segments.last().map(|s| s.kitsu_to), Some(own));
+        }
+        if part != Some(own) {
+            prop_assert!(
+                !matches!(map.shape, Shape::SplitParts | Shape::SharedEntry),
+                "a part counted {part:?} filed a show of {own}"
+            );
+        }
+    }
+}
