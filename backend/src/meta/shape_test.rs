@@ -157,10 +157,28 @@ fn mal_list_status_needs_the_anime_document() {
 }
 
 #[test]
+fn a_kitsu_mapping_lookup_needs_each_mapping_s_item() {
+    // The lookup asks for each mapping's item: a mapping without one is
+    // no answer, where an item given as null is "mapped to nothing".
+    let missing = r#"{"data":[{"id":"1","type":"mappings"}]}"#;
+    fails(
+        "mapping lookup",
+        missing,
+        kitsu::parse_mappings_response(missing.as_bytes()),
+    );
+    let nothing =
+        r#"{"data":[{"id":"1","type":"mappings","relationships":{"item":{"data":null}}}]}"#;
+    assert_eq!(
+        kitsu::parse_mappings_response(nothing.as_bytes()).expect("an answer"),
+        None
+    );
+}
+
+#[test]
 fn anilist_airing_needs_what_it_asked_for() {
-    // Every airing query asks for the status, the episode count, the
-    // next episode and the schedule; a Media without them is no answer
-    // about the show's airing.
+    // Every airing query asks for the status, and AniList answers each
+    // field it is asked for, null when it has nothing; a Media without
+    // the status is no answer about the show's airing.
     let empty = r#"{"data":{"Media":{}}}"#;
     fails(
         "airing",

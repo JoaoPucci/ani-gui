@@ -533,13 +533,28 @@ async fn a_null_cover_show_whose_remembered_banner_is_dead_asks_anilist_once_and
     anilist.verify().await;
 }
 
+/// The seconds the row under `key` is kept for.
+fn kept_for(state: &AppState, key: &str) -> u64 {
+    let conn = state.cache_pool.get().expect("conn");
+    let ttl: i64 = conn
+        .query_row(
+            "SELECT ttl_seconds FROM meta_cache WHERE key = ?1",
+            [key],
+            |r| r.get(0),
+        )
+        .expect("row kept");
+    u64::try_from(ttl).expect("non-negative")
+}
+
 /// A show Kitsu has no cover for asks AniList for its banner. When that
 /// question goes unanswered (AniList failing here), the detail is
-/// still served, with the poster treatment, but not kept: a row kept
-/// without the banner would show none for as long as the row lives,
-/// for a failure that said nothing about whether there is one.
+/// still served, with the poster treatment, and kept only briefly: a
+/// row kept without the banner for its full lifetime would show none
+/// for a week, for a failure that said nothing about whether there is
+/// one, and a row not kept at all would ask Kitsu and AniList again on
+/// every read while AniList fails.
 #[tokio::test]
-async fn a_banner_lookup_that_goes_unanswered_leaves_the_detail_uncached() {
+async fn a_banner_lookup_that_goes_unanswered_keeps_the_detail_briefly() {
     let anilist = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(500))
@@ -575,8 +590,45 @@ async fn a_banner_lookup_that_goes_unanswered_leaves_the_detail_uncached() {
 
     assert_eq!(detail.anilist_banner, None);
     assert_eq!(
-        crate::cache::meta_cache_get(&state.cache_pool, &anime_detail_key("12")).expect("read"),
-        None,
-        "not kept without the banner"
+        kept_for(&state, &anime_detail_key("12")),
+        crate::cache::ttl::UNANSWERED_TTL.as_secs(),
+        "kept only until the question is worth asking again"
+    );
+}
+
+/// A trending entry whose bridge to Kitsu goes unanswered is left off
+/// the strip, but the strip is not kept for its hour as if the entry
+/// had no Kitsu entry: it is kept briefly, and the entry asked again.
+#[tokio::test]
+async fn a_trending_strip_with_an_unanswered_bridge_is_kept_briefly() {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [
+                anilist_entry(101, 21, Some(BANNER)),
+                anilist_entry(102, 22, None),
+            ] } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    // MAL 22's lookup, and the AniList-id lookup after it, fail.
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .respond_with(ResponseTemplate::new(500))
+        .with_priority(10)
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+
+    assert_eq!(refs.len(), 1, "the unanswered entry is left off");
+    assert_eq!(
+        kept_for(&state, "kitsu:v6:trending_anilist"),
+        crate::cache::ttl::UNANSWERED_TTL.as_secs()
     );
 }
