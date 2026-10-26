@@ -357,3 +357,42 @@ describe('a held write whose tracker account changes during the wait', () => {
 		expect(removeEntry).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('a held write and the account around it, further', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		accountStore.accountChanging.anilist = false;
+	});
+
+	const save = { status: 'dropped' as const, statusChanged: true, progress: 5 };
+
+	it('is not sent at all when it starts while the account is being changed', async () => {
+		// The save fires while a disconnect is under way: the tracker is
+		// still listed, but the account it would be sent for is going.
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		accountStore.accountChanging.anilist = true;
+		const held = syncSetEntry('kitsu-60', save);
+		await vi.advanceTimersByTimeAsync(0);
+		byProvider.anilist = { kind: 'disconnected' };
+		accountStore.accountChanging.anilist = false;
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(getEntry).not.toHaveBeenCalled();
+		expect(setEntry).not.toHaveBeenCalled();
+	});
+
+	it('is still sent after the account is marked expired, the same user behind it', async () => {
+		// The account page's hydrate marks a past-expiry token expired
+		// before its refresh restores it: the account has not changed.
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-61', save);
+		await vi.advanceTimersByTimeAsync(0);
+		byProvider.anilist = { kind: 'expired', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		await vi.advanceTimersByTimeAsync(1000);
+		await held;
+		expect(setEntry).toHaveBeenCalledTimes(2);
+	});
+});
