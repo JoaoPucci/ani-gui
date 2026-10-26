@@ -1,6 +1,7 @@
 //! Wire-shape parsers for the MAL provider. Extracted so the parse
 //! density (struct-per-endpoint definitions, paginator details, the
-//! inline ISO-8601 reader) doesn't pile onto `mal_user.rs`'s CRAP
+//! ISO-8601 reader in `mal_user_parse_time.rs`) doesn't pile onto
+//! `mal_user.rs`'s CRAP
 //! score — the trait-impl file stays focused on network plumbing +
 //! the refresh coalesce, parsers live here and are tested through
 //! the wiremock surface in `mal_user_test.rs`.
