@@ -17,8 +17,8 @@
 # seed each time, which is where the properties earn their variety.
 #
 # The rules are syntactic:
-#   - no workflow line names cargo and, later, `llvm-cov` as a word
-#     of its own (`cargo llvm-cov`, `cargo +1.88 llvm-cov`, a doubled
+#   - no workflow line names cargo and, later, `llvm-cov` right after
+#     whitespace (`cargo llvm-cov`, `cargo +1.88 llvm-cov`, a doubled
 #     space): the runs go through the script, and both coverage
 #     workflows run it on a `run: sh tools/rust-lcov.sh` line of its
 #     own;
@@ -32,8 +32,9 @@
 # whose coverage the gate reads, or that a property's inputs depend on
 # nothing but the seed (a HashMap's iteration order, the clock, a
 # test that reaches the network), or a cargo invocation the line does
-# not spell out (a command assembled from variables, a script other
-# than tools/rust-lcov.sh).
+# not spell out (a command assembled from variables, `llvm-cov` quoted
+# or carried to the next line by a continuation, a script other than
+# tools/rust-lcov.sh).
 # Running the script is checked in tests/bash/arch/rust_lcov.bats.
 
 set -eu
