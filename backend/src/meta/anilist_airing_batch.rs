@@ -180,32 +180,41 @@ fn parse_batch(body: &[u8], by_mal: bool) -> Result<BatchPage> {
         #[serde(rename = "Page")]
         page: Page,
     }
+    // Every field here is one the batch asks for: a page that leaves one
+    // out is no answer, never an empty or whole one.
     #[derive(Deserialize)]
     struct Page {
-        #[serde(rename = "pageInfo", default)]
-        info: Option<Info>,
-        #[serde(default)]
-        media: Vec<MediaShape>,
+        #[serde(rename = "pageInfo")]
+        info: Info,
+        media: Vec<serde_json::Value>,
     }
     #[derive(Deserialize)]
     struct Info {
-        #[serde(rename = "hasNextPage", default)]
-        has_next: Option<bool>,
+        #[serde(rename = "hasNextPage")]
+        has_next: bool,
     }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("anilist airing batch response: {e}"),
-    })?;
+    let failed = |detail: String| AniError::ParseFailed {
+        detail: format!("anilist airing batch response: {detail}"),
+    };
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| failed(e.to_string()))?;
     let page = parsed.data.page;
+    let key_name = if by_mal { "idMal" } else { "id" };
+    let mut media = Vec::with_capacity(page.media.len());
+    for node in page.media {
+        // A node that leaves out the key it was asked for cannot say whose
+        // schedule it is; one whose key is null names no show.
+        if node.get(key_name).is_none() {
+            return Err(failed(format!("a node without {key_name}")));
+        }
+        let m: MediaShape = serde_json::from_value(node).map_err(|e| failed(e.to_string()))?;
+        let key = if by_mal { m.id_mal } else { m.id };
+        if let Some(k) = key {
+            media.push((k, derive_status(m)));
+        }
+    }
     Ok(BatchPage {
-        cut: page.info.and_then(|i| i.has_next).unwrap_or(false),
-        media: page
-            .media
-            .into_iter()
-            .filter_map(|m| {
-                let key = if by_mal { m.id_mal } else { m.id };
-                key.map(|k| (k, derive_status(m)))
-            })
-            .collect(),
+        cut: page.info.has_next,
+        media,
     })
 }
 
