@@ -355,3 +355,79 @@ async fn a_failed_single_lookup_leaves_only_its_mal_id_out_of_the_batch() {
     assert_eq!(got.get(&51039), None);
     assert_eq!(got.get(&7).and_then(|s| s.aired), Some(12));
 }
+
+#[tokio::test]
+async fn one_mal_id_whose_own_page_is_cut_is_seeded_from_the_single_lookup() {
+    // More media record MAL 1 than a page holds: its page is cut even
+    // alone, so the single lookup answers it. One the single lookup
+    // does not index is left out.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], true)),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .and(wiremock::matchers::body_string_contains("\"idMal\":1"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"status":"FINISHED","episodes":10,"nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[1], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1).and_then(|s| s.aired), Some(10));
+
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], true)),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[1], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+}
+
+#[tokio::test]
+async fn an_id_keyed_batch_whose_page_is_cut_asks_the_single_lookup_by_anilist_id() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatch("))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[]}}}"#,
+            ),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .and(wiremock::matchers::body_string_contains("\"id\":207141"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"status":"FINISHED","episodes":12,"nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let got = airing_status_batch(&reqwest::Client::new(), &[207141], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&207141).and_then(|s| s.aired), Some(12));
+}
