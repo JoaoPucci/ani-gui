@@ -905,6 +905,10 @@ fn jwt_exp_claim(access_token: &str) -> Option<i64> {
 }
 
 #[cfg(test)]
+#[path = "anilist_user_shape_prop_test.rs"]
+mod shape_prop_tests;
+
+#[cfg(test)]
 #[path = "anilist_user_test.rs"]
 mod tests;
 

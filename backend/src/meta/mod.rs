@@ -26,3 +26,7 @@ pub(crate) mod rate_limit;
 #[cfg(test)]
 #[path = "shape_test.rs"]
 mod shape_tests;
+
+#[cfg(test)]
+#[path = "shape_prop_test.rs"]
+mod shape_prop_tests;
