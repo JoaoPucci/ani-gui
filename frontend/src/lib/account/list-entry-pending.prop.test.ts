@@ -3,6 +3,7 @@ import fc from 'fast-check';
 
 import { pendingAfterSave, seedForOpen, statusWriteIntended } from './list-entry-pending';
 import type { ListStatus } from './types';
+import { effectiveProgress } from './list-entry-edit';
 
 const status = fc.constantFrom<ListStatus>(
 	'planning',
@@ -61,7 +62,9 @@ describe('seedForOpen, by property', () => {
 				const mine = p !== null && p.kitsuId === id;
 				expect(seed.status).toBe(mine ? p.intendedStatus : (v.status ?? 'planning'));
 				expect(seed.seededStatus).toBe(v.status ?? 'planning');
-				expect(seed.progress).toBeGreaterThanOrEqual(0);
+				const base = v.status ?? 'planning';
+				const raw = mine ? p.intendedProgress : effectiveProgress(base, v.progress, v.total);
+				expect(seed.progress).toBe(effectiveProgress(seed.status, raw, v.total));
 			})
 		);
 	});

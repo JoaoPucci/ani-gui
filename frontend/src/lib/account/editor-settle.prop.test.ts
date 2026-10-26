@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
 import { editorToggle, settleRemove, settleSave } from './editor-settle';
+import { m } from '$lib/paraglide/messages';
 import {
 	runEditorRemove,
 	runEditorSave,
@@ -122,6 +123,39 @@ describe('runEditorSave and runEditorRemove, by property', () => {
 					if (!superseded && outcome.failed === 0) expect(res.kind).toBe('removed');
 				}
 			)
+		);
+	});
+});
+
+describe('the toast a result reports, by property', () => {
+	const failedToast = (rateLimited: boolean | undefined) => ({
+		kind: 'error',
+		message: rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
+	});
+
+	it('is the saved, partial, rate-limited or failure message a save ended with', () => {
+		fc.assert(
+			fc.property(saveResult, fc.boolean(), (res, sameShow) => {
+				const toast = settleSave(res, sameShow).toast;
+				if (res.kind === 'saved')
+					expect(toast).toEqual({ kind: 'success', message: m.detail_list_saved() });
+				else if (res.kind === 'partial')
+					expect(toast).toEqual({ kind: 'error', message: m.detail_list_save_partial() });
+				else if (res.kind === 'failed') expect(toast).toEqual(failedToast(res.rateLimited));
+				else expect(toast).toBeNull();
+			})
+		);
+	});
+
+	it('is the removed, rate-limited or failure message a removal ended with', () => {
+		fc.assert(
+			fc.property(removeResult, fc.boolean(), (res, sameShow) => {
+				const toast = settleRemove(res, sameShow).toast;
+				if (res.kind === 'removed')
+					expect(toast).toEqual({ kind: 'success', message: m.detail_list_removed() });
+				else if (res.kind === 'failed') expect(toast).toEqual(failedToast(res.rateLimited));
+				else expect(toast).toBeNull();
+			})
 		);
 	});
 });
