@@ -920,6 +920,11 @@ async fn an_unanswered_refresh_serves_the_last_list_anilist_gave_and_keeps_it() 
             .expect("read")
             .expect("the row is kept");
         assert_eq!(after.body, kept, "the refused refresh rewrote the row");
+        assert_eq!(
+            crate::cache::meta_cache_get(&state.cache_pool, TRENDING_KEY).expect("read"),
+            None,
+            "the refused refresh renewed the row's window, so AniList is not asked again"
+        );
     }
 }
 
@@ -941,12 +946,24 @@ async fn a_feed_kitsu_cannot_bridge_serves_the_last_list_anilist_gave() {
     mount_failing_mappings(&kitsu, "101", 10).await;
     mount_kitsu_airing_list(&kitsu).await;
 
+    let kept = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("the row")
+        .body;
     let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
         .await
         .expect("the last list");
     assert_eq!(
         refs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
         ["12"]
+    );
+    let after = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("the row is kept");
+    assert_eq!(after.body, kept);
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, TRENDING_KEY).expect("read"),
+        None
     );
 }
 
