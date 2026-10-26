@@ -426,12 +426,12 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<Media>,
+        media: crate::meta::present::Present<Media>,
     }
     #[derive(Deserialize)]
     struct Media {
         #[serde(rename = "mediaListEntry")]
-        entry: Option<Entry>,
+        entry: crate::meta::present::Present<Entry>,
     }
     #[derive(Deserialize)]
     struct Entry {
@@ -441,14 +441,19 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
     let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist media entry: {e}"),
     })?;
-    Ok(wrap.data.media.and_then(|m| m.entry).map(|e| CurrentEntry {
-        status: e
-            .status
-            .as_deref()
-            .and_then(ListStatus::from_anilist)
-            .unwrap_or(ListStatus::Watching),
-        progress_episodes: e.progress.unwrap_or(0),
-    }))
+    Ok(wrap
+        .data
+        .media
+        .into_inner()
+        .and_then(|m| m.entry.into_inner())
+        .map(|e| CurrentEntry {
+            status: e
+                .status
+                .as_deref()
+                .and_then(ListStatus::from_anilist)
+                .unwrap_or(ListStatus::Watching),
+            progress_episodes: e.progress.unwrap_or(0),
+        }))
 }
 
 /// Pure parser for the [`MEDIA_TRACKED_GQL`] response: the viewer's
@@ -590,12 +595,10 @@ fn parse_media_list_page(body: &[u8]) -> Result<MediaListPage> {
     struct Collection {
         #[serde(rename = "hasNextChunk")]
         has_next_chunk: bool,
-        #[serde(default)]
         lists: Vec<ListBucket>,
     }
     #[derive(Deserialize)]
     struct ListBucket {
-        #[serde(default)]
         entries: Vec<RawEntry>,
     }
     #[derive(Deserialize)]

@@ -472,8 +472,17 @@ pub struct ExternalIds {
 pub fn parse_external_ids_from_mappings(body: &[u8]) -> Result<ExternalIds> {
     #[derive(Deserialize)]
     struct Wrap {
+        // The anime document itself: without it the reply is not the
+        // one asked for, and its lack of mappings says nothing.
+        #[serde(rename = "data")]
+        _data: AnimeDoc,
         #[serde(default)]
         included: Vec<Resource>,
+    }
+    #[derive(Deserialize)]
+    struct AnimeDoc {
+        #[serde(rename = "id")]
+        _id: String,
     }
     #[derive(Deserialize)]
     struct Resource {

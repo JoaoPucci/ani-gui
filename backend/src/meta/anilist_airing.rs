@@ -251,12 +251,12 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<MediaShape>,
+        media: crate::meta::present::Present<MediaShape>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist airing response: {e}"),
     })?;
-    Ok(parsed.data.media.map(derive_status))
+    Ok(parsed.data.media.into_inner().map(derive_status))
 }
 
 /// Pure parser for the batch response: every returned media node
@@ -284,7 +284,6 @@ fn parse_batch(body: &[u8], by_mal: bool) -> Result<std::collections::HashMap<u3
     }
     #[derive(Deserialize)]
     struct Page {
-        #[serde(default)]
         media: Vec<MediaShape>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {

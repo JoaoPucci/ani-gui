@@ -53,6 +53,11 @@ pub(in crate::meta) fn parse_list_status_response(body: &[u8], media_id: u32) ->
 pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<CurrentEntry>> {
     #[derive(Deserialize)]
     struct Wire {
+        // The anime itself: MAL leaves `my_list_status` out for a show
+        // not on the list, so only the document around it tells that
+        // answer from a reply that is no answer.
+        #[serde(rename = "id")]
+        _id: u64,
         #[serde(default)]
         my_list_status: Option<MyListStatus>,
     }

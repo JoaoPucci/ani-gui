@@ -3,6 +3,7 @@
 //! inside the CRAP gate's per-file bar.
 
 use super::*;
+use crate::meta::present::Present;
 
 /// Pure parser for the by-media `idMal` response.
 ///
@@ -19,17 +20,21 @@ pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<Media>,
+        media: Present<Media>,
     }
     #[derive(Deserialize)]
     struct Media {
         #[serde(rename = "idMal")]
-        id_mal: Option<u32>,
+        id_mal: Present<u32>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist idMal response: {e}"),
     })?;
-    Ok(parsed.data.media.and_then(|m| m.id_mal))
+    Ok(parsed
+        .data
+        .media
+        .into_inner()
+        .and_then(|m| m.id_mal.into_inner()))
 }
 
 /// Pure parser for the batched by-MAL response: `{ data: { Page: {
@@ -57,7 +62,7 @@ pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::
     struct Media {
         id: u32,
         #[serde(rename = "idMal")]
-        id_mal: Option<u32>,
+        id_mal: Present<u32>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist batched idMal response: {e}"),
@@ -67,7 +72,7 @@ pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::
         .page
         .media
         .into_iter()
-        .filter_map(|m| m.id_mal.map(|mal| (mal, m.id)))
+        .filter_map(|m| m.id_mal.into_inner().map(|mal| (mal, m.id)))
         .collect())
 }
 
@@ -85,7 +90,7 @@ pub fn parse_media_id_response(body: &[u8]) -> Result<Option<u32>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<Media>,
+        media: Present<Media>,
     }
     #[derive(Deserialize)]
     struct Media {
@@ -94,7 +99,7 @@ pub fn parse_media_id_response(body: &[u8]) -> Result<Option<u32>> {
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist media-id response: {e}"),
     })?;
-    Ok(parsed.data.media.map(|m| m.id))
+    Ok(parsed.data.media.into_inner().map(|m| m.id))
 }
 
 /// Pure parser for a banner response, by MAL id or by AniList id.
@@ -110,17 +115,21 @@ pub fn parse_banner_response(body: &[u8]) -> Result<Option<String>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<Media>,
+        media: Present<Media>,
     }
     #[derive(Deserialize)]
     struct Media {
         #[serde(rename = "bannerImage")]
-        banner_image: Option<String>,
+        banner_image: Present<String>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist banner response: {e}"),
     })?;
-    Ok(parsed.data.media.and_then(|m| m.banner_image))
+    Ok(parsed
+        .data
+        .media
+        .into_inner()
+        .and_then(|m| m.banner_image.into_inner()))
 }
 
 /// Pure parser for the trending response body.
