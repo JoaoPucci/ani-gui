@@ -145,6 +145,28 @@ async fn a_tree_that_never_empties_is_given_up_and_the_drop_does_not_wait_again(
     assert_eq!(s.kills, 2, "the drop asks for the kill again");
 }
 
+/// The app's ceiling itself: a teardown whose tree never empties gives
+/// up at the ceiling, not before it and not a look's wait after. Timed
+/// on tokio's clock paused ([`TreeKillChild::on_tokio_clock`]), which
+/// moves only from one of the teardown's waits between looks to the
+/// next, so how fast the machine runs the looks has no say in it. The
+/// app measures the same deadline on the wall clock.
+#[tokio::test(start_paused = true)]
+async fn a_teardown_gives_up_at_the_ceiling_exactly() {
+    let (tree, state) = fake_tree(true, None);
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree)).on_tokio_clock();
+    guard.wait().await.expect("the child exits");
+    let start = tokio::time::Instant::now();
+    assert!(!guard.take_down().await, "past the ceiling it is given up");
+    let took = start.elapsed();
+    // The looks are a poll of a few milliseconds apart; tokio's timers
+    // fire on millisecond ticks.
+    let look = std::time::Duration::from_millis(50);
+    assert!(took >= TREE_EXIT_CEILING, "gave up early: {took:?}");
+    assert!(took <= TREE_EXIT_CEILING + look, "gave up late: {took:?}");
+    assert_eq!(state.lock().expect("fake tree").kills, 1);
+}
+
 #[tokio::test]
 async fn a_tree_taken_down_once_is_not_looked_at_again() {
     let (tree, state) = fake_tree(true, Some(0));
