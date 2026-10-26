@@ -164,7 +164,7 @@ proptest! {
     ) {
         let nodes: Vec<String> = ids
             .iter()
-            .map(|id| format!(r#"{{"id":{id},"status":"FINISHED","episodes":{id},"nextAiringEpisode":null}}"#))
+            .map(|id| format!(r#"{{"id":{id},"status":"FINISHED","episodes":{id},"nextAiringEpisode":null,"airingSchedule":{{"nodes":[]}}}}"#))
             .collect();
         let body = format!(
             r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":false}},"media":[{}]}}}}}}"#,

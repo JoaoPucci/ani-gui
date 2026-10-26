@@ -457,8 +457,40 @@ fn a_batch_page_missing_what_was_asked_for_is_no_answer() {
     }
     // A node whose key is null names no show, and is skipped.
     let got = parse_airing_batch_response(
-        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":null,"status":"FINISHED","episodes":12}]}}}"#,
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":null,"status":"FINISHED","episodes":12,"nextAiringEpisode":null,"airingSchedule":null}]}}}"#,
     )
     .expect("an answer");
     assert!(got.is_empty());
+}
+
+#[test]
+fn a_batch_node_missing_a_field_it_was_asked_for_is_no_answer() {
+    // Each node is asked for its status, episodes, next airing and
+    // schedule. A node that leaves one out cannot say how far the show
+    // has aired; null keeps its meaning (nothing scheduled, unknown).
+    for field in ["status", "episodes", "nextAiringEpisode", "airingSchedule"] {
+        let mut node = serde_json::json!({
+            "id": 5,
+            "status": "RELEASING",
+            "episodes": 12,
+            "nextAiringEpisode": null,
+            "airingSchedule": { "nodes": [] },
+        });
+        node.as_object_mut().expect("object").remove(field);
+        let body = serde_json::json!({
+            "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [node] } }
+        });
+        assert!(
+            matches!(
+                parse_airing_batch_response(body.to_string().as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{field}"
+        );
+    }
+    let nulls = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":5,"status":null,"episodes":null,"nextAiringEpisode":null,"airingSchedule":null}]}}}"#;
+    assert_eq!(
+        parse_airing_batch_response(nulls).expect("an answer").len(),
+        1
+    );
 }
