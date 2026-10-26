@@ -32,14 +32,9 @@ pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
     Ok(parsed.data.media.and_then(|m| m.id_mal))
 }
 
-/// Pure parser for the batched by-MAL response: `{ data: { Page: {
-/// media: [{ id, idMal }] } } }` → `idMal → id` map. Entries without
-/// an `idMal` are skipped.
-///
-/// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't the expected
-/// envelope.
-pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::HashMap<u32, u32>> {
+/// The `(id, idMal)` of every media in a `{ data: { Page: { media:
+/// [{ id, idMal }] } } }` response.
+fn page_media(body: &[u8]) -> Result<Vec<(u32, Option<u32>)>> {
     #[derive(Deserialize)]
     struct Wrap {
         data: Data,
@@ -67,8 +62,39 @@ pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::
         .page
         .media
         .into_iter()
-        .filter_map(|m| m.id_mal.map(|mal| (mal, m.id)))
+        .map(|m| (m.id, m.id_mal))
         .collect())
+}
+
+/// Pure parser for the batched by-MAL response: `{ data: { Page: {
+/// media: [{ id, idMal }] } } }` → `idMal → id` map. Entries without
+/// an `idMal` are skipped.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::HashMap<u32, u32>> {
+    Ok(page_media(body)?
+        .into_iter()
+        .filter_map(|(id, mal)| mal.map(|mal| (mal, id)))
+        .collect())
+}
+
+/// Every media in a batched by-MAL response that records `mal_id`, in
+/// AniList id order, each once.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't the expected
+/// envelope.
+pub fn parse_media_ids_recording_mal(body: &[u8], mal_id: u32) -> Result<Vec<u32>> {
+    let mut ids: Vec<u32> = page_media(body)?
+        .into_iter()
+        .filter(|(_, mal)| *mal == Some(mal_id))
+        .map(|(id, _)| id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
 }
 
 /// Pure parser for the by-MAL `mediaId` response.

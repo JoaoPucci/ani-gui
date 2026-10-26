@@ -20,7 +20,8 @@
 //! identity map costs the write one cache read. The evidence is
 //! gathered — one tracker read for the entry and one per sequel it names
 //! at each hop, one Kitsu read per mapping or relationship asked, the id
-//! translations a part's resolution makes, and the pages of Kitsu's
+//! resolution of each part and each Kitsu entry found mapped to an entry
+//! (its mappings and AniList's id translations), and the pages of Kitsu's
 //! episode list an exact chain's unplaced bounds need — only on a miss,
 //! once per show per window ([`evidence`] has the walks).
 
@@ -50,6 +51,8 @@ use cache::map_ttl;
 use cache::{cached, remember, remember_for};
 #[path = "tracker_map_kitsu.rs"]
 mod kitsu_side;
+#[path = "tracker_map_owners.rs"]
+mod owners;
 #[path = "tracker_map_parts.rs"]
 mod parts_walk;
 #[path = "tracker_map_prequels.rs"]

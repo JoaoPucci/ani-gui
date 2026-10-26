@@ -25,7 +25,7 @@ use crate::error::{AniError, Result};
 mod parse;
 pub use parse::{
     parse_banner_response, parse_mal_id_response, parse_media_id_response,
-    parse_media_ids_by_mal_response, parse_trending,
+    parse_media_ids_by_mal_response, parse_media_ids_recording_mal, parse_trending,
 };
 
 pub(crate) const ANILIST_API: &str = "https://graphql.anilist.co";
@@ -325,6 +325,26 @@ pub async fn media_ids_for_mals(
         map.extend(parse_media_ids_by_mal_response(&bytes)?);
     }
     Ok(map)
+}
+
+/// Every AniList media that records `mal_id` as its MAL id, in AniList
+/// id order: several can, where [`media_id_for_mal`] answers with one.
+/// Empty when none does.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed, as [`media_id_for_mal`].
+pub async fn media_ids_recording_mal(
+    client: &reqwest::Client,
+    mal_id: u32,
+    base_override: Option<&str>,
+) -> Result<Vec<u32>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({
+        "query": MEDIA_IDS_BY_MALS_GQL,
+        "variables": { "idMals": [mal_id] },
+    });
+    let bytes = post_graphql_public(client, url, &body).await?;
+    parse_media_ids_recording_mal(&bytes, mal_id)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use wiremock::matchers::{body_string_contains, method};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::{mal_id_for_media_id, media_id_for_mal, media_ids_for_mals};
+use super::{mal_id_for_media_id, media_id_for_mal, media_ids_for_mals, media_ids_recording_mal};
 use crate::app::AppState;
 use crate::cache::meta_cache_row;
 use crate::error::AniError;
@@ -306,4 +306,55 @@ async fn a_batch_skips_an_id_anilist_is_known_not_to_index() {
         "a known negative is not in the map: {map:?}"
     );
     // `.expect(1)`: the batch made no request of its own.
+}
+
+#[tokio::test]
+async fn every_media_recording_a_mal_id_is_kept_and_served_again_without_a_request() {
+    let anilist = anilist_answering(
+        ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"media":[{"id":702,"idMal":70},{"id":700,"idMal":70},{"id":9,"idMal":71}]}}}"#,
+        ),
+        1,
+    )
+    .await;
+    let state = state();
+    for _ in 0..2 {
+        let ids = media_ids_recording_mal(&state, 70, Some(&anilist.uri()))
+            .await
+            .expect("answered");
+        assert_eq!(ids, [700, 702]);
+    }
+    assert_eq!(
+        ttl_of(&state, "anilist:media-ids-recording-mal:v1:70"),
+        30 * DAY
+    );
+}
+
+#[tokio::test]
+async fn no_media_recording_a_mal_id_is_remembered_for_a_day() {
+    let anilist = anilist_answering(
+        ResponseTemplate::new(200).set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        1,
+    )
+    .await;
+    let state = state();
+    for _ in 0..2 {
+        let ids = media_ids_recording_mal(&state, 70, Some(&anilist.uri()))
+            .await
+            .expect("answered");
+        assert!(ids.is_empty());
+    }
+    assert_eq!(ttl_of(&state, "anilist:media-ids-recording-mal:v1:70"), DAY);
+}
+
+#[tokio::test]
+async fn a_failed_lookup_of_the_media_recording_a_mal_id_is_not_remembered() {
+    let anilist = anilist_answering(ResponseTemplate::new(500), 2).await;
+    let state = state();
+    for _ in 0..2 {
+        let err = media_ids_recording_mal(&state, 70, Some(&anilist.uri()))
+            .await
+            .expect_err("no answer");
+        assert!(matches!(err, AniError::Upstream { status: 500 }), "{err:?}");
+    }
 }
