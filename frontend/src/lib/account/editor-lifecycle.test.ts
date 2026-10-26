@@ -4,6 +4,7 @@ import {
 	adoptedFlightLanded,
 	adoptedLanding,
 	flightHolds,
+	listingHolds,
 	NO_PENDINGS,
 	stillHere,
 	withPending
@@ -102,5 +103,39 @@ describe('adoptedLanding', () => {
 			reconcile: false,
 			close: false
 		});
+	});
+});
+
+describe('adoptedLanding and the form on screen', () => {
+	const landedFlight: Flight = { kind: 'saving', owner: other };
+	const prev = { kitsuId: 'A', flight: landedFlight };
+	const next = { kitsuId: 'A', flight: null };
+
+	it('closes only a popover open on the sent form of the flight that landed', () => {
+		expect(adoptedLanding(prev, next, self, landedFlight).close).toBe(true);
+	});
+
+	it('leaves a form the user opened fresh, or on another flight, alone', () => {
+		expect(adoptedLanding(prev, next, self, null)).toEqual({ reconcile: true, close: false });
+		const another: Flight = { kind: 'saving', owner: other };
+		expect(adoptedLanding(prev, next, self, another)).toEqual({ reconcile: true, close: false });
+	});
+});
+
+describe('listingHolds', () => {
+	const listed = { anilist: { user: 'u1' }, mal: { user: 'm1' } };
+
+	it('holds while some listed tracker is still that user and none is another user', () => {
+		expect(listingHolds(listed, () => 'same')).toBe(true);
+		expect(listingHolds(listed, (p) => (p === 'anilist' ? 'gone' : 'same'))).toBe(true);
+	});
+
+	it('lets go once any listed tracker is another user, or none is still that user', () => {
+		expect(listingHolds(listed, (p) => (p === 'anilist' ? 'other' : 'same'))).toBe(false);
+		expect(listingHolds(listed, () => 'gone')).toBe(false);
+	});
+
+	it('holds with no listing', () => {
+		expect(listingHolds(undefined, () => 'other')).toBe(true);
 	});
 });
