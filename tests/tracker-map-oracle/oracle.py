@@ -128,10 +128,12 @@ def aired_in(ev, number, bound):
     return bool(month(aired) and month(aired) == month(bound))
 
 
-def place(parts, ours, total, taken_out=None):
+def place(parts, ours, own, total, taken_out=None):
     """The episodes before `ours` and its count, when the parts up to some
-    one of them sum exactly to `total`, at least two, `ours` among them.
-    `taken_out`, a list, is given how many parts were taken."""
+    one of them sum exactly to `total`, at least two, `ours` among them
+    with the show's own count `own` (a part that disagrees with the show
+    settles nothing). `taken_out`, a list, is given how many parts were
+    taken."""
     covered, found, taken = 0, None, 0
     for p in parts:
         if covered >= total:
@@ -139,6 +141,8 @@ def place(parts, ours, total, taken_out=None):
         if not p["episodes"]:
             return None
         if p["id"] == ours:
+            if p["episodes"] != own:
+                return None
             found = (covered, p["episodes"])
         covered += p["episodes"]
         taken += 1
@@ -160,7 +164,7 @@ def shared_rule(ev, total):
     # The whole set explains the entry, not a prefix of it.
     if any(not p["episodes"] for p in parts) or sum(p["episodes"] for p in parts) != total:
         return None
-    got = place(parts, ev["kitsu"]["id"], total)
+    got = place(parts, ev["kitsu"]["id"], ev["kitsu"]["episodes"], total)
     if got is None:
         return None
     lead, n = got
@@ -188,7 +192,7 @@ def split_rule(ev, total):
     entry mapped to the tracker's entry that is not among the parts
     taken says the parts are not the whole of the entry."""
     taken = []
-    got = place(ev["parts"], ev["kitsu"]["id"], total, taken)
+    got = place(ev["parts"], ev["kitsu"]["id"], ev["kitsu"]["episodes"], total, taken)
     if got is None:
         return None, False
     ids = {p["id"] for p in ev["parts"][: taken[0]]}
@@ -365,7 +369,7 @@ def shared_family(rng):
         counts = [rng.randint(1, 40) for _ in range(n)]
         parts = [kitsu(10 + i, counts[i], months(2015, 4 * i) + "-03", months(2015, 4 * i + 3) + "-25") for i in range(n)]
         ours = rng.randrange(n)
-        tweak = rng.choice(["ok", "ok", "ok", "short", "same_day", "undated", "not_ours", "shuffled"])
+        tweak = rng.choice(["ok", "ok", "ok", "short", "same_day", "undated", "not_ours", "shuffled", "own_differs"])
         sharing = list(parts)
         total = sum(counts)
         if tweak == "short":
@@ -379,6 +383,9 @@ def shared_family(rng):
         elif tweak == "shuffled":
             rng.shuffle(sharing)
         k = parts[ours] if ours is not None else kitsu(99, 3)
+        if tweak == "own_differs":
+            # The show's own count is not the one its mapped part carries.
+            k = dict(k, episodes=k["episodes"] + 1)
         out.append(("shared-" + tweak, evidence(k, show(7, total, rng.random() < 0.85), sharing=sharing)))
     return out
 
@@ -391,7 +398,7 @@ def split_family(rng):
         parts = [kitsu(20 + i, counts[i], months(2018, 3 * i) + "-01", "") for i in range(n)]
         ours = rng.randrange(n)
         total = sum(counts)
-        tweak = rng.choice(["ok", "ok", "ok", "past_sum", "short", "unknown_part", "alone"])
+        tweak = rng.choice(["ok", "ok", "ok", "past_sum", "short", "unknown_part", "alone", "own_differs"])
         if tweak == "past_sum":
             parts.append(kitsu(50, 12, "2030-01-01", ""))
             if rng.random() < 0.5:
@@ -403,7 +410,11 @@ def split_family(rng):
         elif tweak == "alone":
             parts = parts[:1]
             ours = 0
-        ev = evidence(parts[ours], show(9, total, rng.random() < 0.85), parts=parts)
+        k = parts[ours]
+        if tweak == "own_differs":
+            # The show's own count is not the one its part in the chain carries.
+            k = dict(k, episodes=k["episodes"] + 1)
+        ev = evidence(k, show(9, total, rng.random() < 0.85), parts=parts)
         if rng.random() < 0.2 and counts[0] < total:
             # The entry's list names extras for the surplus over the
             # first part: a later part conflicts.
