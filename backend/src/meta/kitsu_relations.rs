@@ -70,7 +70,8 @@ struct EdgeLinks {
 
 #[derive(Deserialize)]
 struct Destination {
-    data: Option<Ref>,
+    // Null when the relation points nowhere; missing, it says nothing.
+    data: crate::meta::present::Present<Ref>,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -85,11 +86,10 @@ struct Node {
     #[serde(rename = "type")]
     kind: String,
     id: String,
-    #[serde(default)]
     attributes: NodeAttributes,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NodeAttributes {
     subtype: Option<String>,
@@ -110,7 +110,7 @@ pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
     let read = doc.data.len();
     let mut entries = Vec::new();
     for edge in doc.data {
-        let Some(dst) = edge.relationships.destination.data else {
+        let Some(dst) = edge.relationships.destination.data.into_inner() else {
             continue;
         };
         // The page is asked for with its destinations included: one

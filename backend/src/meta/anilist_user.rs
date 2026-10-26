@@ -437,9 +437,11 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
         entry: crate::meta::present::Present<Entry>,
     }
     #[derive(Deserialize)]
+    // Both are asked for: missing, the entry says nothing of where the
+    // viewer is, where null is AniList's own "none".
     struct Entry {
-        status: Option<String>,
-        progress: Option<u32>,
+        status: crate::meta::present::Present<String>,
+        progress: crate::meta::present::Present<u32>,
     }
     let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist media entry: {e}"),
@@ -452,10 +454,11 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
         .map(|e| CurrentEntry {
             status: e
                 .status
+                .into_inner()
                 .as_deref()
                 .and_then(ListStatus::from_anilist)
                 .unwrap_or(ListStatus::Watching),
-            progress_episodes: e.progress.unwrap_or(0),
+            progress_episodes: e.progress.into_inner().unwrap_or(0),
         }))
 }
 

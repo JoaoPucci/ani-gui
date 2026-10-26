@@ -63,23 +63,27 @@ pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<
     }
     #[derive(Deserialize)]
     struct MyListStatus {
-        #[serde(default)]
-        status: Option<String>,
-        #[serde(default)]
-        num_episodes_watched: Option<u32>,
+        // MAL sends both on every list status; missing, the entry says
+        // nothing of where the user is.
+        status: crate::meta::present::Present<String>,
+        num_episodes_watched: crate::meta::present::Present<u32>,
         #[serde(default)]
         is_rewatching: Option<bool>,
     }
     let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("mal anime my_list_status: {e}"),
     })?;
-    Ok(wire.my_list_status.map(|s| CurrentEntry {
-        status: s
-            .status
-            .as_deref()
-            .and_then(|st| ListStatus::from_mal(st, s.is_rewatching.unwrap_or(false)))
-            .unwrap_or(ListStatus::Watching),
-        progress_episodes: s.num_episodes_watched.unwrap_or(0),
+    Ok(wire.my_list_status.map(|s| {
+        let rewatching = s.is_rewatching.unwrap_or(false);
+        CurrentEntry {
+            status: s
+                .status
+                .into_inner()
+                .as_deref()
+                .and_then(|st| ListStatus::from_mal(st, rewatching))
+                .unwrap_or(ListStatus::Watching),
+            progress_episodes: s.num_episodes_watched.into_inner().unwrap_or(0),
+        }
     }))
 }
 
