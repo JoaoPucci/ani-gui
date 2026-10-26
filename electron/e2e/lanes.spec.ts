@@ -26,6 +26,17 @@
  * the route. A control request on a held lane must itself wait, or the
  * holds did not take and the rest of the test would prove nothing.
  *
+ * No outcome is read off a clock. "At once" is read as an order:
+ * the API call, the session and the play's first proxy request each
+ * answer while every held request is still held. A request queued on
+ * a held lane goes out only once a held response has come in, and its
+ * own answer needs a round trip more, so none of them can have waited
+ * for one of those connections. The control answers only after a held
+ * request on its lane has let its connection go. The holds end on the
+ * backend's connect timeout, so an answer slower than that fails the
+ * order: it can fail on a machine that slow, never pass because of it.
+ * The waits that remain are guards against a hang.
+ *
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
@@ -42,12 +53,10 @@ const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
 /** How many requests each held lane is given — more than Chromium's
  *  six, so every one of its connections is taken. */
 const HELD_PER_LANE = 7;
-/** What "at once" means here: room for a loaded runner whose home
- *  page is still loading its own data beside the test, yet short
- *  enough that the control — asked a second after the holds, and
- *  bound to wait out their ten-second connect timeout — cannot settle
- *  inside it. */
-const PROMPT_MS = 6_000;
+/** The lanes the test holds. */
+const HELD_LANES = ['probe', 'resolve', 'download', 'image'];
+/** How many connections Chromium opens to one host and port. */
+const CHROMIUM_PER_ORIGIN = 6;
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -55,10 +64,17 @@ test.beforeAll(() => {
 	}
 });
 
-/** A TCP server that accepts every connection and never says a word. */
-async function silentServer(): Promise<{ port: number; close: () => void }> {
+/** A TCP server that accepts every connection and never says a word,
+ *  counting the connections it has accepted. */
+async function silentServer(): Promise<{
+	port: number;
+	accepted: () => number;
+	close: () => void;
+}> {
 	const sockets = new Set<net.Socket>();
+	let accepted = 0;
 	const server = net.createServer((s) => {
+		accepted += 1;
 		sockets.add(s);
 		s.on('error', () => {});
 		s.on('close', () => sockets.delete(s));
@@ -67,6 +83,7 @@ async function silentServer(): Promise<{ port: number; close: () => void }> {
 	const { port } = server.address() as net.AddressInfo;
 	return {
 		port,
+		accepted: () => accepted,
 		close: () => {
 			for (const s of sockets) s.destroy();
 			server.close();
@@ -136,41 +153,95 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 	const { app, page } = await launch();
 	try {
 		await page.waitForFunction(() => Boolean(window.aniGui?.apiBase));
-		const result = await page.evaluate(
-			async ({ silentPort, mediaPort, heldPerLane, promptMs }) => {
+		const lanes = await page.evaluate(
+			({ silentPort, heldLanes, heldPerLane }) => {
 				const bridge = window.aniGui!;
-				const api = bridge.apiBase!;
 				const lanes = { ...(bridge.lanes ?? {}) } as Record<string, string>;
-				const held = ['probe', 'resolve', 'download', 'image'];
 				const stop = new AbortController();
-				(window as unknown as { __stopHeld: AbortController }).__stopHeld = stop;
-				for (const lane of held) {
+				// How many held requests on each lane have let their
+				// connection go, read when each request below answers.
+				const released: Record<string, number> = {};
+				const w = window as unknown as {
+					__stopHeld: AbortController;
+					__released: Record<string, number>;
+				};
+				w.__stopHeld = stop;
+				w.__released = released;
+				for (const lane of heldLanes) {
+					released[lane] = 0;
 					for (let i = 0; i < heldPerLane; i++) {
 						const hang = `https://127.0.0.1:${silentPort}/${lane}-${i}.jpg`;
 						void fetch(`${lanes[lane]}/api/image?url=${encodeURIComponent(hang)}`, {
 							signal: stop.signal
-						}).catch(() => {});
+						})
+							.catch(() => {})
+							.finally(() => {
+								released[lane] += 1;
+							});
 					}
 				}
-				// Let every held request reach its socket.
-				await new Promise((r) => setTimeout(r, 1_000));
+				return lanes;
+			},
+			{
+				silentPort: silent.port,
+				heldLanes: HELD_LANES,
+				heldPerLane: HELD_PER_LANE
+			}
+		);
+		// Every connection Chromium has for each held lane carries a
+		// held request: each has reached the backend, which has opened
+		// its connection upstream.
+		const holding = HELD_LANES.length * CHROMIUM_PER_ORIGIN;
+		await expect
+			.poll(silent.accepted, {
+				message: 'every held lane has its connections taken',
+				// A guard, not a bound: connections taken by requests a
+				// released hold let through are refused just below.
+				timeout: 30_000
+			})
+			.toBeGreaterThanOrEqual(holding);
+		// Taken by the first requests of each lane, not by later ones
+		// that a released hold let through.
+		const releasedBeforeStart = await page.evaluate(() =>
+			Object.values(
+				(window as unknown as { __released: Record<string, number> }).__released
+			).reduce((a, b) => a + b, 0)
+		);
+		expect(releasedBeforeStart, 'no hold has let go yet').toBe(0);
 
-				const timed = async (url: string, init?: RequestInit) => {
-					const started = performance.now();
-					const settled = await Promise.race([
-						fetch(url, { ...init, signal: stop.signal }).then(
-							async (r) => ({ ok: r.ok, body: await r.text() }),
-							() => ({ ok: false, body: '' })
-						),
-						new Promise<null>((r) => setTimeout(() => r(null), promptMs))
-					]);
-					return { settled, ms: performance.now() - started };
+		const result = await page.evaluate(
+			async ({ mediaPort }) => {
+				const bridge = window.aniGui!;
+				const api = bridge.apiBase!;
+				const lanes = { ...(bridge.lanes ?? {}) } as Record<string, string>;
+				const w = window as unknown as {
+					__stopHeld: AbortController;
+					__released: Record<string, number>;
+				};
+				const stop = w.__stopHeld;
+				const releasedNow = () => Object.values(w.__released).reduce((a, b) => a + b, 0);
+				// A request, how it settled, and how many held requests
+				// had let their connection go when it did.
+				const ordered = async (url: string, init?: RequestInit) => {
+					const settled = await fetch(url, {
+						...init,
+						signal: stop.signal
+					}).then(
+						async (r) => ({ ok: r.ok, body: await r.text() }),
+						() => ({ ok: false, body: '' })
+					);
+					return {
+						settled,
+						released: releasedNow(),
+						probeReleased: w.__released.probe
+					};
 				};
 
-				// The control: a held lane's seventh-and-later request waits.
-				const control = await timed(`${lanes.probe}/healthz`);
-				const apiCall = await timed(`${api}/api/settings`);
-				const session = await timed(`${api}/api/sessions`, {
+				// The control: a request on a held lane, past the six its
+				// connections carry, waits for one of the held to let go.
+				const control = ordered(`${lanes.probe}/healthz`);
+				const apiCall = await ordered(`${api}/api/settings`);
+				const session = await ordered(`${api}/api/sessions`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({
@@ -178,38 +249,50 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 						referer: ''
 					})
 				});
-				const mediaUrl = session.settled?.ok
+				const mediaUrl = session.settled.ok
 					? (JSON.parse(session.settled.body) as { media_url: string }).media_url
 					: '';
-				const firstProxyRequest = mediaUrl ? await timed(mediaUrl) : null;
+				const firstProxyRequest = mediaUrl ? await ordered(mediaUrl) : null;
+				// The control answers once the holds start to end on the
+				// backend's connect timeout; nothing aborts it before.
+				const controlled = await control;
 				stop.abort();
-				return { api, lanes, control, apiCall, session, mediaUrl, firstProxyRequest };
+				return {
+					api,
+					control: controlled,
+					apiCall,
+					session,
+					mediaUrl,
+					firstProxyRequest
+				};
 			},
-			{
-				silentPort: silent.port,
-				mediaPort: media.port,
-				heldPerLane: HELD_PER_LANE,
-				promptMs: PROMPT_MS
-			}
+			{ mediaPort: media.port }
 		);
 
-		const origins = new Set([result.api, ...Object.values(result.lanes)]);
-		expect(Object.keys(result.lanes).sort()).toEqual(
+		const origins = new Set([result.api, ...Object.values(lanes)]);
+		expect(Object.keys(lanes).sort()).toEqual(
 			['download', 'image', 'probe', 'resolve', 'stream'].sort()
 		);
 		expect(origins.size, 'every lane is an origin of its own').toBe(6);
 
-		expect(result.control.settled, 'the held lane really is full').toBeNull();
-		expect(result.apiCall.settled?.ok, `the API answered (${result.apiCall.ms} ms)`).toBe(true);
-		expect(result.session.settled?.ok, `the session was made (${result.session.ms} ms)`).toBe(
+		expect(result.control.settled.ok, 'the control answered').toBe(true);
+		expect(
+			result.control.probeReleased,
+			'the held lane really is full: the control waited for a held request to let go'
+		).toBeGreaterThan(0);
+		expect(result.apiCall.settled.ok, 'the API answered').toBe(true);
+		expect(result.apiCall.released, 'the API answered while every hold stood').toBe(0);
+		expect(result.session.settled.ok, 'the session was made').toBe(true);
+		expect(result.session.released, 'the session was made while every hold stood').toBe(0);
+		expect(result.mediaUrl.startsWith(`${lanes.stream}/s/`)).toBe(true);
+		expect(result.firstProxyRequest?.settled.ok, "the play's first proxy request answered").toBe(
 			true
 		);
-		expect(result.mediaUrl.startsWith(`${result.lanes.stream}/s/`)).toBe(true);
 		expect(
-			result.firstProxyRequest?.settled?.ok,
-			`the play's first proxy request answered (${result.firstProxyRequest?.ms} ms)`
-		).toBe(true);
-		expect(result.firstProxyRequest?.settled?.body).toContain('#EXTM3U');
+			result.firstProxyRequest?.released,
+			"the play's first proxy request answered while every hold stood"
+		).toBe(0);
+		expect(result.firstProxyRequest?.settled.body).toContain('#EXTM3U');
 	} finally {
 		await page.evaluate(() =>
 			(window as unknown as { __stopHeld?: AbortController }).__stopHeld?.abort()

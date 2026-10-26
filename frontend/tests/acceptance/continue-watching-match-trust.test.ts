@@ -103,7 +103,11 @@ async function clickAndReadRecordedId(): Promise<string | null> {
 	// case's click is not folded into this one's pending request.
 	stream.dispatch(
 		'done',
-		JSON.stringify({ id: 's-1', kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' })
+		JSON.stringify({
+			session_id: 's-1',
+			media_url: `${API_BASE}/s/s-1/file.mp4`,
+			media_kind: 'mp4'
+		})
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 	return recorded;
