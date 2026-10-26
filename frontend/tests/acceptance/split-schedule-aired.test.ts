@@ -89,15 +89,6 @@ beforeEach(() => {
 				episode_count_approximate: false
 			});
 		}),
-		http.post(`${API_BASE}/api/play`, () =>
-			HttpResponse.json({
-				id: 'session-1',
-				kind: 'hls',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
-			})
-		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 	);

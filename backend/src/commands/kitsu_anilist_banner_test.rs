@@ -838,3 +838,253 @@ async fn an_unreadable_trending_row_is_fetched_again() {
         .expect("trending");
     assert_eq!(refs.len(), 2);
 }
+
+// --- The last list AniList gave, when it cannot answer -------------------
+
+const TRENDING_KEY: &str = "kitsu:v6:trending_anilist";
+
+/// A trending row AniList gave earlier, past its hour: the body kept,
+/// its window over.
+fn expire_trending_row(state: &AppState) -> String {
+    let body = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("a row AniList gave")
+        .body;
+    crate::cache::meta_cache_put(&state.cache_pool, TRENDING_KEY, &body, 0).expect("expire");
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, TRENDING_KEY).expect("read"),
+        None,
+        "the row is expired"
+    );
+    body
+}
+
+/// Kitsu's own airing list, naming show 99 — what the home page would
+/// fall back to with no AniList list at all.
+async fn mount_kitsu_airing_list(kitsu: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "99",
+                "type": "anime",
+                "attributes": { "canonicalTitle": "Kitsu's Own", "titles": {}, "subtype": "TV" },
+            }],
+        })))
+        .mount(kitsu)
+        .await;
+}
+
+#[tokio::test]
+async fn an_unanswered_refresh_serves_the_last_list_anilist_gave_and_keeps_it() {
+    // AniList answered once; its hour ran out; now it refuses, or is
+    // down. The row shows the last list AniList gave — stale, but
+    // AniList's — rather than Kitsu's airing list, and the refused
+    // refresh leaves that row as it was.
+    for refusal in [
+        ResponseTemplate::new(429).insert_header("retry-after", "60"),
+        ResponseTemplate::new(503),
+    ] {
+        let anilist = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+            })))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&anilist)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(refusal)
+            .mount(&anilist)
+            .await;
+        let kitsu = MockServer::start().await;
+        mount_mapping(&kitsu, 21, "12").await;
+        mount_kitsu_airing_list(&kitsu).await;
+        let state = state_with_kitsu_at(&kitsu.uri());
+        kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+            .await
+            .expect("AniList's answer");
+        let kept = expire_trending_row(&state);
+
+        let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+            .await
+            .expect("the last list");
+        assert_eq!(
+            refs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["12"],
+            "Kitsu's list stood in for AniList's last one"
+        );
+        assert_eq!(refs[0].anilist_banner.as_deref(), Some(BANNER));
+        let after = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+            .expect("read")
+            .expect("the row is kept");
+        assert_eq!(after.body, kept, "the refused refresh rewrote the row");
+        assert_eq!(
+            crate::cache::meta_cache_get(&state.cache_pool, TRENDING_KEY).expect("read"),
+            None,
+            "the refused refresh renewed the row's window, so AniList is not asked again"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_feed_kitsu_cannot_bridge_serves_the_last_list_anilist_gave() {
+    // AniList answers, but Kitsu fails every lookup that would bridge
+    // it: the last bridged list stands, not Kitsu's airing list.
+    let anilist = trending_answer(vec![anilist_entry(101, 21, Some(BANNER))]).await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    mount_kitsu_airing_list(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("AniList's answer");
+    expire_trending_row(&state);
+    kitsu.reset().await;
+    mount_failing_mappings(&kitsu, "21", 10).await;
+    mount_failing_mappings(&kitsu, "101", 10).await;
+    mount_kitsu_airing_list(&kitsu).await;
+
+    let kept = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("the row")
+        .body;
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("the last list");
+    assert_eq!(
+        refs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        ["12"]
+    );
+    let after = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("the row is kept");
+    assert_eq!(after.body, kept);
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, TRENDING_KEY).expect("read"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_stale_list_is_replaced_once_anilist_answers_again() {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .with_priority(2)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(102, 22, None)] } }
+        })))
+        .with_priority(3)
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    mount_mapping(&kitsu, 22, "13").await;
+    mount_kitsu_airing_list(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("first answer");
+    expire_trending_row(&state);
+    let stale = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("stale");
+    assert_eq!(stale[0].id, "12");
+
+    let fresh = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fresh");
+    assert_eq!(
+        fresh.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        ["13"]
+    );
+    let row = crate::cache::meta_cache_get(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("the new answer is kept");
+    assert!(row.contains("\"13\""), "{row}");
+}
+
+#[tokio::test]
+async fn a_stale_list_does_not_offer_a_banner_since_found_gone() {
+    // The last list carries AniList's banner, as the hero's image and as
+    // the cover it filled in for a show Kitsu had none for. The image
+    // proxy has since found that URL gone: the stale list is served
+    // without it, as a fresh answer would have been.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "m-21",
+                "type": "mappings",
+                "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+                "relationships": { "item": { "data": { "type": "anime", "id": "12" } } },
+            }],
+            "included": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": {
+                    "canonicalTitle": "Show 12",
+                    "titles": {},
+                    "subtype": "TV",
+                    "status": "current",
+                    "posterImage": null,
+                    "coverImage": null,
+                },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    mount_kitsu_airing_list(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let first = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("AniList's answer");
+    assert_eq!(
+        first[0]
+            .cover_image
+            .as_ref()
+            .and_then(|c| c.large.as_deref()),
+        Some(BANNER)
+    );
+    expire_trending_row(&state);
+    crate::meta::images::mark_dead(&state.cache_pool, BANNER);
+
+    let stale = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("the last list");
+    assert_eq!(stale[0].id, "12");
+    assert_eq!(stale[0].anilist_banner, None, "a gone banner was offered");
+    assert!(
+        stale[0].cover_image.is_none(),
+        "a gone banner was offered as the cover"
+    );
+}

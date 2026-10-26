@@ -16,14 +16,12 @@
  * choice.
  */
 
-import type { VersionKind } from '$lib/api';
+import { VERSION_KINDS, type VersionKind } from '$lib/api';
 
 /** How many shows' choices are kept; the oldest go first. */
 export const MAX_CHOICES = 500;
 
 const KEY = 'ani-gui.version-choices';
-
-const KINDS: readonly VersionKind[] = ['uncensored', 'standard'];
 
 export type ChoiceStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -39,7 +37,9 @@ export function defaultStorage(): ChoiceStorage | null {
 }
 
 const isChoice = (c: unknown): c is [string, VersionKind] =>
-	Array.isArray(c) && typeof c[0] === 'string' && KINDS.includes(c[1] as VersionKind);
+	Array.isArray(c) &&
+	typeof c[0] === 'string' &&
+	(VERSION_KINDS as readonly string[]).includes(c[1] as string);
 
 function load(storage: ChoiceStorage | null): Choices {
 	try {

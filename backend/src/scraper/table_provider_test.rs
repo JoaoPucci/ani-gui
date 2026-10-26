@@ -130,7 +130,8 @@ pub(crate) struct TableProvider {
     stamp: Option<tokio::time::Instant>,
     stalls: bool,
     delay: Option<std::time::Duration>,
-    search_delay: Option<std::time::Duration>,
+    hold: Option<crate::held::Hold>,
+    search_hold: Option<crate::held::Hold>,
 }
 
 impl Default for TableProvider {
@@ -161,7 +162,8 @@ impl TableProvider {
             stamp: None,
             stalls: false,
             delay: None,
-            search_delay: None,
+            hold: None,
+            search_hold: None,
         }
     }
 
@@ -380,10 +382,18 @@ impl TableProvider {
         self
     }
 
-    /// Searches answer only after `delay`; everything else at once —
+    /// Every request is held on `hold` until the test releases its gate
+    /// ([`crate::held`]) — a provider that is still answering for as
+    /// long as the test needs it to be.
+    pub(crate) fn holding(mut self, hold: crate::held::Hold) -> Self {
+        self.hold = Some(hold);
+        self
+    }
+
+    /// Searches are held on `hold`; everything else answers at once —
     /// a resolve held on its first request.
-    pub(crate) fn delaying_searches(mut self, delay: std::time::Duration) -> Self {
-        self.search_delay = Some(delay);
+    pub(crate) fn holding_searches(mut self, hold: crate::held::Hold) -> Self {
+        self.search_hold = Some(hold);
         self
     }
 
@@ -429,6 +439,9 @@ impl TableProvider {
         if let Some(delay) = self.delay {
             tokio::time::sleep(delay).await;
         }
+        if let Some(hold) = &self.hold {
+            hold.wait().await;
+        }
     }
 
     fn by_show<T: Clone>(
@@ -454,8 +467,8 @@ impl Provider for TableProvider {
 
     async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
         self.note(Asked::Search(query.to_string())).await;
-        if let Some(delay) = self.search_delay {
-            tokio::time::sleep(delay).await;
+        if let Some(hold) = &self.search_hold {
+            hold.wait().await;
         }
         self.searches
             .iter()

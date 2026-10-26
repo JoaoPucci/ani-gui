@@ -158,11 +158,9 @@ describe('play route — m / M toggles mute', () => {
 		FakeEventSource.instances[0].dispatch(
 			'done',
 			JSON.stringify({
-				id: 'session-1',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
 			})
 		);
 		// The page carries the session in the URL and gets there by
@@ -233,11 +231,9 @@ describe('play route — m / M toggles mute', () => {
 		FakeEventSource.instances[0].dispatch(
 			'done',
 			JSON.stringify({
-				id: 'session-1',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
 			})
 		);
 		// The page carries the session in the URL and gets there by
