@@ -383,7 +383,8 @@ pub fn parse_anime_response(body: &[u8]) -> Result<KitsuAnimeRef> {
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't valid
-/// JSON:API.
+/// JSON:API, a mapping carries no item, or the mapped anime is not
+/// included.
 pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
     #[derive(Deserialize)]
     struct Wrap {
