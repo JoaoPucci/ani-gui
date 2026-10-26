@@ -29,14 +29,16 @@ export function flightHolds(
 }
 
 /** Whether a pending retry's `listed` accounts still hold: some tracker
- *  is still connected as the user it was listed under. No listing
- *  holds. */
+ *  is still connected as the user it was listed under, and none is
+ *  another user's — a retry is the intent of the accounts it was made
+ *  under, not of whoever holds one of them now. No listing holds. */
 export function listingHolds(
 	listed: Readonly<Record<string, ListedAccount>> | undefined,
 	standing: (provider: string, listed: ListedAccount) => Standing
 ): boolean {
 	if (!listed) return true;
-	return Object.entries(listed).some(([p, account]) => standing(p, account) === 'same');
+	const now = Object.entries(listed).map(([p, account]) => standing(p, account));
+	return now.includes('same') && !now.includes('other');
 }
 
 /** What an editor instance watches: its show, and the flight in flight
@@ -71,7 +73,7 @@ export function adoptedLanding(
 	shown: Flight | null
 ): { reconcile: boolean; close: boolean } {
 	const landed = adoptedFlightLanded(prev, next, self);
-	return { reconcile: landed, close: landed && shown !== null };
+	return { reconcile: landed, close: landed && shown !== null && shown === prev.flight };
 }
 
 /** Whether a write's continuation may touch its instance's own state:

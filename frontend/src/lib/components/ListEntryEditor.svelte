@@ -154,12 +154,16 @@
 	// one re-reads its own. Watched on the flight itself, not on whether it
 	// still locks: an account change lifting the lock is no landing.
 	let watched: Watched = { kitsuId: '', flight: null };
+	// The flight whose sent form the popover was opened on; `null` for a form
+	// opened fresh.
+	let openedOn: Flight | null = null;
 	const watchedFlight = $derived(editorFlights.flightOf(kitsuId));
 	$effect(() => {
 		const next: Watched = { kitsuId, flight: watchedFlight };
-		const landing = adoptedLanding(watched, next, self, open ? watched.flight : null);
+		const landing = adoptedLanding(watched, next, self, open ? openedOn : null);
 		watched = next;
-		// The popover shows the sent form, which the re-read entry replaces.
+		// Open on that flight's sent form, which the re-read entry replaces: close.
+		// A form the user opened fresh, or is editing, stays.
 		if (landing.close) open = false;
 		if (landing.reconcile) onReconcile();
 	});
@@ -278,6 +282,7 @@
 			return;
 		}
 		const sent = act === 'reopen' && flight ? reopenForm(flight) : null;
+		openedOn = sent ? flight : null;
 		if (sent) {
 			// The save still out for this show: show what it sent, locked.
 			editStatus = sent.status;
