@@ -279,6 +279,15 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
+- **The airing batch by MAL id can be cut, and reads the last media
+  per MAL id.** `AIRING_BATCH_BY_MAL_GQL` asks one page of 50 media
+  for up to 50 MAL ids, reads no `hasNextPage`, and keys its answer by
+  `idMal`. Where several AniList media record one MAL id, a page can
+  be cut short and the map keeps whichever came last. The MAL-to-AniList
+  translation had both faults and was fixed in #264, which is where the
+  episode map's ownership reads them. The airing batch is a
+  best-effort seed of the schedule, which no tracker write reads, so it
+  waited for a change of its own.
 - **Two app instances do not share the playback record, the paced
   lanes or the host budget.** The proxy's record of media served, the
   lanes that paced downloads and their subtitle fetches take in turn
