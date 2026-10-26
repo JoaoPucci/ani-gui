@@ -532,3 +532,51 @@ async fn a_null_cover_show_whose_remembered_banner_is_dead_asks_anilist_once_and
     assert_eq!(detail.anilist_banner, None);
     anilist.verify().await;
 }
+
+/// A show Kitsu has no cover for asks AniList for its banner. When that
+/// question goes unanswered (AniList failing here), the detail is
+/// still served, with the poster treatment, but not kept: a row kept
+/// without the banner would show none for as long as the row lives,
+/// for a failure that said nothing about whether there is one.
+#[tokio::test]
+async fn a_banner_lookup_that_goes_unanswered_leaves_the_detail_uncached() {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "x" } },
+            "included": [{
+                "id": "1", "type": "mappings",
+                "attributes": { "externalSite": "anilist/anime", "externalId": "21" }
+            }]
+        })))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    let mut uncovered: serde_json::Value =
+        serde_json::from_slice(DETAIL_FIXTURE).expect("detail fixture");
+    uncovered["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&uncovered))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("served");
+
+    assert_eq!(detail.anilist_banner, None);
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, &anime_detail_key("12")).expect("read"),
+        None,
+        "not kept without the banner"
+    );
+}
