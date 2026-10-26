@@ -21,8 +21,15 @@ pub(super) fn part_of_entry(entry: &TrackerShow, total: u32, count: u32, lead: u
 /// Where the show being mapped sits in `parts`, given in order, when
 /// the parts up to some one of them sum exactly to the entry's total
 /// and the show is among those: the episodes before its, its count,
-/// and how many parts were taken.
-fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(u32, u32, usize)> {
+/// and how many parts were taken. The show's part must carry the show's
+/// own count (`own`): the two come from separate reads, and a part
+/// that disagrees with the show settles nothing.
+fn place_among(
+    parts: &[&KitsuShow],
+    ours: &str,
+    own: Option<u32>,
+    tracker_total: u32,
+) -> Option<(u32, u32, usize)> {
     let mut covered = 0u32;
     let mut place = None;
     let mut taken = 0usize;
@@ -32,6 +39,9 @@ fn place_among(parts: &[&KitsuShow], ours: &str, tracker_total: u32) -> Option<(
         }
         let count = part.episodes.filter(|n| *n > 0)?;
         if part.id == ours {
+            if own != Some(count) {
+                return None;
+            }
             place = Some((covered, count));
         }
         covered = covered.checked_add(count)?;
@@ -77,7 +87,12 @@ pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Ve
     if sum != tracker_total {
         return None;
     }
-    let (lead, count, _) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
+    let (lead, count, _) = place_among(
+        &parts,
+        &evidence.kitsu.id,
+        evidence.kitsu.episodes,
+        tracker_total,
+    )?;
     Some(vec![part_of_entry(
         &evidence.entry,
         tracker_total,
@@ -100,7 +115,12 @@ pub(super) fn shared_entry(evidence: &Evidence, tracker_total: u32) -> Option<Ve
 /// contradicted.
 pub(super) fn split_parts(evidence: &Evidence, tracker_total: u32) -> Option<(Vec<Segment>, bool)> {
     let parts: Vec<&KitsuShow> = evidence.parts.iter().collect();
-    let (lead, count, taken) = place_among(&parts, &evidence.kitsu.id, tracker_total)?;
+    let (lead, count, taken) = place_among(
+        &parts,
+        &evidence.kitsu.id,
+        evidence.kitsu.episodes,
+        tracker_total,
+    )?;
     let taken_parts = &parts[..taken];
     let contradicted = evidence
         .sharing
