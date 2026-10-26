@@ -171,7 +171,7 @@ fn parse_airing_missing_schedule_defaults_to_empty_upcoming() {
 // rail; per-show requests were the app's most frequent AniList
 // caller and the main rate-limit burst source at launch.
 
-const BATCH_BODY: &str = r#"{"data":{"Page":{"media":[
+const BATCH_BODY: &str = r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
     {"id":207141,"status":"RELEASING","episodes":12,
      "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
      "airingSchedule":{"nodes":[{"episode":3,"airingAt":1784215800}]}},
@@ -195,7 +195,10 @@ fn parse_airing_batch_maps_each_media_by_id() {
 
 #[test]
 fn parse_airing_batch_tolerates_an_empty_page() {
-    let got = parse_airing_batch_response(br#"{"data":{"Page":{"media":[]}}}"#).expect("parses");
+    let got = parse_airing_batch_response(
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+    )
+    .expect("parses");
     assert!(got.is_empty());
 }
 
@@ -430,4 +433,32 @@ async fn an_id_keyed_batch_whose_page_is_cut_asks_the_single_lookup_by_anilist_i
         .await
         .expect("ok");
     assert_eq!(got.get(&207141).and_then(|s| s.aired), Some(12));
+}
+
+#[test]
+fn a_batch_page_missing_what_was_asked_for_is_no_answer() {
+    // The batch asks for pageInfo { hasNextPage }, the media list, and
+    // each node's key. A page that leaves one out cannot say whether it
+    // holds every show, or whose schedule a node is.
+    for body in [
+        r#"{"data":{"Page":{"media":[]}}}"#,
+        r#"{"data":{"Page":{"pageInfo":null,"media":[]}}}"#,
+        r#"{"data":{"Page":{"pageInfo":{},"media":[]}}}"#,
+        r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false}}}}"#,
+        r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"status":"FINISHED","episodes":12}]}}}"#,
+    ] {
+        assert!(
+            matches!(
+                parse_airing_batch_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{body}"
+        );
+    }
+    // A node whose key is null names no show, and is skipped.
+    let got = parse_airing_batch_response(
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":null,"status":"FINISHED","episodes":12}]}}}"#,
+    )
+    .expect("an answer");
+    assert!(got.is_empty());
 }

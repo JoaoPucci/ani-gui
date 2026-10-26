@@ -87,8 +87,9 @@ proptest! {
     }
 
     /// The parser keeps every node with a key, in page order, keyed by
-    /// the id the batch asked by, and reads the page as cut exactly when
-    /// AniList says so.
+    /// the id the batch asked by (a node whose key is null is skipped),
+    /// and reads the page as cut exactly when AniList says so. A page that
+    /// does not say, or a node that leaves its key out, is no answer.
     #[test]
     fn the_parser_keeps_each_keyed_node_in_order_and_reads_the_cut(
         nodes in prop::collection::vec(
@@ -97,15 +98,27 @@ proptest! {
         ),
         cut in proptest::option::of(any::<bool>()),
         by_mal in any::<bool>(),
+        drop_key in prop::bool::weighted(0.1),
     ) {
+        let key_name = if by_mal { "idMal" } else { "id" };
         let rendered: Vec<String> = nodes
             .iter()
-            .map(|(id, mal, eps)| {
+            .enumerate()
+            .map(|(i, (id, mal, eps))| {
                 let id = id.map_or("null".into(), |v| v.to_string());
                 let mal = mal.map_or("null".into(), |v| v.to_string());
-                format!(
+                let node = format!(
                     r#"{{"id":{id},"idMal":{mal},"status":"FINISHED","episodes":{eps},"nextAiringEpisode":null,"airingSchedule":{{"nodes":[]}}}}"#
-                )
+                );
+                // The first node may leave out the key it was asked for.
+                if drop_key && i == 0 {
+                    let value: serde_json::Value = serde_json::from_str(&node).expect("json");
+                    let mut obj = value.as_object().expect("object").clone();
+                    obj.remove(key_name);
+                    serde_json::Value::Object(obj).to_string()
+                } else {
+                    node
+                }
             })
             .collect();
         let info = match cut {
@@ -113,8 +126,15 @@ proptest! {
             None => String::new(),
         };
         let body = format!(r#"{{"data":{{"Page":{{{info}"media":[{}]}}}}}}"#, rendered.join(","));
-        let page = parse_batch(body.as_bytes(), by_mal).expect("a well-formed page");
-        prop_assert_eq!(page.cut, cut.unwrap_or(false));
+        let parsed = parse_batch(body.as_bytes(), by_mal);
+        // A page that does not say whether it was cut, or a node that
+        // leaves out the key it was asked for, is no answer.
+        let Some(cut) = cut.filter(|_| !drop_key || nodes.is_empty()) else {
+            prop_assert!(parsed.is_err(), "a page missing what was asked for read as an answer");
+            return Ok(());
+        };
+        let page = parsed.expect("a well-formed page");
+        prop_assert_eq!(page.cut, cut);
         let want: Vec<(u32, Option<u32>)> = nodes
             .iter()
             .filter_map(|(id, mal, eps)| if by_mal { *mal } else { *id }.map(|k| (k, Some(*eps))))
@@ -146,7 +166,10 @@ proptest! {
             .iter()
             .map(|id| format!(r#"{{"id":{id},"status":"FINISHED","episodes":{id},"nextAiringEpisode":null}}"#))
             .collect();
-        let body = format!(r#"{{"data":{{"Page":{{"media":[{}]}}}}}}"#, nodes.join(","));
+        let body = format!(
+            r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":false}},"media":[{}]}}}}}}"#,
+            nodes.join(",")
+        );
         let public = parse_airing_batch_response(body.as_bytes()).expect("well formed");
         let page: std::collections::HashMap<_, _> =
             parse_batch(body.as_bytes(), false).expect("well formed").media.into_iter().collect();
