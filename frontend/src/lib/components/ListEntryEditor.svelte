@@ -214,8 +214,8 @@
 		// The pending retry is the show's, in the store: kept whether or not this
 		// instance is still here to show it.
 		const outcome = res.kind === 'superseded' ? 'noop' : res.kind;
-		// Only the retry of the accounts this save was made under: another
-		// account's retry is not this save's to replace or clear.
+		// Only retries under accounts compatible with this save's: one made
+		// under a switched account is not this save's to replace or clear.
 		editorFlights.settlePending(id, started.listed, (prev) =>
 			pendingAfterSave(prev, id, outcome, statusChanged, sentStatus, sentProgress)
 		);
@@ -349,7 +349,7 @@
 		const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled });
 		editorFlights.end(id, started);
 		// The entry's gone everywhere, so any pending status retry is moot.
-		// (Its own accounts' retry: another account's is not this removal's.)
+		// (Retries under compatible accounts: a switched account's is not this removal's.)
 		if (res.kind === 'removed') editorFlights.settlePending(id, started.listed, () => null);
 		const settled = settleRemove(res, stillHere({ destroyed, kitsuId }, id));
 		if (settled.toast) toastStore.push(settled.toast);

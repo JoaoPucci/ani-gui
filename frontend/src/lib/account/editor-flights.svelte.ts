@@ -66,8 +66,10 @@ class EditorFlightStore {
 		);
 	}
 
-	/** A write under `listed` settled for `kitsuId`: its own listing's retry
-	 *  becomes `next(that retry)`; no other listing's is touched. */
+	/** A write under `listed` settled for `kitsuId`: every retry under a
+	 *  listing compatible with it is dropped, and `next` of the newest of
+	 *  them is kept under `listed`; a retry under an incompatible listing —
+	 *  an account switched — is not touched. */
 	settlePending(
 		kitsuId: string,
 		listed: Listing | undefined,
