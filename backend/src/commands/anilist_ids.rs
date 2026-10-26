@@ -107,7 +107,7 @@ pub(crate) async fn mal_id_for_media_id(
 /// its absence from a page AniList did return — is remembered.
 ///
 /// # Errors
-/// Same as [`crate::meta::anilist::media_ids_for_mals`]. Nothing is
+/// Same as [`crate::meta::anilist::media_listed_for_mals`]. Nothing is
 /// remembered from a failed request.
 pub(crate) async fn media_ids_for_mals(
     state: &AppState,
