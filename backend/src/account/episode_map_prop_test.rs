@@ -246,3 +246,96 @@ fn a_cache_row_this_build_cannot_read_is_no_map() {
     assert!(serde_json::from_str::<EpisodeMap>(r#"{"shape":"orbit"}"#).is_err());
     assert!(serde_json::from_str::<EpisodeMap>("[]").is_err());
 }
+
+/// An episode count as any source could send it: small, zero, unknown,
+/// or near the top of the range.
+fn any_count() -> impl Strategy<Value = Option<u32>> {
+    prop_oneof![
+        Just(None),
+        (0u32..=40).prop_map(Some),
+        (u32::MAX - 40..=u32::MAX).prop_map(Some),
+        any::<u32>().prop_map(Some),
+    ]
+}
+
+/// A date as any source could send it: real, partial, unreal or absent.
+fn any_date() -> impl Strategy<Value = Option<String>> {
+    prop_oneof![
+        Just(None),
+        Just(Some("2001-03-05".to_string())),
+        Just(Some("2009-10".to_string())),
+        Just(Some("2005".to_string())),
+        Just(Some("2001-02-31".to_string())),
+        "[0-9-]{0,12}".prop_map(Some),
+    ]
+}
+
+fn any_tracker_show(id: u32) -> impl Strategy<Value = TrackerShow> {
+    (any_count(), any::<bool>(), any_date(), any_date()).prop_map(
+        move |(episodes, finished, start, end)| TrackerShow {
+            id,
+            id_mal: None,
+            episodes,
+            finished,
+            start,
+            end,
+        },
+    )
+}
+
+fn any_kitsu_show(id: &'static str) -> impl Strategy<Value = KitsuShow> {
+    (any_count(), any_date(), any_date()).prop_map(move |(episodes, start, end)| KitsuShow {
+        id: id.into(),
+        episodes,
+        start,
+        end,
+    })
+}
+
+/// Evidence as the gatherer could hand it over, every field free.
+fn any_evidence() -> impl Strategy<Value = Evidence> {
+    (
+        any_kitsu_show("k"),
+        any_tracker_show(1),
+        prop::collection::vec(any_tracker_show(2), 0..4),
+        any::<bool>(),
+        proptest::option::of(prop::collection::vec("[0-9.]{0,5}", 0..6)),
+        prop::collection::vec(any_kitsu_show("s"), 0..4),
+        prop::collection::vec(any_kitsu_show("p"), 0..4),
+    )
+        .prop_map(|(kitsu, entry, mut chain, claim, listed, sharing, parts)| {
+            for (i, hop) in chain.iter_mut().enumerate() {
+                hop.id = 2 + u32::try_from(i).unwrap_or(0);
+            }
+            let claimed = if claim {
+                chain.iter().map(|s| s.id).take(1).collect()
+            } else {
+                Vec::new()
+            };
+            Evidence {
+                kitsu,
+                entry,
+                chain,
+                claimed,
+                listed,
+                sharing,
+                parts,
+            }
+        })
+}
+
+proptest! {
+    /// Whatever evidence arrives, the rules answer: they never panic,
+    /// whatever counts or dates the services sent. A map they answer
+    /// with a small count holds the invariants every shape shares.
+    #[test]
+    fn any_evidence_maps_without_panicking(ev in any_evidence()) {
+        let map = map_show(&ev);
+        if let (Shape::Identity(_), true) = (map.shape, map.segments.is_empty()) {
+            return Ok(());
+        }
+        if let Some(count) = ev.kitsu.episodes.filter(|n| *n <= 500) {
+            check_mapped(&map, count)?;
+        }
+    }
+}
