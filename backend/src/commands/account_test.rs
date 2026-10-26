@@ -761,7 +761,6 @@ async fn push_progress_waits_for_the_show_lock_before_resolving() {
     // resolve window. Hold the Kitsu-id lock and assert push_progress
     // can't begin (blocks at the lock, never reaching resolve) until it's
     // released.
-    use std::time::Duration;
     let state = state_with_kitsu("http://127.0.0.1:1");
     let tokens = Tokens {
         access_token: "t".into(),
@@ -776,8 +775,12 @@ async fn push_progress_waits_for_the_show_lock_before_resolving() {
         progress_episodes: Some(5),
         ..Default::default()
     };
+    // Queued behind the lock, not merely not there yet: a push that
+    // has not reached the lock has not proceeded past it either, and
+    // proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&*show_lock));
     tokio::select! {
-        _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+        () = queue.joined() => {}
         _ = push_progress(&state, ProviderKind::MyAnimeList, &tokens, "12", update) => {
             panic!("push_progress proceeded while the show's Kitsu-id lock was held");
         }

@@ -85,6 +85,9 @@ pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 mod admit;
 #[path = "host_budget_probe.rs"]
 mod probe;
+#[cfg(test)]
+#[path = "host_budget_seen_test.rs"]
+mod seen;
 #[path = "host_budget_unpaced.rs"]
 mod unpaced;
 use unpaced::Unpaced;

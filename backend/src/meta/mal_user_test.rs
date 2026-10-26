@@ -916,41 +916,42 @@ async fn refresh_does_not_coalesce_when_cached_tokens_are_expired() {
 
 #[tokio::test]
 async fn refresh_lock_serializes_concurrent_calls() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use std::time::Duration;
+    // The first refresh's POST is held at the token endpoint, so it is
+    // in flight for as long as the test needs. A second refresh must
+    // wait behind it rather than send a POST of its own — and it is
+    // seen waiting, queued on the refresh lock, rather than inferred
+    // from requests that happened not to overlap. (Counting overlapping
+    // answers at the mock cannot tell: wiremock answers one request at
+    // a time whatever the client does.)
     let server = wiremock::MockServer::start().await;
-    // Slow response holds the upstream busy long enough that without
-    // the mutex two concurrent calls would overlap. With the mutex
-    // we'll observe two SEQUENTIAL requests, never concurrent.
-    let in_flight = Arc::new(AtomicUsize::new(0));
-    let max_observed = Arc::new(AtomicUsize::new(0));
-    let in_flight2 = in_flight.clone();
-    let max_observed2 = max_observed.clone();
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .respond_with(move |_: &wiremock::Request| {
-            let n = in_flight2.fetch_add(1, Ordering::SeqCst) + 1;
-            max_observed2.fetch_max(n, Ordering::SeqCst);
-            // 50ms gives the second caller plenty of time to race in
-            // without the lock; with the lock the second call doesn't
-            // start until after we leave this closure.
-            std::thread::sleep(Duration::from_millis(50));
-            in_flight2.fetch_sub(1, Ordering::SeqCst);
-            wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY)
-        })
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200).set_body_string(MAL_TOKEN_RESPONSE_BODY),
+        ))
         .mount(&server)
         .await;
     let provider = Arc::new(make_provider("http://unused-api", &server.uri()));
+    let queue = crate::held::queue(crate::held::lock_key(provider.refresh_state().lock()));
     let p1 = provider.clone();
+    let first = tokio::spawn(async move { p1.refresh("token-1").await });
+    gate.asked().await;
     let p2 = provider.clone();
-    let h1 = tokio::spawn(async move { p1.refresh("token-1").await });
-    let h2 = tokio::spawn(async move { p2.refresh("token-2").await });
-    let _ = h1.await.unwrap().expect("refresh 1 ok");
-    let _ = h2.await.unwrap().expect("refresh 2 ok");
-    let observed = max_observed.load(Ordering::SeqCst);
+    let mut second = tokio::spawn(async move { p2.refresh("token-2").await });
+    tokio::select! {
+        () = queue.joined() => {}
+        ended = &mut second => panic!("the second refresh ended while the first was in flight: {ended:?}"),
+    }
+    assert!(!first.is_finished(), "the first refresh is still in flight");
+    gate.release();
+    let _ = first.await.unwrap().expect("refresh 1 ok");
+    let _ = second.await.unwrap().expect("refresh 2 ok");
     assert_eq!(
-        observed, 1,
-        "refresh_lock must serialize — saw {observed} concurrent in-flight calls"
+        server.received_requests().await.expect("recorded").len(),
+        2,
+        "each token refreshed once, one after the other"
     );
 }
 
