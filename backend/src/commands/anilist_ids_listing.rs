@@ -45,3 +45,7 @@ pub(crate) async fn media_ids_recording_mal(
     let _ = meta_cache_put(&state.cache_pool, &key, &body.join(","), ttl.as_secs());
     Ok(ids)
 }
+
+#[cfg(test)]
+#[path = "anilist_ids_listing_test.rs"]
+mod tests;
