@@ -159,9 +159,9 @@ async fn a_teardown_gives_up_at_the_ceiling_exactly() {
     let start = tokio::time::Instant::now();
     assert!(!guard.take_down().await, "past the ceiling it is given up");
     let took = start.elapsed();
-    // The looks are a poll of a few milliseconds apart; tokio's timers
-    // fire on millisecond ticks.
-    let look = std::time::Duration::from_millis(50);
+    // One look's wait — the teardown's ten-millisecond poll — and the
+    // millisecond ticks tokio's timers fire on.
+    let look = std::time::Duration::from_millis(12);
     assert!(took >= TREE_EXIT_CEILING, "gave up early: {took:?}");
     assert!(took <= TREE_EXIT_CEILING + look, "gave up late: {took:?}");
     assert_eq!(state.lock().expect("fake tree").kills, 1);
