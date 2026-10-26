@@ -406,14 +406,14 @@ Comparing Kitsu's 22,504 entries with the entries the app resolves each to (`tes
 | A chain whose dates nothing places inside Kitsu's run, or that a missing date leaves unplaced (identity) | 12 | 4 |
 | A chain a Kitsu entry of its own claims a part of (identity) | 4 | 5 |
 | Kitsu entries sharing one entry, summing exactly | — | 3 shows (7 Kitsu entries) |
-| Kitsu entries sharing one entry, not summing all together (identity) | 7 | 4 |
+| Kitsu entries sharing one entry, not summing all together (identity) | 7 | 5 |
 | Kitsu parts filed under one entry | 17 shows | 14 shows |
 | Parts whose later part Kitsu maps to an id the tracker no longer serves (identity) | 2 | 2 |
 | Extras the tracker's list identifies | 8 | — |
 | Extras that do not account for the surplus (identity) | 2 | — |
 | Extras and Kitsu parts explaining the same surplus differently (identity) | 1 show (2 Kitsu entries) | — |
 | A shorter entry nothing explains (identity, clamped) | 105 | 110 |
-| A longer entry nothing identifies (identity, never completed) | 152 | 187 |
+| A longer entry nothing identifies (identity, never completed) | 152 | 186 |
 
 Most of the last row are long-running streaming series whose Kitsu count lags the tracker's. No tracker was found counting half-episode recaps Kitsu omits on a long series: where a long show has recaps, Kitsu and MyAnimeList count them alike, and the extras rule's several-recap case is covered by the model alone.
 
@@ -423,7 +423,7 @@ The Kitsu API exposes its known third-party ids on the `mappings` relationship o
 
 The ids are cached per Kitsu id (`kitsu:external-ids:v1:k<id>`): for 30 days when both the MAL and the AniList id are present, for a day when either is missing, since Kitsu adds the missing mapping for a fresh seasonal show within days. A read that fails is not cached. Everything that starts from the mappings — tracker id-resolution, the airing schedule, the banner and episode-thumbnail backfills, aniskip — reads them through that one cache, so a detail page with two trackers connected asks Kitsu once for the show rather than once per tracker. The detail row with its backfilled banner and the episode-thumbnail map are still keyed by the Kitsu id on top of that, so a hit there skips the AniList lookup as well.
 
-The translations AniList makes between its own ids and MAL's are cached the same way, one row per id in each direction (`anilist:media-id-for-mal:v1:<mal id>`, `anilist:mal-id-for-media:v1:<AniList id>`), and one listing every AniList media that records a MAL id (`anilist:media-ids-recording-mal:v1:<mal id>`), which the episode map reads: 30 days for an id AniList translated or a listing with media in it, a day for one it does not index or an empty listing, nothing for a failed request. The tracker accounts need them whenever Kitsu maps a show to one tracker only — the AniList account keys on AniList's `mediaId`, reached from a MAL-only mapping through `Media(idMal:)`; the MAL account keys on the MAL id, reached from an AniList-only mapping through `Media(id:){ idMal }` — and the Watch Later rail's batch translation writes every id it learns into the same rows. A MAL id several AniList media record is the exception: the batch lists them all, and which one the id translates to is the single `Media(idMal:)` answer, which the batch asks for and does not overrule. Each is a public AniList request against the 30-per-minute budget the rest of the app shares, which is why none of them is asked twice for the same id.
+The translations AniList makes between its own ids and MAL's are cached the same way, one row per id in each direction (`anilist:media-id-for-mal:v1:<mal id>`, `anilist:mal-id-for-media:v1:<AniList id>`), and one listing every AniList media that records a MAL id (`anilist:media-ids-recording-mal:v1:<mal id>`), which the episode map reads: 30 days for an id AniList translated or a listing with media in it, a day for one it does not index or an empty listing, nothing for a failed request. The tracker accounts need them whenever Kitsu maps a show to one tracker only — the AniList account keys on AniList's `mediaId`, reached from a MAL-only mapping through `Media(idMal:)`; the MAL account keys on the MAL id, reached from an AniList-only mapping through `Media(id:){ idMal }` — and the Watch Later rail's batch translation writes every id it learns into the same rows. A MAL id several AniList media record is the exception: the batch lists them all, and which one the id translates to is the single `Media(idMal:)` answer, which the batch asks for and does not overrule. Each is a public AniList request against the 30-per-minute budget the rest of the app shares, which is why an id is asked again only once its row has run out. The exceptions are a MAL id several media record, which the batch lists and then asks singly, and a batch whose page AniList cut, which is split and asked again.
 
 ## What this enables
 

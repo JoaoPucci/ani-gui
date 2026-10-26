@@ -290,11 +290,12 @@ pub async fn mal_id_for_media_id(
     parse_mal_id_response(&bytes)
 }
 
-/// Batched inverse of [`MEDIA_ID_BY_MAL_GQL`]: many MAL ids → their
-/// AniList `mediaId`s in ONE request per [`MAL_BATCH_PAGE_SIZE`]-sized
-/// chunk. The Watch-Later bridge uses it so a rail load with many
-/// Kitsu-unmapped titles costs O(n/50) AniList calls instead of O(n)
-/// against the public 30 req/min limit.
+/// Batched inverse of [`MEDIA_ID_BY_MAL_GQL`]: many MAL ids → the
+/// AniList media recording them, one request per
+/// [`MAL_BATCH_PAGE_SIZE`]-sized chunk, and more only for a chunk whose
+/// page AniList cut. The Watch-Later bridge uses it so a rail load with
+/// many Kitsu-unmapped titles costs about n/50 AniList calls instead of
+/// n against the public 30 req/min limit.
 const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
         Page(perPage: 50) { pageInfo { hasNextPage } \
         media(type: ANIME, idMal_in: $idMals) { id idMal } } \

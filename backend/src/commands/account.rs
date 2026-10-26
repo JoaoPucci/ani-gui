@@ -465,10 +465,11 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
         phase1.into_iter().map(|(card, _)| card).collect();
     // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
-    // titles) — resolve ALL of them to AniList ids in one batched
-    // Page(idMal_in:) query per 50-chunk (a
-    // per-miss Media(idMal:) call could burn AniList's 30 req/min
-    // budget on a single big rail load), then look each up under
+    // titles) — resolve ALL of them to AniList ids in batched
+    // Page(idMal_in:) queries, one per 50-chunk unless AniList cuts its
+    // page (a per-miss Media(idMal:) call could burn AniList's 30
+    // req/min budget on a single big rail load; only a MAL id several
+    // media record is asked singly), then look each up under
     // Kitsu's anilist/anime mapping. Same gap resolve_native_media_id
     // works around in the write direction; without this the
     // just-written entry never renders in the rail. A failed batch

@@ -11,8 +11,8 @@
     "mal.json": {
       "request": "Kitsu's whole catalogue against MyAnimeList (GET /v2/anime/ranking?ranking_type=all|bypopularity&fields=num_episodes,start_date,end_date,media_type,status, then GET /v2/anime/{id}?fields=…,related_anime for every mismatch and its sequels) — one case per Kitsu entry whose count the MyAnimeList entry disagrees with, plus each later Kitsu part of a split.",
       "notes": "Same shape as anilist.json; MyAnimeList carries no episode list the app reads, so no case lists one.",
-      "size": 223649,
-      "sha256": "b81ae5b3faeab9505b23ebdde4fa48d4e36f794d20c9f4a5e5f6cb68ceb48130"
+      "size": 223641,
+      "sha256": "4f26e1da10ac1a188948ec6b12fb29530b9c7250880f74053553c659c13033d8"
     }
   }
 }
