@@ -9,8 +9,8 @@ use crate::meta::kitsu::{KitsuAnimeRef, KitsuMapped};
 
 /// The Kitsu entries that may own `show` on the asking tracker: those
 /// mapped to it by the tracker's own id, and those mapped to it by its
-/// id on the other tracker (AniList's recorded MAL id, or the AniList id
-/// AniList gives a MAL id), since the write's id resolution reaches a
+/// id on the other tracker (AniList's recorded MAL id, or every AniList
+/// media that records a MAL id), since the write's id resolution reaches a
 /// tracker entry either way. Not complete when a page did not hold
 /// every mapping Kitsu counts.
 async fn candidates(ask: &MapAsk<'_>, show: &TrackerShow) -> Result<KitsuMapped> {
@@ -19,16 +19,24 @@ async fn candidates(ask: &MapAsk<'_>, show: &TrackerShow) -> Result<KitsuMapped>
         .kitsu
         .anime_by_external_id(site(ask.kind)?, show.id)
         .await?;
-    let other = match ask.kind {
-        ProviderKind::AniList => show.id_mal.map(|id| ("myanimelist/anime", id)),
-        ProviderKind::MyAnimeList => {
-            crate::commands::anilist_ids::media_id_for_mal(ask.state, show.id, ask.anilist_base)
-                .await?
-                .map(|id| ("anilist/anime", id))
-        }
-        ProviderKind::InHouse => None,
+    let others: Vec<(&str, u32)> = match ask.kind {
+        ProviderKind::AniList => show
+            .id_mal
+            .map(|id| ("myanimelist/anime", id))
+            .into_iter()
+            .collect(),
+        ProviderKind::MyAnimeList => crate::commands::anilist_ids::media_ids_recording_mal(
+            ask.state,
+            show.id,
+            ask.anilist_base,
+        )
+        .await?
+        .into_iter()
+        .map(|id| ("anilist/anime", id))
+        .collect(),
+        ProviderKind::InHouse => Vec::new(),
     };
-    if let Some((other_site, id)) = other {
+    for (other_site, id) in others {
         let more = ask.state.kitsu.anime_by_external_id(other_site, id).await?;
         found.complete &= more.complete;
         for anime in more.entries {
