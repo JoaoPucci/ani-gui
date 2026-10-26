@@ -52,7 +52,8 @@ fn inlined_json(r: &Inlined) -> Value {
 /// What a mapping says of its item.
 #[derive(Debug, Clone)]
 enum Said {
-    /// No relationships, or no item: the mapping is no answer.
+    /// No relationships, no item, or an item without `data`: the
+    /// mapping is no answer.
     Nothing,
     /// An item given as null: the mapping maps to nothing.
     Null,
@@ -61,12 +62,15 @@ enum Said {
 }
 
 /// A mapping's pointer to its item, or the shapes with nothing on the
-/// other end: no relationships, no item, a null item.
+/// other end: no relationships, no item, a null item, an item with no
+/// `data` key (bare, or carrying only links), and a null `data`.
 fn mapping() -> impl Strategy<Value = (Value, Said)> {
     prop_oneof![
         1 => Just((json!({}), Said::Nothing)),
         1 => Just((json!({ "relationships": null }), Said::Nothing)),
         1 => Just((json!({ "relationships": { "item": null } }), Said::Nothing)),
+        1 => Just((json!({ "relationships": { "item": {} } }), Said::Nothing)),
+        1 => Just((json!({ "relationships": { "item": { "links": { "related": "x" } } } }), Said::Nothing)),
         1 => Just((json!({ "relationships": { "item": { "data": null } } }), Said::Null)),
         8 => (prop::sample::select(&["anime", "anime", "anime", "manga"][..]), pooled_id())
             .prop_map(|(kind, id)| {
@@ -110,7 +114,7 @@ fn page_body((mappings, included, meta): &Page) -> Vec<u8> {
 
 /// The entries a page is specified to read as, `(id, count)` in the
 /// order of the mappings, or `None` where the page is no answer. A
-/// mapping with no item is no answer; so is an anime pointer whose
+/// mapping with no item, or an item with no `data` key, is no answer; so is an anime pointer whose
 /// resource is not inlined, or does not read, since the page then cannot
 /// say what is mapped. A null item maps to nothing, a pointer to
 /// another type is not an anime, an id pointed to again is read once,

@@ -167,10 +167,9 @@ async fn kitsu_mapped(server: &MockServer, site: &str, id: u32, body: &str) {
 /// case does not answer for itself.
 async fn no_anilist_answer(server: &MockServer) {
     Mock::given(method("POST"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Media":null,"Page":{"media":[]}}}"#),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":null,"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+        ))
         .with_priority(10)
         .mount(server)
         .await;
@@ -1256,7 +1255,7 @@ async fn anilist_media_recording_mal(server: &MockServer, mal: u32, media: &[u32
         .and(body_string_contains("MediaIdsByMals"))
         .and(body_string_contains(format!("[{mal}]")))
         .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            r#"{{"data":{{"Page":{{"media":[{}]}}}}}}"#,
+            r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":false}},"media":[{}]}}}}}}"#,
             listed.join(",")
         )))
         .mount(server)

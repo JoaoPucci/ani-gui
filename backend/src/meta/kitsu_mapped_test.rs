@@ -152,3 +152,26 @@ fn a_mapping_with_no_item_is_no_answer_and_a_null_item_maps_to_nothing() {
     assert!(got.entries.is_empty());
     assert!(got.complete);
 }
+
+#[test]
+fn an_item_without_data_is_no_answer_and_a_null_data_maps_to_nothing() {
+    // The page asks for each item inlined: an item that carries only
+    // links, or nothing at all, does not say what it points to. That is
+    // no answer, where `"data": null` says there is nothing there.
+    for item in [r#"{}"#, r#"{"links":{"related":"x"}}"#] {
+        let body = format!(
+            r#"{{"data":[{{"id":"m1","relationships":{{"item":{item}}}}}],"included":[],"meta":{{"count":1}}}}"#
+        );
+        assert!(
+            matches!(
+                parse_mapped_anime_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{item}"
+        );
+    }
+    let body = br#"{"data":[{"id":"m1","relationships":{"item":{"data":null,"links":{"related":"x"}}}}],"included":[],"meta":{"count":1}}"#;
+    let got = parse_mapped_anime_response(body).expect("an answer");
+    assert!(got.entries.is_empty());
+    assert!(got.complete);
+}

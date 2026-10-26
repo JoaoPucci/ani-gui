@@ -17,7 +17,8 @@ fn any_body() -> impl Strategy<Value = Vec<u8>> {
 }
 
 /// The `pageInfo` a page carries: absent, null, empty, or with its
-/// flag null, true or false.
+/// flag null, true or false; and the flag it states, `None` where it
+/// states none.
 fn page_info() -> impl Strategy<Value = (Option<serde_json::Value>, Option<bool>)> {
     prop_oneof![
         Just((None, None)),
@@ -74,8 +75,10 @@ proptest! {
         let _ = page_has_next(&body);
     }
 
-    /// A page is cut exactly when AniList says `hasNextPage: true`; a
-    /// page that says false, null or nothing at all is whole.
+    /// A page is cut exactly when AniList says `hasNextPage: true` and
+    /// whole when it says false. The query asks for the flag, so a page
+    /// that leaves it or its `pageInfo` out, or gives either as null,
+    /// does not say whether it was cut: no answer, never whole.
     #[test]
     fn a_page_is_cut_exactly_when_it_says_so((info, flag) in page_info()) {
         let mut page = serde_json::json!({ "media": [] });
@@ -84,7 +87,7 @@ proptest! {
         }
         let body = serde_json::to_vec(&serde_json::json!({ "data": { "Page": page } }))
             .expect("serialise");
-        prop_assert_eq!(page_has_next(&body).ok(), Some(flag == Some(true)));
+        prop_assert_eq!(page_has_next(&body).ok(), flag);
     }
 
     /// Any body reads as a listing or an error, never a panic, and

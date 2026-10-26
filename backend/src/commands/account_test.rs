@@ -388,7 +388,7 @@ async fn watch_later_bridge_falls_back_to_anilist_mapping_for_unmapped_mal_id() 
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -414,8 +414,9 @@ async fn watch_later_bridge_drops_id_when_anilist_does_not_know_it_either() {
     // doesn't index is simply absent from the Page result.
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .mount(&anilist)
         .await;
@@ -494,7 +495,7 @@ async fn watch_later_bridge_batches_anilist_lookups_into_one_request() {
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
                 {"id":207141,"idMal":63403},
                 {"id":207142,"idMal":63404}
             ]}}}"#,
@@ -1213,7 +1214,7 @@ async fn watch_later_bridge_does_not_remember_an_anilist_outage_as_unmappable() 
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -1273,7 +1274,7 @@ async fn watch_later_bridge_does_not_remember_a_kitsu_fallback_error_as_unmappab
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -1327,8 +1328,9 @@ async fn watch_later_bridge_does_not_remember_a_direct_kitsu_error_as_unmappable
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .mount(&anilist)
         .await;
@@ -1434,8 +1436,9 @@ async fn watch_later_bridge_remembers_a_conclusive_miss_and_asks_neither_route_a
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .mount(&anilist)
         .await;

@@ -65,7 +65,7 @@ mod evidence {
     }
 
     /// One `related_anime` row: a node and a relation, the relation
-    /// any MAL sends or none.
+    /// any MAL sends, null, or left out.
     fn related() -> impl Strategy<Value = Value> {
         (
             0u32..50,
@@ -116,25 +116,27 @@ mod evidence {
             })
     }
 
-    /// The evidence a generated body is specified to read as.
-    fn model(wire: &Value) -> MediaEvidence {
+    /// The evidence a generated body is specified to read as, `None`
+    /// where it is no answer. The read asks for `related_anime`, whose
+    /// rows carry their relation: a body that leaves it out, or a row
+    /// that leaves out its relation, does not say what the sequels are.
+    fn model(wire: &Value) -> Option<MediaEvidence> {
+        let rows = wire.get("related_anime")?.as_array()?;
+        if rows.iter().any(|r| r.get("relation_type").is_none()) {
+            return None;
+        }
         let text = |key: &str| wire.get(key).and_then(Value::as_str).map(str::to_string);
         let num = |v: &Value, key: &str| {
             v.get(key)
                 .and_then(Value::as_u64)
                 .and_then(|n| u32::try_from(n).ok())
         };
-        let sequels = wire
-            .get("related_anime")
-            .and_then(Value::as_array)
-            .map(|rows| {
-                rows.iter()
-                    .filter(|r| r.get("relation_type").and_then(Value::as_str) == Some("sequel"))
-                    .filter_map(|r| num(&r["node"], "id").map(ProviderMediaId))
-                    .collect()
-            })
-            .unwrap_or_default();
-        MediaEvidence {
+        let sequels = rows
+            .iter()
+            .filter(|r| r.get("relation_type").and_then(Value::as_str) == Some("sequel"))
+            .filter_map(|r| num(&r["node"], "id").map(ProviderMediaId))
+            .collect();
+        Some(MediaEvidence {
             show: TrackerShow {
                 id: num(wire, "id").expect("an id"),
                 id_mal: None,
@@ -146,7 +148,7 @@ mod evidence {
             series: !matches!(text("media_type").as_deref(), Some("movie" | "music")),
             sequels,
             listed: None,
-        }
+        })
     }
 
     proptest! {
@@ -166,11 +168,18 @@ mod evidence {
         /// the length is unknown, only `finished_airing` is finished, a
         /// movie or a music video is no series, dates are kept as sent,
         /// only a `sequel` row is a sequel, and MAL lists no numbers.
+        /// A body without `related_anime`, or with a row that leaves its
+        /// relation out, is no answer: its sequels are unknown, never
+        /// none. An empty `related_anime` is no sequels.
         #[test]
         fn an_anime_body_reads_as_its_fields(wire in wire()) {
             let body = serde_json::to_vec(&wire).expect("serialise");
-            let got = parse_media_evidence(&body).expect("an anime");
-            prop_assert_eq!(got, model(&wire));
+            let parsed = parse_media_evidence(&body);
+            let Some(want) = model(&wire) else {
+                prop_assert!(parsed.is_err(), "related anime that do not say read as an answer");
+                return Ok(());
+            };
+            prop_assert_eq!(parsed.expect("an anime"), want);
         }
     }
 }
