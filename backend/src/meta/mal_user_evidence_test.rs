@@ -130,7 +130,33 @@ fn an_anime_without_its_related_anime_is_no_answer() {
         );
     }
     // An empty list is an answer: no sequels.
-    let got = evidence::parse_media_evidence(br#"{"id":9,"num_episodes":12,"related_anime":[]}"#)
+    let got = evidence::parse_media_evidence(
+        br#"{"id":9,"num_episodes":12,"status":"finished_airing","media_type":"tv","related_anime":[]}"#,
+    )
         .expect("an answer");
     assert!(got.sequels.is_empty());
+}
+
+#[test]
+fn an_anime_that_leaves_out_its_count_status_or_type_is_no_answer() {
+    // The read asks for num_episodes, status and media_type. Left out,
+    // a missing status would read as not finished and a missing type as
+    // a series. The dates MyAnimeList leaves out when it has none, so
+    // they stay optional.
+    let full = serde_json::json!({
+        "id": 9, "num_episodes": 12, "status": "finished_airing", "media_type": "tv",
+        "related_anime": []
+    });
+    for field in ["num_episodes", "status", "media_type"] {
+        let mut body = full.clone();
+        body.as_object_mut().expect("object").remove(field);
+        assert!(
+            matches!(
+                evidence::parse_media_evidence(body.to_string().as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{field}"
+        );
+    }
+    assert!(evidence::parse_media_evidence(full.to_string().as_bytes()).is_ok());
 }
