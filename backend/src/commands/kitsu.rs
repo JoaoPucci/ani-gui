@@ -111,7 +111,10 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     }
     let (bridged, unanswered) = match anilist {
         Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu_answered(state, v).await,
-        _ => (Vec::new(), false),
+        Ok(_) => (Vec::new(), false),
+        // The fallback below stands in for an answer AniList did not
+        // give, and is kept only until it is worth asking again.
+        Err(_) => (Vec::new(), true),
     };
     // Only AniList's own answer says anything about a banner; Kitsu's
     // fallback list below never carries one.
@@ -1341,7 +1344,7 @@ async fn anime_detail_read(
 /// ids Kitsu's mappings carry: `Ok(None)` when AniList has no banner
 /// or the show maps to nothing on AniList, `Err` when either question
 /// went unanswered. The caller keeps its null-cover fallback either
-/// way, but keeps the row only on an answer.
+/// way, and keeps the row for its lifetime only on an answer.
 async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
