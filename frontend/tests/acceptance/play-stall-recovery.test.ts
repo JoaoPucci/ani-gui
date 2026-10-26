@@ -165,11 +165,9 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
 			'done',
 			JSON.stringify({
-				id: 'session-2',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: 'session-2',
+				media_url: `${API_BASE}/s/session-2/file.mp4`,
+				media_kind: 'mp4'
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
@@ -358,11 +356,9 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
 			'done',
 			JSON.stringify({
-				id: 'session-2',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: 'session-2',
+				media_url: `${API_BASE}/s/session-2/file.mp4`,
+				media_kind: 'mp4'
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });

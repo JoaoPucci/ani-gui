@@ -53,14 +53,19 @@ const FAILURE = { kind: 'parse_failed', key: 'error.scraper.parse_failed', detai
  *  as the backend's error envelope carries it — kind, key and status. */
 const KITSU_REFUSED = { kind: 'upstream', key: 'error.network.upstream', status: 400 };
 
+// The English backend catalogue, read while the file is collected rather
+// than inside a scenario: a scenario's budget is wall time, and a cold
+// read can wait behind another build's disk writes. Vitest runs from
+// frontend/; happy-dom's import.meta.url is not a file URL, so the path
+// is resolved from the working directory.
+const ENGLISH: Record<string, string> = JSON.parse(
+	readFileSync(resolve(process.cwd(), 'messages/en/backend.json'), 'utf-8')
+);
+
 /** What the English catalogue says for a backend key, read as authored
  *  rather than through the module under test. */
 function englishFor(key: string): string {
-	// Vitest runs from frontend/; happy-dom's import.meta.url is not a
-	// file URL, so the path is resolved from the working directory.
-	const file = resolve(process.cwd(), 'messages/en/backend.json');
-	const texts: Record<string, string> = JSON.parse(readFileSync(file, 'utf-8'));
-	return texts[key.replaceAll('.', '_')];
+	return ENGLISH[key.replaceAll('.', '_')];
 }
 
 function failingSearch(failure: object = FAILURE) {

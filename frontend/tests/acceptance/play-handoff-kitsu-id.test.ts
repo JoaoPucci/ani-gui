@@ -155,11 +155,9 @@ async function mountPlaying() {
 	FakeEventSource.instances[0].dispatch(
 		'done',
 		JSON.stringify({
-			id: 'session-1',
-			kind: 'mp4',
-			has_subtitles: false,
-			quality: '1080',
-			mode: 'sub'
+			session_id: 'session-1',
+			media_url: `${API_BASE}/s/session-1/file.mp4`,
+			media_kind: 'mp4'
 		})
 	);
 	// The page carries the session in the URL and gets there by
@@ -235,11 +233,9 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 		FakeEventSource.instances[0].dispatch(
 			'done',
 			JSON.stringify({
-				id: 'session-1',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '3', kind: 'mp4', guess: '1' });
@@ -271,7 +267,11 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 		await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
 		FakeEventSource.instances[0].dispatch(
 			'done',
-			JSON.stringify({ id: 'session-1', kind: 'mp4', has_subtitles: false })
+			JSON.stringify({
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
+			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '3', kind: 'mp4', ...flag });
 		const next = () =>
@@ -287,7 +287,11 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 		const stream = new URL(FakeEventSource.instances[1].url);
 		FakeEventSource.instances[1].dispatch(
 			'done',
-			JSON.stringify({ id: 'session-2', kind: 'mp4', has_subtitles: false })
+			JSON.stringify({
+				session_id: 'session-2',
+				media_url: `${API_BASE}/s/session-2/file.mp4`,
+				media_kind: 'mp4'
+			})
 		);
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch navigation');
 		await until(() => watched.some((w) => w.episode === '4'), 'the switch watch');
