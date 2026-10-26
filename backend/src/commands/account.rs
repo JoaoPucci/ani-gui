@@ -174,27 +174,13 @@ pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> R
     provider.me(tokens).await
 }
 
-/// Fetch the full user list (all statuses) and write it through the
-/// cache. Returns the freshly-fetched entries (not the cache contents
-/// — caller can fan them out to surfaces without an extra read).
-pub async fn list_all_and_cache(
-    state: &Arc<AppState>,
-    kind: ProviderKind,
-    tokens: &Tokens,
-    user_id: &str,
-) -> Result<Vec<ListEntry>> {
-    let Some(provider) = provider_for_kind(state, kind) else {
-        return Err(AniError::Metadata);
-    };
-    list_all_and_cache_via(state, kind, provider.as_ref(), tokens, user_id).await
-}
-
 /// The bearer's own list: its owner from `me()` — the only identity the
-/// backend trusts — then [`list_all_and_cache`] under that owner.
+/// backend trusts — then its full list (all statuses), written through
+/// the cache under that owner. Returns the freshly-fetched entries.
 ///
 /// # Errors
 /// [`AniError::Metadata`] for a kind with no provider; otherwise those
-/// of `me()` and [`list_all_and_cache`].
+/// of `me()` and the list read.
 pub async fn list_for_bearer(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -219,8 +205,9 @@ pub(crate) async fn list_for_bearer_via(
     list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
 }
 
-/// [`list_all_and_cache`] with the provider injected, so tests drive it
-/// against a wiremock-backed provider.
+/// The list read and its write-through for `user_id`, with the provider
+/// injected, so tests drive it against a wiremock-backed provider.
+#[cfg(test)]
 pub(crate) async fn list_all_and_cache_via(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -817,12 +804,6 @@ async fn push_progress_with_anilist_base(
     update: EntryUpdate,
     anilist_base: Option<&str>,
 ) -> Result<Option<ListEntry>> {
-    // Take the per-show lock BEFORE resolving the native id, keyed on the
-    // Kitsu id, so this write serializes with the editor's seed read (which
-    // takes the same lock) across the whole resolve→read/write — closing the
-    // window where a read could resolve, win the lock, and read a value this
-    // write is about to change. Held across the GET +
-    // upsert since providers only upsert (no compare-and-set).
     let provider = provider_for_kind(state, kind);
     push_progress_resolved_via(
         state,
@@ -851,6 +832,12 @@ pub(crate) async fn push_progress_resolved_via(
 ) -> Result<Option<ListEntry>> {
     // The connection the request arrived in, before its first wait.
     let began = state.account_write_locks.epochs.current(kind);
+    // Take the per-show lock BEFORE resolving the native id, keyed on the
+    // Kitsu id, so this write serializes with the editor's seed read (which
+    // takes the same lock) across the whole resolve→read/write — closing the
+    // window where a read could resolve, win the lock, and read a value this
+    // write is about to change. Held across the GET +
+    // upsert since providers only upsert (no compare-and-set).
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _write_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
@@ -862,15 +849,9 @@ pub(crate) async fn push_progress_resolved_via(
     push_progress_from(state, kind, provider, tokens, native, update, began).await
 }
 
-/// The monotonic write-back with the provider injected, so tests drive
-/// it against a wiremock-backed provider (the public path builds the
-/// real one). The per-show lock is held by the caller
-/// ([`push_progress_with_anilist_base`]) across resolve → this read →
-/// reconcile → write → cache write-through, so the read-then-write
-/// monotonic guard is atomic: the route callers
-/// fire syncWatchedToTrackers without awaiting, so two writes for the
-/// same show would otherwise both read the same count and the
-/// later-landing lower one would regress it.
+/// The monotonic write-back for an already-resolved show, with the
+/// provider injected and the connection epoch noted here: a test seam
+/// for [`push_progress_from`].
 #[cfg(test)]
 async fn push_progress_via(
     state: &Arc<AppState>,
@@ -884,9 +865,15 @@ async fn push_progress_via(
     push_progress_from(state, kind, provider, tokens, native, update, began).await
 }
 
-/// The monotonic write-back for a request that arrived in connection epoch
-/// `began`: a disconnect since purged the cache, and the write-through
-/// must not undo that.
+/// The monotonic write-back for a request that arrived in connection
+/// epoch `began`: a disconnect since purged the cache, and the
+/// write-through must not undo that. The per-show lock is held by the
+/// caller ([`push_progress_resolved_via`]) across resolve → this read →
+/// reconcile → write → cache write-through, so the read-then-write
+/// monotonic guard is atomic: the route callers fire
+/// syncWatchedToTrackers without awaiting, so two writes for the same
+/// show would otherwise both read the same count and the later-landing
+/// lower one would regress it.
 async fn push_progress_from(
     state: &Arc<AppState>,
     kind: ProviderKind,
