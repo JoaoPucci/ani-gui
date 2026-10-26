@@ -141,8 +141,9 @@ pub(super) fn parse_list_page(body: &[u8]) -> Result<MalListPage> {
         status: String,
         #[serde(default)]
         score: Option<u8>,
-        #[serde(default)]
-        num_episodes_watched: Option<u32>,
+        // Sent on every list status: missing, the row says nothing of
+        // how far the user is.
+        num_episodes_watched: crate::meta::present::Present<u32>,
         #[serde(default)]
         is_rewatching: Option<bool>,
         #[serde(default)]
@@ -180,7 +181,11 @@ pub(super) fn parse_list_page(body: &[u8]) -> Result<MalListPage> {
             media_id: ProviderMediaId(row.node.id),
             mal_id: Some(row.node.id),
             status,
-            progress_episodes: row.list_status.num_episodes_watched.unwrap_or(0),
+            progress_episodes: row
+                .list_status
+                .num_episodes_watched
+                .into_inner()
+                .unwrap_or(0),
             score_0_to_100,
             updated_at_epoch_s,
             title: row.node.title,

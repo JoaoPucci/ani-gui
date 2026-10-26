@@ -16,8 +16,9 @@ pub(in crate::meta) fn parse_list_status_response(body: &[u8], media_id: u32) ->
         status: String,
         #[serde(default)]
         score: Option<u8>,
-        #[serde(default)]
-        num_episodes_watched: Option<u32>,
+        // Sent on every list status: missing, the row says nothing of
+        // how far the user is.
+        num_episodes_watched: crate::meta::present::Present<u32>,
         #[serde(default)]
         is_rewatching: Option<bool>,
         #[serde(default)]
@@ -37,7 +38,7 @@ pub(in crate::meta) fn parse_list_status_response(body: &[u8], media_id: u32) ->
         media_id: ProviderMediaId(media_id),
         mal_id: Some(media_id),
         status,
-        progress_episodes: wire.num_episodes_watched.unwrap_or(0),
+        progress_episodes: wire.num_episodes_watched.into_inner().unwrap_or(0),
         score_0_to_100,
         updated_at_epoch_s,
         title: String::new(),
