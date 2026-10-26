@@ -52,11 +52,11 @@ pub(in crate::meta) fn parse_media_evidence(body: &[u8]) -> Result<MediaEvidence
     #[derive(Deserialize)]
     struct Wire {
         id: u32,
-        #[serde(default)]
+        #[serde(deserialize_with = "present")]
         num_episodes: Option<u32>,
-        #[serde(default)]
+        #[serde(deserialize_with = "present")]
         status: Option<String>,
-        #[serde(default)]
+        #[serde(deserialize_with = "present")]
         media_type: Option<String>,
         #[serde(default)]
         start_date: Option<String>,
