@@ -1,9 +1,11 @@
 //! Properties of the viewer's AniList replies, as `shape_prop_test.rs`
 //! states them for the other metadata parsers: a document reads as the
 //! answer it gives, a field the answer lives in taken out fails, and
-//! AniList's own "nothing here" reads as nothing.
+//! AniList's own "nothing here" reads as nothing; with fields no
+//! parser reads put into every object, as there.
 
 use super::*;
+use crate::meta::shape_prop_tests::{extras, without};
 use proptest::prelude::*;
 use serde_json::{json, Value};
 
@@ -18,26 +20,8 @@ fn status() -> impl Strategy<Value = &'static str> {
     ]
 }
 
-fn without(mut doc: Value, path: &[&str]) -> Value {
-    let (last, parents) = path.split_last().expect("a path");
-    let mut at = &mut doc;
-    for p in parents {
-        at = match p.parse::<usize>() {
-            Ok(i) => &mut at[i],
-            Err(_) => &mut at[*p],
-        };
-    }
-    at.as_object_mut().expect("an object").remove(*last);
-    doc
-}
-
-fn body(doc: &Value, extra: &str) -> Vec<u8> {
-    // A field nothing reads, beside every answer field at the top.
-    let mut doc = doc.clone();
-    if let Some(map) = doc.as_object_mut() {
-        map.insert(extra.to_string(), json!({ "x": 1 }));
-    }
-    serde_json::to_vec(&doc).expect("json")
+fn body(doc: &Value, extra: &[(String, Value)]) -> Vec<u8> {
+    crate::meta::shape_prop_tests::decorated(doc.clone(), extra)
 }
 
 proptest! {
@@ -45,7 +29,7 @@ proptest! {
     fn the_viewer_s_entry_reads_its_progress_or_off_the_list(
         st in status(),
         progress in 0u32..2000,
-        extra in "x_[a-z]{1,4}",
+        extra in extras(),
     ) {
         let doc = json!({ "data": { "Media": {
             "mediaListEntry": { "status": st, "progress": progress }, "episodes": 12 } } });
@@ -57,12 +41,20 @@ proptest! {
         }
         let off = json!({ "data": { "Media": { "mediaListEntry": null, "episodes": 12 } } });
         prop_assert_eq!(parse_media_entry_response(&body(&off, &extra)).expect("an answer"), None);
+        for missing in [
+            without(doc.clone(), &["data", "Media", "mediaListEntry"]),
+            without(doc, &["data", "Media"]),
+        ] {
+            prop_assert!(parse_media_entry_response(&body(&missing, &extra)).is_err());
+        }
+        let unknown = json!({ "data": { "Media": null } });
+        prop_assert_eq!(parse_media_entry_response(&body(&unknown, &extra)).expect("an answer"), None);
     }
 
     #[test]
     fn a_list_page_reads_each_entry_or_none(
         rows in proptest::collection::vec((1u32..1_000_000, status(), 0u32..500), 0..5),
-        extra in "x_[a-z]{1,4}",
+        extra in extras(),
     ) {
         let entries: Vec<Value> = rows
             .iter()
@@ -79,8 +71,12 @@ proptest! {
             prop_assert_eq!(entry.media_id.0, *id);
             prop_assert_eq!(entry.progress_episodes, *progress);
         }
-        let missing = without(doc, &["data", "MediaListCollection", "lists", "0", "entries"]);
-        prop_assert!(parse_media_list_page(&body(&missing, &extra)).is_err());
+        for missing in [
+            without(doc.clone(), &["data", "MediaListCollection", "lists", "0", "entries"]),
+            without(doc, &["data", "MediaListCollection", "lists"]),
+        ] {
+            prop_assert!(parse_media_list_page(&body(&missing, &extra)).is_err());
+        }
         let empty = json!({ "data": { "MediaListCollection": { "hasNextChunk": false, "lists": [] } } });
         prop_assert!(parse_media_list_page(&body(&empty, &extra)).expect("an answer").entries.is_empty());
     }

@@ -29,4 +29,4 @@ mod shape_tests;
 
 #[cfg(test)]
 #[path = "shape_prop_test.rs"]
-mod shape_prop_tests;
+pub(crate) mod shape_prop_tests;

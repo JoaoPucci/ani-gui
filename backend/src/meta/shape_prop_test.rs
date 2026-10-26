@@ -13,7 +13,7 @@ use proptest::prelude::*;
 use serde_json::{json, Value};
 
 /// Fields no parser reads, put into every object of a document.
-fn extras() -> impl Strategy<Value = Vec<(String, Value)>> {
+pub(super) fn extras() -> impl Strategy<Value = Vec<(String, Value)>> {
     let value = prop_oneof![
         Just(Value::Null),
         any::<bool>().prop_map(Value::from),
@@ -25,7 +25,9 @@ fn extras() -> impl Strategy<Value = Vec<(String, Value)>> {
 }
 
 /// `doc` with `extras` added to each of its objects, at every depth.
-fn decorated(mut doc: Value, extras: &[(String, Value)]) -> Vec<u8> {
+/// No generated document carries a map read as such (Kitsu's `titles`),
+/// where the extras would read as entries.
+pub(super) fn decorated(mut doc: Value, extras: &[(String, Value)]) -> Vec<u8> {
     fn walk(v: &mut Value, extras: &[(String, Value)]) {
         match v {
             Value::Object(map) => {
@@ -45,7 +47,7 @@ fn decorated(mut doc: Value, extras: &[(String, Value)]) -> Vec<u8> {
 }
 
 /// `doc` without the field at `path` (object keys, or array indices).
-fn without(mut doc: Value, path: &[&str]) -> Value {
+pub(super) fn without(mut doc: Value, path: &[&str]) -> Value {
     let (last, parents) = path.split_last().expect("a path");
     let mut at = &mut doc;
     for p in parents {
@@ -168,6 +170,8 @@ proptest! {
         prop_assert_eq!(read.canonical_title, title);
         for missing in [
             without(doc.clone(), &["data", "0", "relationships", "item"]),
+            without(doc.clone(), &["data", "0", "relationships", "item", "data"]),
+            without(doc.clone(), &["data", "0", "relationships"]),
             without(doc.clone(), &["included"]),
         ] {
             prop_assert!(kitsu::parse_mappings_response(&decorated(missing, &extra)).is_err());
@@ -196,10 +200,21 @@ proptest! {
             for missing in [
                 without(doc.clone(), &["data", "0", "relationships", "destination", "data"]),
                 without(doc.clone(), &["included", "0", "attributes"]),
-                without(doc, &["included"]),
+                without(doc.clone(), &["included"]),
             ] {
                 prop_assert!(kitsu::parse_relationships_response(&decorated(missing, &extra)).is_err());
             }
+            // A destination pointing nowhere is an answer: that edge is
+            // skipped, the rest read.
+            let dangling = with(doc.clone(), &["data", "0", "relationships", "destination", "data"], Value::Null);
+            let read = kitsu::parse_relationships_response(&decorated(dangling, &extra)).expect("an answer");
+            prop_assert_eq!(read.entries.len(), edges.len() - 1);
+        }
+        if edges.len() >= 2 {
+            // One destination left out while the others are included.
+            let mut one_missing = doc;
+            one_missing["included"].as_array_mut().expect("included").remove(0);
+            prop_assert!(kitsu::parse_relationships_response(&decorated(one_missing, &extra)).is_err());
         }
     }
 }
@@ -227,8 +242,10 @@ proptest! {
             &decorated(without(doc.clone(), &["data", "Media", "idMal"]), &extra)).is_err());
         prop_assert!(anilist::parse_banner_response(
             &decorated(without(doc.clone(), &["data", "Media", "bannerImage"]), &extra)).is_err());
-        prop_assert!(anilist::parse_media_id_response(
-            &decorated(without(doc, &["data", "Media"]), &extra)).is_err());
+        let no_media = decorated(without(doc, &["data", "Media"]), &extra);
+        prop_assert!(anilist::parse_media_id_response(&no_media).is_err());
+        prop_assert!(anilist::parse_mal_id_response(&no_media).is_err());
+        prop_assert!(anilist::parse_banner_response(&no_media).is_err());
         let unknown = decorated(media(Value::Null), &extra);
         prop_assert_eq!(anilist::parse_mal_id_response(&unknown).expect("an answer"), None);
         prop_assert_eq!(anilist::parse_banner_response(&unknown).expect("an answer"), None);
@@ -253,7 +270,9 @@ proptest! {
         };
         prop_assert_eq!(read.aired, aired);
         prop_assert!(anilist_airing::parse_airing_response(
-            &decorated(without(doc, &["data", "Media", "status"]), &extra)).is_err());
+            &decorated(without(doc.clone(), &["data", "Media", "status"]), &extra)).is_err());
+        prop_assert!(anilist_airing::parse_airing_response(
+            &decorated(without(doc, &["data", "Media"]), &extra)).is_err());
         prop_assert!(anilist_airing::parse_airing_response(&decorated(media(Value::Null), &extra))
             .expect("an answer")
             .is_none());
@@ -304,10 +323,36 @@ proptest! {
             .expect("an answer");
         prop_assert_eq!(read.entries.keys().copied().collect::<Vec<_>>(), numbers.iter().copied().collect::<Vec<_>>());
         prop_assert!(anilist_streaming_eps::parse_streaming_episodes_response(
-            &decorated(without(doc, &["data", "Media", "streamingEpisodes"]), &extra)).is_err());
+            &decorated(without(doc.clone(), &["data", "Media", "streamingEpisodes"]), &extra)).is_err());
+        prop_assert!(anilist_streaming_eps::parse_streaming_episodes_response(
+            &decorated(without(doc, &["data", "Media"]), &extra)).is_err());
         let unknown = anilist_streaming_eps::parse_streaming_episodes_response(
             &decorated(media(Value::Null), &extra)).expect("an answer");
         prop_assert!(unknown.entries.is_empty());
+    }
+}
+
+proptest! {
+    #[test]
+    fn an_anilist_airing_batch_reads_each_node_or_none(
+        ids in proptest::collection::btree_set(1u32..100_000, 0..5),
+        extra in extras(),
+    ) {
+        let list: Vec<Value> = ids
+            .iter()
+            .map(|id| json!({ "id": id, "status": "FINISHED", "episodes": 12,
+                              "nextAiringEpisode": null, "airingSchedule": { "nodes": [] } }))
+            .collect();
+        let doc = json!({ "data": { "Page": { "media": list } } });
+        let read = anilist_airing::parse_airing_batch_response(&decorated(doc.clone(), &extra))
+            .expect("an answer");
+        prop_assert_eq!(read.keys().copied().collect::<std::collections::BTreeSet<_>>(), ids.clone());
+        prop_assert!(anilist_airing::parse_airing_batch_response(
+            &decorated(without(doc.clone(), &["data", "Page", "media"]), &extra)).is_err());
+        if !ids.is_empty() {
+            prop_assert!(anilist_airing::parse_airing_batch_response(
+                &decorated(without(doc, &["data", "Page", "media", "0", "status"]), &extra)).is_err());
+        }
     }
 }
 
@@ -346,9 +391,12 @@ proptest! {
             prop_assert_eq!(got.end_time, f32::from(*start + *len));
         }
         prop_assert!(aniskip::parse_skip_times(&decorated(without(doc.clone(), &["results"]), &extra)).is_err());
-        prop_assert!(aniskip::parse_skip_times(&decorated(without(doc, &["found"]), &extra)).is_err());
+        prop_assert!(aniskip::parse_skip_times(&decorated(without(doc.clone(), &["found"]), &extra)).is_err());
         let none = json!({ "found": false, "results": [] });
         prop_assert!(aniskip::parse_skip_times(&decorated(none, &extra)).expect("an answer").is_empty());
+        // Not found is aniskip's answer whatever the results say.
+        let not_found = with(doc, &["found"], Value::Bool(false));
+        prop_assert!(aniskip::parse_skip_times(&decorated(not_found, &extra)).expect("an answer").is_empty());
     }
 
     #[test]
@@ -364,8 +412,10 @@ proptest! {
             .expect("an answer")
             .expect("on the list");
         prop_assert_eq!(read.progress_episodes, watched);
-        prop_assert!(mal_user_parse::parse_my_list_status_entry(
-            &decorated(without(doc.clone(), &["my_list_status", "num_episodes_watched"]), &extra)).is_err());
+        for field in ["num_episodes_watched", "status"] {
+            prop_assert!(mal_user_parse::parse_my_list_status_entry(
+                &decorated(without(doc.clone(), &["my_list_status", field]), &extra)).is_err());
+        }
         prop_assert!(mal_user_parse::parse_my_list_status_entry(
             &decorated(without(doc.clone(), &["id"]), &extra)).is_err());
         prop_assert!(mal_user_parse::parse_my_list_status_entry(
