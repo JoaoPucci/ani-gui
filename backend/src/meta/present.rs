@@ -35,3 +35,7 @@ impl<'de, T: serde::de::DeserializeOwned> Deserialize<'de> for Present<T> {
             .map_err(serde::de::Error::custom)
     }
 }
+
+#[cfg(test)]
+#[path = "present_prop_test.rs"]
+mod prop_tests;
