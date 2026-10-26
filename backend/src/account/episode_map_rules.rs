@@ -99,7 +99,11 @@ fn chain_files_otherwise(evidence: &Evidence, tracker_total: u32) -> bool {
         let Some(count) = part.episodes.filter(|n| *n > 0) else {
             return false;
         };
-        covered = covered.saturating_add(count);
+        // A run past what u32 counts reaches no entry's total.
+        let Some(next) = covered.checked_add(count) else {
+            return false;
+        };
+        covered = next;
         taken.push(part.id.as_str());
     }
     let reaches = covered == tracker_total && taken.len() >= 2;
