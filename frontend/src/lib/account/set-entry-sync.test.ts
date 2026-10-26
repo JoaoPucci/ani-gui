@@ -42,6 +42,7 @@ vi.mock('./store.svelte', () => ({
 import { syncRemoveEntry, syncSetEntry } from './set-entry';
 import { saveWhenTrackerAllows } from './busy-save';
 import { toastStore } from '$lib/toasts/store.svelte';
+import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
 
 /** The backend holding a write back: 429 with the wait, by shape (the
@@ -270,5 +271,84 @@ describe('a held completion a newer write covers the episode of', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
 		expect(setEntry).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('a held write whose tracker account changes during the wait', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		accountStore.accountGeneration.anilist = 0;
+		accountStore.accountChanging.anilist = false;
+	});
+
+	const save = { status: 'dropped' as const, statusChanged: true, progress: 5 };
+
+	it('is neither read nor sent again when the account is disconnected or switched', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-40', save);
+		await vi.advanceTimersByTimeAsync(0);
+		// The user disconnects AniList and signs in as someone else.
+		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b' } };
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(getEntry).toHaveBeenCalledTimes(1);
+		expect(setEntry).toHaveBeenCalledTimes(1);
+		expect(toastStore.items.filter((t) => t.kind === 'info')).toEqual([]);
+	});
+
+	it('is not sent while the account is being changed', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-41', save);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.accountChanging.anilist = true;
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(setEntry).toHaveBeenCalledTimes(1);
+	});
+
+	it('is not written when the account changes while its re-sent read is out', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		let reads = 0;
+		getEntry.mockImplementation(async () => {
+			reads += 1;
+			if (reads === 2) accountStore.accountGeneration.anilist += 1;
+			return { status: 'watching', progress: 3 };
+		});
+		const held = syncSetEntry('kitsu-42', save);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 0, failed: 0, superseded: true });
+		expect(setEntry).toHaveBeenCalledTimes(1);
+	});
+
+	it('re-sends with the bearer the same account holds by then', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValueOnce(refused(1));
+		const held = syncSetEntry('kitsu-43', save);
+		await vi.advanceTimersByTimeAsync(0);
+		// A refresh of the same account's token: no change of account.
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a2' } };
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await held).toEqual({ written: 1, failed: 0 });
+		expect(setEntry).toHaveBeenLastCalledWith('anilist', 'tok-a2', expect.anything());
+	});
+
+	it('removes nothing once the account has changed', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		removeEntry.mockRejectedValueOnce(refused(1));
+		const held = syncRemoveEntry('kitsu-44');
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.accountGeneration.anilist += 1;
+		await vi.advanceTimersByTimeAsync(1000);
+		await held;
+		expect(removeEntry).toHaveBeenCalledTimes(1);
 	});
 });
