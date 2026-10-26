@@ -13,7 +13,7 @@ import {
 	type WriteField
 } from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
-import { accountStore } from './store.svelte';
+import { accountChanging, followAccount } from './held-account';
 import { m } from '$lib/paraglide/messages';
 
 /** A tracker's display name; the provider id for one without a name. */
@@ -82,15 +82,6 @@ function settle(key: string): void {
 	coverage.delete(key);
 }
 
-/** The user behind `provider`'s account — connected, or marked expired
- *  or failed with its account still known — or `null` with no account,
- *  or while the account is being changed. */
-function accountUser(provider: Provider): string | null {
-	if (accountStore.accountChanging[provider]) return null;
-	const state = accountStore.byProvider[provider];
-	return state && 'account' in state && state.account ? state.account.user_id : null;
-}
-
 /** Run a user's write of `kitsuId` to `provider`, waiting out its rate
  *  limit with a notice — see `saveWhenAllowed`. The attempt asks its
  *  `HeldWrite` which of `fields` are still its own, and sends only
@@ -104,18 +95,13 @@ export function saveWhenTrackerAllows<T>(
 ): Promise<T> {
 	// Made while the tracker's account is being changed, the write is for
 	// an account on its way out: it is not sent at all.
-	if (accountStore.accountChanging[provider]) return Promise.reject(new SupersededError());
+	if (accountChanging(provider)) return Promise.reject(new SupersededError());
 	const key = `${provider}:${kitsuId}`;
 	const generation = start(key, fields);
-	// The tracker account the write was made for: its user. Disconnected,
-	// switched to another user or being changed since, the write is no
-	// longer the user's to send: nothing of it is left, and it goes no
-	// further — not its re-read, not its write. A token refresh of the
-	// same account keeps it.
-	// A write that starts with no connected account to name carries the
-	// bearer its caller brought and has no account to follow.
-	const account = accountUser(provider);
-	const sameAccount = () => account === null || accountUser(provider) === account;
+	// The tracker account the write was made for. Changed since, nothing
+	// of the write is left, and it goes no further — not its re-read, not
+	// its write.
+	const sameAccount = followAccount(provider);
 	const held: HeldWrite = {
 		left: () =>
 			sameAccount() ? fields.filter((field) => coverage.get(key)?.[field] === generation) : []
