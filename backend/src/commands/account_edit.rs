@@ -57,8 +57,7 @@ async fn get_entry_via(
     // window and observe a value the write is about to change. A later explicit
     // Save would otherwise force-write that stale value over the just-synced
     // higher one.
-    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
-    let _read_guard = show_lock.lock().await;
+    let _read_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
@@ -97,8 +96,7 @@ async fn set_entry_via(
     // Per-show lock keyed on the Kitsu id, taken before resolve so an
     // explicit edit and a concurrent mark-watched write serialize across
     // their whole resolve→write.
-    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
-    let _write_guard = show_lock.lock().await;
+    let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
@@ -139,8 +137,7 @@ async fn remove_entry_via(
     // Per-show lock keyed on the Kitsu id, taken before resolve so the
     // delete serializes with a concurrent mark-watched write / editor read
     // across their whole resolve→write.
-    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
-    let _write_guard = show_lock.lock().await;
+    let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(false);
     };
