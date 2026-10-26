@@ -35,11 +35,24 @@ fn inlined_anime(included: Vec<Included>) -> HashMap<String, KitsuAnimeRef> {
 }
 
 /// A JSON:API relationship pointer: `{ data: { type, id } }`, `data`
-/// null where there is nothing on the other end.
+/// null where there is nothing on the other end. The page asks for the
+/// item inlined, so a pointer without `data` (links only, or nothing)
+/// does not say what it points to and fails to read.
 #[derive(Deserialize)]
 struct Pointer {
-    #[serde(default)]
+    #[serde(deserialize_with = "present")]
     data: Option<PointerRef>,
+}
+
+/// A field the request asks for, read as given: `None` when it is
+/// null. Named by `deserialize_with`, which leaves a missing field the
+/// missing-field error where a bare `Option` would read it as `None`.
+fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
 }
 
 #[derive(Deserialize)]
@@ -64,14 +77,16 @@ pub struct KitsuMapped {
 /// music-subtype entry dropped as every mapping lookup drops it. The
 /// page is complete when it held as many mappings as Kitsu counts.
 ///
-/// A mapping whose item is given as null maps to nothing, and one to
-/// another type is not an anime. A mapping with no item, or naming an
-/// anime the page does not include readably, leaves the page unable to
-/// say what is mapped: no answer, never an empty set.
+/// A mapping whose item's `data` is given as null maps to nothing, and
+/// one to another type is not an anime. A mapping with no item, an item
+/// with no `data` key, or one naming an anime the page does not include
+/// readably, leaves the page unable to say what is mapped: no answer,
+/// never an empty set.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't JSON:API, a
-/// mapping carries no item, or a mapped anime is not included readably.
+/// mapping carries no item or an item without `data`, or a mapped anime
+/// is not included readably.
 pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
     #[derive(Deserialize)]
     struct Wrap {

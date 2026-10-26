@@ -110,3 +110,27 @@ async fn a_body_without_an_id_is_a_parse_failure() {
         .expect_err("not an anime");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
+
+#[test]
+fn an_anime_without_its_related_anime_is_no_answer() {
+    // The read asks for `related_anime`. A body that leaves it out, or
+    // a row that leaves out its relation, says nothing of the sequels;
+    // read as none, they would end the chain at an anime that has one.
+    for body in [
+        r#"{"id":9,"num_episodes":12,"status":"finished_airing","media_type":"tv"}"#,
+        r#"{"id":9,"num_episodes":12,"related_anime":null}"#,
+        r#"{"id":9,"num_episodes":12,"related_anime":[{"node":{"id":10}}]}"#,
+    ] {
+        assert!(
+            matches!(
+                evidence::parse_media_evidence(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{body}"
+        );
+    }
+    // An empty list is an answer: no sequels.
+    let got = evidence::parse_media_evidence(br#"{"id":9,"num_episodes":12,"related_anime":[]}"#)
+        .expect("an answer");
+    assert!(got.sequels.is_empty());
+}

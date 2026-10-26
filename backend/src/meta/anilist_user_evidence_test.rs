@@ -151,7 +151,7 @@ async fn a_body_that_is_not_the_media_envelope_is_a_parse_failure() {
 async fn a_year_alone_is_kept_as_the_year_and_a_body_that_is_not_json_fails() {
     let crafted = r#"{"data":{"Media":{"id":8,"idMal":null,"episodes":4,"status":"FINISHED","format":"OVA",
         "startDate":{"year":1991,"month":null,"day":null},"endDate":{"year":1991,"month":5,"day":null},
-        "relations":null,"streamingEpisodes":null}}}"#;
+        "relations":{"edges":[]},"streamingEpisodes":null}}}"#;
     let got = evidence_for(8, crafted).await;
     assert_eq!(got.show.start, Some("1991".into()));
     assert_eq!(got.show.end, Some("1991-05".into()));
@@ -183,8 +183,55 @@ async fn a_year_alone_is_kept_as_the_year_and_a_body_that_is_not_json_fails() {
 async fn a_fuzzy_date_naming_no_real_day_or_month_is_no_date() {
     let crafted = r#"{"data":{"Media":{"id":8,"idMal":null,"episodes":4,"status":"FINISHED","format":"TV",
         "startDate":{"year":2021,"month":4,"day":31},"endDate":{"year":2021,"month":13,"day":null},
-        "relations":null,"streamingEpisodes":null}}}"#;
+        "relations":{"edges":[]},"streamingEpisodes":null}}}"#;
     let got = evidence_for(8, crafted).await;
     assert_eq!(got.show.start, None);
     assert_eq!(got.show.end, None);
+}
+
+#[test]
+fn relations_that_leave_out_what_the_query_asks_for_are_no_answer() {
+    // The query asks for `relations { edges { relationType node { id
+    // type format } } }`. Relations left out, or given as null, say
+    // nothing of the entry's sequels; neither does a sequel whose node
+    // is missing or null. Read as none, they would end the chain at an
+    // entry that has a sequel.
+    let envelope = |relations: &str| {
+        format!(
+            r#"{{"data":{{"Media":{{"id":5,"idMal":5,"episodes":12,"status":"FINISHED","format":"TV",
+            "startDate":null,"endDate":null{relations},"streamingEpisodes":[]}}}}}}"#
+        )
+    };
+    let node = r#"{"id":6,"type":"ANIME","format":"TV"}"#;
+    for relations in [
+        String::new(),
+        r#","relations":null"#.to_string(),
+        r#","relations":{}"#.to_string(),
+        r#","relations":{"edges":null}"#.to_string(),
+        format!(r#","relations":{{"edges":[{{"node":{node}}}]}}"#),
+        r#","relations":{"edges":[{"relationType":"SEQUEL"}]}"#.to_string(),
+        r#","relations":{"edges":[{"relationType":"SEQUEL","node":null}]}"#.to_string(),
+        r#","relations":{"edges":[{"relationType":"SEQUEL","node":{"id":6,"format":"TV"}}]}"#
+            .to_string(),
+        r#","relations":{"edges":[{"relationType":"SEQUEL","node":{"id":6,"type":"ANIME"}}]}"#
+            .to_string(),
+    ] {
+        assert!(
+            matches!(
+                evidence::parse_media_evidence_response(envelope(&relations).as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{relations}"
+        );
+    }
+    // A null relation type, or a null node on an edge that is not a
+    // sequel, still says what it says: no sequel there.
+    let got = evidence::parse_media_evidence_response(
+        envelope(&format!(
+            r#","relations":{{"edges":[{{"relationType":null,"node":{node}}},{{"relationType":"PREQUEL","node":null}},{{"relationType":"SEQUEL","node":{node}}}]}}"#
+        ))
+        .as_bytes(),
+    )
+    .expect("an answer");
+    assert_eq!(got.sequels, [ProviderMediaId(6)]);
 }

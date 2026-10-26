@@ -25,14 +25,29 @@ pub(super) async fn read(
     parse_media_evidence(&provider.get_auth_bytes(&url, tokens).await?)
 }
 
+/// A field the request asks for, read as given: `None` when it is
+/// null. Named by `deserialize_with`, which leaves a missing field the
+/// missing-field error where a bare `Option` would read it as `None`.
+fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
 /// Parse an `/anime/{id}?fields=num_episodes,status,media_type,start_date,
 /// end_date,related_anime` response. MAL's `0` for a length not announced
 /// is unknown; a date arrives as `YYYY-MM-DD`, `YYYY-MM` or `YYYY` and is
 /// kept as it is; `related_anime` names the sequels but not their
-/// lengths, which each one's own read answers.
+/// lengths, which each one's own read answers. The read asks for
+/// `related_anime`: a body that leaves it out, or a row that leaves out
+/// its `relation_type`, does not say what the sequels are, so it is no
+/// answer; an empty list is no sequels, and a null relation none.
 ///
 /// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't an anime.
+/// Returns [`AniError::ParseFailed`] when the body isn't an anime, or
+/// leaves out `related_anime` or a row's `relation_type`.
 pub(in crate::meta) fn parse_media_evidence(body: &[u8]) -> Result<MediaEvidence> {
     #[derive(Deserialize)]
     struct Wire {
@@ -47,13 +62,12 @@ pub(in crate::meta) fn parse_media_evidence(body: &[u8]) -> Result<MediaEvidence
         start_date: Option<String>,
         #[serde(default)]
         end_date: Option<String>,
-        #[serde(default)]
         related_anime: Vec<Related>,
     }
     #[derive(Deserialize)]
     struct Related {
         node: Node,
-        #[serde(default)]
+        #[serde(deserialize_with = "present")]
         relation_type: Option<String>,
     }
     #[derive(Deserialize)]

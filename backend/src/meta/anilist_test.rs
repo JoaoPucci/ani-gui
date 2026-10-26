@@ -455,7 +455,7 @@ async fn media_listed_for_mals_posts_one_query_for_a_small_batch() {
             "variables": { "idMals": [63403, 63404] },
         })))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403},{"id":207142,"idMal":63404}]}}}"#,
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403},{"id":207142,"idMal":63404}]}}}"#,
         ))
         .expect(1)
         .mount(&server)
@@ -491,8 +491,9 @@ async fn media_listed_for_mals_chunks_batches_over_the_page_cap() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .expect(2)
         .mount(&server)
@@ -711,12 +712,49 @@ async fn one_mal_id_recorded_by_more_media_than_a_page_holds_is_no_answer() {
 }
 
 #[test]
-fn a_page_that_does_not_say_it_was_cut_is_whole() {
-    assert!(!page_has_next(br#"{"data":{"Page":{"media":[]}}}"#).expect("ok"));
-    assert!(!page_has_next(br#"{"data":{"Page":{"pageInfo":{},"media":[]}}}"#).expect("ok"));
+fn a_page_that_does_not_say_whether_it_was_cut_is_no_answer() {
+    // The query asks for `pageInfo { hasNextPage }`. A page that leaves
+    // either out, or gives either as null, does not say whether AniList
+    // cut it, so it is no answer rather than a whole page.
+    for body in [
+        br#"{"data":{"Page":{"media":[]}}}"#.as_slice(),
+        br#"{"data":{"Page":{"pageInfo":null,"media":[]}}}"#,
+        br#"{"data":{"Page":{"pageInfo":{},"media":[]}}}"#,
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":null},"media":[]}}}"#,
+        b"<html>",
+    ] {
+        assert!(
+            matches!(page_has_next(body), Err(AniError::ParseFailed { .. })),
+            "{}",
+            String::from_utf8_lossy(body)
+        );
+    }
+    assert!(
+        !page_has_next(br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#)
+            .expect("ok")
+    );
     assert!(page_has_next(br#"{"data":{"Page":{"pageInfo":{"hasNextPage":true}}}}"#).expect("ok"));
-    assert!(matches!(
-        page_has_next(b"<html>"),
-        Err(AniError::ParseFailed { .. })
-    ));
+}
+
+#[tokio::test]
+async fn a_by_mal_page_that_does_not_say_whether_it_was_cut_is_no_answer() {
+    // Read as whole, a page AniList cut would list the media it held as
+    // every media recording those MAL ids.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":10,"idMal":1}]}}}"#),
+        )
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let err = media_listed_for_mals(&client, &[1], Some(&server.uri()))
+        .await
+        .expect_err("a page without pageInfo");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let err = media_ids_recording_mal(&client, 1, Some(&server.uri()))
+        .await
+        .expect_err("a page without pageInfo");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }

@@ -187,7 +187,7 @@ async fn a_batch_asks_only_for_the_ids_it_does_not_know() {
         .and(body_string_contains("63404"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207142,"idMal":63404}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207142,"idMal":63404}]}}}"#),
         )
         .expect(1)
         .mount(&anilist)
@@ -223,7 +223,7 @@ async fn a_batch_asks_only_for_the_ids_it_does_not_know() {
 async fn a_batch_answer_serves_the_single_translation_afterwards() {
     let anilist = anilist_answering(
         ResponseTemplate::new(200)
-            .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+            .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         1,
     )
     .await;
@@ -249,7 +249,7 @@ async fn a_batch_answer_serves_the_single_translation_afterwards() {
 async fn a_batch_served_wholly_from_the_cache_makes_no_request() {
     let anilist = anilist_answering(
         ResponseTemplate::new(200)
-            .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+            .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         1,
     )
     .await;
@@ -312,7 +312,7 @@ async fn a_batch_skips_an_id_anilist_is_known_not_to_index() {
 async fn every_media_recording_a_mal_id_is_kept_and_served_again_without_a_request() {
     let anilist = anilist_answering(
         ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[{"id":702,"idMal":70},{"id":700,"idMal":70},{"id":9,"idMal":71}]}}}"#,
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":702,"idMal":70},{"id":700,"idMal":70},{"id":9,"idMal":71}]}}}"#,
         ),
         1,
     )
@@ -333,7 +333,8 @@ async fn every_media_recording_a_mal_id_is_kept_and_served_again_without_a_reque
 #[tokio::test]
 async fn no_media_recording_a_mal_id_is_remembered_for_a_day() {
     let anilist = anilist_answering(
-        ResponseTemplate::new(200).set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+        ResponseTemplate::new(200)
+            .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#),
         1,
     )
     .await;
@@ -369,7 +370,7 @@ async fn a_batch_takes_a_mal_id_several_media_record_as_the_single_translation_d
     Mock::given(method("POST"))
         .and(body_string_contains("MediaIdsByMals"))
         .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039},{"id":5,"idMal":7}]}}}"#,
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039},{"id":5,"idMal":7}]}}}"#,
         ))
         .expect(1)
         .mount(&anilist)
@@ -407,7 +408,7 @@ async fn a_batch_whose_single_translation_fails_keeps_the_rest_and_remembers_not
     Mock::given(method("POST"))
         .and(body_string_contains("MediaIdsByMals"))
         .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039},{"id":5,"idMal":7}]}}}"#,
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039},{"id":5,"idMal":7}]}}}"#,
         ))
         .mount(&anilist)
         .await;

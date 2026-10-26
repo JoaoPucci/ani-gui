@@ -124,7 +124,26 @@ proptest! {
     }
 }
 
-/// One relation edge as AniList could send it.
+/// A value a reply could carry for a key, or `None` for the key left
+/// out of it.
+fn or_missing(value: impl Strategy<Value = Value>) -> impl Strategy<Value = Option<Value>> {
+    prop_oneof![1 => Just(None), 6 => value.prop_map(Some)]
+}
+
+/// An object of the keys given a value; a key whose value is `None` is
+/// left out.
+fn object(fields: &[(&str, Option<Value>)]) -> Value {
+    let mut out = serde_json::Map::new();
+    for (key, value) in fields {
+        if let Some(value) = value {
+            out.insert((*key).to_string(), value.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+/// One relation edge as AniList could send it, any key of the edge or
+/// its node left out now and then.
 fn edge() -> impl Strategy<Value = Value> {
     let relation = prop_oneof![
         Just(json!("SEQUEL")),
@@ -143,13 +162,14 @@ fn edge() -> impl Strategy<Value = Value> {
         Just(json!("ONA")),
         Just(json!(null)),
     ];
-    (relation, proptest::option::of((0u32..50, kind, format))).prop_map(|(relation, node)| {
-        let node = node.map_or(
-            Value::Null,
-            |(id, kind, format)| json!({ "id": id, "type": kind, "format": format }),
-        );
-        json!({ "relationType": relation, "node": node })
-    })
+    let node = prop_oneof![
+        1 => Just(json!(null)),
+        4 => (0u32..50, or_missing(kind), or_missing(format)).prop_map(|(id, kind, format)| {
+            object(&[("id", Some(json!(id))), ("type", kind), ("format", format)])
+        }),
+    ];
+    (or_missing(relation), or_missing(node))
+        .prop_map(|(relation, node)| object(&[("relationType", relation), ("node", node)]))
 }
 
 /// A fuzzy date object, null, or absent.
@@ -194,6 +214,8 @@ fn media() -> impl Strategy<Value = Value> {
     let relations = prop_oneof![
         Just(None),
         Just(Some(Value::Null)),
+        Just(Some(json!({}))),
+        Just(Some(json!({ "edges": null }))),
         prop::collection::vec(edge(), 0..5).prop_map(|e| Some(json!({ "edges": e }))),
     ];
     (
@@ -239,8 +261,36 @@ fn model_date(value: Option<&Value>) -> Option<String> {
     fuzzy_date(part("year"), part("month"), part("day"))
 }
 
-/// The evidence a generated envelope is specified to read as.
-fn model(media: &Value) -> MediaEvidence {
+/// Whether a generated `relations` says what the media's relations
+/// are. The query asks for `relations { edges { relationType node { id
+/// type format } } }`: a key of that left out, `relations` or `edges`
+/// given as null, or a sequel whose node is null, leaves the sequels
+/// unknown, never none.
+fn relations_answer(media: &Value) -> bool {
+    let Some(edges) = media
+        .get("relations")
+        .and_then(|r| r.get("edges"))
+        .and_then(Value::as_array)
+    else {
+        return false;
+    };
+    edges.iter().all(|e| {
+        let (Some(relation), Some(node)) = (e.get("relationType"), e.get("node")) else {
+            return false;
+        };
+        if node.is_null() {
+            return relation.as_str() != Some("SEQUEL");
+        }
+        node.get("type").is_some() && node.get("format").is_some()
+    })
+}
+
+/// The evidence a generated envelope is specified to read as, `None`
+/// where it is no answer.
+fn model(media: &Value) -> Option<MediaEvidence> {
+    if !relations_answer(media) {
+        return None;
+    }
     let text = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
     let num = |v: &Value, key: &str| {
         v.get(key)
@@ -248,22 +298,15 @@ fn model(media: &Value) -> MediaEvidence {
             .and_then(|n| u32::try_from(n).ok())
     };
     let series = |format: Option<String>| !matches!(format.as_deref(), Some("MOVIE" | "MUSIC"));
-    let sequels = media
-        .get("relations")
-        .and_then(|r| r.get("edges"))
-        .and_then(Value::as_array)
-        .map(|edges| {
-            edges
-                .iter()
-                .filter(|e| text(e, "relationType").as_deref() == Some("SEQUEL"))
-                .filter_map(|e| e.get("node").filter(|n| !n.is_null()))
-                .filter(|n| {
-                    text(n, "type").as_deref() == Some("ANIME") && series(text(n, "format"))
-                })
-                .filter_map(|n| num(n, "id").map(ProviderMediaId))
-                .collect()
-        })
-        .unwrap_or_default();
+    let sequels = media["relations"]["edges"]
+        .as_array()
+        .expect("edges")
+        .iter()
+        .filter(|e| text(e, "relationType").as_deref() == Some("SEQUEL"))
+        .filter_map(|e| e.get("node").filter(|n| !n.is_null()))
+        .filter(|n| text(n, "type").as_deref() == Some("ANIME") && series(text(n, "format")))
+        .filter_map(|n| num(n, "id").map(ProviderMediaId))
+        .collect();
     let listed = media
         .get("streamingEpisodes")
         .and_then(Value::as_array)
@@ -273,7 +316,7 @@ fn model(media: &Value) -> MediaEvidence {
                 .filter_map(|e| listed_number_of(e.get("title")?.as_str()?))
                 .collect()
         });
-    MediaEvidence {
+    Some(MediaEvidence {
         show: TrackerShow {
             id: num(media, "id").expect("an id"),
             id_mal: num(media, "idMal"),
@@ -285,7 +328,7 @@ fn model(media: &Value) -> MediaEvidence {
         series: series(text(media, "format")),
         sequels,
         listed,
-    }
+    })
 }
 
 proptest! {
@@ -305,13 +348,21 @@ proptest! {
     /// total is unknown, only `FINISHED` is finished, only an anime
     /// series sequel is a sequel, and an absent or empty episode list
     /// is none while a listed one keeps every number its titles carry.
+    /// An envelope whose relations leave out a key the query asks for,
+    /// give `relations` or `edges` as null, or a sequel's node as null,
+    /// is no answer: its sequels are unknown, never none.
     #[test]
     fn an_envelope_reads_as_its_fields(media in media()) {
         let body = serde_json::to_vec(&json!({ "data": { "Media": media } })).expect("serialise");
-        let got = parse_media_evidence_response(&body).expect("an envelope");
+        let parsed = parse_media_evidence_response(&body);
+        let Some(want) = model(&media) else {
+            prop_assert!(parsed.is_err(), "relations that do not say read as an answer");
+            return Ok(());
+        };
+        let got = parsed.expect("an envelope");
         prop_assert_eq!(got.listed.is_none(), media.get("streamingEpisodes")
             .and_then(Value::as_array)
             .is_none_or(Vec::is_empty));
-        prop_assert_eq!(got, model(&media));
+        prop_assert_eq!(got, want);
     }
 }
