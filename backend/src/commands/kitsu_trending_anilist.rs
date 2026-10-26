@@ -69,7 +69,7 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
         crate::meta::anilist::trending(&state.meta_http, ANILIST_TRENDING_LIMIT, anilist_base)
             .await;
     if let Err(ref e) = anilist {
-        tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
+        tracing::warn!(error = ?e, "anilist trending failed; serving the last list AniList gave, else Kitsu's");
     }
     // The row is kept only when it is AniList's answer, bridged in
     // full: Kitsu's list stands in for this load only, and a row
