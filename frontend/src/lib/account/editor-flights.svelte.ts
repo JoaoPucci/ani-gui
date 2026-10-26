@@ -14,7 +14,13 @@ import {
 	type Flight,
 	type Flights
 } from './editor-flight';
-import { flightHolds, NO_PENDINGS, withPending, type Pendings } from './editor-lifecycle';
+import {
+	flightHolds,
+	listingHolds,
+	NO_PENDINGS,
+	withPending,
+	type Pendings
+} from './editor-lifecycle';
 import type { PendingEdit } from './list-entry-pending';
 
 class EditorFlightStore {
@@ -45,11 +51,20 @@ class EditorFlightStore {
 	/** The write in flight for `kitsuId`, whether or not it still locks:
 	 *  what an instance watches for the write to settle. */
 	flightOf(kitsuId: string): Flight | null {
-		return this.locking(kitsuId);
+		return flightFor(this.flights, kitsuId);
 	}
 
+	/** `kitsuId`'s pending retry, while its trackers are still connected as
+	 *  the users its save was made under: a retry made for one account is
+	 *  not another's, nor a disconnected one's. Reactive to the account
+	 *  store. */
 	pendingFor(kitsuId: string): PendingEdit | null {
-		return this.pendings.get(kitsuId)?.pending ?? null;
+		const stored = this.pendings.get(kitsuId);
+		if (!stored) return null;
+		const holds = listingHolds(stored.listed, (provider, listed) =>
+			followAccount(provider as Provider, listed)()
+		);
+		return holds ? stored.pending : null;
 	}
 
 	/** Set `kitsuId`'s pending retry, with the accounts the save that left it

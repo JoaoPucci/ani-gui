@@ -151,13 +151,16 @@
 
 	// A flight another instance started — one since unmounted — that ends on
 	// the show on screen leaves that instance's page to re-read nothing: this
-	// one re-reads its own.
+	// one re-reads its own. Watched on the flight itself, not on whether it
+	// still locks: an account change lifting the lock is no landing.
 	let watched: Watched = { kitsuId: '', flight: null };
 	const watchedFlight = $derived(editorFlights.flightOf(kitsuId));
 	$effect(() => {
 		const next: Watched = { kitsuId, flight: watchedFlight };
 		const landing = adoptedLanding(watched, next, self, open);
 		watched = next;
+		// The popover shows the sent form, which the re-read entry replaces.
+		if (landing.close) open = false;
 		if (landing.reconcile) onReconcile();
 	});
 
