@@ -98,7 +98,21 @@ impl AccountWriteLocks {
         kind: ProviderKind,
         kitsu_id: &str,
     ) -> tokio::sync::OwnedMutexGuard<()> {
-        let lock = self.for_show(kind, kitsu_id);
+        Self::hold_lock(self.for_show(kind, kitsu_id)).await
+    }
+
+    /// Wait for the lock guarding read-then-write on one tracker entry
+    /// ([`Self::for_entry`]) and hold it until the guard drops.
+    pub(crate) async fn hold_entry(
+        &self,
+        kind: ProviderKind,
+        entry: ProviderMediaId,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        Self::hold_lock(self.for_entry(kind, entry)).await
+    }
+
+    /// Take `lock`, saying so to a test holding it when it has to wait.
+    async fn hold_lock(lock: ShowLock) -> tokio::sync::OwnedMutexGuard<()> {
         match Arc::clone(&lock).try_lock_owned() {
             Ok(guard) => guard,
             Err(_) => {
@@ -826,8 +840,7 @@ pub(crate) async fn push_progress_via(
     // progress costs one bearer-scoped GET per write — only when the
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
-    let lock = state.account_write_locks.for_entry(kind, native);
-    let _entry_guard = lock.lock().await;
+    let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     if update.progress_episodes.is_none() {
         return write_through(state, kind, provider, tokens, native, update)
             .await
