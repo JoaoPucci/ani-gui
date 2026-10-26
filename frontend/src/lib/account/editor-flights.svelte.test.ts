@@ -99,3 +99,14 @@ describe('flightOf', () => {
 		expect(editorFlights.flightOf('A')).toBeNull();
 	});
 });
+
+describe('a pending retry whose account comes back', () => {
+	it('is hidden while the account does not hold, and offered again once it does', () => {
+		const pending = { kitsuId: 'A', intendedStatus: 'paused' as const, intendedProgress: 5 };
+		editorFlights.setPending('A', pending, { anilist: { user: 'u1' } });
+		accountStore.setConnected('anilist', account('u2'));
+		expect(editorFlights.pendingFor('A')).toBeNull();
+		accountStore.setConnected('anilist', account('u1'));
+		expect(editorFlights.pendingFor('A')).toEqual(pending);
+	});
+});

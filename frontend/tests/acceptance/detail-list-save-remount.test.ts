@@ -38,6 +38,8 @@ import ToastHost from '../../src/lib/components/ToastHost.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { editorFlights } from '../../src/lib/account/editor-flights.svelte';
+import type { Flight } from '../../src/lib/account/editor-flight';
 
 const SHOW_A = '50497';
 const SHOW_B = '50498';
@@ -100,6 +102,8 @@ const saveButton = () =>
 interface Seen {
 	reads: Record<string, number>;
 	saves: number;
+	/** Removals, when a scenario counts them. */
+	removals?: number;
 }
 
 function useShows(seen: Seen) {
@@ -132,8 +136,23 @@ function useShows(seen: Seen) {
 			seen.reads[id] = (seen.reads[id] ?? 0) + 1;
 			// The tracker holds the save once it has gone: only a read after it
 			// landed can show Dropped.
+			if (id === SHOW_A && (seen.removals ?? 0) >= 2) return HttpResponse.json(null);
 			const landed = id === SHOW_A && seen.saves >= 2;
 			return HttpResponse.json({ status: landed ? 'dropped' : 'watching', progress: 3 });
+		}),
+		http.delete(`${API_BASE}/api/account/entry/anilist`, () => {
+			seen.removals = (seen.removals ?? 0) + 1;
+			if (seen.removals === 1) {
+				return HttpResponse.json(
+					{
+						kind: 'rate_limited',
+						key: 'error.network.rate_limited',
+						retry_after_secs: RETRY_AFTER_S
+					},
+					{ status: 429 }
+				);
+			}
+			return new HttpResponse(null, { status: 204 });
 		}),
 		http.post(`${API_BASE}/api/account/set/anilist`, () => {
 			seen.saves += 1;
@@ -177,6 +196,45 @@ async function startHeldSave() {
 		seconds: RETRY_AFTER_S
 	});
 	await until(() => (stack.textContent ?? '').includes(busy), `the notice "${busy}"`);
+}
+
+/** Leave the show and come back with the save still held: a new page,
+ *  a new editor. */
+async function remount() {
+	unmount(detail!);
+	detail = null;
+	target.textContent = '';
+	detail = mount(DetailPage, { target });
+	await until(() => trigger() !== null && !trigger()!.disabled, 'the list control again');
+}
+
+/** AniList's account starts being changed — a disconnect in progress:
+ *  the tracker is still listed as connected, so the page does not
+ *  re-read, and the held write is no longer this account's. The store
+ *  does not announce the change flag on its own, so the editor sees the
+ *  lock lift at its next look at the flights, which another show's
+ *  write settling gives it here. */
+function beginAniListChange() {
+	accountStore.beginAccountChange('anilist');
+	const elsewhere: Flight = { kind: 'saving' };
+	editorFlights.begin('elsewhere', elsewhere);
+	editorFlights.end('elsewhere', elsewhere);
+}
+
+/** The held write settles at the end of its wait, superseded unsent, and
+ *  the editor has the page re-read. */
+async function untilTheHeldWriteSettles(seen: Seen, readsBefore: number) {
+	await until(() => (seen.reads[SHOW_A] ?? 0) > readsBefore, 'the re-read once the write settled');
+	expect(seen.saves).toBe(1);
+}
+
+const removeButton = () => target.querySelector('.le-remove') as HTMLButtonElement | null;
+
+/** Pick `status` in the open popover. */
+function pick(status: string) {
+	const select = statusSelect()!;
+	select.value = status;
+	select.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 /** The editor on screen, opened: locked on the save still out. */
@@ -277,5 +335,70 @@ describe('detail route — a held list save across an editor remount', () => {
 			'the re-read once the write settled'
 		);
 		expect(seen.saves).toBe(1);
+	});
+
+	it('leaves a form opened fresh after the lock lifted open when the held write settles', async () => {
+		const seen: Seen = { reads: {}, saves: 0 };
+		useShows(seen);
+		detail = mount(DetailPage, { target });
+		await startHeldSave();
+		await remount();
+		const readsBefore = seen.reads[SHOW_A] ?? 0;
+
+		beginAniListChange();
+		trigger()!.click();
+		await until(() => statusSelect() !== null && !statusSelect()!.disabled, 'a fresh form');
+		pick('paused');
+
+		await untilTheHeldWriteSettles(seen, readsBefore);
+		expect(statusSelect()).not.toBeNull();
+		expect(statusSelect()!.value).toBe('paused');
+	});
+
+	it('leaves the sent form open once the user edits it after the lock lifted', async () => {
+		const seen: Seen = { reads: {}, saves: 0 };
+		useShows(seen);
+		detail = mount(DetailPage, { target });
+		await startHeldSave();
+		await remount();
+		const readsBefore = seen.reads[SHOW_A] ?? 0;
+		trigger()!.click();
+		await until(() => statusSelect() !== null, 'the sent form');
+		expect(statusSelect()!.disabled).toBe(true);
+
+		beginAniListChange();
+		await until(() => !statusSelect()!.disabled, 'the lock to lift');
+		pick('paused');
+
+		await untilTheHeldWriteSettles(seen, readsBefore);
+		expect(statusSelect()).not.toBeNull();
+		expect(statusSelect()!.value).toBe('paused');
+	});
+
+	it('closes a form reopened on a held removal when the removal lands', async () => {
+		const seen: Seen = { reads: {}, saves: 0, removals: 0 };
+		useShows(seen);
+		detail = mount(DetailPage, { target });
+		await until(() => trigger() !== null && !trigger()!.disabled, 'the list control');
+		trigger()!.click();
+		await until(() => removeButton() !== null, 'the Remove control');
+		removeButton()!.click();
+		const busy = m.account_busy_saving({
+			provider: m.account_provider_anilist(),
+			seconds: RETRY_AFTER_S
+		});
+		await until(() => (stack.textContent ?? '').includes(busy), `the notice "${busy}"`);
+		await remount();
+
+		trigger()!.click();
+		await until(() => statusSelect() !== null, 'the popover on the held removal');
+		expect(target.textContent ?? '').toContain(m.detail_list_removing());
+
+		await until(
+			() => (stack.textContent ?? '').includes(m.detail_list_removed()),
+			'the removed toast'
+		);
+		await until(() => statusSelect() === null, 'the popover to close');
+		expect(seen.removals).toBe(2);
 	});
 });
