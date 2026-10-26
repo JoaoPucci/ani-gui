@@ -33,8 +33,9 @@ export function listAccounts(providers: readonly Provider[]): Record<string, Lis
  * changed. A token refresh, a reconnect or an expiry mark for the same
  * user keeps it. A write listed under no account has none to be for,
  * and the check never passes. A write with no listing and no account
- * now — a caller bringing its own bearer — has none to follow, and the
- * check always passes.
+ * now has none to follow, and the check always passes: no production
+ * caller writes that way — every fan-out passes its listing — and only
+ * tests that drive the ledger directly do.
  */
 export function followAccount(provider: Provider, listed?: ListedAccount): () => boolean {
 	const account = listed ? listed.user : accountUser(provider);

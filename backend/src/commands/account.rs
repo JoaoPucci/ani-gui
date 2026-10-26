@@ -219,7 +219,7 @@ pub(crate) async fn list_all_and_cache_via(
     list_all_and_cache_from(state, kind, provider, tokens, user_id, began).await
 }
 
-/// [`list_all_and_cache_via`] for a request that arrived in connection
+/// The list read and its write-through for a request that arrived in connection
 /// epoch `began`: a disconnect since purged the cache, and the answer
 /// must not fill it again for that account.
 async fn list_all_and_cache_from(
@@ -282,7 +282,7 @@ fn write_through_cache(
 /// Write a single just-synced entry back into the cache so the local
 /// snapshot reflects the change without a full resync. Leaves the rest of the
 /// user's cached list intact.
-pub fn upsert_cached_entry(
+pub(crate) fn upsert_cached_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
     user_id: &str,
