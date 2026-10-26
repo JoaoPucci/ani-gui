@@ -189,6 +189,34 @@ pub async fn list_all_and_cache(
     list_all_and_cache_via(state, kind, provider.as_ref(), tokens, user_id).await
 }
 
+/// The bearer's own list: its owner from `me()` — the only identity the
+/// backend trusts — then [`list_all_and_cache`] under that owner.
+///
+/// # Errors
+/// [`AniError::Metadata`] for a kind with no provider; otherwise those
+/// of `me()` and [`list_all_and_cache`].
+pub async fn list_for_bearer(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    tokens: &Tokens,
+) -> Result<Vec<ListEntry>> {
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    list_for_bearer_via(state, kind, provider.as_ref(), tokens).await
+}
+
+/// [`list_for_bearer`] with the provider injected.
+pub(crate) async fn list_for_bearer_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+) -> Result<Vec<ListEntry>> {
+    let profile = provider.me(tokens).await?;
+    list_all_and_cache_via(state, kind, provider, tokens, &profile.user_id).await
+}
+
 /// [`list_all_and_cache`] with the provider injected, so tests drive it
 /// against a wiremock-backed provider.
 pub(crate) async fn list_all_and_cache_via(
@@ -781,15 +809,41 @@ async fn push_progress_with_anilist_base(
     // window where a read could resolve, win the lock, and read a value this
     // write is about to change. Held across the GET +
     // upsert since providers only upsert (no compare-and-set).
+    let provider = provider_for_kind(state, kind);
+    push_progress_resolved_via(
+        state,
+        kind,
+        provider.as_deref(),
+        tokens,
+        kitsu_id,
+        update,
+        anilist_base,
+    )
+    .await
+}
+
+/// [`push_progress_with_anilist_base`] with the provider injected:
+/// the per-show lock, the native-id resolve, then
+/// [`push_progress_via`]. `None` is a kind with no provider, which
+/// fails only once the show resolves.
+pub(crate) async fn push_progress_resolved_via(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: Option<&dyn UserListProvider>,
+    tokens: &Tokens,
+    kitsu_id: &str,
+    update: EntryUpdate,
+    anilist_base: Option<&str>,
+) -> Result<Option<ListEntry>> {
     let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
     let _write_guard = show_lock.lock().await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
         return Ok(None);
     };
-    let Some(provider) = provider_for_kind(state, kind) else {
+    let Some(provider) = provider else {
         return Err(AniError::Metadata);
     };
-    push_progress_via(state, kind, provider.as_ref(), tokens, native, update).await
+    push_progress_via(state, kind, provider, tokens, native, update).await
 }
 
 /// The monotonic write-back with the provider injected, so tests drive
