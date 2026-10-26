@@ -9,7 +9,7 @@ use super::{airing_status, derive_status, AiringStatus, MediaShape};
 use crate::error::{AniError, Result};
 use crate::meta::anilist::{post_graphql_public, ANILIST_API};
 
-/// Batch variant of [`AIRING_GQL`]: one `Page` request answers
+/// Batch variant of [`super::AIRING_GQL`]: one `Page` request answers
 /// airing for a whole rail. Includes `id` so the response maps back
 /// to the requested shows.
 const AIRING_BATCH_GQL: &str = "query AiringBatch($ids: [Int]) { \
