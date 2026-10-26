@@ -5,9 +5,7 @@ import {
 	adoptedLanding,
 	flightHolds,
 	listingHolds,
-	NO_PENDINGS,
-	stillHere,
-	withPending
+	stillHere
 } from './editor-lifecycle';
 import type { Flight } from './editor-flight';
 
@@ -72,20 +70,6 @@ describe('stillHere', () => {
 		expect(stillHere({ destroyed: false, kitsuId: 'A' }, 'A')).toBe(true);
 		expect(stillHere({ destroyed: true, kitsuId: 'A' }, 'A')).toBe(false);
 		expect(stillHere({ destroyed: false, kitsuId: 'B' }, 'A')).toBe(false);
-	});
-});
-
-describe('withPending', () => {
-	it('keeps one pending retry per show, and clears only its own', () => {
-		const a = { kitsuId: 'A', intendedStatus: 'paused' as const, intendedProgress: 5 };
-		const b = { kitsuId: 'B', intendedStatus: 'dropped' as const, intendedProgress: 2 };
-		const both = withPending(withPending(NO_PENDINGS, 'A', { pending: a }), 'B', { pending: b });
-		expect(both.get('A')).toEqual({ pending: a });
-		const cleared = withPending(both, 'A', null);
-		expect(cleared.has('A')).toBe(false);
-		expect(cleared.get('B')).toEqual({ pending: b });
-		expect(withPending(cleared, 'A', null)).toBe(cleared);
-		expect(NO_PENDINGS.size).toBe(0);
 	});
 });
 

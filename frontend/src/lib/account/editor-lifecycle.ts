@@ -8,7 +8,6 @@
 
 import type { Flight } from './editor-flight';
 import type { ListedAccount } from './held-account';
-import type { PendingEdit } from './list-entry-pending';
 
 /** Where a listed tracker's account stands against the user it was
  *  listed under — see `accountStanding` in `held-account.ts`. */
@@ -83,28 +82,4 @@ export function stillHere(
 	kitsuId: string
 ): boolean {
 	return !instance.destroyed && instance.kitsuId === kitsuId;
-}
-
-/** A show's pending retry, with the accounts the save that left it was
- *  listed under. */
-export interface StoredPending {
-	pending: PendingEdit;
-	listed?: Readonly<Record<string, ListedAccount>>;
-}
-
-export type Pendings = ReadonlyMap<string, StoredPending>;
-
-export const NO_PENDINGS: Pendings = new Map();
-
-/** `pendings` with `kitsuId`'s pending retry set, or cleared for `null`. */
-export function withPending(
-	pendings: Pendings,
-	kitsuId: string,
-	pending: StoredPending | null
-): Pendings {
-	if (pending === null && !pendings.has(kitsuId)) return pendings;
-	const next = new Map(pendings);
-	if (pending === null) next.delete(kitsuId);
-	else next.set(kitsuId, pending);
-	return next;
 }

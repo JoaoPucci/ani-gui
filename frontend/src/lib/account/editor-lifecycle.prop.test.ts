@@ -6,9 +6,7 @@ import {
 	adoptedLanding,
 	flightHolds,
 	listingHolds,
-	NO_PENDINGS,
 	stillHere,
-	withPending,
 	type Standing,
 	type Watched
 } from './editor-lifecycle';
@@ -131,37 +129,6 @@ describe('the account rules, by property', () => {
 			fc.property(standing, (s) => {
 				expect(listingHolds(undefined, () => s)).toBe(true);
 				expect(flightHolds({ kind: 'saving' }, () => s)).toBe(true);
-			})
-		);
-	});
-});
-
-describe('withPending, by property', () => {
-	it('holds, per show, the last retry set, and none once cleared', () => {
-		const step = fc.tuple(ids, fc.option(fc.integer({ min: 0, max: 24 }), { nil: null }));
-		fc.assert(
-			fc.property(fc.array(step, { maxLength: 10 }), (run) => {
-				let pendings = NO_PENDINGS;
-				const model = new Map<string, number>();
-				for (const [id, progress] of run) {
-					const pending =
-						progress === null
-							? null
-							: {
-									pending: {
-										kitsuId: id,
-										intendedStatus: 'paused' as const,
-										intendedProgress: progress
-									}
-								};
-					pendings = withPending(pendings, id, pending);
-					if (progress === null) model.delete(id);
-					else model.set(id, progress);
-				}
-				for (const id of ['A', 'B']) {
-					expect(pendings.get(id)?.pending.intendedProgress).toBe(model.get(id));
-				}
-				expect(NO_PENDINGS.size).toBe(0);
 			})
 		);
 	});
