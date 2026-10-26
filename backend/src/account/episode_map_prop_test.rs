@@ -2,6 +2,11 @@
 //! fires on, the segments cover Kitsu's episodes once each and in
 //! order, every episode lands inside its entry, nothing moves backwards,
 //! and a write completes an entry only at the entry's own last episode.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::*;
 use crate::account::episode_map::{EpisodeMap, Evidence, KitsuShow, Shape, Target, TrackerShow};
@@ -29,53 +34,57 @@ fn show(id: u32, episodes: u32, finished: bool) -> TrackerShow {
 
 /// A chain of two to five finished-or-not segments, every one inside
 /// Kitsu's 2000–2010 run, summing to Kitsu's count.
-fn chain_evidence() -> impl Strategy<Value = Evidence> {
-    prop::collection::vec((1u32..=60, any::<bool>()), 2..=5).prop_map(|segments| {
-        let count: u32 = segments.iter().map(|(n, _)| n).sum();
-        let shows: Vec<TrackerShow> = segments
-            .iter()
-            .enumerate()
-            .map(|(i, (n, finished))| show(100 + u32::try_from(i).unwrap_or(0), *n, *finished))
-            .collect();
-        Evidence {
-            kitsu: kitsu("k", count, "2000-01-01", "2010-12-31"),
-            entry: shows[0].clone(),
-            chain: shows[1..].to_vec(),
-            ..Default::default()
-        }
-    })
+fn chain_evidence() -> BoxedStrategy<Evidence> {
+    prop::collection::vec((1u32..=60, any::<bool>()), 2..=5)
+        .prop_map(|segments| {
+            let count: u32 = segments.iter().map(|(n, _)| n).sum();
+            let shows: Vec<TrackerShow> = segments
+                .iter()
+                .enumerate()
+                .map(|(i, (n, finished))| show(100 + u32::try_from(i).unwrap_or(0), *n, *finished))
+                .collect();
+            Evidence {
+                kitsu: kitsu("k", count, "2000-01-01", "2010-12-31"),
+                entry: shows[0].clone(),
+                chain: shows[1..].to_vec(),
+                ..Default::default()
+            }
+        })
+        .boxed()
 }
 
 /// A list of Kitsu's episodes plus extras after some of them, each
 /// extra once or twice (as AniList lists a subbed and a dubbed track).
-fn extras_evidence() -> impl Strategy<Value = (Evidence, Vec<u32>)> {
-    (1u32..=40, any::<bool>()).prop_flat_map(|(count, finished)| {
-        prop::collection::btree_set(0..=count, 0..=4).prop_map(move |after| {
-            let after: Vec<u32> = after.into_iter().collect();
-            let mut listed: Vec<String> = (1..=count).map(|n| n.to_string()).collect();
-            for e in &after {
-                let text = if *e == 0 {
-                    "0".to_string()
-                } else {
-                    format!("{e}.5")
+fn extras_evidence() -> BoxedStrategy<(Evidence, Vec<u32>)> {
+    (1u32..=40, any::<bool>())
+        .prop_flat_map(|(count, finished)| {
+            prop::collection::btree_set(0..=count, 0..=4).prop_map(move |after| {
+                let after: Vec<u32> = after.into_iter().collect();
+                let mut listed: Vec<String> = (1..=count).map(|n| n.to_string()).collect();
+                for e in &after {
+                    let text = if *e == 0 {
+                        "0".to_string()
+                    } else {
+                        format!("{e}.5")
+                    };
+                    listed.push(text.clone());
+                    listed.push(text);
+                }
+                let surplus = u32::try_from(after.len()).unwrap_or(0);
+                let ev = Evidence {
+                    kitsu: kitsu("k", count, "2020-01-01", "2020-12-31"),
+                    entry: show(7, count + surplus, finished),
+                    listed: Some(listed),
+                    ..Default::default()
                 };
-                listed.push(text.clone());
-                listed.push(text);
-            }
-            let surplus = u32::try_from(after.len()).unwrap_or(0);
-            let ev = Evidence {
-                kitsu: kitsu("k", count, "2020-01-01", "2020-12-31"),
-                entry: show(7, count + surplus, finished),
-                listed: Some(listed),
-                ..Default::default()
-            };
-            (ev, after)
+                (ev, after)
+            })
         })
-    })
+        .boxed()
 }
 
 /// Two to four Kitsu parts under one entry, one of them the show mapped.
-fn parts_evidence() -> impl Strategy<Value = (Evidence, usize)> {
+fn parts_evidence() -> BoxedStrategy<(Evidence, usize)> {
     prop::collection::vec(1u32..=60, 2..=4)
         .prop_flat_map(|counts| {
             let n = counts.len();
@@ -96,6 +105,7 @@ fn parts_evidence() -> impl Strategy<Value = (Evidence, usize)> {
             };
             (ev, ours)
         })
+        .boxed()
 }
 
 /// Every mapped episode's write, in Kitsu order, with the segment it
@@ -249,17 +259,18 @@ fn a_cache_row_this_build_cannot_read_is_no_map() {
 
 /// An episode count as any source could send it: small, zero, unknown,
 /// or near the top of the range.
-fn any_count() -> impl Strategy<Value = Option<u32>> {
+fn any_count() -> BoxedStrategy<Option<u32>> {
     prop_oneof![
         Just(None),
         (0u32..=40).prop_map(Some),
         (u32::MAX - 40..=u32::MAX).prop_map(Some),
         any::<u32>().prop_map(Some),
     ]
+    .boxed()
 }
 
 /// A date as any source could send it: real, partial, unreal or absent.
-fn any_date() -> impl Strategy<Value = Option<String>> {
+fn any_date() -> BoxedStrategy<Option<String>> {
     prop_oneof![
         Just(None),
         Just(Some("2001-03-05".to_string())),
@@ -268,32 +279,35 @@ fn any_date() -> impl Strategy<Value = Option<String>> {
         Just(Some("2001-02-31".to_string())),
         "[0-9-]{0,12}".prop_map(Some),
     ]
+    .boxed()
 }
 
-fn any_tracker_show(id: u32) -> impl Strategy<Value = TrackerShow> {
-    (any_count(), any::<bool>(), any_date(), any_date()).prop_map(
-        move |(episodes, finished, start, end)| TrackerShow {
+fn any_tracker_show(id: u32) -> BoxedStrategy<TrackerShow> {
+    (any_count(), any::<bool>(), any_date(), any_date())
+        .prop_map(move |(episodes, finished, start, end)| TrackerShow {
             id,
             id_mal: None,
             episodes,
             finished,
             start,
             end,
-        },
-    )
+        })
+        .boxed()
 }
 
-fn any_kitsu_show(id: &'static str) -> impl Strategy<Value = KitsuShow> {
-    (any_count(), any_date(), any_date()).prop_map(move |(episodes, start, end)| KitsuShow {
-        id: id.into(),
-        episodes,
-        start,
-        end,
-    })
+fn any_kitsu_show(id: &'static str) -> BoxedStrategy<KitsuShow> {
+    (any_count(), any_date(), any_date())
+        .prop_map(move |(episodes, start, end)| KitsuShow {
+            id: id.into(),
+            episodes,
+            start,
+            end,
+        })
+        .boxed()
 }
 
 /// Evidence as the gatherer could hand it over, every field free.
-fn any_evidence() -> impl Strategy<Value = Evidence> {
+fn any_evidence() -> BoxedStrategy<Evidence> {
     (
         any_kitsu_show("k"),
         any_tracker_show(1),
@@ -322,59 +336,62 @@ fn any_evidence() -> impl Strategy<Value = Evidence> {
                 parts,
             }
         })
+        .boxed()
 }
 
 /// Evidence one of the rules fires on, then one field of it nudged: a
 /// count off by one, a finished flag flipped, a hop unknown or claimed,
 /// a date unreal, the list or a part one short. Some nudges leave the
 /// rule firing, some break it, some wake a rival.
-fn near_rule_evidence() -> impl Strategy<Value = Evidence> {
+fn near_rule_evidence() -> BoxedStrategy<Evidence> {
     let base = prop_oneof![
         chain_evidence(),
         extras_evidence().prop_map(|(ev, _)| ev),
         parts_evidence().prop_map(|(ev, _)| ev),
         filing_evidence().prop_map(|(ev, _)| ev),
     ];
-    (base, 0u8..10).prop_map(|(mut ev, nudge)| {
-        // The show's count moves with it wherever the evidence names it,
-        // so the nudged evidence still agrees with itself. Parts that
-        // disagree with the show are their own property
-        // (a_part_whose_count_is_not_the_show_s_own_files_nothing_past_the_show).
-        let recount = |ev: &mut Evidence, f: fn(u32) -> u32| {
-            let ours = ev.kitsu.id.clone();
-            ev.kitsu.episodes = ev.kitsu.episodes.map(f);
-            for k in ev.parts.iter_mut().chain(ev.sharing.iter_mut()) {
-                if k.id == ours {
-                    k.episodes = k.episodes.map(f);
+    (base, 0u8..10)
+        .prop_map(|(mut ev, nudge)| {
+            // The show's count moves with it wherever the evidence names it,
+            // so the nudged evidence still agrees with itself. Parts that
+            // disagree with the show are their own property
+            // (a_part_whose_count_is_not_the_show_s_own_files_nothing_past_the_show).
+            let recount = |ev: &mut Evidence, f: fn(u32) -> u32| {
+                let ours = ev.kitsu.id.clone();
+                ev.kitsu.episodes = ev.kitsu.episodes.map(f);
+                for k in ev.parts.iter_mut().chain(ev.sharing.iter_mut()) {
+                    if k.id == ours {
+                        k.episodes = k.episodes.map(f);
+                    }
                 }
-            }
-        };
-        match nudge {
-            1 => recount(&mut ev, |n| n.saturating_add(1)),
-            2 => recount(&mut ev, |n| n.saturating_sub(1)),
-            3 => ev.entry.finished = !ev.entry.finished,
-            4 => {
-                if let Some(hop) = ev.chain.first_mut() {
-                    hop.episodes = None;
+            };
+            match nudge {
+                1 => recount(&mut ev, |n| n.saturating_add(1)),
+                2 => recount(&mut ev, |n| n.saturating_sub(1)),
+                3 => ev.entry.finished = !ev.entry.finished,
+                4 => {
+                    if let Some(hop) = ev.chain.first_mut() {
+                        hop.episodes = None;
+                    }
                 }
-            }
-            5 => ev.claimed = ev.chain.iter().map(|s| s.id).take(1).collect(),
-            6 => ev.kitsu.start = Some("2001-02-31".into()),
-            7 => {
-                if let Some(listed) = ev.listed.as_mut() {
-                    listed.pop();
+                5 => ev.claimed = ev.chain.iter().map(|s| s.id).take(1).collect(),
+                6 => ev.kitsu.start = Some("2001-02-31".into()),
+                7 => {
+                    if let Some(listed) = ev.listed.as_mut() {
+                        listed.pop();
+                    }
                 }
+                8 => {
+                    ev.parts.pop();
+                }
+                9 => {
+                    ev.sharing.pop();
+                }
+                _ => {}
             }
-            8 => {
-                ev.parts.pop();
-            }
-            9 => {
-                ev.sharing.pop();
-            }
-            _ => {}
-        }
-        ev
-    })
+            ev
+        })
+        .boxed()
 }
 
 proptest! {
@@ -400,47 +417,50 @@ proptest! {
 /// A count as the part-filing rules see one: mostly small so parts sum
 /// to a total often, sometimes unknown or zero, sometimes near the top
 /// of the range where a sum overflows.
-fn part_count() -> impl Strategy<Value = Option<u32>> {
+fn part_count() -> BoxedStrategy<Option<u32>> {
     prop_oneof![
         1 => Just(None),
         1 => Just(Some(0)),
         6 => (1u32..=6).prop_map(Some),
         1 => (u32::MAX - 6..=u32::MAX).prop_map(Some),
     ]
+    .boxed()
 }
 
 /// An entry total to set against those parts.
-fn part_total() -> impl Strategy<Value = u32> {
-    prop_oneof![6 => 1u32..=20, 1 => u32::MAX - 6..=u32::MAX]
+fn part_total() -> BoxedStrategy<u32> {
+    prop_oneof![6 => 1u32..=20, 1 => u32::MAX - 6..=u32::MAX].boxed()
 }
 
 /// A Kitsu id from a pool small enough that parts, the mapped set and
 /// the show itself name the same entries often.
-fn pooled_id() -> impl Strategy<Value = String> {
-    (0u8..5).prop_map(|i| format!("p{i}"))
+fn pooled_id() -> BoxedStrategy<String> {
+    (0u8..5).prop_map(|i| format!("p{i}")).boxed()
 }
 
-fn pooled_kitsu() -> impl Strategy<Value = KitsuShow> {
-    (pooled_id(), part_count(), any::<bool>()).prop_map(|(id, episodes, dated)| KitsuShow {
-        id,
-        episodes,
-        start: dated.then(|| "2020-01-01".to_string()),
-        end: None,
-    })
+fn pooled_kitsu() -> BoxedStrategy<KitsuShow> {
+    (pooled_id(), part_count(), any::<bool>())
+        .prop_map(|(id, episodes, dated)| KitsuShow {
+            id,
+            episodes,
+            start: dated.then(|| "2020-01-01".to_string()),
+            end: None,
+        })
+        .boxed()
 }
 
 /// Evidence where Kitsu's parts and the entries mapped to the tracker's
 /// entry overlap: free evidence of that kind, and evidence built so a
 /// rule fires or nearly does.
-fn filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
-    prop_oneof![free_filing_evidence(), firing_filing_evidence()]
+fn filing_evidence() -> BoxedStrategy<(Evidence, u32)> {
+    prop_oneof![free_filing_evidence(), firing_filing_evidence()].boxed()
 }
 
 /// Evidence where Kitsu's parts and the entries mapped to the tracker's
 /// entry overlap: the show one of the parts or not, the mapped set a
 /// mix of the parts and others, the entry's list of numbers present or
 /// not. Every field is drawn on its own, so a rule seldom fires.
-fn free_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
+fn free_filing_evidence() -> BoxedStrategy<(Evidence, u32)> {
     (
         pooled_kitsu(),
         prop::collection::vec(pooled_kitsu(), 0..5),
@@ -467,6 +487,7 @@ fn free_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
             };
             (ev, total)
         })
+        .boxed()
 }
 
 /// How the entries mapped to the tracker's entry stand to Kitsu's chain
@@ -526,7 +547,7 @@ fn listing_with_extras(first: u32, extras: u32, rotate: usize, twice: bool) -> V
 /// (or one off it), maybe running on past it; the mapped set standing
 /// to the chain as [`Mapped`] says; the entry's list, when present,
 /// explaining the surplus over the first part exactly or one short.
-fn firing_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
+fn firing_filing_evidence() -> BoxedStrategy<(Evidence, u32)> {
     (2usize..=4)
         .prop_flat_map(|n| {
             (
@@ -609,12 +630,13 @@ fn firing_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
                 (ev, total)
             },
         )
+        .boxed()
 }
 
 /// A shared set summing exactly to the largest total there is, the show
 /// among it, beside a run of Kitsu parts whose sum passes what `u32`
 /// counts before it reaches that total.
-fn overflowing_run_beside_a_shared_set() -> impl Strategy<Value = Evidence> {
+fn overflowing_run_beside_a_shared_set() -> BoxedStrategy<Evidence> {
     (
         prop::collection::vec(1u32..=6, 1..=2),
         prop::collection::vec(u32::MAX - 6..u32::MAX, 2..=3),
@@ -671,6 +693,7 @@ fn overflowing_run_beside_a_shared_set() -> impl Strategy<Value = Evidence> {
                 ..Default::default()
             }
         })
+        .boxed()
 }
 
 /// Filing evidence with every id once in the parts and once in the
@@ -690,7 +713,7 @@ fn unique_ids((mut ev, total): (Evidence, u32)) -> (Evidence, u32) {
 
 /// Filing evidence whose parts sum past what `u32` counts, against the
 /// largest total there is: no run of them sums to it exactly.
-fn overflowing_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
+fn overflowing_filing_evidence() -> BoxedStrategy<(Evidence, u32)> {
     (
         filing_evidence(),
         prop::collection::vec(u32::MAX - 6..=u32::MAX, 2..4),
@@ -710,6 +733,7 @@ fn overflowing_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
             ev.entry.episodes = Some(u32::MAX);
             (ev, u32::MAX)
         })
+        .boxed()
 }
 
 /// `chain_files_otherwise` stated without its loop: the shortest run of
@@ -879,7 +903,7 @@ proptest! {
 }
 
 /// Every shape a map can take, with any segments beside it.
-fn any_shape() -> impl Strategy<Value = Shape> {
+fn any_shape() -> BoxedStrategy<Shape> {
     prop_oneof![
         Just(Shape::Identity(Identity::CountsAgree)),
         Just(Shape::Identity(Identity::CountUnknown)),
@@ -890,6 +914,7 @@ fn any_shape() -> impl Strategy<Value = Shape> {
         Just(Shape::SplitParts),
         Just(Shape::Extras),
     ]
+    .boxed()
 }
 
 proptest! {

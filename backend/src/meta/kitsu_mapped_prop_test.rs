@@ -1,5 +1,10 @@
 //! Property coverage for Kitsu's mappings page: which entries it
 //! reads, in what order, and when it holds them all.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::parse_mapped_anime_response;
 use proptest::prelude::*;
@@ -8,8 +13,8 @@ use std::collections::HashMap;
 
 /// An id from a pool small enough that pointers and inlined resources
 /// name the same entries often.
-fn pooled_id() -> impl Strategy<Value = String> {
-    (0u8..6).prop_map(|i| i.to_string())
+fn pooled_id() -> BoxedStrategy<String> {
+    (0u8..6).prop_map(|i| i.to_string()).boxed()
 }
 
 /// What an inlined resource reads as: its subtype, its count, and
@@ -23,7 +28,7 @@ struct Inlined {
     readable: bool,
 }
 
-fn inlined() -> impl Strategy<Value = Inlined> {
+fn inlined() -> BoxedStrategy<Inlined> {
     (
         pooled_id(),
         prop::sample::select(&["anime", "anime", "manga"][..]),
@@ -38,6 +43,7 @@ fn inlined() -> impl Strategy<Value = Inlined> {
             episodes,
             readable,
         })
+        .boxed()
 }
 
 fn inlined_json(r: &Inlined) -> Value {
@@ -64,7 +70,7 @@ enum Said {
 /// A mapping's pointer to its item, or the shapes with nothing on the
 /// other end: no relationships, no item, a null item, an item with no
 /// `data` key (bare, or carrying only links), and a null `data`.
-fn mapping() -> impl Strategy<Value = (Value, Said)> {
+fn mapping() -> BoxedStrategy<(Value, Said)> {
     prop_oneof![
         1 => Just((json!({}), Said::Nothing)),
         1 => Just((json!({ "relationships": null }), Said::Nothing)),
@@ -78,27 +84,30 @@ fn mapping() -> impl Strategy<Value = (Value, Said)> {
                 (json, Said::To(kind, id))
             }),
     ]
+    .boxed()
 }
 
 /// `meta` as Kitsu could send it: absent, null, with no count, or a
 /// count near the number of mappings on the page.
-fn meta() -> impl Strategy<Value = Option<Value>> {
+fn meta() -> BoxedStrategy<Option<Value>> {
     prop_oneof![
         Just(None),
         Just(Some(Value::Null)),
         Just(Some(json!({ "count": null }))),
         (0usize..8).prop_map(|n| Some(json!({ "count": n }))),
     ]
+    .boxed()
 }
 
 type Page = (Vec<(Value, Said)>, Vec<Inlined>, Option<Value>);
 
-fn page() -> impl Strategy<Value = Page> {
+fn page() -> BoxedStrategy<Page> {
     (
         prop::collection::vec(mapping(), 0..7),
         prop::collection::vec(inlined(), 0..7),
         meta(),
     )
+        .boxed()
 }
 
 fn page_body((mappings, included, meta): &Page) -> Vec<u8> {

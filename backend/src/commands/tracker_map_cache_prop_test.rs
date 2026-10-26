@@ -1,5 +1,10 @@
 //! Property coverage for the episode map's cache row: the key it is
 //! stored under, and the window it is kept for.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::{map_key, map_ttl};
 use crate::account::episode_map::{EpisodeMap, Identity, Segment, Shape};
@@ -7,18 +12,23 @@ use crate::account::provider::ProviderKind;
 use crate::cache::ttl::{TRACKER_MAP_TTL, TRACKER_MAP_UNSETTLED_TTL};
 use proptest::prelude::*;
 
-fn any_kind() -> impl Strategy<Value = ProviderKind> {
+fn any_kind() -> BoxedStrategy<ProviderKind> {
     prop_oneof![
         Just(ProviderKind::AniList),
         Just(ProviderKind::MyAnimeList),
         Just(ProviderKind::InHouse),
     ]
+    .boxed()
 }
 
 /// What a key is built from, over ranges small enough that two draws
 /// often share a part: the tracker, a Kitsu id as Kitsu sends one, and
 /// the entry the show resolved to with its total, or nothing.
-fn key_parts() -> impl Strategy<Value = (ProviderKind, String, Option<(u32, Option<u32>)>)> {
+/// What a cache key is built from: the tracker, the Kitsu id, and what
+/// the map was built against.
+type KeyParts = (ProviderKind, String, Option<(u32, Option<u32>)>);
+
+fn key_parts() -> BoxedStrategy<KeyParts> {
     (
         any_kind(),
         prop_oneof!["[0-9]{1,2}", "[0-9]{1,9}"],
@@ -27,9 +37,10 @@ fn key_parts() -> impl Strategy<Value = (ProviderKind, String, Option<(u32, Opti
             proptest::option::of(prop_oneof![0u32..4, any::<u32>()]),
         )),
     )
+        .boxed()
 }
 
-fn any_shape() -> impl Strategy<Value = Shape> {
+fn any_shape() -> BoxedStrategy<Shape> {
     prop_oneof![
         Just(Shape::Identity(Identity::CountsAgree)),
         Just(Shape::Identity(Identity::CountUnknown)),
@@ -40,6 +51,7 @@ fn any_shape() -> impl Strategy<Value = Shape> {
         Just(Shape::SplitParts),
         Just(Shape::Extras),
     ]
+    .boxed()
 }
 
 fn segment(entry: u32, finished: bool) -> Segment {
@@ -56,17 +68,17 @@ fn segment(entry: u32, finished: bool) -> Segment {
 
 /// A map of any shape over zero to four segments, each finished or
 /// still airing.
-fn any_map() -> impl Strategy<Value = EpisodeMap> {
-    (any_shape(), prop::collection::vec(any::<bool>(), 0..5)).prop_map(|(shape, finished)| {
-        EpisodeMap {
+fn any_map() -> BoxedStrategy<EpisodeMap> {
+    (any_shape(), prop::collection::vec(any::<bool>(), 0..5))
+        .prop_map(|(shape, finished)| EpisodeMap {
             shape,
             segments: finished
                 .iter()
                 .enumerate()
                 .map(|(i, f)| segment(u32::try_from(i).unwrap_or(0), *f))
                 .collect(),
-        }
-    })
+        })
+        .boxed()
 }
 
 proptest! {

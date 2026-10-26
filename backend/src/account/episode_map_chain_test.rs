@@ -1,5 +1,10 @@
 //! Property coverage for the chain rule's month reading: a run is
 //! compared by the month of a date only where the date is a real one.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::*;
 use proptest::prelude::*;
@@ -50,7 +55,7 @@ fn is_real_date(text: &str) -> bool {
 /// Text as a date field could carry it: dates and months with every
 /// field around its bounds, the end of February across leap and
 /// century years, near misses, and anything at all.
-fn date_text() -> impl Strategy<Value = String> {
+fn date_text() -> BoxedStrategy<String> {
     prop_oneof![
         (0u32..10_000, 0u32..=13, 0u32..=32).prop_map(|(y, m, d)| format!("{y:04}-{m:02}-{d:02}")),
         (0u32..10_000, 0u32..=13).prop_map(|(y, m)| format!("{y:04}-{m:02}")),
@@ -62,6 +67,7 @@ fn date_text() -> impl Strategy<Value = String> {
         "[0-9-]{0,11}",
         ".{0,12}",
     ]
+    .boxed()
 }
 
 proptest! {
