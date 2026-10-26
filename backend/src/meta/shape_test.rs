@@ -201,3 +201,47 @@ fn anilist_airing_needs_what_it_asked_for() {
         "nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#;
     assert!(anilist_airing::parse_airing_response(known.as_bytes()).is_ok());
 }
+
+#[test]
+fn a_kitsu_relation_needs_its_destination_and_the_entry_s_attributes() {
+    // A relation names its destination, null when it points nowhere;
+    // missing, the relation says nothing, yet it would be counted
+    // against Kitsu's total and dropped.
+    let no_destination = r#"{"data":[{"id":"1","type":"mediaRelationships",
+        "attributes":{"role":"sequel"},"relationships":{"destination":{}}}],"meta":{"count":1}}"#;
+    fails(
+        "relations",
+        no_destination,
+        kitsu::parse_relationships_response(no_destination.as_bytes()),
+    );
+    // An included entry without its attributes says nothing of its
+    // format or status.
+    let bare = r#"{"data":[{"id":"1","type":"mediaRelationships","attributes":{"role":"sequel"},
+        "relationships":{"destination":{"data":{"type":"anime","id":"2"}}}}],
+        "included":[{"id":"2","type":"anime"}],"meta":{"count":1}}"#;
+    fails(
+        "relations",
+        bare,
+        kitsu::parse_relationships_response(bare.as_bytes()),
+    );
+    let dangling = r#"{"data":[{"id":"1","type":"mediaRelationships","attributes":{"role":"sequel"},
+        "relationships":{"destination":{"data":null}}}],"meta":{"count":1}}"#;
+    assert!(kitsu::parse_relationships_response(dangling.as_bytes()).is_ok());
+}
+
+#[test]
+fn a_mal_list_status_needs_its_status_and_progress() {
+    // On the list, the entry carries its status and episode count; a
+    // missing count would read as none watched, which a write-back
+    // takes for progress to make.
+    for body in [
+        r#"{"id":1,"my_list_status":{"status":"watching"}}"#,
+        r#"{"id":1,"my_list_status":{"num_episodes_watched":3}}"#,
+    ] {
+        fails(
+            "MAL list status",
+            body,
+            mal_user_parse::parse_my_list_status_entry(body.as_bytes()),
+        );
+    }
+}

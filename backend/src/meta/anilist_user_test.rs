@@ -1013,3 +1013,22 @@ fn replies_without_their_document_are_no_answer() {
     let empty = r#"{"data":{"MediaListCollection":{"hasNextChunk":false,"lists":[]}}}"#;
     assert!(parse_media_list_page(empty.as_bytes()).is_ok());
 }
+
+/// The viewer's entry, when on the list, carries its status and
+/// progress; one missing would read as Watching at episode 0, which a
+/// write-back takes for progress to make.
+#[test]
+fn an_entry_without_its_status_or_progress_is_no_answer() {
+    for body in [
+        r#"{"data":{"Media":{"mediaListEntry":{"status":"CURRENT"}}}}"#,
+        r#"{"data":{"Media":{"mediaListEntry":{"progress":3}}}}"#,
+    ] {
+        assert!(
+            parse_media_entry_response(body.as_bytes()).is_err(),
+            "{body}"
+        );
+    }
+    let null_progress =
+        r#"{"data":{"Media":{"mediaListEntry":{"status":"CURRENT","progress":null}}}}"#;
+    assert!(parse_media_entry_response(null_progress.as_bytes()).is_ok());
+}
