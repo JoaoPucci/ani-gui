@@ -632,3 +632,35 @@ async fn a_trending_strip_with_an_unanswered_bridge_is_kept_briefly() {
         crate::cache::ttl::UNANSWERED_TTL.as_secs()
     );
 }
+
+/// AniList's trending request going unanswered leaves the home page
+/// Kitsu's own list, which carries no AniList banners: a strip built
+/// while that question went unanswered, kept only briefly, so AniList's
+/// is asked for again within minutes rather than after the hour.
+#[tokio::test]
+async fn a_fallback_strip_built_while_anilist_went_unanswered_is_kept_briefly() {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "data": [], "included": [] })),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback");
+
+    assert_eq!(
+        kept_for(&state, "kitsu:v6:trending_anilist"),
+        crate::cache::ttl::UNANSWERED_TTL.as_secs()
+    );
+}
