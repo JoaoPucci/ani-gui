@@ -34,7 +34,7 @@
 	import { onDestroy } from 'svelte';
 	import { reopenForm, type Flight } from '$lib/account/editor-flight';
 	import { editorFlights } from '$lib/account/editor-flights.svelte';
-	import { adoptedFlightLanded, stillHere, type Watched } from '$lib/account/editor-lifecycle';
+	import { adoptedLanding, stillHere, type Watched } from '$lib/account/editor-lifecycle';
 	import { listAccounts } from '$lib/account/held-account';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -153,10 +153,12 @@
 	// the show on screen leaves that instance's page to re-read nothing: this
 	// one re-reads its own.
 	let watched: Watched = { kitsuId: '', flight: null };
+	const watchedFlight = $derived(editorFlights.flightOf(kitsuId));
 	$effect(() => {
-		const next: Watched = { kitsuId, flight };
-		if (adoptedFlightLanded(watched, next, self)) onReconcile();
+		const next: Watched = { kitsuId, flight: watchedFlight };
+		const landing = adoptedLanding(watched, next, self, open);
 		watched = next;
+		if (landing.reconcile) onReconcile();
 	});
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
@@ -212,7 +214,8 @@
 				statusChanged,
 				sentStatus,
 				sentProgress
-			)
+			),
+			started.listed
 		);
 		// The toast always; this instance's own state only while it is alive and
 		// on the show the save was for.

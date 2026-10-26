@@ -5,7 +5,7 @@
 // `editor-flight.ts` and `editor-lifecycle.ts`; this holds the state.
 
 import type { Provider } from './types';
-import { followAccount } from './held-account';
+import { followAccount, type ListedAccount } from './held-account';
 import {
 	flightFor,
 	NO_FLIGHTS,
@@ -42,12 +42,24 @@ class EditorFlightStore {
 		this.flights = withoutFlight(this.flights, kitsuId, flight);
 	}
 
-	pendingFor(kitsuId: string): PendingEdit | null {
-		return this.pendings.get(kitsuId) ?? null;
+	/** The write in flight for `kitsuId`, whether or not it still locks:
+	 *  what an instance watches for the write to settle. */
+	flightOf(kitsuId: string): Flight | null {
+		return this.locking(kitsuId);
 	}
 
-	setPending(kitsuId: string, pending: PendingEdit | null): void {
-		this.pendings = withPending(this.pendings, kitsuId, pending);
+	pendingFor(kitsuId: string): PendingEdit | null {
+		return this.pendings.get(kitsuId)?.pending ?? null;
+	}
+
+	/** Set `kitsuId`'s pending retry, with the accounts the save that left it
+	 *  was listed under; `null` clears it. */
+	setPending(
+		kitsuId: string,
+		pending: PendingEdit | null,
+		listed?: Readonly<Record<string, ListedAccount>>
+	): void {
+		this.pendings = withPending(this.pendings, kitsuId, pending ? { pending, listed } : null);
 	}
 }
 

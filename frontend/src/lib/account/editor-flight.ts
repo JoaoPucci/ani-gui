@@ -1,7 +1,8 @@
 // The list editor's writes in flight, kept per show. The detail route
 // reuses one editor across shows, so a save still out for one show —
 // waiting out a tracker's rate limit, say — must lock that show's
-// editor and no other. Pure: the component holds the map and swaps it.
+// editor and no other. Pure: the app-lifetime store
+// `editor-flights.svelte.ts` holds the map and swaps it.
 
 import type { ListStatus } from './types';
 import type { ListedAccount } from './held-account';

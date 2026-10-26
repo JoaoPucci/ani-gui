@@ -20,8 +20,17 @@ export function flightHolds(
 	flight: Flight,
 	stillFor: (provider: string, listed: ListedAccount) => boolean
 ): boolean {
-	if (!flight.listed) return true;
-	return Object.entries(flight.listed).some(([provider, listed]) => stillFor(provider, listed));
+	return listingHolds(flight.listed, stillFor);
+}
+
+/** Whether a write's `listed` accounts still hold: some tracker is still
+ *  connected as the user it was listed under. No listing holds. */
+export function listingHolds(
+	listed: Readonly<Record<string, ListedAccount>> | undefined,
+	stillFor: (provider: string, listed: ListedAccount) => boolean
+): boolean {
+	if (!listed) return true;
+	return Object.entries(listed).some(([provider, account]) => stillFor(provider, account));
 }
 
 /** What an editor instance shows: its show, and the flight locking it. */
@@ -45,6 +54,19 @@ export function adoptedFlightLanded(prev: Watched, next: Watched, self: symbol):
 	);
 }
 
+/** What an instance does when a flight another instance started ends on
+ *  its show: re-read the entry, and close an open popover — it shows the
+ *  sent form, which the re-read entry replaces. */
+export function adoptedLanding(
+	prev: Watched,
+	next: Watched,
+	self: symbol,
+	open: boolean
+): { reconcile: boolean; close: boolean } {
+	const landed = adoptedFlightLanded(prev, next, self);
+	return { reconcile: landed, close: landed && open };
+}
+
 /** Whether a write's continuation may touch its instance's own state:
  *  the instance is alive and still on the show the write was for. */
 export function stillHere(
@@ -54,7 +76,14 @@ export function stillHere(
 	return !instance.destroyed && instance.kitsuId === kitsuId;
 }
 
-export type Pendings = ReadonlyMap<string, PendingEdit>;
+/** A show's pending retry, with the accounts the save that left it was
+ *  listed under. */
+export interface StoredPending {
+	pending: PendingEdit;
+	listed?: Readonly<Record<string, ListedAccount>>;
+}
+
+export type Pendings = ReadonlyMap<string, StoredPending>;
 
 export const NO_PENDINGS: Pendings = new Map();
 
@@ -62,7 +91,7 @@ export const NO_PENDINGS: Pendings = new Map();
 export function withPending(
 	pendings: Pendings,
 	kitsuId: string,
-	pending: PendingEdit | null
+	pending: StoredPending | null
 ): Pendings {
 	if (pending === null && !pendings.has(kitsuId)) return pendings;
 	const next = new Map(pendings);
