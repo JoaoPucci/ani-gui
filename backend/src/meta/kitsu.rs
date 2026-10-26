@@ -1298,9 +1298,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_mappings_returns_none_when_included_is_missing_or_empty() {
-        // Mapping exists but no `included` (e.g. a malformed response).
-        // Defensive: don't panic, just report no match.
+    fn parse_mappings_fails_when_the_mapped_anime_is_not_included() {
+        // A mapping names its anime, and the lookup asks for it to be
+        // included: one left out says nothing of the show, so the
+        // reply is no answer rather than "no match", which callers keep
+        // as a dead end.
         let body = r##"{
             "data": [{
                 "id": "1175",
@@ -1309,8 +1311,19 @@ mod tests {
                 "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
             }]
         }"##;
-        let r = parse_mappings_response(body.as_bytes()).expect("parses");
-        assert!(r.is_none());
+        assert!(matches!(
+            parse_mappings_response(body.as_bytes()),
+            Err(AniError::ParseFailed { .. })
+        ));
+        let with_others = r##"{
+            "data": [{
+                "id": "1175",
+                "type": "mappings",
+                "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+            }],
+            "included": [{"id":"13","type":"anime","attributes":{"canonicalTitle":"Other"}}]
+        }"##;
+        assert!(parse_mappings_response(with_others.as_bytes()).is_err());
     }
 
     #[test]

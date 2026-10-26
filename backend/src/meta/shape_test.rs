@@ -155,3 +155,26 @@ fn mal_list_status_needs_the_anime_document() {
         None
     );
 }
+
+#[test]
+fn anilist_airing_needs_what_it_asked_for() {
+    // Every airing query asks for the status, the episode count, the
+    // next episode and the schedule; a Media without them is no answer
+    // about the show's airing.
+    let empty = r#"{"data":{"Media":{}}}"#;
+    fails(
+        "airing",
+        empty,
+        anilist_airing::parse_airing_response(empty.as_bytes()),
+    );
+    let node = r#"{"data":{"Page":{"media":[{"id":5}]}}}"#;
+    fails(
+        "airing batch",
+        node,
+        anilist_airing::parse_airing_batch_response(node.as_bytes()),
+    );
+    // Asked and answered null is AniList's answer: no schedule known.
+    let known = r#"{"data":{"Media":{"status":"FINISHED","episodes":12,
+        "nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#;
+    assert!(anilist_airing::parse_airing_response(known.as_bytes()).is_ok());
+}
