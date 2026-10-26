@@ -64,8 +64,14 @@ pub struct KitsuMapped {
 /// music-subtype entry dropped as every mapping lookup drops it. The
 /// page is complete when it held as many mappings as Kitsu counts.
 ///
+/// A mapping whose item is given as null maps to nothing, and one to
+/// another type is not an anime. A mapping with no item, or naming an
+/// anime the page does not include readably, leaves the page unable to
+/// say what is mapped: no answer, never an empty set.
+///
 /// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API.
+/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API, a
+/// mapping carries no item, or a mapped anime is not included readably.
 pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
     #[derive(Deserialize)]
     struct Wrap {
@@ -79,15 +85,15 @@ pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
     struct Meta {
         count: Option<usize>,
     }
+    // The page asks for each mapping's item: a mapping without one is
+    // no answer, where an item given as null maps to nothing.
     #[derive(Deserialize)]
     struct Mapping {
-        #[serde(default)]
-        relationships: Option<MappingRelationships>,
+        relationships: MappingRelationships,
     }
     #[derive(Deserialize)]
     struct MappingRelationships {
-        #[serde(default)]
-        item: Option<Pointer>,
+        item: Pointer,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("kitsu mapped anime parse: {e}"),
@@ -95,14 +101,29 @@ pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
     let read = parsed.data.len();
     let complete = parsed.meta.and_then(|m| m.count) == Some(read);
     let mut anime = inlined_anime(parsed.included);
-    let entries = parsed
+    let mut seen: Vec<String> = Vec::new();
+    let mut entries = Vec::new();
+    for pointer in parsed
         .data
         .into_iter()
-        .filter_map(|m| m.relationships?.item?.data)
-        .filter(|r| r.kind == "anime")
-        .filter_map(|r| anime.remove(&r.id))
-        .filter(|a| !is_music_subtype(a.subtype.as_deref()))
-        .collect();
+        .filter_map(|m| m.relationships.item.data)
+    {
+        if pointer.kind != "anime" || seen.contains(&pointer.id) {
+            continue;
+        }
+        let found = anime
+            .remove(&pointer.id)
+            .ok_or_else(|| AniError::ParseFailed {
+                detail: format!(
+                    "kitsu mapped anime parse: anime {} not included",
+                    pointer.id
+                ),
+            })?;
+        seen.push(pointer.id);
+        if !is_music_subtype(found.subtype.as_deref()) {
+            entries.push(found);
+        }
+    }
     Ok(KitsuMapped { entries, complete })
 }
 
