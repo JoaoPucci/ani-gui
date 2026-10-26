@@ -5,8 +5,8 @@
     "anilist.json": {
       "request": "Kitsu's whole catalogue (GET /anime?sort=id&include=mappings, 22,504 entries) against AniList (Page { media(idMal_in / id_in) } with relations, then streamingEpisodes for every longer entry) — one case per Kitsu entry whose count the AniList entry the app resolves it to disagrees with, plus each later Kitsu part of a split; Kitsu's media-relationships for each, two hops out.",
       "notes": "Each case: id, kitsu_title, scan_class (the shape the scan classified: A, A-relaxed, A-claimed, B, B?, B', D, D-ambiguous, E, U), the evidence as the app's readers return it, the shape the documented rules answer (expect), and a note where the case is pinned or the scan and the app part ways.",
-      "size": 231172,
-      "sha256": "67e605e47d9c0570064f7e69dab4e3d998d58bcc717dae96bfee3c82d9362eac"
+      "size": 231164,
+      "sha256": "e45ceb2b5fd92a4fb6c5ca159efc7974a62f429cfb9c2e5c32f920f220581c22"
     },
     "mal.json": {
       "request": "Kitsu's whole catalogue against MyAnimeList (GET /v2/anime/ranking?ranking_type=all|bypopularity&fields=num_episodes,start_date,end_date,media_type,status, then GET /v2/anime/{id}?fields=…,related_anime for every mismatch and its sequels) — one case per Kitsu entry whose count the MyAnimeList entry disagrees with, plus each later Kitsu part of a split.",
