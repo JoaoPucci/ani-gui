@@ -358,3 +358,41 @@ async fn a_failed_lookup_of_the_media_recording_a_mal_id_is_not_remembered() {
         assert!(matches!(err, AniError::Upstream { status: 500 }), "{err:?}");
     }
 }
+
+#[tokio::test]
+async fn a_batch_takes_a_mal_id_several_media_record_as_the_single_translation_does() {
+    // AniList 137728 and 196613 both record MAL 51039. The batch lists
+    // both; asked for one, AniList answers 137728. The batch's answer,
+    // and the row it writes, are the single translation's, so the write
+    // resolves the same id whether or not the rail ran first.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdsByMals"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039},{"id":5,"idMal":7}]}}}"#,
+        ))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdByMal("))
+        .and(body_string_contains("\"idMal\":51039"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":137728}}}"#),
+        )
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state();
+    let map = media_ids_for_mals(&state, &[51039, 7], Some(&anilist.uri()))
+        .await
+        .expect("answered");
+    assert_eq!(map.get(&51039), Some(&137728));
+    assert_eq!(map.get(&7), Some(&5));
+    assert_eq!(
+        media_id_for_mal(&state, 51039, Some(&anilist.uri()))
+            .await
+            .expect("answered"),
+        Some(137728)
+    );
+}
