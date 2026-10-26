@@ -71,3 +71,7 @@ fn ceiling_passed(
     let waited = if on_tokio { waited.1 } else { waited.0 };
     waited >= ceiling
 }
+
+#[cfg(test)]
+#[path = "spawn_guard_seams_test.rs"]
+mod tests;
