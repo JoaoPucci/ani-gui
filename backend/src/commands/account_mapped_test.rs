@@ -485,8 +485,10 @@ async fn a_status_only_write_goes_to_the_resolved_entry_as_it_did() {
 }
 
 /// Runs `push` while the entry lock for `entry` is held, releasing it
-/// after a pause, and answers how many writes the tracker had received
-/// by the release, and the push's result.
+/// once the push has queued behind it, and answers how many writes the
+/// tracker had received by the release, and the push's result. Queued,
+/// not merely not there yet: a push that has not reached the lock has
+/// not written past it either, and would prove nothing.
 async fn push_behind_entry_lock(
     state: &Arc<AppState>,
     tracker: &Tracker,
@@ -499,14 +501,16 @@ async fn push_behind_entry_lock(
         .account_write_locks
         .for_entry(ProviderKind::AniList, ProviderMediaId(entry));
     let guard = lock.lock().await;
-    let release = async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let before = tracker.writes().len();
-        drop(guard);
-        before
-    };
-    let (got, before) = tokio::join!(push(state, tracker, kitsu_id, native, update), release);
-    (before, got)
+    let queue = crate::held::queue(crate::held::lock_key(&*lock));
+    let pushed = push(state, tracker, kitsu_id, native, update);
+    tokio::pin!(pushed);
+    tokio::select! {
+        () = queue.joined() => {}
+        _ = &mut pushed => panic!("the push finished without waiting for the entry's lock"),
+    }
+    let before = tracker.writes().len();
+    drop(guard);
+    (before, pushed.await)
 }
 
 #[tokio::test]
