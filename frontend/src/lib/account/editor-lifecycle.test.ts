@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	adoptedFlightLanded,
+	adoptedLanding,
 	flightHolds,
 	NO_PENDINGS,
 	stillHere,
@@ -84,5 +85,19 @@ describe('withPending', () => {
 		expect(cleared.get('B')).toEqual({ pending: b });
 		expect(withPending(cleared, 'A', null)).toBe(cleared);
 		expect(NO_PENDINGS.size).toBe(0);
+	});
+});
+
+describe('adoptedLanding', () => {
+	const prev = { kitsuId: 'A', flight: { kind: 'saving' as const, owner: other } };
+	const next = { kitsuId: 'A', flight: null };
+
+	it('re-reads, and closes a popover showing the sent form', () => {
+		expect(adoptedLanding(prev, next, self, true)).toEqual({ reconcile: true, close: true });
+		expect(adoptedLanding(prev, next, self, false)).toEqual({ reconcile: true, close: false });
+	});
+
+	it('does neither when nothing landed', () => {
+		expect(adoptedLanding(prev, prev, self, true)).toEqual({ reconcile: false, close: false });
 	});
 });

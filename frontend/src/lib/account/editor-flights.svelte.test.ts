@@ -20,6 +20,7 @@ beforeEach(() => {
 afterEach(() => {
 	accountStore.setDisconnected('anilist');
 	editorFlights.flights = NO_FLIGHTS;
+	editorFlights.setPending('A', null);
 });
 
 describe('editorFlights', () => {
@@ -65,5 +66,36 @@ describe('withoutFlight given the flight', () => {
 		const flights = withFlight(NO_FLIGHTS, 'A', a);
 		expect(withoutFlight(flights, 'A', { kind: 'saving' })).toBe(flights);
 		expect(withoutFlight(flights, 'A', a).has('A')).toBe(false);
+	});
+});
+
+describe('a pending retry and the account its save was made under', () => {
+	const pending = { kitsuId: 'A', intendedStatus: 'paused' as const, intendedProgress: 5 };
+
+	it('is kept while the tracker is still that user, a reconnect included', () => {
+		editorFlights.setPending('A', pending, { anilist: { user: 'u1' } });
+		expect(editorFlights.pendingFor('A')).toEqual(pending);
+		accountStore.setConnected('anilist', account('u1'));
+		expect(editorFlights.pendingFor('A')).toEqual(pending);
+	});
+
+	it('is absent once the tracker is disconnected or is another user', () => {
+		editorFlights.setPending('A', pending, { anilist: { user: 'u1' } });
+		accountStore.setConnected('anilist', account('u2'));
+		expect(editorFlights.pendingFor('A')).toBeNull();
+		accountStore.setDisconnected('anilist');
+		expect(editorFlights.pendingFor('A')).toBeNull();
+	});
+});
+
+describe('flightOf', () => {
+	it('is the flight still out, even once an account change stops it locking', () => {
+		const flight: Flight = { kind: 'saving', listed: { anilist: { user: 'u1' } } };
+		editorFlights.begin('A', flight);
+		accountStore.setConnected('anilist', account('u2'));
+		expect(editorFlights.locking('A')).toBeNull();
+		expect(editorFlights.flightOf('A')).toBe(flight);
+		editorFlights.end('A', flight);
+		expect(editorFlights.flightOf('A')).toBeNull();
 	});
 });

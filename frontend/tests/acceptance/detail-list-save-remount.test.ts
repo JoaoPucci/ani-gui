@@ -130,7 +130,10 @@ function useShows(seen: Seen) {
 		http.get(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
 			const id = new URL(request.url).searchParams.get('kitsu_id') ?? '';
 			seen.reads[id] = (seen.reads[id] ?? 0) + 1;
-			return HttpResponse.json({ status: 'watching', progress: 3 });
+			// The tracker holds the save once it has gone: only a read after it
+			// landed can show Dropped.
+			const landed = id === SHOW_A && seen.saves >= 2;
+			return HttpResponse.json({ status: landed ? 'dropped' : 'watching', progress: 3 });
 		}),
 		http.post(`${API_BASE}/api/account/set/anilist`, () => {
 			seen.saves += 1;
@@ -187,12 +190,17 @@ async function expectLockedOnTheHeldSave(seen: Seen) {
 	expect(target.textContent ?? '').toContain(m.detail_list_saving());
 }
 
-/** The save lands, and the page on screen re-reads the show's entry. */
+/** The save lands; the page on screen re-reads the show's entry and
+ *  shows what the tracker now holds, and the popover showing the sent
+ *  form closes. */
 async function expectLandedAndReconciled(seen: Seen) {
-	const readsBefore = seen.reads[SHOW_A] ?? 0;
 	await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
 	expect(seen.saves).toBe(2);
-	await until(() => (seen.reads[SHOW_A] ?? 0) > readsBefore, 'the re-read after the save landed');
+	await until(
+		() => (trigger()?.textContent ?? '').includes(m.detail_list_status_dropped()),
+		'the re-read entry on the list control'
+	);
+	expect(statusSelect()).toBeNull();
 }
 
 describe('detail route — a held list save across an editor remount', () => {
