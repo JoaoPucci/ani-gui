@@ -7,17 +7,22 @@
 //! rail asks for many MAL ids at once. Every one of these is a public
 //! AniList request against the 30-per-minute budget the rest of the
 //! app shares, so each answer is kept in `meta_cache`, one row per
-//! id in each direction:
+//! id in each direction, and one for every media recording a MAL id:
 //!
 //! - `anilist:media-id-for-mal:v1:<mal_id>` — AniList's `mediaId`
 //! - `anilist:mal-id-for-media:v1:<media_id>` — the `idMal` it records
+//! - `anilist:media-ids-recording-mal:v1:<mal_id>` — every media that
+//!   records the MAL id, which the episode map reads for ownership
 //!
-//! A row's body is the translated id, or empty for "AniList does not
-//! index this" — an id is never empty, so the two cannot be confused.
-//! A positive is kept for [`ANILIST_ID_MAP_TTL`], a negative for
+//! A translation row's body is the translated id, or empty for "AniList
+//! does not index this" — an id is never empty, so the two cannot be
+//! confused; the listing row's is the ids joined by commas, empty for
+//! none. A positive is kept for [`ANILIST_ID_MAP_TTL`], a negative for
 //! [`ANILIST_ID_MAP_MISS_TTL`]; a failed request is kept nowhere. The
 //! batch writes every id it learns, so the detail page's single
-//! translation for a show the rail already bridged costs nothing.
+//! translation for a show the rail already bridged costs nothing; a MAL
+//! id several media record it leaves to the single translation, whose
+//! answer is the one that counts.
 
 use std::collections::HashMap;
 
