@@ -98,8 +98,11 @@ pub(crate) async fn mal_id_for_media_id(
     Ok(id)
 }
 
-/// AniList's `mediaId` for each of many MAL ids; ids AniList does not
-/// index are absent from the map. Only the ids with no live row reach
+/// AniList's `mediaId` for each of many MAL ids, as the single
+/// translation ([`media_id_for_mal`]) answers it; ids AniList does not
+/// index are absent from the map. A MAL id several media record is
+/// translated singly, since the batch lists them all and only the
+/// single query says which one the id translates to. Only the ids with no live row reach
 /// AniList, and every id the request answers for — by a media, or by
 /// its absence from a page AniList did return — is remembered.
 ///
@@ -125,11 +128,21 @@ pub(crate) async fn media_ids_for_mals(
     if unknown.is_empty() {
         return Ok(map);
     }
-    let fetched =
-        crate::meta::anilist::media_ids_for_mals(&state.meta_http, &unknown, anilist_base).await?;
+    let listed =
+        crate::meta::anilist::media_listed_for_mals(&state.meta_http, &unknown, anilist_base)
+            .await?;
     for mal_id in unknown {
-        let media_id = fetched.get(&mal_id).copied();
-        remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);
+        let media_id = match listed.get(&mal_id).map(Vec::as_slice) {
+            None | Some([]) => None,
+            Some([one]) => Some(*one),
+            // Several media record the id: which one it translates to
+            // is the single translation's answer, never the batch's
+            // order.
+            Some(_) => media_id_for_mal(state, mal_id, anilist_base).await?,
+        };
+        if listed.get(&mal_id).is_none_or(|ids| ids.len() < 2) {
+            remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);
+        }
         if let Some(media_id) = media_id {
             map.insert(mal_id, media_id);
         }

@@ -25,7 +25,8 @@ use crate::error::{AniError, Result};
 mod parse;
 pub use parse::{
     parse_banner_response, parse_mal_id_response, parse_media_id_response,
-    parse_media_ids_by_mal_response, parse_media_ids_recording_mal, parse_trending,
+    parse_media_ids_by_mal_response, parse_media_ids_recording_mal,
+    parse_media_listed_by_mal_response, parse_trending,
 };
 
 pub(crate) const ANILIST_API: &str = "https://graphql.anilist.co";
@@ -325,6 +326,31 @@ pub async fn media_ids_for_mals(
         map.extend(parse_media_ids_by_mal_response(&bytes)?);
     }
     Ok(map)
+}
+
+/// Every AniList media each of `mal_ids` is recorded by, chunked at
+/// [`MAL_BATCH_PAGE_SIZE`] per request: several media can record one
+/// MAL id, and the batch lists them all. Ids AniList doesn't index are
+/// absent; empty input makes no request.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+pub async fn media_listed_for_mals(
+    client: &reqwest::Client,
+    mal_ids: &[u32],
+    base_override: Option<&str>,
+) -> Result<std::collections::HashMap<u32, Vec<u32>>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let mut listed = std::collections::HashMap::new();
+    for chunk in mal_ids.chunks(MAL_BATCH_PAGE_SIZE) {
+        let body = serde_json::json!({
+            "query": MEDIA_IDS_BY_MALS_GQL,
+            "variables": { "idMals": chunk },
+        });
+        let bytes = post_graphql_public(client, url, &body).await?;
+        listed.extend(parse_media_listed_by_mal_response(&bytes)?);
+    }
+    Ok(listed)
 }
 
 /// Every AniList media that records `mal_id` as its MAL id, in AniList
