@@ -28,11 +28,8 @@ pub(super) fn kitsu_show_of(anime: &KitsuAnimeRef) -> KitsuShow {
 /// Whether some Kitsu entry maps to `show` on `kind` — by the tracker's
 /// own id, and for AniList by the MAL id it records as well, since
 /// Kitsu reaches AniList through MAL's id for most shows.
-pub(super) async fn claimed_on_kitsu(
-    state: &std::sync::Arc<AppState>,
-    kind: ProviderKind,
-    show: &TrackerShow,
-) -> Result<bool> {
+pub(super) async fn claimed_on_kitsu(ask: &MapAsk<'_>, show: &TrackerShow) -> Result<bool> {
+    let (state, kind) = (ask.state, ask.kind);
     if !state
         .kitsu
         .anime_by_external_id(site(kind)?, show.id)
@@ -57,10 +54,10 @@ pub(super) async fn claimed_on_kitsu(
 
 /// Every Kitsu entry mapped to `entry` on `kind`, each once.
 pub(super) async fn sharing_on_kitsu(
-    state: &std::sync::Arc<AppState>,
-    kind: ProviderKind,
+    ask: &MapAsk<'_>,
     entry: &TrackerShow,
 ) -> Result<Vec<KitsuShow>> {
+    let (state, kind) = (ask.state, ask.kind);
     let first = state
         .kitsu
         .anime_by_external_id(site(kind)?, entry.id)

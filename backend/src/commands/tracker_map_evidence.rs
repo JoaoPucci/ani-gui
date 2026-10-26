@@ -28,7 +28,7 @@ pub(super) async fn gather(
         let chain = tracker_chain(ask, &entry, count).await?;
         let mut claimed = Vec::new();
         for show in &chain {
-            if claimed_on_kitsu(ask.state, ask.kind, show).await? {
+            if claimed_on_kitsu(ask, show).await? {
                 claimed.push(show.id);
             }
         }
@@ -74,7 +74,7 @@ async fn gather_longer(
     native: ProviderMediaId,
     entry: MediaEvidence,
 ) -> Result<Evidence> {
-    let mut sharing = sharing_on_kitsu(ask.state, ask.kind, &entry.show).await?;
+    let mut sharing = sharing_on_kitsu(ask, &entry.show).await?;
     let parts = match entry.show.episodes {
         Some(total) => {
             let parts = kitsu_parts(ask, root, native, total).await?;

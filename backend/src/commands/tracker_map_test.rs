@@ -1145,7 +1145,16 @@ async fn kitsu_claims_an_anilist_entry_by_its_own_id_or_by_the_mal_id_it_records
     let claimed = |s: TrackerShow| {
         let state = state.clone();
         async move {
-            super::kitsu_side::claimed_on_kitsu(&state, ProviderKind::AniList, &s)
+            let provider = anilist("http://unused-anilist");
+            let tokens = tokens();
+            let ask = MapAsk {
+                state: &state,
+                kind: ProviderKind::AniList,
+                provider: &provider,
+                tokens: &tokens,
+                anilist_base: None,
+            };
+            super::kitsu_side::claimed_on_kitsu(&ask, &s)
                 .await
                 .expect("read")
         }
@@ -1173,7 +1182,16 @@ async fn the_entries_sharing_an_anilist_entry_include_those_mapped_by_its_mal_id
         id_mal: Some(50),
         ..Default::default()
     };
-    let got = super::kitsu_side::sharing_on_kitsu(&state, ProviderKind::AniList, &entry)
+    let provider = anilist("http://unused-anilist");
+    let tokens = tokens();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::AniList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: None,
+    };
+    let got = super::kitsu_side::sharing_on_kitsu(&ask, &entry)
         .await
         .expect("read");
     assert_eq!(
@@ -1315,7 +1333,16 @@ async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_wit
         id: 6,
         ..Default::default()
     };
-    let got = super::kitsu_side::sharing_on_kitsu(&state, ProviderKind::MyAnimeList, &entry)
+    let provider = mal("http://unused-mal");
+    let tokens = tokens();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::MyAnimeList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: None,
+    };
+    let got = super::kitsu_side::sharing_on_kitsu(&ask, &entry)
         .await
         .expect("read");
     // One Kitsu entry the page did not list stands for the rest: no
@@ -1323,11 +1350,9 @@ async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_wit
     // entry's only one.
     assert_eq!(got, vec![KitsuShow::default()]);
     // It is still claimed: some Kitsu entry maps to it.
-    assert!(
-        super::kitsu_side::claimed_on_kitsu(&state, ProviderKind::MyAnimeList, &entry)
-            .await
-            .expect("read")
-    );
+    assert!(super::kitsu_side::claimed_on_kitsu(&ask, &entry)
+        .await
+        .expect("read"));
 }
 
 /// A Kitsu `media-relationships` body with several related anime, each
