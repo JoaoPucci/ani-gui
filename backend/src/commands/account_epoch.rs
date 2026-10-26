@@ -50,3 +50,7 @@ impl AccountEpochs {
         purge()
     }
 }
+
+#[cfg(test)]
+#[path = "account_epoch_prop_test.rs"]
+mod prop_tests;
