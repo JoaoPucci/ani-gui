@@ -107,3 +107,48 @@ fn a_page_holding_fewer_mappings_than_kitsu_counts_is_not_complete() {
     let bare = br#"{"data":[],"included":[]}"#;
     assert!(!parse_mapped_anime_response(bare).expect("parsed").complete);
 }
+
+#[test]
+fn a_mapping_whose_anime_cannot_be_read_is_no_answer() {
+    // A mapping names Kitsu's 2, which the page does not include, or
+    // includes with attributes that do not read. The page cannot say
+    // who owns the entry, so it is no answer, not an empty set.
+    for included in [
+        r#"[]"#,
+        r#"[{"id":"2","type":"anime","attributes":{"episodeCount":"many"}}]"#,
+    ] {
+        let body = format!(
+            r#"{{"data":[{{"id":"m1","type":"mappings","relationships":{{"item":{{"data":{{"type":"anime","id":"2"}}}}}}}}],
+                "included":{included},"meta":{{"count":1}}}}"#
+        );
+        assert!(
+            matches!(
+                parse_mapped_anime_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{included}"
+        );
+    }
+}
+
+#[test]
+fn a_mapping_with_no_item_is_no_answer_and_a_null_item_maps_to_nothing() {
+    for mapping in [
+        r#"{"id":"m1"}"#,
+        r#"{"id":"m1","relationships":null}"#,
+        r#"{"id":"m1","relationships":{"item":null}}"#,
+    ] {
+        let body = format!(r#"{{"data":[{mapping}],"included":[],"meta":{{"count":1}}}}"#);
+        assert!(
+            matches!(
+                parse_mapped_anime_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{mapping}"
+        );
+    }
+    let body = br#"{"data":[{"id":"m1","relationships":{"item":{"data":null}}}],"included":[],"meta":{"count":1}}"#;
+    let got = parse_mapped_anime_response(body).expect("an answer");
+    assert!(got.entries.is_empty());
+    assert!(got.complete);
+}
