@@ -441,3 +441,39 @@ fn detail_rows_with_no_banner_are_dropped_once() {
     let pool = open_pool(&path).unwrap();
     assert!(meta_cache_get(&pool, &bannerless).unwrap().is_some());
 }
+
+/// A cache that has had neither one-time step (user_version 0) gets
+/// both in its one pass: the banner-less detail row goes, and a body
+/// under the detail prefix that is not JSON is left alone rather than
+/// failing the open.
+#[test]
+fn a_cache_with_neither_step_gets_both_and_tolerates_a_body_that_is_not_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let now = now_secs();
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    let garbled = crate::commands::kitsu::anime_detail_key("2");
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations(&mut conn).unwrap();
+        for (key, body) in [
+            (bannerless.as_str(), r#"{"id":"1","cover_image":null}"#),
+            (garbled.as_str(), "not json at all"),
+        ] {
+            conn.execute(
+                "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+                rusqlite::params![key, body, now],
+            )
+            .unwrap();
+        }
+    }
+    let pool = open_pool(&path).expect("the cache opens");
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_none());
+    assert!(meta_cache_get(&pool, &garbled).unwrap().is_some());
+    let version: i64 = pool
+        .get()
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+}
