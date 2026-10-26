@@ -10,13 +10,15 @@ use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::{KitsuEpisode, KitsuRelation};
 
 /// The 1-based Kitsu page episode `n` is on.
-fn page_of(n: u32) -> u32 {
+pub(super) fn page_of(n: u32) -> u32 {
     n.saturating_sub(1) / KITSU_PAGE + 1
 }
 
 /// The Kitsu pages that hold the count's last [`ALIGNED`] episodes,
-/// and the one an episode past the count would be on: the page after
-/// when the count ends a page.
+/// and, when the count ends a page, the page after it: the pages the
+/// recorded corpus holds for a counted show. The reader reads these
+/// and, for a count that does not end a page, the page after the last
+/// of them too (see `kitsu_rows`).
 #[must_use]
 pub fn tail_pages(count: u32) -> Vec<u32> {
     let first = count.saturating_sub(ALIGNED - 1).max(1);
@@ -28,7 +30,7 @@ pub fn tail_pages(count: u32) -> Vec<u32> {
 }
 
 /// The tail Kitsu's `status` and `count`, AniList's `airing` answer
-/// and the rows of the pages [`tail_pages`] names give. AniList's
+/// and Kitsu's `episodes` rows give. AniList's
 /// count is the one it gives a show it calls finished: an aired count
 /// with nothing scheduled after it.
 #[must_use]
@@ -41,34 +43,52 @@ pub fn entry_tail(
     EntryTail {
         finished: status == Some("finished"),
         count,
-        anilist_count: airing
-            .aired
-            .filter(|n| *n > 0 && airing.next_episode.is_none()),
-        episodes: episodes
-            .into_iter()
-            .filter_map(|e| {
-                Some(TailEpisode {
-                    number: e.number?,
-                    title: e.canonical_title,
-                    airdate: e.airdate,
-                })
-            })
-            .collect(),
+        anilist_count: anilist_count(airing),
+        episodes: tail_episodes(episodes),
         read_past_count: true,
         related: Vec::new(),
         related_complete: false,
     }
 }
 
-/// Whether Kitsu relates `r` as a TV sequel: the entry whose first
-/// episodes the rows past the count are checked against.
-fn is_tv_sequel(r: &KitsuRelation) -> bool {
-    r.kind == "anime" && r.role == "sequel" && r.subtype.as_deref() == Some("TV")
+/// The count AniList gives a show it calls finished: an aired count
+/// with nothing scheduled after it.
+pub(super) fn anilist_count(airing: &AiringStatus) -> Option<u32> {
+    airing
+        .aired
+        .filter(|n| *n > 0 && airing.next_episode.is_none())
+}
+
+/// Kitsu's rows as the evidence reads them: each with a number.
+pub(super) fn tail_episodes(episodes: Vec<KitsuEpisode>) -> Vec<TailEpisode> {
+    episodes
+        .into_iter()
+        .filter_map(|e| {
+            Some(TailEpisode {
+                number: e.number?,
+                title: e.canonical_title,
+                airdate: e.airdate,
+            })
+        })
+        .collect()
+}
+
+/// The relations as the evidence reads them before any page is asked
+/// for: enough to say whether they explain the rows past the count.
+pub(super) fn unpaged(entries: &[KitsuRelation]) -> Vec<Related> {
+    entries.iter().map(|r| related(r.clone(), None)).collect()
+}
+
+/// Whether `r` is a TV entry, in whatever role Kitsu relates it: an
+/// entry whose first episodes the rows past the count are checked
+/// against.
+pub(super) fn is_tv(r: &KitsuRelation) -> bool {
+    r.kind == "anime" && r.subtype.as_deref() == Some("TV")
 }
 
 /// A related entry's page of episodes as the evidence reads it: each
 /// row with a number, by that number, with the title Kitsu gives it.
-fn sequel_episodes(page: Vec<KitsuEpisode>) -> Vec<SequelEpisode> {
+pub(super) fn sequel_episodes(page: Vec<KitsuEpisode>) -> Vec<SequelEpisode> {
     page.into_iter()
         .filter_map(|e| {
             Some(SequelEpisode {
@@ -80,7 +100,7 @@ fn sequel_episodes(page: Vec<KitsuEpisode>) -> Vec<SequelEpisode> {
 }
 
 /// A relation as the evidence reads it.
-fn related(r: KitsuRelation, first_episodes: Option<Vec<SequelEpisode>>) -> Related {
+pub(super) fn related(r: KitsuRelation, first_episodes: Option<Vec<SequelEpisode>>) -> Related {
     Related {
         anime: r.kind == "anime",
         role: r.role,
@@ -92,54 +112,18 @@ fn related(r: KitsuRelation, first_episodes: Option<Vec<SequelEpisode>>) -> Rela
 }
 
 impl KitsuTail<'_> {
-    /// Kitsu's rows on the pages [`tail_pages`] names, and on the page
-    /// after the last of them when nothing past the count is on them:
-    /// Kitsu's pages are not always dense, and the placeholder rows the
-    /// reader drops hide how full a page was, so only the page after
-    /// says what follows.
-    pub(super) async fn read_pages(&self, count: u32) -> Option<Vec<KitsuEpisode>> {
-        let mut episodes = Vec::new();
-        let mut last = 0;
-        for page in tail_pages(count) {
-            episodes.extend(self.page(page).await?);
-            last = page;
-        }
-        // A count that ends a page already read the page after it.
-        let looked_ahead = count % KITSU_PAGE == 0;
-        if !looked_ahead && episodes.iter().all(|e| e.number.is_none_or(|n| n <= count)) {
-            episodes.extend(self.page(last + 1).await?);
-        }
-        Some(episodes)
-    }
-
-    async fn page(&self, page: u32) -> Option<Vec<KitsuEpisode>> {
+    /// Kitsu's rows on the entry's `page`.
+    pub(super) async fn page(&self, page: u32) -> Option<Vec<KitsuEpisode>> {
         crate::commands::kitsu::kitsu_episode_page(self.state, self.kitsu_id, page)
             .await
             .ok()
     }
 
-    /// The entries Kitsu relates the show to, each TV sequel that has
-    /// aired with its first page of episodes, and whether they are all
-    /// of them. A sequel only announced has aired nothing, and the rule
-    /// passes it over: its page is not asked for, since an answer the
-    /// read does not need could still fail it.
-    pub(super) async fn read_related(&self) -> Option<(Vec<Related>, bool)> {
-        let relations = crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
+    /// The entries Kitsu relates the show to, and whether they are
+    /// all of them.
+    pub(super) async fn read_relations(&self) -> Option<crate::meta::kitsu::KitsuRelations> {
+        crate::commands::kitsu::kitsu_relationships(self.state, self.kitsu_id)
             .await
-            .ok()?;
-        let mut out = Vec::new();
-        for r in relations.entries {
-            let aired = !crate::commands::play_native_appended::is_announced(r.status.as_deref());
-            let first_episodes = if is_tv_sequel(&r) && aired {
-                let page = crate::commands::kitsu::kitsu_episode_page(self.state, &r.id, 1)
-                    .await
-                    .ok()?;
-                Some(sequel_episodes(page))
-            } else {
-                None
-            };
-            out.push(related(r, first_episodes));
-        }
-        Some((out, relations.complete))
+            .ok()
     }
 }

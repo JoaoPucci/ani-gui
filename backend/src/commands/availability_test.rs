@@ -2133,8 +2133,26 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v22:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v22:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v23:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v23:kid-1:dub");
+}
+
+/// A verdict stamped while the appended-extras rule checked a TV
+/// sequel's names alone, and refused only a sequel still airing, is
+/// not served: its cap and extras may come from a reading the rule now
+/// refuses — were the rows past Noragami Aragoto's count titled as its
+/// prequel Noragami's first episodes, they would have read as `13.1`
+/// and `13.2` then and as whole episodes now (as recorded they read as
+/// extras under either rule) — and a row says nothing of which rule
+/// stamped it. The key sits above the one master moved to for the
+/// versions of a season.
+#[test]
+fn a_verdict_stamped_before_every_related_tv_entry_was_read_is_not_read() {
+    let current = cache_key("10800", "sub");
+    assert!(
+        !current.starts_with("availability:v22:"),
+        "the key must have moved past master's v22: {current}"
+    );
 }
 
 /// A verdict stamped before the extras a provider appends after a
@@ -2391,7 +2409,8 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
     // the generation is captured INSIDE the call — the refresh has
     // to land while this one is still out for the guard to mean
     // anything.
-    let server = Arc::new(TableProvider::new().delaying(std::time::Duration::from_millis(300)));
+    let (hold, provider) = crate::held::gate();
+    let server = Arc::new(TableProvider::new().holding(hold));
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let row = cache_key("888", "sub");
@@ -2404,7 +2423,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
         "kitsu_id": "888"
     }))
     .expect("args");
-    let bg = {
+    let mut bg = {
         let state = state.clone();
         let server = Arc::clone(&server);
         tokio::spawn(async move {
@@ -2412,8 +2431,12 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
         })
     };
 
-    // The user's re-ask answers while that one is still in flight.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // The user's re-ask answers while that one is still in flight:
+    // its request to the provider is held until the refresh is in.
+    tokio::select! {
+        () = provider.asked() => {}
+        ended = &mut bg => panic!("the lookup ended without asking the provider: {ended:?}"),
+    }
     state.availability_refreshes.bump(&row);
     write_cache_full(
         &state,
@@ -2431,6 +2454,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
             versions: Vec::new(),
         },
     );
+    provider.release();
 
     bg.await.expect("the background lookup finishes");
 
