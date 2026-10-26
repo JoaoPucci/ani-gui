@@ -664,3 +664,101 @@ async fn a_fallback_strip_built_while_anilist_went_unanswered_is_kept_briefly() 
         crate::cache::ttl::UNANSWERED_TTL.as_secs()
     );
 }
+
+/// AniList trending answering two entries, MAL 21 (Kitsu 12, bridged)
+/// and MAL 22 (AniList 102), whose lookups answer as `mal_22` and
+/// `anilist_102` say. The strip's lifetime after one read.
+async fn strip_kept_for(mal_22: ResponseTemplate, anilist_102: ResponseTemplate) -> u64 {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [
+                anilist_entry(101, 21, Some(BANNER)),
+                anilist_entry(102, 22, None),
+            ] } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .and(query_param("filter[externalId]", "22"))
+        .respond_with(mal_22)
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "anilist/anime"))
+        .and(query_param("filter[externalId]", "102"))
+        .respond_with(anilist_102)
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    kept_for(&state, "kitsu:v6:trending_anilist")
+}
+
+/// Kitsu answering that neither of an entry's ids is mapped is an
+/// answer: the strip keeps its hour. A MAL lookup that fails is not,
+/// even when the AniList-id lookup after it answers "none" (Kitsu's
+/// MAL table holds most shows with no AniList row), and neither is an
+/// AniList-id lookup that fails.
+#[tokio::test]
+async fn a_strip_keeps_its_hour_only_when_every_lookup_answered() {
+    let none = || ResponseTemplate::new(200).set_body_json(serde_json::json!({ "data": [] }));
+    let failed = || ResponseTemplate::new(500);
+    let hour = TRENDING_TTL.as_secs();
+    let brief = crate::cache::ttl::UNANSWERED_TTL.as_secs();
+    assert_eq!(
+        strip_kept_for(none(), none()).await,
+        hour,
+        "unmapped on both"
+    );
+    assert_eq!(
+        strip_kept_for(failed(), none()).await,
+        brief,
+        "MAL unanswered"
+    );
+    assert_eq!(
+        strip_kept_for(none(), failed()).await,
+        brief,
+        "AniList id unanswered"
+    );
+}
+
+/// A banner question answered with no banner (the show maps to nothing
+/// on AniList) keeps the detail for its lifetime, as any answer does.
+#[tokio::test]
+async fn a_banner_question_answered_with_none_keeps_the_detail_its_lifetime() {
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "x" } },
+            "included": []
+        })))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    let mut uncovered: serde_json::Value =
+        serde_json::from_slice(DETAIL_FIXTURE).expect("detail fixture");
+    uncovered["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&uncovered))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    kitsu_anime_detail(&state, "12").await.expect("served");
+
+    assert_eq!(
+        kept_for(&state, &anime_detail_key("12")),
+        anime_detail_ttl(uncovered["data"]["attributes"]["status"].as_str())
+    );
+}

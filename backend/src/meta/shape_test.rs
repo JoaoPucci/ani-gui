@@ -160,12 +160,17 @@ fn mal_list_status_needs_the_anime_document() {
 fn a_kitsu_mapping_lookup_needs_each_mapping_s_item() {
     // The lookup asks for each mapping's item: a mapping without one is
     // no answer, where an item given as null is "mapped to nothing".
-    let missing = r#"{"data":[{"id":"1","type":"mappings"}]}"#;
-    fails(
-        "mapping lookup",
-        missing,
-        kitsu::parse_mappings_response(missing.as_bytes()),
-    );
+    for missing in [
+        r#"{"data":[{"id":"1","type":"mappings"}]}"#,
+        r#"{"data":[{"id":"1","type":"mappings","relationships":{}}]}"#,
+        r#"{"data":[{"id":"1","type":"mappings","relationships":{"item":{}}}]}"#,
+    ] {
+        fails(
+            "mapping lookup",
+            missing,
+            kitsu::parse_mappings_response(missing.as_bytes()),
+        );
+    }
     let nothing =
         r#"{"data":[{"id":"1","type":"mappings","relationships":{"item":{"data":null}}}]}"#;
     assert_eq!(
