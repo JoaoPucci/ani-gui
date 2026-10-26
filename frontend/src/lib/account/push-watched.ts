@@ -9,6 +9,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
+import { listAccounts } from './held-account';
 import { keepWrite, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
@@ -136,6 +137,8 @@ export async function syncWatchedToTrackers(
 	seriesFinished: boolean = false
 ): Promise<void> {
 	const connected = accountStore.connected;
+	// The account each tracker is listed under, read before any await.
+	const listed = listAccounts(connected);
 	await pushWatchedToTrackers(
 		{
 			connected,
@@ -145,7 +148,8 @@ export async function syncWatchedToTrackers(
 			updateProgress,
 			// A write AniList holds back waits with a notice and goes again;
 			// one that still cannot be saved is said, not dropped.
-			runWrite: saveWhenTrackerAllows,
+			runWrite: (provider, id, attempt, fields) =>
+				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider]),
 			reportFailure: reportProgressNotSaved
 		},
 		kitsuId,

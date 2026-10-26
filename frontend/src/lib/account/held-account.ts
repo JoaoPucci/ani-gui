@@ -5,30 +5,42 @@
 import type { Provider } from './types';
 import { accountStore } from './store.svelte';
 
+/** The account a fan-out listed a tracker under: its user, or `null`
+ *  when the tracker had no account to name. */
+export interface ListedAccount {
+	user: string | null | undefined;
+}
+
 /** The user behind `provider`'s account — connected, or marked expired
  *  or failed with its account still known — or `null` with no account,
  *  or while the account is being changed. */
-function accountUser(provider: Provider): string | null {
+function accountUser(provider: Provider): string | null | undefined {
 	if (accountStore.accountChanging[provider]) return null;
 	const state = accountStore.byProvider[provider];
 	return state && 'account' in state && state.account ? state.account.user_id : null;
 }
 
-/** Whether `provider`'s account is being changed — a disconnect or a
- *  sign-in under way. */
-export function accountChanging(provider: Provider): boolean {
-	return accountStore.accountChanging[provider];
+/** The account each of `providers` is listed under, read at once — the
+ *  moment a fan-out lists them, before anything it awaits. */
+export function listAccounts(providers: readonly Provider[]): Record<string, ListedAccount> {
+	return Object.fromEntries(providers.map((p) => [p, { user: accountUser(p) }]));
 }
 
 /**
- * Note the account a write to `provider` is made for, and return a check
- * that it is still that account: the same user, not disconnected,
- * switched or being changed. A token refresh, a reconnect or an expiry
- * mark for the same user keeps it. A write made with no account to name
- * — its caller brought its own bearer — has none to follow, and the
+ * A check that a write to `provider` is still for the account it was
+ * made for — `listed`, as its fan-out read it, or the account the
+ * tracker has now: the same user, not disconnected, switched or being
+ * changed. A token refresh, a reconnect or an expiry mark for the same
+ * user keeps it. A write listed under no account has none to be for,
+ * and the check never passes. A write with no listing and no account
+ * now — a caller bringing its own bearer — has none to follow, and the
  * check always passes.
  */
-export function followAccount(provider: Provider): () => boolean {
-	const account = accountUser(provider);
-	return () => account === null || accountUser(provider) === account;
+export function followAccount(provider: Provider, listed?: ListedAccount): () => boolean {
+	const account = listed ? listed.user : accountUser(provider);
+	if (account === null) {
+		const ungated = !listed && !accountStore.accountChanging[provider];
+		return () => ungated;
+	}
+	return () => accountUser(provider) === account;
 }

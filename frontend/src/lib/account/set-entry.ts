@@ -12,6 +12,7 @@ import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
 import { saveWhenTrackerAllows } from './busy-save';
+import { listAccounts } from './held-account';
 
 /**
  * A deliberate edit from the detail-page editor. `status` is the value shown
@@ -212,13 +213,15 @@ export async function removeEntryAcrossTrackers(
  */
 export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<SetOutcome> {
 	const connected = accountStore.connected;
+	const listed = listAccounts(connected);
 	const outcome = await setEntryAcrossTrackers(
 		{
 			connected,
 			bearerFor: (provider) => freshBearerFor(provider),
 			getEntry,
 			setEntry,
-			runWrite: saveWhenTrackerAllows
+			runWrite: (provider, id, attempt, fields) =>
+				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
 		},
 		kitsuId,
 		save
@@ -232,13 +235,15 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<S
  *  tracker that had the row was left behind. */
 export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 	const connected = accountStore.connected;
+	const listed = listAccounts(connected);
 	const outcome = await removeEntryAcrossTrackers(
 		{
 			connected,
 			bearerFor: (provider) => freshBearerFor(provider),
 			getEntry,
 			removeEntry,
-			runWrite: saveWhenTrackerAllows
+			runWrite: (provider, id, attempt, fields) =>
+				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
 		},
 		kitsuId
 	);
