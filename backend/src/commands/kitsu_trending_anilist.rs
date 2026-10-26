@@ -1,5 +1,5 @@
-//! The home page's AniList-backed trending row and its bridge from
-//! AniList's entries to Kitsu's. Split from [`super`] so each file
+//! The home page's AniList-backed trending row; its bridge to Kitsu is
+//! in `kitsu_trending_bridge.rs`. Split from [`super`] so each file
 //! stays inside the CRAP gate's per-file bar.
 
 use super::*;
