@@ -59,9 +59,9 @@ pub(super) async fn kitsu_parts(
 /// Where `parts` reach `total` exactly, at least two of them, file the
 /// next sequel among the entries mapped to the entry when it resolves to
 /// `native` itself: a part mapped to the entry past the parts that reach
-/// its total says they are not the whole of it. Kitsu's page of the
-/// entries mapped to the tracker's id need not list it — it may be
-/// mapped through the other tracker's id — so it is filed here.
+/// its total says they are not the whole of it. Kitsu's pages of the
+/// entries mapped to the entry ([`super::owners`]) list it only where
+/// one of the ids they are read by maps it, so it is filed here too.
 pub(super) async fn file_mapped_past(
     ask: &MapAsk<'_>,
     parts: &[KitsuShow],

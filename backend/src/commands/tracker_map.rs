@@ -20,8 +20,9 @@
 //! identity map costs the write one cache read. The evidence is
 //! gathered — one tracker read for the entry and one per sequel it names
 //! at each hop, one Kitsu read per mapping or relationship asked, and the
-//! id translations a part's resolution makes — only on a miss, once per
-//! show per window ([`evidence`] has the walks).
+//! id resolution of each part and each Kitsu entry found mapped to an
+//! entry (its mappings and AniList's id translations) — only on a miss,
+//! once per show per window ([`evidence`] has the walks).
 
 use std::sync::Arc;
 
