@@ -401,12 +401,12 @@ Comparing Kitsu's 22,504 entries with the entries the app resolves each to (`tes
 
 | | AniList | MyAnimeList |
 |---|---|---|
-| A chain of the tracker's entries | 22 | 4 |
+| A chain of the tracker's entries | 24 | 4 |
 | A chain whose dates fall outside Kitsu's run (identity) | 13 | 5 |
-| A chain a Kitsu entry of its own claims a part of (identity) | 5 | 5 |
-| Kitsu entries sharing one entry, summing exactly | — | 2 shows (5 Kitsu entries) |
+| A chain a Kitsu entry of its own claims a part of (identity) | 3 | 5 |
+| Kitsu entries sharing one entry, summing exactly | — | 3 shows (7 Kitsu entries) |
 | Kitsu entries sharing one entry, not summing all together (identity) | 12 | 4 |
-| Kitsu parts filed under one entry | 17 shows | 15 shows |
+| Kitsu parts filed under one entry | 17 shows | 14 shows |
 | Parts whose later part Kitsu maps to an id the tracker no longer serves (identity) | 2 | 2 |
 | Extras the tracker's list identifies | 8 | — |
 | Extras that do not account for the surplus (identity) | 2 | — |
