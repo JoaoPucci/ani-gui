@@ -1,6 +1,11 @@
 //! Property coverage for AniList's `media_evidence` read: its fuzzy
 //! dates, the numbers its streaming-episode titles carry, and the
 //! parser over any `Media` envelope.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::{fuzzy_date, listed_number_of, parse_media_evidence_response};
 use crate::account::episode_map::TrackerShow;
@@ -11,16 +16,17 @@ use serde_json::{json, Value};
 
 /// A fuzzy-date part as AniList could send it: absent, plausible, or
 /// any number at all.
-fn date_part(plausible: std::ops::RangeInclusive<u32>) -> impl Strategy<Value = Option<u32>> {
+fn date_part(plausible: std::ops::RangeInclusive<u32>) -> BoxedStrategy<Option<u32>> {
     prop_oneof![
         1 => Just(None),
         4 => plausible.prop_map(Some),
         1 => any::<u32>().prop_map(Some),
     ]
+    .boxed()
 }
 
-fn fuzzy_parts() -> impl Strategy<Value = (Option<u32>, Option<u32>, Option<u32>)> {
-    (date_part(1900..=2100), date_part(0..=13), date_part(0..=32))
+fn fuzzy_parts() -> BoxedStrategy<(Option<u32>, Option<u32>, Option<u32>)> {
+    (date_part(1900..=2100), date_part(0..=13), date_part(0..=32)).boxed()
 }
 
 proptest! {
@@ -126,8 +132,8 @@ proptest! {
 
 /// A value a reply could carry for a key, or `None` for the key left
 /// out of it.
-fn or_missing(value: impl Strategy<Value = Value>) -> impl Strategy<Value = Option<Value>> {
-    prop_oneof![1 => Just(None), 6 => value.prop_map(Some)]
+fn or_missing(value: impl Strategy<Value = Value> + 'static) -> BoxedStrategy<Option<Value>> {
+    prop_oneof![1 => Just(None), 6 => value.prop_map(Some)].boxed()
 }
 
 /// An object of the keys given a value; a key whose value is `None` is
@@ -144,7 +150,7 @@ fn object(fields: &[(&str, Option<Value>)]) -> Value {
 
 /// One relation edge as AniList could send it, any key of the edge or
 /// its node left out now and then.
-fn edge() -> impl Strategy<Value = Value> {
+fn edge() -> BoxedStrategy<Value> {
     let relation = prop_oneof![
         Just(json!("SEQUEL")),
         Just(json!("PREQUEL")),
@@ -170,20 +176,22 @@ fn edge() -> impl Strategy<Value = Value> {
     ];
     (or_missing(relation), or_missing(node))
         .prop_map(|(relation, node)| object(&[("relationType", relation), ("node", node)]))
+        .boxed()
 }
 
 /// A fuzzy date object, null, or absent.
-fn date_object() -> impl Strategy<Value = Option<Value>> {
+fn date_object() -> BoxedStrategy<Option<Value>> {
     prop_oneof![
         Just(None),
         Just(Some(Value::Null)),
         fuzzy_parts().prop_map(|(y, m, d)| Some(json!({ "year": y, "month": m, "day": d }))),
     ]
+    .boxed()
 }
 
 /// A streaming-episode title list: absent, null, empty, or titles of
 /// every kind, some null.
-fn streaming() -> impl Strategy<Value = Option<Value>> {
+fn streaming() -> BoxedStrategy<Option<Value>> {
     let title = prop_oneof![
         Just(json!(null)),
         "Episode [0-9]{1,2}(\\.5)? - [A-Za-z]{1,6}".prop_map(|t| json!(t)),
@@ -196,10 +204,11 @@ fn streaming() -> impl Strategy<Value = Option<Value>> {
         prop::collection::vec(title.prop_map(|t| json!({ "title": t })), 1..5)
             .prop_map(|v| Some(Value::Array(v))),
     ]
+    .boxed()
 }
 
 /// A `Media` envelope with every field free.
-fn media() -> impl Strategy<Value = Value> {
+fn media() -> BoxedStrategy<Value> {
     let status = prop_oneof![
         Just(json!("FINISHED")),
         Just(json!("RELEASING")),
@@ -248,6 +257,7 @@ fn media() -> impl Strategy<Value = Value> {
                 media
             },
         )
+        .boxed()
 }
 
 /// A wire date object read the way the parser is specified to read it.

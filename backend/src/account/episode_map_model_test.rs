@@ -6,6 +6,11 @@
 //! tracker's hops whose counts reach Kitsu's, summed in `u64`. A
 //! property that holds the code to one of these is not the code
 //! restated.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -133,18 +138,22 @@ pub(crate) fn prev_day((year, month, day): Ymd) -> Ymd {
 }
 
 /// A real full date with its year in `years`, any day of its month.
-pub(crate) fn real_date_in(years: std::ops::RangeInclusive<i32>) -> impl Strategy<Value = Ymd> {
-    (years, 1u32..=12).prop_flat_map(|(y, m)| (Just(y), Just(m), 1..=month_length(y, m)))
+pub(crate) fn real_date_in(years: std::ops::RangeInclusive<i32>) -> BoxedStrategy<Ymd> {
+    (years, 1u32..=12)
+        .prop_flat_map(|(y, m)| (Just(y), Just(m), 1..=month_length(y, m)))
+        .boxed()
 }
 
 /// A real full date with its year in `years` within three days of its
 /// month's first or last day, where the slack across a month boundary
 /// decides.
-pub(crate) fn edge_date_in(years: std::ops::RangeInclusive<i32>) -> impl Strategy<Value = Ymd> {
-    (years, 1u32..=12, 0u32..6).prop_map(|(y, m, k)| {
-        let len = month_length(y, m);
-        (y, m, if k < 3 { 1 + k } else { len + 3 - k })
-    })
+pub(crate) fn edge_date_in(years: std::ops::RangeInclusive<i32>) -> BoxedStrategy<Ymd> {
+    (years, 1u32..=12, 0u32..6)
+        .prop_map(|(y, m, k)| {
+            let len = month_length(y, m);
+            (y, m, if k < 3 { 1 + k } else { len + 3 - k })
+        })
+        .boxed()
 }
 
 /// Whether `later` is a full date at most two days after the full date

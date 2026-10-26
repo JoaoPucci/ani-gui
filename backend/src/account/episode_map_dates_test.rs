@@ -1,4 +1,9 @@
 //! The dates the chain rule compares, at their edges.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::*;
 
@@ -81,13 +86,13 @@ use super::super::prop_tests::model::{self, next_day, ordinal, text};
 use proptest::prelude::*;
 
 /// A real full date, any day of its month.
-fn real_date() -> impl Strategy<Value = model::Ymd> {
-    model::real_date_in(1950..=2049)
+fn real_date() -> BoxedStrategy<model::Ymd> {
+    model::real_date_in(1950..=2049).boxed()
 }
 
 /// Text that is no full real date: a month, a year, an impossible day,
 /// or anything else that does not read as a day of the calendar.
-fn no_full_date() -> impl Strategy<Value = String> {
+fn no_full_date() -> BoxedStrategy<String> {
     prop_oneof![
         (1950i32..2050, 1u32..=12).prop_map(|(y, m)| format!("{y:04}-{m:02}")),
         (1950i32..2050).prop_map(|y| format!("{y:04}")),
@@ -96,6 +101,7 @@ fn no_full_date() -> impl Strategy<Value = String> {
         "[0-9-]{0,12}",
     ]
     .prop_filter("a full real date", |t| model::full_date(Some(t)).is_none())
+    .boxed()
 }
 
 proptest! {

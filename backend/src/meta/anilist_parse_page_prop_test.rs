@@ -1,5 +1,10 @@
 //! Property coverage for AniList's batched by-MAL `Page` replies: the
 //! cut-page flag, and every media each MAL id is recorded by.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::{page_has_next, parse_media_ids_recording_mal, parse_media_listed_by_mal_response};
 use proptest::prelude::*;
@@ -7,19 +12,20 @@ use std::collections::HashMap;
 
 /// A body as the wire could hand one over: arbitrary bytes, or text
 /// made of JSON's punctuation and the envelope's own words.
-fn any_body() -> impl Strategy<Value = Vec<u8>> {
+fn any_body() -> BoxedStrategy<Vec<u8>> {
     prop_oneof![
         prop::collection::vec(any::<u8>(), 0..64),
         "[\\[\\]{}\":, 0-9a-zA-Z.-]{0,80}".prop_map(String::into_bytes),
         Just(br#"{"data":{"Page":{"media":[{"id":1,"idMal":null}]}}}"#.to_vec()),
         Just(br#"{"data":{"Page":null}}"#.to_vec()),
     ]
+    .boxed()
 }
 
 /// The `pageInfo` a page carries: absent, null, empty, or with its
 /// flag null, true or false; and the flag it states, `None` where it
 /// states none.
-fn page_info() -> impl Strategy<Value = (Option<serde_json::Value>, Option<bool>)> {
+fn page_info() -> BoxedStrategy<(Option<serde_json::Value>, Option<bool>)> {
     prop_oneof![
         Just((None, None)),
         Just((Some(serde_json::Value::Null), None)),
@@ -27,11 +33,12 @@ fn page_info() -> impl Strategy<Value = (Option<serde_json::Value>, Option<bool>
         Just((Some(serde_json::json!({ "hasNextPage": null })), None)),
         any::<bool>().prop_map(|b| (Some(serde_json::json!({ "hasNextPage": b })), Some(b))),
     ]
+    .boxed()
 }
 
 /// The media on a page, over ids small enough that one media is listed
 /// twice and one MAL id is recorded by several.
-fn page_media() -> impl Strategy<Value = Vec<(u32, Option<u32>)>> {
+fn page_media() -> BoxedStrategy<Vec<(u32, Option<u32>)>> {
     prop::collection::vec(
         (
             prop_oneof![0u32..8, any::<u32>()],
@@ -39,6 +46,7 @@ fn page_media() -> impl Strategy<Value = Vec<(u32, Option<u32>)>> {
         ),
         0..10,
     )
+    .boxed()
 }
 
 fn media_body(media: &[(u32, Option<u32>)]) -> Vec<u8> {

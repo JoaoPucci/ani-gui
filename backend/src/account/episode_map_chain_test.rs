@@ -3,6 +3,11 @@
 //! pairs and covers as the counts say; the rule admits exactly the
 //! exact chains the dates place; and the air dates it asks for are the
 //! ones it reads.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::super::dates::month;
 use super::super::prop_tests::model;
@@ -11,7 +16,7 @@ use proptest::prelude::*;
 /// Text as a date field could carry it: dates and months with every
 /// field around its bounds, the end of February across leap and
 /// century years, near misses, and anything at all.
-fn date_text() -> impl Strategy<Value = String> {
+fn date_text() -> BoxedStrategy<String> {
     prop_oneof![
         (0u32..10_000, 0u32..=13, 0u32..=32).prop_map(|(y, m, d)| format!("{y:04}-{m:02}-{d:02}")),
         (0u32..10_000, 0u32..=13).prop_map(|(y, m)| format!("{y:04}-{m:02}")),
@@ -23,6 +28,7 @@ fn date_text() -> impl Strategy<Value = String> {
         "[0-9-]{0,11}",
         ".{0,12}",
     ]
+    .boxed()
 }
 
 proptest! {
@@ -45,33 +51,36 @@ use crate::account::episode_map::{Evidence, KitsuShow, Shape, TrackerShow};
 /// A date field as a source could send it, in a three-year window so
 /// runs and months meet often: mostly real or a month alone, so that
 /// whole chains are dated, sometimes impossible, garbled or absent.
-fn any_date() -> impl Strategy<Value = Option<String>> {
+fn any_date() -> BoxedStrategy<Option<String>> {
     prop_oneof![
         1 => Just(None),
         12 => known_date().prop_map(Some),
         1 => Just(Some("2020-02-30".to_string())),
         1 => "[0-9-]{0,11}".prop_map(Some),
     ]
+    .boxed()
 }
 
 /// A date the dates rule reads: a real full date, often a few days
 /// from a month boundary where the slack decides, or a month.
-fn known_date() -> impl Strategy<Value = String> {
+fn known_date() -> BoxedStrategy<String> {
     prop_oneof![
         model::real_date_in(2019..=2021).prop_map(model::text),
         model::edge_date_in(2019..=2021).prop_map(model::text),
         (2019i32..=2021, 1u32..=12).prop_map(|(y, m)| format!("{y:04}-{m:02}")),
     ]
+    .boxed()
 }
 
 /// A hop's count: unknown, zero, small, or near the top of the range.
-fn hop_count() -> impl Strategy<Value = Option<u32>> {
+fn hop_count() -> BoxedStrategy<Option<u32>> {
     prop_oneof![
         1 => Just(None),
         1 => Just(Some(0)),
         6 => (1u32..=6).prop_map(Some),
         1 => (u32::MAX - 6..=u32::MAX).prop_map(Some),
     ]
+    .boxed()
 }
 
 fn tracker(
@@ -97,7 +106,7 @@ fn tracker(
 /// mostly each segment bound's episode dated with that bound's own
 /// date, so that they place bounds often enough to matter, over a few
 /// episodes dated with any text.
-fn chain_case() -> impl Strategy<Value = (Evidence, u32, u32)> {
+fn chain_case() -> BoxedStrategy<(Evidence, u32, u32)> {
     let claim = prop_oneof![5 => Just(false), 1 => Just(true)];
     let hop = (hop_count(), any::<bool>(), any_date(), any_date(), claim);
     let own_dated = prop::collection::vec(prop_oneof![1 => Just(false), 3 => Just(true)], 10);
@@ -163,11 +172,12 @@ fn chain_case() -> impl Strategy<Value = (Evidence, u32, u32)> {
                 (ev, kitsu_count, total)
             },
         )
+        .boxed()
 }
 
 /// An exact, unclaimed chain of two to four entries whose every date
 /// is a real date or month, with no air dates yet.
-fn dated_exact_chain() -> impl Strategy<Value = Evidence> {
+fn dated_exact_chain() -> BoxedStrategy<Evidence> {
     (
         prop::collection::vec((1u32..=4, any::<bool>(), known_date(), known_date()), 2..=4),
         known_date(),
@@ -201,6 +211,7 @@ fn dated_exact_chain() -> impl Strategy<Value = Evidence> {
                 ..Default::default()
             }
         })
+        .boxed()
 }
 
 proptest! {

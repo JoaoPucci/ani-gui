@@ -3,6 +3,11 @@
 //! Its own file rather than an append to `mal_user_test.rs`, matching
 //! the other property modules on this branch: appended blocks collide
 //! with every later addition to the same file.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use crate::meta::mal_user_parse::parse_iso8601_to_epoch;
 
@@ -56,17 +61,19 @@ mod evidence {
     use serde_json::{json, Map, Value};
 
     /// An optional field: absent from the body, sent as null, or sent.
-    fn field(value: impl Strategy<Value = Value>) -> impl Strategy<Value = Option<Value>> {
-        prop_oneof![Just(None), Just(Some(Value::Null)), value.prop_map(Some)]
+    fn field(value: impl Strategy<Value = Value> + 'static) -> BoxedStrategy<Option<Value>> {
+        prop_oneof![Just(None), Just(Some(Value::Null)), value.prop_map(Some)].boxed()
     }
 
-    fn one_of(words: &'static [&'static str]) -> impl Strategy<Value = Value> {
-        proptest::sample::select(words).prop_map(|w| json!(w))
+    fn one_of(words: &'static [&'static str]) -> BoxedStrategy<Value> {
+        proptest::sample::select(words)
+            .prop_map(|w| json!(w))
+            .boxed()
     }
 
     /// One `related_anime` row: a node and a relation, the relation
     /// any MAL sends, null, or left out.
-    fn related() -> impl Strategy<Value = Value> {
+    fn related() -> BoxedStrategy<Value> {
         (
             0u32..50,
             field(one_of(&["sequel", "prequel", "side_story", "Sequel"])),
@@ -78,10 +85,11 @@ mod evidence {
                 }
                 row
             })
+            .boxed()
     }
 
     /// An `/anime/{id}` body with every evidence field free.
-    fn wire() -> impl Strategy<Value = Value> {
+    fn wire() -> BoxedStrategy<Value> {
         (
             any::<u32>(),
             field((0u32..30).prop_map(|n| json!(n))),
@@ -114,6 +122,7 @@ mod evidence {
                 }
                 Value::Object(wire)
             })
+            .boxed()
     }
 
     /// The evidence a generated body is specified to read as, `None`

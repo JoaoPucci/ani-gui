@@ -1,6 +1,11 @@
 //! Property coverage for whether a chain segment's run lies inside
 //! Kitsu's: which bounds the dates leave unplaced, and how Kitsu's own
 //! episode dates vouch for them.
+//!
+//! Every strategy function returns a `BoxedStrategy`. Composed without
+//! boxing, the nested combinator types grow into symbol names tens of
+//! thousands of characters long, and the Windows test build's debug info
+//! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -10,15 +15,15 @@ use crate::account::episode_map::KitsuShow;
 use proptest::prelude::*;
 
 /// A real full date over two years, so months coincide often.
-fn real_date() -> impl Strategy<Value = Ymd> {
-    model::real_date_in(2020..=2021)
+fn real_date() -> BoxedStrategy<Ymd> {
+    model::real_date_in(2020..=2021).boxed()
 }
 
 /// A date field as a source could send it: mostly real — often a few
 /// days from a month boundary — or a month alone, so that all four
 /// dates of a run are read often; sometimes impossible, anything at
 /// all, or absent.
-fn any_date() -> impl Strategy<Value = Option<String>> {
+fn any_date() -> BoxedStrategy<Option<String>> {
     prop_oneof![
         1 => Just(None),
         3 => real_date().prop_map(|d| Some(text(d))),
@@ -29,11 +34,12 @@ fn any_date() -> impl Strategy<Value = Option<String>> {
         1 => Just(Some("2020".to_string())),
         1 => "[0-9-]{0,11}".prop_map(Some),
     ]
+    .boxed()
 }
 
 /// Kitsu air dates for a few episode numbers, real or not.
-fn any_airdates() -> impl Strategy<Value = BTreeMap<u32, String>> {
-    prop::collection::btree_map(1u32..=4, any_date().prop_filter_map("a date", |d| d), 0..5)
+fn any_airdates() -> BoxedStrategy<BTreeMap<u32, String>> {
+    prop::collection::btree_map(1u32..=4, any_date().prop_filter_map("a date", |d| d), 0..5).boxed()
 }
 
 fn segment(from: u32, to: u32) -> Segment {
@@ -76,7 +82,7 @@ fn tracker(start: Option<String>, end: Option<String>) -> TrackerShow {
 
 /// Everything the dates rule reads: Kitsu's run and air dates, the
 /// show's run, and the segment's first and last Kitsu episode.
-fn any_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
+fn any_case() -> BoxedStrategy<(Evidence, TrackerShow, Segment)> {
     (
         any_date(),
         any_date(),
@@ -93,6 +99,7 @@ fn any_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
                 segment(from, from + len),
             )
         })
+        .boxed()
 }
 
 /// A run with one bound a few days outside Kitsu's, across a month
@@ -101,7 +108,7 @@ fn any_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
 /// days after Kitsu's end on one of its month's last three, the other
 /// bound well inside — so that the two days' slack decides — with
 /// Kitsu's air dates or none.
-fn slack_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
+fn slack_case() -> BoxedStrategy<(Evidence, TrackerShow, Segment)> {
     (
         (2020i32..=2020, 1u32..=12, 0u32..3),
         0usize..=5,
@@ -127,6 +134,7 @@ fn slack_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
                 segment(from, from + len),
             )
         })
+        .boxed()
 }
 
 /// Whether `date` is a real date or month, by the model calendar.
