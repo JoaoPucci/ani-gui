@@ -66,6 +66,22 @@ describe('keepWrite, by property', () => {
 	});
 });
 
+describe('keepWrite and a completion whose episode was taken, by property', () => {
+	it('drops the completion whole whenever its declared progress is not left', () => {
+		fc.assert(
+			fc.property(
+				fc.nat(50),
+				fc.constantFrom<WriteField[]>(['progress'], ['status', 'progress']),
+				fc.constantFrom<WriteField[]>([], ['status']),
+				(progress, declared, left) => {
+					const finale = { kitsu_id: '12', status: 'completed', progress };
+					expect(keepWrite(finale, declared, left)).toBeNull();
+				}
+			)
+		);
+	});
+});
+
 describe('the write ledger rules, by property', () => {
 	/** Writes started in order, numbered from 1, each with its fields. */
 	const writes = fc.array(fields, { minLength: 1, maxLength: 8 });

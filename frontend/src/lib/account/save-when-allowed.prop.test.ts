@@ -145,3 +145,33 @@ describe('saveWhenAllowed, by property', () => {
 		expect(attempts).toBe(MAX_SAVE_ATTEMPTS);
 	});
 });
+
+describe('saveWhenAllowed once the write is no longer wanted, by property', () => {
+	it('ends superseded, with no attempt after the wait at which it stopped being wanted', async () => {
+		await fc.assert(
+			fc.asyncProperty(fc.integer({ min: 0, max: 4 }), async (wantedFor) => {
+				let attempts = 0;
+				let asked = 0;
+				const outcome = await saveWhenAllowed(
+					async () => {
+						attempts += 1;
+						throw shaped(429, '{"retry_after_secs":0}');
+					},
+					{
+						notify: () => {},
+						wait: async () => {},
+						maxAttempts: 10,
+						stillWanted: () => {
+							asked += 1;
+							return asked <= wantedFor;
+						}
+					}
+				).catch((e: unknown) => e);
+				expect(outcome).toBeInstanceOf(SupersededError);
+				// One first attempt, then one per wait while still wanted.
+				expect(attempts).toBe(wantedFor + 1);
+				expect(asked).toBe(wantedFor + 1);
+			})
+		);
+	});
+});

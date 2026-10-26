@@ -49,14 +49,37 @@ describe('adoptedLanding, by property', () => {
 	});
 
 	it('closes only on a landing, and only on the form of the flight that landed', () => {
+		// The popover shows the flight that was watched, another flight, or a
+		// fresh form.
+		const scene = fc
+			.tuple(watched, watched, flight)
+			.chain(([prev, next, another]) =>
+				fc.tuple(fc.constant(prev), fc.constant(next), fc.constantFrom(prev.flight, another, null))
+			);
 		fc.assert(
-			fc.property(watched, watched, fc.option(flight, { nil: null }), (prev, next, shown) => {
+			fc.property(scene, ([prev, next, shown]) => {
 				const { reconcile, close } = adoptedLanding(prev, next, self, shown);
 				if (close) {
 					expect(reconcile).toBe(true);
 					expect(shown).toBe(prev.flight);
 				}
 				if (reconcile && shown !== null && shown === prev.flight) expect(close).toBe(true);
+			})
+		);
+	});
+
+	it('closes on every landing of the flight whose form is shown', () => {
+		fc.assert(
+			fc.property(ids, (id) => {
+				const landed: Flight = { kind: 'saving', owner: other };
+				expect(
+					adoptedLanding(
+						{ kitsuId: id, flight: landed },
+						{ kitsuId: id, flight: null },
+						self,
+						landed
+					)
+				).toEqual({ reconcile: true, close: true });
 			})
 		);
 	});
