@@ -32,14 +32,23 @@ export function listingKey(listed?: Listing): string {
 		.join('&');
 }
 
+/** Whether a write under `a` settles a retry left under `b`: whether the
+ *  two listings are the same accounts. */
+export function listingsCompatible(a?: Listing, b?: Listing): boolean {
+	return listingKey(a) === listingKey(b);
+}
+
 /** `listed`'s own retry for `kitsuId`, whether or not it holds. */
 export function pendingUnder(
 	pendings: ShowPendings,
 	kitsuId: string,
 	listed?: Listing
 ): PendingEdit | null {
-	const key = listingKey(listed);
-	return pendings.get(kitsuId)?.find((p) => listingKey(p.listed) === key)?.pending ?? null;
+	const entries = pendings.get(kitsuId) ?? [];
+	for (let i = entries.length - 1; i >= 0; i -= 1) {
+		if (listingsCompatible(listed, entries[i].listed)) return entries[i].pending;
+	}
+	return null;
 }
 
 /**
@@ -57,8 +66,7 @@ export function settlePending(
 	const prev = pendingUnder(pendings, kitsuId, listed);
 	const pending = next(prev);
 	if (pending === prev) return pendings;
-	const key = listingKey(listed);
-	const others = (pendings.get(kitsuId) ?? []).filter((p) => listingKey(p.listed) !== key);
+	const others = (pendings.get(kitsuId) ?? []).filter((p) => !listingsCompatible(listed, p.listed));
 	const entries = pending === null ? others : [...others, { pending, listed }];
 	const map = new Map(pendings);
 	if (entries.length === 0) map.delete(kitsuId);
