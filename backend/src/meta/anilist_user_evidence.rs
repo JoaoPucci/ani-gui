@@ -132,10 +132,13 @@ pub(super) fn parse_media_evidence_response(body: &[u8]) -> Result<MediaEvidence
     #[derive(Deserialize)]
     struct Media {
         id: u32,
-        #[serde(rename = "idMal")]
+        #[serde(rename = "idMal", deserialize_with = "present")]
         id_mal: Option<u32>,
+        #[serde(deserialize_with = "present")]
         episodes: Option<u32>,
+        #[serde(deserialize_with = "present")]
         status: Option<String>,
+        #[serde(deserialize_with = "present")]
         format: Option<String>,
         #[serde(rename = "startDate", default)]
         start_date: Option<FuzzyDate>,

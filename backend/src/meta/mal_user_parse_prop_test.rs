@@ -117,10 +117,14 @@ mod evidence {
     }
 
     /// The evidence a generated body is specified to read as, `None`
-    /// where it is no answer. The read asks for `related_anime`, whose
-    /// rows carry their relation: a body that leaves it out, or a row
-    /// that leaves out its relation, does not say what the sequels are.
+    /// where it is no answer. The read asks for `num_episodes`, `status`,
+    /// `media_type` and `related_anime`, whose rows carry their relation:
+    /// a body that leaves one of them out, or a row that leaves out its
+    /// relation, does not say what the anime is or what its sequels are.
     fn model(wire: &Value) -> Option<MediaEvidence> {
+        for asked in ["num_episodes", "status", "media_type"] {
+            wire.get(asked)?;
+        }
         let rows = wire.get("related_anime")?.as_array()?;
         if rows.iter().any(|r| r.get("relation_type").is_none()) {
             return None;

@@ -4,6 +4,16 @@
 
 use super::*;
 
+/// A key the query asks for, read as `None` only when it came back
+/// null: with no `serde(default)`, a missing key is a parse error.
+fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
 /// Whether a `{ data: { Page: { pageInfo: { hasNextPage } } } }`
 /// response says AniList cut the page: more media matched than it holds.
 /// The query asks for the flag, so a page that leaves out `pageInfo` or
@@ -55,10 +65,12 @@ fn page_media(body: &[u8]) -> Result<Vec<(u32, Option<u32>)>> {
     struct Page {
         media: Vec<Media>,
     }
+    // Every media is asked for its idMal: one that leaves it out cannot
+    // say which MAL id it records; null records none.
     #[derive(Deserialize)]
     struct Media {
         id: u32,
-        #[serde(rename = "idMal")]
+        #[serde(rename = "idMal", deserialize_with = "present")]
         id_mal: Option<u32>,
     }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {

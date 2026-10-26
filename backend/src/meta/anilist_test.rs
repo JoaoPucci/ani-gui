@@ -758,3 +758,24 @@ async fn a_by_mal_page_that_does_not_say_whether_it_was_cut_is_no_answer() {
         .expect_err("a page without pageInfo");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
 }
+
+#[test]
+fn a_by_mal_page_whose_media_leaves_out_its_mal_id_is_no_answer() {
+    // Every media in a by-MAL page is asked for its idMal. One that
+    // leaves it out would drop from the media recording the MAL id, and
+    // a short owner set would pass for the whole one.
+    let missing = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":10}]}}}"#;
+    assert!(matches!(
+        parse_media_listed_by_mal_response(missing),
+        Err(AniError::ParseFailed { .. })
+    ));
+    assert!(matches!(
+        parse_media_ids_recording_mal(missing, 1),
+        Err(AniError::ParseFailed { .. })
+    ));
+    let null =
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":10,"idMal":null}]}}}"#;
+    assert!(parse_media_listed_by_mal_response(null)
+        .expect("an answer")
+        .is_empty());
+}

@@ -235,3 +235,34 @@ fn relations_that_leave_out_what_the_query_asks_for_are_no_answer() {
     .expect("an answer");
     assert_eq!(got.sequels, [ProviderMediaId(6)]);
 }
+
+#[test]
+fn a_media_that_leaves_out_a_field_the_query_asks_for_is_no_answer() {
+    // idMal, episodes, status and format are asked for. Left out, a
+    // missing status would read as not finished and a missing format as
+    // a series; null keeps its meaning (none recorded, unknown).
+    let full = serde_json::json!({
+        "id": 5, "idMal": 5, "episodes": 12, "status": "FINISHED", "format": "TV",
+        "startDate": null, "endDate": null,
+        "relations": { "edges": [] }, "streamingEpisodes": []
+    });
+    for field in ["idMal", "episodes", "status", "format"] {
+        let mut media = full.clone();
+        media.as_object_mut().expect("object").remove(field);
+        let body = serde_json::json!({ "data": { "Media": media } }).to_string();
+        assert!(
+            matches!(
+                evidence::parse_media_evidence_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{field}"
+        );
+        let mut media = full.clone();
+        media[field] = serde_json::Value::Null;
+        let body = serde_json::json!({ "data": { "Media": media } }).to_string();
+        assert!(
+            evidence::parse_media_evidence_response(body.as_bytes()).is_ok(),
+            "{field} null"
+        );
+    }
+}
