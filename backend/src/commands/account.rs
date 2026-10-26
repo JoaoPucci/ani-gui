@@ -82,6 +82,26 @@ impl AccountWriteLocks {
         let mut map = self.inner.lock().expect("account write-lock map poisoned");
         Arc::clone(map.entry((kind, kitsu_id.to_owned())).or_default())
     }
+
+    /// Wait for the lock guarding writes to one `(provider, Kitsu id)`
+    /// ([`Self::for_show`]) and hold it until the guard drops.
+    pub(crate) async fn hold(
+        &self,
+        kind: ProviderKind,
+        kitsu_id: &str,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = self.for_show(kind, kitsu_id);
+        match Arc::clone(&lock).try_lock_owned() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // Taken: say so to a test holding it, which can then
+                // tell this wait from a caller still on its way.
+                #[cfg(test)]
+                crate::held::queued(&crate::held::lock_key(&*lock));
+                lock.lock_owned().await
+            }
+        }
+    }
 }
 
 /// Build a [`UserListProvider`] for the requested provider kind. Used
@@ -754,8 +774,7 @@ async fn push_progress_with_anilist_base(
     // window where a read could resolve, win the lock, and read a value this
     // write is about to change. Held across the GET +
     // upsert since providers only upsert (no compare-and-set).
-    let show_lock = state.account_write_locks.for_show(kind, kitsu_id);
-    let _write_guard = show_lock.lock().await;
+    let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
         return Ok(None);
     };
