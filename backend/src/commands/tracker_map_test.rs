@@ -1222,7 +1222,7 @@ async fn kitsu_claims_an_anilist_entry_by_its_own_id_or_by_the_mal_id_it_records
                 tokens: &tokens,
                 anilist_base: Some(&base),
             };
-            super::kitsu_side::claimed_on_kitsu(&ask, &s)
+            super::owners::claimed_on_kitsu(&ask, &s)
                 .await
                 .expect("read")
         }
@@ -1301,13 +1301,13 @@ async fn kitsu_claims_a_mal_entry_through_an_entry_mapped_only_by_anilist() {
         id,
         ..Default::default()
     };
-    assert!(super::kitsu_side::claimed_on_kitsu(&ask, &show(70))
+    assert!(super::owners::claimed_on_kitsu(&ask, &show(70))
         .await
         .expect("read"));
-    assert!(!super::kitsu_side::claimed_on_kitsu(&ask, &show(71))
+    assert!(!super::owners::claimed_on_kitsu(&ask, &show(71))
         .await
         .expect("read"));
-    let shared = super::kitsu_side::sharing_on_kitsu(&ask, &show(70))
+    let shared = super::owners::sharing_on_kitsu(&ask, &show(70))
         .await
         .expect("read");
     assert_eq!(
@@ -1399,7 +1399,7 @@ async fn the_entries_sharing_an_anilist_entry_include_those_mapped_by_its_mal_id
         tokens: &tokens,
         anilist_base: Some(&base),
     };
-    let got = super::kitsu_side::sharing_on_kitsu(&ask, &entry)
+    let got = super::owners::sharing_on_kitsu(&ask, &entry)
         .await
         .expect("read");
     assert_eq!(
@@ -1552,7 +1552,7 @@ async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_wit
         tokens: &tokens,
         anilist_base: Some(&base),
     };
-    let got = super::kitsu_side::sharing_on_kitsu(&ask, &entry)
+    let got = super::owners::sharing_on_kitsu(&ask, &entry)
         .await
         .expect("read");
     // One Kitsu entry the page did not list stands for the rest: no
@@ -1560,7 +1560,7 @@ async fn an_entry_whose_mapped_kitsu_entries_kitsu_did_not_list_whole_shares_wit
     // entry's only one.
     assert_eq!(got, vec![KitsuShow::default()]);
     // It is still claimed: some Kitsu entry maps to it.
-    assert!(super::kitsu_side::claimed_on_kitsu(&ask, &entry)
+    assert!(super::owners::claimed_on_kitsu(&ask, &entry)
         .await
         .expect("read"));
 }

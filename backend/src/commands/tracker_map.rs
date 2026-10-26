@@ -47,6 +47,8 @@ use cache::map_ttl;
 use cache::{cached, remember, remember_for};
 #[path = "tracker_map_kitsu.rs"]
 mod kitsu_side;
+#[path = "tracker_map_owners.rs"]
+mod owners;
 #[path = "tracker_map_parts.rs"]
 mod parts_walk;
 #[path = "tracker_map_prequels.rs"]

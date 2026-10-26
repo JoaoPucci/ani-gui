@@ -2,7 +2,7 @@
 //! request per thing the rules read and none they do not.
 
 use super::chain_walk::tracker_chain;
-use super::kitsu_side::{claimed_on_kitsu, sharing_on_kitsu};
+use super::owners::{claimed_on_kitsu, sharing_on_kitsu};
 use super::parts_walk::{file_mapped_past, kitsu_parts};
 use super::prequel_walk::first_part_under;
 use super::*;
