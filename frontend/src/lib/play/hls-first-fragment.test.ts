@@ -27,6 +27,12 @@ const FIXTURE = new URL(
 	import.meta.url
 );
 const VIDEO_START_S = 0.184;
+// Read while the file is collected, like the worker bundle below, not
+// inside the test: a test's 5 s budget is wall time, and a cold read
+// queued behind another build's disk writes can spend part of it before
+// the demuxer runs. Each use takes a copy, since the demuxer is handed
+// the underlying buffer.
+const FIXTURE_BYTES = new Uint8Array(Buffer.from(readFileSync(FIXTURE, 'utf8'), 'base64'));
 
 interface Posted {
 	event: string;
@@ -110,8 +116,7 @@ function transmuxFirstFragment(bytes: Uint8Array): RemuxResult[] {
 
 describe('the first fragment of a stream whose video starts before its audio', () => {
 	it('keeps its video: the stream begins at the video, not at the audio', () => {
-		const bytes = new Uint8Array(Buffer.from(readFileSync(FIXTURE, 'utf8'), 'base64'));
-		const results = transmuxFirstFragment(bytes);
+		const results = transmuxFirstFragment(FIXTURE_BYTES.slice());
 		const init = results.map((r) => r.initSegment).find((s) => s?.initPTS !== undefined);
 		expect(init, 'an init segment carrying the stream origin').toBeDefined();
 		// The origin is the earliest timestamp of the fragment — the

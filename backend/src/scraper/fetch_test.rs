@@ -792,13 +792,24 @@ async fn a_held_requests_hops_share_one_deadline() {
         .mount(&server)
         .await;
     let req = FetchRequest::get(format!("{}/hop0", server.uri())).held_to_origin();
-    let started = std::time::Instant::now();
-    let got = curl.fetch(&req).await;
+    // Loose by design: it catches a call that stops the chain and then
+    // lingers far past the deadline, and keeps a hung curl from hanging
+    // the suite. The hop count below is what pins the deadline itself.
+    let got = tokio::time::timeout(std::time::Duration::from_secs(10), curl.fetch(&req))
+        .await
+        .expect("the call returned soon after its deadline");
+    // A deadline per hop never runs out — each hop answers well inside
+    // one — and the chain arrives.
     assert!(matches!(got, Err(AniError::Timeout)), "{got:?}");
+    // And the chain ended at the deadline, not after it: each hop takes
+    // at least `hop`, so no more than three can begin inside 600 ms.
+    // That bound holds however slow the machine is — slowness only
+    // means fewer — where a wall-clock bound on the whole call would
+    // count the machine's own delays against the chain.
+    let asked = server.received_requests().await.expect("recorded").len();
     assert!(
-        started.elapsed() < std::time::Duration::from_millis(1200),
-        "ended at the request's deadline: {:?}",
-        started.elapsed()
+        asked <= 3,
+        "the chain went on past the deadline: {asked} hops asked"
     );
 }
 

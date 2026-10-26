@@ -58,7 +58,8 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Install shellcheck + shfmt
         run: |
-          sudo apt-get update
+          # Distro sources only: see tests/arch/apt_sources.sh.
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
           sudo apt-get install -y shellcheck
           # shfmt is not in 24.04 apt; install the static binary.
           sudo curl -sSL -o /usr/local/bin/shfmt \
@@ -120,9 +121,13 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bash test dependencies
         run: |
-          sudo apt-get update
+          # Distro sources only: see tests/arch/apt_sources.sh.
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
           # The invocation harness runs the workflow-snapshot
-          # projection, which reads the workflows through PyYAML.
+          # projection, which reads the workflows through PyYAML. It
+          # has to be the distro package: the harness's shim case
+          # falls back to /usr/bin/python3 and needs yaml importable
+          # there, which a virtualenv install would not provide.
           sudo apt-get install -y python3-yaml
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bats-core and plugins
