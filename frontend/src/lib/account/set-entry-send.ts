@@ -45,6 +45,9 @@ export async function sendSave(
 	save: EditorSave,
 	fields: readonly WriteField[]
 ): Promise<ListEntry | null> {
+	// Nothing left — newer writes took it all, or the account changed —
+	// and the tracker is not read either: the read carries the bearer.
+	if (to.held.left().length === 0) throw new SupersededError();
 	const current = await deps.getEntry(to.provider, to.bearer, to.kitsuId);
 	const edit = buildListEdit({
 		current: current?.status ?? null,
@@ -67,6 +70,7 @@ export async function sendRemoval(
 	},
 	to: SendTo
 ): Promise<FanoutResult> {
+	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
 	const current = await deps.getEntry(to.provider, to.bearer, to.kitsuId);
 	if (current === null) return 'neither'; // nothing to remove here
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();

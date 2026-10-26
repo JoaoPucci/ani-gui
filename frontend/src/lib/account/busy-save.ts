@@ -82,12 +82,13 @@ function settle(key: string): void {
 	coverage.delete(key);
 }
 
-/** The user `provider` is connected as, or `null` while it is not
- *  connected or its account is being changed. */
+/** The user behind `provider`'s account — connected, or marked expired
+ *  or failed with its account still known — or `null` with no account,
+ *  or while the account is being changed. */
 function accountUser(provider: Provider): string | null {
 	if (accountStore.accountChanging[provider]) return null;
 	const state = accountStore.byProvider[provider];
-	return state?.kind === 'connected' ? state.account.user_id : null;
+	return state && 'account' in state && state.account ? state.account.user_id : null;
 }
 
 /** Run a user's write of `kitsuId` to `provider`, waiting out its rate
@@ -101,6 +102,9 @@ export function saveWhenTrackerAllows<T>(
 	attempt: (held: HeldWrite) => Promise<T>,
 	fields: readonly WriteField[] = ALL_FIELDS
 ): Promise<T> {
+	// Made while the tracker's account is being changed, the write is for
+	// an account on its way out: it is not sent at all.
+	if (accountStore.accountChanging[provider]) return Promise.reject(new SupersededError());
 	const key = `${provider}:${kitsuId}`;
 	const generation = start(key, fields);
 	// The tracker account the write was made for: its user. Disconnected,
