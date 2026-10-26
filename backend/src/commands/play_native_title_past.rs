@@ -45,14 +45,14 @@ pub(crate) fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)
 
 /// The number `rest` opens on, and its digits: a run of digits
 /// standing as a number — ending the text, before a space, or before a
-/// non-ASCII character glued to it, as a Japanese one is ("20第2部") —
-/// not an ordinal's ("2nd"). Compared as a number against W's, so a
+/// Japanese letter glued to it ("20第2部") — not an ordinal's ("2nd")
+/// nor a word's ("1é"). Compared as a number against W's, so a
 /// zero-padded "02" is the number 2.
 pub(crate) fn leading_number(rest: &str) -> Option<(u32, String)> {
     let rest = rest.trim_start();
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
     let after = rest[digits.len()..].chars().next();
-    (!digits.is_empty() && after.is_none_or(|c| c == ' ' || !c.is_ascii()))
+    (!digits.is_empty() && after.is_none_or(|c| c == ' ' || is_japanese(c)))
         .then(|| digits.parse().ok().map(|m| (m, digits)))
         .flatten()
 }
@@ -60,8 +60,13 @@ pub(crate) fn leading_number(rest: &str) -> Option<(u32, String)> {
 /// What follows `own` at the start of `text`, when `own` ends there
 /// at a word's end or with a digit or 第 glued to it. A digit glued to
 /// an `own` that itself ends in one continues that number rather than
-/// following it: "Show 20" does not start with "Show 2".
+/// following it: "Show 20" does not start with "Show 2". An empty
+/// `own` — the stem of a title that is nothing but a division — is no
+/// stem, and nothing is read past it, whatever opens the text.
 pub(crate) fn rest_after(text: &str, own: &str) -> Option<String> {
+    if own.is_empty() {
+        return None;
+    }
     let rest = text.strip_prefix(own)?;
     let numbered = own.chars().last().is_some_and(|c| c.is_ascii_digit());
     rest.chars()
@@ -84,3 +89,7 @@ pub(crate) fn without_stem_number(stem: &[String]) -> Option<(String, u32)> {
     words.push(head.to_string());
     Some((words.join(" "), n))
 }
+
+#[cfg(test)]
+#[path = "play_native_title_past_test.rs"]
+mod tests;
