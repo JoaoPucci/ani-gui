@@ -4,43 +4,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::super::prop_tests::model::{self, ordinal, text, Ymd};
 use super::*;
 use crate::account::episode_map::KitsuShow;
-use crate::account::episode_map_calendar::{days_in_month, parse_date};
 use proptest::prelude::*;
-
-type Ymd = (i32, u32, u32);
-
-fn text((y, m, d): Ymd) -> String {
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-/// Days since 1900-01-01, counted month by month — independent of the
-/// civil-days formula the code counts with.
-fn ordinal((year, month, day): Ymd) -> i64 {
-    let years: i64 = (1900..year)
-        .map(|y| if days_in_month(y, 2) == 29 { 366 } else { 365 })
-        .sum();
-    let months: i64 = (1..month).map(|m| i64::from(days_in_month(year, m))).sum();
-    years + months + i64::from(day)
-}
 
 /// A real full date over two years, so months coincide often.
 fn real_date() -> impl Strategy<Value = Ymd> {
-    (2020i32..=2021, 1u32..=12).prop_flat_map(|(y, m)| (Just(y), Just(m), 1..=days_in_month(y, m)))
+    model::real_date_in(2020..=2021)
 }
 
-/// A date field as a source could send it: real, a month alone,
-/// impossible, anything at all, or absent.
+/// A date field as a source could send it: mostly real — often a few
+/// days from a month boundary — or a month alone, so that all four
+/// dates of a run are read often; sometimes impossible, anything at
+/// all, or absent.
 fn any_date() -> impl Strategy<Value = Option<String>> {
     prop_oneof![
-        Just(None),
-        real_date().prop_map(|d| Some(text(d))),
-        (2020i32..=2021, 1u32..=12).prop_map(|(y, m)| Some(format!("{y:04}-{m:02}"))),
-        Just(Some("2020-02-30".to_string())),
-        Just(Some("2021-13-01".to_string())),
-        Just(Some("2020".to_string())),
-        "[0-9-]{0,11}".prop_map(Some),
+        1 => Just(None),
+        3 => real_date().prop_map(|d| Some(text(d))),
+        3 => model::edge_date_in(2020..=2021).prop_map(|d| Some(text(d))),
+        2 => (2020i32..=2021, 1u32..=12).prop_map(|(y, m)| Some(format!("{y:04}-{m:02}"))),
+        1 => Just(Some("2020-02-30".to_string())),
+        1 => Just(Some("2021-13-01".to_string())),
+        1 => Just(Some("2020".to_string())),
+        1 => "[0-9-]{0,11}".prop_map(Some),
     ]
 }
 
@@ -108,8 +95,38 @@ fn any_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
         })
 }
 
+/// A run with one bound a few days outside Kitsu's, across a month
+/// boundary: a start `n` days before Kitsu's start, or an end `n` days
+/// after Kitsu's end, the other bound well inside, where the two days'
+/// slack decides — with Kitsu's air dates or none.
+fn slack_case() -> impl Strategy<Value = (Evidence, TrackerShow, Segment)> {
+    (
+        model::edge_date_in(2020..=2020),
+        0usize..=5,
+        any::<bool>(),
+        prop_oneof![Just(BTreeMap::new()), any_airdates()],
+        1u32..=4,
+        0u32..=2,
+    )
+        .prop_map(|(earlier, n, at_start, air, from, len)| {
+            let later = (0..n).fold(earlier, |d, _| model::next_day(d));
+            let (before, after) = ("2019-06-15".to_string(), "2021-06-15".to_string());
+            let (ks, ke, s, e) = if at_start {
+                (text(later), after.clone(), text(earlier), after)
+            } else {
+                (before.clone(), text(earlier), before, text(later))
+            };
+            (
+                evidence(Some(ks), Some(ke), air),
+                tracker(Some(s), Some(e)),
+                segment(from, from + len),
+            )
+        })
+}
+
+/// Whether `date` is a real date or month, by the model calendar.
 fn real(date: Option<&str>) -> bool {
-    date.and_then(parse_date).is_some()
+    date.is_some_and(model::is_real_date)
 }
 
 fn unplaced_numbers(ev: &Evidence, show: &TrackerShow, seg: &Segment) -> BTreeSet<u32> {
@@ -187,14 +204,25 @@ proptest! {
         prop_assert!(inside_kitsu_run(&ev, &show, &seg));
     }
 
-    /// A run is inside Kitsu's exactly when its bounds are read and
-    /// every unplaced one has Kitsu's own episode dated in its month.
+    /// A run is inside Kitsu's exactly as the documented rule decides
+    /// it from the four dates and Kitsu's air dates, by the model
+    /// calendar: every date real, each bound inside Kitsu's months
+    /// (with two days' slack outwards) or placed by Kitsu's episode for
+    /// it dated in the bound's month — over free dates, and over runs
+    /// a few days outside Kitsu's across a month boundary.
     #[test]
     fn a_run_is_inside_exactly_when_every_unplaced_bound_is_dated_in(
-        (ev, show, seg) in any_case()
+        (ev, show, seg) in prop_oneof![any_case(), slack_case()]
     ) {
-        let want = unplaced_bounds(&ev, &show, &seg)
-            .is_some_and(|u| u.iter().all(|(n, b)| dated_in(&ev, *n, Some(b))));
+        let want = model::run_inside(&model::Run {
+            kitsu_start: ev.kitsu.start.as_deref(),
+            kitsu_end: ev.kitsu.end.as_deref(),
+            start: show.start.as_deref(),
+            end: show.end.as_deref(),
+            from: seg.kitsu_from,
+            to: seg.kitsu_to,
+            airdates: &ev.kitsu_airdates,
+        });
         prop_assert_eq!(inside_kitsu_run(&ev, &show, &seg), want);
     }
 
@@ -242,12 +270,8 @@ proptest! {
         air in any_airdates(), n in 0u32..=5, bound in any_date()
     ) {
         let ev = evidence(None, None, air.clone());
-        let want = match (air.get(&n), bound.as_deref()) {
-            (Some(a), Some(b)) => {
-                parse_date(a).is_some() && parse_date(b).is_some() && a[..7] == b[..7]
-            }
-            _ => false,
-        };
+        let aired = model::month_of(air.get(&n).map(String::as_str));
+        let want = aired.is_some() && aired == model::month_of(bound.as_deref());
         prop_assert_eq!(dated_in(&ev, n, bound.as_deref()), want);
     }
 }

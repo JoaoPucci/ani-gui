@@ -5,50 +5,8 @@
 //! ones it reads.
 
 use super::super::dates::month;
+use super::super::prop_tests::model;
 use proptest::prelude::*;
-
-/// Whether `text` is a real calendar date or month, decided here
-/// without the calendar module: exactly `YYYY-MM-DD` or `YYYY-MM`, all
-/// ASCII digits but the dashes, a month 1–12, and a day the month has
-/// in the Gregorian calendar.
-fn is_real_date(text: &str) -> bool {
-    let b = text.as_bytes();
-    let digit = |i: usize| b[i].is_ascii_digit();
-    let number =
-        |r: std::ops::Range<usize>| b[r].iter().fold(0u32, |n, c| n * 10 + u32::from(c - b'0'));
-    let month_ok = (b.len() == 7 || b.len() == 10)
-        && (0..4).all(digit)
-        && b[4] == b'-'
-        && (5..7).all(digit)
-        && (1..=12).contains(&number(5..7));
-    if !month_ok {
-        return false;
-    }
-    if b.len() == 7 {
-        return true;
-    }
-    if b[7] != b'-' || !(8..10).all(digit) {
-        return false;
-    }
-    let (year, month, day) = (number(0..4), number(5..7), number(8..10));
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let lengths = [
-        31,
-        if leap { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let index = usize::try_from(month - 1).unwrap_or(0);
-    day >= 1 && day <= lengths[index]
-}
 
 /// Text as a date field could carry it: dates and months with every
 /// field around its bounds, the end of February across leap and
@@ -73,7 +31,7 @@ proptest! {
     /// no date at all, has no month — and no text panics the read.
     #[test]
     fn a_month_is_read_exactly_from_a_real_date(text in date_text()) {
-        let want = is_real_date(&text).then(|| &text[..7]);
+        let want = model::is_real_date(&text).then(|| &text[..7]);
         prop_assert_eq!(month(Some(&text)), want);
         prop_assert_eq!(month(None), None);
     }
@@ -81,10 +39,9 @@ proptest! {
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::dates::{inside_kitsu_run, unplaced_bounds};
+use super::super::dates::unplaced_bounds;
 use super::{chain, chain_dates_needed, exact_chain};
 use crate::account::episode_map::{Evidence, KitsuShow, Shape, TrackerShow};
-use crate::account::episode_map_calendar::days_in_month;
 
 /// A date field as a source could send it, in a three-year window so
 /// runs and months meet often: mostly real or a month alone, so that
@@ -98,12 +55,12 @@ fn any_date() -> impl Strategy<Value = Option<String>> {
     ]
 }
 
-/// A date the dates rule reads: a real full date or month.
+/// A date the dates rule reads: a real full date, often a few days
+/// from a month boundary where the slack decides, or a month.
 fn known_date() -> impl Strategy<Value = String> {
     prop_oneof![
-        (2019i32..=2021, 1u32..=12)
-            .prop_flat_map(|(y, m)| (Just(y), Just(m), 1..=days_in_month(y, m)))
-            .prop_map(|(y, m, d)| format!("{y:04}-{m:02}-{d:02}")),
+        model::real_date_in(2019..=2021).prop_map(model::text),
+        model::edge_date_in(2019..=2021).prop_map(model::text),
         (2019i32..=2021, 1u32..=12).prop_map(|(y, m)| format!("{y:04}-{m:02}")),
     ]
 }
@@ -312,15 +269,28 @@ proptest! {
         let _ = chain_dates_needed(&ev, count, total);
     }
 
-    /// The chain rule is the exact chain wherever every segment's run
-    /// lies inside Kitsu's, and nothing elsewhere.
+    /// The chain rule as `docs/title-resolution.md` states it: the
+    /// counts, summed independently, make an exact unclaimed chain, and
+    /// every entry's run lies inside Kitsu's by month with two days'
+    /// slack, or is placed by Kitsu's own episode list — decided from
+    /// the dates by the model calendar, not by the dates rule.
     #[test]
     fn the_chain_rule_is_the_exact_chain_its_dates_place((ev, count, total) in chain_case()) {
-        let want = exact_chain(&ev, count, total)
-            .filter(|(segments, shows)| {
-                shows.iter().zip(segments).all(|(show, s)| inside_kitsu_run(&ev, show, s))
+        let want = model::exact_chain_model(&ev, count, total)
+            .filter(|links| {
+                links.iter().all(|link| {
+                    model::run_inside(&model::Run {
+                        kitsu_start: ev.kitsu.start.as_deref(),
+                        kitsu_end: ev.kitsu.end.as_deref(),
+                        start: link.show.start.as_deref(),
+                        end: link.show.end.as_deref(),
+                        from: link.from,
+                        to: link.to,
+                        airdates: &ev.kitsu_airdates,
+                    })
+                })
             })
-            .map(|(segments, _)| segments);
+            .map(|links| links.iter().map(model::segment_of).collect::<Vec<_>>());
         prop_assert_eq!(chain(&ev, count, total), want);
     }
 

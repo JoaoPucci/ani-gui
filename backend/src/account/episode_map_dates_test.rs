@@ -67,54 +67,22 @@ proptest::proptest! {
         year in 1950i32..2050, month in 0u32..14, day in 0u32..33
     ) {
         let text = format!("{year:04}-{month:02}-{day:02}");
-        let real = crate::account::episode_map_calendar::parse_date(&text).is_some();
+        let real = model::is_real_date(&text);
         proptest::prop_assert_eq!(days(Some(&text)).is_some(), real);
         if real {
             // The next real date is one day on.
-            let next = if day < crate::account::episode_map_calendar::days_in_month(year, month) {
-                format!("{year:04}-{month:02}-{:02}", day + 1)
-            } else if month < 12 {
-                format!("{year:04}-{:02}-01", month + 1)
-            } else {
-                format!("{:04}-01-01", year + 1)
-            };
+            let next = model::text(model::next_day((year, month, day)));
             proptest::prop_assert_eq!(days(Some(&next)).zip(days(Some(&text))).map(|(b, a)| b - a), Some(1));
         }
     }
 }
 
-use crate::account::episode_map_calendar::{days_in_month, parse_date};
+use super::super::prop_tests::model::{self, next_day, ordinal, text};
 use proptest::prelude::*;
 
-/// The real date one day after `(year, month, day)`, by the same
-/// construction the day-count property above steps with.
-fn next_day((year, month, day): (i32, u32, u32)) -> (i32, u32, u32) {
-    if day < days_in_month(year, month) {
-        (year, month, day + 1)
-    } else if month < 12 {
-        (year, month + 1, 1)
-    } else {
-        (year + 1, 1, 1)
-    }
-}
-
-fn text((year, month, day): (i32, u32, u32)) -> String {
-    format!("{year:04}-{month:02}-{day:02}")
-}
-
-/// Days since 1900-01-01, counted month by month: a model independent
-/// of the civil-days formula [`days`] uses.
-fn ordinal((year, month, day): (i32, u32, u32)) -> i64 {
-    let years: i64 = (1900..year)
-        .map(|y| if days_in_month(y, 2) == 29 { 366 } else { 365 })
-        .sum();
-    let months: i64 = (1..month).map(|m| i64::from(days_in_month(year, m))).sum();
-    years + months + i64::from(day)
-}
-
 /// A real full date, any day of its month.
-fn real_date() -> impl Strategy<Value = (i32, u32, u32)> {
-    (1950i32..2050, 1u32..=12).prop_flat_map(|(y, m)| (Just(y), Just(m), 1..=days_in_month(y, m)))
+fn real_date() -> impl Strategy<Value = model::Ymd> {
+    model::real_date_in(1950..=2049)
 }
 
 /// Text that is no full real date: a month, a year, an impossible day,
@@ -124,12 +92,10 @@ fn no_full_date() -> impl Strategy<Value = String> {
         (1950i32..2050, 1u32..=12).prop_map(|(y, m)| format!("{y:04}-{m:02}")),
         (1950i32..2050).prop_map(|y| format!("{y:04}")),
         (1950i32..2050, 1u32..=12)
-            .prop_map(|(y, m)| format!("{y:04}-{m:02}-{:02}", days_in_month(y, m) + 1)),
+            .prop_map(|(y, m)| format!("{y:04}-{m:02}-{:02}", model::month_length(y, m) + 1)),
         "[0-9-]{0,12}",
     ]
-    .prop_filter("a full real date", |t| {
-        parse_date(t).and_then(|d| d.day).is_none()
-    })
+    .prop_filter("a full real date", |t| model::full_date(Some(t)).is_none())
 }
 
 proptest! {
@@ -142,7 +108,7 @@ proptest! {
     ) {
         prop_assert_eq!(
             within_slack(Some(&text(earlier)), Some(&text(later))),
-            ordinal(later) - ordinal(earlier) <= DAYS_OF_SLACK
+            ordinal(later) - ordinal(earlier) <= 2
         );
     }
 
@@ -171,7 +137,7 @@ proptest! {
             later = next_day(later);
         }
         let (a, b) = (text(start), text(later));
-        prop_assert_eq!(within_slack(Some(&a), Some(&b)), i64::from(n) <= DAYS_OF_SLACK);
+        prop_assert_eq!(within_slack(Some(&a), Some(&b)), n <= 2);
         prop_assert!(within_slack(Some(&b), Some(&a)));
     }
 }
