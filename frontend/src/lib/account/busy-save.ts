@@ -82,6 +82,14 @@ function settle(key: string): void {
 	coverage.delete(key);
 }
 
+/** The user `provider` is connected as, or `null` while it is not
+ *  connected or its account is being changed. */
+function accountUser(provider: Provider): string | null {
+	if (accountStore.accountChanging[provider]) return null;
+	const state = accountStore.byProvider[provider];
+	return state?.kind === 'connected' ? state.account.user_id : null;
+}
+
 /** Run a user's write of `kitsuId` to `provider`, waiting out its rate
  *  limit with a notice — see `saveWhenAllowed`. The attempt asks its
  *  `HeldWrite` which of `fields` are still its own, and sends only
@@ -95,13 +103,15 @@ export function saveWhenTrackerAllows<T>(
 ): Promise<T> {
 	const key = `${provider}:${kitsuId}`;
 	const generation = start(key, fields);
-	// The tracker account the write was made for. Disconnected, switched
-	// or being changed since, the write is no longer the user's to send:
-	// nothing of it is left, and it goes no further — not its re-read,
-	// not its write.
-	const account = accountStore.accountGeneration[provider];
-	const sameAccount = () =>
-		accountStore.accountGeneration[provider] === account && !accountStore.accountChanging[provider];
+	// The tracker account the write was made for: its user. Disconnected,
+	// switched to another user or being changed since, the write is no
+	// longer the user's to send: nothing of it is left, and it goes no
+	// further — not its re-read, not its write. A token refresh of the
+	// same account keeps it.
+	// A write that starts with no connected account to name carries the
+	// bearer its caller brought and has no account to follow.
+	const account = accountUser(provider);
+	const sameAccount = () => account === null || accountUser(provider) === account;
 	const held: HeldWrite = {
 		left: () =>
 			sameAccount() ? fields.filter((field) => coverage.get(key)?.[field] === generation) : []
