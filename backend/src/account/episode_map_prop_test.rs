@@ -336,9 +336,10 @@ fn near_rule_evidence() -> impl Strategy<Value = Evidence> {
         filing_evidence().prop_map(|(ev, _)| ev),
     ];
     (base, 0u8..10).prop_map(|(mut ev, nudge)| {
-        // The show's count moves with it wherever the evidence names it:
-        // the show is one of the parts and of the mapped set, not a
-        // second reading of them.
+        // The show's count moves with it wherever the evidence names it,
+        // so the nudged evidence still agrees with itself. Parts that
+        // disagree with the show are their own property
+        // (a_part_whose_count_is_not_the_show_s_own_files_nothing_past_the_show).
         let recount = |ev: &mut Evidence, f: fn(u32) -> u32| {
             let ours = ev.kitsu.id.clone();
             ev.kitsu.episodes = ev.kitsu.episodes.map(f);
@@ -649,9 +650,11 @@ fn overflowing_run_beside_a_shared_set() -> impl Strategy<Value = Evidence> {
                     end: None,
                 })
                 .collect();
-            // The run may open with the show itself.
+            // The run may open with the show itself, carrying its own
+            // count, so the overflow comes in the parts after it.
             if ours_first {
-                parts[0].id = kitsu.id.clone();
+                parts.insert(0, kitsu.clone());
+                parts[1].episodes = Some(u32::MAX);
             }
             Evidence {
                 kitsu,
