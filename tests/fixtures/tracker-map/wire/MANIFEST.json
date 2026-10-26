@@ -62,6 +62,12 @@
       "size": 3632,
       "sha256": "f494f3d7bb727cfe7d317dadff58a513379b420ff1d584cf7f4e713d836af6c0"
     },
+    "mal-anime-437.json": {
+      "request": "GET https://api.myanimelist.net/v2/anime/437?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true (X-MAL-CLIENT-ID, no bearer), captured 2026-10-27",
+      "notes": "Perfect Blue: a single film with no related anime. MyAnimeList sends related_anime as an empty list rather than leaving the key out, so a missing related_anime stays no answer.",
+      "size": 334,
+      "sha256": "956d6a4d73c0e452266d5de52a26429523b8bc4b40a1da376df754991328762a"
+    },
     "mal-anime-51535.json": {
       "request": "GET https://api.myanimelist.net/v2/anime/51535?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true",
       "notes": "Attack on Titan: The Final Season - Final Chapters: a 2-episode tv_special two Kitsu entries map to; a prequel and no sequel.",
