@@ -98,9 +98,12 @@ fn quick_child() -> tokio::process::Child {
 async fn a_tree_left_running_by_a_child_that_exited_is_taken_down_and_waited_for() {
     // The tool exited by itself and left a helper running in its
     // tree. The teardown kills what is left and returns once it is
-    // gone, whichever platform's tree it is.
+    // gone, whichever platform's tree it is. What is asserted is that
+    // it waited for the tree, not how fast: under the app's ceiling a
+    // runner that stalls the case past it fails it with nothing wrong.
     let (tree, state) = fake_tree(true, Some(3));
-    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    let mut guard =
+        TreeKillChild::with_tree(quick_child(), Box::new(tree)).with_ceiling(CASE_DEADLINE);
     guard.wait().await.expect("the child exits");
     assert!(guard.take_down().await, "the tree is gone");
     let s = state.lock().expect("fake tree");
@@ -209,9 +212,14 @@ fn helper_then_exit() -> tokio::process::Command {
 
 #[tokio::test]
 async fn a_helper_the_tool_starts_first_is_in_its_tree() {
+    // A real kill and reap: under a failure bound of the case's own,
+    // since the app's ceiling is one a loaded runner can stall past,
+    // and whatever probe another case has registered may serve this
+    // teardown and land its kill late.
     let mut guard = GuardedCommand::new(helper_then_exit())
         .spawn()
-        .expect("spawn");
+        .expect("spawn")
+        .with_ceiling(CASE_DEADLINE);
     guard.wait().await.expect("the tool exits");
     assert!(
         guard.tree_running(),

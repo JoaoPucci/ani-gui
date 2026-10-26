@@ -53,6 +53,10 @@ pub(crate) struct TreeKillChild {
     /// A teardown already waited the ceiling out: the drop asks for
     /// the kill again but does not wait a second time.
     given_up: bool,
+    /// How long a teardown waits for the tree to exit:
+    /// [`TREE_EXIT_CEILING`], unless a case set its own
+    /// ([`Self::with_ceiling`]).
+    ceiling: std::time::Duration,
 }
 
 /// What a guard can do with a child's tree beyond the child itself:
@@ -74,7 +78,20 @@ impl TreeKillChild {
             child,
             tree,
             given_up: false,
+            ceiling: TREE_EXIT_CEILING,
         }
+    }
+
+    /// The guard with its teardowns waiting up to `ceiling` instead.
+    /// For a case that asserts what a teardown does rather than how
+    /// long it may take: the app's ceiling is a bound a loaded test
+    /// runner can stall past with nothing wrong, so such a case waits
+    /// under a failure bound of its own.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_ceiling(mut self, ceiling: std::time::Duration) -> Self {
+        self.ceiling = ceiling;
+        self
     }
 
     /// A guard over `child` whose tree is `tree`, for a case that
@@ -143,7 +160,7 @@ impl TreeKillChild {
             return true;
         }
         self.kill_tree();
-        let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        let deadline = std::time::Instant::now() + self.ceiling;
         loop {
             if self.tree_exited() {
                 self.tree = None;
@@ -177,7 +194,7 @@ impl TreeKillChild {
             return;
         }
         self.kill_tree();
-        let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        let deadline = std::time::Instant::now() + self.ceiling;
         while !self.tree_exited() {
             if std::time::Instant::now() >= deadline {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
