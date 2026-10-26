@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the live-store collaborators so the glue under test is the only
 // real code: syncWatchedToTrackers must read the connected providers
@@ -44,9 +44,22 @@ vi.mock('./store.svelte', () => ({
 }));
 
 import { syncWatchedToTrackers } from './push-watched';
+import { saveWhenTrackerAllows } from './busy-save';
+import { toastStore } from '$lib/toasts/store.svelte';
+import { m } from '$lib/paraglide/messages';
+
+/** The backend holding a write back: 429 with the wait, by shape (the
+ *  api module is mocked here). */
+const refused = (secs: number) =>
+	Object.assign(new Error('rate limited'), {
+		status: 429,
+		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs })
+	});
 
 beforeEach(() => {
-	updateProgress.mockClear();
+	updateProgress.mockReset();
+	updateProgress.mockResolvedValue(null);
+	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
 	for (const k of Object.keys(byProvider)) delete byProvider[k];
 });
 
@@ -71,5 +84,89 @@ describe('syncWatchedToTrackers', () => {
 	it('no-ops when no provider is connected', async () => {
 		await syncWatchedToTrackers('kitsu-12', 1);
 		expect(updateProgress).not.toHaveBeenCalled();
+	});
+
+	it('holds a progress write AniList refuses, says so, and sends it when the wait ends', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(0)).mockResolvedValueOnce(null);
+		await syncWatchedToTrackers('kitsu-12', 7);
+		expect(updateProgress).toHaveBeenCalledTimes(2);
+		expect(toastStore.items.map((t) => t.message)).toContain(
+			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 0 })
+		);
+	});
+
+	it('tells the user a progress write that could not be saved', async () => {
+		byProvider.mal = { kind: 'connected', account: { access_token: 'tok-m' } };
+		updateProgress.mockRejectedValue(new Error('offline'));
+		await syncWatchedToTrackers('kitsu-12', 7);
+		const errors = toastStore.items.filter((t) => t.kind === 'error').map((t) => t.message);
+		expect(errors).toEqual([
+			m.account_progress_save_failed({ provider: m.account_provider_mal() })
+		]);
+	});
+});
+
+describe('a held progress write a newer one replaces', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is not re-sent and is not reported as a failure', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const six = syncWatchedToTrackers('kitsu-12', 6);
+		await vi.advanceTimersByTimeAsync(0);
+		await syncWatchedToTrackers('kitsu-12', 4);
+		await vi.advanceTimersByTimeAsync(1000);
+		await six;
+		const sent = updateProgress.mock.calls.map((c) => (c as unknown[])[2]);
+		expect(sent).toEqual([
+			{ kitsu_id: 'kitsu-12', progress: 6 },
+			{ kitsu_id: 'kitsu-12', progress: 4 }
+		]);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+});
+
+describe('a held finale a newer progress write covers', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is dropped whole: its completion does not travel without its episode', async () => {
+		// The backend only lets `completed` through beside the episode it
+		// checks against the tracker's own total; a completion re-sent alone
+		// would skip that check.
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const finale = syncWatchedToTrackers('kitsu-50', 12, 12, true);
+		await vi.advanceTimersByTimeAsync(0);
+		await syncWatchedToTrackers('kitsu-50', 11);
+		await vi.advanceTimersByTimeAsync(1000);
+		await finale;
+		const sent = updateProgress.mock.calls.map((c) => (c as unknown[])[2]);
+		expect(sent).toEqual([
+			{ kitsu_id: 'kitsu-50', progress: 12, status: 'completed' },
+			{ kitsu_id: 'kitsu-50', progress: 11 }
+		]);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+
+	it('keeps its episode when a newer write covered only the status', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const finale = syncWatchedToTrackers('kitsu-51', 12, 12, true);
+		await vi.advanceTimersByTimeAsync(0);
+		await saveWhenTrackerAllows('anilist', 'kitsu-51', async () => null, ['status']);
+		await vi.advanceTimersByTimeAsync(1000);
+		await finale;
+		expect(updateProgress).toHaveBeenLastCalledWith('anilist', 'tok-a', {
+			kitsu_id: 'kitsu-51',
+			progress: 12
+		});
 	});
 });

@@ -941,3 +941,57 @@ async fn relations_an_earlier_build_kept_are_asked_again() {
         .expect("read");
     assert!(!read.entries.is_empty(), "asked Kitsu, not the v1 row");
 }
+
+/// AniList not answering — refusing this client, or down — is no
+/// evidence: the reading stays open, and no airing row is written for
+/// the next read to take as AniList's answer.
+#[tokio::test]
+async fn an_entry_anilist_cannot_answer_for_gives_no_tail() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    for refusal in [
+        ResponseTemplate::new(429).insert_header("retry-after", "60"),
+        ResponseTemplate::new(503),
+    ] {
+        let kitsu = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime/7881"))
+            .and(query_param("include", "mappings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "id": "7881", "type": "anime", "attributes": { "canonicalTitle": "t" } },
+                "included": [{
+                    "id": "1",
+                    "type": "mappings",
+                    "attributes": { "externalSite": "myanimelist/anime", "externalId": "20507" }
+                }],
+            })))
+            .with_priority(1)
+            .mount(&kitsu)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/anime/7881"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_bytes(fixture("kitsu-anime-7881.json")),
+            )
+            .mount(&kitsu)
+            .await;
+        let anilist = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(refusal)
+            .expect(1..)
+            .mount(&anilist)
+            .await;
+        let state = state_with_kitsu(&kitsu.uri());
+        let uri = anilist.uri();
+        let source = KitsuTail::for_entry(&state, Some("7881"))
+            .expect("an entry")
+            .with_anilist_base(&uri);
+        assert_eq!(source.tail(&hianime_listing(916), 12).await, None);
+        assert_eq!(
+            crate::cache::meta_cache_get(&state.cache_pool, "airing:v2:7881").expect("read"),
+            None
+        );
+        // The read reached AniList: the reading was open up to it.
+        anilist.verify().await;
+    }
+}

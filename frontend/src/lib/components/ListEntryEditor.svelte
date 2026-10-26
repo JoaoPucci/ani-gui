@@ -16,7 +16,13 @@
 <script lang="ts">
 	import { createPopoverControls } from '$lib/account/popover-controls';
 	import { syncRemoveEntry, syncSetEntry } from '$lib/account/set-entry';
-	import { runEditorRemove, runEditorSave } from '$lib/account/editor-actions';
+	import {
+		editorToggle,
+		runEditorRemove,
+		runEditorSave,
+		settleRemove,
+		settleSave
+	} from '$lib/account/editor-actions';
 	import { deriveListEntryView, listButtonLabel } from '$lib/account/list-entry-view';
 	import {
 		seedForOpen,
@@ -26,6 +32,14 @@
 	} from '$lib/account/list-entry-pending';
 	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
 	import type { EntryView, ListStatus } from '$lib/account/types';
+	import {
+		flightFor,
+		NO_FLIGHTS,
+		reopenForm,
+		withFlight,
+		withoutFlight,
+		type Flights
+	} from '$lib/account/editor-flight';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';
 
@@ -101,8 +115,13 @@
 	// shows (it reuses this component), this lets us close a form that's now
 	// stale against a different kitsuId — see the auto-close effect.
 	let openedFor = $state<string | null>(null);
-	let saving = $state(false);
-	let removing = $state(false);
+	// Writes in flight, per show: the route reuses this editor across shows,
+	// and a save still out for one (it can wait out a tracker's rate limit)
+	// locks that show's editor and no other.
+	let flights = $state.raw<Flights>(NO_FLIGHTS);
+	const flight = $derived(flightFor(flights, kitsuId));
+	const saving = $derived(flight?.kind === 'saving');
+	const removing = $derived(flight?.kind === 'removing');
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let editStatus = $state<ListStatus>('planning');
 	let editProgress = $state(0);
@@ -124,43 +143,47 @@
 
 	// ✕ / click-outside dismiss without writing — Save is the only commit, so
 	// adding (which opens on the default Plan to Watch) needs an explicit click.
-	// Ignored while a write is in flight: dismissing mid-save would drop the
-	// pre-save seed, so a retry after a partial result couldn't re-send the
-	// status to the tracker that failed.
+	// Allowed while a write is out (it can wait out a tracker's rate limit for
+	// a while): the write carries on with what it captured when it started,
+	// and its toast reports how it ended.
 	function closeEditor() {
-		if (saving || removing) return;
 		open = false;
 	}
 
-	// Blocking, NOT optimistic: the popover stays open showing "Saving…" with
-	// the controls disabled until the write confirms, so the button never shows
-	// a value that isn't really on a tracker and the user can't pile up edits
-	// while a result is pending. On success we apply the confirmed value, toast,
-	// close, and reconcile (multi-tracker truth). On failure we keep the popover
-	// open with an error so the edit can be retried.
+	// Blocking, NOT optimistic: the popover shows "Saving…" with the controls
+	// disabled until the write confirms, so the button never shows a value that
+	// isn't really on a tracker and the user can't pile up edits while a result
+	// is pending. The user may dismiss it meanwhile (a save can wait out a
+	// tracker's rate limit); reopened, it shows the save still out, locked. On
+	// success we apply the confirmed value, toast, close, and reconcile
+	// (multi-tracker truth). On failure we toast and leave the popover as it is
+	// so the edit can be retried.
 	async function save() {
-		if (disabled || saving || removing) return;
+		if (disabled || flight) return;
 		const id = kitsuId;
-		saving = true;
 		const statusChanged = statusWriteIntended(pendingActive, editStatus, seededStatus);
+		// What this save sends, captured now: the popover can be dismissed while
+		// the save waits, and the form is not what it sent by the time it lands.
+		const sentStatus = editStatus;
+		const sentProgress = editProgress;
+		flights = withFlight(flights, id, {
+			kind: 'saving',
+			sent: { status: sentStatus, progress: sentProgress, seededStatus }
+		});
 		const res = await runEditorSave(
 			{ syncSetEntry },
 			{
 				kitsuId: id,
 				disabled,
-				save: { status: editStatus, statusChanged, progress: editProgress, total }
+				save: { status: sentStatus, statusChanged, progress: sentProgress, total }
 			}
 		);
-		saving = false;
-		if (kitsuId !== id) return; // navigated away mid-save — don't touch the new show
-		if (res.kind === 'noop') return;
-		if (res.kind === 'failed') {
-			toastStore.push({
-				kind: 'error',
-				message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-			});
-			return; // keep the popover open to retry
-		}
+		flights = withoutFlight(flights, id);
+		const settled = settleSave(res, kitsuId === id);
+		if (settled.toast) toastStore.push(settled.toast);
+		// A failure keeps the popover as it is to retry; a show changed mid-save
+		// leaves the new show's state alone.
+		if (!settled.local || (res.kind !== 'partial' && res.kind !== 'saved')) return;
 		if (res.kind === 'partial') {
 			// Some trackers took it, others didn't. Apply the landed value to the
 			// button immediately so it reflects what at least one tracker now holds
@@ -177,14 +200,12 @@
 				id,
 				'partial',
 				statusChanged,
-				editStatus,
-				editProgress
+				sentStatus,
+				sentProgress
 			);
-			toastStore.push({ kind: 'error', message: m.detail_list_save_partial() });
 			onReconcile();
 			return;
 		}
-		toastStore.push({ kind: 'success', message: m.detail_list_saved() });
 		live = res.live;
 		// Every tracker took it — the divergence is gone, so drop any pending retry.
 		pendingEdit = pendingAfterSave(
@@ -192,8 +213,8 @@
 			id,
 			'saved',
 			statusChanged,
-			editStatus,
-			editProgress
+			sentStatus,
+			sentProgress
 		);
 		open = false;
 		onReconcile();
@@ -229,26 +250,32 @@
 		}
 		// (2) Same show, transiently disabled: a save that refreshes a near-expiry
 		// token flips accountStore and kicks a loud re-read that briefly disables
-		// us. Don't close mid-write — that would drop the pre-save seed a partial
-		// retry needs. Once the write settles this re-runs and closes if needed.
+		// us. Don't close mid-write on that account — the user is watching the
+		// save. Once the write settles this re-runs and closes if needed.
 		if (disabled && !saving && !removing) open = false;
 	});
 
 	function toggle() {
-		// Don't open while disabled — the live entry is still loading or its
-		// read failed, so the form would seed Planning/0 and a Save could
-		// overwrite a real entry whose status we don't actually know yet.
-		if (disabled) return;
-		if (open) {
-			closeEditor(); // guarded: a no-op while a write is in flight (preserves the seed)
+		const act = editorToggle({ open, busy: saving || removing, disabled });
+		if (act === 'ignore') return;
+		if (act === 'close') {
+			closeEditor();
 			return;
 		}
-		// Re-seed from a surviving pending edit (an unfinished partial-save retry
-		// for this show) when present, else from the live view.
-		const seed = seedForOpen(view, pendingEdit, kitsuId);
-		editStatus = seed.status;
-		editProgress = seed.progress;
-		seededStatus = seed.seededStatus;
+		const sent = act === 'reopen' && flight ? reopenForm(flight) : null;
+		if (sent) {
+			// The save still out for this show: show what it sent, locked.
+			editStatus = sent.status;
+			editProgress = sent.progress;
+			if (sent.seededStatus) seededStatus = sent.seededStatus;
+		} else {
+			// Re-seed from a surviving pending edit (an unfinished partial-save
+			// retry for this show) when present, else from the live view.
+			const seed = seedForOpen(view, pendingEdit, kitsuId);
+			editStatus = seed.status;
+			editProgress = seed.progress;
+			seededStatus = seed.seededStatus;
+		}
 		openedFor = kitsuId;
 		open = true;
 	}
@@ -293,21 +320,16 @@
 	// the delete confirms; success closes + toasts + reconciles; failure keeps
 	// the popover open with an error to retry.
 	async function remove() {
-		if (disabled || saving || removing) return;
+		if (disabled || flight) return;
 		const id = kitsuId;
-		removing = true;
+		flights = withFlight(flights, id, { kind: 'removing' });
 		const res = await runEditorRemove({ syncRemoveEntry }, { kitsuId: id, disabled });
-		removing = false;
-		if (kitsuId !== id) return; // navigated away mid-remove
-		if (res.kind === 'noop') return;
-		if (res.kind === 'failed') {
-			toastStore.push({
-				kind: 'error',
-				message: res.rateLimited ? m.detail_list_rate_limited() : m.detail_list_save_failed()
-			});
-			return; // keep the popover open to retry
-		}
-		toastStore.push({ kind: 'success', message: m.detail_list_removed() });
+		flights = withoutFlight(flights, id);
+		const settled = settleRemove(res, kitsuId === id);
+		if (settled.toast) toastStore.push(settled.toast);
+		// A failure keeps the popover open to retry; a show changed mid-remove
+		// leaves the new show's state alone.
+		if (!settled.local) return;
 		live = null;
 		// The entry's gone everywhere, so any pending status retry is moot.
 		pendingEdit = null;
@@ -342,7 +364,6 @@
 					type="button"
 					class="le-close"
 					aria-label={m.detail_list_close()}
-					disabled={busy}
 					onclick={closeEditor}>✕</button
 				>
 			</header>

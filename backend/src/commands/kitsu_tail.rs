@@ -19,6 +19,9 @@ pub const KITSU_PAGE: u32 = 20;
 pub struct KitsuTail<'a> {
     state: &'a AppState,
     kitsu_id: &'a str,
+    /// Where AniList's airing answer is asked: `None`, AniList itself,
+    /// outside tests.
+    anilist_base: Option<&'a str>,
 }
 
 impl<'a> KitsuTail<'a> {
@@ -26,9 +29,21 @@ impl<'a> KitsuTail<'a> {
     /// with no entry behind it.
     #[must_use]
     pub fn for_entry(state: &'a AppState, kitsu_id: Option<&'a str>) -> Option<Self> {
-        kitsu_id
-            .filter(|id| !id.is_empty())
-            .map(|kitsu_id| Self { state, kitsu_id })
+        kitsu_id.filter(|id| !id.is_empty()).map(|kitsu_id| Self {
+            state,
+            kitsu_id,
+            anilist_base: None,
+        })
+    }
+
+    /// The same source asking a mock AniList at `base`.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_anilist_base(self, base: &'a str) -> Self {
+        Self {
+            anilist_base: Some(base),
+            ..self
+        }
     }
 }
 

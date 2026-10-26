@@ -8,6 +8,8 @@ import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
+import { keepWrite, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
 	/** Providers currently connected (from the account store). */
@@ -22,6 +24,15 @@ export interface PushWatchedDeps {
 		bearer: string,
 		body: { kitsu_id: string; progress: number; status?: string }
 	) => Promise<ListEntry | null>;
+	/** How each provider's write is run; once when omitted. */
+	runWrite?: <T>(
+		provider: Provider,
+		kitsuId: string,
+		attempt: (held: HeldWrite) => Promise<T>,
+		fields?: readonly WriteField[]
+	) => Promise<T>;
+	/** Tell the user `provider` did not take the write. */
+	reportFailure?: (provider: Provider) => void;
 }
 
 /**
@@ -78,15 +89,32 @@ export async function pushWatchedToTrackers(
 	const body = status
 		? { kitsu_id: kitsuId, progress: episode, status }
 		: { kitsu_id: kitsuId, progress: episode };
+	const fields: readonly WriteField[] = status ? ['status', 'progress'] : ['progress'];
+	const runWrite =
+		deps.runWrite ?? ((_provider, _kitsuId, attempt) => attempt({ left: () => fields }));
 	await Promise.all(
 		deps.connected.map(async (provider) => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return;
 			try {
-				await deps.updateProgress(provider, bearer, body);
-			} catch {
-				// Best-effort: a single tracker failing must not block the
-				// others or surface to the caller. Retry/toast deferred.
+				await runWrite(
+					provider,
+					kitsuId,
+					(held) => {
+						// Only what no newer write of the show has covered, and
+						// never a completion without its episode (`keepWrite`).
+						const rest = keepWrite(body, fields, held.left());
+						if (rest === null) throw new SupersededError();
+						return deps.updateProgress(provider, bearer, rest);
+					},
+					fields
+				);
+			} catch (e) {
+				// A single tracker failing must not block the others or
+				// reject the caller; it is reported to the user instead —
+				// unless a newer write of the show replaced it while it
+				// waited, which is no failure.
+				if (!(e instanceof SupersededError)) deps.reportFailure?.(provider);
 			}
 		})
 	);
@@ -111,7 +139,11 @@ export async function syncWatchedToTrackers(
 			// Refresh a near-expiry token before the write so a long-open
 			// session doesn't push progress with a stale bearer.
 			bearerFor: (provider) => freshBearerFor(provider),
-			updateProgress
+			updateProgress,
+			// A write AniList holds back waits with a notice and goes again;
+			// one that still cannot be saved is said, not dropped.
+			runWrite: saveWhenTrackerAllows,
+			reportFailure: reportProgressNotSaved
 		},
 		kitsuId,
 		episode,

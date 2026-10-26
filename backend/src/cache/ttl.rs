@@ -28,21 +28,12 @@ pub const EPISODES_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 /// release.
 pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
-/// Short negative-cache TTL for AniList `streamingEpisodes` lookups
-/// that error out (typically 429 in the home-page cold-load burst
-/// where multiple Continue Watching rows each fire an AniList call
-/// in parallel against the 30/min unauth limit). Caching empty for
-/// a few minutes stops the burst from recurring on every navigation
-/// while still letting retries happen after the rate-limit window
-/// resets.
-pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60); // 5min
-
-/// How long a row built while a question it depends on went
-/// unanswered is kept: long enough that a burst of reads (a rail, a
-/// play's lookups) does not ask the failing service again each time,
-/// short enough that the answer it lacks is asked for again within
-/// minutes rather than after the row's own lifetime.
-pub const UNANSWERED_TTL: Duration = Duration::from_secs(5 * 60); // 5min
+/// Short negative-cache TTL for the episode-thumbnail backfill of a
+/// show Kitsu maps to neither AniList nor MAL — an answer, though one
+/// a new mapping can change. A lookup that got no answer (AniList or
+/// Kitsu failing or refusing) is never cached; the AniList gate
+/// (`meta::anilist_gate`) is what keeps its retries under the limit.
+pub const ANILIST_STREAMING_EPS_NO_IDS_TTL: Duration = Duration::from_secs(5 * 60); // 5min
 
 /// TTL for title-match cache (Kitsu/AniList → provider id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
