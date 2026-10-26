@@ -1027,7 +1027,10 @@ async fn a_stale_list_does_not_offer_a_banner_since_found_gone() {
     let anilist = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+            "data": { "Page": { "media": [
+                anilist_entry(101, 21, Some(BANNER)),
+                anilist_entry(102, 22, Some(BANNER)),
+            ] } }
         })))
         .up_to_n_times(1)
         .with_priority(1)
@@ -1063,6 +1066,7 @@ async fn a_stale_list_does_not_offer_a_banner_since_found_gone() {
         })))
         .mount(&kitsu)
         .await;
+    mount_mapping(&kitsu, 22, "13").await;
     mount_kitsu_airing_list(&kitsu).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let first = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
@@ -1075,7 +1079,7 @@ async fn a_stale_list_does_not_offer_a_banner_since_found_gone() {
             .and_then(|c| c.large.as_deref()),
         Some(BANNER)
     );
-    expire_trending_row(&state);
+    let kept = expire_trending_row(&state);
     crate::meta::images::mark_dead(&state.cache_pool, BANNER);
 
     let stale = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
@@ -1087,4 +1091,20 @@ async fn a_stale_list_does_not_offer_a_banner_since_found_gone() {
         stale[0].cover_image.is_none(),
         "a gone banner was offered as the cover"
     );
+    // Show 13 has a cover of its own: the gone banner goes, the cover
+    // stays.
+    assert_eq!(stale[1].id, "13");
+    assert_eq!(stale[1].anilist_banner, None);
+    assert_eq!(
+        stale[1]
+            .cover_image
+            .as_ref()
+            .and_then(|c| c.large.as_deref()),
+        Some("https://media.kitsu.app/13.jpg")
+    );
+    // The row keeps AniList's answer as it came.
+    let after = crate::cache::meta_cache_row(&state.cache_pool, TRENDING_KEY)
+        .expect("read")
+        .expect("the row is kept");
+    assert_eq!(after.body, kept);
 }
