@@ -251,3 +251,107 @@ async fn airing_status_is_none_for_anilists_not_found_reply() {
         .expect("absence is not an upstream failure");
     assert!(got.is_none());
 }
+
+/// A by-MAL batch page listing `media` as `(idMal, status, episodes)`,
+/// with `cut` as its `hasNextPage`.
+fn by_mal_page(media: &[(u32, &str, u32)], cut: bool) -> String {
+    let nodes: Vec<String> = media
+        .iter()
+        .map(|(mal, status, eps)| {
+            format!(
+                r#"{{"idMal":{mal},"status":"{status}","episodes":{eps},"nextAiringEpisode":null,"airingSchedule":{{"nodes":[]}}}}"#
+            )
+        })
+        .collect();
+    format!(
+        r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":{cut}}},"media":[{}]}}}}}}"#,
+        nodes.join(",")
+    )
+}
+
+#[tokio::test]
+async fn a_mal_id_several_media_record_is_seeded_as_the_single_lookup_answers() {
+    // AniList 137728 (finished, 52) and 196613 (not yet released)
+    // both record MAL 51039. The batch lists both; the single airing
+    // lookup by MAL id, which the detail page makes, answers 137728.
+    // The batch takes that answer, not whichever node came last.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(by_mal_page(
+                &[
+                    (51039, "FINISHED", 52),
+                    (51039, "NOT_YET_RELEASED", 62),
+                    (7, "FINISHED", 12),
+                ],
+                false,
+            )),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .and(wiremock::matchers::body_string_contains("\"idMal\":51039"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"status":"FINISHED","episodes":52,"nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[51039, 7], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&51039).and_then(|s| s.aired), Some(52));
+    assert_eq!(got.get(&7).and_then(|s| s.aired), Some(12));
+}
+
+#[tokio::test]
+async fn a_by_mal_batch_whose_page_was_cut_is_split_until_every_page_is_whole() {
+    let server = wiremock::MockServer::start().await;
+    for (ids, page) in [
+        ("[1,2]", by_mal_page(&[(1, "FINISHED", 10)], true)),
+        ("[1]", by_mal_page(&[(1, "FINISHED", 10)], false)),
+        ("[2]", by_mal_page(&[(2, "FINISHED", 20)], false)),
+    ] {
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_string_contains(ids))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(page))
+            .mount(&server)
+            .await;
+    }
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[1, 2], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1).and_then(|s| s.aired), Some(10));
+    assert_eq!(got.get(&2).and_then(|s| s.aired), Some(20));
+}
+
+#[tokio::test]
+async fn a_failed_single_lookup_leaves_only_its_mal_id_out_of_the_batch() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(by_mal_page(
+                &[
+                    (51039, "FINISHED", 52),
+                    (51039, "NOT_YET_RELEASED", 62),
+                    (7, "FINISHED", 12),
+                ],
+                false,
+            )),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[51039, 7], Some(&server.uri()))
+        .await
+        .expect("the batch answered");
+    assert_eq!(got.get(&51039), None);
+    assert_eq!(got.get(&7).and_then(|s| s.aired), Some(12));
+}
