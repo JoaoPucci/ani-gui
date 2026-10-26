@@ -1000,3 +1000,74 @@ async fn a_stale_list_is_replaced_once_anilist_answers_again() {
         .expect("the new answer is kept");
     assert!(row.contains("\"13\""), "{row}");
 }
+
+#[tokio::test]
+async fn a_stale_list_does_not_offer_a_banner_since_found_gone() {
+    // The last list carries AniList's banner, as the hero's image and as
+    // the cover it filled in for a show Kitsu had none for. The image
+    // proxy has since found that URL gone: the stale list is served
+    // without it, as a fresh answer would have been.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "m-21",
+                "type": "mappings",
+                "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+                "relationships": { "item": { "data": { "type": "anime", "id": "12" } } },
+            }],
+            "included": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": {
+                    "canonicalTitle": "Show 12",
+                    "titles": {},
+                    "subtype": "TV",
+                    "status": "current",
+                    "posterImage": null,
+                    "coverImage": null,
+                },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    mount_kitsu_airing_list(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let first = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("AniList's answer");
+    assert_eq!(
+        first[0]
+            .cover_image
+            .as_ref()
+            .and_then(|c| c.large.as_deref()),
+        Some(BANNER)
+    );
+    expire_trending_row(&state);
+    crate::meta::images::mark_dead(&state.cache_pool, BANNER);
+
+    let stale = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("the last list");
+    assert_eq!(stale[0].id, "12");
+    assert_eq!(stale[0].anilist_banner, None, "a gone banner was offered");
+    assert!(
+        stale[0].cover_image.is_none(),
+        "a gone banner was offered as the cover"
+    );
+}
