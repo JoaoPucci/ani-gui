@@ -160,3 +160,17 @@ fn an_anime_that_leaves_out_its_count_status_or_type_is_no_answer() {
     }
     assert!(evidence::parse_media_evidence(full.to_string().as_bytes()).is_ok());
 }
+
+#[test]
+fn an_anime_with_no_relations_is_sent_with_an_empty_related_anime() {
+    // Perfect Blue, read with the evidence fields: MyAnimeList answers
+    // a show with no related anime with `related_anime: []`, not by
+    // leaving the key out, so the reader's refusal of a missing key
+    // never refuses a real show with no relations.
+    let body = include_str!("../../../tests/fixtures/tracker-map/wire/mal-anime-437.json");
+    let got = evidence::parse_media_evidence(body.as_bytes()).expect("an answer");
+    assert!(got.sequels.is_empty());
+    assert!(!got.series);
+    assert_eq!(got.show.episodes, Some(1));
+    assert!(got.show.finished);
+}
