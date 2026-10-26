@@ -324,12 +324,68 @@ fn any_evidence() -> impl Strategy<Value = Evidence> {
         })
 }
 
+/// Evidence one of the rules fires on, then one field of it nudged: a
+/// count off by one, a finished flag flipped, a hop unknown or claimed,
+/// a date unreal, the list or a part one short. Some nudges leave the
+/// rule firing, some break it, some wake a rival.
+fn near_rule_evidence() -> impl Strategy<Value = Evidence> {
+    let base = prop_oneof![
+        chain_evidence(),
+        extras_evidence().prop_map(|(ev, _)| ev),
+        parts_evidence().prop_map(|(ev, _)| ev),
+        filing_evidence().prop_map(|(ev, _)| ev),
+    ];
+    (base, 0u8..10).prop_map(|(mut ev, nudge)| {
+        // The show's count moves with it wherever the evidence names it:
+        // the show is one of the parts and of the mapped set, not a
+        // second reading of them.
+        let recount = |ev: &mut Evidence, f: fn(u32) -> u32| {
+            let ours = ev.kitsu.id.clone();
+            ev.kitsu.episodes = ev.kitsu.episodes.map(f);
+            for k in ev.parts.iter_mut().chain(ev.sharing.iter_mut()) {
+                if k.id == ours {
+                    k.episodes = k.episodes.map(f);
+                }
+            }
+        };
+        match nudge {
+            1 => recount(&mut ev, |n| n.saturating_add(1)),
+            2 => recount(&mut ev, |n| n.saturating_sub(1)),
+            3 => ev.entry.finished = !ev.entry.finished,
+            4 => {
+                if let Some(hop) = ev.chain.first_mut() {
+                    hop.episodes = None;
+                }
+            }
+            5 => ev.claimed = ev.chain.iter().map(|s| s.id).take(1).collect(),
+            6 => ev.kitsu.start = Some("2001-02-31".into()),
+            7 => {
+                if let Some(listed) = ev.listed.as_mut() {
+                    listed.pop();
+                }
+            }
+            8 => {
+                ev.parts.pop();
+            }
+            9 => {
+                ev.sharing.pop();
+            }
+            _ => {}
+        }
+        ev
+    })
+}
+
 proptest! {
     /// Whatever evidence arrives, the rules answer: they never panic,
     /// whatever counts or dates the services sent. A map they answer
-    /// with a small count holds the invariants every shape shares.
+    /// with a small count holds the invariants every shape shares —
+    /// checked on evidence near a rule as well as on free evidence,
+    /// since free evidence almost never makes a rule fire.
     #[test]
-    fn any_evidence_maps_without_panicking(ev in any_evidence()) {
+    fn any_evidence_maps_without_panicking(
+        ev in prop_oneof![any_evidence(), near_rule_evidence()]
+    ) {
         let map = map_show(&ev);
         if let (Shape::Identity(_), true) = (map.shape, map.segments.is_empty()) {
             return Ok(());
@@ -373,10 +429,17 @@ fn pooled_kitsu() -> impl Strategy<Value = KitsuShow> {
 }
 
 /// Evidence where Kitsu's parts and the entries mapped to the tracker's
+/// entry overlap: free evidence of that kind, and evidence built so a
+/// rule fires or nearly does.
+fn filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
+    prop_oneof![free_filing_evidence(), firing_filing_evidence()]
+}
+
+/// Evidence where Kitsu's parts and the entries mapped to the tracker's
 /// entry overlap: the show one of the parts or not, the mapped set a
 /// mix of the parts and others, the entry's list of numbers present or
-/// not.
-fn filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
+/// not. Every field is drawn on its own, so a rule seldom fires.
+fn free_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
     (
         pooled_kitsu(),
         prop::collection::vec(pooled_kitsu(), 0..5),
@@ -403,6 +466,223 @@ fn filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
             };
             (ev, total)
         })
+}
+
+/// How the entries mapped to the tracker's entry stand to Kitsu's chain
+/// of parts in [`firing_filing_evidence`].
+#[derive(Debug, Clone, Copy)]
+enum Mapped {
+    /// The chain's parts exactly: the shared-entry rule and the chain
+    /// agree.
+    Same,
+    /// The chain's parts with one besides the show renamed: the set
+    /// still sums to the total, and the chain files the entry otherwise.
+    Outsider,
+    /// The chain's parts without one besides the show: the set falls
+    /// short of the total.
+    Missing,
+    /// The chain's parts and the first part past the total: the chain
+    /// is contradicted.
+    Late,
+    /// The chain's parts, one of them without a start date.
+    Undated,
+    /// None mapped.
+    Empty,
+}
+
+/// `YYYY-MM-DD` for the `day`th day of 2020 counting 28 to a month:
+/// distinct days give distinct, real, full dates.
+fn day_of_2020(day: u32) -> String {
+    format!("2020-{:02}-{:02}", day / 28 + 1, day % 28 + 1)
+}
+
+/// The tracker's episode list over the first part's `first` episodes
+/// with `extras` extras besides — `0`, `w.5`, `w.25`, `w.75` for `w` up
+/// to `first`, started `rotate` along — each listed once or twice.
+fn listing_with_extras(first: u32, extras: u32, rotate: usize, twice: bool) -> Vec<String> {
+    let mut candidates = vec!["0".to_string()];
+    for fraction in ["5", "25", "75"] {
+        candidates.extend((0..=first).map(|w| format!("{w}.{fraction}")));
+    }
+    let len = candidates.len();
+    candidates.rotate_left(rotate % len);
+    let mut listed: Vec<String> = (1..=first).map(|n| n.to_string()).collect();
+    for extra in candidates
+        .into_iter()
+        .take(usize::try_from(extras).unwrap_or(0))
+    {
+        if twice {
+            listed.push(extra.clone());
+        }
+        listed.push(extra);
+    }
+    listed
+}
+
+/// Filing evidence built so the part-filing rules fire or nearly do:
+/// Kitsu's chain of two to four parts with distinct ids and distinct
+/// real start dates, the show one of them, summing to the entry's total
+/// (or one off it), maybe running on past it; the mapped set standing
+/// to the chain as [`Mapped`] says; the entry's list, when present,
+/// explaining the surplus over the first part exactly or one short.
+fn firing_filing_evidence() -> impl Strategy<Value = (Evidence, u32)> {
+    (2usize..=4)
+        .prop_flat_map(|n| {
+            (
+                prop::collection::vec(1u32..=6, n),
+                Just((0..5).map(|i| format!("p{i}")).collect::<Vec<_>>()).prop_shuffle(),
+                prop::collection::btree_set(0u32..336, n)
+                    .prop_map(|days| days.into_iter().collect::<Vec<_>>())
+                    .prop_shuffle(),
+                0..n,
+                prop_oneof![
+                    3 => Just(Mapped::Same),
+                    3 => Just(Mapped::Outsider),
+                    1 => Just(Mapped::Missing),
+                    1 => Just(Mapped::Late),
+                    1 => Just(Mapped::Undated),
+                    2 => Just(Mapped::Empty),
+                ],
+                prop::collection::vec(1u32..=6, 0..=2),
+                prop_oneof![4 => Just(0i8), 1 => Just(1), 1 => Just(-1)],
+                prop_oneof![1 => Just(None), 2 => Just(Some(0u32)), 1 => Just(Some(1))],
+                (0usize..16, any::<bool>(), any::<bool>()),
+            )
+        })
+        .prop_map(
+            |(counts, ids, days, ours, mapped, past, off, listing, (rotate, twice, finished))| {
+                let mut parts: Vec<KitsuShow> = counts
+                    .iter()
+                    .zip(&ids)
+                    .zip(&days)
+                    .map(|((n, id), day)| KitsuShow {
+                        id: id.clone(),
+                        episodes: Some(*n),
+                        start: Some(day_of_2020(*day)),
+                        end: None,
+                    })
+                    .collect();
+                let chain_len = parts.len();
+                let sum: u32 = counts.iter().sum();
+                let total = sum.saturating_add_signed(i32::from(off)).max(1);
+                let other = (ours + 1) % chain_len;
+                let mut sharing = parts.clone();
+                for (i, n) in past.iter().enumerate() {
+                    parts.push(KitsuShow {
+                        id: format!("t{i}"),
+                        episodes: Some(*n),
+                        start: Some(day_of_2020(336 + u32::try_from(i).unwrap_or(0))),
+                        end: None,
+                    });
+                }
+                match mapped {
+                    Mapped::Same => {}
+                    Mapped::Outsider => sharing[other].id = "q0".into(),
+                    Mapped::Missing => {
+                        sharing.remove(other);
+                    }
+                    Mapped::Late => sharing.extend(parts.get(chain_len).cloned()),
+                    Mapped::Undated => sharing[other].start = None,
+                    Mapped::Empty => sharing.clear(),
+                }
+                let first = counts[0];
+                let listed = listing.map(|short| {
+                    let surplus = total.saturating_sub(first).saturating_sub(short);
+                    listing_with_extras(first, surplus, rotate, twice)
+                });
+                let ev = Evidence {
+                    kitsu: parts[ours].clone(),
+                    entry: TrackerShow {
+                        id: 9,
+                        id_mal: None,
+                        episodes: Some(total),
+                        finished,
+                        start: None,
+                        end: None,
+                    },
+                    listed,
+                    sharing,
+                    parts,
+                    ..Default::default()
+                };
+                (ev, total)
+            },
+        )
+}
+
+/// A shared set summing exactly to the largest total there is, the show
+/// among it, beside a run of Kitsu parts whose sum passes what `u32`
+/// counts before it reaches that total.
+fn overflowing_run_beside_a_shared_set() -> impl Strategy<Value = Evidence> {
+    (
+        prop::collection::vec(1u32..=6, 1..=2),
+        prop::collection::vec(u32::MAX - 6..u32::MAX, 2..=3),
+        any::<bool>(),
+        any::<bool>(),
+    )
+        .prop_map(|(small, run, ours_first, finished)| {
+            let small_sum: u32 = small.iter().sum();
+            let mut counts = small;
+            counts.push(u32::MAX - small_sum);
+            let sharing: Vec<KitsuShow> = counts
+                .iter()
+                .enumerate()
+                .map(|(i, n)| KitsuShow {
+                    id: format!("s{i}"),
+                    episodes: Some(*n),
+                    start: Some(day_of_2020(u32::try_from(i).unwrap_or(0))),
+                    end: None,
+                })
+                .collect();
+            let kitsu = if ours_first {
+                sharing[0].clone()
+            } else {
+                sharing[sharing.len() - 1].clone()
+            };
+            let mut parts: Vec<KitsuShow> = run
+                .iter()
+                .enumerate()
+                .map(|(i, n)| KitsuShow {
+                    id: format!("r{i}"),
+                    episodes: Some(*n),
+                    start: None,
+                    end: None,
+                })
+                .collect();
+            // The run may open with the show itself.
+            if ours_first {
+                parts[0].id = kitsu.id.clone();
+            }
+            Evidence {
+                kitsu,
+                entry: TrackerShow {
+                    id: 9,
+                    id_mal: None,
+                    episodes: Some(u32::MAX),
+                    finished,
+                    start: None,
+                    end: None,
+                },
+                sharing,
+                parts,
+                ..Default::default()
+            }
+        })
+}
+
+/// Filing evidence with every id once in the parts and once in the
+/// mapped set. The gatherer pushes a mapped entry only when the set
+/// lacks its id, so the set never repeats one; Kitsu's sequel walk
+/// could in principle revisit a part, but [`files_otherwise_model`]
+/// compares the ids as sets, which a repeated part would make
+/// disagree with the rule's count-based comparison, so the property
+/// over that model keeps the parts unique too.
+fn unique_ids((mut ev, total): (Evidence, u32)) -> (Evidence, u32) {
+    for list in [&mut ev.parts, &mut ev.sharing] {
+        let mut seen = std::collections::BTreeSet::new();
+        list.retain(|p| seen.insert(p.id.clone()));
+    }
+    (ev, total)
 }
 
 /// Filing evidence whose parts sum past what `u32` counts, against the
@@ -445,23 +725,54 @@ fn shortest_reaching_prefix(parts: &[KitsuShow], total: u32) -> Option<&[KitsuSh
     None
 }
 
+/// Whether Kitsu's chain files the entry otherwise than the mapped
+/// set, stated from the rule's description rather than its code: the
+/// shortest run of parts reaching the total, summed in `u64` so no sum
+/// overflows, equals the total exactly, holds two parts or more, and
+/// takes a set of ids other than the mapped set's.
+fn files_otherwise_model(ev: &Evidence, total: u32) -> bool {
+    let Some(run) = shortest_reaching_prefix(&ev.parts, total) else {
+        return false;
+    };
+    let sum: u64 = run.iter().filter_map(|p| p.episodes).map(u64::from).sum();
+    let run_ids: std::collections::BTreeSet<&str> = run.iter().map(|p| p.id.as_str()).collect();
+    let mapped_ids: std::collections::BTreeSet<&str> =
+        ev.sharing.iter().map(|k| k.id.as_str()).collect();
+    sum == u64::from(total) && run.len() >= 2 && run_ids != mapped_ids
+}
+
 proptest! {
     /// Kitsu's chain files the entry otherwise than the mapped set
     /// exactly when the shortest run of parts reaching the entry's
-    /// total sums to it exactly, holds two parts or more, and is not
-    /// the mapped set: a different number of entries, or a mapped one
-    /// the run does not take.
+    /// total sums to it exactly, holds two parts or more, and takes
+    /// other entries than the mapped set ([`files_otherwise_model`]).
     #[test]
     fn the_chain_files_otherwise_exactly_when_its_reaching_run_is_not_the_mapped_set(
-        (ev, total) in prop_oneof![4 => filing_evidence(), 1 => overflowing_filing_evidence()]
+        (ev, total) in prop_oneof![
+            4 => filing_evidence().prop_map(unique_ids),
+            1 => overflowing_filing_evidence().prop_map(unique_ids),
+        ]
     ) {
-        let want = shortest_reaching_prefix(&ev.parts, total).is_some_and(|run| {
-            let sum: u64 = run.iter().filter_map(|p| p.episodes).map(u64::from).sum();
-            let differs = run.len() != ev.sharing.len()
-                || ev.sharing.iter().any(|k| !run.iter().any(|p| p.id == k.id));
-            sum == u64::from(total) && run.len() >= 2 && differs
-        });
-        prop_assert_eq!(chain_files_otherwise(&ev, total), want);
+        prop_assert_eq!(chain_files_otherwise(&ev, total), files_otherwise_model(&ev, total));
+    }
+
+    /// A run of Kitsu parts that passes what `u32` counts reaches no
+    /// total, so it rivals nothing: beside a shared set that sums to the
+    /// entry exactly, the map is the shared set's, never a conflict.
+    #[test]
+    fn a_run_past_u32_beside_a_summing_shared_set_is_no_conflict(
+        ev in overflowing_run_beside_a_shared_set()
+    ) {
+        let total = u32::MAX;
+        let shared = shared_entry(&ev, total);
+        prop_assert!(shared.is_some());
+        prop_assert!(!chain_files_otherwise(&ev, total));
+        let map = map_show(&ev);
+        prop_assert_ne!(map.shape, Shape::Identity(Identity::Conflict));
+        prop_assert_eq!(
+            map,
+            EpisodeMap { shape: Shape::SharedEntry, segments: shared.unwrap_or_default() }
+        );
     }
 
     /// Where the shared-entry rule places the show and Kitsu's chain
