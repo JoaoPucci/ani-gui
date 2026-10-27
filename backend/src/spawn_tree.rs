@@ -13,11 +13,13 @@ struct ProcessGroup {
 #[cfg(unix)]
 impl super::Tree for ProcessGroup {
     fn running(&mut self) -> bool {
-        std::process::Command::new("kill")
-            .args(["-0", "--", &format!("-{}", self.pgid)])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        still_running(
+            std::process::Command::new("kill")
+                .args(["-0", "--", &format!("-{}", self.pgid)])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success()),
+        )
     }
 
     fn kill(&mut self) {
@@ -49,6 +51,9 @@ pub(super) fn process_group(child: &tokio::process::Child) -> Option<Box<dyn sup
 #[cfg(windows)]
 struct JobTree {
     job: Option<win32job::Job>,
+    /// A failed read of the job was logged: a teardown reads it every
+    /// few milliseconds, so it is logged once per tree.
+    warned: bool,
 }
 
 #[cfg(windows)]
@@ -57,13 +62,14 @@ impl super::Tree for JobTree {
         let Some(job) = &self.job else {
             return false;
         };
-        match job.query_process_id_list() {
-            Ok(pids) => !pids.is_empty(),
-            Err(e) => {
+        let look = job.query_process_id_list().map(|pids| !pids.is_empty());
+        if let Err(e) = &look {
+            if !self.warned {
                 tracing::warn!(error = ?e, "a tool's job could not be read");
-                false
+                self.warned = true;
             }
         }
+        still_running(look)
     }
 
     fn kill(&mut self) {}
@@ -71,5 +77,17 @@ impl super::Tree for JobTree {
 
 #[cfg(windows)]
 pub(super) fn job_tree(job: Option<win32job::Job>) -> Option<Box<dyn super::Tree>> {
-    Some(Box::new(JobTree { job }))
+    Some(Box::new(JobTree { job, warned: false }))
 }
+
+/// Whether a look at a tree found it still running: what the look
+/// answered, or, when the look could not be made, running — a failed
+/// look says nothing about the tree, and only a tree seen gone ends a
+/// teardown's wait.
+fn still_running<E>(look: Result<bool, E>) -> bool {
+    look.unwrap_or(true)
+}
+
+#[cfg(test)]
+#[path = "spawn_tree_test.rs"]
+mod tests;

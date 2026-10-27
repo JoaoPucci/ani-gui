@@ -33,11 +33,14 @@ type GuardedChild = Box<dyn process_wrap::tokio::ChildWrapper>;
 /// keeps the group's id past the child's reap: a group with a process
 /// still in it keeps its id from being handed out again, so signalling
 /// the group stays safe until it is empty. The group is signalled only
-/// after a look finds someone in it; an empty group answers that look
-/// with no such process, and nothing is sent. What the look cannot
-/// rule out is the id being freed and handed to a new group leader in
-/// the moment between it and the kill — a full turn of the pid space
-/// in milliseconds.
+/// after a look finds someone in it, or a look could not be made; an
+/// empty group answers that look with no such process, and nothing is
+/// sent. A look that could not be made says nothing, and the group is
+/// signalled as one still running: a tree left running beside what
+/// follows is worse than a kill sent unlooked. What a look cannot rule
+/// out is the id being freed and handed to a new group leader in the
+/// moment between it and the kill — a full turn of the pid space in
+/// milliseconds.
 ///
 /// On Windows the tool runs in two nested job objects. The kill ends
 /// the inner one — the child's own — whole, with no pid looked up; the
@@ -142,6 +145,7 @@ impl TreeKillChild {
         }
         self.kill_tree();
         let started = (std::time::Instant::now(), tokio::time::Instant::now());
+        let mut asked = started;
         loop {
             if self.tree_exited() {
                 self.tree = None;
@@ -152,6 +156,7 @@ impl TreeKillChild {
                 self.given_up = true;
                 return false;
             }
+            self.ask_again(&mut asked);
             tokio::time::sleep(TREE_EXIT_POLL).await;
         }
     }
@@ -175,13 +180,35 @@ impl TreeKillChild {
             return;
         }
         self.kill_tree();
+        // The drop's wait sleeps the thread, so its ceiling and its asks
+        // are on the wall clock whatever clock an awaited teardown uses.
         let deadline = std::time::Instant::now() + self.ceiling;
+        let mut asked = std::time::Instant::now();
         while !self.tree_exited() {
             if std::time::Instant::now() >= deadline {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 return;
             }
+            if asked.elapsed() >= TREE_KILL_REPEAT {
+                self.kill_tree();
+                asked = std::time::Instant::now();
+            }
             std::thread::sleep(TREE_EXIT_POLL);
+        }
+    }
+
+    /// Ask the tree to die again when the last ask, at `asked`, was
+    /// [`TREE_KILL_REPEAT`] or more ago, for a tree just seen still
+    /// running. A kill reaches the members the tree has as it lands: a
+    /// fork in flight then can add one after it — Linux guarantees the
+    /// child is killed too, macOS documents no such guarantee — which
+    /// nobody asked to die, and which would otherwise run on past the
+    /// ceiling. The last ask is timed on the clock the awaited
+    /// teardown's ceiling is ([`Self::since_past`]).
+    fn ask_again(&mut self, asked: &mut (std::time::Instant, tokio::time::Instant)) {
+        if self.since_past(*asked, TREE_KILL_REPEAT) {
+            self.kill_tree();
+            *asked = (std::time::Instant::now(), tokio::time::Instant::now());
         }
     }
 
@@ -225,3 +252,9 @@ impl Drop for TreeKillChild {
 pub(crate) const TREE_EXIT_CEILING: std::time::Duration = std::time::Duration::from_secs(2);
 
 const TREE_EXIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
+
+/// How long a teardown waits on a tree still running after a kill
+/// before it asks again. A process the kill reached exits in
+/// milliseconds; asking again this long after reaches one it did not,
+/// and costs nothing for one merely slow to go.
+pub(crate) const TREE_KILL_REPEAT: std::time::Duration = std::time::Duration::from_millis(100);
