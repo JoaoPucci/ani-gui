@@ -32,12 +32,32 @@ pub(crate) fn names_a_row_now(
     native: &crate::commands::play_native_resolve::NativeResolved,
 ) -> bool {
     let own = crate::commands::numbering_offset::kitsu_ep_no(former, native.numbering_offset);
-    native
-        .extra_tags
-        .iter()
-        .any(|t| match (t.parse::<f64>(), own.parse::<f64>()) {
+    carries_tag(&native.extra_tags, &own)
+}
+
+/// The former number a replay names: the one its cached row kept,
+/// while the listing's extra tags as the app last had the listing at
+/// hand (`listing_tags`) carry no row by it. `None` for the tags is a
+/// listing the app does not know, and then no former number is named:
+/// whether it has come to name another episode is unknown, and a
+/// position followed under it could be that episode's.
+pub(crate) fn former_on_replay(
+    kept: Option<&str>,
+    listing_tags: Option<&[String]>,
+) -> Option<String> {
+    let kept = kept?;
+    let tags = listing_tags?;
+    (!carries_tag(tags, kept)).then(|| kept.to_string())
+}
+
+/// Whether `tags`, a listing's extra tags in the entry's numbering,
+/// carry `number`: the same value where both read as numbers ("12.50"
+/// is "12.5"), the same text otherwise.
+pub(crate) fn carries_tag(tags: &[String], number: &str) -> bool {
+    tags.iter()
+        .any(|t| match (t.parse::<f64>(), number.parse::<f64>()) {
             (Ok(a), Ok(b)) => a == b,
-            _ => *t == own,
+            _ => t == number,
         })
 }
 

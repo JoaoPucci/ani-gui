@@ -6,15 +6,18 @@ use super::play::PlayArgs;
 proptest::proptest! {
     /// The launch carries the resolve and the settings field for
     /// field: the stream and the referer as the resolve gave them
-    /// (none staying none), the title composed from the request, and
-    /// the player command, kind and custom-argument template as
-    /// configured.
+    /// (none staying none), the title composed from the show's title
+    /// and the episode the watch records — the one the resolve played,
+    /// whatever number it was asked by — and the player command, kind
+    /// and custom-argument template as configured.
     #[test]
     fn the_launch_carries_the_resolve_and_the_settings_field_for_field(
         master_url in "https://[a-z]{1,10}\\.[a-z]{2,4}/[a-z0-9/._-]{0,30}",
         referer in proptest::option::of("https://[a-z]{1,10}\\.[a-z]{2,4}/"),
         show_title in "[A-Za-z0-9 ,:'!-]{1,30}",
         episode in "[0-9]{1,4}",
+        slot in 1u32..2000,
+        tag in proptest::option::of("[0-9]{1,3}(\\.5)?"),
         player in "[a-z]{1,10}",
         kind in proptest::sample::select(vec![
             crate::commands::external_player::ExternalPlayerKind::Mpv,
@@ -31,8 +34,8 @@ proptest::proptest! {
             episode_cap: None,
             numbering_offset: 0,
             extra_tags: Vec::new(),
-            resolved_slot: 1,
-            resolved_tag: None,
+            resolved_slot: slot,
+            resolved_tag: tag,
             referer: referer.clone(),
             subtitles: Vec::new(),
             provider: crate::scraper::provider::ProviderId::TestA,
@@ -54,10 +57,11 @@ proptest::proptest! {
             external_player_custom_args: custom.clone(),
             ..crate::config::Config::default()
         };
+        let played = crate::commands::play_native_record::Watch::of(&resolved, &episode).ep_no;
         let launch = super::play_handoff::launch_args_for(resolved, &args, &cfg);
         proptest::prop_assert_eq!(launch.stream_url, master_url);
         proptest::prop_assert_eq!(launch.referer, referer);
-        proptest::prop_assert_eq!(launch.title, Some(format!("{show_title} · ep {episode}")));
+        proptest::prop_assert_eq!(launch.title, Some(format!("{show_title} · ep {played}")));
         proptest::prop_assert_eq!(launch.player_command, player);
         proptest::prop_assert_eq!(launch.player_kind, kind);
         proptest::prop_assert_eq!(launch.custom_args_template, Some(custom));
