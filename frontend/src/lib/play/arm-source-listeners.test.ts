@@ -57,6 +57,18 @@ describe('armSourceScopedListeners', () => {
 		expect(video.currentTime).toBe(432.5);
 	});
 
+	it('says the stream starts where it resumes: a recovery, else the kept point, else nowhere', () => {
+		const start = (showId: string, episode: number) =>
+			armSourceScopedListeners({ video, showId, episode, scope, positions }).startAt;
+		savePosition('show-a', 6, 600, 1420, positions);
+		recoveryResume.capture('show-a', 6, 432.5);
+		expect(start('show-a', 6)).toBe(432.5);
+		expect(start('show-a', 6)).toBe(600);
+		savePosition('show-a', 7, 0, 1420, positions);
+		expect(start('show-a', 7)).toBeNull();
+		expect(start('show-a', 8)).toBeNull();
+	});
+
 	it('arms no seek without a capture, and consumes mismatches', () => {
 		recoveryResume.capture('show-a', 6, 432.5);
 		arm('show-b', 6);

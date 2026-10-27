@@ -1280,10 +1280,8 @@ describe('armQuality — settings still on their way', () => {
 		// The engine's own start is the stream's first fragment, whose
 		// first frame the element would then show before the resume
 		// seek moved it: the point is where loading begins instead.
-		// Built apart from the call, so the option is not an excess
-		// property of the input's literal.
 		const engine = new FakeEngine();
-		const input = {
+		armQuality({
 			engine: engine as unknown as Hls,
 			events: E,
 			video: new FakeVideo(),
@@ -1293,8 +1291,7 @@ describe('armQuality — settings still on their way', () => {
 			onView: () => {},
 			now: () => 1_000,
 			log: () => {}
-		};
-		armQuality(input);
+		});
 		engine.emit(E.MANIFEST_PARSED, { levels: MASTER });
 		expect(engine.startsAt).toEqual([612.5]);
 		const plain = armHeld(() => 'best');
