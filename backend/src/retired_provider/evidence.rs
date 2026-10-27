@@ -9,15 +9,15 @@
 //! finds it by it, so it can take a retired row's place on both. A
 //! guess — a mapping, a title match — makes neither surface certain.
 //! A retired row stands for every entry anything names for it: its
-//! recorded id, its mapping, every title match stored for its title.
+//! recorded id, its mapping, every title match stored for its title
+//! under any version or segment the detail page reads it by.
 //! More entries there only mean more a walked row must cover before
 //! the retired row goes.
 
 use crate::app::AppState;
-use crate::commands::kitsu::{allmanga_kitsu_get, title_match_prefix};
+use crate::commands::kitsu::allmanga_kitsu_get;
 use crate::error::Result;
 use crate::history::{kitsu_id_in, HistoryEntry};
-use crate::scraper::provider::ShowKey;
 
 /// The entry a walked row recorded, unless Kitsu answered it gone.
 pub(super) fn walked(state: &AppState, entry: &HistoryEntry) -> Result<Vec<String>> {
@@ -40,27 +40,18 @@ pub(super) fn retired(state: &AppState, entry: &HistoryEntry) -> Result<Vec<Stri
         .into_iter()
         .collect();
     ids.extend(allmanga_kitsu_get(state, &entry.id)?);
-    let provider = ShowKey::parse(&entry.id).provider;
-    for searched in searched_titles(entry) {
-        let prefix = title_match_prefix(provider, searched);
-        for (key, body) in crate::cache::meta_cache_list_prefix(&state.cache_pool, &prefix)? {
-            if is_cour(&key[prefix.len()..]) {
-                ids.push(body);
-            }
-        }
-    }
+    // Every title match stored for the row's title, the ones Continue
+    // Watching reads and the ones the detail page reads for a row whose
+    // recorded entry is gone alike: every version and cour, expired
+    // ones and retired segments included.
+    ids.extend(crate::commands::history_forget_titles::title_match_ids(
+        state,
+        &entry.id,
+        &entry.title,
+    )?);
     ids.sort();
     ids.dedup();
     Ok(ids)
-}
-
-/// The titles Continue Watching searches a row by: as written, and
-/// without a legacy "(N episodes)" tail.
-pub(super) fn searched_titles(entry: &HistoryEntry) -> [&str; 2] {
-    [
-        entry.title.as_str(),
-        crate::commands::history_title_tail::without_episode_tail(&entry.title),
-    ]
 }
 
 /// Whether what follows a title-match prefix is a cour number.

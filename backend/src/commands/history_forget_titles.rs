@@ -60,7 +60,7 @@ fn own_matches(state: &AppState, id: &str, title: &str) -> Result<Vec<(String, S
 /// the versions before it did not. A bare row's matches also sit under
 /// the segments retired with the provider whose rows were bare
 /// ([`retired_title_match_prefixes`]).
-fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
+pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
     let provider = ShowKey::parse(id).provider;
     let mut prefixes = Vec::new();
     for searched in [title, without_episode_tail(title)] {
