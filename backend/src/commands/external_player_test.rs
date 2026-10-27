@@ -218,8 +218,12 @@ fn a_busy_executable_is_waited_out_rather_than_failed() {
         "a write-open executable must be busy for this test to mean anything: {plain:?}"
     );
 
+    // Let go once the spawn has found the player busy: a spawn that
+    // came to it after the release would exec at once, retry nothing,
+    // and prove nothing.
+    let queue = crate::held::queue(player.display().to_string());
     let releaser = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(15));
+        queue.joined_blocking(|| false);
         let _ = held.flush();
         drop(held);
     });

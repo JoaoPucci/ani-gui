@@ -12,7 +12,17 @@ impl MalProvider {
     /// expired, otherwise rotates and stores
     /// the result.
     pub(in crate::meta) async fn refresh_inner(&self, refresh_token: &str) -> Result<Tokens> {
-        let mut guard = self.refresh_state().lock().lock().await;
+        let lock = self.refresh_state().lock();
+        let mut guard = match lock.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // Taken: say so to a test holding it, which can then
+                // tell this wait from a refresh still on its way.
+                #[cfg(test)]
+                crate::held::queued(&crate::held::lock_key(lock));
+                lock.lock().await
+            }
+        };
         if let Some(cached) = guard.as_ref() {
             if cached.input_refresh_token == refresh_token {
                 let now_s = SystemTime::now()

@@ -103,6 +103,15 @@ both() { printf 'relevant=%s\npicker=%s' "$1" "$2"; }
     [ "$output" = "$(both true false)" ]
 }
 
+@test "the coverage script selects the Rust pipeline only" {
+    # The coverage job runs tools/rust-lcov.sh, so a change touching
+    # only the script has to run the job that exercises it.
+    head=$(change tools/rust-lcov.sh)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(both true false)" ]
+}
+
 @test "the workflow itself selects both" {
     head=$(change .github/workflows/rust.yml)
     run filter pull_request "$base" "$head"

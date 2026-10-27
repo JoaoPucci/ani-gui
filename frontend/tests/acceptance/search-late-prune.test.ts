@@ -8,7 +8,7 @@
 // text (A → B → A) still silences the first A, and a test that only
 // calls a helper twice cannot tell that apart from a text comparison.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mount, tick, unmount } from 'svelte';
 
@@ -173,17 +173,44 @@ describe('/search late prune', () => {
 			releaseFirstA = resolve;
 		});
 		let searchCalls = 0;
-		let staleProbeServed = false;
-		let staleBatchServed = false;
+		// What the stale run does, seen from the page's side of the
+		// network: when it has read its cache answer, and whether it
+		// then asks a probe — recorded as the page asks it, before any
+		// of it reaches a handler.
+		let staleBatchRead = false;
+		let staleProbeAsked = false;
+		const realFetch = globalThis.fetch;
+		const sent = (init?: RequestInit) =>
+			(typeof init?.body === 'string' ? JSON.parse(init.body) : {}) as {
+				kitsu_id?: string;
+				kitsu_ids?: string[];
+			};
+		vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+			const href =
+				typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+			const path = new URL(href).pathname;
+			if (path === '/api/availability' && sent(init).kitsu_id === '9') staleProbeAsked = true;
+			const resp = await realFetch(input, init);
+			if (path === '/api/availability/batch' && sent(init).kitsu_ids?.includes('9')) {
+				const read = resp.text.bind(resp);
+				resp.text = async () => {
+					const text = await read();
+					staleBatchRead = true;
+					return text;
+				};
+			}
+			return resp;
+		});
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+		});
 
 		server.use(
 			// The stale run's cache read, its last network call: a run
 			// that has been replaced asks the provider nothing more.
-			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
-				const body = (await request.json()) as { kitsu_ids?: string[] };
-				if (body.kitsu_ids?.includes('9')) staleBatchServed = true;
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
-			}),
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			),
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
@@ -198,12 +225,9 @@ describe('/search late prune', () => {
 					return HttpResponse.json({ hits: [ref('5', 'Interim Result')], next_offset: null });
 				return HttpResponse.json({ hits: [ref('7', 'Fresh Result')], next_offset: null });
 			}),
-			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
-				const body = (await request.json()) as { kitsu_id?: string };
-				// The stale run's only item, which must never be probed.
-				if (body.kitsu_id === '9') staleProbeServed = true;
-				return HttpResponse.json({ available: true, episode_count: 12, approximate: false });
-			})
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({ available: true, episode_count: 12, approximate: false })
+			)
 		);
 
 		setQuery('cowboy');
@@ -225,21 +249,19 @@ describe('/search late prune', () => {
 		// a loaded worker has carried the released response through its
 		// calls, and would then pass with the guard removed. Its last
 		// call is its cache read — a replaced run sends no probe, which
-		// would hold a slot the current run's probes need — and after it
-		// the rest is microtasks, so flushing those plus a Svelte tick
-		// is enough to let a broken guard paint.
+		// would hold a slot the current run's probes need — and once it
+		// has read that answer the rest is microtasks: whether to probe,
+		// and the fetch a probe would make, are decided in them. So
+		// flushing those plus a Svelte tick is enough to let a broken
+		// guard paint, or ask.
 		releaseFirstA();
-		await until(() => staleBatchServed, "the stale run's cache read to be served");
+		await until(() => staleBatchRead, "the stale run's cache answer to be read");
 		await tick();
 		await new Promise((r) => setTimeout(r, 0));
 		await tick();
 
 		expect(screen()).not.toContain('Stale Result');
 		expect(screen()).toContain('Fresh Result');
-		// Time enough for a probe it did send to reach the handler.
-		await new Promise((r) => setTimeout(r, 100));
-		expect(staleProbeServed, 'a replaced run probes nothing').toBe(false);
-		// And the guard still holds once that time has passed.
-		expect(screen()).not.toContain('Stale Result');
+		expect(staleProbeAsked, 'a replaced run probes nothing').toBe(false);
 	});
 });

@@ -192,6 +192,12 @@ async function confirmDownload() {
 
 // ---------------------------------------------------------------- detail
 
+/** The detail page's version control, found by its accessible name. */
+const versionGroup = () =>
+	target.querySelector(
+		`[role="radiogroup"][aria-label="${m.detail_version_group_aria_label()}"]`
+	) as HTMLElement | null;
+
 const detailDownloadButton = () =>
 	(Array.from(target.querySelectorAll('button')).find((b) =>
 		(b.textContent ?? '').includes(m.detail_download_button())
@@ -208,8 +214,8 @@ async function openDetailDownload() {
 		return b !== null && !b.disabled;
 	}, 'the Download action to enable');
 	// The answer lands after the request; the cap it sets is read when
-	// the dialog opens.
-	await new Promise((r) => setTimeout(r, 50));
+	// the dialog opens. The version choice it names shows it applied.
+	await until(() => versionGroup() !== null, 'the availability answer to be applied');
 	detailDownloadButton()!.click();
 	await until(() => dialog() !== null, 'the download dialog');
 }

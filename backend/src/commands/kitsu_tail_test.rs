@@ -949,7 +949,8 @@ async fn an_entry_anilist_cannot_answer_for_gives_no_tail() {
         let uri = anilist.uri();
         let source = KitsuTail::for_entry(&state, Some("7881"))
             .expect("an entry")
-            .with_anilist_base(&uri);
+            .with_anilist_base(&uri)
+            .unbounded();
         assert_eq!(source.tail(&hianime_listing(916), 12).await, None);
         assert_eq!(
             crate::cache::meta_cache_get(&state.cache_pool, "airing:v2:7881").expect("read"),

@@ -11,8 +11,11 @@ use super::*;
 /// go in one `Page(media(id_in))` request; shows Kitsu maps to MAL
 /// alone go in a second, `idMal_in` one (AniList ANDs the two filters
 /// on one `media` field) — one request per id space for a rail of up
-/// to 50 shows. Shows whose airing row is still fresh cost nothing,
-/// and a show with no mapping has no schedule to seed. Best-effort
+/// to 50 shows, plus one for each MAL id several AniList media record
+/// (seeded from the single lookup by MAL id, as the detail page reads
+/// it) and two more for each page AniList cut, halved until whole.
+/// Shows whose airing row is still fresh cost nothing, and a show with
+/// no mapping has no schedule to seed. Best-effort
 /// throughout — a mapping or fetch failure leaves rows unwritten, and
 /// any later airing write for the show still cuts the rows written
 /// before it.

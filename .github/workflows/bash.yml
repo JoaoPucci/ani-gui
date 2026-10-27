@@ -40,7 +40,7 @@ jobs:
           # carries the node tool tests. Workflows are included because
           # the invocation harness pins their resolved shape against
           # the recorded snapshot.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/hostile-tmpdir\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"

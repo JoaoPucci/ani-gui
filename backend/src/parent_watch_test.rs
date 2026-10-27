@@ -15,12 +15,40 @@ async fn the_writer_closing_ends_the_watch() {
     assert!(reported_within(watch, Duration::from_secs(5)).await);
 }
 
+/// A reader that says each time a read begins.
+struct Reads<R> {
+    inner: R,
+    begun: std::sync::mpsc::Sender<()>,
+}
+
+impl<R: std::io::Read> std::io::Read for Reads<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let _ = self.begun.send(());
+        self.inner.read(buf)
+    }
+}
+
 #[tokio::test]
 async fn bytes_on_a_live_pipe_do_not_end_the_watch() {
     let (reader, mut writer) = std::io::pipe().expect("pipe");
+    let (begun, reads) = std::sync::mpsc::channel();
+    let reader = Reads {
+        inner: reader,
+        begun,
+    };
     let mut watch = std::pin::pin!(arm(reader, || {}).serving());
+    let read_begun = || {
+        reads
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the watch reads its pipe");
+    };
+    read_begun();
     writer.write_all(b"anything\n").expect("write");
-    assert!(!reported_within(&mut watch, Duration::from_millis(300)).await);
+    // The watch has had the bytes and gone back to reading: a watch
+    // that has not read them yet has not been ended by them either,
+    // and proves nothing. Reading again, it has not reported.
+    read_begun();
+    assert!(!reported_within(&mut watch, Duration::ZERO).await);
     drop(writer);
     assert!(reported_within(&mut watch, Duration::from_secs(5)).await);
 }

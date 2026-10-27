@@ -185,7 +185,6 @@ async fn get_entry_via_waits_for_an_in_flight_write_on_the_same_show() {
     // over the just-synced higher one. Proven here by holding the show lock
     // (as the in-flight sync would) and asserting the read can't complete
     // until it's released.
-    use std::time::Duration;
     use wiremock::matchers::{method, path, query_param};
     let kitsu = mappable_kitsu().await;
     let mal = wiremock::MockServer::start().await;
@@ -207,8 +206,12 @@ async fn get_entry_via_waits_for_an_in_flight_write_on_the_same_show() {
         .account_write_locks
         .for_show(ProviderKind::MyAnimeList, "12");
     let guard = show_lock.lock().await;
+    // Queued behind the lock, not merely not there yet: a read that
+    // has not reached the lock has not read either, and proves
+    // nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&*show_lock));
     tokio::select! {
-        _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+        () = queue.joined() => {}
         _ = get_entry_via(&state, ProviderKind::MyAnimeList, &provider, &tokens, "12") => {
             panic!("get_entry_via read the entry while the show's write lock was held");
         }
