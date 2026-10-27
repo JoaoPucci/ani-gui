@@ -144,6 +144,7 @@ impl TreeKillChild {
         }
         self.kill_tree();
         let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        let mut asked = std::time::Instant::now();
         loop {
             if self.tree_exited() {
                 self.tree = None;
@@ -154,6 +155,7 @@ impl TreeKillChild {
                 self.given_up = true;
                 return false;
             }
+            self.ask_again(&mut asked);
             tokio::time::sleep(TREE_EXIT_POLL).await;
         }
     }
@@ -178,12 +180,28 @@ impl TreeKillChild {
         }
         self.kill_tree();
         let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        let mut asked = std::time::Instant::now();
         while !self.tree_exited() {
             if std::time::Instant::now() >= deadline {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 return;
             }
+            self.ask_again(&mut asked);
             std::thread::sleep(TREE_EXIT_POLL);
+        }
+    }
+
+    /// Ask the tree to die again when the last ask, at `asked`, was
+    /// [`TREE_KILL_REPEAT`] or more ago, for a tree just seen still
+    /// running. A kill reaches the members the tree has as it lands: a
+    /// fork in flight then can add one after it — Linux guarantees the
+    /// child is killed too, macOS documents no such guarantee — which
+    /// nobody asked to die, and which would otherwise run on past the
+    /// ceiling.
+    fn ask_again(&mut self, asked: &mut std::time::Instant) {
+        if asked.elapsed() >= TREE_KILL_REPEAT {
+            self.kill_tree();
+            *asked = std::time::Instant::now();
         }
     }
 
@@ -224,3 +242,9 @@ impl Drop for TreeKillChild {
 pub(crate) const TREE_EXIT_CEILING: std::time::Duration = std::time::Duration::from_secs(2);
 
 const TREE_EXIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
+
+/// How long a teardown waits on a tree still running after a kill
+/// before it asks again. A process the kill reached exits in
+/// milliseconds; asking again this long after reaches one it did not,
+/// and costs nothing for one merely slow to go.
+const TREE_KILL_REPEAT: std::time::Duration = std::time::Duration::from_millis(100);
