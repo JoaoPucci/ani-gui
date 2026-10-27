@@ -202,3 +202,40 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
         );
     }
 }
+
+proptest! {
+    /// A hearing replaces a record exactly when nothing is recorded or it
+    /// is no earlier than the hearing recorded.
+    #[test]
+    fn a_hearing_replaces_only_an_earlier_or_equal_one(
+        stored in proptest::option::of(any::<u64>()),
+        at in any::<u64>(),
+    ) {
+        let replaces = crate::commands::listing_tags::supersedes(stored, at);
+        let expected = match stored {
+            None => true,
+            Some(s) => at >= s,
+        };
+        prop_assert_eq!(replaces, expected);
+    }
+
+    /// Whatever order a show's listings are recorded in, the record holds
+    /// the one heard last; among those heard at the same moment, the one
+    /// written last.
+    #[test]
+    fn the_record_holds_the_listing_heard_last_whatever_the_write_order(
+        hearings in proptest::collection::vec((0u64..20, tags()), 1..8),
+    ) {
+        let state = crate::commands::play::tests::state_with_proxy_origin();
+        for (at, recorded) in &hearings {
+            crate::commands::listing_tags::put(&state, "test-a:show-1", recorded, *at);
+        }
+        let latest = hearings.iter().map(|(at, _)| *at).max().expect("one");
+        let expected = hearings
+            .iter()
+            .rev()
+            .find(|(at, _)| *at == latest)
+            .map(|(_, t)| t.clone());
+        prop_assert_eq!(crate::commands::listing_tags::get(&state, "test-a:show-1"), expected);
+    }
+}

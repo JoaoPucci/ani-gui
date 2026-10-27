@@ -1061,3 +1061,52 @@ async fn a_download_that_fails_records_the_listing_it_picked() {
     let tags = recorded(&state).expect("recorded");
     assert!(tags.iter().any(|t| t == "2.5"), "{tags:?}");
 }
+
+#[tokio::test]
+async fn a_play_of_a_pick_with_two_versions_records_both_listings() {
+    use crate::scraper::provider::BrowseHit;
+    use crate::scraper::table_provider::{listing_of, TableProvider};
+    let card = |slug: &str, title: &str| BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    let provider = TableProvider::new()
+        .search_default(vec![
+            card("the-show-1", "The Show"),
+            card("the-show-2", "The Show (Uncensored)"),
+        ])
+        .listing(1, listing_of(1, 3))
+        .listing(2, listing_of(2, 3))
+        .year(1, Some(2020))
+        .year(2, Some(2020))
+        .stream(
+            2001,
+            "sub",
+            crate::commands::play_native_test_provider::MASTER,
+        )
+        .mode(2001, "sub", true);
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(provider));
+    let asked: PlayArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show", "episode": "1", "mode": "sub",
+        "episode_count": 3, "year": 2020, "subtype": "TV",
+    }))
+    .expect("args");
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    for slug in ["the-show-1", "the-show-2"] {
+        let key = crate::scraper::provider::ShowKey::new(
+            crate::provider_set::ProviderSet::TEST_DEFAULT,
+            slug,
+        )
+        .to_string();
+        assert!(
+            crate::commands::listing_tags::get(&state, &key).is_some(),
+            "{slug}'s listing is recorded"
+        );
+    }
+}
