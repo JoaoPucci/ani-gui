@@ -24,17 +24,22 @@ pub(super) struct Restamp {
 /// is its slot reads right without a stamp, and one the stamp names
 /// already reads through it. The stamp was written after the row, so a
 /// re-listing ahead of the row's slot between the two is not seen.
+///
+/// A slot past `unread_past` — Kitsu's count, when no reading reached
+/// the rows the listing runs past it — is an appended extra or a whole
+/// episode, unknown which, and its tag is not kept for it.
 pub(super) fn restamp(
     row_ep: &str,
     offset: u32,
     stamp: &(u32, String),
     listing: &[EpisodeRef],
-    _unread_past: Option<u32>,
+    unread_past: Option<u32>,
 ) -> Option<Restamp> {
     use crate::commands::play_native_episode::tag_matches;
     let slot: u32 = row_ep.trim().parse().ok()?;
     let (stamped, stamped_tag) = stamp;
     if *stamped == slot
+        || crate::commands::play_native_appended::past_an_unread_count(unread_past, slot)
         || crate::commands::play_native_numbering::numbering_offset(listing) != offset
     {
         return None;

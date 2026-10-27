@@ -89,7 +89,9 @@ pub fn retag_from_resolve(
 /// [`retag_display`] from a listing at hand — a probe's, a
 /// download's — for the show `slug` keys; then, from the same listing,
 /// a stamp a warm moved off the show's legacy history row goes back on
-/// it, where the listing agrees with the sidecar.
+/// it, where the listing agrees with the sidecar. `unread_past` is the
+/// pick's ([`crate::commands::play_native::PickedShow::unread_past`]):
+/// no row past it gets a stamp.
 pub fn retag_from_listing(
     state: &AppState,
     slug: &str,
