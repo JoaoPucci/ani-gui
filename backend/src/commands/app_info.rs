@@ -21,6 +21,10 @@ pub struct AppInfo {
     /// the diagnostics page reads nothing else that could report a
     /// file the app removed on the user's behalf.
     pub removed_legacy_paths: Vec<String>,
+    /// What the boot sweep over a retired provider's rows changed (see
+    /// `crate::retired_provider`): empty on every launch that found
+    /// nothing such a provider left.
+    pub retired_provider_sweep: crate::retired_provider::RetiredSweepReport,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -39,6 +43,7 @@ pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
             .iter()
             .map(|p| p.display().to_string())
             .collect(),
+        retired_provider_sweep: state.legacy_sweep.retired_provider.clone(),
     })
 }
 
