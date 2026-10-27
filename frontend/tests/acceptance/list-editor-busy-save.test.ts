@@ -309,7 +309,10 @@ describe('list editor — the busy notice counts down', () => {
 		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 1 })), '1 s');
 		expect(saves.at).toHaveLength(1);
 		await until(() => shown().includes(m.detail_list_saved()), 'the saved toast');
-		// The notice went with the save it was about.
-		expect(shown()).not.toContain(m.account_busy_saving_now({ provider }));
+		// The notice went with the save it was about: it is off the stack,
+		// though its card may still be leaving the screen.
+		expect(toastStore.items.map((t) => t.message)).not.toContain(
+			m.account_busy_saving_now({ provider })
+		);
 	});
 });
