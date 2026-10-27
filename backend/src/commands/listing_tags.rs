@@ -11,7 +11,9 @@
 //! with it ([`crate::commands::play_native_merge::former_on_replay`]).
 //! A record lives as long as a cached row may ([`PLAY_RESOLUTION_TTL`])
 //! from the last listing that wrote it, so a row's own resolve leaves a
-//! record that outlives the row.
+//! record that outlives the row. Each record carries when its listing
+//! was heard — at the pick, before the appended-extras rule's reads —
+//! and a listing heard earlier never replaces it ([`put`]).
 
 use crate::app::AppState;
 use crate::cache::ttl::PLAY_RESOLUTION_TTL;
@@ -37,11 +39,37 @@ pub(crate) fn heard_now() -> u64 {
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
+/// Whether a listing heard at `at` replaces the record of one heard at
+/// `stored`: a later or equal hearing does, an earlier one never, and any
+/// hearing replaces no record at all.
+#[must_use]
+pub(crate) fn supersedes(stored: Option<u64>, at: u64) -> bool {
+    stored.is_none_or(|s| at >= s)
+}
+
+/// Every read-then-write of a record is made under this one lock, so a
+/// hearing compared against the stored one is compared against what is
+/// stored when it writes.
+static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Record `tags`, the extra tags of `show_key`'s listing heard at `at`
-/// ([`heard_now`]), in the entry's numbering. Best-effort: a write that
-/// fails leaves the listing unknown to the next replay, which then names
-/// no former number.
+/// ([`heard_now`]), in the entry's numbering — unless the record holds a
+/// listing heard later ([`supersedes`]): two walks of a show can overlap,
+/// and the one that heard the listing first can write last. Best-effort:
+/// a write that fails leaves the listing unknown to the next replay,
+/// which then names no former number.
 pub(crate) fn put(state: &AppState, show_key: &str, tags: &[String], at: u64) {
+    let _held = WRITE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let stored = crate::cache::meta_cache_get(&state.cache_pool, &key(show_key))
+        .ok()
+        .flatten()
+        .and_then(|b| serde_json::from_str::<Record>(&b).ok())
+        .map(|r| r.at);
+    if !supersedes(stored, at) {
+        return;
+    }
     let Ok(body) = serde_json::to_string(&Record {
         at,
         tags: tags.to_vec(),

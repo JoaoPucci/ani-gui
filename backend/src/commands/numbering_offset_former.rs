@@ -68,8 +68,7 @@ fn retag_row(
 }
 
 /// [`retag_display`] from a resolve — a play's, a download's — for the
-/// show it resolved, and the listing's tags recorded
-/// ([`crate::commands::listing_tags`]).
+/// show it resolved.
 pub fn retag_from_resolve(
     state: &AppState,
     native: &crate::commands::play_native_resolve::NativeResolved,
@@ -77,13 +76,6 @@ pub fn retag_from_resolve(
     retag_display(state, &native.slug, &native.former_tags, &|former| {
         crate::commands::play_native_merge::names_a_row_now(former, native)
     });
-    // The listing's tags, for a replay's check of a former number.
-    crate::commands::listing_tags::put(
-        state,
-        &native.slug,
-        &native.extra_tags,
-        crate::commands::listing_tags::heard_now(),
-    );
     // The pick's other versions: each copy's history row reads a stamp
     // of its own, put right from that copy's listing.
     for (slug, episodes) in &native.other_copies {
@@ -92,8 +84,10 @@ pub fn retag_from_resolve(
 }
 
 /// [`retag_display`] from a listing at hand — a probe's, a
-/// download's — for the show `slug` keys, and the listing's tags
-/// recorded ([`crate::commands::listing_tags`]).
+/// download's — for the show `slug` keys. The listing's record is the
+/// walk's to write, at its pick ([`crate::commands::listing_tags`]): a
+/// repair runs once the walk is done, by when a newer walk may have
+/// recorded a newer listing.
 pub fn retag_from_listing(
     state: &AppState,
     slug: &str,
@@ -111,13 +105,6 @@ pub fn retag_from_listing(
         slug,
         &crate::commands::play_native_merge::former_tags_of(episodes),
         &shared,
-    );
-    // The listing's tags, for a replay's check of a former number.
-    crate::commands::listing_tags::put(
-        state,
-        slug,
-        &crate::commands::play_native_numbering::extra_episode_tags(episodes),
-        crate::commands::listing_tags::heard_now(),
     );
 }
 
