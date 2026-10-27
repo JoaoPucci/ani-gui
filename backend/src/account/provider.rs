@@ -249,3 +249,7 @@ pub struct CurrentEntry {
     /// Episodes the user has watched so far.
     pub progress_episodes: u32,
 }
+
+#[cfg(test)]
+#[path = "provider_kept_test.rs"]
+mod kept_tests;

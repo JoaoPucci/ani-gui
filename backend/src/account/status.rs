@@ -245,3 +245,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "status_write_test.rs"]
+mod write_tests;
