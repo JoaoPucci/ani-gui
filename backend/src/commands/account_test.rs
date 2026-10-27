@@ -388,7 +388,7 @@ async fn watch_later_bridge_falls_back_to_anilist_mapping_for_unmapped_mal_id() 
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -414,8 +414,9 @@ async fn watch_later_bridge_drops_id_when_anilist_does_not_know_it_either() {
     // doesn't index is simply absent from the Page result.
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .mount(&anilist)
         .await;
@@ -494,7 +495,7 @@ async fn watch_later_bridge_batches_anilist_lookups_into_one_request() {
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
                 {"id":207141,"idMal":63403},
                 {"id":207142,"idMal":63404}
             ]}}}"#,
@@ -599,13 +600,35 @@ async fn push_progress_skips_unmappable_show_without_writing() {
     // built by the dispatcher hits the real MAL host, so a stray write
     // attempt would surface as Network/Upstream, not Ok(None) — proving
     // the short-circuit fires before any upstream call.
-    use wiremock::matchers::{method, path};
+    // Kitsu answers every read the episode map makes for such a show:
+    // its detail and no relations, so no prequel files it under an
+    // entry either. A read left unanswered would fail the write.
+    use wiremock::matchers::{method, path, query_param};
     let kitsu = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/999"))
+        .and(query_param("include", "mappings"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
                 .set_body_string(r#"{"data":{"id":"999","type":"anime"},"included":[]}"#),
+        )
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .and(query_param("fields[anime]", crate::meta::kitsu::ANIME_FIELDS))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"id":"999","type":"anime","attributes":{"canonicalTitle":"Show 999",
+                "episodeCount":12,"startDate":"2024-01-05","endDate":"2024-03-28","status":"finished",
+                "subtype":"TV","coverImage":{"original":"https://media.kitsu.app/c/999.jpg"}}}}"#,
+        ))
+        .mount(&kitsu)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/999/media-relationships"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":[],"included":[],"meta":{"count":0}}"#),
         )
         .mount(&kitsu)
         .await;
@@ -1191,7 +1214,7 @@ async fn watch_later_bridge_does_not_remember_an_anilist_outage_as_unmappable() 
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -1251,7 +1274,7 @@ async fn watch_later_bridge_does_not_remember_a_kitsu_fallback_error_as_unmappab
     wiremock::Mock::given(method("POST"))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403}]}}}"#),
+                .set_body_string(r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403}]}}}"#),
         )
         .mount(&anilist)
         .await;
@@ -1305,8 +1328,9 @@ async fn watch_later_bridge_does_not_remember_a_direct_kitsu_error_as_unmappable
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .mount(&anilist)
         .await;
@@ -1412,8 +1436,9 @@ async fn watch_later_bridge_remembers_a_conclusive_miss_and_asks_neither_route_a
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .mount(&anilist)
         .await;
@@ -1597,6 +1622,19 @@ async fn a_progress_write_waiting_on_its_show_lock_through_a_disconnect_does_not
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
             r#"{"data":{"id":"12","type":"anime","attributes":{"canonicalTitle":"x"}},"included":[{"id":"1","type":"mappings","attributes":{"externalSite":"myanimelist/anime","externalId":"21"}}]}"#,
         ))
+        .mount(&kitsu)
+        .await;
+    // The write reads through the show's episode map, which reads Kitsu's
+    // entry for its count.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(
+                    &include_bytes!("../../../tests/fixtures/kitsu/anime_one_piece_detail.json")[..],
+                ),
+        )
         .mount(&kitsu)
         .await;
     let mal = wiremock::MockServer::start().await;

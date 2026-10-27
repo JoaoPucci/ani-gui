@@ -24,8 +24,8 @@ use crate::error::{AniError, Result};
 #[path = "anilist_parse.rs"]
 mod parse;
 pub use parse::{
-    parse_banner_response, parse_mal_id_response, parse_media_id_response,
-    parse_media_ids_by_mal_response, parse_trending,
+    page_has_next, parse_banner_response, parse_mal_id_response, parse_media_id_response,
+    parse_media_ids_recording_mal, parse_media_listed_by_mal_response, parse_trending,
 };
 
 pub(crate) const ANILIST_API: &str = "https://graphql.anilist.co";
@@ -270,41 +270,91 @@ pub async fn mal_id_for_media_id(
     parse_mal_id_response(&bytes)
 }
 
-/// Batched inverse of [`MEDIA_ID_BY_MAL_GQL`]: many MAL ids → their
-/// AniList `mediaId`s in ONE request per [`MAL_BATCH_PAGE_SIZE`]-sized
-/// chunk. The Watch-Later bridge uses it so a rail load with many
-/// Kitsu-unmapped titles costs O(n/50) AniList calls instead of O(n)
-/// against the public 30 req/min limit.
+/// Batched inverse of [`MEDIA_ID_BY_MAL_GQL`]: many MAL ids → the
+/// AniList media recording them, one request per
+/// [`MAL_BATCH_PAGE_SIZE`]-sized chunk, and more only for a chunk whose
+/// page AniList cut. The Watch-Later bridge uses it so a rail load with
+/// many Kitsu-unmapped titles costs about n/50 AniList calls instead of
+/// n against the public 30 req/min limit. The episode map's lookup of
+/// every media recording one MAL id ([`media_ids_recording_mal`]) asks
+/// the same query for a single id.
 const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
-        Page(perPage: 50) { media(type: ANIME, idMal_in: $idMals) { id idMal } } \
+        Page(perPage: 50) { pageInfo { hasNextPage } \
+        media(type: ANIME, idMal_in: $idMals) { id idMal } } \
     }";
 
-/// Max MAL ids per [`media_ids_for_mals`] request — AniList's `Page`
-/// caps `perPage` at 50, so larger chunks would silently truncate.
+/// Max MAL ids per [`media_listed_for_mals`] request — AniList's `Page`
+/// caps `perPage` at 50, so larger chunks would truncate even with one
+/// media per id. Several media can record one MAL id, so a full chunk
+/// can still overflow; the page says so, and the chunk is split.
 pub const MAL_BATCH_PAGE_SIZE: usize = 50;
 
-/// Resolve many MAL ids → AniList `mediaId`s, chunked at
-/// [`MAL_BATCH_PAGE_SIZE`] per request. Ids AniList doesn't index are
-/// simply absent from the returned map; empty input makes no request.
+/// Every AniList media each of `mal_ids` is recorded by, chunked at
+/// [`MAL_BATCH_PAGE_SIZE`] per request: several media can record one
+/// MAL id, and the batch lists them all — a chunk whose page AniList
+/// cut (`hasNextPage`) is split in two and asked again, until every
+/// page is whole. Ids AniList doesn't index are absent; empty input
+/// makes no request.
 ///
 /// # Errors
 /// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
-pub async fn media_ids_for_mals(
+pub async fn media_listed_for_mals(
     client: &reqwest::Client,
     mal_ids: &[u32],
     base_override: Option<&str>,
-) -> Result<std::collections::HashMap<u32, u32>> {
+) -> Result<std::collections::HashMap<u32, Vec<u32>>> {
     let url = base_override.unwrap_or(ANILIST_API);
-    let mut map = std::collections::HashMap::new();
-    for chunk in mal_ids.chunks(MAL_BATCH_PAGE_SIZE) {
+    let mut listed = std::collections::HashMap::new();
+    let mut chunks: Vec<&[u32]> = mal_ids.chunks(MAL_BATCH_PAGE_SIZE).rev().collect();
+    while let Some(chunk) = chunks.pop() {
         let body = serde_json::json!({
             "query": MEDIA_IDS_BY_MALS_GQL,
             "variables": { "idMals": chunk },
         });
         let bytes = post_graphql_public(client, url, &body).await?;
-        map.extend(parse_media_ids_by_mal_response(&bytes)?);
+        if page_has_next(&bytes)? {
+            let (first, rest) = chunk.split_at(chunk.len() / 2);
+            if first.is_empty() {
+                return Err(overflowing(chunk));
+            }
+            chunks.push(rest);
+            chunks.push(first);
+            continue;
+        }
+        listed.extend(parse_media_listed_by_mal_response(&bytes)?);
     }
-    Ok(map)
+    Ok(listed)
+}
+
+/// Every AniList media that records `mal_id` as its MAL id, in AniList
+/// id order: several can, where [`media_id_for_mal`] answers with one.
+/// Empty when none does.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed, as [`media_id_for_mal`].
+pub async fn media_ids_recording_mal(
+    client: &reqwest::Client,
+    mal_id: u32,
+    base_override: Option<&str>,
+) -> Result<Vec<u32>> {
+    let url = base_override.unwrap_or(ANILIST_API);
+    let body = serde_json::json!({
+        "query": MEDIA_IDS_BY_MALS_GQL,
+        "variables": { "idMals": [mal_id] },
+    });
+    let bytes = post_graphql_public(client, url, &body).await?;
+    if page_has_next(&bytes)? {
+        return Err(overflowing(&[mal_id]));
+    }
+    parse_media_ids_recording_mal(&bytes, mal_id)
+}
+
+/// More media record the one MAL id in `ids` than a page holds: no
+/// answer the app can read whole.
+fn overflowing(ids: &[u32]) -> AniError {
+    AniError::ParseFailed {
+        detail: format!("anilist: more media record MAL {ids:?} than a page holds"),
+    }
 }
 
 #[cfg(test)]

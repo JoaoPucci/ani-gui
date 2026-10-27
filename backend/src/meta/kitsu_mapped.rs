@@ -1,0 +1,197 @@
+//! Every Kitsu entry mapped to one tracker id. Kitsu's
+//! `/mappings?filter[externalSite]=…&filter[externalId]=…` answers with
+//! all of them, each inlined; the lookups behind a card take the first
+//! ([`super::KitsuClient::lookup_by_mal_id`]), and the episode map reads
+//! them all. Split from [`super`] so each file stays inside the CRAP
+//! gate's per-file bar.
+
+use super::*;
+
+/// A side-loaded resource of any type; only `anime` ones are read.
+#[derive(Deserialize)]
+struct Included {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    attributes: serde_json::Value,
+}
+
+/// The inlined anime among `included`, by id.
+fn inlined_anime(included: Vec<Included>) -> HashMap<String, KitsuAnimeRef> {
+    included
+        .into_iter()
+        .filter(|r| r.kind == "anime")
+        .filter_map(|r| {
+            let attributes: AnimeAttributes = serde_json::from_value(r.attributes).ok()?;
+            Some((
+                r.id.clone(),
+                into_ref(AnimeResource {
+                    id: r.id,
+                    attributes,
+                }),
+            ))
+        })
+        .collect()
+}
+
+/// A JSON:API relationship pointer: `{ data: { type, id } }`, `data`
+/// null where there is nothing on the other end. The page asks for the
+/// item inlined, so a pointer without `data` (links only, or nothing)
+/// does not say what it points to and fails to read.
+#[derive(Deserialize)]
+struct Pointer {
+    #[serde(deserialize_with = "present")]
+    data: Option<PointerRef>,
+}
+
+/// A field the request asks for, read as given: `None` when it is
+/// null. Named by `deserialize_with`, which leaves a missing field the
+/// missing-field error where a bare `Option` would read it as `None`.
+fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+#[derive(Deserialize)]
+struct PointerRef {
+    #[serde(rename = "type")]
+    kind: String,
+    id: String,
+}
+
+/// The Kitsu entries mapped to one tracker id, and whether the page
+/// read held all of them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KitsuMapped {
+    /// The entries on the page read, in Kitsu's order.
+    pub entries: Vec<KitsuAnimeRef>,
+    /// Whether they are every mapping Kitsu counts.
+    pub complete: bool,
+}
+
+/// Every anime a `/mappings?filter[externalSite]=…&filter[externalId]=…
+/// &include=item` body inlines for its mappings, in Kitsu's order, a
+/// music-subtype entry dropped as every mapping lookup drops it. The
+/// page is complete when it held as many mappings as Kitsu counts.
+///
+/// A mapping whose item's `data` is given as null maps to nothing, and
+/// one to another type is not an anime. A mapping with no item, an item
+/// with no `data` key, or one naming an anime the page does not include
+/// readably, leaves the page unable to say what is mapped: no answer,
+/// never an empty set.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] when the body isn't JSON:API, a
+/// mapping carries no item or an item without `data`, or a mapped anime
+/// is not included readably.
+pub fn parse_mapped_anime_response(body: &[u8]) -> Result<KitsuMapped> {
+    #[derive(Deserialize)]
+    struct Wrap {
+        data: Vec<Mapping>,
+        #[serde(default)]
+        included: Vec<Included>,
+        #[serde(default)]
+        meta: Option<Meta>,
+    }
+    #[derive(Deserialize)]
+    struct Meta {
+        count: Option<usize>,
+    }
+    // The page asks for each mapping's item: a mapping without one is
+    // no answer, where an item given as null maps to nothing.
+    #[derive(Deserialize)]
+    struct Mapping {
+        relationships: MappingRelationships,
+    }
+    #[derive(Deserialize)]
+    struct MappingRelationships {
+        item: Pointer,
+    }
+    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("kitsu mapped anime parse: {e}"),
+    })?;
+    let read = parsed.data.len();
+    let complete = parsed.meta.and_then(|m| m.count) == Some(read);
+    let mut anime = inlined_anime(parsed.included);
+    let mut seen: Vec<String> = Vec::new();
+    let mut entries = Vec::new();
+    for pointer in parsed
+        .data
+        .into_iter()
+        .filter_map(|m| m.relationships.item.data)
+    {
+        if pointer.kind != "anime" || seen.contains(&pointer.id) {
+            continue;
+        }
+        let found = anime
+            .remove(&pointer.id)
+            .ok_or_else(|| AniError::ParseFailed {
+                detail: format!(
+                    "kitsu mapped anime parse: anime {} not included",
+                    pointer.id
+                ),
+            })?;
+        seen.push(pointer.id);
+        if !is_music_subtype(found.subtype.as_deref()) {
+            entries.push(found);
+        }
+    }
+    Ok(KitsuMapped { entries, complete })
+}
+
+impl KitsuClient {
+    /// A GET against `path` with the JSON:API accept header, answering
+    /// the body on 2xx.
+    async fn get_json_api(&self, path: &str, query: &[(&str, String)]) -> Result<bytes::Bytes> {
+        let resp = self
+            .http
+            .get(format!("{}/{path}", self.base))
+            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
+            .query(query)
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        if !resp.status().is_success() {
+            return Err(AniError::Upstream {
+                status: resp.status().as_u16(),
+            });
+        }
+        resp.bytes().await.map_err(|_| AniError::Network)
+    }
+
+    /// Every Kitsu anime mapped to `external_id` on `site`
+    /// (`myanimelist/anime`, `anilist/anime`), each inlined in full.
+    /// Several Kitsu entries can map to one tracker entry — the Attack
+    /// on Titan Final Chapters specials both map to one MyAnimeList id
+    /// — and the episode map reads them all; [`Self::lookup_by_mal_id`]
+    /// takes the first for a card.
+    ///
+    /// # Errors
+    /// Same as [`Self::search`].
+    pub async fn anime_by_external_id(&self, site: &str, external_id: u32) -> Result<KitsuMapped> {
+        let body = self
+            .get_json_api(
+                "mappings",
+                &[
+                    ("filter[externalSite]", site.to_string()),
+                    ("filter[externalId]", external_id.to_string()),
+                    ("include", "item".to_string()),
+                    ("fields[anime]", ANIME_FIELDS.to_string()),
+                    ("page[limit]", "20".to_string()),
+                ],
+            )
+            .await?;
+        parse_mapped_anime_response(&body)
+    }
+}
+
+#[cfg(test)]
+#[path = "kitsu_mapped_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "kitsu_mapped_prop_test.rs"]
+mod prop_tests;
