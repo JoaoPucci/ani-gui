@@ -372,8 +372,10 @@ pub fn parse_anime_response(body: &[u8]) -> Result<KitsuAnimeRef> {
 
 /// Parse the response of a `/mappings?include=item` lookup into the
 /// referenced anime. Returns `None` when the lookup found no mapping
-/// (empty `data`) or the `included` array doesn't contain the
-/// referenced anime resource.
+/// (empty `data`, or a mapping whose item is null) or the anime is a
+/// music entry; fails when a mapping carries no item or names an anime
+/// the reply does not include, since such a reply says nothing of the
+/// show.
 ///
 /// Used by [`KitsuClient::lookup_by_mal_id`] — the AniList trending
 /// bridge feeds MAL ids in and gets full Kitsu refs out, in a single
@@ -381,7 +383,8 @@ pub fn parse_anime_response(body: &[u8]) -> Result<KitsuAnimeRef> {
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't valid
-/// JSON:API.
+/// JSON:API, a mapping carries no item, or the mapped anime is not
+/// included.
 pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
     #[derive(Deserialize)]
     struct Wrap {
@@ -389,20 +392,19 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
         #[serde(default)]
         included: Vec<AnimeResource>,
     }
+    // The lookup asks for each mapping's item: a mapping without one
+    // is no answer, where an item given as null maps to nothing.
     #[derive(Deserialize)]
     struct Mapping {
-        #[serde(default)]
-        relationships: Option<MappingRelationships>,
+        relationships: MappingRelationships,
     }
     #[derive(Deserialize)]
     struct MappingRelationships {
-        #[serde(default)]
-        item: Option<Item>,
+        item: Item,
     }
     #[derive(Deserialize)]
     struct Item {
-        #[serde(default)]
-        data: Option<ItemRef>,
+        data: crate::meta::present::Present<ItemRef>,
     }
     #[derive(Deserialize)]
     struct ItemRef {
@@ -415,17 +417,24 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
     let target_id = parsed
         .data
         .into_iter()
-        .find_map(|m| m.relationships?.item?.data.map(|r| r.id));
+        .find_map(|m| m.relationships.item.data.into_inner().map(|r| r.id));
     let Some(target_id) = target_id else {
         return Ok(None);
     };
-    let anime = parsed.included.into_iter().find(|r| r.id == target_id);
+    // The lookup asks for the mapped anime to be included: a reply
+    // that leaves it out says nothing of the show, and reading it as
+    // no match would be kept as a dead end.
+    let anime = parsed
+        .included
+        .into_iter()
+        .find(|r| r.id == target_id)
+        .ok_or_else(|| AniError::ParseFailed {
+            detail: format!("kitsu mappings parse: anime {target_id} not included"),
+        })?;
     // Single chokepoint for every MAL→Kitsu bridge (AniList trending feed +
     // Watch Later rail): a music-subtype mapping resolves to None so it never
     // reaches a list surface or the availability warmer.
-    Ok(anime
-        .map(into_ref)
-        .filter(|r| !is_music_subtype(r.subtype.as_deref())))
+    Ok(Some(into_ref(anime)).filter(|r| !is_music_subtype(r.subtype.as_deref())))
 }
 
 /// Pull the `myanimelist/anime` external id out of a Kitsu anime
@@ -451,7 +460,7 @@ pub fn parse_mal_id_from_mappings(body: &[u8]) -> Result<Option<u32>> {
 /// direct `anilist/anime` mapping, which is enough to reach both
 /// providers (AniList directly, MAL via AniList's `idMal`).
 ///
-/// Serialized as the body of the `kitsu:external-ids:v1:k<id>` cache
+/// Serialized as the body of the `kitsu:external-ids:v2:k<id>` cache
 /// row ([`crate::commands::external_ids`]); a field added or renamed
 /// here moves that key's version.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -472,8 +481,17 @@ pub struct ExternalIds {
 pub fn parse_external_ids_from_mappings(body: &[u8]) -> Result<ExternalIds> {
     #[derive(Deserialize)]
     struct Wrap {
+        // The anime document itself: without it the reply is not the
+        // one asked for, and its lack of mappings says nothing.
+        #[serde(rename = "data")]
+        _data: AnimeDoc,
         #[serde(default)]
         included: Vec<Resource>,
+    }
+    #[derive(Deserialize)]
+    struct AnimeDoc {
+        #[serde(rename = "id")]
+        _id: String,
     }
     #[derive(Deserialize)]
     struct Resource {
@@ -1292,9 +1310,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_mappings_returns_none_when_included_is_missing_or_empty() {
-        // Mapping exists but no `included` (e.g. a malformed response).
-        // Defensive: don't panic, just report no match.
+    fn parse_mappings_fails_when_the_mapped_anime_is_not_included() {
+        // A mapping names its anime, and the lookup asks for it to be
+        // included: one left out says nothing of the show, so the
+        // reply is no answer rather than "no match", which callers keep
+        // as a dead end.
         let body = r##"{
             "data": [{
                 "id": "1175",
@@ -1303,8 +1323,19 @@ mod tests {
                 "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
             }]
         }"##;
-        let r = parse_mappings_response(body.as_bytes()).expect("parses");
-        assert!(r.is_none());
+        assert!(matches!(
+            parse_mappings_response(body.as_bytes()),
+            Err(AniError::ParseFailed { .. })
+        ));
+        let with_others = r##"{
+            "data": [{
+                "id": "1175",
+                "type": "mappings",
+                "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+            }],
+            "included": [{"id":"13","type":"anime","attributes":{"canonicalTitle":"Other"}}]
+        }"##;
+        assert!(parse_mappings_response(with_others.as_bytes()).is_err());
     }
 
     #[test]

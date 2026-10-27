@@ -113,6 +113,13 @@ pub enum AniError {
         /// in N seconds", or a numeric `Retry-After`; `None` when it
         /// carried no parseable number.
         retry_after_secs: Option<u64>,
+        /// The tracker that refused, when a tracker did: `"anilist"` or
+        /// `"mal"`. A write to one tracker can be refused by another —
+        /// a MyAnimeList write whose episode map AniList would not
+        /// answer — and the notice the user sees names the one that
+        /// refused. Left out of the error's fields when `None`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        refused_by: Option<&'static str>,
     },
 
     /// Something did not have the shape the code required. Mostly

@@ -5,7 +5,7 @@
 //! episode-thumbnail backfills and aniskip all start from the same
 //! `/anime/:id?include=mappings` answer, and a detail page with two
 //! trackers connected asks for it twice at once. The answer is kept
-//! in `meta_cache` under `kitsu:external-ids:v1:k<kitsu_id>`: thirty
+//! in `meta_cache` under `kitsu:external-ids:v2:k<kitsu_id>`: thirty
 //! days when both ids are present, a day when one is missing (see
 //! [`external_ids_ttl`]). A failed read is kept nowhere — it says
 //! nothing about the mapping. Reads of one show in flight together
@@ -42,8 +42,12 @@ fn in_flight(kitsu_id: &str) -> Arc<tokio::sync::Mutex<()>> {
 /// Cache key for one show's external ids. Versioned with the shape of
 /// [`ExternalIds`]: a field added there moves the version so old rows
 /// are not read as the new shape.
+///
+/// v2: the mappings parser requires Kitsu's anime document. A v1 row
+/// with no ids may have been kept from a reply that was not that
+/// document at all, and reads the same as a show with no mappings.
 fn external_ids_key(kitsu_id: &str) -> String {
-    format!("kitsu:external-ids:v1:k{kitsu_id}")
+    format!("kitsu:external-ids:v2:k{kitsu_id}")
 }
 
 /// How long an answer from Kitsu's mappings is trusted. What is

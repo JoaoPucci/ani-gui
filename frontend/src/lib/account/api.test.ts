@@ -362,6 +362,39 @@ describe('readPersistedAccount', () => {
 });
 
 describe('persistAccount', () => {
+	it('sends nothing when the save is no longer wanted by the time it would go out', async () => {
+		// The check is asked when the write would be sent, not when it
+		// was queued: an earlier write for the provider holds the queue,
+		// and the save stops being wanted while it waits.
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const setToken = vi
+			.fn()
+			.mockImplementationOnce(async () => {
+				await held;
+				return { ok: true };
+			})
+			.mockResolvedValue({ ok: true });
+		stubBridge({ setToken });
+		const first = persistAccount('mal', payload());
+		let wanted = true;
+		const second = persistAccount('mal', payload(), () => wanted);
+		wanted = false;
+		release();
+		await first;
+		expect(await second).toEqual({ ok: false, kind: 'superseded' });
+		expect(setToken).toHaveBeenCalledTimes(1);
+	});
+
+	it('sends the write when the save is still wanted', async () => {
+		const setToken = vi.fn().mockResolvedValue({ ok: true });
+		stubBridge({ setToken });
+		expect(await persistAccount('mal', payload(), () => true)).toEqual({ ok: true });
+		expect(setToken).toHaveBeenCalledTimes(1);
+	});
+
 	it('returns {ok: true} on successful safeStorage write', async () => {
 		stubBridge({ setToken: async () => ({ ok: true }) });
 		expect(await persistAccount('anilist', payload())).toEqual({ ok: true });
