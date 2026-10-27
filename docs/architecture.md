@@ -177,6 +177,7 @@ AniList refusing this client, or being down, is no answer: what it would have sa
 | The aired count of a show AniList calls finished | The appended-extras evidence, beside Kitsu's own count | The rule does not conclude | None: the rule needs both sources to end the show at the count, and Kitsu cannot vouch twice |
 | MAL ↔ AniList id translation | The tracker write-back's target; the Watch Later bridge | The write fails with the rate-limit or upstream error; the card is left out for that load, with no dead end recorded | Kitsu's mappings are asked first already. A failed translation is not replaced by the other id Kitsu carries: the write would land on whatever entry that id names |
 | The signed-in account's profile, list and entries | The account pages, the list editor, progress write-back | The error is returned as it is | None |
+| The tracker's own entries — their episode counts, the sequels they name, whether each has finished airing | The tracker episode map a progress write is filed under ([`title-resolution.md`](./title-resolution.md)) | The write fails with that read's error, a rate limit keeping its wait, rather than going ahead as identity; no map is kept, and the next write asks again | None: the map is about the tracker's entries, which do not line up one-to-one with Kitsu's |
 
 ## Caching
 
