@@ -27,8 +27,9 @@
 
 use std::sync::Arc;
 
-use crate::account::episode_map::{EpisodeMap, Evidence, Identity, KitsuShow, TrackerShow};
+use crate::account::episode_map::{EpisodeMap, Evidence, Identity, KitsuShow, Shape, TrackerShow};
 use crate::account::episode_map_rules::map_show;
+use crate::account::episode_map_special::{special_extras, with_special};
 use crate::account::provider::{ProviderKind, ProviderMediaId, Tokens, UserListProvider};
 use crate::app::AppState;
 #[cfg(test)]
@@ -57,6 +58,8 @@ mod owners;
 mod parts_walk;
 #[path = "tracker_map_prequels.rs"]
 mod prequel_walk;
+#[path = "tracker_map_special.rs"]
+mod special_side;
 
 /// A read the map rests on failed, logged at debug. The map is neither
 /// built nor kept, and the write it was for fails with the read's error:
@@ -164,11 +167,38 @@ async fn build_resolved(
 
 /// Build the map for a show that resolves to nothing: through its
 /// prequels to the entry it may be filed under, back to the first part
-/// filed under that entry, then the parts from there. A show no
-/// prequel of which resolves, or whose entry the tracker answers is
-/// gone, is identity, kept for the short window.
+/// filed under that entry, then the parts from there; and, beside that,
+/// among the extras a related entry's own map reads
+/// ([`crate::account::episode_map_special`]). A show neither files is
+/// identity, kept for the short window.
 async fn build_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<EpisodeMap> {
     let ours = kitsu_show(ask, kitsu_id).await?;
+    let through_prequels = filed_through_prequels(ask, kitsu_id, ours.clone()).await?;
+    // Only a show the walk leaves explained by nothing is asked about as
+    // a special. A walk that files it as a later part, or finds the
+    // parts in conflict, leaves no related season whose own map reads
+    // extras it could be: that season's map sees the same parts, and
+    // reads them, or the conflict.
+    if !matches!(
+        through_prequels.shape,
+        Shape::Identity(Identity::Unexplained | Identity::CountUnknown | Identity::CountsAgree)
+    ) {
+        return Ok(through_prequels);
+    }
+    let special = special_side::special_evidence(ask, &ours)
+        .await?
+        .and_then(|evidence| special_extras(&evidence));
+    Ok(with_special(through_prequels, special))
+}
+
+/// The map the prequel walk gives a show that resolves to nothing:
+/// identity where no prequel resolves, or the tracker answers that the
+/// entry one resolves to is gone.
+async fn filed_through_prequels(
+    ask: &MapAsk<'_>,
+    kitsu_id: &str,
+    ours: KitsuShow,
+) -> Result<EpisodeMap> {
     let Some((root, native)) = prequel_walk::root_through_prequels(ask, kitsu_id).await? else {
         return Ok(EpisodeMap::identity(Identity::Unexplained));
     };

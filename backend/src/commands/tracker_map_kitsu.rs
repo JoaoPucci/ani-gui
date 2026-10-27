@@ -28,7 +28,7 @@ pub(super) fn kitsu_show_of(anime: &KitsuAnimeRef) -> KitsuShow {
 
 /// A related Kitsu anime as the map reads it: its count and the day it
 /// started, which orders it among Kitsu's parts.
-fn kitsu_show_of_relation(relation: &KitsuRelation) -> KitsuShow {
+pub(super) fn kitsu_show_of_relation(relation: &KitsuRelation) -> KitsuShow {
     KitsuShow {
         id: relation.id.clone(),
         episodes: relation.episode_count,
