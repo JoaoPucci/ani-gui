@@ -187,3 +187,44 @@ proptest! {
         prop_assert_eq!(typed, plain, "{}", reply);
     }
 }
+
+/// The reading the four private copies of `present` gave before they
+/// were merged into the shared one: a plain `Option` deserialize.
+fn former_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+#[derive(Deserialize)]
+#[serde(bound = "T: serde::de::DeserializeOwned")]
+struct FormerReply<T> {
+    #[serde(deserialize_with = "former_present")]
+    f: Option<T>,
+}
+
+proptest! {
+    /// The shared `present` reads every reply as the copies it replaced
+    /// did: missing, null, a value, or a value of another kind.
+    #[test]
+    fn the_shared_present_reads_as_the_copies_it_replaced(
+        field in proptest::option::of(prop_oneof![
+            Just(serde_json::Value::Null),
+            any::<u32>().prop_map(serde_json::Value::from),
+            any::<i64>().prop_map(serde_json::Value::from),
+            "\\PC{0,8}".prop_map(serde_json::Value::from),
+            nested().prop_map(|n| serde_json::to_value(n).expect("json")),
+        ]),
+        around in surroundings(),
+    ) {
+        let reply = with_field(around, field);
+        let now = serde_json::from_str::<PlainReply<u32>>(&reply).ok().map(|r| r.f);
+        let before = serde_json::from_str::<FormerReply<u32>>(&reply).ok().map(|r| r.f);
+        prop_assert_eq!(now, before, "{}", reply);
+        let now = serde_json::from_str::<PlainReply<Nested>>(&reply).ok().map(|r| r.f);
+        let before = serde_json::from_str::<FormerReply<Nested>>(&reply).ok().map(|r| r.f);
+        prop_assert_eq!(now, before, "{}", reply);
+    }
+}
