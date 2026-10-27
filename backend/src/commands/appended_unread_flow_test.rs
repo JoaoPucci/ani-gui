@@ -198,3 +198,50 @@ async fn a_replay_of_an_unverified_row_says_it_is_unverified() {
         .expect("hit");
     assert!(resp.episode_unverified);
 }
+
+/// A watch of row 13 made while no reading reached it is recorded
+/// under the provider's number, which is all that is known then; once
+/// a reading proves the row an extra and is kept, the same row reads
+/// back as `12.1` on Continue and the detail page, with nothing
+/// rewritten.
+#[tokio::test]
+async fn a_watch_recorded_while_unread_reads_back_as_the_extra_once_proved() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    crate::commands::play::play_with_progress(&state, &play_args("13"), |_| {})
+        .await
+        .expect("row 13 plays");
+    // The renderer marks the episode watched with the page's Kitsu id,
+    // as /api/play/mark-watched records it.
+    let begun = crate::history::guard::epoch(&state.history_path);
+    let cached = crate::commands::play_resolution_cache::get(
+        &state.cache_pool,
+        &play_args("13").resolution_key(),
+    )
+    .expect("read")
+    .expect("a replay row");
+    let watch = crate::commands::play_cache::cached_watch(&cached, "13");
+    crate::commands::play_native_record::record_watch_requested_at(
+        &state,
+        &watch,
+        Some(KITSU),
+        begun,
+    )
+    .await;
+    let read = |state: &crate::app::AppState| {
+        crate::commands::history::history_list(state).expect("history")[0]
+            .ep_no
+            .clone()
+    };
+    assert_eq!(read(&state), "13");
+    seed_kitsu(&state, "finished");
+    check_availability(&state, &availability_args())
+        .await
+        .expect("answered");
+    assert_eq!(read(&state), "12.1");
+    let on_detail = crate::commands::history::history_by_kitsu(&state, KITSU)
+        .expect("read")
+        .expect("the row");
+    assert_eq!(on_detail.ep_no, "12.1");
+}
