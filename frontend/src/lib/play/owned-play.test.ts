@@ -332,6 +332,20 @@ describe('recordPlayed', () => {
 		expect(syncTrackers).not.toHaveBeenCalled();
 	});
 
+	it('mirrors nothing for an episode the session could not verify, and still stamps the watch', () => {
+		// A row past Kitsu's count no reading reached: an appended extra
+		// or a whole episode, unknown which. The tracker would clamp its
+		// number to its own total and read the show as watched to there.
+		const markWatched = vi.fn(async () => {});
+		const syncTrackers = vi.fn(async () => {});
+		recordPlayed(
+			{ args, showId: '42', episode: 13, show, mirror: true, unverified: true },
+			{ markWatched, syncTrackers }
+		);
+		expect(markWatched).toHaveBeenCalledWith(args);
+		expect(syncTrackers).not.toHaveBeenCalled();
+	});
+
 	it('swallows a failed stamp or mirror — both are best-effort', async () => {
 		const markWatched = vi.fn(async () => {
 			throw new Error('down');

@@ -86,7 +86,8 @@ pub async fn resolve_launch_args(
                     &attempted.value.extra_tags,
                 )
                 .with_versions(&attempted.value.versions)
-                .with_played(attempted.value.version),
+                .with_played(attempted.value.version)
+                .with_count_unread(attempted.value.unread_past.is_some()),
             )
             .await;
             attempted.value

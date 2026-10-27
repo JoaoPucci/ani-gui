@@ -310,6 +310,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
     let before = std::time::SystemTime::now()
@@ -426,6 +427,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
 
@@ -617,6 +619,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
     crate::history::upsert_and_write(
@@ -692,6 +695,7 @@ fn two_recaps(state: &crate::app::AppState, upstream: &str, args: &PlayArgs) -> 
             former_episode: None,
             versions: Vec::new(),
             version: None,
+            episode_unverified: false,
         },
     );
     show

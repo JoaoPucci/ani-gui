@@ -209,6 +209,7 @@ pub(crate) async fn try_serve_cached(
     // the field names none.
     resp.episode.clone_from(&cached.played);
     resp.former_episode.clone_from(&cached.former_episode);
+    resp.episode_unverified = cached.episode_unverified;
     Some(resp)
 }
 

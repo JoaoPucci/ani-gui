@@ -20,6 +20,14 @@ pub fn extra_for_slot(reading: &Remembered, show_key: &str, ep_no: &str) -> Opti
     (usize::try_from(i).ok()? <= reading.ids.len()).then(|| format!("{}.{i}", reading.count))
 }
 
+/// Whether the row at `slot` is one past a count no reading reached
+/// (`unread_past`, [`crate::commands::play_native::PickedShow::unread_past`]):
+/// an appended extra or a whole episode, unknown which.
+#[must_use]
+pub fn past_an_unread_count(unread_past: Option<u32>, slot: u32) -> bool {
+    unread_past.is_some_and(|count| slot > count)
+}
+
 /// The provider's ids of the rows past `count`, in order.
 pub(super) fn past_ids(listing: &[EpisodeRef], count: u32) -> Vec<u64> {
     let at = usize::try_from(count).unwrap_or(usize::MAX);

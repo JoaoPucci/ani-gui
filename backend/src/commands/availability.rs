@@ -308,6 +308,10 @@ pub struct ResolveVerdict<'a> {
     /// The version that served, when the pick has several: it carries
     /// the mode, whatever an earlier probe sampled.
     pub played: Option<crate::commands::play_native_versions::VersionKind>,
+    /// Whether the listing ran past Kitsu's count with no reading of
+    /// the rows past it ([`crate::commands::play_native::PickedShow::unread_past`]):
+    /// its cap and extras are no answer about the count.
+    pub count_unread: bool,
 }
 
 impl<'a> ResolveVerdict<'a> {
@@ -326,6 +330,7 @@ impl<'a> ResolveVerdict<'a> {
             extra_tags,
             versions: &[],
             played: None,
+            count_unread: false,
         }
     }
 
@@ -336,6 +341,14 @@ impl<'a> ResolveVerdict<'a> {
         versions: &'a [crate::commands::play_native_versions::VersionInfo],
     ) -> Self {
         self.versions = versions;
+        self
+    }
+
+    /// The verdict whose listing's rows past Kitsu's count were not
+    /// read ([`Self::count_unread`]).
+    #[must_use]
+    pub fn with_count_unread(mut self, count_unread: bool) -> Self {
+        self.count_unread = count_unread;
         self
     }
 
@@ -360,6 +373,7 @@ impl<'a> ResolveVerdict<'a> {
             extra_tags: &[],
             versions: &[],
             played: None,
+            count_unread: false,
         }
     }
 }
@@ -485,7 +499,11 @@ impl RowAtStart {
 /// count-less one for the whole TTL. A dub resolve only proves the
 /// requested episode has an English embed, so the dub row stays
 /// boolean and self-heals via the next mode-aware probe. The row
-/// takes the ongoing TTL either way, status being unknown here.
+/// takes the ongoing TTL either way, status being unknown here. A
+/// resolve whose listing's rows past Kitsu's count no reading reached
+/// (`count_unread`) writes no count, and leaves a row with an exact
+/// count from the provider that served as it stands, lifetime and all
+/// ([`super::availability_unread`]).
 ///
 /// A clean miss is measured against the row that stands when it is
 /// written, as the probe's is: two resolves for the same show can be
@@ -518,8 +536,22 @@ pub async fn stamp_after_native(
             } else if at_start.positive_row_appeared_since(state, &row) {
                 return;
             }
-            match verdict.episode_cap {
-                Some(cap) if verdict.available && mode != "dub" => {
+            if !verdict.available {
+                write_cache(state, id, mode, false, verdict.provider);
+                return;
+            }
+            // A count no reading reached leaves a counted row as it
+            // stands, lifetime and all.
+            let standing = verdict.count_unread
+                && super::availability_unread::standing_counted_row(state, &row, verdict.provider)
+                    .is_some();
+            match super::availability_unread::served_stamp(
+                verdict.episode_cap,
+                mode == "dub",
+                verdict.count_unread,
+                standing,
+            ) {
+                super::availability_unread::ServedStamp::Count(cap) => {
                     write_cache_full(
                         state,
                         id,
@@ -547,9 +579,10 @@ pub async fn stamp_after_native(
                     );
                 }
                 // A positive whose cap is no evidence of the count (a
-                // dub, or none listed) writes the boolean row, the
-                // versions kept; a miss names none.
-                _ if verdict.available => write_boolean_row(
+                // dub, none listed, or rows past Kitsu's count no
+                // reading reached) writes the boolean row, the versions
+                // kept.
+                super::availability_unread::ServedStamp::NoCount => write_boolean_row(
                     state,
                     id,
                     mode,
@@ -557,7 +590,7 @@ pub async fn stamp_after_native(
                     verdict.provider,
                     with_modes_kept(state, &row, verdict.versions, verdict.played),
                 ),
-                _ => write_cache(state, id, mode, false, verdict.provider),
+                super::availability_unread::ServedStamp::Standing => {}
             }
         },
     )
@@ -737,6 +770,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v24: a listing whose rows past Kitsu's count no reading reached
+    //      gives no count, and does not write over one that stands. A
+    //      v23 row may hold such a listing's whole count as its cap,
+    //      for a play or probe that could not read whether the rows
+    //      past the count are extras; a row from a reading that refused
+    //      them holds the same shape, so re-keying re-probes.
     // v23: the appended-extras rule checks the rows past the count
     //      against every aired TV entry Kitsu relates the show to,
     //      whatever the role, and refuses an entry of any role airing
@@ -877,7 +916,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v23:{kitsu_id}:{m}")
+    format!("availability:v24:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -958,7 +997,8 @@ pub async fn check_availability(
         answered_by: None,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
-    let (available, episode_count, extra_episodes, provider, versions) = match probed {
+    let (available, episode_count, extra_episodes, provider, versions, count_unread) = match probed
+    {
         Ok(attempted) => {
             let (p, present, modes) = attempted.value;
             let Some(present) = present else {
@@ -988,10 +1028,11 @@ pub async fn check_availability(
                 );
             }
             if present {
+                let (cap, extras) = super::availability_unread::probe_counts(&p);
                 (
                     true,
-                    crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
-                    crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
+                    cap,
+                    extras,
                     Some(attempted.provider),
                     crate::commands::play_native_versions::named_versions(attempted.provider, &p)
                         .0
@@ -1004,6 +1045,7 @@ pub async fn check_availability(
                             ..v
                         })
                         .collect(),
+                    p.unread_past.is_some(),
                 )
             } else if attempted.past_undenied_affinity {
                 // The provider answered absence, but past the
@@ -1034,13 +1076,21 @@ pub async fn check_availability(
                     Vec::new(),
                     Some(attempted.provider),
                     Vec::new(),
+                    false,
                 )
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below, naming the provider whose miss
         // it is, under the same read rule.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, Vec::new()),
+        Err(ne) if ne.clean_miss => (
+            false,
+            None,
+            Vec::new(),
+            attempt.answered_by,
+            Vec::new(),
+            false,
+        ),
         // An answered dead end — a pool refused on how its hits are
         // named, dead listings on a healthy provider, a mode nobody
         // answered for — proves nothing about the show's absence and is
@@ -1074,6 +1124,16 @@ pub async fn check_availability(
         // acting on it are otherwise separated by the airing fetch
         // below, and a refresh can begin and finish inside that gap.
         let row = cache_key(id, mode);
+        // A count no reading reached, beside a counted row that stands,
+        // writes nothing: answered before the row is held, so a
+        // cache-skipping refresh that writes nothing takes the row from
+        // none of the writers that set out before it.
+        if let Some(stood) = count_unread
+            .then(|| super::availability_unread::standing_counted_row(state, &row, provider))
+            .flatten()
+        {
+            return Ok(stood);
+        }
         let Some(_writing) = hold_if_still_ours(
             &state.availability_refreshes,
             &row,
@@ -1113,6 +1173,15 @@ pub async fn check_availability(
                 provider,
                 versions: versions.clone(),
             });
+        }
+        // A count no reading reached does not write over one that
+        // stands: the row, and its count, are the answer. Asked again
+        // under the lock for a row written since the check above.
+        if let Some(stood) = count_unread
+            .then(|| super::availability_unread::standing_counted_row(state, &row, provider))
+            .flatten()
+        {
+            return Ok(stood);
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
@@ -1737,3 +1806,7 @@ mod unwalked_tests;
 #[cfg(test)]
 #[path = "availability_former_test.rs"]
 mod former_tests;
+
+#[cfg(test)]
+#[path = "availability_unread_test.rs"]
+mod unread_tests;
