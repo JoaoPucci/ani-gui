@@ -11,6 +11,7 @@
 use super::*;
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EntryPage, EpisodeRef, ProviderId, StreamSource};
+use crate::scraper::table_provider::LISTED_GENRE;
 use std::collections::BTreeMap;
 
 #[path = "play_native_walk_oracle_test.rs"]
@@ -69,6 +70,11 @@ struct Recorded {
     doc: Fixture,
     /// Listings whose probe dies in transport, as weather would.
     dead: Vec<&'static str>,
+    /// A recording written out in a test rather than read from the
+    /// site: a page it lists lists [`LISTED_GENRE`] unless the
+    /// recording says what it lists, as the site's show pages do (318
+    /// of the 320 the recordings hold list genres).
+    synthetic: bool,
 }
 
 impl Recorded {
@@ -78,6 +84,7 @@ impl Recorded {
             id: id.to_string(),
             doc: serde_json::from_str(json).unwrap_or_else(|e| panic!("parse {id}: {e}")),
             dead: Vec::new(),
+            synthetic: true,
         }
     }
 
@@ -88,6 +95,7 @@ impl Recorded {
             id: id.to_string(),
             doc: serde_json::from_str(&body).unwrap_or_else(|e| panic!("parse {id}: {e}")),
             dead: Vec::new(),
+            synthetic: false,
         }
     }
 }
@@ -150,10 +158,17 @@ impl Provider for Recorded {
             .unwrap_or_else(|| panic!("fixture {} holds no entry page for {slug}", self.id)))
     }
     async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
+        let listed = || {
+            if self.synthetic {
+                vec![LISTED_GENRE.to_string()]
+            } else {
+                Vec::new()
+            }
+        };
         Ok(EntryPage {
             year: self.detail_year(slug).await?,
             names: self.doc.page_names.get(slug).cloned().unwrap_or_default(),
-            genres: self.doc.genres.get(slug).cloned().unwrap_or_default(),
+            genres: self.doc.genres.get(slug).cloned().unwrap_or_else(listed),
         })
     }
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {

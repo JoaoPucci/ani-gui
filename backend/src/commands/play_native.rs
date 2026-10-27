@@ -29,7 +29,8 @@ use super::play_native_year::year_filtered;
 
 #[path = "play_native_titled.rs"]
 mod titled;
-pub use titled::pick_candidate_titled;
+pub use super::play_native_genre::pick_candidate_titled;
+pub(crate) use titled::pick_over;
 
 /// How many browse hits the entry's titles admit get an episodes
 /// probe. Beyond this the match was not a match; the request budget

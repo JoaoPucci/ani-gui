@@ -10,14 +10,10 @@ use crate::commands::play_native_title_grammar::normalized;
 use crate::commands::play_native_versions::{note_dead, versions_of, with_versions};
 use crate::commands::play_native_year::PageNames;
 
-/// [`pick_candidate`] told every title the requested entry goes by —
-/// the canonical title and its fallbacks, not only the one searched —
-/// which the split-entry detection reads to tell the entry from its
-/// parts.
-///
-/// # Errors
-/// As [`pick_candidate`].
-pub async fn pick_candidate_titled<P: Provider + ?Sized>(
+/// One pick over `hits`, leaving out of its bounded head every listing
+/// `gate` refused.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn pick_over<P: Provider + ?Sized>(
     client: &P,
     hits: &[BrowseHit],
     expected: Option<u32>,
@@ -25,6 +21,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     entry_titles: &[&str],
     year: Option<u32>,
     subtype: Option<&str>,
+    gate: &mut crate::commands::play_native_genre::GenreRefusals,
 ) -> Result<PickedShow> {
     if hits.is_empty() {
         // Nothing to probe: a clean absence of candidates, distinct
@@ -43,7 +40,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     hits.retain(|h| !precedes_entry(&h.title, entry_titles));
     // The bounded head, by the entry's titles (see
     // play_native_title_verdict::probe_head).
-    let (hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
+    let (mut hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
+    gate.leave_out(&mut hits);
     let mut pages = PageNames::new();
     let filtered = year_filtered(client, &hits, year, &mut pages).await;
     let Some(expected) = expected else {
