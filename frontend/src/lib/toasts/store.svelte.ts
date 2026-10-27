@@ -5,9 +5,13 @@
  * owned by the store itself so call sites (play page, settings,
  * future Syncplay entry) don't have to manage their own timeouts.
  *
- * Stack policy: at most TOAST_MAX_STACK rows on-screen. Spam-clicks
- * trim the oldest entries so the corner doesn't fill up with stale
- * "Sent to mpv." rows piling on a single retry burst.
+ * Stack policy: at most TOAST_MAX_STACK passing rows on-screen.
+ * Spam-clicks trim the oldest passing entries so the corner doesn't
+ * fill up with stale "Sent to mpv." rows piling on a single retry
+ * burst. Pinned rows (`duration: null`) wait for the user and are never
+ * trimmed, so a stack of pinned rows can go past the cap by the one
+ * passing row pushed beside them; only the sign-in notice pins, one
+ * per provider.
  */
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
@@ -39,6 +43,21 @@ const DEFAULT_DURATION_MS = 4000;
 
 let nextId = 1;
 
+/**
+ * The rows that stay when one more is pushed onto a stack capped at
+ * `max`. A pinned row waits for the user to act on it, so it always
+ * stays; the passing rows make room, oldest first, until the stack
+ * with the new row fits the cap or only pinned rows are left.
+ */
+export function keepOnPush(items: ToastItem[], max: number): ToastItem[] {
+	let surplus = items.length - (max - 1);
+	return items.filter((item) => {
+		if (surplus <= 0 || item.duration === null) return true;
+		surplus -= 1;
+		return false;
+	});
+}
+
 class ToastStore {
 	items: ToastItem[] = $state([]);
 
@@ -56,8 +75,7 @@ class ToastStore {
 		// Trim oldest entries if a push would exceed the cap. Slice +
 		// concat rather than splice so the assignment triggers
 		// reactivity (matches download/store.svelte.ts's pattern).
-		const trimmed = this.items.slice(-(TOAST_MAX_STACK - 1));
-		this.items = [...trimmed, row];
+		this.items = [...keepOnPush(this.items, TOAST_MAX_STACK), row];
 		if (duration !== null) {
 			// dismiss(id) is a no-op when the row has already been
 			// trimmed by a later push — see the store test.

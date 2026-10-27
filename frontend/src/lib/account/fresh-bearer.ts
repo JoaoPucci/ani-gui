@@ -21,6 +21,7 @@ import { accountStore } from './store.svelte';
 import { freshBearer } from './refresh-flow';
 import { persistAccount, refreshTokens } from './api';
 import { bearerFor } from './state-helpers';
+import { handleRefusedBearer } from './read-refusal';
 
 /**
  * Per-provider in-flight refresh promise. When two call sites hit the
@@ -62,6 +63,7 @@ export function freshBearerFor(provider: Provider): Promise<string | null> {
 			persistAccount,
 			generation: (prov) => accountStore.accountGeneration[prov],
 			onRefreshed: (prov, account) => accountStore.setConnected(prov, account),
+			onRenewalFailed: (prov, failure) => accountStore.noteRenewalFailed(prov, failure),
 			now: () => Date.now()
 		},
 		provider,
@@ -73,6 +75,28 @@ export function freshBearerFor(provider: Provider): Promise<string | null> {
 	});
 	inFlight[provider] = { generation, promise };
 	return promise;
+}
+
+/**
+ * A tracker refused a read's bearer: renew the sign-in if it can be,
+ * otherwise mark it expired with the reason, so the sign-in notice
+ * says so. The decision is the unit-tested `handleRefusedBearer`.
+ */
+export function bearerRefusedFor(provider: Provider, refusedBearer: string): Promise<void> {
+	return handleRefusedBearer(
+		{
+			state: (prov) => accountStore.byProvider[prov],
+			changing: (prov) => accountStore.accountChanging[prov],
+			setConnected: (prov, account) => accountStore.setConnected(prov, account),
+			setExpired: (prov, account) => accountStore.setExpired(prov, account),
+			noteRenewalFailed: (prov, failure) => accountStore.noteRenewalFailed(prov, failure),
+			refreshTokens,
+			persistAccount,
+			generation: (prov) => accountStore.accountGeneration[prov]
+		},
+		provider,
+		refusedBearer
+	);
 }
 
 /** Test-only: clear the in-flight refresh map between cases. */
