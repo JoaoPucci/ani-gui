@@ -818,18 +818,28 @@ PYUSES
     # A job that skips its steps when nothing it reads changed has to
     # count the composite actions it calls as read, or a broken action
     # lands certified by the no-op successes of the jobs that use it.
-    # The pairs come from the workflows themselves: every step whose
-    # `uses` names ./.github/actions/<name>, parsed by
-    # local_actions_used, in a workflow with a governing relevance
-    # line. A workflow without one either has no
-    # filter (arch.yml, mutation.yml) or decides in a script — rust.yml,
-    # whose tools/rust-workflow-filter.sh rust_workflow_filter.bats runs
-    # over the same change.
+    # The pairs come from the workflows themselves. The action side is
+    # parsed: every step whose `uses` names ./.github/actions/<name>,
+    # read by local_actions_used. The filter side is relevance_pattern's
+    # syntactic read of the one governing `grep -qE ... <<<"$changed"`
+    # line. A workflow with no such line either has no filter
+    # (arch.yml, mutation.yml) or decides in a script (rust.yml, whose
+    # tools/rust-workflow-filter.sh rust_workflow_filter.bats runs over
+    # the same change); one with more than one is refused, not skipped.
+    #
+    # Not followed: a composite action that calls another local action
+    # (only the outer one is paired) and a job-level reusable workflow.
+    # Neither exists here today.
     pairs=0
     for wf in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
         [ -f "$wf" ] || continue
-        pattern=$(relevance_pattern "$wf") || continue
-        [ -n "$pattern" ] || continue
+        governing=$(grep -F 'if grep -qE' "$wf" | grep -cF '<<<"$changed"' || true)
+        [ "$governing" -eq 0 ] && continue
+        pattern=$(relevance_pattern "$wf") || {
+            echo "$(basename "$wf") has $governing governing relevance lines"
+            return 1
+        }
+        [ -n "$pattern" ]
         actions=$(local_actions_used "$wf")
         for action in $actions; do
             pairs=$((pairs + 1))
@@ -839,9 +849,10 @@ PYUSES
             }
         done
     done
-    # The derivation has to find the uses it exists for, or it passes
-    # having compared nothing.
-    [ "$pairs" -ge 5 ]
+    # The derivation has to find every use it exists for: bash.yml's
+    # apt install, crap.yml's and e2e.yml's two each, frontend.yml's
+    # pnpm install. A lost pair is a red run, not a quieter green one.
+    [ "$pairs" -ge 6 ]
 }
 
 # Whether a workflow sets up the upstream remote, as a function so a

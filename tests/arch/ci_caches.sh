@@ -40,7 +40,9 @@
 # its own (a third-party action keeping a cache internally), or a
 # script a step runs that calls apt or the cache service itself — only
 # the steps' own text is read — or an apt install split across a line
-# continuation so that no one line carries both `apt` and `install`:
+# continuation so that no one line carries both `apt` and `install`,
+# or one whose command name is quoted or held in a variable
+# (`"apt-get" install`, `$APT install`):
 # the install rule reads a run one line at a time, and joining shell
 # lines is parsing shell, which AGENTS.md §2 puts out of bounds. A
 # comment line spelling an install is a finding, which errs the safe
@@ -83,7 +85,7 @@ import yaml
 MASTER_SAVE_IF = "${{ github.ref == 'refs/heads/master' }}"
 MASTER_REF = "github.ref == 'refs/heads/master'"
 APT_ACTION = ".github/actions/apt-install/action.yml"
-APT_INSTALL = re.compile(r"(^|[^\w-])apt(-get)?\s(.*\s)?install(\s|$)")
+APT_INSTALL = re.compile(r"(^|[^\w-])apt(-get)?\s(.*\s)?install([^\w-]|$)")
 
 findings = []
 

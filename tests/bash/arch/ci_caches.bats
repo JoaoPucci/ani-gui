@@ -127,7 +127,8 @@ check() {
 
 @test "an apt install in a workflow is caught, by apt or apt-get" {
     for line in 'sudo apt-get install -y curl' 'sudo apt install -y curl' \
-        'sudo apt-get -qq install curl' "sudo apt-get install \\"; do
+        'sudo apt-get -qq install curl' "sudo apt-get install \\" \
+        'sudo apt-get install;'; do
         workflow '      - run: |' "          $line"
         check
         [ "$status" -eq 1 ] || {
