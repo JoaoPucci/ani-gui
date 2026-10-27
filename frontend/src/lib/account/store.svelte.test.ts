@@ -363,3 +363,24 @@ describe('accountStore renewal failures', () => {
 		expect(accountStore.renewalFailure.mal).toBe('unreachable');
 	});
 });
+
+describe('accountStore.retryRenewal', () => {
+	it('forgets the failed renewals it retries, so their outcome is told again', async () => {
+		const refresh = vi.spyOn(accountStore, 'refreshExpired').mockResolvedValue();
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
+		accountStore.noteRenewalFailed('mal', 'unreachable');
+		await accountStore.retryRenewal();
+		expect(accountStore.renewalFailure.mal).toBeNull();
+		expect(refresh).toHaveBeenCalledTimes(1);
+		refresh.mockRestore();
+	});
+
+	it('keeps a refused renewal of a still-valid sign-in: there is nothing to retry', async () => {
+		const refresh = vi.spyOn(accountStore, 'refreshExpired').mockResolvedValue();
+		accountStore.setConnected('mal', payload({ refresh_token: 'rt' }));
+		accountStore.noteRenewalFailed('mal', 'rejected');
+		await accountStore.retryRenewal();
+		expect(accountStore.renewalFailure.mal).toBe('rejected');
+		refresh.mockRestore();
+	});
+});

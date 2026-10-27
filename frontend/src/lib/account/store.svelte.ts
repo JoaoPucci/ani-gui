@@ -160,6 +160,11 @@ class AccountStore {
 		});
 	}
 
+	/** Try the failed renewals again now. Stub: same as refreshExpired. */
+	retryRenewal(): Promise<void> {
+		return this.refreshExpired();
+	}
+
 	get connected(): Provider[] {
 		return (Object.keys(this.byProvider) as Provider[]).filter(
 			(p) => this.byProvider[p].kind === 'connected'

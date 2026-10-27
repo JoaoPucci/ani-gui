@@ -207,4 +207,31 @@ describe('opening the app with a dead MAL sign-in', () => {
 		expect(listReads, 'the home rail asked MAL for the list').toBeGreaterThan(0);
 		expect(signInToasts()).toEqual([REFUSED]);
 	});
+
+	it('tells the outcome again after the user asks to try now', async () => {
+		let renewals = 0;
+		server.use(
+			...quietBackend,
+			http.post(`${API_BASE}/api/account/refresh/mal`, () => {
+				renewals += 1;
+				return HttpResponse.json(
+					{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
+					{ status: 502 }
+				);
+			})
+		);
+		bootLayout();
+		await settle();
+		expect(signInToasts()).toEqual([UNREACHABLE]);
+
+		const tryNow = Array.from(
+			layoutTarget.querySelectorAll<HTMLButtonElement>('.toast .action')
+		).find((b) => b.textContent?.trim() === 'Try now');
+		tryNow?.click();
+		await settle();
+		expect(renewals, 'the click renewed again').toBe(2);
+		// The user acted and the renewal failed again: saying nothing now
+		// would read as success.
+		expect(signInToasts()).toEqual([UNREACHABLE]);
+	});
 });

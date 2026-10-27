@@ -161,7 +161,7 @@
 						actionLabel: copy.actionLabel,
 						onAction:
 							copy.action === 'retry'
-								? () => void accountStore.refreshExpired()
+								? () => void accountStore.retryRenewal()
 								: () => void goto(resolve('/account'))
 					});
 				},
