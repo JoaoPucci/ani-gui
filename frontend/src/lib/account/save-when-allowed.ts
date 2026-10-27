@@ -46,6 +46,19 @@ export function busyWaitSecs(error: unknown): number | null {
 	return Math.min(secs, MAX_WAIT_S);
 }
 
+/** The tracker a 429's body names as the one that refused — AniList or
+ *  MyAnimeList — or `null` when it names neither. A write to one tracker
+ *  can be refused by the other, whose answer it needed first. */
+function refuserOf(error: unknown): Provider | null {
+	const { detail } = error as { detail?: unknown };
+	try {
+		const by: unknown = JSON.parse(typeof detail === 'string' ? detail : '')?.refused_by;
+		return by === 'anilist' || by === 'mal' ? by : null;
+	} catch {
+		return null;
+	}
+}
+
 function advertisedSecs(body: string): number | null {
 	try {
 		const secs: unknown = JSON.parse(body)?.retry_after_secs;
@@ -85,7 +98,7 @@ export async function saveWhenAllowed<T>(
 		} catch (e) {
 			const secs = busyWaitSecs(e);
 			if (secs === null || tried >= max) throw e;
-			deps.notify(secs, null);
+			deps.notify(secs, refuserOf(e));
 			await deps.wait(secs * 1000);
 			if (deps.stillWanted && !deps.stillWanted()) throw new SupersededError();
 		}

@@ -43,7 +43,7 @@ pub(crate) fn rate_limited(provider: &'static str, resp: &reqwest::Response) -> 
     );
     AniError::RateLimited {
         retry_after_secs,
-        refused_by: None,
+        refused_by: Some(provider),
     }
 }
 
