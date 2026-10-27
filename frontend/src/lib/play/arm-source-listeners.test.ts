@@ -479,7 +479,7 @@ describe('a resume point holds the picture until the seek lands', () => {
 		vi.useRealTimers();
 	});
 
-	function armHolding(showId: string, episode: number) {
+	function armHolding(showId: string, episode: number, extra: Record<string, unknown> = {}) {
 		// Built apart from the call, so the option the hold adds is not
 		// an excess property of the input's literal.
 		const input = {
@@ -488,7 +488,8 @@ describe('a resume point holds the picture until the seek lands', () => {
 			episode,
 			scope,
 			positions,
-			onResumeHold: (holding: boolean) => holds.push(holding)
+			onResumeHold: (holding: boolean) => holds.push(holding),
+			...extra
 		};
 		armSourceScopedListeners(input);
 	}
@@ -618,7 +619,7 @@ describe('a resume point holds the picture until the seek lands', () => {
 		// the length judges the point finished: it is sought back to
 		// its start, and revealed once that seek has landed.
 		savePosition('show-a', 6, 1400, Number.NaN, positions);
-		armHolding('show-a', 6);
+		armHolding('show-a', 6, { startedAtPoint: true });
 		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
 		video.currentTime = 1400;
 		video.dispatchEvent(new Event('loadedmetadata'));
@@ -630,6 +631,45 @@ describe('a resume point holds the picture until the seek lands', () => {
 		expect(play).toHaveBeenCalledTimes(1);
 		await settle();
 		expect(holding()).toBe(false);
+	});
+
+	it('a stream started at a point judged finished is sought to its start even while it reads zero', () => {
+		// The metadata usually comes before the point's fragment is in, so
+		// the element still reads zero. The engine has not let go of the
+		// point: unless the element seeks, it moves the playhead there
+		// once that fragment is buffered. The seek to zero is what tells
+		// it to start from the beginning instead.
+		savePosition('show-a', 6, 1400, Number.NaN, positions);
+		armHolding('show-a', 6, { startedAtPoint: true });
+		const seeks: number[] = [];
+		video.addEventListener('seeking', () => seeks.push(video.currentTime));
+		const set = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+		Object.defineProperty(video, 'currentTime', {
+			configurable: true,
+			get: () => set?.get?.call(video) as number,
+			set: (s: number) => {
+				set?.set?.call(video, s);
+				video.dispatchEvent(new Event('seeking'));
+			}
+		});
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		expect(video.currentTime).toBe(0);
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(seeks).toEqual([0]);
+		expect(holding()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+	});
+
+	it('a point in the last 90 seconds, on a stream not started at it, reveals from its start at once', () => {
+		// An mp4 stream opens at its start whatever the point: there is
+		// nothing to seek back from, and nothing for the reveal to wait on.
+		savePosition('show-a', 6, 1400, Number.NaN, positions);
+		armHolding('show-a', 6);
+		metadataWith(1420);
+		expect(readPosition('show-a', 6, positions)).toBeNull();
+		expect(holding()).toBe(false);
+		expect(play).toHaveBeenCalledTimes(1);
+		expect(video.currentTime).toBe(0);
 	});
 
 	it('a started mark, at zero, holds nothing', () => {

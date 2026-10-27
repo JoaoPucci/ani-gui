@@ -256,6 +256,37 @@ describe('play route — a resumed episode opens at its point', () => {
 		expect(engine.startsAt).toEqual([[]]);
 	});
 
+	it('a point in the last 90 seconds is sought back from before the reveal (hls)', async () => {
+		// The engine started loading at the point, so the stream is
+		// sought to its start and revealed once that seek lands.
+		savePosition(KITSU_ID, 1, 1400, Number.NaN);
+		const { video, play } = await openEpisode('hls');
+		await until(() => busy(), 'the frame to hold');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(readPosition(KITSU_ID, 1)).toBeNull();
+		await new Promise((r) => setTimeout(r, 20));
+		expect(busy()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+		video.dispatchEvent(new Event('seeked'));
+		await until(() => !busy(), 'the frame to reveal');
+		expect(video.currentTime).toBe(0);
+	});
+
+	it('a point in the last 90 seconds reveals from the start at once (mp4)', async () => {
+		// An mp4 element opens at its start whatever the point, so there
+		// is no seek back to wait for.
+		savePosition(KITSU_ID, 1, 1400, Number.NaN);
+		const { video, play } = await openEpisode('mp4');
+		await until(() => busy(), 'the frame to hold');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(readPosition(KITSU_ID, 1)).toBeNull();
+		await until(() => !busy(), 'the frame to reveal');
+		expect(play).toHaveBeenCalledTimes(1);
+		expect(video.currentTime).toBe(0);
+	});
+
 	it('an episode with no point opens without holding', async () => {
 		const { video } = await openEpisode('hls');
 		// The source has attached: its listeners mark the episode
