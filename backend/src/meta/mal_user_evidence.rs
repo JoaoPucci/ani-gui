@@ -48,6 +48,9 @@ pub(in crate::meta) fn parse_media_evidence(body: &[u8]) -> Result<MediaEvidence
         status: Option<String>,
         #[serde(deserialize_with = "present")]
         media_type: Option<String>,
+        // Unlike the fields above, MAL leaves an unset date out rather
+        // than sending null, so a missing date is its answer: these
+        // stay defaulted, not `present`.
         #[serde(default)]
         start_date: Option<String>,
         #[serde(default)]
