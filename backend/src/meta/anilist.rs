@@ -287,7 +287,7 @@ const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
 /// caps `perPage` at 50, so larger chunks would truncate even with one
 /// media per id. Several media can record one MAL id, so a full chunk
 /// can still overflow; the page says so, and the chunk is split.
-pub const MAL_BATCH_PAGE_SIZE: usize = 50;
+pub const MAL_BATCH_PAGE_SIZE: usize = super::anilist_pages::PAGE_CAP;
 
 /// Every AniList media each of `mal_ids` is recorded by, chunked at
 /// [`MAL_BATCH_PAGE_SIZE`] per request: several media can record one
@@ -303,27 +303,27 @@ pub async fn media_listed_for_mals(
     mal_ids: &[u32],
     base_override: Option<&str>,
 ) -> Result<std::collections::HashMap<u32, Vec<u32>>> {
+    use super::anilist_pages::{whole_pages, Page};
     let url = base_override.unwrap_or(ANILIST_API);
-    let mut listed = std::collections::HashMap::new();
-    let mut chunks: Vec<&[u32]> = mal_ids.chunks(MAL_BATCH_PAGE_SIZE).rev().collect();
-    while let Some(chunk) = chunks.pop() {
-        let body = serde_json::json!({
-            "query": MEDIA_IDS_BY_MALS_GQL,
-            "variables": { "idMals": chunk },
-        });
-        let bytes = post_graphql_public(client, url, &body).await?;
-        if page_has_next(&bytes)? {
-            let (first, rest) = chunk.split_at(chunk.len() / 2);
-            if first.is_empty() {
-                return Err(overflowing(chunk));
+    let pages = whole_pages(
+        mal_ids,
+        |chunk| async move {
+            let body = serde_json::json!({
+                "query": MEDIA_IDS_BY_MALS_GQL,
+                "variables": { "idMals": chunk },
+            });
+            let bytes = post_graphql_public(client, url, &body).await?;
+            if page_has_next(&bytes)? {
+                return Ok(Page::Cut);
             }
-            chunks.push(rest);
-            chunks.push(first);
-            continue;
-        }
-        listed.extend(parse_media_listed_by_mal_response(&bytes)?);
-    }
-    Ok(listed)
+            Ok(Page::Whole(parse_media_listed_by_mal_response(&bytes)?))
+        },
+        // More media record one MAL id than a page holds: no answer
+        // the app can read whole.
+        |one| Err(overflowing(&[one])),
+    )
+    .await?;
+    Ok(pages.into_iter().flatten().collect())
 }
 
 /// Every AniList media that records `mal_id` as its MAL id, in AniList
