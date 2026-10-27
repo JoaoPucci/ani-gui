@@ -134,6 +134,25 @@ fn a_row_tagged_with_its_own_slot_is_left_as_it_is() {
 }
 
 #[test]
+fn a_row_past_a_count_no_reading_reached_is_left_as_it_is() {
+    // Kitsu counts six, and nothing read the rows past it: slot 8 is an
+    // appended extra or a whole episode, unknown which, so the
+    // provider's tag says nothing the stamp may keep.
+    assert_eq!(
+        restamp("8", 0, &stamp(7, "6"), &recap_after_three(), Some(6)),
+        None
+    );
+    // A row within the count is the listing's as it is.
+    assert_eq!(
+        restamp("6", 0, &stamp(7, "6"), &recap_after_three(), Some(6)),
+        Some(Restamp {
+            display: stamp(6, "5"),
+            former: None,
+        })
+    );
+}
+
+#[test]
 fn a_row_an_earlier_version_tagged_otherwise_keeps_that_tag_beside_it() {
     // A stitched recap an earlier version called "4.5": a position the
     // player kept then is under that number.
@@ -256,5 +275,29 @@ proptest! {
             restamp(&held.number.to_string(), offset, &(stamp_slot, stamp_tag), &rows, None),
             None
         );
+    }
+
+    #[test]
+    fn a_row_past_an_unread_count_is_never_restamped(
+        count in 2u32..30,
+        recap_at in 0u32..1000,
+        offset in 0u32..60,
+        unread in 0u32..40,
+        row_at in 0usize..1000,
+        stamp_at in 0usize..1000,
+    ) {
+        let recap = 1 + recap_at % (count - 1);
+        let rows = listing(count, recap, offset);
+        let held = &rows[row_at % rows.len()];
+        let other = &rows[stamp_at % rows.len()];
+        let before = (other.number, shown(other));
+        let row_ep = held.number.to_string();
+        let got = restamp(&row_ep, offset, &before, &rows, Some(unread));
+        if held.number > unread {
+            prop_assert_eq!(got, None);
+        } else {
+            // Within the count the unread rows past it change nothing.
+            prop_assert_eq!(got, restamp(&row_ep, offset, &before, &rows, None));
+        }
     }
 }
