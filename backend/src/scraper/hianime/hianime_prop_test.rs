@@ -268,7 +268,10 @@ proptest::proptest! {
         pad in "[ \n]{0,3}",
         quality in proptest::bool::ANY,
         decoys in proptest::collection::vec(prop_oneof![Just("Rx"), Just("PG-13"), Just("18+")], 0..4),
-        bounded in proptest::bool::ANY,
+        // 0: the show's buttons follow its stats; 1: the page carries no
+        // buttons; 2: the buttons come before the stats, and another
+        // buttons marker follows the cards further down.
+        placement in 0u8..3,
     ) {
         let mark = own
             .as_ref()
@@ -279,13 +282,19 @@ proptest::proptest! {
             .iter()
             .map(|d| format!(r#"<div class="flw-item"><div class="tick-item tick-pg">{d}</div><div class="tick-item tick-rate">{d}</div></div>"#))
             .collect();
-        // Without the buttons that end the show's own stats, the block
-        // has no bound, and nothing is read as the show's.
-        let buttons = if bounded { r#"<div class="film-buttons"></div>"# } else { r#"<div class="film-actions"></div>"# };
-        let page = format!(
-            r#"<h2 class="film-name dynamic-name">Show</h2><div class="film-stats"><div class="tick">{quality}{mark}<span class="item">TV</span></div></div>{buttons}{cards}"#
+        let stats = format!(
+            r#"<div class="film-stats"><div class="tick">{quality}{mark}<span class="item">TV</span></div></div>"#
         );
-        let expected = if bounded { own } else { None };
+        let buttons = r#"<div class="film-buttons"></div>"#;
+        let heading = r#"<h2 class="film-name dynamic-name">Show</h2>"#;
+        let page = match placement {
+            0 => format!("{heading}{stats}{buttons}{cards}"),
+            1 => format!(r#"{heading}{stats}<div class="film-actions"></div>{cards}"#),
+            _ => format!("{heading}{buttons}{stats}{cards}{buttons}"),
+        };
+        // Only a block running heading, stats, buttons is the show's own;
+        // otherwise nothing says where its stats are, and none is read.
+        let expected = if placement == 0 { own } else { None };
         proptest::prop_assert_eq!(parse_detail_rating(&page), expected);
     }
 
