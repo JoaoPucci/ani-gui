@@ -239,12 +239,21 @@ describe('a play the session could not verify, beside the held-write machinery',
 			{ markWatched: async () => {}, syncTrackers: syncWatchedToTrackers }
 		);
 
-	it('holds no write and shows no busy notice, AniList refusing or not', async () => {
+	it.each([
+		['refusing', () => updateProgress.mockRejectedValue(refused(1))],
+		['answering', () => updateProgress.mockResolvedValue(null)]
+	])('holds no write and shows no busy notice, AniList %s', async (_how, answer) => {
 		vi.useFakeTimers();
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
-		updateProgress.mockRejectedValue(refused(1));
-		await play(true);
-		await vi.advanceTimersByTimeAsync(2000);
+		answer();
+		// Timers advanced before the play is awaited: a regression that let
+		// the write out would be held by the wait, and fail on what it sent
+		// rather than on a timeout.
+		const p = play(true);
+		// Past every wait a held write could take (four attempts, a
+		// second apart).
+		await vi.advanceTimersByTimeAsync(10_000);
+		await p;
 		expect(updateProgress).not.toHaveBeenCalled();
 		expect(trackedWriteKeys()).toBe(0);
 		expect(toastStore.items).toEqual([]);
