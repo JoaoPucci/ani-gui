@@ -252,9 +252,11 @@ fn cache_rows_only_a_retired_provider_could_be_read_by_go() {
         meta_cache_get(&state.cache_pool, &title_match_key(None, "The Separation")).unwrap(),
         Some("46903".to_string())
     );
-    // The cache pass's own deletions; the superseded row's stamp, mapping,
-    // resolution row and title match went with its removal.
-    assert_eq!(report.cache_rows, 7, "{report:?}");
+    // The cache pass's own deletions: two verdicts, the retired label's
+    // title match and the rowless key's stamp, mapping and mark. The
+    // superseded row's stamp, mapping, resolution row and title matches
+    // — the anidb.app-segment one included — went with its removal.
+    assert_eq!(report.cache_rows, 6, "{report:?}");
 }
 
 #[test]
