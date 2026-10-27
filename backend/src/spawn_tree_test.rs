@@ -13,3 +13,17 @@ fn a_look_that_could_not_be_made_does_not_read_as_gone() {
     let failed: Result<bool, std::io::Error> = Err(std::io::Error::other("fork failed"));
     assert!(still_running(failed));
 }
+
+proptest::proptest! {
+    /// A look that was made is read as it answered; one that could not
+    /// be made is read as running, whatever kept it from being made.
+    #[test]
+    fn a_look_is_read_as_it_answered_or_as_running(
+        answered in proptest::bool::ANY,
+        why in "[a-z ]{0,20}",
+    ) {
+        proptest::prop_assert_eq!(still_running::<std::io::Error>(Ok(answered)), answered);
+        let failed: Result<bool, std::io::Error> = Err(std::io::Error::other(why));
+        proptest::prop_assert!(still_running(failed));
+    }
+}
