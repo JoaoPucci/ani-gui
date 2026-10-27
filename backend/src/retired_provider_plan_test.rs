@@ -107,7 +107,7 @@ fn every_entry_a_retired_row_is_shown_as_needs_a_walked_row_over_it() {
 #[test]
 fn kitsu_ids_compare_as_ids() {
     let rows = [
-        row("old-1", false, &["0049444"], None, "6"),
+        row("old-1", false, &[" 49444"], None, "6"),
         row("test-a:new-1", true, &["49444"], Some(5), "9"),
     ];
     assert_eq!(plan(&rows).superseded, vec!["old-1".to_string()]);
