@@ -318,6 +318,7 @@ async fn mal_the_final_chapters_first_special_sends_one_and_no_status() {
 async fn mal_get(server: &MockServer, media: u32, body: &str) {
     Mock::given(method("GET"))
         .and(path(format!("/anime/{media}")))
+        .and(wiremock::matchers::query_param("fields", "my_list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched},num_episodes"))
         .respond_with(ResponseTemplate::new(200).set_body_string(body.to_string()))
         .mount(server)
         .await;

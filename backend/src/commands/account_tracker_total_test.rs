@@ -53,7 +53,7 @@ async fn mal_server_with_row(
         .and(path("/anime/21"))
         .and(query_param(
             "fields",
-            "my_list_status{num_times_rewatched},num_episodes",
+            "my_list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched},num_episodes",
         ))
         .respond_with(
             wiremock::ResponseTemplate::new(200).set_body_string(format!(
