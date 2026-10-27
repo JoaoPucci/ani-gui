@@ -52,7 +52,9 @@ pub fn breaker_outcome<T>(
             AniError::NoResults | AniError::RefusedByName | AniError::EpisodeUnavailable => {
                 Some(ScrapeOutcome::Success)
             }
-            AniError::RateLimited { retry_after_secs } => Some(ScrapeOutcome::RateLimited {
+            AniError::RateLimited {
+                retry_after_secs, ..
+            } => Some(ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
             }),
             // A provider can rate-limit with the HTTP status, not the

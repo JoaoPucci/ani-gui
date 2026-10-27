@@ -19,6 +19,9 @@ pub const KITSU_PAGE: u32 = 20;
 pub struct KitsuTail<'a> {
     state: &'a AppState,
     kitsu_id: &'a str,
+    /// Where AniList's airing answer is asked: `None`, AniList itself,
+    /// outside tests.
+    anilist_base: Option<&'a str>,
     budget: Option<std::time::Duration>,
 }
 
@@ -30,8 +33,19 @@ impl<'a> KitsuTail<'a> {
         kitsu_id.filter(|id| !id.is_empty()).map(|kitsu_id| Self {
             state,
             kitsu_id,
+            anilist_base: None,
             budget: Some(super::play_native_appended::TAIL_BUDGET),
         })
+    }
+
+    /// The same source asking a mock AniList at `base`.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_anilist_base(self, base: &'a str) -> Self {
+        Self {
+            anilist_base: Some(base),
+            ..self
+        }
     }
 
     /// The source with no bound on how long its reads may take. A test

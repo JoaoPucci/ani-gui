@@ -101,7 +101,7 @@ async fn rate_limiting_tracker() -> MockServer {
 
 fn assert_rate_limited_for(err: &AniError, wait: u64) {
     assert!(
-        matches!(err, AniError::RateLimited { retry_after_secs: Some(w) } if *w == wait),
+        matches!(err, AniError::RateLimited { retry_after_secs: Some(w), .. } if *w == wait),
         "expected RateLimited {{ retry_after_secs: Some({wait}) }}, got {err:?}"
     );
 }
@@ -146,4 +146,58 @@ async fn an_anilist_429_reaches_the_seed_read_as_a_rate_limit_with_its_wait() {
         .await
         .expect_err("the tracker refused");
     assert_rate_limited_for(&err, 60);
+}
+
+#[tokio::test]
+async fn each_tracker_s_429_names_that_tracker() {
+    let kitsu_mal = kitsu(KITSU_MAL).await;
+    let mal = rate_limiting_tracker().await;
+    let state = state_with_kitsu(&kitsu_mal.uri());
+    let provider = MalProvider::with_bases(
+        reqwest::Client::new(),
+        mal.uri(),
+        "http://unused-token".to_string(),
+        MalRefreshState::new(),
+    );
+    let err = get_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &tokens(),
+        "12",
+    )
+    .await
+    .expect_err("MyAnimeList refused");
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                refused_by: Some("mal"),
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+
+    let kitsu_anilist = kitsu(KITSU_ANILIST).await;
+    let anilist = rate_limiting_tracker().await;
+    let state = state_with_kitsu(&kitsu_anilist.uri());
+    let provider = AniListProvider::with_bases(
+        reqwest::Client::new(),
+        anilist.uri(),
+        "http://unused-token".to_string(),
+    );
+    let err = get_entry_via(&state, ProviderKind::AniList, &provider, &tokens(), "12")
+        .await
+        .expect_err("AniList refused");
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                refused_by: Some("anilist"),
+                ..
+            }
+        ),
+        "{err:?}"
+    );
 }

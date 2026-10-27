@@ -301,8 +301,7 @@ async fn post_list(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let profile = account::me(&state, kind, &tokens).await?;
-    let entries = account::list_all_and_cache(&state, kind, &tokens, &profile.user_id).await?;
+    let entries = account::list_for_bearer(&state, kind, &tokens).await?;
     Ok(Json(entries))
 }
 
