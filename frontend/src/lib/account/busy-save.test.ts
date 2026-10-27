@@ -72,6 +72,17 @@ describe('noticeBusy', () => {
 		expect(vi.getTimerCount()).toBe(before);
 	});
 
+	it('stays on the stack, counting, however many passing toasts come after it', async () => {
+		vi.useFakeTimers();
+		const id = noticeBusy('anilist', 5);
+		for (let i = 0; i < 5; i += 1) {
+			toastStore.push({ kind: 'info', message: `passing ${i}`, duration: 9999 });
+		}
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(busy(4));
+		toastStore.dismiss(id);
+	});
+
 	it('starts at "saving now" for a wait of nothing, with no timer to run', async () => {
 		vi.useFakeTimers();
 		const before = vi.getTimerCount();
