@@ -770,6 +770,14 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v25: an undated entry's pick reads the entry page of each listing
+    //      it would serve and never takes one filed under Hentai, nor
+    //      one whose page lists no genre; a dated entry's year filter
+    //      drops the latter too, and a pool a listing was dropped from
+    //      for an unread page is never the clean miss. A v24 positive
+    //      for an undated entry can be a hentai listed under one of its
+    //      names, and a v24 absence can rest on an unread page; nothing
+    //      in a row says which pages stamped it, so re-keying re-probes.
     // v24: a listing whose rows past Kitsu's count no reading reached
     //      gives no count, and does not write over one that stands. A
     //      v23 row may hold such a listing's whole count as its cap,
@@ -916,7 +924,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v24:{kitsu_id}:{m}")
+    format!("availability:v25:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache

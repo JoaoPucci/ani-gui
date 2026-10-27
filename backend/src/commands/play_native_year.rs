@@ -47,11 +47,16 @@ pub(crate) fn genre_of(page: &EntryPage) -> Genre {
 /// Only an exact year counts as positive identity; one year off is
 /// tolerated (December premieres straddle catalogue years) without
 /// vouching for the candidate.
-/// Unknown years (a 404ing detail page, a page without a season
-/// link) never exclude, so a provider markup change degrades to
-/// year-blind picking rather than emptying pools. A hit its page
-/// files under [`HENTAI`] ([`genre_of`]) is excluded the same way: no
-/// entry the app shows is one. A pool whose every
+/// An unknown year (a page without a season link) never excludes on
+/// its own, so a markup change that loses the year degrades to
+/// year-blind picking. A hit its page files under [`HENTAI`] is
+/// excluded the same way a year off is: no entry the app shows is one.
+/// So is a hit whose page lists no genre at all ([`Genre::Unread`]) —
+/// a 404ing page reads as one — which nothing says is not one; its slug
+/// joins `unread`, since a pool whose verdict rests on a page that
+/// said nothing is no clean miss (see `play_native_genre`), and a
+/// markup change that loses the Genres row empties every dated pool
+/// into that dead end rather than taking a listing as safe. A pool whose every
 /// candidate carries a known mismatched year, or the genre, contains
 /// the show nowhere — that is a rejection
 /// ([`crate::error::AniError::NoResults`]), so the walk can try the
@@ -63,6 +68,7 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
     hits: &'a [BrowseHit],
     year: Option<u32>,
     pages: &mut PageNames,
+    unread: &mut Vec<String>,
 ) -> Result<Vec<(&'a BrowseHit, bool)>> {
     // The caller bounds the head (`probe_head`); every hit given is
     // one the pick means to consider.
@@ -96,12 +102,15 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
         };
         // A hentai is never the entry: Kitsu serves the app no adult
         // entry, so a hit its own page files under the genre is out,
-        // as a hit from another year is.
+        // as a hit from another year is — and so is one whose page
+        // lists no genre, which nothing says is not one.
         match genre {
             Genre::Listed => kept.push((h, confirmed)),
             Genre::Hentai => {}
-            // Read the same as a listed genre, for now.
-            Genre::Unread => kept.push((h, confirmed)),
+            Genre::Unread => {
+                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre; not taken as safe");
+                unread.push(h.slug.clone());
+            }
         }
     }
     if kept.is_empty() {

@@ -1,12 +1,24 @@
-//! The pick's genre gate — split from `play_native_titled` so each file
-//! stays inside the complexity ratchet's per-file bar. The pick runs
-//! over a [`Memo`] of the provider, and what the gate has refused over
-//! a pool ([`GenreRefusals`]) is left out of the pick's head.
+//! The pick's genre gate: no listing its own entry page files under
+//! Hentai is ever a pick, and none whose page lists no genre is taken
+//! as safe — split from `play_native_titled` so each file stays inside
+//! the complexity ratchet's per-file bar.
+//!
+//! A dated entry's year filter reads every considered hit's page and
+//! drops both before scoring (`play_native_year`). An undated entry
+//! reads no page there, so the gate reads the pages of the listings a
+//! pick would serve — the hit, and every version beside it — once the
+//! pick is made: one request for most picks. A listing that fails is
+//! left out of the pick's bounded head, no other hit taking its place,
+//! as the year filter leaves a hit out, and the head is picked again;
+//! [`Memo`] answers that pick's probes and pages from the first, so it
+//! asks the provider for nothing the first already asked.
 
 use crate::error::{AniError, Result};
 use crate::scraper::provider::{BrowseHit, Provider};
 
 use super::play_native::{pick_over, PickedShow};
+use super::play_native_title_marker::EntryTitles;
+use super::play_native_year::{genre_of, Genre};
 
 #[path = "play_native_genre_memo.rs"]
 mod memo;
@@ -16,6 +28,14 @@ pub(crate) use memo::Memo;
 /// requested entry goes by — the canonical title and its fallbacks, not
 /// only the one searched — which the split-entry detection reads to
 /// tell the entry from its parts.
+///
+/// No listing its own entry page files under Hentai is picked, nor one
+/// whose page lists no genre: a dated entry's year filter leaves both
+/// out of the head, and an undated entry's pick reads the page of each
+/// listing it would serve and, when one fails, is made again without it
+/// (see the module docs). A pool a listing that could have been picked
+/// was left out of for a page that listed no genre is never the clean
+/// miss.
 ///
 /// # Errors
 /// As [`super::play_native::pick_candidate`].
@@ -30,24 +50,33 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
 ) -> Result<PickedShow> {
     let client = Memo::new(client);
     let mut gate = GenreRefusals::default();
-    pick_over(
-        &client,
-        hits,
-        expected,
-        search_title,
-        entry_titles,
-        year,
-        subtype,
-        &mut gate,
-    )
-    .await
-    .map_err(|e| unread_miss(e, gate.unread))
+    loop {
+        let picked = pick_over(
+            &client,
+            hits,
+            expected,
+            search_title,
+            entry_titles,
+            year,
+            subtype,
+            &mut gate,
+        )
+        .await
+        .map_err(|e| unread_miss(e, gate.unread))?;
+        // A dated entry's year filter read the page of every listing
+        // the pick could serve, and left out each the genre refuses.
+        if year.is_some() || !refused_served(&client, &picked, &mut gate).await? {
+            return Ok(picked);
+        }
+        // Each round leaves out at least one listing of the bounded
+        // head, and no other hit takes its place, so the walk ends.
+    }
 }
 
-/// What the genre gate has learned of one pool: the listings it
-/// refused, which the pick leaves out of its head as the year filter
-/// leaves a hit out, and whether a listing that could have been picked
-/// was left out because its page listed no genre.
+/// What the genre gate has learned of one pool: the listings their own
+/// pages refuse, which the pick leaves out of its head as the year
+/// filter leaves a hit out, and whether a listing that could have been
+/// picked was left out because its page listed no genre.
 #[derive(Debug, Default)]
 pub(crate) struct GenreRefusals {
     /// The slugs of the listings the gate refused.
@@ -64,6 +93,58 @@ impl GenreRefusals {
     pub(crate) fn leave_out(&self, head: &mut Vec<BrowseHit>) {
         head.retain(|h| !self.excluded.contains(&h.slug));
     }
+
+    /// Notes that the year filter left out, for a page that lists no
+    /// genre (`unread`, by slug), a hit of `head` that could have been
+    /// picked. A hit the head holds only as evidence — refused by the
+    /// entry's titles, or another entry of the show — never could, and
+    /// makes no miss the dead end.
+    pub(crate) fn note_unread(
+        &mut self,
+        head: &[BrowseHit],
+        unread: &[String],
+        entry: EntryTitles<'_>,
+    ) {
+        self.unread |= head.iter().any(|h| {
+            unread.contains(&h.slug) && entry.admits(&h.title) && !entry.another_entry(&h.title)
+        });
+    }
+}
+
+/// Whether a listing `picked` would serve — its hit, then each
+/// version's — is one its own page refuses: filed under Hentai, or
+/// listing no genre, which sets `gate.unread`. Each one refused joins
+/// `gate.excluded`. A page that answers says nothing new is read once
+/// ([`Memo`]); one whose genre is unread is logged, since a markup
+/// change that loses the row would refuse every listing.
+///
+/// # Errors
+/// A page's provider block or transport failure, verbatim: as in the
+/// year filter, probing the next page would turn one block into a
+/// burst.
+pub(crate) async fn refused_served<P: Provider + ?Sized>(
+    client: &P,
+    picked: &PickedShow,
+    gate: &mut GenreRefusals,
+) -> Result<bool> {
+    let mut refused = false;
+    let served = std::iter::once(&picked.hit).chain(picked.versions.iter().map(|v| &v.hit));
+    for hit in served {
+        if gate.excluded.contains(&hit.slug) {
+            continue;
+        }
+        match genre_of(&client.detail_page(&hit.slug).await?) {
+            Genre::Listed => continue,
+            Genre::Hentai => {}
+            Genre::Unread => {
+                tracing::warn!(slug = %hit.slug, "pick: the entry page lists no genre; not taken as safe");
+                gate.unread = true;
+            }
+        }
+        gate.excluded.push(hit.slug.clone());
+        refused = true;
+    }
+    Ok(refused)
 }
 
 /// The pool's verdict once a listing whose page listed no genre was

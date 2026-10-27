@@ -368,7 +368,45 @@ fn verdict(kind: u8, status: u16) -> AniError {
     }
 }
 
+/// Titles a head for "The Show" can hold, each with whether the entry's
+/// titles let it be picked: its own, an unrelated show, another season
+/// held only as evidence.
+const HEAD_TITLES: [(&str, bool); 3] = [
+    ("The Show", true),
+    ("Other", true),
+    ("The Show Season 2", false),
+];
+
 proptest! {
+    /// The head loses exactly the refused listings, in order; and an
+    /// unread page marks the pool only when it is a listing the entry's
+    /// titles let be picked, and once marked the pool stays marked.
+    #[test]
+    fn the_gate_leaves_out_the_refused_and_notes_only_a_pickable_unread_page(
+        rows in proptest::collection::vec((0usize..3, any::<bool>(), any::<bool>()), 0..8),
+        marked in any::<bool>(),
+    ) {
+        let head: Vec<BrowseHit> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (t, _, _))| hit(&format!("s-{i}"), HEAD_TITLES[*t].0))
+            .collect();
+        let slugs = |pick: fn(&(usize, bool, bool)) -> bool| -> Vec<String> {
+            rows.iter().enumerate().filter(|(_, r)| pick(r)).map(|(i, _)| format!("s-{i}")).collect()
+        };
+        let excluded = slugs(|r| r.1);
+        let unread = slugs(|r| r.2);
+        let mut gate = GenreRefusals { excluded: excluded.clone(), unread: marked };
+        let mut left = head.clone();
+        gate.leave_out(&mut left);
+        let kept: Vec<String> = head.iter().map(|h| h.slug.clone()).filter(|s| !excluded.contains(s)).collect();
+        prop_assert_eq!(left.iter().map(|h| h.slug.clone()).collect::<Vec<_>>(), kept);
+        let titles = ["The Show"];
+        gate.note_unread(&head, &unread, crate::commands::play_native_title_marker::EntryTitles::new(&titles));
+        let pickable_unread = rows.iter().any(|(t, _, u)| *u && HEAD_TITLES[*t].1);
+        prop_assert_eq!(gate.unread, marked || pickable_unread);
+    }
+
     /// The memo keeps a probe's not-found-shaped answer and a transport
     /// death, each as itself, and no block or other failure.
     #[test]

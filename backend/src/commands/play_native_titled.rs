@@ -11,7 +11,8 @@ use crate::commands::play_native_versions::{note_dead, versions_of, with_version
 use crate::commands::play_native_year::PageNames;
 
 /// One pick over `hits`, leaving out of its bounded head every listing
-/// `gate` refused.
+/// `gate` refused, and noting in it when the year filter left out a
+/// listing that could have been picked for a page that lists no genre.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn pick_over<P: Provider + ?Sized>(
     client: &P,
@@ -43,7 +44,9 @@ pub(crate) async fn pick_over<P: Provider + ?Sized>(
     let (mut hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
     gate.leave_out(&mut hits);
     let mut pages = PageNames::new();
-    let filtered = year_filtered(client, &hits, year, &mut pages).await;
+    let mut unread = Vec::new();
+    let filtered = year_filtered(client, &hits, year, &mut pages, &mut unread).await;
+    gate.note_unread(&hits, &unread, entry);
     let Some(expected) = expected else {
         let picked = match filtered {
             Ok(head) => pick_without_count(client, &head, &needle, entry).await,

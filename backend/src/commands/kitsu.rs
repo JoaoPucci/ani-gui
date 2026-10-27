@@ -448,7 +448,12 @@ pub fn title_match_put(
 ///   entry — Medaka Box Abnormal's to HenSemi (TV) — where the title
 ///   carries no cour marker the guard could refuse it on; re-keying
 ///   lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 8;
+/// - v9: an undated entry's pick reads the entry page of each listing
+///   it would serve and never takes one filed under Hentai, nor one
+///   whose page lists no genre. A v8 row can bind a hentai's key to an
+///   undated entry one of whose names it is listed under; re-keying
+///   lets the next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 9;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
