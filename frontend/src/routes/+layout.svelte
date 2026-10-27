@@ -51,6 +51,7 @@
 	import { APP_VERSION as appVersion, APP_VERSION_LABEL as appVersionLabel } from '$lib/version';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
+	import { signInToastCopy } from '$lib/account/sign-in-toast-copy';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
@@ -141,11 +142,12 @@
 			push: (e) => {
 				// i18n-ignore: provider names are proper nouns
 				const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
+				const copy = signInToastCopy('expired', providerLabel);
 				return toastStore.push({
 					kind: 'warning',
 					duration: null,
-					message: m.account_expiry_toast_message({ provider: providerLabel }),
-					actionLabel: m.account_expiry_toast_action(),
+					message: copy.message,
+					actionLabel: copy.actionLabel,
 					onAction: () => void goto(resolve('/account'))
 				});
 			},

@@ -15,6 +15,7 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
+import { classifyRenewalError, type RenewalFailure } from './renewal-failure';
 
 export interface RefreshFlowDeps {
 	refreshTokens(
@@ -36,12 +37,15 @@ export interface RefreshFlowDeps {
 	 *  raced the refresh and the write is superseded — even when the
 	 *  store's account snapshot hasn't caught up yet. */
 	generation(provider: Provider): number;
+	/** Told when a renewal fails, with what the failure says about the
+	 *  sign-in. */
+	onRenewalFailed?(provider: Provider, failure: RenewalFailure): void;
 }
 
 export type RefreshOutcome =
 	| { kind: 'refreshed'; account: PersistedAccount }
 	| { kind: 'unrefreshable' }
-	| { kind: 'failed' }
+	| { kind: 'failed'; failure: RenewalFailure }
 	| { kind: 'superseded' };
 
 /**
@@ -73,8 +77,8 @@ export async function refreshAccount(
 	let tokens;
 	try {
 		tokens = await deps.refreshTokens(provider, account.refresh_token);
-	} catch {
-		return { kind: 'failed' };
+	} catch (e) {
+		return { kind: 'failed', failure: classifyRenewalError(e) };
 	}
 	// The await yielded — a disconnect or re-auth may have raced the
 	// refresh. If the provider's generation moved, that change wins:
@@ -99,9 +103,9 @@ export async function refreshAccount(
 	try {
 		persisted = await deps.persistAccount(provider, refreshed);
 	} catch {
-		return { kind: 'failed' };
+		return { kind: 'failed', failure: 'unknown' };
 	}
-	if (!persisted.ok) return { kind: 'failed' };
+	if (!persisted.ok) return { kind: 'failed', failure: 'unknown' };
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
 	// safeStorage write completing. If the generation moved, don't report

@@ -14,10 +14,48 @@
  */
 
 import type { Provider, ProviderState } from './types';
+import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
 
 export interface ExpiredProvider {
 	provider: Provider;
 	username: string;
+}
+
+/**
+ * What a sign-in notice says: the session ran out with no way to renew
+ * it (`expired`), the tracker refused to renew it (`refused`), the
+ * tracker could not be reached to renew it (`unreachable`), or the
+ * renewal failed for a reason the app cannot tell (`unknown`).
+ */
+export type SignInNotice = 'expired' | 'refused' | 'unreachable' | 'unknown';
+
+export interface SignInNoticeInfo extends ExpiredProvider {
+	notice: SignInNotice;
+}
+
+/** The notice a provider's sign-in calls for, or none. */
+export function signInNotice(
+	state: ProviderState,
+	_failure: RenewalFailure | null
+): SignInNotice | null {
+	void _failure;
+	return state.kind === 'expired' ? 'expired' : null;
+}
+
+/** Every provider whose sign-in calls for a notice, in priority order. */
+export function detectSignInNotices(
+	byProvider: Record<Provider, ProviderState>,
+	failures: RenewalFailures = NO_RENEWAL_FAILURES
+): SignInNoticeInfo[] {
+	const out: SignInNoticeInfo[] = [];
+	for (const provider of PRIORITY) {
+		const state = byProvider[provider];
+		const notice = signInNotice(state, failures[provider]);
+		if (notice !== null && 'account' in state && state.account) {
+			out.push({ provider, username: state.account.username, notice });
+		}
+	}
+	return out;
 }
 
 const PRIORITY: ReadonlyArray<Provider> = ['anilist', 'mal', 'inhouse'];
@@ -41,30 +79,36 @@ export interface ExpirySyncDeps {
 }
 
 /**
- * Tracks per-provider toast ids so the layout can dismiss the
- * "session expired" warning the moment the user reconnects (or
- * disconnects) the provider — even when they fix the session from
- * /account or the chip popover directly instead of pressing the
- * toast action. Pinned toasts (`duration:
+ * Tracks per-provider toast ids so the layout can dismiss a sign-in
+ * notice the moment the provider recovers (or is disconnected), even
+ * when the user fixes the session from /account or the chip popover
+ * instead of pressing the toast action. Pinned toasts (`duration:
  * null`) require explicit dismiss; without this tracker the stale
- * warning lingers after recovery.
+ * warning lingers after recovery. One toast per incident: a provider
+ * whose notice is unchanged is not pushed again, and a notice that
+ * changes replaces the one on screen.
  */
 export class ExpiryToastTracker {
-	private byProvider = new Map<Provider, string>();
+	private byProvider = new Map<Provider, { notice: SignInNotice; toastId: string }>();
 
-	sync(state: Record<Provider, ProviderState>, deps: ExpirySyncDeps): void {
-		const expiredNow = new Map<Provider, ExpiredProvider>(
-			detectExpiredProviders(state).map((e) => [e.provider, e])
+	sync(
+		state: Record<Provider, ProviderState>,
+		deps: ExpirySyncDeps,
+		failures: RenewalFailures = NO_RENEWAL_FAILURES
+	): void {
+		const now = new Map<Provider, SignInNoticeInfo>(
+			detectSignInNotices(state, failures).map((e) => [e.provider, e])
 		);
-		for (const [provider, toastId] of this.byProvider) {
-			if (!expiredNow.has(provider)) {
-				deps.dismiss(toastId);
+		for (const [provider, shown] of this.byProvider) {
+			if (now.get(provider)?.notice !== shown.notice) {
+				deps.dismiss(shown.toastId);
 				this.byProvider.delete(provider);
 			}
 		}
-		for (const [provider, info] of expiredNow) {
+		for (const [provider, info] of now) {
 			if (this.byProvider.has(provider)) continue;
-			this.byProvider.set(provider, deps.push(info));
+			const toastId = deps.push({ provider: info.provider, username: info.username });
+			this.byProvider.set(provider, { notice: info.notice, toastId });
 		}
 	}
 }

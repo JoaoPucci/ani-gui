@@ -39,6 +39,14 @@ const DEFAULT_DURATION_MS = 4000;
 
 let nextId = 1;
 
+/**
+ * The rows that stay when one more is pushed onto a stack capped at
+ * `max`: the newest `max - 1`.
+ */
+export function keepOnPush(items: ToastItem[], max: number): ToastItem[] {
+	return items.slice(-(max - 1));
+}
+
 class ToastStore {
 	items: ToastItem[] = $state([]);
 
@@ -56,8 +64,7 @@ class ToastStore {
 		// Trim oldest entries if a push would exceed the cap. Slice +
 		// concat rather than splice so the assignment triggers
 		// reactivity (matches download/store.svelte.ts's pattern).
-		const trimmed = this.items.slice(-(TOAST_MAX_STACK - 1));
-		this.items = [...trimmed, row];
+		this.items = [...keepOnPush(this.items, TOAST_MAX_STACK), row];
 		if (duration !== null) {
 			// dismiss(id) is a no-op when the row has already been
 			// trimmed by a later push — see the store test.

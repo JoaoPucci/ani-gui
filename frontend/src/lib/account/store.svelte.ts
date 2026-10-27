@@ -13,6 +13,7 @@
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
 import { refreshExpiredAccounts } from './refresh-flow';
+import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -20,6 +21,18 @@ class AccountStore {
 		mal: { kind: 'disconnected' },
 		inhouse: { kind: 'disconnected' }
 	});
+
+	/**
+	 * Per provider, what the last failed renewal said about the sign-in,
+	 * until the sign-in changes. Read by the sign-in notice.
+	 */
+	renewalFailure = $state<RenewalFailures>({ ...NO_RENEWAL_FAILURES });
+
+	/** Record a failed renewal. */
+	noteRenewalFailed(_provider: Provider, _failure: RenewalFailure): void {
+		void _provider;
+		void _failure;
+	}
 
 	/**
 	 * Monotonic per-provider counter, bumped on every account state
