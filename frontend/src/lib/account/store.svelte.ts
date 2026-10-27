@@ -33,6 +33,13 @@ class AccountStore {
 		this.renewalFailure = { ...this.renewalFailure, [provider]: failure };
 	}
 
+	/** Whether `account` is the sign-in already marked expired here, by
+	 *  its bearer: one the tracker refused, whatever its date says. */
+	private isRefusedBearer(provider: Provider, account: PersistedAccount): boolean {
+		const prev = this.byProvider[provider];
+		return prev.kind === 'expired' && prev.account.access_token === account.access_token;
+	}
+
 	/** Forget a provider's renewal failure: its sign-in changed. */
 	private clearRenewalFailure(provider: Provider): void {
 		if (this.renewalFailure[provider] === null) return;
@@ -101,9 +108,10 @@ class AccountStore {
 		for (const p of providers) {
 			const r = readPersistedAccount(p);
 			if (r.ok) {
-				next[p] = isExpired(r.account)
-					? { kind: 'expired', account: r.account }
-					: { kind: 'connected', account: r.account, lastSyncedAt: null };
+				next[p] =
+					isExpired(r.account) || this.isRefusedBearer(p, r.account)
+						? { kind: 'expired', account: r.account }
+						: { kind: 'connected', account: r.account, lastSyncedAt: null };
 				continue;
 			}
 			if (r.kind === 'not_found') {
@@ -192,7 +200,9 @@ class AccountStore {
 	setConnecting(provider: Provider): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
-		this.clearRenewalFailure(provider);
+		// The failure stays while the new sign-in is under way: a
+		// cancelled or failed connect restores the expired sign-in, and
+		// its notice with it. A sign-in that succeeds clears it.
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'connecting' } };
 	}
 

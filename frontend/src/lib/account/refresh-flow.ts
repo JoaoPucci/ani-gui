@@ -78,6 +78,9 @@ export async function refreshAccount(
 	try {
 		tokens = await deps.refreshTokens(provider, account.refresh_token);
 	} catch (e) {
+		// A disconnect or re-auth landed while renewing: the failure is
+		// the old sign-in's, and must not be told of the new one.
+		if (deps.generation(provider) !== generationAtStart) return { kind: 'superseded' };
 		return { kind: 'failed', failure: classifyRenewalError(e) };
 	}
 	// The await yielded — a disconnect or re-auth may have raced the

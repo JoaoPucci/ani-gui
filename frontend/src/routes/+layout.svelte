@@ -17,7 +17,7 @@
 -->
 <script lang="ts">
 	import '$lib/design/tokens.css';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { afterNavigate, goto } from '$app/navigation';
@@ -146,6 +146,7 @@
 		setTimer: (fn, ms) => setTimeout(() => fn(), ms),
 		clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
 	});
+	onDestroy(() => renewalRetry.stop());
 	$effect(() => {
 		expiryToastTracker.sync(
 			accountStore.byProvider,

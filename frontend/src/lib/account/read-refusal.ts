@@ -28,8 +28,9 @@ export async function handleRefusedBearer(
 	if (state.kind !== 'connected') return;
 	const { account } = state;
 	if (!account.refresh_token) {
+		// No renewal is possible, so none was refused: the sign-in has
+		// ended, which the expired-session notice says.
 		deps.setExpired(provider, account);
-		deps.noteRenewalFailed(provider, 'rejected');
 		return;
 	}
 	const generation = deps.generation(provider);

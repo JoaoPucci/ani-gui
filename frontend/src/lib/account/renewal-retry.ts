@@ -42,13 +42,14 @@ export class RenewalRetry {
 	private timer: unknown = null;
 	private running = false;
 	private attempt = 0;
+	private stopped = false;
 
 	constructor(private readonly deps: RenewalRetryDeps) {}
 
 	/** Look again: schedule a retry if one is due and none is pending,
 	 *  or cancel the pending one once nothing waits. */
 	sync(): void {
-		if (!this.deps.needsRetry()) {
+		if (this.stopped || !this.deps.needsRetry()) {
 			if (this.timer !== null) this.deps.clearTimer(this.timer);
 			this.timer = null;
 			this.attempt = 0;
@@ -59,8 +60,11 @@ export class RenewalRetry {
 		this.attempt += 1;
 	}
 
-	/** Stop for good. Stub: does nothing yet. */
-	stop(): void {}
+	/** Stop for good: the pending retry is cancelled and none follows. */
+	stop(): void {
+		this.stopped = true;
+		this.sync();
+	}
 
 	private fire(): void {
 		this.timer = null;

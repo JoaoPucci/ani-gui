@@ -5,9 +5,13 @@
  * owned by the store itself so call sites (play page, settings,
  * future Syncplay entry) don't have to manage their own timeouts.
  *
- * Stack policy: at most TOAST_MAX_STACK rows on-screen. Spam-clicks
- * trim the oldest entries so the corner doesn't fill up with stale
- * "Sent to mpv." rows piling on a single retry burst.
+ * Stack policy: at most TOAST_MAX_STACK passing rows on-screen.
+ * Spam-clicks trim the oldest passing entries so the corner doesn't
+ * fill up with stale "Sent to mpv." rows piling on a single retry
+ * burst. Pinned rows (`duration: null`) wait for the user and are never
+ * trimmed, so a stack of pinned rows can go past the cap by the one
+ * passing row pushed beside them; only the sign-in notice pins, one
+ * per provider.
  */
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
