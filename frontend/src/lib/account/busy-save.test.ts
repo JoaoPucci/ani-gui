@@ -115,6 +115,61 @@ describe('noticeBusy', () => {
 	});
 });
 
+describe('the notice of a write another tracker refused', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+	const anilist = () => m.account_provider_anilist();
+	const mal = () => m.account_provider_mal();
+
+	it('names the tracker that is busy and the one the save is for, counting down', async () => {
+		vi.useFakeTimers();
+		const id = noticeBusy('mal', 3, 'anilist');
+		const row = () => toastStore.items.find((t) => t.id === id);
+		expect(row()?.message).toBe(
+			m.account_busy_saving_for({ busy: anilist(), provider: mal(), seconds: 3 })
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(row()?.message).toBe(
+			m.account_busy_saving_for({ busy: anilist(), provider: mal(), seconds: 2 })
+		);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(row()?.message).toBe(m.account_busy_saving_now({ provider: mal() }));
+		toastStore.dismiss(id);
+	});
+
+	it("says the save's own tracker is busy when that one refused, or when no tracker was named", () => {
+		const own = noticeBusy('mal', 4, 'mal');
+		const unnamed = noticeBusy('mal', 4, null);
+		for (const id of [own, unnamed]) {
+			expect(toastStore.items.find((t) => t.id === id)?.message).toBe(
+				m.account_busy_saving({ provider: mal(), seconds: 4 })
+			);
+			toastStore.dismiss(id);
+		}
+	});
+
+	it('is what a MyAnimeList write AniList refused shows', async () => {
+		vi.useFakeTimers();
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(
+				Object.assign(new Error('rate limited'), {
+					status: 429,
+					detail: JSON.stringify({ retry_after_secs: 5, refused_by: 'anilist' })
+				})
+			)
+			.mockResolvedValue('saved');
+		const pending = saveWhenTrackerAllows('mal', '60', write);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(toastStore.items.filter((t) => t.kind === 'info').map((t) => t.message)).toEqual([
+			m.account_busy_saving_for({ busy: anilist(), provider: mal(), seconds: 5 })
+		]);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBe('saved');
+	});
+});
+
 describe('the notice of a held write', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();

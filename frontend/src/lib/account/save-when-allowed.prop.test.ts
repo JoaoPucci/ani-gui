@@ -232,3 +232,33 @@ describe('waitWhileWanted, by property', () => {
 		);
 	});
 });
+
+describe('the tracker a held write names as busy, by property', () => {
+	it('is the one the refusal names, when it names AniList or MyAnimeList, and no one otherwise', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc.oneof(
+					fc.constantFrom('anilist', 'mal'),
+					fc.constantFrom('kitsu', 'inhouse', '', 'AniList'),
+					fc.string(),
+					fc.integer(),
+					fc.constant(null),
+					fc.constant(undefined)
+				),
+				async (refusedBy) => {
+					const body = JSON.stringify({ retry_after_secs: 0, refused_by: refusedBy });
+					const told: unknown[] = [];
+					await saveWhenAllowed(
+						async () => {
+							if (told.length === 0) throw shaped(429, body);
+							return 'saved';
+						},
+						{ notify: (_s, by) => told.push(by), wait: async () => {} }
+					);
+					const expected = refusedBy === 'anilist' || refusedBy === 'mal' ? refusedBy : null;
+					expect(told).toEqual([expected]);
+				}
+			)
+		);
+	});
+});

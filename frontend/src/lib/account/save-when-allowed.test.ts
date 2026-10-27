@@ -62,6 +62,27 @@ describe('saveWhenAllowed', () => {
 		expect(wait).not.toHaveBeenCalled();
 	});
 
+	it('tells its notice which tracker refused, when the refusal names one', async () => {
+		const notify = vi.fn();
+		const naming = (by: string) =>
+			Object.assign(new Error('rate limited'), {
+				status: 429,
+				detail: JSON.stringify({ retry_after_secs: 5, refused_by: by })
+			});
+		const attempt = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(naming('anilist'))
+			.mockRejectedValueOnce(naming('mal'))
+			.mockRejectedValueOnce(refused(5))
+			.mockResolvedValueOnce('saved');
+		expect(await saveWhenAllowed(attempt, { notify, wait: async () => {} })).toBe('saved');
+		expect(notify.mock.calls).toEqual([
+			[5, 'anilist'],
+			[5, 'mal'],
+			[5, null]
+		]);
+	});
+
 	it('says how long it waits, waits that long, and saves on the next attempt', async () => {
 		const notify = vi.fn();
 		const wait = vi.fn(async () => {});

@@ -1,7 +1,8 @@
 //! Property coverage for the `Retry-After` reading, beside the pure
 //! functions in `rate_limit.rs`.
 
-use super::parse_retry_after;
+use super::{parse_retry_after, rate_limited};
+use crate::error::AniError;
 
 proptest::proptest! {
     /// Every delay-seconds value a tracker can send reads back as
@@ -29,5 +30,34 @@ proptest::proptest! {
     #[test]
     fn an_absent_header_is_no_wait(_any in proptest::num::u8::ANY) {
         proptest::prop_assert_eq!(parse_retry_after(None), None);
+    }
+}
+
+/// A tracker's 429 as the transport sees it, `Retry-After` and all.
+fn refusal(retry_after: Option<&str>) -> reqwest::Response {
+    let mut builder = axum::http::Response::builder().status(429);
+    if let Some(v) = retry_after {
+        builder = builder.header("retry-after", v);
+    }
+    reqwest::Response::from(builder.body(Vec::<u8>::new()).expect("response"))
+}
+
+proptest::proptest! {
+    /// A 429 is the tracker that answered it refusing, and says so: a
+    /// write to one tracker refused by another names the one that
+    /// refused, with the wait it advertised.
+    #[test]
+    fn a_429_names_the_tracker_that_answered_it(
+        mal in proptest::bool::ANY,
+        secs in proptest::option::of(0u64..100_000),
+    ) {
+        let provider = if mal { "mal" } else { "anilist" };
+        let header = secs.map(|s| s.to_string());
+        let err = rate_limited(provider, &refusal(header.as_deref()));
+        let AniError::RateLimited { retry_after_secs, refused_by } = err else {
+            panic!("not a rate limit: {err:?}");
+        };
+        proptest::prop_assert_eq!(retry_after_secs, secs);
+        proptest::prop_assert_eq!(refused_by, Some(provider));
     }
 }

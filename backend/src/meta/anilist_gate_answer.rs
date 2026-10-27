@@ -59,3 +59,7 @@ pub(super) fn authority(url: &str) -> String {
         .and_then(|u| Some(format!("{}:{}", u.host_str()?, u.port_or_known_default()?)))
         .unwrap_or_else(|| url.to_owned())
 }
+
+#[cfg(test)]
+#[path = "anilist_gate_answer_prop_test.rs"]
+mod prop_tests;
