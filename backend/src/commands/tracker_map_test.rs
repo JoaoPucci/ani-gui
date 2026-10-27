@@ -1480,7 +1480,7 @@ async fn a_relation_is_single_only_on_a_whole_page_with_one_of_its_role() {
         let included: Vec<String> = sequels
             .iter()
             .map(|id| {
-                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"episodeCount":12}}}}"#)
+                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"subtype":null,"status":null,"episodeCount":12}}}}"#)
             })
             .collect();
         format!(
