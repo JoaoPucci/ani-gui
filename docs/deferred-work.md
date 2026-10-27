@@ -168,7 +168,7 @@ starting it, and delete it when you find it done.
   de Te Koi (Kitsu 40684, MAL 35061) was played as a hentai OVA whose
   listing names MAL 36256 (episode 33370, 2026-10-16); HenSemi (TV) was
   played as Medaka Box Abnormal, whose listing names MAL 14527. Kitsu's mapping is
-  already cached per entry (`kitsu:external-ids:v1:k<id>`). It waited
+  already cached per entry (`kitsu:external-ids:v2:k<id>`). It waited
   because it is not free where it would decide: the listing is fetched
   only after the pick — for the requested episode on the play path, for
   sampled episodes in the availability probe — so choosing among
@@ -349,6 +349,20 @@ starting it, and delete it when you find it done.
 
 ## Interface
 
+- **An episode's listed length can disagree with the video.** The
+  detail page's episode list shows the length Kitsu gives each
+  episode, and Kitsu sometimes gives a double-length episode its
+  show's usual length. Fate/stay night: Unlimited Blade Works'
+  episode 1 is listed at 28 minutes while the episode the provider
+  serves, and the one played, runs about 47; the skip-intro data for
+  the same episode puts its ending credits at 46–47 minutes, so the
+  video is right and the listed length is not. Nobody has yet
+  measured how often Kitsu's per-episode lengths are wrong this way,
+  whether other cases look the same, or what the list should show
+  instead: the length a played video reported, the skip data's
+  credits as a hint, or no length where the sources disagree. That
+  work is finding the causes, counting the occurrences across the
+  catalogue, and choosing a source the list can trust.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces.
 - **Search has no sort *direction* control.** Sorting by relevance,

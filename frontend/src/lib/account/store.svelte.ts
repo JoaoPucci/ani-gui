@@ -13,11 +13,13 @@
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
 import { refreshExpiredAccounts } from './refresh-flow';
+import { beginOwnWrite, ownWrites } from './own-writes';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
 import {
 	failuresAfterHydrate,
 	failuresAfterRetry,
 	hydratedState,
+	isSignInChange,
 	withFailure
 } from './hydrated-state';
 
@@ -93,8 +95,10 @@ class AccountStore {
 
 	/**
 	 * Read every provider's persisted token (via Electron safeStorage)
-	 * and seed the store. Called once at cold launch from
-	 * `+layout.svelte`'s onMount.
+	 * and seed the store. Called at cold launch from `+layout.svelte`'s
+	 * onMount, and again when the account page mounts. A provider whose
+	 * re-read holds a different sign-in moves its generation, so a
+	 * renewal still out for the old one is superseded.
 	 *
 	 * AniList 1-year JWT expiry is checked here: if `expires_at_epoch_s`
 	 * is in the past, state is `expired` (renderer surfaces a Sign-in-
@@ -105,7 +109,10 @@ class AccountStore {
 		const prev = this.byProvider;
 		const next = { ...prev };
 		const nowSec = Math.floor(Date.now() / 1000);
-		for (const p of providers) next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
+		for (const p of providers) {
+			next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
+			if (isSignInChange(prev[p], next[p], ownWrites(p))) this.bumpGeneration(p);
+		}
 		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
 		this.byProvider = next;
 		// Every hydrate path (cold launch AND the account page) must give a
@@ -134,6 +141,7 @@ class AccountStore {
 			// store snapshot catches up.
 			generation: (provider) => this.accountGeneration[provider],
 			onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
+			ownWrite: beginOwnWrite,
 			// Don't even start an expired refresh for a provider whose
 			// disconnect is mid-flight.
 			changing: (provider) => this.accountChanging[provider]

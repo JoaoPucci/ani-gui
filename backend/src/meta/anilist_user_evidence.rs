@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::account::episode_map::TrackerShow;
+use crate::meta::present::present;
 
 #[path = "anilist_user_evidence_text.rs"]
 mod text;
@@ -21,17 +22,6 @@ pub(super) const MEDIA_EVIDENCE_GQL: &str = "query Evidence($mediaId: Int!) { \
             streamingEpisodes { title } \
         } \
     }";
-
-/// A field the query asks for, read as given: `None` when it is null.
-/// Named by `deserialize_with`, which leaves a missing field the
-/// missing-field error where a bare `Option` would read it as `None`.
-fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
-}
 
 /// Whether a format is a series': a movie or a music video is not.
 fn is_series(format: Option<&str>) -> bool {
@@ -96,10 +86,15 @@ pub(super) fn parse_media_evidence_response(body: &[u8]) -> Result<MediaEvidence
         #[serde(rename = "Media")]
         media: Option<Media>,
     }
+    // Each part is asked for (`startDate { year month day }`): missing
+    // is no answer, null is AniList's "not known".
     #[derive(Deserialize, Default)]
     struct FuzzyDate {
+        #[serde(deserialize_with = "present")]
         year: Option<u32>,
+        #[serde(deserialize_with = "present")]
         month: Option<u32>,
+        #[serde(deserialize_with = "present")]
         day: Option<u32>,
     }
     #[derive(Deserialize)]
@@ -113,12 +108,12 @@ pub(super) fn parse_media_evidence_response(body: &[u8]) -> Result<MediaEvidence
         status: Option<String>,
         #[serde(deserialize_with = "present")]
         format: Option<String>,
-        #[serde(rename = "startDate", default)]
+        #[serde(rename = "startDate", deserialize_with = "present")]
         start_date: Option<FuzzyDate>,
-        #[serde(rename = "endDate", default)]
+        #[serde(rename = "endDate", deserialize_with = "present")]
         end_date: Option<FuzzyDate>,
         relations: Relations,
-        #[serde(rename = "streamingEpisodes", default)]
+        #[serde(rename = "streamingEpisodes", deserialize_with = "present")]
         streaming_episodes: Option<Vec<StreamingEpisode>>,
     }
     #[derive(Deserialize)]
@@ -127,6 +122,7 @@ pub(super) fn parse_media_evidence_response(body: &[u8]) -> Result<MediaEvidence
     }
     #[derive(Deserialize)]
     struct StreamingEpisode {
+        #[serde(deserialize_with = "present")]
         title: Option<String>,
     }
     let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {

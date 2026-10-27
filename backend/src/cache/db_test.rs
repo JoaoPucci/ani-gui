@@ -384,6 +384,100 @@ fn concurrent_opens_of_a_fresh_cache_all_succeed() {
     }
 }
 
+/// Detail rows earlier builds kept with no cover and no banner may have
+/// been kept after a banner lookup that got no answer, read then as "no
+/// banner" and kept for up to a week. Nothing in a row tells that from
+/// AniList answering that it has none, so opening the cache drops every
+/// such row once, and each of those shows' detail is fetched again; the
+/// rows with a cover or a banner, and every other row, stay. The detail
+/// key itself does not move, so removing a show from history still
+/// finds its row by prefix.
+#[test]
+fn detail_rows_with_no_banner_are_dropped_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let now = now_secs();
+    let put = |conn: &rusqlite::Connection, key: &str, body: &str| {
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+            rusqlite::params![key, body, now],
+        )
+        .unwrap();
+    };
+    let detail = |cover: &str, banner: &str| {
+        format!(r#"{{"id":"1","canonical_title":"x","cover_image":{cover}{banner}}}"#)
+    };
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    let covered = crate::commands::kitsu::anime_detail_key("2");
+    let backfilled = crate::commands::kitsu::anime_detail_key("3");
+    {
+        // The cache as the build before this one left it: migrated, and
+        // its earlier plays already marked.
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations(&mut conn).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        put(&conn, &bannerless, &detail("null", ""));
+        put(
+            &conn,
+            &covered,
+            &detail(r#"{"large":"https://k/c.jpg"}"#, ""),
+        );
+        put(
+            &conn,
+            &backfilled,
+            &detail("null", r#","anilist_banner":"https://a/b.jpg""#),
+        );
+        put(&conn, "kitsu:relations:v2:1", r#"{"cover_image":null}"#);
+    }
+    let pool = open_pool(&path).unwrap();
+    let kept = |key: &str| meta_cache_get(&pool, key).unwrap().is_some();
+    assert!(!kept(&bannerless), "a detail row with no banner is dropped");
+    assert!(kept(&covered) && kept(&backfilled), "rows with one stay");
+    assert!(kept("kitsu:relations:v2:1"), "other rows stay");
+    // Once: a banner-less row written after the upgrade is the new
+    // build's own, kept only on an answer, and stays.
+    meta_cache_put(&pool, &bannerless, &detail("null", ""), 604_800).unwrap();
+    drop(pool);
+    let pool = open_pool(&path).unwrap();
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_some());
+}
+
+/// A cache that has had neither one-time step (user_version 0) gets
+/// both in its one pass: the banner-less detail row goes, and a body
+/// under the detail prefix that is not JSON is left alone rather than
+/// failing the open.
+#[test]
+fn a_cache_with_neither_step_gets_both_and_tolerates_a_body_that_is_not_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let now = now_secs();
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    let garbled = crate::commands::kitsu::anime_detail_key("2");
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations(&mut conn).unwrap();
+        for (key, body) in [
+            (bannerless.as_str(), r#"{"id":"1","cover_image":null}"#),
+            (garbled.as_str(), "not json at all"),
+        ] {
+            conn.execute(
+                "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+                rusqlite::params![key, body, now],
+            )
+            .unwrap();
+        }
+    }
+    let pool = open_pool(&path).expect("the cache opens");
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_none());
+    assert!(meta_cache_get(&pool, &garbled).unwrap().is_some());
+    let version: i64 = pool
+        .get()
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+}
+
 /// The file change counter in a SQLite database's header (bytes 24 to
 /// 27, big-endian): one more for every transaction that wrote to the
 /// file, in the rollback-journal mode the cache runs in.
@@ -477,4 +571,82 @@ fn a_migration_that_fails_leaves_none_of_its_batch_applied() {
         })
         .unwrap();
     assert_eq!(applied, 0, "no migration recorded as applied");
+}
+
+/// The one-time pass runs only once: a fresh cache ends at version 2,
+/// and opening it again writes nothing. That the pass is one of the
+/// fresh cache's three commits is `a_fresh_cache_is_made_in_three_commits`.
+#[test]
+fn a_fresh_cache_runs_the_one_time_pass_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    let version: i64 = rusqlite::Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 2, "both one-time steps are recorded");
+    let after_first = commits_to(&path);
+    drop(open_pool(&path).expect("the cache opens again"));
+    assert_eq!(
+        commits_to(&path),
+        after_first,
+        "a second open writes nothing"
+    );
+}
+
+/// A cache an earlier build left with its plays marked (user_version 1)
+/// gets the banner step alone, in one write, and the next open writes
+/// nothing.
+#[test]
+fn a_cache_at_version_one_drops_its_bannerless_rows_in_one_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+            rusqlite::params![bannerless, r#"{"id":"1","cover_image":null}"#, now_secs()],
+        )
+        .unwrap();
+    }
+    let before = commits_to(&path);
+    let pool = open_pool(&path).expect("the cache opens");
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_none());
+    drop(pool);
+    assert_eq!(
+        commits_to(&path),
+        before + 1,
+        "the step and its gate are one write"
+    );
+    let again = commits_to(&path);
+    drop(open_pool(&path).expect("the cache opens again"));
+    assert_eq!(commits_to(&path), again, "and it does not run again");
+}
+
+/// A cache already at version 2 is not swept: a banner-less row an
+/// earlier build wrote after it opened the cache stays, and opening it
+/// writes nothing.
+#[test]
+fn a_cache_at_version_two_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+            rusqlite::params![bannerless, r#"{"id":"1","cover_image":null}"#, now_secs()],
+        )
+        .unwrap();
+    }
+    let before = commits_to(&path);
+    let pool = open_pool(&path).expect("the cache opens");
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_some());
+    drop(pool);
+    assert_eq!(commits_to(&path), before);
 }

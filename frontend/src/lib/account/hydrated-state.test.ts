@@ -6,6 +6,7 @@ import {
 	hydratedState,
 	isExpired,
 	isSameBearer,
+	isSignInChange,
 	withFailure
 } from './hydrated-state';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
@@ -133,5 +134,87 @@ describe('failuresAfterRetry', () => {
 				fs
 			)
 		).toBe(fs);
+	});
+});
+
+describe('isSignInChange', () => {
+	// Built from a kind and the bearer it carries, so the expected answer
+	// comes from the inputs, not from reading the states back.
+	const held = fc.record({
+		kind: fc.constantFrom('disconnected', 'connecting', 'expired', 'connected', 'error'),
+		bearer: token
+	});
+	function build({ kind, bearer }: { kind: string; bearer: string }): {
+		state: ProviderState;
+		holds: string | null;
+	} {
+		if (kind === 'expired') return { state: { kind, account: acc(bearer) }, holds: bearer };
+		if (kind === 'connected')
+			return { state: { kind, account: acc(bearer), lastSyncedAt: 0 }, holds: bearer };
+		if (kind === 'error') return { state: { kind, account: null, message: 'x' }, holds: null };
+		return { state: { kind } as ProviderState, holds: null };
+	}
+
+	it('is a change exactly when the bearer held moved', () => {
+		fc.assert(
+			fc.property(held, held, (a, b) => {
+				const prev = build(a);
+				const next = build(b);
+				return isSignInChange(prev.state, next.state) === (prev.holds !== next.holds);
+			})
+		);
+	});
+
+	it('is no change when only the date of the same sign-in passed', () => {
+		// A renewal out for this sign-in is still this sign-in's.
+		expect(
+			isSignInChange(
+				{ kind: 'connected', account: acc('a'), lastSyncedAt: 0 },
+				{ kind: 'expired', account: acc('a') }
+			)
+		).toBe(false);
+	});
+});
+
+describe('isSignInChange across a renewal', () => {
+	// A renewal of sign-in A writes bearer B. A re-read can land before
+	// the exchange answers, while the save waits in the queue, after the
+	// save was sent (the keychain then holds B), or after it settled
+	// (memory holds B too). What arrives is either the renewal's own
+	// result or a different sign-in, C. Only C is a change.
+	type Phase = 'before-exchange' | 'save-queued' | 'save-sent' | 'after-save';
+	const phase = fc.constantFrom<Phase>('before-exchange', 'save-queued', 'save-sent', 'after-save');
+	const kind = fc.constantFrom<'connected' | 'expired'>('connected', 'expired');
+	function at(p: Phase, other: boolean) {
+		const memory = p === 'after-save' ? 'B' : 'A';
+		const writing = p === 'save-queued' || p === 'save-sent' ? new Set(['B']) : new Set<string>();
+		const keychain = other ? 'C' : p === 'save-sent' || p === 'after-save' ? 'B' : 'A';
+		return { memory, writing, keychain };
+	}
+	it('is a change exactly when a different sign-in arrived, at every point of the renewal', () => {
+		fc.assert(
+			fc.property(phase, fc.boolean(), kind, kind, (p, other, k1, k2) => {
+				const { memory, writing, keychain } = at(p, other);
+				const prev: ProviderState =
+					k1 === 'expired'
+						? { kind: 'expired', account: acc(memory) }
+						: { kind: 'connected', account: acc(memory), lastSyncedAt: 0 };
+				const next: ProviderState =
+					k2 === 'expired'
+						? { kind: 'expired', account: acc(keychain) }
+						: { kind: 'connected', account: acc(keychain), lastSyncedAt: null };
+				return isSignInChange(prev, next, writing) === other;
+			})
+		);
+	});
+
+	it('takes the renewal’s own save, read back while it is out, as the same sign-in', () => {
+		expect(
+			isSignInChange(
+				{ kind: 'connected', account: acc('A'), lastSyncedAt: 0 },
+				{ kind: 'connected', account: acc('B'), lastSyncedAt: null },
+				new Set(['B'])
+			)
+		).toBe(false);
 	});
 });

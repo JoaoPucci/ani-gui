@@ -459,6 +459,7 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
         AniError::GateRefused,
         AniError::RateLimited {
             retry_after_secs: None,
+            refused_by: None,
         },
         AniError::Upstream { status: 503 },
         AniError::Upstream { status: 403 },
@@ -796,8 +797,13 @@ mod failover_props {
             any::<()>().prop_map(|()| (AniError::Network, true)),
             any::<()>().prop_map(|()| (AniError::Timeout, true)),
             any::<()>().prop_map(|()| (AniError::GateRefused, true)),
-            prop::option::of(0u64..100_000)
-                .prop_map(|retry_after_secs| (AniError::RateLimited { retry_after_secs }, true)),
+            prop::option::of(0u64..100_000).prop_map(|retry_after_secs| (
+                AniError::RateLimited {
+                    retry_after_secs,
+                    refused_by: None
+                },
+                true
+            )),
             "[a-z ]{0,24}".prop_map(|detail| (AniError::ParseFailed { detail }, true)),
             prop::option::of("[a-z.]{1,16}").prop_map(|host| {
                 (

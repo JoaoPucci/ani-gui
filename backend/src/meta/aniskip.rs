@@ -99,8 +99,8 @@ pub async fn fetch_skip_times(
 pub fn parse_skip_times(body: &[u8]) -> Result<Vec<SkipInterval>> {
     #[derive(Deserialize)]
     struct Wrap {
-        #[serde(default)]
-        results: Vec<Result_>,
+        found: bool,
+        results: Option<Vec<Result_>>,
     }
     #[derive(Deserialize)]
     struct Result_ {
@@ -118,8 +118,18 @@ pub fn parse_skip_times(body: &[u8]) -> Result<Vec<SkipInterval>> {
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("aniskip response: {e}"),
     })?;
-    Ok(parsed
-        .results
+    // `found: false` is aniskip's "nothing catalogued", whatever the
+    // results say; found, the results are the answer and must be there.
+    let results = match (parsed.found, parsed.results) {
+        (false, _) => Vec::new(),
+        (true, Some(results)) => results,
+        (true, None) => {
+            return Err(AniError::ParseFailed {
+                detail: "aniskip response: found, with no results".into(),
+            })
+        }
+    };
+    Ok(results
         .into_iter()
         .map(|r| SkipInterval {
             skip_type: r.skip_type,

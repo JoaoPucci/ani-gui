@@ -36,7 +36,8 @@ proptest::proptest! {
 #[test]
 fn rate_limits_block_and_verdicts_do_not() {
     assert!(AniError::RateLimited {
-        retry_after_secs: None
+        retry_after_secs: None,
+        refused_by: None
     }
     .is_provider_block());
     assert!(!AniError::NoResults.is_provider_block());
@@ -51,6 +52,7 @@ fn rate_limited_maps_to_429_and_a_dedicated_key() {
     // generic upstream failure, and carry its own i18n key.
     let e = AniError::RateLimited {
         retry_after_secs: Some(9),
+        refused_by: None,
     };
     assert_eq!(e.http_status_code(), 429);
     assert_eq!(e.key(), "error.network.rate_limited");

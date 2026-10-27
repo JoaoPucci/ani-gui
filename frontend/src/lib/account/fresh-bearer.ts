@@ -22,6 +22,7 @@ import { freshBearer } from './refresh-flow';
 import { persistAccount, refreshTokens } from './api';
 import { bearerFor } from './state-helpers';
 import { handleRefusedBearer } from './read-refusal';
+import { beginOwnWrite } from './own-writes';
 
 /**
  * Per-provider in-flight refresh promise. When two call sites hit the
@@ -64,6 +65,7 @@ export function freshBearerFor(provider: Provider): Promise<string | null> {
 			generation: (prov) => accountStore.accountGeneration[prov],
 			onRefreshed: (prov, account) => accountStore.setConnected(prov, account),
 			onRenewalFailed: (prov, failure) => accountStore.noteRenewalFailed(prov, failure),
+			ownWrite: beginOwnWrite,
 			now: () => Date.now()
 		},
 		provider,
@@ -92,7 +94,8 @@ export function bearerRefusedFor(provider: Provider, refusedBearer: string): Pro
 			noteRenewalFailed: (prov, failure) => accountStore.noteRenewalFailed(prov, failure),
 			refreshTokens,
 			persistAccount,
-			generation: (prov) => accountStore.accountGeneration[prov]
+			generation: (prov) => accountStore.accountGeneration[prov],
+			ownWrite: beginOwnWrite
 		},
 		provider,
 		refusedBearer

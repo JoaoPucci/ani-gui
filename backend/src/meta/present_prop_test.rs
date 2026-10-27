@@ -141,3 +141,90 @@ proptest! {
         prop_assert!(null_outer.f.into_inner().is_none());
     }
 }
+
+/// The same reply read through the `present` field function, as the
+/// readers that keep a plain `Option` field do.
+#[derive(Deserialize)]
+#[serde(bound = "T: serde::de::DeserializeOwned")]
+struct PlainReply<T> {
+    #[serde(deserialize_with = "super::present")]
+    f: Option<T>,
+}
+
+/// What a reply reads as through either form: `None` when it is no
+/// answer, else the field.
+fn through_both<T>(reply: &str) -> (Option<Option<T>>, Option<Option<T>>)
+where
+    T: serde::de::DeserializeOwned,
+{
+    let typed = serde_json::from_str::<Reply<T>>(reply)
+        .ok()
+        .map(|r| r.f.into_inner());
+    let plain = serde_json::from_str::<PlainReply<T>>(reply)
+        .ok()
+        .map(|r| r.f);
+    (typed, plain)
+}
+
+proptest! {
+    /// `present` reads every reply exactly as `Present` does: missing is
+    /// no answer, null is None, a value is itself, a value of another
+    /// kind is no answer.
+    #[test]
+    fn the_present_field_function_reads_as_present_does(
+        field in proptest::option::of(prop_oneof![
+            Just(serde_json::Value::Null),
+            any::<u32>().prop_map(serde_json::Value::from),
+            "\\PC{0,8}".prop_map(serde_json::Value::from),
+            nested().prop_map(|n| serde_json::to_value(n).expect("json")),
+        ]),
+        around in surroundings(),
+    ) {
+        let reply = with_field(around, field);
+        let (typed, plain) = through_both::<u32>(&reply);
+        prop_assert_eq!(typed, plain, "{}", reply);
+        let (typed, plain) = through_both::<Nested>(&reply);
+        prop_assert_eq!(typed, plain, "{}", reply);
+    }
+}
+
+/// The reading the four private copies of `present` gave before they
+/// were merged into the shared one: a plain `Option` deserialize.
+fn former_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+#[derive(Deserialize)]
+#[serde(bound = "T: serde::de::DeserializeOwned")]
+struct FormerReply<T> {
+    #[serde(deserialize_with = "former_present")]
+    f: Option<T>,
+}
+
+proptest! {
+    /// The shared `present` reads every reply as the copies it replaced
+    /// did: missing, null, a value, or a value of another kind.
+    #[test]
+    fn the_shared_present_reads_as_the_copies_it_replaced(
+        field in proptest::option::of(prop_oneof![
+            Just(serde_json::Value::Null),
+            any::<u32>().prop_map(serde_json::Value::from),
+            any::<i64>().prop_map(serde_json::Value::from),
+            "\\PC{0,8}".prop_map(serde_json::Value::from),
+            nested().prop_map(|n| serde_json::to_value(n).expect("json")),
+        ]),
+        around in surroundings(),
+    ) {
+        let reply = with_field(around, field);
+        let now = serde_json::from_str::<PlainReply<u32>>(&reply).ok().map(|r| r.f);
+        let before = serde_json::from_str::<FormerReply<u32>>(&reply).ok().map(|r| r.f);
+        prop_assert_eq!(now, before, "{}", reply);
+        let now = serde_json::from_str::<PlainReply<Nested>>(&reply).ok().map(|r| r.f);
+        let before = serde_json::from_str::<FormerReply<Nested>>(&reply).ok().map(|r| r.f);
+        prop_assert_eq!(now, before, "{}", reply);
+    }
+}

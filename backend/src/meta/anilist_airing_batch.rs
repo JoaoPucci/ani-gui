@@ -6,6 +6,7 @@
 use super::{airing_status, AiringStatus};
 use crate::error::Result;
 use crate::meta::anilist::{post_graphql_public, ANILIST_API};
+use crate::meta::anilist_pages::{whole_pages, Page};
 
 #[path = "anilist_airing_batch_page.rs"]
 mod page;
@@ -94,26 +95,32 @@ async fn fetch_batch(
     };
     let mut out = std::collections::HashMap::with_capacity(all.len());
     let mut singly: Vec<u32> = Vec::new();
-    let mut chunks: Vec<&[u32]> = all.chunks(50).rev().collect();
-    while let Some(chunk) = chunks.pop() {
-        let body = serde_json::json!({
-            "query": query,
-            "variables": { var: chunk },
-        });
-        let bytes = post_graphql_public(client, url, &body).await?;
-        let page = parse_batch(&bytes, by_mal)?;
-        if page.cut {
-            match chunk.len() {
-                1 => singly.extend_from_slice(chunk),
-                n => {
-                    let (first, rest) = chunk.split_at(n / 2);
-                    chunks.push(rest);
-                    chunks.push(first);
-                }
-            }
-            continue;
-        }
-        let (once, several) = page.by_key();
+    // An id cut even alone is asked by the single lookup, as one several
+    // media record is.
+    let mut cut_alone: Vec<u32> = Vec::new();
+    let pages = whole_pages(
+        all,
+        |chunk| async move {
+            let body = serde_json::json!({
+                "query": query,
+                "variables": { var: chunk },
+            });
+            let bytes = post_graphql_public(client, url, &body).await?;
+            let page = parse_batch(&bytes, by_mal)?;
+            Ok(if page.cut {
+                Page::Cut
+            } else {
+                Page::Whole(page.by_key())
+            })
+        },
+        |one| {
+            cut_alone.push(one);
+            Ok(())
+        },
+    )
+    .await?;
+    singly.extend(cut_alone);
+    for (once, several) in pages {
         out.extend(once);
         singly.extend(several);
     }
