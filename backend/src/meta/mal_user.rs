@@ -260,5 +260,9 @@ mod status_prop_tests;
 mod tracked_tests;
 
 #[cfg(test)]
+#[path = "mal_user_refresh_refusal_test.rs"]
+mod refresh_refusal_tests;
+
+#[cfg(test)]
 #[path = "mal_user_evidence_test.rs"]
 mod evidence_tests;

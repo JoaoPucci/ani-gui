@@ -13,13 +13,23 @@ const { refreshTokens, persistAccount, store } = vi.hoisted(() => ({
 		accountChanging: { anilist: false, mal: false, inhouse: false } as Record<string, boolean>,
 		setConnected: vi.fn((p: string, account: PersistedAccount) => {
 			store.byProvider[p] = { kind: 'connected', account };
-		})
+		}),
+		setExpired: vi.fn((p: string, account: PersistedAccount) => {
+			store.byProvider[p] = { kind: 'expired', account };
+		}),
+		noteRenewalFailed: vi.fn()
 	}
 }));
-vi.mock('./api', () => ({ refreshTokens, persistAccount }));
+vi.mock('./api', async (importOriginal) => ({
+	// The real AccountApiError: renewal-failure reads failures by it.
+	...(await importOriginal<typeof import('./api')>()),
+	refreshTokens,
+	persistAccount
+}));
 vi.mock('./store.svelte', () => ({ accountStore: store }));
 
-import { __resetInFlightRefreshes, freshBearerFor } from './fresh-bearer';
+import { __resetInFlightRefreshes, bearerRefusedFor, freshBearerFor } from './fresh-bearer';
+import { AccountApiError } from './api';
 
 function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
@@ -39,6 +49,8 @@ beforeEach(() => {
 	refreshTokens.mockReset();
 	persistAccount.mockClear();
 	store.setConnected.mockClear();
+	store.setExpired.mockClear();
+	store.noteRenewalFailed.mockClear();
 	for (const k of Object.keys(store.byProvider)) delete store.byProvider[k];
 	store.accountGeneration = { anilist: 0, mal: 0, inhouse: 0 };
 	store.accountChanging = { anilist: false, mal: false, inhouse: false };
@@ -200,5 +212,63 @@ describe('freshBearerFor', () => {
 		await freshBearerFor('mal');
 		await freshBearerFor('mal');
 		expect(refreshTokens).toHaveBeenCalledTimes(2);
+	});
+});
+
+const refused = () =>
+	new AccountApiError(
+		401,
+		JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
+	);
+
+describe('freshBearerFor and a failed renewal', () => {
+	it('tells the store what the renewal found, and hands back the current bearer', async () => {
+		refreshTokens.mockRejectedValue(refused());
+		store.byProvider.mal = {
+			kind: 'connected',
+			account: account({ access_token: 'current', expires_at_epoch_s: nowSec() + 30 })
+		};
+		expect(await freshBearerFor('mal')).toBe('current');
+		expect(store.noteRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
+	});
+});
+
+describe('bearerRefusedFor', () => {
+	it('renews the refused sign-in through the store and keeps it connected', async () => {
+		refreshTokens.mockResolvedValue({
+			access_token: 'fresh',
+			refresh_token: 'rt2',
+			expires_at_epoch_s: nowSec() + 3600
+		});
+		store.byProvider.mal = { kind: 'connected', account: account() };
+		await bearerRefusedFor('mal', 'old');
+		expect(store.setConnected).toHaveBeenCalledWith(
+			'mal',
+			expect.objectContaining({ access_token: 'fresh' })
+		);
+	});
+
+	it('marks it expired and records why when the renewal is refused too', async () => {
+		refreshTokens.mockRejectedValue(refused());
+		const a = account();
+		store.byProvider.mal = { kind: 'connected', account: a };
+		await bearerRefusedFor('mal', 'old');
+		expect(store.setExpired).toHaveBeenCalledWith('mal', a);
+		expect(store.noteRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
+	});
+
+	it('renews nothing while the account is being disconnected', async () => {
+		store.byProvider.mal = { kind: 'connected', account: account() };
+		store.accountChanging.mal = true;
+		await bearerRefusedFor('mal', 'old');
+		expect(refreshTokens).not.toHaveBeenCalled();
+		expect(store.setExpired).not.toHaveBeenCalled();
+	});
+
+	it('leaves a sign-in alone whose bearer is not the one refused', async () => {
+		store.byProvider.mal = { kind: 'connected', account: account({ access_token: 'new' }) };
+		await bearerRefusedFor('mal', 'old');
+		expect(refreshTokens).not.toHaveBeenCalled();
+		expect(store.setExpired).not.toHaveBeenCalled();
 	});
 });
