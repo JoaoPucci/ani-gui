@@ -1265,6 +1265,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     args: &AvailabilityArgs,
     mode: &str,
     tail: Option<&dyn super::play_native_appended::TailSource>,
+    heard: &dyn crate::commands::listing_tags::ListingSink,
 ) -> std::result::Result<ShowModes, crate::commands::play_native_resolve::NativeError> {
     let picked = pick_native_walk(
         client,
@@ -1276,6 +1277,15 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         tail,
     )
     .await?;
+    // The pick's listings are at hand, whatever the probe goes on to
+    // answer — a mode read that fails, or one the walk moves on from as
+    // inconclusive, included.
+    for (hit, episodes) in picked.copies() {
+        heard.heard(
+            &crate::scraper::provider::ShowKey::new(client.id(), hit.slug.clone()).to_string(),
+            episodes,
+        );
+    }
     let fail = |error| crate::commands::play_native_resolve::NativeError {
         error,
         clean_miss: false,
@@ -1333,19 +1343,7 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
-        let probed = probe_show(provider, self.args, self.mode, self.tail).await;
-        // The pick's listings were at hand, whether the walk takes this
-        // answer or moves on from it as inconclusive.
-        if let Ok((picked, _, _)) = &probed {
-            for (hit, episodes) in picked.copies() {
-                self.heard.heard(
-                    &crate::scraper::provider::ShowKey::new(provider.id(), hit.slug.clone())
-                        .to_string(),
-                    episodes,
-                );
-            }
-        }
-        probed
+        probe_show(provider, self.args, self.mode, self.tail, self.heard).await
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
