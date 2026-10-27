@@ -340,7 +340,7 @@ jobs:
           node-version: 20
       - if: needs.filter.outputs.relevant == 'true'
         name: Install runtime deps
-        # Coverage runs `cargo llvm-cov --workspace`, which executes the
+        # Coverage (tools/rust-lcov.sh) runs the workspace's tests, the
         # same tests as the `test` job — see the matching comment there
         # for what resolves each of these.
         run: |
@@ -358,15 +358,16 @@ jobs:
           cargo fetch --locked
       - if: needs.filter.outputs.relevant == 'true'
         name: Generate lcov
-        working-directory: backend
-        # Offline, as the `test` job's run is; see there.
+        # Offline, as the `test` job's run is; see there. Through the
+        # script, which pins proptest's seed so the coverage is the same
+        # on every run.
         env:
           http_proxy: http://proxy.invalid:9
           https_proxy: http://proxy.invalid:9
           all_proxy: http://proxy.invalid:9
           no_proxy: 127.0.0.1,localhost,::1
           CARGO_NET_OFFLINE: 'true'
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        run: sh tools/rust-lcov.sh
       - if: needs.filter.outputs.relevant == 'true'
         name: Ratchet — fail if coverage drops
         run: node tools/check-coverage-baseline.mjs
