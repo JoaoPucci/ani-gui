@@ -13,11 +13,13 @@ struct ProcessGroup {
 #[cfg(unix)]
 impl super::Tree for ProcessGroup {
     fn running(&mut self) -> bool {
-        std::process::Command::new("kill")
-            .args(["-0", "--", &format!("-{}", self.pgid)])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        still_running(
+            std::process::Command::new("kill")
+                .args(["-0", "--", &format!("-{}", self.pgid)])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success()),
+        )
     }
 
     fn kill(&mut self) {
@@ -57,13 +59,11 @@ impl super::Tree for JobTree {
         let Some(job) = &self.job else {
             return false;
         };
-        match job.query_process_id_list() {
-            Ok(pids) => !pids.is_empty(),
-            Err(e) => {
-                tracing::warn!(error = ?e, "a tool's job could not be read");
-                false
-            }
+        let look = job.query_process_id_list().map(|pids| !pids.is_empty());
+        if let Err(e) = &look {
+            tracing::warn!(error = ?e, "a tool's job could not be read");
         }
+        still_running(look)
     }
 
     fn kill(&mut self) {}
@@ -72,4 +72,10 @@ impl super::Tree for JobTree {
 #[cfg(windows)]
 pub(super) fn job_tree(job: Option<win32job::Job>) -> Option<Box<dyn super::Tree>> {
     Some(Box::new(JobTree { job }))
+}
+
+/// Whether a look at a tree found it still running: what the look
+/// answered, or, when the look could not be made, what it stands for.
+fn still_running<E>(look: Result<bool, E>) -> bool {
+    look.unwrap_or(false)
 }
