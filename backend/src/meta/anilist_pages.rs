@@ -62,3 +62,7 @@ where
     }
     Ok(pages)
 }
+
+#[cfg(test)]
+#[path = "anilist_pages_prop_test.rs"]
+mod prop_tests;
