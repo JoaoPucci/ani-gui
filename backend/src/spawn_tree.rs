@@ -51,6 +51,9 @@ pub(super) fn process_group(child: &tokio::process::Child) -> Option<Box<dyn sup
 #[cfg(windows)]
 struct JobTree {
     job: Option<win32job::Job>,
+    /// A failed read of the job was logged: a teardown reads it every
+    /// few milliseconds, so it is logged once per tree.
+    warned: bool,
 }
 
 #[cfg(windows)]
@@ -61,7 +64,10 @@ impl super::Tree for JobTree {
         };
         let look = job.query_process_id_list().map(|pids| !pids.is_empty());
         if let Err(e) = &look {
-            tracing::warn!(error = ?e, "a tool's job could not be read");
+            if !self.warned {
+                tracing::warn!(error = ?e, "a tool's job could not be read");
+                self.warned = true;
+            }
         }
         still_running(look)
     }
@@ -71,13 +77,15 @@ impl super::Tree for JobTree {
 
 #[cfg(windows)]
 pub(super) fn job_tree(job: Option<win32job::Job>) -> Option<Box<dyn super::Tree>> {
-    Some(Box::new(JobTree { job }))
+    Some(Box::new(JobTree { job, warned: false }))
 }
 
 /// Whether a look at a tree found it still running: what the look
-/// answered, or, when the look could not be made, what it stands for.
+/// answered, or, when the look could not be made, running — a failed
+/// look says nothing about the tree, and only a tree seen gone ends a
+/// teardown's wait.
 fn still_running<E>(look: Result<bool, E>) -> bool {
-    look.unwrap_or(false)
+    look.unwrap_or(true)
 }
 
 #[cfg(test)]

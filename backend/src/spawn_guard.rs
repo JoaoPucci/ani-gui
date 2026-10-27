@@ -33,11 +33,14 @@ type GuardedChild = Box<dyn process_wrap::tokio::ChildWrapper>;
 /// keeps the group's id past the child's reap: a group with a process
 /// still in it keeps its id from being handed out again, so signalling
 /// the group stays safe until it is empty. The group is signalled only
-/// after a look finds someone in it; an empty group answers that look
-/// with no such process, and nothing is sent. What the look cannot
-/// rule out is the id being freed and handed to a new group leader in
-/// the moment between it and the kill — a full turn of the pid space
-/// in milliseconds.
+/// after a look finds someone in it, or a look could not be made; an
+/// empty group answers that look with no such process, and nothing is
+/// sent. A look that could not be made says nothing, and the group is
+/// signalled as one still running: a tree left running beside what
+/// follows is worse than a kill sent unlooked. What a look cannot rule
+/// out is the id being freed and handed to a new group leader in the
+/// moment between it and the kill — a full turn of the pid space in
+/// milliseconds.
 ///
 /// On Windows the tool runs in two nested job objects. The kill ends
 /// the inner one — the child's own — whole, with no pid looked up; the
