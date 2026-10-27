@@ -22,6 +22,9 @@ pub struct KitsuRelation {
     pub status: Option<String>,
     /// Its episode count, for an anime.
     pub episode_count: Option<u32>,
+    /// The day it started airing, as Kitsu gives it, for an anime.
+    #[serde(default)]
+    pub start: Option<String>,
 }
 
 /// The entries Kitsu relates an anime to, and whether the page read
@@ -132,6 +135,7 @@ pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
             subtype: node.attributes.subtype.clone(),
             status: node.attributes.status.clone(),
             episode_count: node.attributes.episode_count,
+            start: None,
             kind: dst.kind,
             id: dst.id,
         });

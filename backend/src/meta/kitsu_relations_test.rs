@@ -19,6 +19,7 @@ fn relation(role: &str, kind: &str, id: &str, subtype: &str, count: Option<u32>)
         subtype: Some(subtype.into()),
         status: Some("finished".into()),
         episode_count: count,
+        start: None,
     }
 }
 
