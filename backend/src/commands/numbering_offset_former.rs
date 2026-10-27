@@ -70,7 +70,7 @@ fn retag_row(
 /// [`retag_display`] from a resolve — a play's, a warm's, a download's —
 /// for the show it resolved; then, from the same listing, a stamp a warm
 /// moved off the show's legacy history row goes back on it, where the
-/// listing proves it.
+/// listing agrees with the sidecar.
 pub fn retag_from_resolve(
     state: &AppState,
     native: &crate::commands::play_native_resolve::NativeResolved,
@@ -89,7 +89,7 @@ pub fn retag_from_resolve(
 /// [`retag_display`] from a listing at hand — a probe's, a
 /// download's — for the show `slug` keys; then, from the same listing,
 /// a stamp a warm moved off the show's legacy history row goes back on
-/// it, where the listing proves it.
+/// it, where the listing agrees with the sidecar.
 pub fn retag_from_listing(
     state: &AppState,
     slug: &str,

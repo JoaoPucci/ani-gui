@@ -15,11 +15,12 @@
 //! stamps the offset only for a show with no row here, and no longer
 //! stamps the displaced row it lands on, so neither moves to another
 //! row under such a row. Builds before the marker stamped warms too,
-//! which could move the stamp off a row past a recap and leave it
-//! reading one episode high; the next listing of its show at hand puts
-//! the stamp back on the row's slot where the listing proves it
+//! which could move the stamp off a row whose tag is not its slot and
+//! leave it read as its slot — one episode high past a single recap;
+//! the next listing of its show at hand puts the stamp back on the
+//! row's slot where the listing agrees with the sidecar
 //! (`numbering_offset_drift.rs`), and a row no such listing reaches
-//! reads one episode high until its show is next watched.
+//! reads as its slot until its show is next watched.
 //! The rows anidb.app's resolves stamped stay: they are what keeps the
 //! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,

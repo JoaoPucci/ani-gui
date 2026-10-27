@@ -2,13 +2,13 @@
 //! display stamp a warm moved to another row, put right from a listing
 //! at hand. Split from [`super`] for the per-file complexity bar.
 //!
-//! Such a row holds the slot its watch resolved to. A slot past a recap
-//! reads as its display tag only while the show's one display stamp
-//! names it, and builds before the marker stamped every resolve of a
-//! row whose tag is not its slot — warms included — so a warm of
-//! another such row left this one reading as its slot: one episode
-//! high. Read against the show's listing, the slot is the episode its
-//! tag says, and the stamp is put back on it.
+//! Such a row holds the slot its watch resolved to. A slot whose tag is
+//! not its slot reads as its tag only while the show's one display
+//! stamp names it, and builds before the marker stamped every resolve
+//! of such a row — warms included — so a warm of another left this one
+//! reading as its slot: one episode high past a single recap. Read
+//! against a listing that agrees with the sidecar, the slot is the
+//! episode its tag says, and the stamp is put back on it.
 
 use super::numbering_offset_store::{rewrite, Row};
 use super::{AppState, Numbering};
@@ -21,7 +21,8 @@ use rule::restamp;
 use rule::Restamp;
 
 /// Put the display stamp of the show `slug` keys back on its legacy
-/// history row's slot, where [`restamp`] proves it from `listing`.
+/// history row's slot, where [`restamp`] finds `listing` agrees with
+/// the sidecar.
 /// Decided again under the store's locks, against the stamp as it
 /// stands there; a show with no stamp, no legacy row, or a history file
 /// that cannot be read is not written.

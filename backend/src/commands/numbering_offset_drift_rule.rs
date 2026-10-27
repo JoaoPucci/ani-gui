@@ -1,6 +1,6 @@
-//! Whether a listing at hand proves the slot a legacy history row
-//! holds, and the display stamp it then reads through. Split from
-//! [`super`] for the per-file complexity bar.
+//! Whether a listing at hand agrees with the sidecar a legacy history
+//! row reads through, and the display stamp the row then reads through.
+//! Split from [`super`] for the per-file complexity bar.
 
 use crate::scraper::provider::EpisodeRef;
 
@@ -16,13 +16,14 @@ pub(super) struct Restamp {
 /// The stamp a legacy row holding `row_ep` reads through, from
 /// `listing`, given the show's stamped `offset` and the display `stamp`
 /// it has now; `None` where the row reads right already, or where the
-/// listing does not prove what it is.
+/// listing disagrees with the sidecar.
 ///
-/// The listing proves it when it is the listing the sidecar was written
-/// against: it numbers the show on the stamped offset, and tags the
-/// stamped slot as the stamp does. Then the row's slot, listed once, is
-/// the episode its tag says; a slot whose tag is its slot reads right
-/// without a stamp, and one the stamp names already reads through it.
+/// The listing agrees when it numbers the show on the stamped offset
+/// and tags the stamped slot as the stamp does. Then the row's slot,
+/// listed once, is read as the episode its tag says; a slot whose tag
+/// is its slot reads right without a stamp, and one the stamp names
+/// already reads through it. The stamp was written after the row, so a
+/// re-listing ahead of the row's slot between the two is not seen.
 pub(super) fn restamp(
     row_ep: &str,
     offset: u32,
