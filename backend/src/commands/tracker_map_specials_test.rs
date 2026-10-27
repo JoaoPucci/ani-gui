@@ -249,7 +249,8 @@ async fn seikaisuru_kado_and_its_prologue_special_stay_identity_on_anilist() {
     kitsu_mapped(&kitsu, "anilist/anime", 21_452, KADO_MAPPED_ANILIST).await;
     kitsu_mapped(&kitsu, "myanimelist/anime", 32_032, KADO_MAPPED_MAL).await;
     let anilist_server = MockServer::start().await;
-    anilist_media(&anilist_server, 21_452, KADO_ANILIST).await;
+    evidence_of(&anilist_server, 21_452, KADO_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
     Mock::given(method("POST"))
         .and(body_string_contains("MediaIdByMal"))
         .and(body_string_contains("\"idMal\":32032"))
@@ -291,7 +292,8 @@ async fn kamitsubaki() -> (MockServer, MockServer) {
     kitsu_mapped(&kitsu, "anilist/anime", 173_335, KAMITSUBAKI_MAPPED_ANILIST).await;
     kitsu_mapped(&kitsu, "myanimelist/anime", 57_820, KAMITSUBAKI_MAPPED_MAL).await;
     let anilist_server = MockServer::start().await;
-    anilist_media(&anilist_server, 173_335, KAMITSUBAKI_ANILIST).await;
+    evidence_of(&anilist_server, 173_335, KAMITSUBAKI_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
     Mock::given(method("POST"))
         .and(body_string_contains("MediaIdByMal"))
         .and(body_string_contains("\"idMal\":57820"))
@@ -384,7 +386,6 @@ async fn unlimited_blade_works_prologue_is_the_tv_season_s_first_episode_on_anil
 async fn kamitsubaki_s_special_is_its_series_entry_s_first_episode_on_anilist() {
     let (kitsu, anilist_server) = kamitsubaki().await;
     detail_of(&kitsu, "50027", ZENPEN_KITSU).await;
-    evidence_of(&anilist_server, 173_335, KAMITSUBAKI_ANILIST).await;
     let state = state_with_kitsu(&kitsu.uri());
     let provider = anilist(&anilist_server.uri());
     let tokens = tokens();
