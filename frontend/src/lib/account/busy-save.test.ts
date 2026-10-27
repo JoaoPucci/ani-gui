@@ -496,10 +496,11 @@ describe('a held write and its notice, on one clock', () => {
 	});
 
 	it('neither goes nor says it is going when the wall clock jumps past its deadline', async () => {
+		let land: (v: string) => void = () => {};
 		const write = vi
 			.fn<() => Promise<string>>()
 			.mockRejectedValueOnce(refused(60))
-			.mockResolvedValue('saved');
+			.mockImplementationOnce(() => new Promise<string>((r) => (land = r)));
 		const pending = saveWhenTrackerAllows('anilist', '71', write);
 		await vi.advanceTimersByTimeAsync(0);
 		vi.setSystemTime(Date.now() + 120_000);
@@ -509,7 +510,9 @@ describe('a held write and its notice, on one clock', () => {
 			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 59 })
 		]);
 		await vi.advanceTimersByTimeAsync(59_000);
+		expect(write).toHaveBeenCalledTimes(2);
 		expect(busyNotices().map((t) => t.message)).toEqual([going()]);
+		land('saved');
 		expect(await pending).toBe('saved');
 	});
 });
