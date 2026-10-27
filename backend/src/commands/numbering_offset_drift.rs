@@ -74,3 +74,7 @@ pub(super) fn put_drift_right(
 #[cfg(test)]
 #[path = "numbering_offset_drift_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "numbering_offset_drift_race_test.rs"]
+mod race_tests;
