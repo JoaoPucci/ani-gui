@@ -49,7 +49,10 @@ export interface PushWatchedDeps {
  * The backend reads `completed` on the progress route as this finale
  * and drops it where the tracker's own episode total is known and
  * differs from the episode (and, as before, for a rewatching row), so
- * nothing else may send `completed` through `updateProgress`.
+ * nothing else may send `completed` through `updateProgress`. Where the
+ * show's map on a tracker files its episodes under other entries or
+ * numbers, the backend decides each entry's completion from the map —
+ * at that entry's own last episode — and does not read this status.
  */
 export function watchedStatus(
 	episode: number,

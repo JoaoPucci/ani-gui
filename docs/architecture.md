@@ -161,6 +161,7 @@ A hero image that fails to load gives way to the next in that order, without a r
 | AniList trending row | SQLite `meta_cache` | 1 hour |
 | Kitsu seasonal / top / recent | SQLite `meta_cache` | 6 hours |
 | Per-anime metadata (`/anime/:id`) | SQLite `meta_cache` | 7 days for a finished show; 24 hours for any other status |
+| A page of Kitsu's episode list (per Kitsu id + page; read by the detail page's strip, the appended-extras check and an episode map's chain rule) | SQLite `meta_cache` | 24 hours |
 | Availability probe (positive, ongoing show) | SQLite `meta_cache` | 24 hours at most: with the next airing known — when the row is written, or once the schedule is cached after it — until 1 hour after it when that is sooner, and 1 hour when that airing time has already passed or the schedule counts one or two more aired episodes than the provider lists |
 | Availability probe (positive, finished show) | SQLite `meta_cache` | 30 days, until a resolve against the show rewrites the row with the ongoing window (a replay, and a resolve whose count was unread beside an exact count from the same provider, leave it as it is; see [Providers and failover](#providers-and-failover)) |
 | Availability probe (negative — a clean miss, or the requested mode absent, from the provider that answered; served while that provider's gate has been seen answering and every gate ahead of it is refusing) — finished show | SQLite `meta_cache` | 7 days when the probe wrote the row; 24 hours at most when a resolve did (below) |
@@ -168,7 +169,8 @@ A hero image that fails to load gives way to the next in that order, without a r
 | Availability probe (negative) — unreleased show with a known premiere | SQLite `meta_cache` | until 3 hours after the premiere, within 1 hour to 7 days |
 | aniskip OP/ED skip-time intervals (per Kitsu id + MAL id + episode) | SQLite `meta_cache` | 7 days |
 | A show's MAL and AniList ids from Kitsu's mappings (per Kitsu id) | SQLite `meta_cache` | 30 days when both are present; 24 hours when either is missing |
-| An id AniList translated to or from MAL's (per id, each direction) | SQLite `meta_cache` | 30 days; 24 hours for an id AniList does not index |
+| An id AniList translated to or from MAL's (per id, each direction), and every AniList media recording a MAL id | SQLite `meta_cache` | 30 days; 24 hours for an id AniList does not index, or a MAL id no media records |
+| A show's episode map on one tracker — which of the tracker's entries each Kitsu episode belongs to, under which number (per tracker + Kitsu id + the resolved entry and its total, or `unresolved` for a show Kitsu's mappings resolve to nothing; `tracker-map:v2:`) | SQLite `meta_cache` | 30 days when the counts agree or a rule explained their difference over entries that have all finished airing; 24 hours when a count was unknown, nothing explained it, an entry is still airing, or the show resolves to nothing; nothing for a read that failed |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite `meta_cache` (`play:` rows) | 7 days, or until upstream rotates |
 | In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | Until the page clears the show's prefetches or the resolve fails; the sessions it holds last the backend session table's 4 hours (also dedupes concurrent calls) |
