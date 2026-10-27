@@ -3,8 +3,9 @@
 # What the cache check refuses, and what it leaves alone.
 #
 # The check reads the workflows and the local composite actions
-# through PyYAML and holds two rules: only master saves an Actions
-# cache, and an apt install goes through the cached install action.
+# through PyYAML and holds three rules: only master saves an Actions
+# cache, an apt install goes through the cached install action, and a
+# call of the cached pnpm install says it runs from the workspace root.
 # These cases plant each shape the rules are meant to refuse, and the
 # shapes they must accept, in a repository built per case and reached
 # through the ARCH_REPO_ROOT seam every check in tests/arch/ takes.

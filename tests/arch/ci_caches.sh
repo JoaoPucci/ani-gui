@@ -1,7 +1,8 @@
 #!/bin/sh
 
-# Architectural invariant: only master saves an Actions cache, and
-# every apt install goes through the cached install action.
+# Architectural invariant: only master saves an Actions cache, every
+# apt install goes through the cached install action, and every call
+# of the cached pnpm install runs it from the workspace root.
 #
 # The repository's Actions caches share one 10 GB limit, and GitHub
 # evicts the least recently used entry once it is reached. A cache a
@@ -42,7 +43,9 @@
 #     --print-uris, what the install would fetch).
 #
 # What this does NOT check: an action other than these that caches on
-# its own (a third-party action keeping a cache internally), or a
+# its own (a third-party action keeping a cache internally), a call
+# of this repository's actions by remote reference
+# (`owner/ani-gui/.github/actions/...@ref`) rather than `./`, or a
 # script a step runs that calls apt or the cache service itself — only
 # the steps' own text is read — or an apt install split across a line
 # continuation so that no one line carries both `apt` and `install`,
@@ -137,7 +140,9 @@ def check(path, doc):
         where = "%s: %s" % (path, name)
         uses = step.get("uses")
         uses = uses if isinstance(uses, str) else ""
-        # GitHub resolves an action's owner and name case-insensitively.
+        # GitHub resolves an action's owner and name case-insensitively;
+        # a local `./` path folds too, which over-matches the safe way
+        # (a case-insensitive filesystem would resolve it).
         action = uses.split("@", 1)[0].lower()
         inputs = step.get("with") if isinstance(step.get("with"), dict) else {}
         if action == "swatinem/rust-cache":
