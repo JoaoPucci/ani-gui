@@ -387,6 +387,69 @@ async fn an_unread_page_on_tagged_evidence_leaves_the_refusal_by_name() {
     }
 }
 
+/// The show's own heading rates an adult video Rx: a listing so rated
+/// is never a pick, though its page lists no genre — dated or undated,
+/// counted, a single video or countless — and a pool holding nothing
+/// else is the clean miss a hentai's is.
+#[tokio::test]
+async fn a_listing_rated_rx_is_never_picked() {
+    for year in [None, Some(YEAR)] {
+        for count in UNDATED_COUNTS {
+            let n = count.unwrap_or(12);
+            let client = site(&[(1, n)]).genres(1, &[]).rating(1, "Rx");
+            let hits = [hit("the-show-1", "The Show")];
+            match pick(&client, &hits, count, year, &[]).await {
+                Ok(p) => panic!("{year:?} {count:?}: picked {}", p.hit.slug),
+                Err(e) => assert!(
+                    matches!(e, AniError::NoResults),
+                    "{year:?} {count:?}: {e:?}"
+                ),
+            }
+        }
+    }
+}
+
+/// A page that lists no genre but whose heading carries an ordinary
+/// age rating says the listing is no adult video: it is picked, dated
+/// or undated, whatever the rating on the site's scale up to R+.
+#[tokio::test]
+async fn a_listing_with_an_ordinary_rating_and_no_genre_is_picked() {
+    for rating in ["G", "PG", "PG-13", "R", "R+"] {
+        for year in [None, Some(YEAR)] {
+            let client = site(&[(1, 12)]).genres(1, &[]).rating(1, rating);
+            let hits = [hit("the-show-1", "The Show")];
+            let p = pick(&client, &hits, Some(12), year, &[])
+                .await
+                .unwrap_or_else(|e| panic!("{rating} {year:?}: {e:?}"));
+            assert_eq!(p.hit.slug, "the-show-1", "{rating} {year:?}");
+        }
+    }
+}
+
+/// A probe the first round heard dead is the same dead candidate to
+/// the round made again: a listing whose body could not be read is not
+/// asked twice, and the second round cannot hear it answer and pick it
+/// where the first weighed it dead.
+#[tokio::test]
+async fn a_probe_heard_dead_is_not_asked_again() {
+    let client = site(&[(1, 12)]).genres(1, &["Hentai"]).listing(
+        2,
+        Answer::fails(|| AniError::ParseFailed {
+            detail: "an interstitial".into(),
+        }),
+    );
+    let hits = [
+        hit("the-show-1", "The Show"),
+        hit("the-show-tv-2", "The Show TV"),
+    ];
+    let _ = pick(&client, &hits, Some(12), None, &["The Show TV"]).await;
+    let asked: Vec<String> = probes(&client)
+        .into_iter()
+        .filter(|s| s == "the-show-tv-2")
+        .collect();
+    assert_eq!(asked.len(), 1, "{:?}", probes(&client));
+}
+
 /// One of the verdicts a pick ends on, by `kind`, a status for the
 /// upstream one.
 fn verdict(kind: u8, status: u16) -> AniError {
@@ -396,6 +459,9 @@ fn verdict(kind: u8, status: u16) -> AniError {
         2 => AniError::Network,
         3 => AniError::GateRefused,
         4 => AniError::Timeout,
+        5 => AniError::ParseFailed {
+            detail: format!("body {status}"),
+        },
         _ => AniError::Upstream { status },
     }
 }
@@ -418,6 +484,7 @@ proptest! {
     fn the_gate_leaves_out_the_refused_and_notes_only_a_pickable_unread_page(
         rows in proptest::collection::vec((0usize..4, any::<bool>(), any::<bool>()), 0..8),
         marked in any::<bool>(),
+        evidence_marked in any::<bool>(),
     ) {
         let head: Vec<BrowseHit> = rows
             .iter()
@@ -432,7 +499,7 @@ proptest! {
         let mut gate = GenreRefusals {
             excluded: excluded.clone(),
             unread: marked,
-            unread_evidence: false,
+            unread_evidence: evidence_marked,
         };
         let mut left = head.clone();
         gate.leave_out(&mut left);
@@ -443,17 +510,23 @@ proptest! {
         let pickable_unread = rows.iter().any(|(t, _, u)| *u && HEAD_TITLES[*t].1);
         let evidence_unread = rows.iter().any(|(t, _, u)| *u && !HEAD_TITLES[*t].1);
         prop_assert_eq!(gate.unread, marked || pickable_unread);
-        prop_assert_eq!(gate.unread_evidence, evidence_unread);
+        prop_assert_eq!(gate.unread_evidence, evidence_marked || evidence_unread);
     }
 
     /// The memo keeps a probe's not-found-shaped answer and a transport
     /// death, each as itself, and no block or other failure.
     #[test]
-    fn the_memo_keeps_a_dead_listing_and_nothing_else(kind in 0u8..6, status in 400u16..600) {
+    fn the_memo_keeps_a_dead_listing_and_nothing_else(kind in 0u8..7, status in 400u16..600) {
         let e = verdict(kind, status);
         let kept = super::memo::replayed(&e).map(|k| format!("{k:?}"));
-        let keeps = matches!(e, AniError::Network)
-            || matches!(e, AniError::Upstream { .. } if !e.is_provider_block());
+        // Every answer the pick reads as the candidate dead — not-found,
+        // a transport death, a timeout, a body it could not read — is
+        // the same to every round; a block and a refused admit stop
+        // the pick, and nothing is kept for them.
+        let keeps = matches!(
+            e,
+            AniError::Network | AniError::Timeout | AniError::ParseFailed { .. }
+        ) || matches!(e, AniError::Upstream { .. } if !e.is_provider_block());
         prop_assert_eq!(kept, keeps.then(|| format!("{e:?}")));
     }
 
@@ -462,7 +535,7 @@ proptest! {
     /// that may have been the entry's, and nothing else changes.
     #[test]
     fn an_unread_page_makes_a_miss_the_answered_dead_end(
-        kind in 0u8..6,
+        kind in 0u8..7,
         status in 400u16..600,
         unread in any::<bool>(),
         evidence in any::<bool>(),
@@ -483,22 +556,32 @@ proptest! {
         }
     }
 
-    /// A page is Hentai when any genre it lists is, case aside; unread
-    /// when it lists none; listed otherwise.
+    /// A page is Hentai when any genre it lists is, case aside, or when
+    /// the show's own heading rates it Rx; listed when it lists genres;
+    /// listed too when it lists none but its heading carries an ordinary
+    /// rating (G, PG, PG-13, R, R+, case aside); unread otherwise — no
+    /// genre and no rating, or a rating the site's scale does not hold.
     #[test]
-    fn a_page_s_genre_is_what_its_genre_row_lists(
+    fn a_page_s_genre_is_what_its_genre_row_and_its_rating_say(
         genres in proptest::collection::vec(
             prop_oneof![Just("Hentai".to_string()), Just("HENTAI".to_string()), "[A-Za-z ]{1,12}"],
             0..5,
         ),
+        rating in proptest::option::of(prop_oneof![
+            Just("G".to_string()), Just("PG".to_string()), Just("PG-13".to_string()),
+            Just("R".to_string()), Just("R+".to_string()), Just("Rx".to_string()),
+            Just("rx".to_string()), Just("pg-13".to_string()), "[A-Z][A-Za-z0-9+-]{0,4}",
+        ]),
     ) {
-        let page = EntryPage { genres: genres.clone(), ..EntryPage::default() };
-        let expected = if genres.iter().any(|g| g.eq_ignore_ascii_case("hentai")) {
+        let page = EntryPage { genres: genres.clone(), rating: rating.clone(), ..EntryPage::default() };
+        let rated = |r: &str| rating.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(r));
+        let ordinary = ["G", "PG", "PG-13", "R", "R+"].iter().any(|r| rated(r));
+        let expected = if genres.iter().any(|g| g.eq_ignore_ascii_case("hentai")) || rated("Rx") {
             Genre::Hentai
-        } else if genres.is_empty() {
-            Genre::Unread
-        } else {
+        } else if !genres.is_empty() || ordinary {
             Genre::Listed
+        } else {
+            Genre::Unread
         };
         prop_assert_eq!(genre_of(&page), expected);
     }
