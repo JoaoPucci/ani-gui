@@ -76,7 +76,9 @@ impl MalProvider {
     /// non-2xx → [`AniError::Upstream`]. Shared by the bearer-authed
     /// request helpers so the branches live in one place. NOT used for
     /// the OAuth token endpoint, where a 401 means "bad code / refresh
-    /// token" and must surface as `Upstream`, not `InvalidToken`.
+    /// token", not a bad bearer: it surfaces as `Upstream`, and the
+    /// refresh grant reads its 400 or 401 as `RefreshRejected`
+    /// (`refresh_refusal`).
     fn check_response(resp: &reqwest::Response) -> Result<()> {
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
