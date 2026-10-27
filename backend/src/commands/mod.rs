@@ -51,7 +51,7 @@ pub(crate) mod history_forget_skips;
 pub(crate) mod history_forget_titles;
 pub mod history_number;
 mod history_remove;
-mod history_resume;
+pub(crate) mod history_resume;
 pub(crate) mod history_title_tail;
 pub mod kitsu;
 pub(crate) mod kitsu_gone;
