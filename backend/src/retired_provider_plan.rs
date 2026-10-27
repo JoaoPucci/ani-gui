@@ -72,8 +72,29 @@ impl Plan {
 /// The plan for `rows`, in file order.
 #[must_use]
 pub fn plan(rows: &[PlanRow]) -> Plan {
-    let _ = rows;
-    Plan::default()
+    let mut out = Plan::default();
+    for row in rows.iter().filter(|r| !r.walked) {
+        if superseded(row, rows) {
+            out.superseded.push(row.id.clone());
+        } else if !row.own_number {
+            out.renumber.push(row.id.clone());
+        }
+    }
+    out
+}
+
+/// Whether, for every entry `row` is shown as, a walked row shown as
+/// the same entry resumes over it. A row shown as nothing is never
+/// superseded: nothing ties it to another row.
+fn superseded(row: &PlanRow, rows: &[PlanRow]) -> bool {
+    !row.shown_as.is_empty()
+        && row.shown_as.iter().all(|kitsu| {
+            rows.iter().any(|w| {
+                w.walked
+                    && w.shown_as.iter().any(|k| same_kitsu_id(k, kitsu))
+                    && resumes_over((w.stamp, &w.ep), (row.stamp, &row.ep))
+            })
+        })
 }
 
 #[cfg(test)]
