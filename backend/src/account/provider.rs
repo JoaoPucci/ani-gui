@@ -149,6 +149,19 @@ pub struct EntryUpdate {
     pub repeat_count: Option<u32>,
 }
 
+impl EntryUpdate {
+    /// Whether the update carries no field at all. Both trackers' writes
+    /// upsert, so an empty one would create a row of the tracker's
+    /// defaults; it is not sent.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.status.is_none()
+            && self.progress_episodes.is_none()
+            && self.score_0_to_100.is_none()
+            && self.repeat_count.is_none()
+    }
+}
+
 /// Trait every concrete user-list provider implements.
 #[async_trait]
 pub trait UserListProvider: Send + Sync {

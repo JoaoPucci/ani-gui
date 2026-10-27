@@ -752,15 +752,7 @@ pub fn reconcile_monotonic(
             update.status = Some(ListStatus::Watching);
         }
     }
-    let empty = update.status.is_none()
-        && update.progress_episodes.is_none()
-        && update.score_0_to_100.is_none()
-        && update.repeat_count.is_none();
-    if empty {
-        None
-    } else {
-        Some(update)
-    }
+    (!update.is_empty()).then_some(update)
 }
 
 /// [`reconcile_monotonic`] against `row` as `kind` keeps it
@@ -872,9 +864,7 @@ pub(crate) async fn push_progress_via(
     // local cache is empty until the user syncs their list).
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     if update.progress_episodes.is_none() {
-        return write_through(state, kind, provider, tokens, native, update)
-            .await
-            .map(Some);
+        return write_through(state, kind, provider, tokens, native, update).await;
     }
     let media = provider.tracked_media(tokens, native).await?;
     push_progress_read(state, kind, provider, tokens, native, update, media).await
@@ -898,12 +888,11 @@ pub(crate) async fn push_progress_read(
     let Some(update) = reconcile_for(kind, update, media.entry) else {
         return Ok(None);
     };
-    write_through(state, kind, provider, tokens, native, update)
-        .await
-        .map(Some)
+    write_through(state, kind, provider, tokens, native, update).await
 }
 
-/// Write `update` to `native` and the cache through.
+/// Write `update` to `native` and the cache through, or nothing when
+/// the update is empty ([`EntryUpdate::is_empty`]) — a no-op, `None`.
 ///
 /// The cache is written HERE, under the per-show lock — not in the
 /// route afterwards. Deferring it released the lock first, so a stale
@@ -919,12 +908,15 @@ pub(crate) async fn write_through(
     tokens: &Tokens,
     native: ProviderMediaId,
     update: EntryUpdate,
-) -> Result<ListEntry> {
+) -> Result<Option<ListEntry>> {
+    if update.is_empty() {
+        return Ok(None);
+    }
     let entry = provider.update_entry(tokens, native, update).await?;
     if let Ok(profile) = provider.me(tokens).await {
         let _ = upsert_cached_entry(state, kind, &profile.user_id, &entry);
     }
-    Ok(entry)
+    Ok(Some(entry))
 }
 
 #[cfg(test)]

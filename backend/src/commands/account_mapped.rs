@@ -195,7 +195,6 @@ async fn write_episode(
         ours,
     )
     .await
-    .map(Some)
 }
 
 #[cfg(test)]

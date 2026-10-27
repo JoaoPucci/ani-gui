@@ -73,8 +73,9 @@ async fn get_entry_via(
 /// the user's deliberate value is written verbatim, so they can correct
 /// an over-count downward or move status anywhere.
 ///
-/// `Ok(None)` when the show can't be mapped to the provider (a non-error
-/// "nothing to write").
+/// `Ok(None)` when the show can't be mapped to the provider, or when the
+/// edit carries nothing ([`EntryUpdate::is_empty`]) — a non-error
+/// "nothing to write".
 pub async fn set_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -96,6 +97,10 @@ async fn set_entry_via(
     kitsu_id: &str,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
+    // An edit with nothing in it is a no-op: no request, `None`.
+    if update.is_empty() {
+        return Ok(None);
+    }
     // Per-show lock keyed on the Kitsu id, taken before resolve so an
     // explicit edit and a concurrent mark-watched write serialize across
     // their whole resolve→write.
