@@ -269,8 +269,13 @@ proptest! {
             _ => None,
         };
         prop_assert_eq!(read.aired, aired);
+        for field in ["status", "episodes", "nextAiringEpisode", "airingSchedule"] {
+            prop_assert!(anilist_airing::parse_airing_response(
+                &decorated(without(doc.clone(), &["data", "Media", field]), &extra)).is_err(),
+                "without {}", field);
+        }
         prop_assert!(anilist_airing::parse_airing_response(
-            &decorated(without(doc.clone(), &["data", "Media", "status"]), &extra)).is_err());
+            &decorated(without(doc.clone(), &["data", "Media", "airingSchedule", "nodes"]), &extra)).is_err());
         prop_assert!(anilist_airing::parse_airing_response(
             &decorated(without(doc, &["data", "Media"]), &extra)).is_err());
         prop_assert!(anilist_airing::parse_airing_response(&decorated(media(Value::Null), &extra))

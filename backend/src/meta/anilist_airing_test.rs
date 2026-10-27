@@ -11,7 +11,8 @@ use super::*;
 fn parse_airing_releasing_show_derives_aired_from_next_episode() {
     let body = br#"{"data":{"Media":{
         "status":"RELEASING","episodes":12,
-        "nextAiringEpisode":{"episode":3,"airingAt":1784215800}
+        "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
+        "airingSchedule":null
     }}}"#;
     let got = parse_airing_response(body).expect("ok").expect("some");
     assert_eq!(
@@ -28,7 +29,8 @@ fn parse_airing_releasing_show_derives_aired_from_next_episode() {
 #[test]
 fn parse_airing_finished_show_airs_the_announced_total() {
     let body = br#"{"data":{"Media":{
-        "status":"FINISHED","episodes":26,"nextAiringEpisode":null
+        "status":"FINISHED","episodes":26,"nextAiringEpisode":null,
+        "airingSchedule":null
     }}}"#;
     let got = parse_airing_response(body).expect("ok").expect("some");
     assert_eq!(got.aired, Some(26));
@@ -39,7 +41,8 @@ fn parse_airing_finished_show_airs_the_announced_total() {
 #[test]
 fn parse_airing_unreleased_show_has_zero_aired() {
     let body = br#"{"data":{"Media":{
-        "status":"NOT_YET_RELEASED","episodes":null,"nextAiringEpisode":null
+        "status":"NOT_YET_RELEASED","episodes":null,"nextAiringEpisode":null,
+        "airingSchedule":null
     }}}"#;
     let got = parse_airing_response(body).expect("ok").expect("some");
     assert_eq!(got.aired, Some(0));
@@ -51,7 +54,8 @@ fn parse_airing_releasing_without_schedule_stays_ungated() {
     // lack schedule rows) — aired must be None so the UI doesn't hide
     // real episodes on a guess.
     let body = br#"{"data":{"Media":{
-        "status":"RELEASING","episodes":null,"nextAiringEpisode":null
+        "status":"RELEASING","episodes":null,"nextAiringEpisode":null,
+        "airingSchedule":null
     }}}"#;
     let got = parse_airing_response(body).expect("ok").expect("some");
     assert_eq!(got.aired, None);
@@ -78,7 +82,7 @@ async fn airing_status_queries_by_anilist_id_when_present() {
             "variables": { "id": 207141 },
         })))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Media":{"status":"RELEASING","episodes":12,"nextAiringEpisode":{"episode":3,"airingAt":1784215800}}}}"#,
+            r#"{"data":{"Media":{"status":"RELEASING","episodes":12,"nextAiringEpisode":{"episode":3,"airingAt":1784215800},"airingSchedule":null}}}"#,
         ))
         .expect(1)
         .mount(&server)
@@ -100,7 +104,7 @@ async fn airing_status_falls_back_to_mal_id() {
             "variables": { "idMal": 21 },
         })))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Media":{"status":"RELEASING","episodes":null,"nextAiringEpisode":null}}}"#,
+            r#"{"data":{"Media":{"status":"RELEASING","episodes":null,"nextAiringEpisode":null,"airingSchedule":null}}}"#,
         ))
         .expect(1)
         .mount(&server)
@@ -157,13 +161,38 @@ fn parse_airing_extracts_the_upcoming_schedule() {
 }
 
 #[test]
-fn parse_airing_missing_schedule_defaults_to_empty_upcoming() {
+fn parse_airing_null_schedule_reads_as_nothing_upcoming() {
+    // AniList's null schedule is its answer: nothing announced.
     let body = br#"{"data":{"Media":{
         "status":"RELEASING","episodes":12,
-        "nextAiringEpisode":{"episode":3,"airingAt":1784215800}
+        "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
+        "airingSchedule":null
     }}}"#;
     let got = parse_airing_response(body).expect("ok").expect("some");
     assert!(got.upcoming.is_empty());
+}
+
+#[test]
+fn parse_airing_without_a_field_it_asked_for_is_no_answer() {
+    // The single lookup reads the node the batch reads, by the same
+    // rule: a field left out is no answer, never "nothing scheduled".
+    let full = serde_json::json!({ "data": { "Media": {
+        "status": "RELEASING", "episodes": 12,
+        "nextAiringEpisode": { "episode": 3, "airingAt": 1_784_215_800 },
+        "airingSchedule": { "nodes": [] }
+    } } });
+    assert!(parse_airing_response(full.to_string().as_bytes()).is_ok());
+    for field in ["status", "episodes", "nextAiringEpisode", "airingSchedule"] {
+        let mut doc = full.clone();
+        doc["data"]["Media"].as_object_mut().unwrap().remove(field);
+        assert!(
+            parse_airing_response(doc.to_string().as_bytes()).is_err(),
+            "without {field}"
+        );
+    }
+    let mut no_nodes = full.clone();
+    no_nodes["data"]["Media"]["airingSchedule"] = serde_json::json!({});
+    assert!(parse_airing_response(no_nodes.to_string().as_bytes()).is_err());
 }
 
 // --- batch fetch ----------------------------------------------------

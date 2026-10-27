@@ -1767,7 +1767,8 @@ const KITSU_MAPPING_BODY: &str = r#"{
 
 const ANILIST_UNRELEASED_BODY: &str = r#"{"data":{"Media":{
     "status":"NOT_YET_RELEASED","episodes":12,
-    "nextAiringEpisode":{"episode":1,"airingAt":1784215800}
+    "nextAiringEpisode":{"episode":1,"airingAt":1784215800},
+    "airingSchedule":null
 }}}"#;
 
 // The premiere-aware negative TTL only
