@@ -511,6 +511,121 @@ proptest::proptest! {
 }
 
 proptest::proptest! {
+    /// An entry names a number its title writes the way Japanese glues
+    /// one — straight before a Japanese letter ("86第4部") or straight
+    /// after one ("ショー2") — and never digits glued to any other
+    /// letter, which are that word's own ("Arc2", "Café2"): a title the
+    /// entry carries only so does not admit a sequel numbered by them.
+    #[test]
+    fn an_entry_names_a_number_glued_only_as_japanese_writes_one(
+        h in 0..JAPANESE_HEADS.len(),
+        o in 0..OTHER_HEADS.len(),
+        n in 0u32..100,
+    ) {
+        let before = format!("{n}第4部");
+        proptest::prop_assert!(named_ordinals(&before).contains(&n), "{before}");
+        let after = format!("{}{n}", JAPANESE_HEADS[h]);
+        proptest::prop_assert!(named_ordinals(&after).contains(&n), "{after}");
+        let latin = format!("{}{n}", OTHER_HEADS[o]);
+        proptest::prop_assert!(!named_ordinals(&latin).contains(&n), "{latin}");
+    }
+}
+
+/// The admission those numbers decide: "86☆" ends on the 86 that
+/// "86第４部" names, while "Show: Arc: 2" ends on a 2 that "Show: Arc2"
+/// does not.
+#[test]
+fn admission_reads_a_number_glued_only_as_japanese_writes_one() {
+    assert!(entry(&["86第４部"]).admits("86☆"));
+    assert!(!entry(&["Show: Arc2"]).admits("Show: Arc: 2"));
+    assert!(!entry(&["Gintama4 [OVA]"]).admits("Gintama~ 4"));
+    assert!(entry(&["ショー２"]).admits("ショー: 2"));
+    // a span is a word of its own however it is glued before: its
+    // numbers stand apart, "+" between them
+    assert!(entry(&["推しの子Part ４+5"]).admits("推しの子 Part ４+5"));
+}
+
+/// Spelled and suffixed ordinals that pair with the marker word after
+/// them ("Third Stage", "12th Cour").
+const PAIRED: &[(&str, u32)] = &[("Third", 3), ("Seventh", 7), ("12th", 12), ("4th", 4)];
+
+proptest::proptest! {
+    /// A title's tail is one reading of it, first word to last: a
+    /// spelled or suffixed ordinal pairs with the marker after it, so
+    /// "Third Stage 2" is a third stage and then a bare 2 — the title
+    /// ends on that number, not on a "Stage 2" — and "12th Cour 3rd" a
+    /// twelfth cour and then a third season standing alone. The stem
+    /// and the markers are what that one reading ends on.
+    #[test]
+    fn the_tail_is_the_reading_s_own_parse(
+        p in 0..PAIRED.len(),
+        n in 0u32..10,
+    ) {
+        use super::super::play_native_title_grammar::{stem_number, trailing_markers};
+        let (ordinal, k) = PAIRED[p];
+        let numbered = format!("Show {ordinal} Stage {n}");
+        proptest::prop_assert!(trailing_markers(&numbered).is_empty(), "{}", numbered);
+        proptest::prop_assert_eq!(stem_number(&numbered), Some(n));
+        let spelled = format!("Show {ordinal} Cour 3rd");
+        let got: Vec<(Kind, Vec<u32>)> = trailing_markers(&spelled).into_iter().map(|m| (m.kind, m.ordinals)).collect();
+        proptest::prop_assert_eq!(got, vec![(Kind::Season, vec![3]), (Kind::Part, vec![k])]);
+        // the entry known by such a title has its own words, retagged, for
+        // its own listing, never for the season before it
+        let titles = [numbered.as_str()];
+        let tagged = format!("Show {ordinal} (2011) Stage {n}");
+        proptest::prop_assert!(!entry(&titles).another_entry(&tagged), "{}", tagged);
+    }
+}
+
+/// A "Half" is no marker word: "Show Second Half" ends on no marker,
+/// and its stem is the whole title.
+#[test]
+fn a_half_ends_no_marker_run() {
+    use super::super::play_native_title_grammar::trailing_markers;
+    assert!(trailing_markers("Show Second Half").is_empty());
+    assert_eq!(stem("Show Second Half"), vec!["show", "second", "half"]);
+}
+
+/// A catalogue tag written with no space either side parts the words it
+/// stands between, as any bracket would: "Show(TV)2" is "Show 2", so it
+/// ends on its 2, and "Kaiju（ＴＶ）No. 8" is "Kaiju No. 8".
+#[test]
+fn a_tag_glued_between_words_parts_them() {
+    use super::super::play_native_title_grammar::words;
+    assert_eq!(words("Show(TV)2"), vec!["show", "2"]);
+    assert!(!entry(&["Show"]).admits("Show(TV)2"));
+    assert!(!entry(&["Show"]).admits("Show Cour［ＯＮＡ］3"));
+    assert!(entry(&["Kaiju No. 8"]).names("Kaiju（ＴＶ）No. 8"));
+    assert!(entry(&["Spy x Family"]).names("Spy[ONA]x Family"));
+    // compared as written, the tag still counts wherever it stands
+    assert_eq!(
+        super::super::play_native_title_grammar::normalized("Show(2011)Season 2"),
+        super::super::play_native_title_grammar::normalized("Show Season 2 (2011)")
+    );
+}
+
+/// A suffixed ordinal glued as Japanese glues one is named up to three
+/// digits, as the marker grammar reads a suffixed ordinal standing
+/// alone: "ショー100th" names 100, so it admits "ショー・100th".
+#[test]
+fn a_glued_suffixed_ordinal_is_named_up_to_three_digits() {
+    assert!(named_ordinals("ショー100th").contains(&100));
+    assert!(named_ordinals("86, 第一期100th").contains(&100));
+    assert!(entry(&["ショー100th"]).admits("ショー・100th"));
+    assert!(!named_ordinals("ショー1220th").contains(&1220));
+}
+
+/// The marker an entry names is read in its words read apart: "Cour
+/// 100第三部" is a cour 100 and a part 3, so it names 100 as "Cour 100
+/// 第三部" does.
+#[test]
+fn an_entry_names_a_marker_read_apart_from_a_glued_division() {
+    assert!(named_ordinals("推しの子・Cour 100第三部").contains(&100));
+    assert!(named_ordinals("推しの子・Cour 100第三部").contains(&3));
+    assert!(entry(&["推しの子・Cour 100第三部(UNCENSORED)"]).admits("推しの子 Cour 100 第三部"));
+}
+
+proptest::proptest! {
     /// Whether digits glued after a letter are a number is decided by
     /// the letter alone, over every character: a Japanese letter's
     /// glued number is one, any other letter's is the word's own; and
