@@ -572,3 +572,81 @@ fn a_migration_that_fails_leaves_none_of_its_batch_applied() {
         .unwrap();
     assert_eq!(applied, 0, "no migration recorded as applied");
 }
+
+/// The one-time pass runs inside its own single write and only once:
+/// on a fresh cache it is the third of the three commits, and opening
+/// the cache again writes nothing.
+#[test]
+fn a_fresh_cache_runs_the_one_time_pass_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    let version: i64 = rusqlite::Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 2, "both one-time steps are recorded");
+    let after_first = commits_to(&path);
+    drop(open_pool(&path).expect("the cache opens again"));
+    assert_eq!(
+        commits_to(&path),
+        after_first,
+        "a second open writes nothing"
+    );
+}
+
+/// A cache an earlier build left with its plays marked (user_version 1)
+/// gets the banner step alone, in one write, and the next open writes
+/// nothing.
+#[test]
+fn a_cache_at_version_one_drops_its_bannerless_rows_in_one_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+            rusqlite::params![bannerless, r#"{"id":"1","cover_image":null}"#, now_secs()],
+        )
+        .unwrap();
+    }
+    let before = commits_to(&path);
+    let pool = open_pool(&path).expect("the cache opens");
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_none());
+    drop(pool);
+    assert_eq!(
+        commits_to(&path),
+        before + 1,
+        "the step and its gate are one write"
+    );
+    let again = commits_to(&path);
+    drop(open_pool(&path).expect("the cache opens again"));
+    assert_eq!(commits_to(&path), again, "and it does not run again");
+}
+
+/// A cache already at version 2 is not swept: a banner-less row an
+/// earlier build wrote after it opened the cache stays, and opening it
+/// writes nothing.
+#[test]
+fn a_cache_at_version_two_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let bannerless = crate::commands::kitsu::anime_detail_key("1");
+    drop(open_pool(&path).expect("a fresh cache opens"));
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, 604800)",
+            rusqlite::params![bannerless, r#"{"id":"1","cover_image":null}"#, now_secs()],
+        )
+        .unwrap();
+    }
+    let before = commits_to(&path);
+    let pool = open_pool(&path).expect("the cache opens");
+    assert!(meta_cache_get(&pool, &bannerless).unwrap().is_some());
+    drop(pool);
+    assert_eq!(commits_to(&path), before);
+}
