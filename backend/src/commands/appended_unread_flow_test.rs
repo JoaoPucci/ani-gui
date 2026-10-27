@@ -127,3 +127,74 @@ async fn a_range_download_that_cannot_read_the_rows_past_the_count_keeps_the_cou
     .expect("downloaded");
     assert_eq!(stamped(&state), (Some(12), oads()));
 }
+
+/// Row 13 of a listing no reading reached is Noragami's first OAD or
+/// its thirteenth episode, unknown which. The session that plays it
+/// says so, as does the replay row it leaves, so the renderer moves
+/// no tracker on it; an episode within the count, a row a proved
+/// reading tagged, and a row a reading refused to tag are no such
+/// rows.
+#[tokio::test]
+async fn a_play_of_a_row_past_an_unread_count_says_it_is_unverified() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    let row_of = |state: &crate::app::AppState, ep: &str| {
+        crate::commands::play_resolution_cache::get(
+            &state.cache_pool,
+            &play_args(ep).resolution_key(),
+        )
+        .expect("read")
+        .expect("a replay row")
+    };
+    let past = crate::commands::play::play_with_progress(&state, &play_args("13"), |_| {})
+        .await
+        .expect("row 13 plays");
+    assert!(past.episode_unverified, "{past:?}");
+    assert!(row_of(&state, "13").episode_unverified);
+    let within = crate::commands::play::play_with_progress(&state, &play_args("5"), |_| {})
+        .await
+        .expect("episode 5 plays");
+    assert!(!within.episode_unverified);
+    assert!(!row_of(&state, "5").episode_unverified);
+
+    let td = tempfile::tempdir().expect("td");
+    let state = state_over(&td, &provider);
+    seed_kitsu(&state, "finished");
+    let proved = crate::commands::play::play_with_progress(&state, &play_args("12.1"), |_| {})
+        .await
+        .expect("the OAD plays");
+    assert!(!proved.episode_unverified);
+
+    let td = tempfile::tempdir().expect("td");
+    let state = state_over(&td, &provider);
+    seed_kitsu(&state, "current");
+    let refused = crate::commands::play::play_with_progress(&state, &play_args("13"), |_| {})
+        .await
+        .expect("row 13 plays");
+    assert!(!refused.episode_unverified, "a refusal is an answer");
+}
+
+/// A replay serves the session the row it stands on describes,
+/// unverified episode and all.
+#[tokio::test]
+async fn a_replay_of_an_unverified_row_says_it_is_unverified() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let state = crate::commands::play::tests::state_with_proxy_origin();
+    let cached = crate::commands::play_resolution_cache::CachedResolution {
+        episode_unverified: true,
+        ..crate::commands::play::tests::cached_walked(
+            format!("{}/video.mp4", server.uri()),
+            String::new(),
+            crate::proxy::token::MediaKind::Mp4,
+        )
+    };
+    let resp = crate::commands::play_cache::try_serve_cached(&state, &cached)
+        .await
+        .expect("hit");
+    assert!(resp.episode_unverified);
+}
