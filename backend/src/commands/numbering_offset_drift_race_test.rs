@@ -200,3 +200,50 @@ fn a_play_caught_between_its_stamp_and_its_row_is_put_right_by_the_next_listing(
     put_drift_right(&state, SLUG, &recap_after_three(), None);
     assert_eq!(store_body(&state), format!("{SLUG}\t0\t8\t7\n"));
 }
+
+#[test]
+fn a_play_that_landed_while_the_repair_waited_keeps_its_stamp() {
+    // That build played episode 7: it stamped slot 8, then wrote the
+    // row. Both landed while the repair waited, so the row the repair
+    // read is gone, and a stamp put back on its slot would leave the
+    // new row reading as 8.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_drifted_row(&state);
+    let theirs = format!("{SLUG}\t0\t8\t7\n");
+    let play = |h: &std::path::Path| {
+        store_is(h, &theirs);
+        row_is(h, "8");
+    };
+    assert_eq!(repair_racing(state, play), theirs);
+}
+
+#[test]
+fn a_play_of_an_episode_the_listing_numbers_as_its_slot_leaves_the_stamp_as_it_is() {
+    // That build played episode 2, which is slot 2: it wrote the row
+    // and no display stamp. The new row reads right through no
+    // stamp, and there is no row the old one's repair would be for.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_drifted_row(&state);
+    let play = |h: &std::path::Path| row_is(h, "2");
+    assert_eq!(repair_racing(state, play), format!("{SLUG}\t0\t7\t6\n"));
+}
+
+#[test]
+fn a_row_now_in_the_app_s_own_numbering_leaves_the_stamp_as_it_is() {
+    // A play here replaced the row with one that records the app's own
+    // number, which reads through no stamp: there is no legacy row left
+    // to put right, and the store is left as it is.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_drifted_row(&state);
+    let own = |h: &std::path::Path| {
+        let mut row = crate::history::parse(&format!("7\t{SLUG}\tThe Show\n"))
+            .pop()
+            .expect("a row");
+        row.own_number = true;
+        crate::history::upsert_and_write(h, row).expect("this instance's row");
+    };
+    assert_eq!(repair_racing(state, own), format!("{SLUG}\t0\t7\t6\n"));
+}
