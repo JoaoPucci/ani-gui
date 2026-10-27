@@ -2,6 +2,13 @@
   "$comment": "Bodies the trackers and Kitsu served for the shows the episode map's evidence readers are checked against, captured with the production queries (fields[anime] abbreviated as <ANIME_FIELDS>, the constant in backend/src/meta/kitsu.rs). Re-capture with the request recorded on each entry.",
   "captured_at": "2026-10-18",
   "fixtures": {
+    "anilist-media-11741.json": {
+      "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 11741)",
+      "notes": "Fate/Zero 2nd Season: 12 episodes, 2012-04-08, the same as Kitsu's count.",
+      "size": 1574,
+      "sha256": "8a0725ae241ba2c1a76defe02c585bbb9500562b34932c8cb390726398b01aa4",
+      "captured_at": "2026-10-27"
+    },
     "anilist-media-149939.json": {
       "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 149939)",
       "notes": "Ranma ½: Nettou-hen: 143 episodes, idMal null, a PREQUEL edge to 210 and an OVA sequel.",
@@ -68,6 +75,13 @@
       "sha256": "283ad3cd84e08c5d88a9ad338ff90924f6d02946294de9dc7d8e314e009db66f",
       "captured_at": "2026-10-27"
     },
+    "kitsu-anime-7658.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/7658?fields[anime]=<ANIME_FIELDS>",
+      "notes": "Fate/Zero 2nd Season (TV): 12 episodes, 2012-04-08 to 2012-06-24.",
+      "size": 2355,
+      "sha256": "f857dd634b355fc2bc414bd9dcc5a038d1f26f5a0a474a00aaf0fc928c379d88",
+      "captured_at": "2026-10-27"
+    },
     "kitsu-anime-7882.json": {
       "request": "GET https://kitsu.app/api/edge/anime/7882?fields[anime]=<ANIME_FIELDS>",
       "notes": "Fate/stay night: Unlimited Blade Works (TV): 12 episodes, 2014-10-12 to 2014-12-28.",
@@ -80,6 +94,13 @@
       "notes": "Unlimited Blade Works' Prologue special: 1 episode, 2014-10-05.",
       "size": 2553,
       "sha256": "65559715cdc4fc5b64d155f0f0ff9c6fb7da56c6c606aa661fee5a381a3e73b8",
+      "captured_at": "2026-10-27"
+    },
+    "kitsu-mappings-anilist-11741.json": {
+      "request": "GET https://kitsu.app/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=11741&include=item&fields[anime]=<ANIME_FIELDS>&page[limit]=20",
+      "notes": "One mapping: Kitsu 7658.",
+      "size": 3593,
+      "sha256": "93f36461f6ebb136df72b6d8ce20de857c169f6c55bf7f465f2cbec6f494cbb8",
       "captured_at": "2026-10-27"
     },
     "kitsu-mappings-anilist-153406.json": {
@@ -107,6 +128,13 @@
       "notes": "One mapping: Kitsu 11490.",
       "size": 3705,
       "sha256": "7f0654ab56e240f9ee5b8be42338e6f31f179751ad551be5921b8d6f600718d8",
+      "captured_at": "2026-10-27"
+    },
+    "kitsu-mappings-mal-11741.json": {
+      "request": "GET https://kitsu.app/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=11741&include=item&fields[anime]=<ANIME_FIELDS>&page[limit]=20",
+      "notes": "One mapping: Kitsu 7658.",
+      "size": 3553,
+      "sha256": "2408ac92898736474535e9f6ac125b26f1dd5e811e79f5adc6e457e3e9a8515a",
       "captured_at": "2026-10-27"
     },
     "kitsu-mappings-mal-22297.json": {
@@ -176,6 +204,13 @@
       "notes": "One relation: the series 49900 as its prequel, dated 2025-07-09.",
       "size": 1327,
       "sha256": "599e485574629d9375edc1009cbaf6601a24bd9b2d665c467c4c32b569f6fbcd",
+      "captured_at": "2026-10-27"
+    },
+    "kitsu-relationships-7658.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/7658/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount,startDate&fields[manga]=subtype,status&page[limit]=20",
+      "notes": "Eight relations: Fate/Zero (6028) as prequel, four sequels (the 2006 series, the UBW film, Heaven's Feel I, the UBW prologue 9718), a side story and two adaptations.",
+      "size": 6682,
+      "sha256": "2ec89e5dea5daef68d39c1fa69ad88fd4ac54536db849a071a9f8548c0eb0776",
       "captured_at": "2026-10-27"
     },
     "kitsu-relationships-7882.json": {

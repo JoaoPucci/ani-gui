@@ -50,3 +50,7 @@ pub fn special_extras(_evidence: &SpecialEvidence) -> Option<EpisodeMap> {
 pub fn with_special(existing: EpisodeMap, _special: Option<EpisodeMap>) -> EpisodeMap {
     existing
 }
+
+#[cfg(test)]
+#[path = "episode_map_special_test.rs"]
+mod tests;

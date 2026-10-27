@@ -49,6 +49,29 @@ const KAMITSUBAKI_MAPPED_ANILIST: &str =
 const KAMITSUBAKI_MAPPED_MAL: &str =
     include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-mappings-mal-57820.json");
 
+const FATE_ZERO_ANILIST: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/anilist-media-11741.json");
+const FATE_ZERO_KITSU: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-anime-7658.json");
+const FATE_ZERO_RELATIONS: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-relationships-7658.json");
+const FATE_ZERO_MAPPED_ANILIST: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-mappings-anilist-11741.json");
+const FATE_ZERO_MAPPED_MAL: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-mappings-mal-11741.json");
+const ZENPEN_KITSU: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-anime-50027.json");
+
+/// AniList's evidence for `id`, as recorded, however often it is read.
+async fn evidence_of(server: &MockServer, id: u32, body: &str) {
+    Mock::given(method("POST"))
+        .and(body_string_contains("streamingEpisodes"))
+        .and(body_string_contains(format!("\"mediaId\":{id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(server)
+        .await;
+}
+
 /// Kitsu's detail for `id`, as recorded, however often it is read.
 async fn detail_of(kitsu: &MockServer, id: &str, body: &str) {
     Mock::given(method("GET"))
@@ -307,4 +330,74 @@ async fn kamitsubaki_s_series_reads_its_episode_0_on_anilist() {
     };
     assert_eq!(write(1), Some((173_335, 2, false)));
     assert_eq!(write(12), Some((173_335, 13, true)));
+}
+
+/// Unlimited Blade Works' prologue (Kitsu 9718) has no AniList entry:
+/// Kitsu maps it to MAL 27821 alone, which AniList does not know. AniList
+/// counts it as the "Episode 0" of the TV season's 19603, and the
+/// season's own map reads it so: the prologue is 19603's first episode,
+/// never its last. Through its prequel, Fate/Zero's second season, it
+/// is filed nowhere, as before.
+#[tokio::test]
+async fn unlimited_blade_works_prologue_is_the_tv_season_s_first_episode_on_anilist() {
+    let kitsu = ubw_kitsu().await;
+    detail_of(&kitsu, "7658", FATE_ZERO_KITSU).await;
+    relations_of(&kitsu, "7658", FATE_ZERO_RELATIONS).await;
+    mapped_as(&kitsu, "6028", Some(10_087), Some(10_087)).await;
+    mapped_as(&kitsu, "4788", Some(6922), Some(6922)).await;
+    mapped_as(&kitsu, "8675", Some(25_537), Some(20_791)).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 11_741, FATE_ZERO_MAPPED_ANILIST).await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 11_741, FATE_ZERO_MAPPED_MAL).await;
+    let anilist_server = MockServer::start().await;
+    evidence_of(&anilist_server, 19_603, UBW_ANILIST).await;
+    evidence_of(&anilist_server, 11_741, FATE_ZERO_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let ask = ask(&state, ProviderKind::AniList, &provider, &tokens, &base);
+    let map = episode_map_for_unresolved(&ask, "9718")
+        .await
+        .expect("the map");
+    assert_eq!(map.shape, Shape::SpecialExtras, "{map:?}");
+    match map.target(1) {
+        crate::account::episode_map::Target::Mapped(w) => {
+            assert_eq!((w.entry, w.progress, w.complete), (19_603, 1, false));
+            assert!(w.earlier.is_empty());
+        }
+        crate::account::episode_map::Target::Identity => panic!("filed nowhere"),
+    }
+    // The TV season's own map is the one it read, and unchanged.
+    let season = episode_map_for(&ask, "7882", ProviderMediaId(19_603), Some(13))
+        .await
+        .expect("the season's map");
+    assert_eq!(season.shape, Shape::Extras);
+    assert_eq!(season.segments[0].extras_after, [0]);
+}
+
+/// Kamitsubaki's special, Witchling - Zenpen (Kitsu 50027), has no
+/// AniList entry. Kitsu chains it after the series, but it aired six
+/// days before the series began, and the series' entry lists an Episode
+/// 0: the special is that entry's first episode.
+#[tokio::test]
+async fn kamitsubaki_s_special_is_its_series_entry_s_first_episode_on_anilist() {
+    let (kitsu, anilist_server) = kamitsubaki().await;
+    detail_of(&kitsu, "50027", ZENPEN_KITSU).await;
+    evidence_of(&anilist_server, 173_335, KAMITSUBAKI_ANILIST).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let ask = ask(&state, ProviderKind::AniList, &provider, &tokens, &base);
+    let map = episode_map_for_unresolved(&ask, "50027")
+        .await
+        .expect("the map");
+    assert_eq!(map.shape, Shape::SpecialExtras, "{map:?}");
+    match map.target(1) {
+        crate::account::episode_map::Target::Mapped(w) => {
+            assert_eq!((w.entry, w.progress, w.complete), (173_335, 1, false));
+        }
+        crate::account::episode_map::Target::Identity => panic!("filed nowhere"),
+    }
 }
