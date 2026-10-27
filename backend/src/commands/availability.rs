@@ -1782,3 +1782,7 @@ mod unwalked_tests;
 #[cfg(test)]
 #[path = "availability_former_test.rs"]
 mod former_tests;
+
+#[cfg(test)]
+#[path = "availability_unread_test.rs"]
+mod unread_tests;
