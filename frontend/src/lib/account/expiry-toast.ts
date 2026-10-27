@@ -76,19 +76,6 @@ export function detectSignInNotices(
 	return out;
 }
 
-export function detectExpiredProviders(
-	byProvider: Record<Provider, ProviderState>
-): ExpiredProvider[] {
-	const out: ExpiredProvider[] = [];
-	for (const provider of PRIORITY) {
-		const state = byProvider[provider];
-		if (state.kind === 'expired') {
-			out.push({ provider, username: state.account.username });
-		}
-	}
-	return out;
-}
-
 export interface ExpirySyncDeps {
 	push(info: SignInNoticeInfo): string;
 	dismiss(toastId: string): void;
