@@ -435,3 +435,23 @@ async fn a_probe_that_settles_nothing_still_records_the_listings_it_picked() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_probe_whose_mode_reads_fail_still_records_the_listings_it_picked() {
+    // Every mode read fails in transport, so the probe surfaces the
+    // weather — after the pick, whose listings were at hand.
+    use crate::scraper::table_provider::Answer;
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(modes_answering(
+        || Answer::fails(|| crate::error::AniError::Network),
+        || Answer::fails(|| crate::error::AniError::Network),
+    ));
+    assert!(check_availability(&state, &args()).await.is_err());
+    for slug in ["the-show-1", "the-show-2"] {
+        assert!(
+            crate::commands::listing_tags::get(&state, &key(slug)).is_some(),
+            "{slug}'s listing is recorded"
+        );
+    }
+}
