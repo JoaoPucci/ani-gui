@@ -31,6 +31,9 @@ export interface PushArgs {
 	duration?: number | null;
 	actionLabel?: string;
 	onAction?: () => void;
+	/** Called once when the toast leaves the stack, by whatever route:
+	 *  dismissed, timed out, or trimmed by a later push. */
+	onClose?: () => void;
 }
 
 export const TOAST_MAX_STACK = 3;
@@ -41,6 +44,8 @@ let nextId = 1;
 
 class ToastStore {
 	items: ToastItem[] = $state([]);
+	/** Per toast id, what to call when it leaves the stack. */
+	private closers = new Map<string, () => void>();
 
 	push(args: PushArgs): string {
 		const id = `toast-${nextId++}`;
@@ -57,7 +62,10 @@ class ToastStore {
 		// concat rather than splice so the assignment triggers
 		// reactivity (matches download/store.svelte.ts's pattern).
 		const trimmed = this.items.slice(-(TOAST_MAX_STACK - 1));
+		const dropped = this.items.slice(0, this.items.length - trimmed.length);
 		this.items = [...trimmed, row];
+		if (args.onClose) this.closers.set(id, args.onClose);
+		for (const gone of dropped) this.closed(gone.id);
 		if (duration !== null) {
 			// dismiss(id) is a no-op when the row has already been
 			// trimmed by a later push — see the store test.
@@ -69,6 +77,21 @@ class ToastStore {
 	dismiss(id: string): void {
 		const next = this.items.filter((i) => i.id !== id);
 		if (next.length !== this.items.length) this.items = next;
+		this.closed(id);
+	}
+
+	/** Change toast `id`'s message where it stands: the row is kept, so it
+	 *  neither moves nor animates in again. A toast no longer on the
+	 *  stack is left alone. */
+	update(id: string, message: string): void {
+		if (!this.items.some((i) => i.id === id && i.message !== message)) return;
+		this.items = this.items.map((i) => (i.id === id ? { ...i, message } : i));
+	}
+
+	private closed(id: string): void {
+		const close = this.closers.get(id);
+		this.closers.delete(id);
+		close?.();
 	}
 }
 
