@@ -82,10 +82,11 @@ export function freshBearerFor(provider: Provider): Promise<string | null> {
  * otherwise mark it expired with the reason, so the sign-in notice
  * says so. The decision is the unit-tested `handleRefusedBearer`.
  */
-export function bearerRefusedFor(provider: Provider): Promise<void> {
+export function bearerRefusedFor(provider: Provider, refusedBearer: string): Promise<void> {
 	return handleRefusedBearer(
 		{
 			state: (prov) => accountStore.byProvider[prov],
+			changing: (prov) => accountStore.accountChanging[prov],
 			setConnected: (prov, account) => accountStore.setConnected(prov, account),
 			setExpired: (prov, account) => accountStore.setExpired(prov, account),
 			noteRenewalFailed: (prov, failure) => accountStore.noteRenewalFailed(prov, failure),
@@ -93,7 +94,8 @@ export function bearerRefusedFor(provider: Provider): Promise<void> {
 			persistAccount,
 			generation: (prov) => accountStore.accountGeneration[prov]
 		},
-		provider
+		provider,
+		refusedBearer
 	);
 }
 

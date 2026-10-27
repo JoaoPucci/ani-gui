@@ -241,7 +241,7 @@ describe('bearerRefusedFor', () => {
 			expires_at_epoch_s: nowSec() + 3600
 		});
 		store.byProvider.mal = { kind: 'connected', account: account() };
-		await bearerRefusedFor('mal');
+		await bearerRefusedFor('mal', 'old');
 		expect(store.setConnected).toHaveBeenCalledWith(
 			'mal',
 			expect.objectContaining({ access_token: 'fresh' })
@@ -252,7 +252,7 @@ describe('bearerRefusedFor', () => {
 		refreshTokens.mockRejectedValue(refused());
 		const a = account();
 		store.byProvider.mal = { kind: 'connected', account: a };
-		await bearerRefusedFor('mal');
+		await bearerRefusedFor('mal', 'old');
 		expect(store.setExpired).toHaveBeenCalledWith('mal', a);
 		expect(store.noteRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
 	});

@@ -17,6 +17,7 @@ function acc(refresh_token: string | null): PersistedAccount {
 function deps(state: ProviderState, over: Partial<RefusedBearerDeps> = {}): RefusedBearerDeps {
 	return {
 		state: () => state,
+		changing: () => false,
 		setConnected: vi.fn(),
 		setExpired: vi.fn(),
 		noteRenewalFailed: vi.fn(),
@@ -43,7 +44,7 @@ const down = new AccountApiError(
 describe('handleRefusedBearer', () => {
 	it('renews a renewable sign-in whose bearer was refused, and keeps it connected', async () => {
 		const d = deps({ kind: 'connected', account: acc('rt'), lastSyncedAt: 0 });
-		await handleRefusedBearer(d, 'mal');
+		await handleRefusedBearer(d, 'mal', 'old');
 		expect(d.refreshTokens).toHaveBeenCalledWith('mal', 'rt');
 		expect(d.setConnected).toHaveBeenCalledWith(
 			'mal',
@@ -63,7 +64,7 @@ describe('handleRefusedBearer', () => {
 				{ kind: 'connected', account, lastSyncedAt: 0 },
 				{ refreshTokens: vi.fn().mockRejectedValue(error) }
 			);
-			await handleRefusedBearer(d, 'mal');
+			await handleRefusedBearer(d, 'mal', 'old');
 			expect(d.setExpired).toHaveBeenCalledWith('mal', account);
 			expect(d.noteRenewalFailed).toHaveBeenCalledWith('mal', failure);
 		}
@@ -74,7 +75,7 @@ describe('handleRefusedBearer', () => {
 		// for an expired sign-in with no refresh token is the one to show.
 		const account = acc(null);
 		const d = deps({ kind: 'connected', account, lastSyncedAt: 0 });
-		await handleRefusedBearer(d, 'anilist' as Provider);
+		await handleRefusedBearer(d, 'anilist' as Provider, 'old');
 		expect(d.refreshTokens).not.toHaveBeenCalled();
 		expect(d.setExpired).toHaveBeenCalledWith('anilist', account);
 		expect(d.noteRenewalFailed).not.toHaveBeenCalled();
@@ -82,7 +83,7 @@ describe('handleRefusedBearer', () => {
 
 	it('leaves an already expired sign-in alone: its renewal has already been told', async () => {
 		const d = deps({ kind: 'expired', account: acc('rt') });
-		await handleRefusedBearer(d, 'mal');
+		await handleRefusedBearer(d, 'mal', 'old');
 		expect(d.refreshTokens).not.toHaveBeenCalled();
 		expect(d.setExpired).not.toHaveBeenCalled();
 		expect(d.noteRenewalFailed).not.toHaveBeenCalled();
@@ -100,7 +101,7 @@ describe('handleRefusedBearer', () => {
 				})
 			}
 		);
-		await handleRefusedBearer(d, 'mal');
+		await handleRefusedBearer(d, 'mal', 'old');
 		// The account the read used is gone: marking it expired would
 		// put a notice on a sign-in the user already changed.
 		expect(d.setConnected).not.toHaveBeenCalled();

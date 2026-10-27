@@ -661,7 +661,7 @@
 						// Leave the stale snapshot in place; a later refresh
 						// (manual or next TTL window) retries. A refused bearer
 						// is a sign-in problem, which the sign-in notice owns.
-						if (isBearerRefused(e)) await bearerRefusedFor(p);
+						if (isBearerRefused(e)) await bearerRefusedFor(p, bearer);
 					}
 				})
 			);
