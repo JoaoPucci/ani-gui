@@ -256,12 +256,12 @@ pub struct TrackedMedia {
 
 impl CurrentEntry {
     /// The row as `kind` keeps it for the write-back's reconcile. MAL has
-    /// no rewatch status: a row it reads as rewatching is listed as
-    /// Watching, and "finished" lives only in Completed, so a finished
-    /// show's finale on it is to put it back at Completed — the reconcile
-    /// sees it as the Watching row MAL lists. AniList's REPEATING is a
-    /// status of its own, which it closes itself at the total, and is
-    /// left as it is.
+    /// no rewatch status of its own: a rewatch there is a Watching row
+    /// with `is_rewatching` set, and "finished" lives in Completed, so a
+    /// finished show's finale on it is to close the rewatch — the
+    /// reconcile sees the Watching row MAL lists, and completes it. AniList's
+    /// REPEATING is a status of its own, which it closes itself at the
+    /// total, and is left as it is.
     #[must_use]
     pub fn as_kept_by(self, kind: ProviderKind) -> Self {
         match (kind, self.status) {
