@@ -168,9 +168,14 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
         former_tag: None,
         title: None,
     };
-    let newer = crate::commands::listing_tags::heard_now() + 60_000;
+    // The newer walk heard its listing just now, before the repair runs.
     for key in ["test-a:show-uncut-1", "test-a:show-2"] {
-        crate::commands::listing_tags::put(&state, key, &["2.5".to_string()], heard(newer, newer));
+        crate::commands::listing_tags::put(
+            &state,
+            key,
+            &["2.5".to_string()],
+            crate::commands::listing_tags::Begun::now().picked(),
+        );
     }
     let native = crate::commands::play_native_resolve::NativeResolved {
         slug: "test-a:show-uncut-1".into(),
@@ -228,4 +233,67 @@ proptest! {
             .map(|(_, t)| t.clone());
         prop_assert_eq!(crate::commands::listing_tags::get(&state, "test-a:show-1"), expected);
     }
+}
+
+/// Records decided between: one of `run`, heard between `start` and
+/// `at`, carrying `tags`.
+fn record(run: u64, start: u64, at: u64, tags: &[&str]) -> crate::commands::listing_tags::Record {
+    crate::commands::listing_tags::Record {
+        heard: crate::commands::listing_tags::Hearing { run, start, at },
+        tags: tags.iter().map(|t| (*t).to_string()).collect(),
+    }
+}
+
+/// Two walks whose spans overlap cannot tell which fetched its listing
+/// last. The record keeps the tags of both, over the span of both: a
+/// former number either listing gives an episode is not named.
+#[test]
+fn overlapping_hearings_keep_both_listings_tags() {
+    let stored = record(1, 10, 20, &["24.5"]);
+    let new = record(1, 15, 25, &["12.5"]);
+    let kept = crate::commands::listing_tags::next_record(Ok(Some(stored)), new).expect("written");
+    assert_eq!(kept.heard.start, 10);
+    assert_eq!(kept.heard.at, 25);
+    let mut tags = kept.tags;
+    tags.sort();
+    assert_eq!(tags, vec!["12.5".to_string(), "24.5".to_string()]);
+}
+
+/// A listing a walk began fetching after the stored one was picked is
+/// newer, and replaces it; one picked before the stored one began is
+/// older, and is dropped.
+#[test]
+fn a_hearing_clearly_before_or_after_the_stored_one_is_ordered() {
+    let stored = || record(1, 10, 20, &["24.5"]);
+    let later =
+        crate::commands::listing_tags::next_record(Ok(Some(stored())), record(1, 21, 30, &[]))
+            .expect("written");
+    assert!(later.tags.is_empty());
+    assert_eq!(
+        crate::commands::listing_tags::next_record(Ok(Some(stored())), record(1, 2, 9, &[])),
+        None
+    );
+}
+
+/// The stamps are this process's clock. One backend runs per cache
+/// directory, so a record an earlier run wrote is older than any hearing
+/// now, whatever its stamps read.
+#[test]
+fn a_record_an_earlier_run_wrote_is_replaced_by_any_hearing_now() {
+    let stored = record(1, u64::MAX - 1, u64::MAX, &["24.5"]);
+    let new = record(2, 5, 6, &[]);
+    assert_eq!(
+        crate::commands::listing_tags::next_record(Ok(Some(stored)), new.clone()),
+        Some(new)
+    );
+}
+
+/// A read of the store that fails says nothing of what is stored, which
+/// may be a newer listing: nothing is written over it.
+#[test]
+fn a_failed_read_writes_nothing() {
+    assert_eq!(
+        crate::commands::listing_tags::next_record(Err(()), record(1, 1, 2, &[])),
+        None
+    );
 }
