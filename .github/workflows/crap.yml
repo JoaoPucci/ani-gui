@@ -49,7 +49,7 @@ jobs:
           # See tools/rust-workflow-filter.sh for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|frontend/|tools/|tests/complexity/|coverage-baseline\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|frontend/|tools/|tests/complexity/|coverage-baseline\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/crap\.yml$|\.github/actions/(apt|pnpm)-install/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -73,6 +73,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
           shared-key: llvm-cov
       - if: needs.filter.outputs.relevant == 'true'
@@ -86,23 +87,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-          cache-dependency-path: pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install (frontend)
-        working-directory: frontend
-        run: pnpm install --frozen-lockfile --filter ani-gui-frontend
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile --filter ani-gui-frontend
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Install runtime deps
         # Same set the rust workflow installs, for the same reason: the
         # provider transport resolves a curl binary, and the player /
         # download surfaces probe for mpv, ffmpeg and aria2.
-        run: |
-          # Distro sources only: see tests/arch/apt_sources.sh.
-          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
-          sudo apt-get install -y curl mpv ffmpeg aria2
+        uses: ./.github/actions/apt-install
+        with:
+          packages: curl mpv ffmpeg aria2
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Test the complexity tools
