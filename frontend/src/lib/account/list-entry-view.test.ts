@@ -392,3 +392,32 @@ describe('clampProgress', () => {
 		expect(clampProgress(500, null)).toBe(500);
 	});
 });
+
+// AniList keeps a rewatch in a status of its own; MyAnimeList, which has none,
+// keeps its row at Completed. Folded together, the rewatch is what the user is
+// doing, so it is what the detail page shows and the editor opens on.
+describe('pickSeedEntry — a rewatch beside a Completed row', () => {
+	it('shows the rewatch, at its own count, over a Completed row', () => {
+		expect(
+			pickSeedEntry([
+				{ status: 'completed', progress: 26 },
+				{ status: 'rewatching', progress: 3 }
+			])
+		).toEqual({ status: 'rewatching', progress: 3 });
+		expect(
+			pickSeedEntry([
+				{ status: 'rewatching', progress: 3 },
+				{ status: 'completed', progress: 26 }
+			])
+		).toEqual({ status: 'rewatching', progress: 3 });
+	});
+
+	it('still never seeds below an unfinished row', () => {
+		expect(
+			pickSeedEntry([
+				{ status: 'rewatching', progress: 3 },
+				{ status: 'watching', progress: 10 }
+			])
+		).toEqual({ status: 'rewatching', progress: 10 });
+	});
+});
