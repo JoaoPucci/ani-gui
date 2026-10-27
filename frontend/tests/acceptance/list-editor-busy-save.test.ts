@@ -103,7 +103,7 @@ interface Saves {
 	bodies: unknown[];
 }
 
-function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S) {
+function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S, landAfterMs = 0) {
 	server.use(
 		http.get(`${API_BASE}/api/account/entry/anilist`, () =>
 			HttpResponse.json({ status: 'watching', progress: 3 })
@@ -111,6 +111,9 @@ function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S) {
 		http.post(`${API_BASE}/api/account/set/anilist`, async ({ request }) => {
 			saves.at.push(Date.now());
 			saves.bodies.push(await request.json());
+			if (saves.at.length > 1 && landAfterMs > 0) {
+				await new Promise((r) => setTimeout(r, landAfterMs));
+			}
 			if (saves.at.length === 1) {
 				return HttpResponse.json(
 					{
@@ -287,7 +290,9 @@ describe('list editor — a save still waiting on one show', () => {
 describe('list editor — the busy notice counts down', () => {
 	it('changes its seconds while the save is held, and says when the save goes', async () => {
 		const saves: Saves = { at: [], bodies: [] };
-		useTracker(saves, 3);
+		// The save, once sent again, takes a moment to land, so the notice's
+		// last words can be read.
+		useTracker(saves, 3, 400);
 		toasts = mount(ToastHost, { target: stack });
 		editor = mount(ListEntryEditor, {
 			target,
@@ -303,11 +308,32 @@ describe('list editor — the busy notice counts down', () => {
 		saveButton()!.click();
 
 		const provider = m.account_provider_anilist();
-		const shown = () => stack.textContent ?? '';
-		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 3 })), '3 s');
+		/** What the toasts show: their visible messages alone. */
+		const shown = () =>
+			Array.from(stack.querySelectorAll('.message'))
+				.map((e) => e.textContent ?? '')
+				.join(' | ');
+		/** What a screen reader is given: the toasts without the parts hidden
+		 *  from it. */
+		const announced = () => {
+			const copy = stack.cloneNode(true) as HTMLElement;
+			copy.querySelectorAll('[aria-hidden="true"]').forEach((e) => e.remove());
+			return copy.textContent ?? '';
+		};
+		const opening = m.account_busy_saving({ provider, seconds: 3 });
+		await until(() => shown().includes(opening), '3 s');
 		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 2 })), '2 s');
 		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 1 })), '1 s');
 		expect(saves.at).toHaveLength(1);
+		// The count changes on screen; the live region still holds the words
+		// the notice opened on.
+		expect(announced()).toContain(opening);
+		expect(announced()).not.toContain(m.account_busy_saving({ provider, seconds: 1 }));
+		// Then the save goes, and that is announced.
+		const going = m.account_busy_saving_now({ provider });
+		await until(() => shown().includes(going), 'the save going');
+		expect(announced()).toContain(going);
+		expect(announced()).not.toContain(opening);
 		await until(() => shown().includes(m.detail_list_saved()), 'the saved toast');
 		// The notice went with the save it was about: it is off the stack,
 		// though its card may still be leaving the screen.
