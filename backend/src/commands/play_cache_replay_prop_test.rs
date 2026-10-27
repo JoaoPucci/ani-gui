@@ -297,3 +297,91 @@ fn a_failed_read_writes_nothing() {
         None
     );
 }
+
+/// A hearing of one run, for the properties below: its span, and its
+/// tags.
+fn hearing() -> BoxedStrategy<(u64, u64, Vec<String>)> {
+    (0u64..50, 0u64..20, tags())
+        .prop_map(|(start, len, tags)| (start, start + len, tags))
+        .boxed()
+}
+
+/// Write `hearings` of one run, in order, through `next_record`.
+fn written(hearings: &[(u64, u64, Vec<String>)]) -> Option<crate::commands::listing_tags::Record> {
+    let mut stored = None;
+    for (start, at, t) in hearings {
+        let new = crate::commands::listing_tags::Record {
+            heard: crate::commands::listing_tags::Hearing {
+                run: 1,
+                start: *start,
+                at: *at,
+            },
+            tags: t.clone(),
+        };
+        if let Some(r) = crate::commands::listing_tags::next_record(Ok(stored.clone()), new) {
+            stored = Some(r);
+        }
+    }
+    stored
+}
+
+fn tag_set(
+    r: &Option<crate::commands::listing_tags::Record>,
+) -> std::collections::BTreeSet<String> {
+    r.iter().flat_map(|r| r.tags.iter().cloned()).collect()
+}
+
+proptest! {
+    /// Of two hearings, one heard wholly after the other ends as the
+    /// record, whichever is written last. A run's stamps are all
+    /// distinct, so "after" is strict.
+    #[test]
+    fn a_later_hearing_wins_in_either_write_order(a in hearing(), gap in 1u64..5, len in 0u64..5, b_tags in tags()) {
+        let b = (a.1 + gap, a.1 + gap + len, b_tags);
+        let ab = written(&[a.clone(), b.clone()]);
+        let ba = written(&[b.clone(), a]);
+        let expected: std::collections::BTreeSet<String> = b.2.iter().cloned().collect();
+        prop_assert_eq!(tag_set(&ab), expected.clone());
+        prop_assert_eq!(tag_set(&ba), expected);
+    }
+
+    /// Two hearings that overlap leave the same record in either write
+    /// order: the tags of both, over the span of both.
+    #[test]
+    fn overlapping_hearings_commute(a in hearing(), b in hearing()) {
+        prop_assume!(b.0 < a.1 && a.0 < b.1);
+        let ab = written(&[a.clone(), b.clone()]).expect("written");
+        let ba = written(&[b.clone(), a.clone()]).expect("written");
+        prop_assert_eq!(tag_set(&Some(ab.clone())), tag_set(&Some(ba.clone())));
+        prop_assert_eq!(ab.heard.start, a.0.min(b.0));
+        prop_assert_eq!(ab.heard.at, a.1.max(b.1));
+        prop_assert_eq!(ab.heard, ba.heard);
+    }
+
+    /// Whatever is written, the record's span never moves back: its end
+    /// only goes up.
+    #[test]
+    fn the_records_end_never_moves_back(hearings in proptest::collection::vec(hearing(), 1..8)) {
+        let mut last_end = 0u64;
+        for n in 1..=hearings.len() {
+            let r = written(&hearings[..n]).expect("written");
+            prop_assert!(r.heard.at >= last_end);
+            last_end = r.heard.at;
+        }
+    }
+
+    /// A failed read writes nothing, and a record of another run is
+    /// replaced by the new one as it is.
+    #[test]
+    fn a_failed_read_or_another_run_decides_without_the_spans(a in hearing(), b in hearing()) {
+        let rec = |run: u64, h: &(u64, u64, Vec<String>)| crate::commands::listing_tags::Record {
+            heard: crate::commands::listing_tags::Hearing { run, start: h.0, at: h.1 },
+            tags: h.2.clone(),
+        };
+        prop_assert_eq!(crate::commands::listing_tags::next_record(Err(()), rec(1, &b)), None);
+        prop_assert_eq!(
+            crate::commands::listing_tags::next_record(Ok(Some(rec(1, &a))), rec(2, &b)),
+            Some(rec(2, &b))
+        );
+    }
+}
