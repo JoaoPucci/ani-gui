@@ -499,7 +499,11 @@ impl RowAtStart {
 /// count-less one for the whole TTL. A dub resolve only proves the
 /// requested episode has an English embed, so the dub row stays
 /// boolean and self-heals via the next mode-aware probe. The row
-/// takes the ongoing TTL either way, status being unknown here.
+/// takes the ongoing TTL either way, status being unknown here. A
+/// resolve whose listing's rows past Kitsu's count no reading reached
+/// (`count_unread`) writes no count, and leaves a row with an exact
+/// count from the provider that served as it stands, lifetime and all
+/// ([`super::availability_unread`]).
 ///
 /// A clean miss is measured against the row that stands when it is
 /// written, as the probe's is: two resolves for the same show can be
