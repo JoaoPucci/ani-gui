@@ -12,8 +12,8 @@ export function secondsLeft(deadlineMs: number, nowMs: number): number {
 export interface CountdownDeps {
 	/** The clock, in milliseconds. */
 	now: () => number;
-	/** Call `tick` every `ms`; returns what stops it. */
-	every: (ms: number, tick: () => void) => () => void;
+	/** Call `tick` once, after `ms`; returns what cancels it. */
+	after: (ms: number, tick: () => void) => () => void;
 	/** Show `seconds` left — zero once the deadline has passed. */
 	show: (seconds: number) => void;
 }
@@ -29,14 +29,14 @@ export function startCountdown(deadlineMs: number, deps: CountdownDeps): () => v
 	deps.show(first);
 	if (first === 0) return () => {};
 	let cancel: (() => void) | null = null;
-	const stop = () => {
+	const tick = () => {
+		const seconds = secondsLeft(deadlineMs, deps.now());
+		deps.show(seconds);
+		cancel = seconds === 0 ? null : deps.after(1000, tick);
+	};
+	cancel = deps.after(1000, tick);
+	return () => {
 		cancel?.();
 		cancel = null;
 	};
-	cancel = deps.every(1000, () => {
-		const seconds = secondsLeft(deadlineMs, deps.now());
-		deps.show(seconds);
-		if (seconds === 0) stop();
-	});
-	return stop;
 }

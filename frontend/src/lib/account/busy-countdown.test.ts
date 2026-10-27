@@ -4,8 +4,8 @@ import fc from 'fast-check';
 import { secondsLeft, startCountdown } from './busy-countdown';
 
 const realTimer = (ms: number, tick: () => void) => {
-	const handle = setInterval(() => tick(), ms);
-	return () => clearInterval(handle);
+	const handle = setTimeout(() => tick(), ms);
+	return () => clearTimeout(handle);
 };
 
 afterEach(() => {
@@ -18,7 +18,7 @@ describe('startCountdown', () => {
 		const shown: number[] = [];
 		startCountdown(Date.now() + 3000, {
 			now: () => Date.now(),
-			every: realTimer,
+			after: realTimer,
 			show: (s) => shown.push(s)
 		});
 		vi.advanceTimersByTime(10_000);
@@ -31,7 +31,7 @@ describe('startCountdown', () => {
 		const shown: number[] = [];
 		const stop = startCountdown(Date.now() + 5000, {
 			now: () => Date.now(),
-			every: realTimer,
+			after: realTimer,
 			show: (s) => shown.push(s)
 		});
 		vi.advanceTimersByTime(1000);
@@ -46,7 +46,7 @@ describe('startCountdown', () => {
 		const shown: number[] = [];
 		startCountdown(Date.now() + 10_000, {
 			now: () => Date.now(),
-			every: realTimer,
+			after: realTimer,
 			show: (s) => shown.push(s)
 		});
 		vi.setSystemTime(Date.now() + 6000);
@@ -59,7 +59,7 @@ describe('startCountdown', () => {
 		const shown: number[] = [];
 		startCountdown(Date.now() - 1, {
 			now: () => Date.now(),
-			every: realTimer,
+			after: realTimer,
 			show: (s) => shown.push(s)
 		});
 		expect(shown).toEqual([0]);
@@ -96,7 +96,7 @@ describe('the countdown, by property', () => {
 					let tick: (() => void) | null = null;
 					startCountdown(deadline, {
 						now: () => clock,
-						every: (_ms, t) => {
+						after: (_ms, t) => {
 							tick = t;
 							return () => {
 								tick = null;
@@ -106,8 +106,11 @@ describe('the countdown, by property', () => {
 					});
 					for (const late of lateness) {
 						if (!tick) break;
+						// A one-shot timer: it fires once, and the countdown re-arms it.
+						const fire = tick as () => void;
+						tick = null;
 						clock += 1000 + late;
-						(tick as () => void)();
+						fire();
 					}
 					for (const { at, seconds } of shown) {
 						expect(seconds).toBeGreaterThanOrEqual(0);

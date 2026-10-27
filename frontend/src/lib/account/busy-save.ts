@@ -40,11 +40,11 @@ function busyText(provider: Provider, seconds: number): string {
 		: m.account_busy_saving_now({ provider: name });
 }
 
-/** A real once-a-second timer, wrapped in arrows: `setInterval` called
- *  off an object is an "Illegal invocation" in Chromium. */
-function everySecond(ms: number, tick: () => void): () => void {
-	const handle = setInterval(() => tick(), ms);
-	return () => clearInterval(handle);
+/** A real one-shot timer, wrapped in arrows: `setTimeout` called off an
+ *  object is an "Illegal invocation" in Chromium. */
+function after(ms: number, tick: () => void): () => void {
+	const handle = setTimeout(() => tick(), ms);
+	return () => clearTimeout(handle);
 }
 
 /** The toast shown while `provider` waits `seconds` to take a write. It
@@ -62,7 +62,7 @@ export function noticeBusy(provider: Provider, seconds: number): string {
 	});
 	stop = startCountdown(Date.now() + seconds * 1000, {
 		now: () => Date.now(),
-		every: everySecond,
+		after,
 		show: (left) => toastStore.update(id, busyText(provider, left))
 	});
 	return id;
