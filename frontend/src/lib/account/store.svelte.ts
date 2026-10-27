@@ -160,8 +160,16 @@ class AccountStore {
 		});
 	}
 
-	/** Try the failed renewals again now. Stub: same as refreshExpired. */
+	/**
+	 * Try the failed renewals of expired sign-ins again now, at the
+	 * user's request. Their failures are forgotten first: the renewal is
+	 * pending again, so its notice is withdrawn, and whatever it answers
+	 * is shown as new rather than taken for the incident already seen.
+	 */
 	retryRenewal(): Promise<void> {
+		for (const p of Object.keys(this.byProvider) as Provider[]) {
+			if (this.byProvider[p].kind === 'expired') this.clearRenewalFailure(p);
+		}
 		return this.refreshExpired();
 	}
 
