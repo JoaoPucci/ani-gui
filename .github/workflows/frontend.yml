@@ -34,7 +34,7 @@ jobs:
           # See tools/rust-workflow-filter.sh for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(frontend/|tests/fixtures/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/frontend\.yml$)' <<<"$changed"; then
+          if grep -qE '^(frontend/|tests/fixtures/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/frontend\.yml$|\.github/actions/pnpm-install/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -62,12 +62,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-          cache-dependency-path: pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install --frozen-lockfile
-        run: pnpm install --frozen-lockfile --filter ani-gui-frontend
+        uses: ./.github/actions/pnpm-install
+        with:
+          args: --frozen-lockfile --filter ani-gui-frontend
 
       # `pnpm run lint` = prettier --check + eslint.
       - if: needs.filter.outputs.relevant == 'true'
