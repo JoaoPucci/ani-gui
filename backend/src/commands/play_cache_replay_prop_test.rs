@@ -33,10 +33,16 @@ proptest! {
     /// however either is written: "12.5" and "12.50" are one number.
     #[test]
     fn a_number_is_carried_exactly_when_a_tag_has_its_value(
-        listing in tags(),
+        others in tags(),
         number in tag(),
+        listed in any::<bool>(),
         zeros in 0usize..3,
     ) {
+        // Half the listings carry the number as the listing writes it.
+        let mut listing = others;
+        if listed {
+            listing.push(number.clone());
+        }
         let spelled = if number.contains('.') {
             format!("{number}{}", "0".repeat(zeros))
         } else {
