@@ -68,10 +68,10 @@ const trigger = () => target.querySelector('button') as HTMLButtonElement;
 const statusSelect = () => target.querySelector('select') as HTMLSelectElement | null;
 const offered = () => Array.from(statusSelect()?.options ?? []).map((o) => o.value);
 
-async function openOn(status: 'completed' | 'watching') {
+async function openOnCompleted() {
 	app = mount(ListEntryEditor, {
 		target,
-		props: { kitsuId: '1', total: 26, current: { status, progress: 26 } }
+		props: { kitsuId: '1', total: 26, current: { status: 'completed', progress: 26 } }
 	});
 	await settle();
 	trigger().click();
@@ -81,13 +81,13 @@ async function openOn(status: 'completed' | 'watching') {
 describe('list editor with MyAnimeList connected', () => {
 	it('offers Rewatching beside AniList', async () => {
 		connect(ALL);
-		await openOn('completed');
+		await openOnCompleted();
 		expect(offered()).toContain('rewatching');
 	});
 
 	it('offers Rewatching with MyAnimeList alone', async () => {
 		connect(['mal']);
-		await openOn('completed');
+		await openOnCompleted();
 		expect(statusSelect(), 'the status control should be offered').not.toBeNull();
 		expect(offered()).toContain('rewatching');
 		expect(offered()).toContain('completed');

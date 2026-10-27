@@ -120,10 +120,10 @@ proptest! {
         }
     }
 
-    /// No write sends a rewatch status the reconcile did not already let
-    /// through: closing a MAL rewatch only ever completes it.
+    /// The count moves only where a MAL rewatch is closed: every other
+    /// write carries the count it came with.
     #[test]
-    fn closing_a_mal_rewatch_only_completes_it(u in update(), r in row()) {
+    fn the_count_moves_only_where_a_mal_rewatch_is_closed(u in update(), r in row()) {
         let got = reconcile_for(ProviderKind::MyAnimeList, u.clone(), r);
         if got.as_ref().is_some_and(|g| g.repeat_count != u.repeat_count) {
             prop_assert!(closes_a_mal_rewatch(r, got.as_ref()));

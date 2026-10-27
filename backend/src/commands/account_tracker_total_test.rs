@@ -245,21 +245,6 @@ async fn mal_the_finale_replayed_after_a_closed_rewatch_counts_nothing() {
     );
 }
 
-/// Mid-series, a rewatch is left as it is: its progress alone, no count.
-#[tokio::test]
-async fn mal_a_rewatch_mid_series_counts_nothing() {
-    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":4,"num_times_rewatched":2}"#;
-    let server = mal_server_with_row(12, row, &["num_watched_episodes=5"], 1).await;
-    assert!(push_to_mal(&server, episode(5)).await.is_some());
-    let bodies = patch_bodies(&server).await;
-    assert!(
-        bodies
-            .iter()
-            .all(|b| !b.contains("num_times_rewatched") && !b.contains("status=")),
-        "{bodies:?}"
-    );
-}
-
 #[tokio::test]
 async fn mal_a_replay_behind_the_row_writes_nothing() {
     let row = r#"{"status":"completed","num_episodes_watched":12}"#;
@@ -434,18 +419,19 @@ async fn mal_a_planning_row_is_promoted_to_watching() {
 }
 
 /// A row MAL already reads as rewatching takes a mid-series episode's
-/// progress alone: only a finished show's finale completes it.
+/// progress alone, and counts nothing: only a finished show's finale
+/// closes it.
 #[tokio::test]
 async fn mal_a_rewatching_row_mid_series_sends_its_progress_alone() {
-    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":5}"#;
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":5,"num_times_rewatched":2}"#;
     let server = mal_server_with_row(12, row, &["num_watched_episodes=6"], 1).await;
     assert!(push_to_mal(&server, episode(6)).await.is_some());
     let bodies = patch_bodies(&server).await;
     assert!(
-        bodies
-            .iter()
-            .all(|b| !b.contains("status=") && !b.contains("is_rewatching=")),
-        "mid-series, the row's status is left alone: {bodies:?}"
+        bodies.iter().all(|b| !b.contains("status=")
+            && !b.contains("is_rewatching=")
+            && !b.contains("num_times_rewatched")),
+        "mid-series, the row's status and count are left alone: {bodies:?}"
     );
 }
 
