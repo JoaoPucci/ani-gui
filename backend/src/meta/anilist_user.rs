@@ -931,3 +931,7 @@ mod tracked_tests;
 #[cfg(test)]
 #[path = "anilist_user_evidence_test.rs"]
 mod evidence_tests;
+
+#[cfg(test)]
+#[path = "anilist_user_shared_test.rs"]
+mod shared_tests;
