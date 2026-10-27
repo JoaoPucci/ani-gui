@@ -79,3 +79,7 @@ pub(super) fn job_tree(job: Option<win32job::Job>) -> Option<Box<dyn super::Tree
 fn still_running<E>(look: Result<bool, E>) -> bool {
     look.unwrap_or(false)
 }
+
+#[cfg(test)]
+#[path = "spawn_tree_test.rs"]
+mod tests;
