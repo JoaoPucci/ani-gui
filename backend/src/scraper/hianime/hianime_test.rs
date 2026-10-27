@@ -616,6 +616,15 @@ fn the_entry_page_rating_is_its_own_heading_s_mark() {
     // for it, and the page carries no rating the parser can vouch for.
     let unbounded = UNRATED_HEADING.replace("class=\"film-buttons\"", "class=\"film-actions\"");
     assert_eq!(parse_detail_rating(&unbounded), None);
+    // The show's own stats sit between its heading and its buttons: with
+    // the buttons above the stats, what follows them is no longer the
+    // show's own block, whatever later buttons a card carries.
+    let reordered = r#"<h2 class="film-name dynamic-name">Show</h2>
+        <div class="film-buttons"></div>
+        <div class="film-stats"><div class="tick"><span class="item">ONA</span></div></div>
+        <div class="flw-item"><div class="tick-item tick-pg">PG-13</div></div>
+        <div class="film-buttons"></div>"#;
+    assert_eq!(parse_detail_rating(reordered), None);
 }
 
 #[test]
