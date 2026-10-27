@@ -25,12 +25,6 @@ export function providerName(provider: Provider): string {
 	return provider;
 }
 
-/** How long the busy notice stays up for a wait of `seconds`: the wait
- *  itself, and no shorter than a plain toast. */
-export function noticeDurationMs(seconds: number): number {
-	return Math.max(4000, seconds * 1000);
-}
-
 /** The notice's words with `seconds` left: the wait, or once it is over,
  *  that the save is going. */
 function busyText(provider: Provider, seconds: number): string {
