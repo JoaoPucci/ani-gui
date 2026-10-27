@@ -765,6 +765,30 @@ FLAP
     done
 }
 
+# The local composite actions a workflow's steps call, one name per
+# line, as a function so a fixture spelling runs through exactly the
+# derivation the live workflows do.
+local_actions_used() {
+    sed -n 's#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}uses:[[:space:]]*\./\.github/actions/\([^/[:space:]]*\).*#\2#p' "$1" | sort -u
+}
+
+@test "a composite action is found however the step spells its uses" {
+    # A quoted value, a flow-style step and a step whose `uses` is not
+    # its first key all call the action; the derivation that pairs
+    # actions with filters has to see every one, or a filter missing
+    # an action passes because the action was never paired.
+    wf="$BATS_TEST_TMPDIR/spellings.yml"
+    printf '%s\n' 'on: pull_request' 'jobs:' '  j:' '    runs-on: ubuntu-latest' \
+        '    steps:' \
+        '      - uses: "./.github/actions/apt-install"' \
+        "      - { name: x, uses: './.github/actions/pnpm-install' }" \
+        '      - name: y' '        uses: ./.github/actions/third' \
+        "      - run: 'echo uses: ./.github/actions/not-a-step'" >"$wf"
+    run local_actions_used "$wf"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(printf '%s\n' apt-install pnpm-install third)" ]
+}
+
 @test "a composite action selects every filtered job that uses it" {
     # A job that skips its steps when nothing it reads changed has to
     # count the composite actions it calls as read, or a broken action
@@ -779,7 +803,7 @@ FLAP
     for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
         pattern=$(relevance_pattern "$wf") || continue
         [ -n "$pattern" ] || continue
-        actions=$(sed -n 's#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}uses:[[:space:]]*\./\.github/actions/\([^/[:space:]]*\).*#\2#p' "$wf" | sort -u)
+        actions=$(local_actions_used "$wf")
         for action in $actions; do
             pairs=$((pairs + 1))
             grep -qE "^($pattern)" <<<".github/actions/$action/action.yml" || {
