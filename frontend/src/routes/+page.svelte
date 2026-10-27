@@ -1331,10 +1331,17 @@
 	</button>
 {/snippet}
 
-{#if watchLater && watchLater.length > 0}
+{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
+	     empty — the empty row with its header and refresh, so newly-added
+	     tracker titles can be pulled in before the TTL. One strip for both,
+	     so the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card. -->
 	<Strip
 		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_caption()}
+		caption={watchLater.length > 0
+			? m.account_watch_later_caption()
+			: m.account_watch_later_empty()}
 		headerTrailing={watchLaterRefresh}
 	>
 		{#each watchLater as anime (anime.id)}
@@ -1342,6 +1349,9 @@
 				<PosterCard {anime} />
 			</div>
 		{/each}
+		{#if watchLater.length === 0}
+			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{/if}
 	</Strip>
 {:else if accountStore.hasAny && watchLaterFailed}
 	<!-- Connected but the last load failed (bridge/availability down). Show
@@ -1355,17 +1365,6 @@
 		<p class="watch-later-empty">
 			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
 		</p>
-	</Strip>
-{:else if accountStore.hasAny && watchLater !== null}
-	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
-	     surface the header + refresh so newly-added tracker titles can be
-	     pulled in before the TTL. -->
-	<Strip
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_empty()}
-		headerTrailing={watchLaterRefresh}
-	>
-		<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
 	</Strip>
 {/if}
 
