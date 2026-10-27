@@ -729,8 +729,9 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     /// The entry page read once: its Aired row's year, the names its
-    /// Japanese and Synonyms rows carry and its genres. A missing page is the
-    /// soft empty page, as a page without the rows is.
+    /// Japanese and Synonyms rows carry, its genres and the age rating
+    /// its own heading gives. A missing page is the soft empty page, as
+    /// a page without the rows is.
     async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
         match self.content(&self.on_origin(&format!("/{slug}"))).await {
             Ok(body) => Ok(parse_entry_page(&body)),

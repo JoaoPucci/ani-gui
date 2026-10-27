@@ -108,7 +108,8 @@ async fn stub_hianime_serving(master_path: &str) -> wiremock::MockServer {
         .mount(&server)
         .await;
     // The show's entry page: an undated pick reads the genres of the
-    // listing it serves, and takes none whose page lists no genre.
+    // listing it serves, and takes none whose page lists no genre and
+    // no ordinary rating.
     let entry = r#"<div class="item item-list"><span class="item-head">Genres:</span><a href="/genres/drama" title="Drama">Drama</a></div>"#;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/test-show-1"))
