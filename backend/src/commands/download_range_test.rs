@@ -85,6 +85,7 @@ async fn a_range_starts_from_the_version_it_names() {
             quality: "best",
             answered_by: None,
             tail: None,
+            heard: None,
         };
         let (picked, served, _) = attempt.run(&provider).await.expect("started");
         assert_eq!(picked.hit.slug, slug, "{version:?}");
@@ -138,6 +139,7 @@ async fn a_range_in_a_mode_only_the_plain_copy_carries_starts_from_it() {
         quality: "best",
         answered_by: None,
         tail: None,
+        heard: None,
     };
     let (picked, served, first) = attempt.run(&provider).await.expect("started");
     // The first episode streams from the copy that carries the dub,
