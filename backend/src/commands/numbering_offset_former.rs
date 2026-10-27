@@ -76,6 +76,7 @@ pub fn retag_from_resolve(
     retag_display(state, &native.slug, &native.former_tags, &|former| {
         crate::commands::play_native_merge::names_a_row_now(former, native)
     });
+    super::drift::put_drift_right(state, &native.slug, &native.listing);
     // The pick's other versions: each copy's history row reads a stamp
     // of its own, put right from that copy's listing.
     for (slug, episodes) in &native.other_copies {
@@ -103,6 +104,7 @@ pub fn retag_from_listing(
         &crate::commands::play_native_merge::former_tags_of(episodes),
         &shared,
     );
+    super::drift::put_drift_right(state, slug, episodes);
 }
 
 #[cfg(test)]

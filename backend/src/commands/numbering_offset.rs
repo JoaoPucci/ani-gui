@@ -41,6 +41,9 @@ pub mod read_tap;
 mod snapshot;
 pub use snapshot::Numbering;
 
+#[path = "numbering_offset_drift.rs"]
+mod drift;
+
 #[path = "numbering_offset_former.rs"]
 mod former;
 pub use former::{
