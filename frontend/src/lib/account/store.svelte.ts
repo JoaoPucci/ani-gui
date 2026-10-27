@@ -14,6 +14,12 @@ import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
 import { refreshExpiredAccounts } from './refresh-flow';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
+import {
+	failuresAfterHydrate,
+	failuresAfterRetry,
+	hydratedState,
+	withFailure
+} from './hydrated-state';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -30,25 +36,12 @@ class AccountStore {
 
 	/** Record a failed renewal. */
 	noteRenewalFailed(provider: Provider, failure: RenewalFailure): void {
-		this.renewalFailure = { ...this.renewalFailure, [provider]: failure };
-	}
-
-	/** Whether `account` is the sign-in already marked expired here, by
-	 *  its bearer: one the tracker refused, whatever its date says. */
-	private isRefusedBearer(provider: Provider, account: PersistedAccount): boolean {
-		return this.byProvider[provider].kind === 'expired' && this.isSameBearer(provider, account);
-	}
-
-	/** Whether `account` carries the bearer the provider holds now. */
-	private isSameBearer(provider: Provider, account: PersistedAccount): boolean {
-		const prev = this.byProvider[provider];
-		return 'account' in prev && prev.account?.access_token === account.access_token;
+		this.renewalFailure = withFailure(this.renewalFailure, provider, failure);
 	}
 
 	/** Forget a provider's renewal failure: its sign-in changed. */
 	private clearRenewalFailure(provider: Provider): void {
-		if (this.renewalFailure[provider] === null) return;
-		this.renewalFailure = { ...this.renewalFailure, [provider]: null };
+		this.renewalFailure = withFailure(this.renewalFailure, provider, null);
 	}
 
 	/**
@@ -109,39 +102,11 @@ class AccountStore {
 	 */
 	hydrate(): void {
 		const providers: Provider[] = ['anilist', 'mal', 'inhouse'];
-		const next = { ...this.byProvider };
-		for (const p of providers) {
-			const r = readPersistedAccount(p);
-			if (r.ok) {
-				next[p] =
-					isExpired(r.account) || this.isRefusedBearer(p, r.account)
-						? { kind: 'expired', account: r.account }
-						: { kind: 'connected', account: r.account, lastSyncedAt: null };
-				// A different sign-in than the one a failure was told of.
-				if (!this.isSameBearer(p, r.account)) this.clearRenewalFailure(p);
-				continue;
-			}
-			if (r.kind === 'not_found') {
-				next[p] = { kind: 'disconnected' };
-				continue;
-			}
-			// The token file is on disk but the
-			// keychain is unreachable (libsecret/Keychain outage,
-			// decrypt failure, or a token refused because safeStorage
-			// fell back to basic_text).
-			// Surface as error with no account; the page's error-no-
-			// account branch now exposes Disconnect so the user can
-			// call clearToken and remove the orphan file before
-			// reconnecting. The message includes the underlying kind
-			// (encryption_unavailable / decrypt_error / …) for the
-			// diagnostics log; the page renders a friendlier copy.
-			next[p] = {
-				kind: 'error',
-				account: null,
-				// i18n-ignore: diagnostic text; no surface renders an error state's message
-				message: `Keychain read failed: ${r.detail}`
-			};
-		}
+		const prev = this.byProvider;
+		const next = { ...prev };
+		const nowSec = Math.floor(Date.now() / 1000);
+		for (const p of providers) next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
+		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
 		this.byProvider = next;
 		// Every hydrate path (cold launch AND the account page) must give a
 		// just-expired-but-refreshable provider a chance to refresh, so
@@ -182,9 +147,7 @@ class AccountStore {
 	 * is shown as new rather than taken for the incident already seen.
 	 */
 	retryRenewal(): Promise<void> {
-		for (const p of Object.keys(this.byProvider) as Provider[]) {
-			if (this.byProvider[p].kind === 'expired') this.clearRenewalFailure(p);
-		}
+		this.renewalFailure = failuresAfterRetry(this.byProvider, this.renewalFailure);
 		return this.refreshExpired();
 	}
 
@@ -263,12 +226,6 @@ class AccountStore {
 			[provider]: { ...prev, lastSyncedAt: Date.now() }
 		};
 	}
-}
-
-function isExpired(account: PersistedAccount): boolean {
-	if (account.expires_at_epoch_s <= 0) return false; // unknown → treat as valid
-	const nowSec = Math.floor(Date.now() / 1000);
-	return account.expires_at_epoch_s <= nowSec;
 }
 
 export const accountStore = new AccountStore();
