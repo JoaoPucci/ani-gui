@@ -156,13 +156,18 @@ async fn an_interactive_walk_nobody_waits_on_any_more_ends() {
     only.abort();
     let _ = only.await;
     crate::held::until("the walk nobody waits on is gone", || flights.live() == 0).await;
+    flights.assert_consistent();
     let sent = table.asked().len();
     gate.release();
-    tokio::task::yield_now().await;
+    // A lookup run to its end after the release: had the abandoned
+    // walk gone on, its requests would be counted beside this one's.
+    check_shared(&state, lookup("700", false))
+        .await
+        .expect("the next lookup answers");
     assert_eq!(
         table.asked().len(),
-        sent,
-        "the ended walk sends nothing more once the provider answers"
+        sent + one_walk().await,
+        "the ended walk sent nothing more once the provider answered"
     );
 }
 
@@ -185,6 +190,7 @@ async fn a_background_walk_its_caller_left_runs_on_and_the_next_caller_joins_it(
     })
     .await;
     assert_eq!(flights.live(), 1, "the walk runs on with nobody waiting");
+    flights.assert_consistent();
 
     // The page mounts again and asks for the same row.
     let back = spawn_lookup(&state, lookup("700", true));
@@ -228,6 +234,7 @@ async fn background_walks_nobody_waits_on_are_bounded() {
         UNWATCHED_MAX,
         "past the bound, a walk nobody waits on ends"
     );
+    flights.assert_consistent();
     drop(gate);
 }
 
@@ -277,11 +284,17 @@ async fn a_cache_skipping_refresh_walks_on_its_own() {
     gate.asked().await;
     let mut refresh_args = lookup("700", false);
     refresh_args.bypass_cache = true;
+    let sent_by_page = table.asked().len();
     let refresh = spawn_lookup(&state, refresh_args);
-    crate::held::until("the page's walk is out", || {
-        flights.waiting(&row("700")) == Some(1)
+    crate::held::until("the refresh reaches the provider", || {
+        table.asked().len() > sent_by_page
     })
     .await;
+    assert_eq!(
+        flights.waiting(&row("700")),
+        Some(1),
+        "the refresh did not join"
+    );
     gate.release();
     page.await.expect("joins").expect("answers");
     refresh.await.expect("joins").expect("answers");
@@ -371,4 +384,39 @@ async fn the_warm_queue_is_bounded() {
     queue.push(&state, more);
     assert_eq!(queue.queued(), WARM_QUEUE_MAX);
     drop(gate);
+}
+
+#[tokio::test]
+async fn a_lookup_after_a_refresh_wrote_the_row_does_not_take_an_older_walk() {
+    // The detail page's lookup is out on a row it could not serve; a
+    // click's cache-skipping refresh answers and writes the row
+    // meanwhile. A lookup asked after that must not be handed the
+    // older walk's answer — before walks were shared it read the
+    // refreshed row, and it must still get an answer at least as new.
+    let expected = one_walk().await;
+    let (hold, gate) = crate::held::gate();
+    let table = carrying(Some(hold));
+    let td = tempfile::tempdir().expect("td");
+    let state = state_with(&td, &table);
+    let flights = state.availability_refreshes.flights.clone();
+
+    let page = spawn_lookup(&state, lookup("700", false));
+    gate.asked().await;
+    let sent_before = table.asked().len();
+    state.availability_refreshes.bump(&row("700"));
+    let later = spawn_lookup(&state, lookup("700", false));
+    crate::held::until(
+        "the later lookup walks afresh, and the page's moves onto it",
+        || flights.waiting(&row("700")) == Some(2) && table.asked().len() > sent_before,
+    )
+    .await;
+    flights.assert_consistent();
+    gate.release();
+    page.await.expect("joins").expect("answers");
+    later.await.expect("joins").expect("answers");
+    assert_eq!(
+        table.asked().len(),
+        sent_before + expected,
+        "the older walk ended where it was; the fresh one ran whole"
+    );
 }

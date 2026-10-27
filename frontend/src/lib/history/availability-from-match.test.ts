@@ -39,6 +39,22 @@ describe('makeFetchAvailability', () => {
 		expect(result.episode_count).toBe(13);
 	});
 
+	it("forwards the match's subtype, as every other availability caller does", async () => {
+		// The backend shares one walk per row among every lookup out
+		// for it, and the walk is the first caller's: a Continue
+		// Watching lookup without the subtype would hand a detail
+		// page's lookup a pick made without the format check.
+		const ipc = vi.fn().mockResolvedValue({
+			available: true,
+			episode_count: 1,
+			extra_episodes: []
+		} satisfies AvailabilityResponse);
+		await makeFetchAvailability(ipc)(makeMatch({ subtype: 'movie' }), 'sub');
+		expect((ipc.mock.calls[0][0] as AvailabilityArgs).subtype).toBe('movie');
+		await makeFetchAvailability(ipc)(makeMatch({ subtype: null }), 'sub');
+		expect((ipc.mock.calls[1][0] as AvailabilityArgs).subtype).toBeUndefined();
+	});
+
 	it('omits episode_count, year, and status when the match has none', async () => {
 		// AvailabilityArgs's optional fields use `?: T` (not `T | null`),
 		// so the helper must drop null/undefined entirely rather than

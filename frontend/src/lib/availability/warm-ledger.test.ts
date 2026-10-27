@@ -33,6 +33,19 @@ describe('createWarmLedger', () => {
 		expect(ledger.take(['sub:1'], 1)).toEqual(['sub:1']);
 	});
 
+	it('a failed warm forgets only the stamps it made', () => {
+		// A later list may have handed the key in again, past its
+		// retry window, before the earlier request failed: that newer
+		// warm is not undone by the older one's failure.
+		const ledger = createWarmLedger(1000);
+		ledger.take(['sub:1'], 0);
+		ledger.take(['sub:1'], 1000);
+		ledger.forget(['sub:1'], 0);
+		expect(ledger.take(['sub:1'], 1001)).toEqual([]);
+		ledger.forget(['sub:1'], 1000);
+		expect(ledger.take(['sub:1'], 1002)).toEqual(['sub:1']);
+	});
+
 	it('keeps sub and dub apart', () => {
 		const ledger = createWarmLedger();
 		ledger.take(['sub:1'], 0);

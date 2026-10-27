@@ -36,8 +36,9 @@ export function dueForWarm(sentAt: number | undefined, now: number, retryMs: num
 export interface WarmLedger {
 	/** The keys among `keys` due a warm at `now`, now marked warmed. */
 	take(keys: string[], now: number): string[];
-	/** The warm of `keys` never reached the backend: due again. */
-	forget(keys: string[]): void;
+	/** The warm of `keys`, handed in at `sentAt`, never reached the
+	 *  backend: due again. */
+	forget(keys: string[], sentAt?: number): void;
 }
 
 export function createWarmLedger(retryMs: number = WARM_RETRY_MS): WarmLedger {
