@@ -1,0 +1,128 @@
+name: 'apt install, cached'
+description: >
+  Install packages from the distro's apt sources, keeping the .deb
+  files apt downloads in an Actions cache that only master saves.
+# Why: the runners' Ubuntu mirror intermittently serves at tens of
+# kilobytes a second, and a job that has to download mpv and ffmpeg
+# then spends half an hour in this step. With the files restored, apt
+# finds them already in its archive directory and downloads nothing.
+#
+# What stays as it was without the cache: the package lists are still
+# refreshed from the distro's sources before anything else, and apt
+# still decides what to install from them. apt takes a file already in
+# its archive directory on its name, which carries the package's
+# version, and its size; a cached file the index no longer names is
+# never used, and apt fetches the current one instead. Only master's
+# own downloads are ever saved. With no cache for the same package
+# list at all, the install downloads everything, as the step always
+# did.
+#
+# The cache key is the download plan itself: the file names, sizes
+# and checksums apt prints for the packages it would fetch, after the
+# refresh. A new package version, or a runner image that installs
+# different packages, changes the plan and so the key; the restore
+# then falls back to the newest cache for the same package list, apt
+# downloads only what that cache lacks, and master saves the new plan
+# once.
+#
+# The files live in a directory of their own rather than apt's default
+# one, so nothing that cleans /var/cache/apt/archives (`apt-get clean`,
+# or a container image's post-install hook) can empty it before the
+# save; `-o Dir::Cache::Archives` points the plan and the install at
+# it, and the report step says how many planned files survived.
+inputs:
+  packages:
+    description: The packages to install, separated by spaces.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Refresh the distro sources and plan the download
+      id: plan
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        ARCHIVES: /var/cache/ci-apt-archives
+      run: |
+        set -euo pipefail
+        # Distro sources only: see tests/arch/apt_sources.sh.
+        sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
+        # The runner user owns the directory, so the cache can restore
+        # into it and read it back; apt's download sandbox user owns
+        # the partial directory, as it does under /var/cache/apt.
+        sudo install -d -o "$(id -u)" -g "$(id -g)" "$ARCHIVES"
+        sudo install -d -o _apt -g root -m 700 "$ARCHIVES/partial"
+        # With nothing in the directory yet, this lists every file the
+        # install would fetch: 'URI' file size checksum. $PACKAGES is
+        # unquoted here and below on purpose: the list splits on spaces.
+        sudo apt-get install --print-uris -qq -o Dir::Cache::Archives="$ARCHIVES" $PACKAGES >"$RUNNER_TEMP/apt-plan"
+        want="$RUNNER_TEMP/apt-want"
+        awk '{ print $2 }' "$RUNNER_TEMP/apt-plan" | sort -u >"$want"
+        list=$(printf '%s\n' $PACKAGES | sort -u | sha256sum | cut -c1-16)
+        plan=$(awk '{ print $2, $3, $4 }' "$RUNNER_TEMP/apt-plan" | sort | sha256sum | cut -c1-16)
+        prefix="apt-debs-v1-${ImageOS:-unknown}-$(dpkg --print-architecture)-$list-"
+        {
+          printf 'archives=%s\n' "$ARCHIVES"
+          printf 'want=%s\n' "$want"
+          printf 'prefix=%s\n' "$prefix"
+          printf 'key=%s\n' "$prefix$plan"
+          if [ -s "$want" ]; then echo 'download=true'; else echo 'download=false'; fi
+        } >>"$GITHUB_OUTPUT"
+        echo "apt would download $(wc -l <"$want") files; cache key $prefix$plan"
+
+    - name: Restore the downloaded packages
+      id: restore
+      if: steps.plan.outputs.download == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: /var/cache/ci-apt-archives/*.deb
+        key: ${{ steps.plan.outputs.key }}
+        restore-keys: ${{ steps.plan.outputs.prefix }}
+
+    - name: Install
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        ARCHIVES: ${{ steps.plan.outputs.archives }}
+      run: |
+        set -euo pipefail
+        # $PACKAGES is unquoted on purpose: the list splits on spaces.
+        sudo apt-get install -y -o Dir::Cache::Archives="$ARCHIVES" -o APT::Keep-Downloaded-Packages=true $PACKAGES
+
+    - name: Report what apt kept
+      if: steps.plan.outputs.download == 'true'
+      shell: bash
+      env:
+        ARCHIVES: ${{ steps.plan.outputs.archives }}
+        WANT: ${{ steps.plan.outputs.want }}
+        PRUNE: ${{ github.ref == 'refs/heads/master' && steps.restore.outputs.cache-hit != 'true' }}
+      run: |
+        set -euo pipefail
+        # Only master saves, and a fallback restore can carry files of
+        # an older plan: the saved cache holds this plan's files and
+        # nothing else.
+        if [ "$PRUNE" = true ]; then
+          for deb in "$ARCHIVES"/*.deb; do
+            [ -e "$deb" ] || continue
+            grep -qxF "${deb##*/}" "$WANT" || rm -f -- "$deb"
+          done
+        fi
+        kept=0
+        while IFS= read -r name; do
+          if [ -e "$ARCHIVES/$name" ]; then
+            kept=$((kept + 1))
+          else
+            echo "::warning::apt did not keep $name, so the cache cannot carry it"
+          fi
+        done <"$WANT"
+        echo "apt kept $kept of $(wc -l <"$WANT") planned files in $ARCHIVES"
+
+    - name: Save the downloaded packages
+      if: >-
+        github.ref == 'refs/heads/master'
+        && steps.plan.outputs.download == 'true'
+        && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: /var/cache/ci-apt-archives/*.deb
+        key: ${{ steps.plan.outputs.key }}

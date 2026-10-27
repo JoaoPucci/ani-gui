@@ -1033,6 +1033,7 @@ pub async fn check_availability(
                     &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
                         .to_string(),
                     episodes,
+                    p.unread_past,
                 );
             }
             if present {
