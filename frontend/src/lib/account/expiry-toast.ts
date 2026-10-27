@@ -1,13 +1,13 @@
 /**
- * Cold-launch expiry-toast helper.
+ * Sign-in notices: which tracker sign-ins need the user, and what to
+ * tell them.
  *
- * AniList issues 1-year JWTs (other providers can be shorter). When
- * the app boots and `accountStore.hydrate()` finds a persisted token
- * that has expired, the chip surfaces an amber dot — but the user
- * might not look at it. This helper enumerates every provider in an
- * `expired` state so `+layout.svelte` can fire one pinned toast per
- * stale session at boot, prompting "Sign in again" without forcing
- * the user to dig into /account.
+ * When a sign-in has run out or its renewal has failed, the chip
+ * surfaces an amber dot — but the user might not look at it. This
+ * helper decides, per provider, whether a notice is due and which one
+ * (see {@link signInNotice}), so `+layout.svelte` can keep one pinned
+ * toast per incident on screen until the sign-in recovers or the user
+ * acts on it.
  *
  * Lives in `$lib` (per AGENTS.md §2) so the priority-order rules get
  * unit coverage independent of the Svelte boot path.
@@ -15,6 +15,8 @@
 
 import type { Provider, ProviderState } from './types';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
+
+const PRIORITY: ReadonlyArray<Provider> = ['anilist', 'mal', 'inhouse'];
 
 export interface ExpiredProvider {
 	provider: Provider;
@@ -34,12 +36,28 @@ export interface SignInNoticeInfo extends ExpiredProvider {
 }
 
 /** The notice a provider's sign-in calls for, or none. */
+const NOTICE_FOR_FAILURE: Record<RenewalFailure, SignInNotice> = {
+	rejected: 'refused',
+	unreachable: 'unreachable',
+	unknown: 'unknown'
+};
+
+/**
+ * The notice a provider's sign-in calls for, or none. A sign-in past
+ * its expiry that can be renewed says nothing until the renewal has
+ * answered, since it may succeed in a moment; one that cannot be
+ * renewed has expired, which is known. A still-valid sign-in is told
+ * only that its renewal was refused: its session will end, while a
+ * renewal that merely went unanswered is tried again on the next call.
+ */
 export function signInNotice(
 	state: ProviderState,
-	_failure: RenewalFailure | null
+	failure: RenewalFailure | null
 ): SignInNotice | null {
-	void _failure;
-	return state.kind === 'expired' ? 'expired' : null;
+	if (state.kind === 'connected') return failure === 'rejected' ? 'refused' : null;
+	if (state.kind !== 'expired') return null;
+	if (failure !== null) return NOTICE_FOR_FAILURE[failure];
+	return state.account.refresh_token ? null : 'expired';
 }
 
 /** Every provider whose sign-in calls for a notice, in priority order. */
@@ -58,8 +76,6 @@ export function detectSignInNotices(
 	return out;
 }
 
-const PRIORITY: ReadonlyArray<Provider> = ['anilist', 'mal', 'inhouse'];
-
 export function detectExpiredProviders(
 	byProvider: Record<Provider, ProviderState>
 ): ExpiredProvider[] {
@@ -74,7 +90,7 @@ export function detectExpiredProviders(
 }
 
 export interface ExpirySyncDeps {
-	push(info: ExpiredProvider): string;
+	push(info: SignInNoticeInfo): string;
 	dismiss(toastId: string): void;
 }
 
@@ -107,8 +123,7 @@ export class ExpiryToastTracker {
 		}
 		for (const [provider, info] of now) {
 			if (this.byProvider.has(provider)) continue;
-			const toastId = deps.push({ provider: info.provider, username: info.username });
-			this.byProvider.set(provider, { notice: info.notice, toastId });
+			this.byProvider.set(provider, { notice: info.notice, toastId: deps.push(info) });
 		}
 	}
 }

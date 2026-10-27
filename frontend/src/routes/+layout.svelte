@@ -52,6 +52,7 @@
 	import { accountStore } from '$lib/account/store.svelte';
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { signInToastCopy } from '$lib/account/sign-in-toast-copy';
+	import { needsRenewalRetry, RenewalRetry } from '$lib/account/renewal-retry';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
@@ -130,29 +131,45 @@
 		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
 	});
 
-	// Cold-launch + ongoing expiry-toast tracker. Pushes one pinned
-	// `warning` toast per expired provider after hydrate, dismisses
-	// it the moment the provider recovers (the user re-auths from
-	// `/account` or the chip popover). Re-runs
-	// reactively on every `accountStore.byProvider` mutation so the
-	// recovery path doesn't need to know the toast exists.
+	// Sign-in notices: one pinned `warning` toast per provider whose
+	// sign-in needs the user, saying what the renewal found (see
+	// `$lib/account/expiry-toast`), dismissed the moment the provider
+	// recovers (the user re-auths from `/account` or the chip popover)
+	// and replaced when the renewal says something else. Re-runs on
+	// every account-state or renewal-failure change, so the recovery
+	// path doesn't need to know the toast exists. A renewal the tracker
+	// did not answer is retried on a backoff while it waits.
 	const expiryToastTracker = new ExpiryToastTracker();
+	const renewalRetry = new RenewalRetry({
+		needsRetry: () => needsRenewalRetry(accountStore.byProvider, accountStore.renewalFailure),
+		retry: () => accountStore.refreshExpired(),
+		setTimer: (fn, ms) => setTimeout(() => fn(), ms),
+		clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
+	});
 	$effect(() => {
-		expiryToastTracker.sync(accountStore.byProvider, {
-			push: (e) => {
-				// i18n-ignore: provider names are proper nouns
-				const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
-				const copy = signInToastCopy('expired', providerLabel);
-				return toastStore.push({
-					kind: 'warning',
-					duration: null,
-					message: copy.message,
-					actionLabel: copy.actionLabel,
-					onAction: () => void goto(resolve('/account'))
-				});
+		expiryToastTracker.sync(
+			accountStore.byProvider,
+			{
+				push: (e) => {
+					// i18n-ignore: provider names are proper nouns
+					const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
+					const copy = signInToastCopy(e.notice, providerLabel);
+					return toastStore.push({
+						kind: 'warning',
+						duration: null,
+						message: copy.message,
+						actionLabel: copy.actionLabel,
+						onAction:
+							copy.action === 'retry'
+								? () => void accountStore.refreshExpired()
+								: () => void goto(resolve('/account'))
+					});
+				},
+				dismiss: (id) => toastStore.dismiss(id)
 			},
-			dismiss: (id) => toastStore.dismiss(id)
-		});
+			accountStore.renewalFailure
+		);
+		renewalRetry.sync();
 	});
 
 	let topbarQuery = $state('');

@@ -64,7 +64,8 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
-	import { freshBearerFor } from '$lib/account/fresh-bearer';
+	import { bearerRefusedFor, freshBearerFor } from '$lib/account/fresh-bearer';
+	import { isBearerRefused } from '$lib/account/renewal-failure';
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
@@ -656,9 +657,11 @@
 					try {
 						await fetchAndCacheList(p, bearer);
 						markRefreshed(p, Date.now());
-					} catch {
-						/* leave the stale snapshot in place; a later refresh
-						   (manual or next TTL window) retries. */
+					} catch (e) {
+						// Leave the stale snapshot in place; a later refresh
+						// (manual or next TTL window) retries. A refused bearer
+						// is a sign-in problem, which the sign-in notice owns.
+						if (isBearerRefused(e)) await bearerRefusedFor(p);
 					}
 				})
 			);

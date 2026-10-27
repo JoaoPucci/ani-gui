@@ -166,6 +166,7 @@ export async function freshBearer(
 		deps.onRefreshed(provider, outcome.account);
 		return outcome.account.access_token;
 	}
+	if (outcome.kind === 'failed') deps.onRenewalFailed?.(provider, outcome.failure);
 	return account.access_token;
 }
 
@@ -199,6 +200,7 @@ export async function refreshExpiredAccounts(deps: RefreshExpiredDeps): Promise<
 			const { account } = snapshot[provider] as Extract<ProviderState, { kind: 'expired' }>;
 			const outcome = await refreshAccount(deps, provider, account);
 			if (outcome.kind === 'refreshed') deps.onRefreshed(provider, outcome.account);
+			if (outcome.kind === 'failed') deps.onRenewalFailed?.(provider, outcome.failure);
 		})
 	);
 }

@@ -15,11 +15,35 @@ export interface SignInToastCopy {
 	action: 'reconnect' | 'retry';
 }
 
-export function signInToastCopy(_notice: SignInNotice, provider: string): SignInToastCopy {
-	void _notice;
-	return {
-		message: m.account_expiry_toast_message({ provider }),
-		actionLabel: m.account_expiry_toast_action(),
-		action: 'reconnect'
-	};
+/** Each notice's copy says only what is known: "reconnect" when the
+ *  session ran out with no way to renew it or the tracker refused the
+ *  renewal; "could not reach" when the tracker did not answer, since
+ *  the sign-in may still be valid; and no cause when none is known. */
+export function signInToastCopy(notice: SignInNotice, provider: string): SignInToastCopy {
+	switch (notice) {
+		case 'expired':
+			return {
+				message: m.account_expiry_toast_message({ provider }),
+				actionLabel: m.account_expiry_toast_action(),
+				action: 'reconnect'
+			};
+		case 'refused':
+			return {
+				message: m.account_signin_refused_message({ provider }),
+				actionLabel: m.account_signin_refused_action(),
+				action: 'reconnect'
+			};
+		case 'unreachable':
+			return {
+				message: m.account_signin_unreachable_message({ provider }),
+				actionLabel: m.account_signin_unreachable_action(),
+				action: 'retry'
+			};
+		case 'unknown':
+			return {
+				message: m.account_signin_unknown_message({ provider }),
+				actionLabel: m.account_signin_unknown_action(),
+				action: 'retry'
+			};
+	}
 }

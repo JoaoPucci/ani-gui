@@ -29,9 +29,14 @@ class AccountStore {
 	renewalFailure = $state<RenewalFailures>({ ...NO_RENEWAL_FAILURES });
 
 	/** Record a failed renewal. */
-	noteRenewalFailed(_provider: Provider, _failure: RenewalFailure): void {
-		void _provider;
-		void _failure;
+	noteRenewalFailed(provider: Provider, failure: RenewalFailure): void {
+		this.renewalFailure = { ...this.renewalFailure, [provider]: failure };
+	}
+
+	/** Forget a provider's renewal failure: its sign-in changed. */
+	private clearRenewalFailure(provider: Provider): void {
+		if (this.renewalFailure[provider] === null) return;
+		this.renewalFailure = { ...this.renewalFailure, [provider]: null };
 	}
 
 	/**
@@ -148,6 +153,7 @@ class AccountStore {
 			// mid-flight disconnect / re-auth is dropped — even before the
 			// store snapshot catches up.
 			generation: (provider) => this.accountGeneration[provider],
+			onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
 			// Don't even start an expired refresh for a provider whose
 			// disconnect is mid-flight.
 			changing: (provider) => this.accountChanging[provider]
@@ -173,12 +179,14 @@ class AccountStore {
 	setConnecting(provider: Provider): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
+		this.clearRenewalFailure(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'connecting' } };
 	}
 
 	setConnected(provider: Provider, account: PersistedAccount): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
+		this.clearRenewalFailure(provider);
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'connected', account, lastSyncedAt: Date.now() }
@@ -188,6 +196,7 @@ class AccountStore {
 	setDisconnected(provider: Provider): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
+		this.clearRenewalFailure(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'disconnected' } };
 	}
 

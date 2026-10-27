@@ -41,10 +41,17 @@ let nextId = 1;
 
 /**
  * The rows that stay when one more is pushed onto a stack capped at
- * `max`: the newest `max - 1`.
+ * `max`. A pinned row waits for the user to act on it, so it always
+ * stays; the passing rows make room, oldest first, until the stack
+ * with the new row fits the cap or only pinned rows are left.
  */
 export function keepOnPush(items: ToastItem[], max: number): ToastItem[] {
-	return items.slice(-(max - 1));
+	let surplus = items.length - (max - 1);
+	return items.filter((item) => {
+		if (surplus <= 0 || item.duration === null) return true;
+		surplus -= 1;
+		return false;
+	});
 }
 
 class ToastStore {

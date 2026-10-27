@@ -8,7 +8,7 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
-import type { RefreshFlowDeps } from './refresh-flow';
+import { refreshAccount, type RefreshFlowDeps } from './refresh-flow';
 import type { RenewalFailure } from './renewal-failure';
 
 export interface RefusedBearerDeps extends RefreshFlowDeps {
@@ -19,9 +19,28 @@ export interface RefusedBearerDeps extends RefreshFlowDeps {
 }
 
 export async function handleRefusedBearer(
-	_deps: RefusedBearerDeps,
-	_provider: Provider
+	deps: RefusedBearerDeps,
+	provider: Provider
 ): Promise<void> {
-	void _deps;
-	void _provider;
+	const state = deps.state(provider);
+	// An expired sign-in's renewal has already run and been reported;
+	// the read failing with its old bearer adds nothing.
+	if (state.kind !== 'connected') return;
+	const { account } = state;
+	if (!account.refresh_token) {
+		deps.setExpired(provider, account);
+		deps.noteRenewalFailed(provider, 'rejected');
+		return;
+	}
+	const generation = deps.generation(provider);
+	const outcome = await refreshAccount(deps, provider, account);
+	if (outcome.kind === 'refreshed') {
+		deps.setConnected(provider, outcome.account);
+		return;
+	}
+	// The account changed while renewing: the refused bearer was the
+	// old one's, and the new sign-in owes the user no notice.
+	if (outcome.kind !== 'failed' || deps.generation(provider) !== generation) return;
+	deps.setExpired(provider, account);
+	deps.noteRenewalFailed(provider, outcome.failure);
 }
