@@ -315,10 +315,17 @@ async fn mal_the_final_chapters_first_special_sends_one_and_no_status() {
 /// being rewatched closes the rewatch where it reaches the entry's
 /// total, on each path the map writes by: back at Completed, and the
 /// entry's count of finished rewatches up by one.
+/// The `fields` the write-back's MAL read asks for.
+const MAL_TRACKED_FIELDS: &str =
+    "my_list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched},num_episodes";
+
 async fn mal_get(server: &MockServer, media: u32, body: &str) {
     Mock::given(method("GET"))
         .and(path(format!("/anime/{media}")))
-        .and(wiremock::matchers::query_param("fields", "my_list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched},num_episodes"))
+        .and(wiremock::matchers::query_param(
+            "fields",
+            MAL_TRACKED_FIELDS,
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_string(body.to_string()))
         .mount(server)
         .await;
