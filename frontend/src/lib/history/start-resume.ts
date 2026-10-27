@@ -82,7 +82,12 @@ export interface StartResumeDeps {
 	resolvePlay: (
 		args: ResumePlayArgs,
 		onProgress: (label: string) => void
-	) => Promise<{ session_id: string; episode?: string; former_episode?: string }>;
+	) => Promise<{
+		session_id: string;
+		episode?: string;
+		former_episode?: string;
+		episode_unverified?: boolean;
+	}>;
 	markWatched: (args: ResumePlayArgs) => Promise<void>;
 	syncTrackers: (
 		kitsuId: string,

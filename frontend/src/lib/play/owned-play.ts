@@ -134,6 +134,8 @@ export function recordPlayed(
 		episode: number;
 		show: KitsuAnimeRef | null;
 		mirror: boolean;
+		/** The session's `episode_unverified`. */
+		unverified?: boolean;
 	},
 	deps: {
 		markWatched: (args: PlayArgs) => Promise<void>;
