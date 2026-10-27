@@ -1303,3 +1303,52 @@ async fn refresh_surfaces_429_as_rate_limited() {
         .expect_err("429 must surface");
     assert_rate_limited(&err, Some(60));
 }
+
+/// MAL has no rewatch status: a row it reads as rewatching is listed as
+/// Watching, and the record that the show was finished lives only in
+/// Completed. A write asking for Rewatching sends MAL no status at all,
+/// so it never takes a row out of Completed; what else it carries still
+/// goes.
+#[tokio::test]
+async fn update_entry_sends_mal_no_status_for_a_rewatch() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(MAL_LIST_STATUS_RESPONSE),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let update = crate::account::provider::EntryUpdate {
+        status: Some(crate::account::status::ListStatus::Rewatching),
+        progress_episodes: Some(3),
+        score_0_to_100: Some(90),
+        repeat_count: None,
+    };
+    provider
+        .update_entry(&tokens, ProviderMediaId(21), update)
+        .await
+        .expect("update_entry ok");
+    let bodies: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .collect();
+    assert_eq!(bodies.len(), 1, "{bodies:?}");
+    assert!(
+        !bodies[0].contains("status=") && !bodies[0].contains("is_rewatching="),
+        "a rewatch sends MAL no status: {bodies:?}"
+    );
+    assert!(bodies[0].contains("num_watched_episodes=3"), "{bodies:?}");
+    assert!(bodies[0].contains("score=9"), "{bodies:?}");
+}

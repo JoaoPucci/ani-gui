@@ -161,18 +161,36 @@ async fn mal_the_finale_completes_when_the_total_is_unknown() {
     assert!(push_to_mal(&server, finale(12)).await.is_some());
 }
 
+/// MAL keeps "you finished this show" only in Completed: it has no
+/// rewatch status of its own, and a row MAL reads as rewatching is
+/// listed as Watching. A finished show's finale on such a row puts it
+/// back at Completed, out of the rewatch, rather than leaving the
+/// record that it was finished erased.
 #[tokio::test]
-async fn mal_a_rewatchs_finale_sends_its_progress_and_keeps_the_rewatch() {
+async fn mal_a_rewatchs_finale_puts_the_row_back_at_completed() {
     let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":11}"#;
-    let server = mal_server_with_row(12, row, &["num_watched_episodes=12"], 1).await;
+    let server = mal_server_with_row(
+        12,
+        row,
+        &[
+            "num_watched_episodes=12",
+            "status=completed",
+            "is_rewatching=false",
+        ],
+        1,
+    )
+    .await;
     assert!(push_to_mal(&server, finale(12)).await.is_some());
-    let bodies = patch_bodies(&server).await;
-    assert!(
-        bodies
-            .iter()
-            .all(|b| !b.contains("status=") && !b.contains("is_rewatching=")),
-        "a rewatch keeps its status: {bodies:?}"
-    );
+}
+
+/// The same at the finale already counted: a rewatching row at the
+/// finale's number, watched again, is put back at Completed too.
+#[tokio::test]
+async fn mal_a_rewatch_at_its_finale_already_is_put_back_at_completed() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":12}"#;
+    let server =
+        mal_server_with_row(12, row, &["status=completed", "is_rewatching=false"], 1).await;
+    assert!(push_to_mal(&server, finale(12)).await.is_some());
 }
 
 #[tokio::test]
