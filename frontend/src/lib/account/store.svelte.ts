@@ -13,6 +13,13 @@
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
 import { refreshExpiredAccounts } from './refresh-flow';
+import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
+import {
+	failuresAfterHydrate,
+	failuresAfterRetry,
+	hydratedState,
+	withFailure
+} from './hydrated-state';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -20,6 +27,22 @@ class AccountStore {
 		mal: { kind: 'disconnected' },
 		inhouse: { kind: 'disconnected' }
 	});
+
+	/**
+	 * Per provider, what the last failed renewal said about the sign-in,
+	 * until the sign-in changes. Read by the sign-in notice.
+	 */
+	renewalFailure = $state<RenewalFailures>({ ...NO_RENEWAL_FAILURES });
+
+	/** Record a failed renewal. */
+	noteRenewalFailed(provider: Provider, failure: RenewalFailure): void {
+		this.renewalFailure = withFailure(this.renewalFailure, provider, failure);
+	}
+
+	/** Forget a provider's renewal failure: its sign-in changed. */
+	private clearRenewalFailure(provider: Provider): void {
+		this.renewalFailure = withFailure(this.renewalFailure, provider, null);
+	}
 
 	/**
 	 * Monotonic per-provider counter, bumped on every account state
@@ -79,36 +102,11 @@ class AccountStore {
 	 */
 	hydrate(): void {
 		const providers: Provider[] = ['anilist', 'mal', 'inhouse'];
-		const next = { ...this.byProvider };
-		for (const p of providers) {
-			const r = readPersistedAccount(p);
-			if (r.ok) {
-				next[p] = isExpired(r.account)
-					? { kind: 'expired', account: r.account }
-					: { kind: 'connected', account: r.account, lastSyncedAt: null };
-				continue;
-			}
-			if (r.kind === 'not_found') {
-				next[p] = { kind: 'disconnected' };
-				continue;
-			}
-			// The token file is on disk but the
-			// keychain is unreachable (libsecret/Keychain outage,
-			// decrypt failure, or a token refused because safeStorage
-			// fell back to basic_text).
-			// Surface as error with no account; the page's error-no-
-			// account branch now exposes Disconnect so the user can
-			// call clearToken and remove the orphan file before
-			// reconnecting. The message includes the underlying kind
-			// (encryption_unavailable / decrypt_error / …) for the
-			// diagnostics log; the page renders a friendlier copy.
-			next[p] = {
-				kind: 'error',
-				account: null,
-				// i18n-ignore: diagnostic text; no surface renders an error state's message
-				message: `Keychain read failed: ${r.detail}`
-			};
-		}
+		const prev = this.byProvider;
+		const next = { ...prev };
+		const nowSec = Math.floor(Date.now() / 1000);
+		for (const p of providers) next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
+		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
 		this.byProvider = next;
 		// Every hydrate path (cold launch AND the account page) must give a
 		// just-expired-but-refreshable provider a chance to refresh, so
@@ -135,10 +133,22 @@ class AccountStore {
 			// mid-flight disconnect / re-auth is dropped — even before the
 			// store snapshot catches up.
 			generation: (provider) => this.accountGeneration[provider],
+			onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
 			// Don't even start an expired refresh for a provider whose
 			// disconnect is mid-flight.
 			changing: (provider) => this.accountChanging[provider]
 		});
+	}
+
+	/**
+	 * Try the failed renewals of expired sign-ins again now, at the
+	 * user's request. Their failures are forgotten first: the renewal is
+	 * pending again, so its notice is withdrawn, and whatever it answers
+	 * is shown as new rather than taken for the incident already seen.
+	 */
+	retryRenewal(): Promise<void> {
+		this.renewalFailure = failuresAfterRetry(this.byProvider, this.renewalFailure);
+		return this.refreshExpired();
 	}
 
 	get connected(): Provider[] {
@@ -160,12 +170,16 @@ class AccountStore {
 	setConnecting(provider: Provider): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
+		// The failure stays while the new sign-in is under way: a
+		// cancelled or failed connect restores the expired sign-in, and
+		// its notice with it. A sign-in that succeeds clears it.
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'connecting' } };
 	}
 
 	setConnected(provider: Provider, account: PersistedAccount): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
+		this.clearRenewalFailure(provider);
 		this.byProvider = {
 			...this.byProvider,
 			[provider]: { kind: 'connected', account, lastSyncedAt: Date.now() }
@@ -175,6 +189,7 @@ class AccountStore {
 	setDisconnected(provider: Provider): void {
 		this.bumpGeneration(provider);
 		this.setChanging(provider, false);
+		this.clearRenewalFailure(provider);
 		this.byProvider = { ...this.byProvider, [provider]: { kind: 'disconnected' } };
 	}
 
@@ -211,12 +226,6 @@ class AccountStore {
 			[provider]: { ...prev, lastSyncedAt: Date.now() }
 		};
 	}
-}
-
-function isExpired(account: PersistedAccount): boolean {
-	if (account.expires_at_epoch_s <= 0) return false; // unknown → treat as valid
-	const nowSec = Math.floor(Date.now() / 1000);
-	return account.expires_at_epoch_s <= nowSec;
 }
 
 export const accountStore = new AccountStore();

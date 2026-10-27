@@ -74,6 +74,7 @@ fn pairs() -> Vec<Pair> {
         AniError::InvalidSearchOffset => AniError::InvalidSearchOffset,
         AniError::InvalidRequestBody => AniError::InvalidRequestBody,
         AniError::InvalidToken => AniError::InvalidToken,
+        AniError::RefreshRejected => AniError::RefreshRejected,
     }
 }
 

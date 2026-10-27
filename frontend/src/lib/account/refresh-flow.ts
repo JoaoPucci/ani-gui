@@ -15,6 +15,7 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
+import { classifyRenewalError, type RenewalFailure } from './renewal-failure';
 
 export interface RefreshFlowDeps {
 	refreshTokens(
@@ -36,12 +37,15 @@ export interface RefreshFlowDeps {
 	 *  raced the refresh and the write is superseded — even when the
 	 *  store's account snapshot hasn't caught up yet. */
 	generation(provider: Provider): number;
+	/** Told when a renewal fails, with what the failure says about the
+	 *  sign-in. */
+	onRenewalFailed?(provider: Provider, failure: RenewalFailure): void;
 }
 
 export type RefreshOutcome =
 	| { kind: 'refreshed'; account: PersistedAccount }
 	| { kind: 'unrefreshable' }
-	| { kind: 'failed' }
+	| { kind: 'failed'; failure: RenewalFailure }
 	| { kind: 'superseded' };
 
 /**
@@ -73,8 +77,11 @@ export async function refreshAccount(
 	let tokens;
 	try {
 		tokens = await deps.refreshTokens(provider, account.refresh_token);
-	} catch {
-		return { kind: 'failed' };
+	} catch (e) {
+		// A disconnect or re-auth landed while renewing: the failure is
+		// the old sign-in's, and must not be told of the new one.
+		if (deps.generation(provider) !== generationAtStart) return { kind: 'superseded' };
+		return { kind: 'failed', failure: classifyRenewalError(e) };
 	}
 	// The await yielded — a disconnect or re-auth may have raced the
 	// refresh. If the provider's generation moved, that change wins:
@@ -95,20 +102,22 @@ export async function refreshAccount(
 	// a rejected write for the caller (e.g. a safeStorage/IPC error). Treat
 	// a rejection the same as a resolved {ok:false}: a failed refresh, not
 	// an exception that escapes to abort the caller's best-effort flow.
-	let persisted;
+	let saved: boolean;
 	try {
-		persisted = await deps.persistAccount(provider, refreshed);
+		saved = (await deps.persistAccount(provider, refreshed)).ok;
 	} catch {
-		return { kind: 'failed' };
+		saved = false;
 	}
-	if (!persisted.ok) return { kind: 'failed' };
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
-	// safeStorage write completing. If the generation moved, don't report
-	// 'refreshed' — the caller must not reconnect the superseded account.
+	// safeStorage write completing. If the generation moved, the outcome
+	// is the old account's, saved or not: don't report 'refreshed' (the
+	// caller must not reconnect the superseded account) nor a failure
+	// (it must not be told of the newer sign-in).
 	if (deps.generation(provider) !== generationAtStart) {
 		return { kind: 'superseded' };
 	}
+	if (!saved) return { kind: 'failed', failure: 'unknown' };
 	return { kind: 'refreshed', account: refreshed };
 }
 
@@ -162,6 +171,7 @@ export async function freshBearer(
 		deps.onRefreshed(provider, outcome.account);
 		return outcome.account.access_token;
 	}
+	if (outcome.kind === 'failed') deps.onRenewalFailed?.(provider, outcome.failure);
 	return account.access_token;
 }
 
@@ -195,6 +205,7 @@ export async function refreshExpiredAccounts(deps: RefreshExpiredDeps): Promise<
 			const { account } = snapshot[provider] as Extract<ProviderState, { kind: 'expired' }>;
 			const outcome = await refreshAccount(deps, provider, account);
 			if (outcome.kind === 'refreshed') deps.onRefreshed(provider, outcome.account);
+			if (outcome.kind === 'failed') deps.onRenewalFailed?.(provider, outcome.failure);
 		})
 	);
 }

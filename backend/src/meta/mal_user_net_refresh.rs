@@ -39,12 +39,25 @@ impl MalProvider {
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
         ];
-        let tokens = self.post_token_form(&form).await?;
+        let tokens = self.post_token_form(&form).await.map_err(refresh_refusal)?;
         *guard = Some(CoalescedRefresh {
             input_refresh_token: refresh_token.to_string(),
             tokens: tokens.clone(),
         });
         Ok(tokens)
+    }
+}
+
+/// What a failed refresh grant means to the caller. A 400 or 401 from
+/// the token endpoint refuses the refresh token itself (expired,
+/// revoked, or never valid), so it reads as [`AniError::RefreshRejected`]:
+/// asking again is refused again. Everything else, a 5xx, a 429, a
+/// transport failure, says nothing about the token and keeps its own
+/// error.
+pub(in crate::meta) fn refresh_refusal(e: AniError) -> AniError {
+    match e {
+        AniError::Upstream { status: 400 | 401 } => AniError::RefreshRejected,
+        other => other,
     }
 }
 
