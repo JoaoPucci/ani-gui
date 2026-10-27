@@ -32,12 +32,17 @@ pub(crate) fn names_a_row_now(
     native: &crate::commands::play_native_resolve::NativeResolved,
 ) -> bool {
     let own = crate::commands::numbering_offset::kitsu_ep_no(former, native.numbering_offset);
-    native
-        .extra_tags
-        .iter()
-        .any(|t| match (t.parse::<f64>(), own.parse::<f64>()) {
+    carries_tag(&native.extra_tags, &own)
+}
+
+/// Whether `tags`, a listing's extra tags in the entry's numbering,
+/// carry `number`: the same value where both read as numbers ("12.50"
+/// is "12.5"), the same text otherwise.
+pub(crate) fn carries_tag(tags: &[String], number: &str) -> bool {
+    tags.iter()
+        .any(|t| match (t.parse::<f64>(), number.parse::<f64>()) {
             (Ok(a), Ok(b)) => a == b,
-            _ => *t == own,
+            _ => t == number,
         })
 }
 
