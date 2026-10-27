@@ -198,3 +198,43 @@ check() {
         }
     done
 }
+
+@test "a pnpm install from the workspace root, said explicitly, passes" {
+    for uses in ./.github/actions/pnpm-install "'./.github/actions/pnpm-install/'"; do
+        workflow "      - uses: $uses" '        with:' \
+            '          working-directory: .' '          args: --frozen-lockfile'
+        check
+        [ "$status" -eq 0 ] || {
+            echo "refused: $uses"
+            return 1
+        }
+    done
+}
+
+@test "a pnpm install that leaves its directory unsaid, or names another, is caught" {
+    workflow '      - uses: ./.github/actions/pnpm-install' '        with:' \
+        '          args: --frozen-lockfile'
+    check
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"working-directory: ."* ]]
+    for dir in frontend ./ "\${{ github.workspace }}"; do
+        workflow '      - uses: ./.github/actions/pnpm-install' '        with:' \
+            "          working-directory: '$dir'" '          args: --frozen-lockfile'
+        check
+        [ "$status" -eq 1 ] || {
+            echo "accepted: $dir"
+            return 1
+        }
+    done
+    # No `with:` at all, and path spellings GitHub resolves to the same
+    # action, are calls too.
+    for uses in ./.github/actions/pnpm-install ./.github/actions//pnpm-install \
+        ./.github/actions/./pnpm-install ./.github/../.github/actions/pnpm-install; do
+        workflow "      - uses: $uses"
+        check
+        [ "$status" -eq 1 ] || {
+            echo "unchecked: $uses"
+            return 1
+        }
+    done
+}
