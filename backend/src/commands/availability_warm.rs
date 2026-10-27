@@ -19,3 +19,14 @@ impl WarmQueue {
         });
     }
 }
+
+/// How many warm items may wait their turn.
+pub(crate) const WARM_QUEUE_MAX: usize = 256;
+
+#[cfg(test)]
+impl WarmQueue {
+    /// Items waiting their turn.
+    pub(crate) fn queued(&self) -> usize {
+        0
+    }
+}
