@@ -180,6 +180,32 @@ impl AniListProvider {
         tokens: &Tokens,
         body: &serde_json::Value,
     ) -> Result<bytes::Bytes> {
+        // A write is sent as the user made it, never folded into another.
+        if is_mutation(body) {
+            return self.post_graphql_once(tokens, body).await;
+        }
+        // The same query for the same bearer, sent while one is out,
+        // waits for that answer (`crate::meta::inflight`).
+        let key = format!(
+            "{}\u{0}{}",
+            crate::meta::anilist::request_key(
+                crate::meta::anilist_gate::current_class(),
+                self.api_url(),
+                body
+            ),
+            tokens.access_token
+        );
+        ACCOUNT_IN_FLIGHT
+            .run(key, || self.post_graphql_once(tokens, body))
+            .await
+    }
+
+    /// One authenticated request, sent through the gate.
+    async fn post_graphql_once(
+        &self,
+        tokens: &Tokens,
+        body: &serde_json::Value,
+    ) -> Result<bytes::Bytes> {
         // AniList counts this client, not the token: the account's
         // requests spend the same budget, through the same gate, as
         // the public ones.
@@ -208,6 +234,18 @@ impl AniListProvider {
         }
         resp.bytes().await.map_err(|_| AniError::Network)
     }
+}
+
+/// The account's queries in flight, shared by identical ones.
+static ACCOUNT_IN_FLIGHT: std::sync::LazyLock<
+    crate::meta::inflight::Inflight<Result<bytes::Bytes>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Whether `body` is a GraphQL mutation: a write.
+fn is_mutation(body: &serde_json::Value) -> bool {
+    body.get("query")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|q| q.trim_start().starts_with("mutation"))
 }
 
 #[async_trait]
