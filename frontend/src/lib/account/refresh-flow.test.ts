@@ -431,4 +431,26 @@ describe('a failed renewal after the account changed', () => {
 		);
 		expect(out).toEqual({ kind: 'superseded' });
 	});
+
+	it.each([
+		['rejects', () => Promise.reject(new Error('keychain'))],
+		['refuses', () => Promise.resolve({ ok: false, kind: 'io_error' })]
+	])('is superseded when the save %s after the account changed', async (_n, persist) => {
+		let gen = 0;
+		const out = await refreshAccount(
+			{
+				refreshTokens: vi
+					.fn()
+					.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 9 }),
+				persistAccount: vi.fn().mockImplementation(() => {
+					gen = 1;
+					return persist();
+				}),
+				generation: () => gen
+			},
+			'mal',
+			account()
+		);
+		expect(out).toEqual({ kind: 'superseded' });
+	});
 });

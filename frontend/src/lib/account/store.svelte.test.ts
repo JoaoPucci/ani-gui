@@ -427,7 +427,10 @@ describe('accountStore.hydrate after a refused bearer', () => {
 			}
 		};
 		accountStore.setExpired('mal', payload({ access_token: 'refused', refresh_token: 'rt' }));
+		accountStore.noteRenewalFailed('mal', 'rejected');
 		accountStore.hydrate();
 		expect(accountStore.byProvider.mal.kind).toBe('connected');
+		// A different sign-in owes nothing to the old one's failure.
+		expect(accountStore.renewalFailure.mal).toBeNull();
 	});
 });
