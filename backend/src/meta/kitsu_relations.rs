@@ -98,6 +98,8 @@ struct NodeAttributes {
     subtype: Option<String>,
     status: Option<String>,
     episode_count: Option<u32>,
+    #[serde(default)]
+    start_date: Option<String>,
 }
 
 /// Parse a `media-relationships?include=destination` page. A relation
@@ -135,7 +137,7 @@ pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
             subtype: node.attributes.subtype.clone(),
             status: node.attributes.status.clone(),
             episode_count: node.attributes.episode_count,
-            start: None,
+            start: node.attributes.start_date.clone(),
             kind: dst.kind,
             id: dst.id,
         });
@@ -162,7 +164,10 @@ impl KitsuClient {
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
                 ("include", "destination".to_string()),
-                ("fields[anime]", "subtype,status,episodeCount".to_string()),
+                (
+                    "fields[anime]",
+                    "subtype,status,episodeCount,startDate".to_string(),
+                ),
                 ("fields[manga]", "subtype,status".to_string()),
                 ("page[limit]", RELATIONS_PAGE_LIMIT.to_string()),
             ])
