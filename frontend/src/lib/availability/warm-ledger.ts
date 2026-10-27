@@ -49,8 +49,11 @@ export function createWarmLedger(retryMs: number = WARM_RETRY_MS): WarmLedger {
 			for (const key of due) sent.set(key, now);
 			return due;
 		},
-		forget(keys) {
-			for (const key of keys) sent.delete(key);
+		forget(keys, sentAt) {
+			// A key handed in again since is that later warm's to keep.
+			for (const key of keys) {
+				if (sentAt === undefined || sent.get(key) === sentAt) sent.delete(key);
+			}
 		}
 	};
 }

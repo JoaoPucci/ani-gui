@@ -1657,8 +1657,9 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
     }
 }
 
-/// Warm the cache for a set of titles, and return once the warm has
-/// walked them. Each entry carries the data needed to run
+/// Warm the cache for a set of titles, and return once the warm's
+/// worker is idle — every row it was handed walked, or left out of a
+/// full queue. Each entry carries the data needed to run
 /// check_availability (title + alt_titles + mode + kitsu_id). The
 /// items join the state's warm queue (see `availability_warm`):
 /// entries with a fresh cache row are skipped, the rest are probed

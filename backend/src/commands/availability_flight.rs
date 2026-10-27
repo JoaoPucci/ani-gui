@@ -26,7 +26,14 @@
 //! - **Displacing.** An interactive caller finding a background walk
 //!   out starts an interactive one in its place. The background walk
 //!   ends where it is, and its callers move onto the interactive walk
-//!   rather than losing their answer.
+//!   rather than losing their answer. Being interactive, that walk
+//!   ends when its last caller leaves, like any other.
+//! - **Older than the row.** A walk that set off before a
+//!   cache-skipping refresh wrote the row is joined by nobody: a
+//!   lookup asked after the refresh starts a walk of its own in its
+//!   place, as above, so it is never handed an answer older than the
+//!   row it would have read. The older walk's own write is already
+//!   refused by the row's write ordering (`availability_refresh`).
 //! - **The first caller leaves while others wait.** The walk goes on;
 //!   whoever is still waiting gets its verdict.
 //! - **The last caller leaves an interactive walk.** It ends: nobody
@@ -39,14 +46,17 @@
 //! - **The walk finishes.** It leaves the table before it publishes,
 //!   so a caller arriving afterwards starts a walk of its own — which
 //!   finds the verdict cached, or walks again where there was none.
-//! - **The walk panics.** Its entry is removed as the task unwinds,
-//!   so nothing is left behind, and its callers fail the way a lookup
-//!   whose walk panicked always did.
+//! - **The walk panics.** Release builds abort the process on a panic,
+//!   so this is for debug builds and tests: the entry is removed as the
+//!   task unwinds, so nothing is left behind, and its callers panic in
+//!   turn, as a lookup whose walk panicked always did.
 //!
 //! The walk is the first caller's: its arguments, and the AniList
-//! class it was asked in. Every caller of a row asks about the same
-//! show — the row is keyed on it — and the verdict is written to the
-//! one row whoever asked.
+//! class it was asked in. A caller joining it takes the verdict the
+//! first caller's arguments reached. Every surface that asks sends the
+//! same arguments for a show — its titles, count, year and subtype,
+//! from the same Kitsu entry — and the verdict is written to the one
+//! row whoever asked.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -75,6 +85,8 @@ enum Slot {
 struct Flight {
     id: u64,
     interactive: bool,
+    /// The row's refresh generation when the walk set off.
+    generation: u64,
     slot: watch::Sender<Slot>,
     walk: AbortHandle,
     waiters: usize,
@@ -166,10 +178,11 @@ impl AvailabilityFlights {
         args: &AvailabilityArgs,
     ) -> (watch::Receiver<Slot>, Waiting) {
         let interactive = !args.background;
+        let generation = state.availability_refreshes.generation(key);
         let mut table = self.table();
         let mut displaced = None;
         if let Some(flight) = table.flights.get_mut(key) {
-            if joins(flight.interactive, interactive) {
+            if flight.generation == generation && joins(flight.interactive, interactive) {
                 let was_unwatched = flight.waiters == 0;
                 flight.waiters += 1;
                 let joined = (flight.slot.subscribe(), self.waiter(key, flight.id));
@@ -197,6 +210,7 @@ impl AvailabilityFlights {
             Flight {
                 id,
                 interactive,
+                generation,
                 slot,
                 walk,
                 waiters: 1,

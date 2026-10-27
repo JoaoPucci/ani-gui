@@ -39,6 +39,7 @@ export function makeFetchAvailability(
 			episode_count: match.episode_count ?? undefined,
 			year: yearFromKitsuRef(match) ?? undefined,
 			kitsu_id: match.id,
+			subtype: match.subtype ?? undefined,
 			status: match.status ?? undefined,
 			// Default true: cache fills are opportunistic — the scraper
 			// gate paces them and skips them while its breaker is open.

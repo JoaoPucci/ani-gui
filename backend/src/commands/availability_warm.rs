@@ -10,8 +10,8 @@
 //!
 //! - A row already queued, or being walked, is not queued again.
 //! - The queue holds at most [`WARM_QUEUE_MAX`] rows. One past that is
-//!   left out and logged; it is uncached still, so the next list that
-//!   shows it hands it in again.
+//!   left out and logged. It is uncached still, so a list showing it
+//!   after the renderer's retry window hands it in again.
 //! - The worker's walk goes through [`check_shared`], so a lookup of
 //!   the row the warm is walking joins it, and the warm joins a
 //!   lookup's walk of the row it comes to.

@@ -58,9 +58,8 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 	// handed in, until a retry is due (see warm-ledger.ts).
 	const warmKey = (id: string) => `${mode}:${id}`;
 	const uncached = items.filter((i) => !(i.id in cached));
-	const due = new Set(
-		warmLedger.take([...new Set(uncached.map((i) => warmKey(i.id)))], Date.now())
-	);
+	const now = Date.now();
+	const due = new Set(warmLedger.take([...new Set(uncached.map((i) => warmKey(i.id)))], now));
 	const toWarm = uncached
 		.filter((i) => due.has(warmKey(i.id)))
 		.map((i) => ({
@@ -75,7 +74,7 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 		}));
 	if (toWarm.length > 0) {
 		// A warm that never reached the backend is due again at once.
-		void availabilityWarm(toWarm).catch(() => warmLedger.forget([...due]));
+		void availabilityWarm(toWarm).catch(() => warmLedger.forget([...due], now));
 	}
 
 	return filtered;
