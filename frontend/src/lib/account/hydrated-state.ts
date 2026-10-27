@@ -95,11 +95,18 @@ export function failuresAfterRetry(
 	return out;
 }
 
-/** Whether a hydrate's `next` state is a different sign-in state than
- *  `prev`, one an in-flight result must not be credited to. For now:
- *  never. */
-export function isSignInChange(_prev: ProviderState, _next: ProviderState): boolean {
-	void _prev;
-	void _next;
-	return false;
+/** The bearer a state holds, or `null` with no account. */
+function bearerOf(state: ProviderState): string | null {
+	return 'account' in state && state.account ? state.account.access_token : null;
+}
+
+/**
+ * Whether a hydrate's `next` state is a different sign-in state than
+ * `prev`: another kind, or another bearer. A result already in flight
+ * for `prev` must not be credited to it, so hydrate moves the
+ * provider's generation, as every other transition does. The same
+ * sign-in read again is no change, and its renewal stays credited.
+ */
+export function isSignInChange(prev: ProviderState, next: ProviderState): boolean {
+	return prev.kind !== next.kind || bearerOf(prev) !== bearerOf(next);
 }
