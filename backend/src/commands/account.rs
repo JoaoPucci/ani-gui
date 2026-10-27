@@ -65,6 +65,8 @@ pub struct AccountWriteLocks {
     inner: Arc<ShowLockMap>,
     /// Which connection of each tracker a cache write belongs to.
     pub(crate) epochs: super::account_epoch::AccountEpochs,
+    /// Which user each bearer belongs to.
+    pub(crate) owners: super::account_owner::OwnerMemo,
 }
 
 impl AccountWriteLocks {
@@ -216,6 +218,23 @@ pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> R
     provider.me(tokens).await
 }
 
+/// The user `tokens` belongs to on `kind`, asked of the tracker once
+/// per bearer ([`super::account_owner::OwnerMemo`]).
+///
+/// # Errors
+/// [`AniError::Metadata`] for a kind with no provider; otherwise those
+/// of `me()`.
+pub async fn owner(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> Result<String> {
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    state
+        .account_write_locks
+        .owners
+        .owner(kind, provider.as_ref(), tokens)
+        .await
+}
+
 /// The bearer's own list: its owner from `me()` — the only identity the
 /// backend trusts — then its full list (all statuses), written through
 /// the cache under that owner. Returns the freshly-fetched entries.
@@ -243,8 +262,12 @@ pub(crate) async fn list_for_bearer_via(
 ) -> Result<Vec<ListEntry>> {
     // The connection the request arrived in, before its first wait.
     let began = state.account_write_locks.epochs.current(kind);
-    let profile = provider.me(tokens).await?;
-    list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
+    let owner = state
+        .account_write_locks
+        .owners
+        .owner(kind, provider, tokens)
+        .await?;
+    list_all_and_cache_from(state, kind, provider, tokens, &owner, began).await
 }
 
 /// The list read and its write-through for `user_id`, with the provider
@@ -295,6 +318,7 @@ pub fn cached_list(
 
 /// Drop every cached row for `(kind, user_id)` — called on disconnect.
 pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> Result<()> {
+    state.account_write_locks.owners.forget(kind);
     state.account_write_locks.epochs.purge(kind, || {
         crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
     })
@@ -307,6 +331,7 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
 /// internal secret so a cross-origin tab can't wipe a stranger's cache by
 /// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
+    state.account_write_locks.owners.forget(kind);
     state.account_write_locks.epochs.purge(kind, || {
         crate::account::cache::clear_provider(&state.cache_pool, kind)
     })
@@ -999,12 +1024,17 @@ pub(crate) async fn write_through(
     began: u64,
 ) -> Result<ListEntry> {
     let entry = provider.update_entry(tokens, native, update).await?;
-    if let Ok(profile) = provider.me(tokens).await {
+    if let Ok(owner) = state
+        .account_write_locks
+        .owners
+        .owner(kind, provider, tokens)
+        .await
+    {
         let _ = state
             .account_write_locks
             .epochs
             .write_if_current(kind, began, || {
-                upsert_cached_entry(state, kind, &profile.user_id, &entry)
+                upsert_cached_entry(state, kind, &owner, &entry)
             });
     }
     Ok(entry)
