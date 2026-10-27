@@ -103,7 +103,7 @@
 	"list_episode_label": "Episódio",
 	"list_rate_limited": "Os trackers estão limitando as requisições. Tente de novo em instantes.",
 	"list_remove": "Remover da lista",
-	"list_rewatch_mal_note": "O MyAnimeList não tem um status de reassistir, então mantém esta entrada como está.",
+	"list_rewatch_mal_note": "O MyAnimeList não tem um status de reassistir, então o status desta entrada lá não muda.",
 	"list_removed": "Removido da sua lista",
 	"list_removing": "Removendo…",
 	"list_save": "Salvar",

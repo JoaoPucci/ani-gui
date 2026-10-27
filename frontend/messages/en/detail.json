@@ -62,7 +62,7 @@
 	"list_episode_label": "Episode",
 	"list_rate_limited": "Trackers are rate-limiting. Try again in a moment.",
 	"list_remove": "Remove from list",
-	"list_rewatch_mal_note": "MyAnimeList has no rewatch status, so it keeps this entry as it is.",
+	"list_rewatch_mal_note": "MyAnimeList has no rewatch status, so the entry's status there stays as it is.",
 	"list_removed": "Removed from your list",
 	"list_removing": "Removing…",
 	"list_save": "Save",
