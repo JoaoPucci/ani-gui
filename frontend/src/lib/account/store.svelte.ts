@@ -18,6 +18,7 @@ import {
 	failuresAfterHydrate,
 	failuresAfterRetry,
 	hydratedState,
+	isSignInChange,
 	withFailure
 } from './hydrated-state';
 
@@ -105,7 +106,10 @@ class AccountStore {
 		const prev = this.byProvider;
 		const next = { ...prev };
 		const nowSec = Math.floor(Date.now() / 1000);
-		for (const p of providers) next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
+		for (const p of providers) {
+			next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
+			if (isSignInChange(prev[p], next[p])) this.bumpGeneration(p);
+		}
 		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
 		this.byProvider = next;
 		// Every hydrate path (cold launch AND the account page) must give a

@@ -94,3 +94,12 @@ export function failuresAfterRetry(
 	}
 	return out;
 }
+
+/** Whether a hydrate's `next` state is a different sign-in state than
+ *  `prev`, one an in-flight result must not be credited to. For now:
+ *  never. */
+export function isSignInChange(_prev: ProviderState, _next: ProviderState): boolean {
+	void _prev;
+	void _next;
+	return false;
+}
