@@ -261,7 +261,7 @@ pub use titles::same_title;
 #[path = "play_native_appended_slots.rs"]
 mod slots;
 use slots::past_ids;
-pub use slots::{extra_for_slot, tag_past};
+pub use slots::{extra_for_slot, past_an_unread_count, tag_past};
 
 #[cfg(test)]
 #[path = "play_native_appended_test.rs"]

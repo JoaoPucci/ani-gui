@@ -519,6 +519,7 @@ where
     let mut resp = CreateSessionResponse {
         episode: Some(episode),
         former_episode,
+        episode_unverified: cached_resolution.episode_unverified,
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);
@@ -554,11 +555,14 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
             native, "",
         )),
         former_episode: crate::commands::play_native_merge::former_number(native),
+        episode_unverified: crate::commands::play_native_appended::past_an_unread_count(
+            native.unread_past,
+            native.resolved_slot,
+        ),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
         versions: native.versions.clone(),
         version: native.version,
-        episode_unverified: false,
     }
 }
 
