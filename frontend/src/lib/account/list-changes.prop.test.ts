@@ -22,7 +22,12 @@ describe('changeOf, by property', () => {
 				if (sent.length === 0) {
 					expect(change).toBeNull();
 				} else {
-					expect(change).toEqual({ kitsuId: '7', providers: sent, source });
+					expect(change).toEqual({
+						kitsuId: '7',
+						providers: sent,
+						landed: PROVIDERS.filter((p) => byTracker[p] === 'landed'),
+						source
+					});
 				}
 			})
 		);
@@ -37,7 +42,7 @@ describe('railNeedsReread, by property', () => {
 				fc.subarray(PROVIDERS),
 				(changed, shown) => {
 					const wanted = railNeedsReread(
-						{ kitsuId: '7', providers: changed, source: 'editor' },
+						{ kitsuId: '7', providers: changed, landed: changed, source: 'editor' },
 						shown
 					);
 					expect(wanted).toBe(changed.some((p) => shown.includes(p)));

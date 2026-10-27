@@ -332,7 +332,12 @@ describe('the views a settled progress write tells', () => {
 			return null;
 		});
 		expect(await announcedDuring(() => syncWatchedToTrackers('kitsu-12', 7))).toEqual([
-			{ kitsuId: 'kitsu-12', providers: ['anilist', 'mal'], source: 'progress' }
+			{
+				kitsuId: 'kitsu-12',
+				providers: ['anilist', 'mal'],
+				landed: ['anilist'],
+				source: 'progress'
+			}
 		]);
 	});
 
@@ -348,7 +353,9 @@ describe('the views a settled progress write tells', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		await write;
 		stop();
-		expect(heard).toEqual([{ kitsuId: 'kitsu-52', providers: ['anilist'], source: 'progress' }]);
+		expect(heard).toEqual([
+			{ kitsuId: 'kitsu-52', providers: ['anilist'], landed: ['anilist'], source: 'progress' }
+		]);
 	});
 
 	it('are told nothing when the held write was dropped for an account change', async () => {

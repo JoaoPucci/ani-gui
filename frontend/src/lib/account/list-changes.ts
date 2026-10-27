@@ -20,11 +20,13 @@ export type WriteEnd = 'landed' | 'failed' | 'dropped';
 /** Which surface made the write. */
 export type WriteSource = 'editor' | 'progress';
 
-/** A write of `kitsuId` that settled on `providers`, the trackers whose
- *  list it may have changed. */
+/** A write of `kitsuId` that settled on `providers`: the trackers it
+ *  was sent to, whose list it may have changed — `landed` those that
+ *  took it, the rest refused it or failed after it went out. */
 export interface ListChange {
 	kitsuId: string;
 	providers: Provider[];
+	landed: Provider[];
 	source: WriteSource;
 }
 
@@ -44,7 +46,8 @@ export function changeOf(
 	// A dropped write sent nothing; a failed one may still have reached
 	// the tracker before its answer was lost, so its list is read again.
 	const providers = TRACKERS.filter((p) => ends[p] === 'landed' || ends[p] === 'failed');
-	return providers.length === 0 ? null : { kitsuId, providers, source };
+	const landed = TRACKERS.filter((p) => ends[p] === 'landed');
+	return providers.length === 0 ? null : { kitsuId, providers, landed, source };
 }
 
 /** Whether a view showing the lists of `shown` reads them again for

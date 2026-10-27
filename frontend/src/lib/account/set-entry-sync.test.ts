@@ -506,14 +506,16 @@ describe('the views a settled editor write tells', () => {
 			syncSetEntry('kitsu-12', { status: 'planning', statusChanged: true, progress: 0 })
 		);
 		expect(heard).toEqual([
-			{ kitsuId: 'kitsu-12', providers: ['anilist', 'mal'], source: 'editor' }
+			{ kitsuId: 'kitsu-12', providers: ['anilist', 'mal'], landed: ['anilist'], source: 'editor' }
 		]);
 	});
 
 	it('are told once a removal settles', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		const heard = await announcedDuring(() => syncRemoveEntry('kitsu-12'));
-		expect(heard).toEqual([{ kitsuId: 'kitsu-12', providers: ['anilist'], source: 'editor' }]);
+		expect(heard).toEqual([
+			{ kitsuId: 'kitsu-12', providers: ['anilist'], landed: ['anilist'], source: 'editor' }
+		]);
 	});
 
 	it('are told nothing for a save every tracker dropped unsent', async () => {

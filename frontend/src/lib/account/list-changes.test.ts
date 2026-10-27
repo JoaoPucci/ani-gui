@@ -30,6 +30,7 @@ describe('changeOf', () => {
 		expect(changeOf('12', 'editor', { mal: 'failed', anilist: 'landed' })).toEqual({
 			kitsuId: '12',
 			providers: ['anilist', 'mal'],
+			landed: ['anilist'],
 			source: 'editor'
 		});
 	});
@@ -38,6 +39,7 @@ describe('changeOf', () => {
 		expect(changeOf('12', 'progress', { anilist: 'dropped', mal: 'landed' })).toEqual({
 			kitsuId: '12',
 			providers: ['mal'],
+			landed: ['mal'],
 			source: 'progress'
 		});
 	});
@@ -48,9 +50,13 @@ describe('changeOf', () => {
 	});
 });
 
-const change = (providers: ListChange['providers'], source: ListChange['source'] = 'editor') => ({
+const change = (
+	providers: ListChange['providers'],
+	source: ListChange['source'] = 'editor'
+): ListChange => ({
 	kitsuId: '12',
 	providers,
+	landed: providers,
 	source
 });
 
