@@ -15,7 +15,7 @@ import {
 } from './save-when-allowed';
 import { coverFields, fieldsLeft, type Coverage } from './write-fields';
 import { toastStore } from '$lib/toasts/store.svelte';
-import { followAccount, type ListedAccount } from './held-account';
+import { accountLeft, followAccount, type ListedAccount } from './held-account';
 import { after, noticeBusy } from './busy-notice';
 
 /** Per tracker and show: the count of writes started, the newest write
@@ -100,7 +100,17 @@ export function saveWhenTrackerAllows<T>(
 		// Let go of at the first look after it is no longer wanted — its
 		// account changed, or newer writes took every field — rather than
 		// when the wait is up.
-		wait: (ms) => waitWhileWanted(ms, { after, stillWanted: () => held.left().length > 0 }),
+		// Ended early only on what cannot come back: newer writes took every
+		// field, or the tracker is disconnected or another user's. A sign-in
+		// or an account change under way may end on the same user; the
+		// checks at the end of the wait and before the send decide then.
+		wait: (ms) =>
+			waitWhileWanted(ms, {
+				after,
+				stillWanted: () =>
+					fieldsLeft(coverage.get(key), fields, generation).length > 0 &&
+					!accountLeft(provider, listed)
+			}),
 		stillWanted: () => held.left().length > 0
 	}).finally(() => {
 		// Landed, failed or superseded: its notice goes with it, unless a

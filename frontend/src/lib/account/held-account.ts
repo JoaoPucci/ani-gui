@@ -67,3 +67,41 @@ export function standingOf(
 	if (listed === null || listed === undefined || now === null || now === undefined) return 'gone';
 	return now === listed ? 'same' : 'other';
 }
+
+/** Where a tracker's account is now, as `hasLeft` reads it. */
+export interface AccountNow {
+	/** An account change is under way. */
+	changing: boolean;
+	/** A sign-in is under way. */
+	connecting: boolean;
+	/** The tracker is disconnected. */
+	disconnected: boolean;
+	/** The user its account names, if it names one. */
+	user: string | null | undefined;
+}
+
+/**
+ * Whether a tracker has for good left the user a write was listed under
+ * — so a held write need not wait for its end-of-wait check to know it
+ * is dropped. Disconnected, or another user's account, is final; a
+ * sign-in or an account change under way is not, since either can end
+ * on the same user. A write listed under no user was never that user's.
+ */
+export function hasLeft(listedUser: string | null | undefined, now: AccountNow): boolean {
+	if (listedUser === null || listedUser === undefined) return true;
+	if (now.changing || now.connecting) return false;
+	return now.disconnected || now.user !== listedUser;
+}
+
+/** `hasLeft` for `provider`'s account as the store holds it now; never
+ *  for a write with no listing, which follows no account. */
+export function accountLeft(provider: Provider, listed?: ListedAccount): boolean {
+	if (!listed) return false;
+	const state = accountStore.byProvider[provider];
+	return hasLeft(listed.user, {
+		changing: accountStore.accountChanging[provider],
+		connecting: state?.kind === 'connecting',
+		disconnected: !state || state.kind === 'disconnected',
+		user: state && 'account' in state && state.account ? state.account.user_id : null
+	});
+}

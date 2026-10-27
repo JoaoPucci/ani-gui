@@ -104,16 +104,21 @@ export function waitWhileWanted(
 	}
 ): Promise<void> {
 	const step = deps.checkEvery ?? 1000;
+	// Counted in the timer's own steps, not read from the clock: a clock
+	// that jumps cannot make the wait longer than it was told.
+	let left = Math.max(0, ms);
 	return new Promise((resolve) => {
-		const deadline = Date.now() + ms;
 		const look = () => {
-			const left = deadline - Date.now();
 			if (left <= 0 || !deps.stillWanted()) {
 				resolve();
 				return;
 			}
-			deps.after(Math.min(step, left), look);
+			const next = Math.min(step, left);
+			left -= next;
+			deps.after(next, look);
 		};
-		deps.after(Math.min(step, Math.max(0, ms)), look);
+		const first = Math.min(step, left);
+		left -= first;
+		deps.after(first, look);
 	});
 }
