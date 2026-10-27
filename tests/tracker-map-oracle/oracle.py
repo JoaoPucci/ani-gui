@@ -314,9 +314,9 @@ def special_rule(sp):
     over the whole season from the entry's first episode, as many as the
     special has episodes, one after another, none of them the entry's
     last; no other related entry could be the special; and the special
-    started on a whole real day inside the entry's run, by month. Its
-    episodes are those extras, where the tracker lists them, never
-    completing the entry."""
+    started on a whole real day inside the entry's run, by month, on the
+    side of the season's start its slot is on. Its episodes are those
+    extras, where the tracker lists them, never completing the entry."""
     k = sp["special"]["episodes"] or 0
     start = whole_day(sp["special"]["start"])
     if not k or not start:
@@ -340,7 +340,15 @@ def special_rule(sp):
             continue
         if after[0] + k >= seg["entry_total"]:
             continue
-        fits.append({
+        # A prologue's slot is taken only within two days of the season's
+        # start; a recap's only once the season, as the dates settle it,
+        # started first.
+        season_start = f["related"].get("start")
+        if after[0] == 0 and not slack(season_start, start):
+            continue
+        if after[0] > 0 and not started_before(season_start, start):
+            continue
+        fit = {
             "entry": seg["entry"],
             "entry_total": seg["entry_total"],
             "entry_finished": seg["entry_finished"],
@@ -348,7 +356,9 @@ def special_rule(sp):
             "kitsu_to": k,
             "lead": after[0],
             "extras_after": [],
-        })
+        }
+        if fit not in fits:
+            fits.append(fit)
     if len(fits) != 1:
         return None
     return {"shape": "special_extras", "segments": fits}
@@ -786,9 +796,13 @@ def special_family(rng):
         count = rng.choice([11, 12, 13, 24, 25])
         k = rng.choice([1, 1, 1, 2])
         w = rng.choice([0, 0, 0, rng.randint(1, count - 1)])
-        tweak = rng.choice(["ok", "ok", "ok", "ok", "contested", "count_mismatch", "apart", "last_slot", "before_run", "after_run", "partial_date", "undated", "two_fits", "season_conflict", "counts_agree", "unrelated"])
+        tweak = rng.choice(["ok", "ok", "ok", "ok", "contested", "count_mismatch", "apart", "last_slot", "before_run", "after_run", "partial_date", "undated", "two_fits", "season_conflict", "counts_agree", "unrelated", "prologue_late", "recap_early", "twice"])
         if tweak == "last_slot":
             w = count
+        elif tweak == "prologue_late":
+            w = 0
+        elif tweak == "recap_early":
+            w = max(w, 1)
         # The entry's extras, each after Kitsu's episode `w`: an Episode 0,
         # or "w.5", "w.6" — distinct numbers after the same episode.
         extras = ["0" if (w == 0 and i == 0) else f"{w}.{i + 5}" for i in range(k)]
@@ -805,7 +819,11 @@ def special_family(rng):
             ev["parts"] = [season, kitsu(72, n_extras, "2015-04-05", "2015-04-05")]
         if tweak == "counts_agree":
             ev = evidence(season, dict(entry, episodes=count), listed=listed)
-        start = {"before_run": "2014-12-28", "after_run": "2015-04-02", "partial_date": "2015-01", "undated": None}.get(tweak, rng.choice(["2015-01-04", "2015-01-10", "2015-03-29"]))
+        # A prologue starts by the season's start (2015-01-11, two days'
+        # slack); a recap after it.
+        fitting = rng.choice(["2015-01-04", "2015-01-10", "2015-01-13"]) if w == 0 else rng.choice(["2015-01-12", "2015-02-20", "2015-03-29"])
+        start = {"before_run": "2014-12-28", "after_run": "2015-04-02", "partial_date": "2015-01", "undated": None,
+                 "prologue_late": "2015-01-14", "recap_early": "2015-01-10"}.get(tweak, fitting)
         special_count = k + 1 if tweak == "count_mismatch" else k
         sp = {
             "special": kitsu(73, special_count, start or "", start or ""),
@@ -816,7 +834,10 @@ def special_family(rng):
             sp["special"]["end"] = None
         if tweak == "two_fits":
             other = evidence(kitsu(74, count, "2015-01-11", "2015-03-29"), dict(entry, id=75), listed=listed)
-            sp["related"].append({"related": kitsu(74, count), "evidence": other, "contested": False})
+            sp["related"].append({"related": kitsu(74, count, "2015-01-11", "2015-03-29"), "evidence": other, "contested": False})
+        if tweak == "twice":
+            # Kitsu relating the special to the season twice, in two roles.
+            sp["related"].append(dict(sp["related"][0]))
         if tweak == "unrelated":
             # A related entry whose own entry has no extras at all.
             sp["related"].insert(0, {"related": kitsu(76, 24), "evidence": evidence(kitsu(76, 24), show(77, 24)), "contested": False})

@@ -186,7 +186,7 @@ class Specials(unittest.TestCase):
         self.assertEqual(oracle.targets(m, 1), [[19603, 1, False, []], None])
 
     def test_a_half_episode_is_the_episode_after_the_one_it_follows(self):
-        m = oracle.predict_special(self.ubw(listed=[str(n) for n in range(1, 13)] + ["6.5"]))
+        m = oracle.predict_special(self.ubw(special_start="2014-11-16", listed=[str(n) for n in range(1, 13)] + ["6.5"]))
         self.assertEqual(oracle.targets(m, 1)[0], [19603, 7, False, []])
 
     def test_short_of_the_rule_the_special_is_filed_nowhere(self):
@@ -194,6 +194,8 @@ class Specials(unittest.TestCase):
             self.ubw(contested=True),
             self.ubw(special_start="2014-10"),
             self.ubw(special_start="2014-09-30"),
+            self.ubw(special_start="2014-10-20"),
+            self.ubw(special_start="2014-10-05", listed=[str(n) for n in range(1, 13)] + ["6.5"]),
             self.ubw(listed=[str(n) for n in range(1, 13)] + ["12.5"]),
             self.ubw(listed=["0", "6.5"] + [str(n) for n in range(1, 13)]),
         ):

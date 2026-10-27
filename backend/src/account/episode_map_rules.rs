@@ -23,6 +23,9 @@ mod parts_rule;
 #[path = "episode_map_rivals.rs"]
 mod rivals;
 
+pub(crate) use days::within_slack;
+pub(crate) use order::started_before;
+
 use chain_rule::chain;
 use extras_rule::extras;
 #[cfg(test)]

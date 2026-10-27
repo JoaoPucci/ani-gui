@@ -11,7 +11,7 @@ use super::dates::month;
 /// earlier day. A date missing, impossible, a year alone, or a month
 /// named alone in the other's month, and the same day, settle nothing.
 #[must_use]
-pub(super) fn started_before(later: Option<&str>, earlier: Option<&str>) -> bool {
+pub(crate) fn started_before(later: Option<&str>, earlier: Option<&str>) -> bool {
     let (Some(l), Some(e)) = (month(later), month(earlier)) else {
         return false;
     };

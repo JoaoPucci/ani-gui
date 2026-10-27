@@ -46,26 +46,52 @@ pub struct SpecialEvidence {
 /// has episodes, one after another, none of them the entry's last; no
 /// other Kitsu entry related to it could be the special; and the
 /// special started on a whole, real day inside the entry's run, by
-/// month. Its episodes are those extras, in the place the tracker lists
-/// them — whatever its own date, which only has to lie in the run — and
-/// it never completes the entry.
+/// month, and on the side of the season's start its slot is on
+/// ([`dated_for_slot`]). Its episodes are those extras, in the place
+/// the tracker lists them, and it never completes the entry.
 #[must_use]
 pub fn special_extras(evidence: &SpecialEvidence) -> Option<EpisodeMap> {
     let count = evidence.special.episodes.filter(|n| *n > 0)?;
     let start = whole_day(evidence.special.start.as_deref())?;
-    let mut held = evidence
+    let mut held: Vec<Segment> = Vec::new();
+    for filing in evidence
         .related
         .iter()
         .filter(|f| !f.contested && in_run(start, &f.entry))
-        .filter_map(|f| slots(f, count));
-    let segment = held.next()?;
-    if held.next().is_some() {
-        return None;
+    {
+        let Some(segment) = slots(filing, count) else {
+            continue;
+        };
+        if !dated_for_slot(start, filing.related.start.as_deref(), segment.lead) {
+            continue;
+        }
+        // One entry Kitsu relates the special to twice holds it once.
+        if !held.contains(&segment) {
+            held.push(segment);
+        }
     }
+    let [segment] = held.as_slice() else {
+        return None;
+    };
     Some(EpisodeMap {
         shape: Shape::SpecialExtras,
-        segments: vec![segment],
+        segments: vec![segment.clone()],
     })
+}
+
+/// Whether a special that started on `start` can take the slot after
+/// Kitsu's episode `after` of a season that started on `season`: the
+/// slot before the season's first episode is a prologue's, which a
+/// special takes only where it started no more than the sources' slack
+/// after the season; a slot after one of the season's episodes is a
+/// recap's, which a special takes only where the season, as the dates
+/// settle it, started first.
+fn dated_for_slot(start: &str, season: Option<&str>, after: u32) -> bool {
+    if after == 0 {
+        super::episode_map_rules::within_slack(season, Some(start))
+    } else {
+        super::episode_map_rules::started_before(season, Some(start))
+    }
 }
 
 /// The segment filing the special's `count` episodes as the extras

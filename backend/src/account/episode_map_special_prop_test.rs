@@ -40,7 +40,7 @@ fn shape() -> BoxedStrategy<Shape> {
 fn filing() -> BoxedStrategy<RelatedFiling> {
     (
         (1u32..=3, 5u32..=24, prop::collection::vec(0u32..=6, 0..=3)),
-        (date(), date(), shape(), any::<bool>()),
+        (date(), date(), shape(), any::<bool>(), date()),
         (
             prop_oneof![6 => Just(0u32), 1 => 1u32..=3],
             prop_oneof![6 => Just(1u32), 1 => 2u32..=3],
@@ -48,7 +48,11 @@ fn filing() -> BoxedStrategy<RelatedFiling> {
         ),
     )
         .prop_map(
-            |((id, season, mut after), (start, end, shape, finished), (lead, from, elsewhere))| {
+            |(
+                (id, season, mut after),
+                (start, end, shape, finished, season_start),
+                (lead, from, elsewhere),
+            )| {
                 after.sort_unstable();
                 let total = season + u32::try_from(after.len()).unwrap_or(0);
                 let entry = TrackerShow {
@@ -75,7 +79,7 @@ fn filing() -> BoxedStrategy<RelatedFiling> {
                     related: KitsuShow {
                         id: format!("k{id}"),
                         episodes: Some(season),
-                        start: None,
+                        start: season_start,
                         end: None,
                     },
                     entry,
@@ -98,7 +102,7 @@ fn firing_evidence() -> BoxedStrategy<SpecialEvidence> {
                 related: KitsuShow {
                     id: "k1".into(),
                     episodes: Some(season),
-                    start: None,
+                    start: Some("2015-03-09".into()),
                     end: None,
                 },
                 entry: TrackerShow {
@@ -136,6 +140,8 @@ fn firing_evidence() -> BoxedStrategy<SpecialEvidence> {
                 4 => f.map.segments[0].extras_after[0] = w + 1,
                 5 => f.map.segments[0].extras_after = vec![season; k as usize],
                 6 => f.map.segments[0].lead = 1,
+                8 if w == 0 => special.start = Some("2015-03-20".into()),
+                8 => special.start = Some("2015-03-02".into()),
                 _ => {}
             }
             let mut related = vec![f.clone()];
@@ -194,6 +200,36 @@ fn whole_day_model(date: Option<&str>) -> Option<(u32, u32)> {
         .and_then(|()| (day >= 1 && day <= length[m as usize - 1]).then_some((m, day)))
 }
 
+/// The day of 2015 a whole day is, counted by the model's own table.
+fn day_of_year_model(date: Option<&str>) -> Option<u32> {
+    let (m, d) = whole_day_model(date)?;
+    let length = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    Some(length[..m as usize - 1].iter().sum::<u32>() + d)
+}
+
+/// Whether a special that started on `special` can take the slot after
+/// Kitsu's episode `after` of a season that started on `season`, as the
+/// docs state it: a prologue's slot no more than two days after the
+/// season's start, both whole days; a recap's only once the season is
+/// settled as having started first — an earlier month, or an earlier
+/// whole day in the same month.
+fn dated_for_slot_model(special: Option<&str>, season: Option<&str>, after: u32) -> bool {
+    if after == 0 {
+        return matches!(
+            (day_of_year_model(season), day_of_year_model(special)),
+            (Some(a), Some(b)) if i64::from(b) - i64::from(a) <= 2
+        );
+    }
+    match (month_model(season), month_model(special)) {
+        (Some(a), Some(b)) if a != b => a < b,
+        (Some(_), Some(_)) => matches!(
+            (whole_day_model(season), whole_day_model(special)),
+            (Some((_, a)), Some((_, b))) if a < b
+        ),
+        _ => false,
+    }
+}
+
 /// The month of a 2015 date or month, by the model's own reading.
 fn month_model(date: Option<&str>) -> Option<u32> {
     let d = date?;
@@ -232,7 +268,9 @@ fn special_model(ev: &SpecialEvidence) -> Option<EpisodeMap> {
                 && seg.extras_after.len() == k as usize
                 && seg.extras_after.iter().all(|e| *e == w)
                 && u64::from(w) + u64::from(k) < u64::from(seg.entry_total);
-            fits.then(|| Segment {
+            let dated =
+                dated_for_slot_model(ev.special.start.as_deref(), f.related.start.as_deref(), w);
+            (fits && dated).then(|| Segment {
                 entry: seg.entry,
                 entry_total: seg.entry_total,
                 entry_finished: seg.entry_finished,
@@ -243,7 +281,13 @@ fn special_model(ev: &SpecialEvidence) -> Option<EpisodeMap> {
             })
         })
         .collect();
-    match held.as_slice() {
+    let mut once: Vec<Segment> = Vec::new();
+    for segment in held {
+        if !once.contains(&segment) {
+            once.push(segment);
+        }
+    }
+    match once.as_slice() {
         [one] => Some(EpisodeMap {
             shape: Shape::SpecialExtras,
             segments: vec![one.clone()],
