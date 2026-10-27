@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AccountApiError } from './api';
 import {
@@ -9,7 +9,8 @@ import {
 	MAX_SAVE_ATTEMPTS,
 	MAX_WAIT_S,
 	saveWhenAllowed,
-	SupersededError
+	SupersededError,
+	waitWhileWanted
 } from './save-when-allowed';
 
 /** The backend's answer to a write it held back: 429 with the wait. */
@@ -176,5 +177,53 @@ describe('keepWrite', () => {
 			kitsu_id: '12',
 			status: 'paused'
 		});
+	});
+});
+
+describe('waitWhileWanted', () => {
+	const after = (ms: number, tick: () => void) => {
+		const h = setTimeout(() => tick(), ms);
+		return () => clearTimeout(h);
+	};
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('waits the whole time while the write is wanted', async () => {
+		vi.useFakeTimers();
+		let done = false;
+		void waitWhileWanted(3000, { after, stillWanted: () => true }).then(() => {
+			done = true;
+		});
+		await vi.advanceTimersByTimeAsync(2999);
+		expect(done).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(done).toBe(true);
+	});
+
+	it('ends at the first look after the write stops being wanted', async () => {
+		vi.useFakeTimers();
+		let wanted = true;
+		let done = false;
+		void waitWhileWanted(60_000, { after, stillWanted: () => wanted }).then(() => {
+			done = true;
+		});
+		await vi.advanceTimersByTimeAsync(2500);
+		wanted = false;
+		await vi.advanceTimersByTimeAsync(499);
+		expect(done).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(done).toBe(true);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('ends at once for a wait of nothing', async () => {
+		vi.useFakeTimers();
+		let done = false;
+		void waitWhileWanted(0, { after, stillWanted: () => true }).then(() => {
+			done = true;
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		expect(done).toBe(true);
 	});
 });

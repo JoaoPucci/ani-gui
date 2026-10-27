@@ -9,6 +9,7 @@ import {
 } from './busy-save';
 import { SupersededError } from './save-when-allowed';
 import { toastStore } from '$lib/toasts/store.svelte';
+import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
 
 beforeEach(() => {
@@ -295,5 +296,64 @@ describe('the write ledger', () => {
 		expect(trackedWriteKeys()).toBe(before);
 		await saveWhenTrackerAllows('anilist', '61', async () => 'x').catch(() => {});
 		expect(trackedWriteKeys()).toBe(before);
+	});
+});
+
+describe('a held write dropped while it waits', () => {
+	const as = (user_id: string) => ({
+		access_token: `tok-${user_id}`,
+		refresh_token: null,
+		expires_at_epoch_s: 4_000_000_000,
+		user_id,
+		username: 'u',
+		avatar_url: null
+	});
+	beforeEach(() => {
+		vi.useFakeTimers();
+		accountStore.setConnected('anilist', as('u1'));
+	});
+	afterEach(() => {
+		accountStore.setDisconnected('anilist');
+		vi.useRealTimers();
+	});
+
+	it('ends its wait and takes its notice down within a second of its account changing', async () => {
+		const write = vi.fn<() => Promise<string>>().mockRejectedValueOnce(refused(60));
+		const pending = saveWhenTrackerAllows('anilist', '90', write, undefined, { user: 'u1' }).catch(
+			(e: unknown) => e
+		);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(toastStore.items.filter((t) => t.kind === 'info')).toHaveLength(1);
+
+		accountStore.setConnected('anilist', as('u2'));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(toastStore.items.filter((t) => t.kind === 'info')).toEqual([]);
+		expect(await pending).toBeInstanceOf(SupersededError);
+		expect(write).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe('what the notice announces', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('announces its first words, not each second, and then that the save is going', async () => {
+		vi.useFakeTimers();
+		const id = noticeBusy('anilist', 3);
+		const row = () => toastStore.items.find((t) => t.id === id)!;
+		const first = m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 3 });
+		expect(row().announcement).toBe(first);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(row().message).toBe(
+			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 1 })
+		);
+		expect(row().announcement).toBe(first);
+		await vi.advanceTimersByTimeAsync(1000);
+		const going = m.account_busy_saving_now({ provider: m.account_provider_anilist() });
+		expect(row().message).toBe(going);
+		expect(row().announcement).toBe(going);
+		toastStore.dismiss(id);
 	});
 });

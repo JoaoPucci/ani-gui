@@ -155,3 +155,22 @@ describe('toastStore.update and onClose', () => {
 		expect(closed).toEqual(['dismissed', 'timed out', 'trimmed']);
 	});
 });
+
+describe('toastStore.update and what is announced', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+
+	it('announces what a toast was pushed with, and what a plain update says', () => {
+		const id = toastStore.push({ kind: 'info', message: 'first', duration: null });
+		expect(toastStore.items[0].announcement).toBe('first');
+		toastStore.update(id, 'second');
+		expect(toastStore.items[0]).toMatchObject({ message: 'second', announcement: 'second' });
+	});
+
+	it('shows a silent update without announcing it', () => {
+		const id = toastStore.push({ kind: 'info', message: 'first', duration: null });
+		toastStore.update(id, 'quietly', { silent: true });
+		expect(toastStore.items[0]).toMatchObject({ message: 'quietly', announcement: 'first' });
+	});
+});
