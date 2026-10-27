@@ -99,7 +99,8 @@ export async function setEntryAcrossTrackers(
 						progress: save.progress,
 						total: save.total ?? null
 					}),
-					current
+					current,
+					save.status
 				);
 				// Kept as it is: the row is already as the save wants it.
 				if (edit === null) return 'ok';

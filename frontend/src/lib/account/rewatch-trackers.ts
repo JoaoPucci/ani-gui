@@ -37,10 +37,13 @@ export function rewatchNoteShown(connected: Provider[], status: ListStatus): boo
 }
 
 /**
- * The edit to send a tracker, given its own `current` row: as built, except
- *   - a Completed row whose status the edit leaves alone is never written
- *     below its count (a rewatch's count, beside it, when the total is
- *     unknown and cannot snap Completed to it);
+ * The edit to send a tracker, given its own `current` row and the status the
+ * user `picked`: as built, except
+ *   - for a rewatch, a Completed row whose status the edit leaves alone is
+ *     never written below its count: the rewatch's own count, seeded beside
+ *     it, is not the Completed row's, and with the total unknown nothing
+ *     snaps Completed back to it. A count the user sets on a Completed row
+ *     itself is still sent;
  *   - a tracker without a rewatch status is sent no Rewatching: its row keeps
  *     its status — nothing at all is written to a Completed row, and no row
  *     is created — while any other row still takes the progress.
@@ -49,9 +52,10 @@ export function rewatchNoteShown(connected: Provider[], status: ListStatus): boo
 export function editForTracker<E extends { status?: ListStatus; progress: number }>(
 	provider: Provider,
 	edit: E,
-	current: EntryView | null
+	current: EntryView | null,
+	picked: ListStatus
 ): Omit<E, 'status'> | E | null {
-	if (current?.status === 'completed' && edit.status === undefined) {
+	if (picked === 'rewatching' && current?.status === 'completed' && edit.status === undefined) {
 		if (edit.progress < current.progress) return null;
 	}
 	if (holdsRewatches(provider) || edit.status !== 'rewatching') return edit;
