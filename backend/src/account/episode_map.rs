@@ -261,7 +261,9 @@ impl EpisodeMap {
             progress,
             complete,
             earlier,
-            needs: None,
+            // A special filed among an entry's extras claims no episode
+            // before its slot the user has not watched.
+            needs: (self.shape == Shape::SpecialExtras && seg.lead > 0).then_some(seg.lead),
         })
     }
 }

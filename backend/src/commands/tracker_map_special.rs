@@ -5,7 +5,7 @@
 //! Split from `tracker_map.rs` so each file stays inside the CRAP gate's
 //! per-file bar.
 
-use super::kitsu_side::kitsu_show_of_relation;
+use super::kitsu_side::related_season;
 use super::*;
 use crate::account::episode_map::Shape;
 use crate::account::episode_map_special::{RelatedFiling, SpecialEvidence};
@@ -48,8 +48,9 @@ pub(super) async fn special_evidence(
         };
         let map = episode_map_for(ask, &relation.id, native, entry.episodes).await?;
         let contested = reads_extras(&map) && contested(ask, &relation.id, ours, count).await?;
+        let holds_slot = reads_extras(&map) && !contested;
         related.push(RelatedFiling {
-            related: kitsu_show_of_relation(relation),
+            related: related_season(ask, relation, holds_slot).await?,
             entry,
             map,
             contested,

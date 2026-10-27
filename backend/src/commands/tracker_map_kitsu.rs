@@ -37,6 +37,27 @@ pub(super) fn kitsu_show_of_relation(relation: &KitsuRelation) -> KitsuShow {
     }
 }
 
+/// A related season as the special rule reads it. Where its map reads
+/// extras the special could take (`holds_slot`), the season as its own
+/// Kitsu entry has it, end included, since an epilogue's slot is dated
+/// by the season's last episode; its start is the relation's where the
+/// entry gives none. Elsewhere the relation's own fields, which say all
+/// the rule reads of a season holding no slot, at no read.
+pub(super) async fn related_season(
+    ask: &MapAsk<'_>,
+    relation: &KitsuRelation,
+    holds_slot: bool,
+) -> Result<KitsuShow> {
+    if !holds_slot {
+        return Ok(kitsu_show_of_relation(relation));
+    }
+    let season = kitsu_show(ask, &relation.id).await?;
+    Ok(KitsuShow {
+        start: season.start.or_else(|| relation.start.clone()),
+        ..season
+    })
+}
+
 /// The one anime Kitsu relates `kitsu_id` to in `role`, or `None` when
 /// it relates none or several — or when the page read did not hold all
 /// of its relations, since a second one could be past it.

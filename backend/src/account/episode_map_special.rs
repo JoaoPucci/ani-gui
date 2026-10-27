@@ -13,7 +13,7 @@ use super::episode_map::{EpisodeMap, Identity, KitsuShow, Segment, Shape, Tracke
 
 #[path = "episode_map_special_dates.rs"]
 mod dates;
-use dates::{dated_for_slot, in_run, whole_day};
+use dates::{dated_for_slot, whole_day};
 
 /// One entry Kitsu relates the special to that resolves on the tracker:
 /// the Kitsu entry, the tracker entry it resolves to, that entry's map
@@ -47,26 +47,25 @@ pub struct SpecialEvidence {
 /// It is filed where exactly one related entry holds it: an entry whose
 /// own map reads the related season's extras over the whole season
 /// from the entry's first episode, with as many extras as the special
-/// has episodes, one after another, none of them the entry's last; no
-/// other Kitsu entry related to it could be the special; and the
-/// special started on a whole, real day inside the entry's run, by
-/// month, and on the side of the season's start its slot is on
-/// ([`dated_for_slot`]). Its episodes are those extras, in the place
-/// the tracker lists them, and it never completes the entry.
+/// has episodes, one after another; no other Kitsu entry related to it
+/// could be the special; and the special started on a whole, real day
+/// where the dates put its slot ([`dated_for_slot`]). Its episodes are
+/// those extras, in the place the tracker lists them. A special at the
+/// entry's last slot completes the entry where the tracker has it
+/// finished, and only an entry already holding the season's episodes,
+/// since every special's write needs the episodes before its slot.
 #[must_use]
 pub fn special_extras(evidence: &SpecialEvidence) -> Option<EpisodeMap> {
     let count = evidence.special.episodes.filter(|n| *n > 0)?;
     let start = whole_day(evidence.special.start.as_deref())?;
     let mut held: Vec<Segment> = Vec::new();
-    for filing in evidence
-        .related
-        .iter()
-        .filter(|f| !f.contested && in_run(start, &f.entry))
-    {
+    for filing in evidence.related.iter().filter(|f| !f.contested) {
         let Some(segment) = slots(filing, count) else {
             continue;
         };
-        if !dated_for_slot(start, filing.related.start.as_deref(), segment.lead) {
+        // The season the slot is in: its Kitsu count, start and end.
+        let season = filing.map.segments.first().map_or(0, |s| s.kitsu_to);
+        if !dated_for_slot(start, &filing.related, &filing.entry, segment.lead, season) {
             continue;
         }
         // Filings that place the special alike are one place: one entry
@@ -104,7 +103,7 @@ fn slots(filing: &RelatedFiling, count: u32) -> Option<Segment> {
     }
     // The extras after Kitsu's `after` are the entry's `after + 1` on.
     let last = after.checked_add(count)?;
-    if last >= season.entry_total {
+    if last > season.entry_total {
         return None;
     }
     Some(Segment {
