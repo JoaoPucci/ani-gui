@@ -130,11 +130,7 @@ async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
 async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment, began: u64) -> Result<()> {
     let _guard = hold_entry(ask, earlier.entry).await;
     let row = row_on(ask, earlier.entry).await?;
-    let done = row.map(|r| r.as_kept_by(ask.kind)).is_some_and(|r| {
-        r.progress_episodes >= earlier.total
-            && matches!(r.status, ListStatus::Completed | ListStatus::Rewatching)
-    });
-    if done {
+    if row.is_some_and(|r| r.stands_at(ask.kind, earlier.total)) {
         return Ok(());
     }
     let update = EntryUpdate {

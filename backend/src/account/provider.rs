@@ -273,6 +273,17 @@ impl CurrentEntry {
             _ => self,
         }
     }
+
+    /// Whether the row, as `kind` keeps it ([`Self::as_kept_by`]), already
+    /// stands at `total` and finished: Completed, or AniList's rewatch,
+    /// which AniList closes itself. A MAL rewatch is a Watching row and
+    /// does not stand there; its finale is still to close it.
+    #[must_use]
+    pub fn stands_at(self, kind: ProviderKind, total: u32) -> bool {
+        let kept = self.as_kept_by(kind);
+        kept.progress_episodes >= total
+            && matches!(kept.status, ListStatus::Completed | ListStatus::Rewatching)
+    }
 }
 
 /// Lean snapshot of the user's existing list row for one media, read
