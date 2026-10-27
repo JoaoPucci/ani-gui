@@ -147,3 +147,7 @@ pub fn with_special(existing: EpisodeMap, special: Option<EpisodeMap>) -> Episod
 #[cfg(test)]
 #[path = "episode_map_special_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "episode_map_special_prop_test.rs"]
+mod prop_tests;
