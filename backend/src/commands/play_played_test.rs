@@ -761,3 +761,61 @@ async fn a_handoff_puts_the_numbering_right_before_it_caches_availability() {
     );
     assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
 }
+
+// ── the external player's window names the episode played ──────────
+
+#[tokio::test]
+async fn a_handoff_by_a_former_tag_names_the_episode_it_plays_in_the_window() {
+    // History records the recap as "1.5", the number it has now; the
+    // player's window says the same, not the "2.5" it was asked by.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let asked = crate::history::guard::Asked::now(&state.history_path, None);
+    let (launch, watch) =
+        crate::commands::play_handoff::resolve_launch_args(&state, &args("2.5"), asked)
+            .await
+            .expect("resolves");
+    assert_eq!(watch.ep_no, "1.5");
+    assert_eq!(launch.title.as_deref(), Some("Stitched Show · ep 1.5"));
+}
+
+#[tokio::test]
+async fn a_handoff_of_an_ordinary_episode_names_it_as_asked() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let asked = crate::history::guard::Asked::now(&state.history_path, None);
+    let (launch, watch) =
+        crate::commands::play_handoff::resolve_launch_args(&state, &args("5"), asked)
+            .await
+            .expect("resolves");
+    assert_eq!(watch.ep_no, "5");
+    assert_eq!(launch.title.as_deref(), Some("Stitched Show · ep 5"));
+}
+
+#[tokio::test]
+async fn a_cached_handoff_names_the_episode_its_resolve_played_in_the_window() {
+    // The row's resolve played "12.5"; it is replayed for a request by
+    // another number. The window and the watch both name "12.5".
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let asked = args("24.5");
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &key_for(&asked, "24.5"),
+        &first_recap_row(&upstream.uri()),
+    );
+    let cfg = crate::config::Config {
+        cache_resolutions: true,
+        ..crate::config::Config::default()
+    };
+    let (launch, watch) = try_launch_args_from_cache(&state, &asked, &cfg)
+        .await
+        .expect("replays");
+    assert_eq!(watch.ep_no, "12.5");
+    assert_eq!(launch.title.as_deref(), Some("Stitched Show · ep 12.5"));
+}
