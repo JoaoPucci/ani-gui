@@ -82,7 +82,12 @@ export interface StartResumeDeps {
 	resolvePlay: (
 		args: ResumePlayArgs,
 		onProgress: (label: string) => void
-	) => Promise<{ session_id: string; episode?: string; former_episode?: string }>;
+	) => Promise<{
+		session_id: string;
+		episode?: string;
+		former_episode?: string;
+		episode_unverified?: boolean;
+	}>;
 	markWatched: (args: ResumePlayArgs) => Promise<void>;
 	syncTrackers: (
 		kitsuId: string,
@@ -226,8 +231,10 @@ export function makeStartResume(
 			// Marked as the episode played: a resolve the request named by a
 			// former tag is kept under it.
 			void deps.markWatched({ ...args, episode: played }).catch(() => {});
-			// A guessed match writes nothing to the user's tracker accounts.
-			if (!guess) {
+			// A guessed match writes nothing to the user's tracker accounts,
+			// nor does an episode the session could not verify: a row past
+			// Kitsu's count that may be an extra the provider appended.
+			if (!guess && !session.episode_unverified) {
 				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
 			// The viewer moved on while the session was on its way: the

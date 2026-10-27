@@ -20,6 +20,7 @@ pub mod availability_refresh;
 mod availability_reschedule;
 mod availability_served_mode;
 pub(crate) mod availability_ttl;
+mod availability_unread;
 pub mod cour;
 mod cour_keyword_form;
 mod cour_ordinal_form;

@@ -26,6 +26,7 @@ fn the_row_round_trips_its_sidecar_tracks() {
         version: None,
         played: None,
         former_episode: None,
+        episode_unverified: false,
     };
     put(&pool, "play:test:row", &row);
     assert_eq!(get(&pool, "play:test:row").expect("read"), Some(row));
