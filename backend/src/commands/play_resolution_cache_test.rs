@@ -206,7 +206,18 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v24:"), "got {k}");
+    assert!(k.starts_with("play:v25:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_it_could_say_its_episode_is_unverified_is_not_served() {
+    // A row resolved for a row past Kitsu's count that no reading
+    // reached carries no episode_unverified, and reads as false: its
+    // replay would hand the renderer an episode to write to the
+    // trackers that may be an OAD. Nothing in the row says whether its
+    // reading was read, so the key moves past v24.
+    let k = cache_key("Noragami", "sub", "best", "13", None, Some(12), None);
+    assert!(!k.starts_with("play:v24:"), "got {k}");
 }
 
 #[test]
