@@ -159,7 +159,8 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 /// itself otherwise — no source, a stitched listing, a listing of
 /// another shape (either of which, given a count, forgets a reading
 /// kept for its slug), evidence that reads and falls short of proof
-/// (which forgets a kept reading), or no evidence and nothing kept.
+/// (which forgets a kept reading), or no evidence and nothing kept,
+/// which the pick names as its [`PickedShow::unread_past`].
 pub async fn fit_appended(
     picked: PickedShow,
     expected: Option<u32>,
@@ -200,10 +201,21 @@ pub async fn fit_appended(
             source.remember(fitted.as_ref().map(|_| &reading));
             fitted
         }
-        _ => source
-            .remembered()
-            .is_some_and(|kept| kept == reading || kept_for_a_version(&picked, &kept))
-            .then(|| tag_past(&picked.episodes, count)),
+        _ => {
+            let kept = source
+                .remembered()
+                .is_some_and(|kept| kept == reading || kept_for_a_version(&picked, &kept));
+            if !kept {
+                // Nothing read the rows past the count, and nothing
+                // proved before stands in: they are listed as they
+                // came, which says nothing of what they are.
+                return PickedShow {
+                    unread_past: Some(count),
+                    ..picked
+                };
+            }
+            Some(tag_past(&picked.episodes, count))
+        }
     };
     match fitted {
         // Every version is the same episodes under its own ids: the
@@ -249,7 +261,7 @@ pub use titles::same_title;
 #[path = "play_native_appended_slots.rs"]
 mod slots;
 use slots::past_ids;
-pub use slots::{extra_for_slot, tag_past};
+pub use slots::{extra_for_slot, past_an_unread_count, tag_past};
 
 #[cfg(test)]
 #[path = "play_native_appended_test.rs"]
