@@ -171,7 +171,7 @@ fn parse_airing_missing_schedule_defaults_to_empty_upcoming() {
 // rail; per-show requests were the app's most frequent AniList
 // caller and the main rate-limit burst source at launch.
 
-const BATCH_BODY: &str = r#"{"data":{"Page":{"media":[
+const BATCH_BODY: &str = r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
     {"id":207141,"status":"RELEASING","episodes":12,
      "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
      "airingSchedule":{"nodes":[{"episode":3,"airingAt":1784215800}]}},
@@ -195,7 +195,10 @@ fn parse_airing_batch_maps_each_media_by_id() {
 
 #[test]
 fn parse_airing_batch_tolerates_an_empty_page() {
-    let got = parse_airing_batch_response(br#"{"data":{"Page":{"media":[]}}}"#).expect("parses");
+    let got = parse_airing_batch_response(
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+    )
+    .expect("parses");
     assert!(got.is_empty());
 }
 
@@ -250,4 +253,283 @@ async fn airing_status_is_none_for_anilists_not_found_reply() {
         .await
         .expect("absence is not an upstream failure");
     assert!(got.is_none());
+}
+
+/// A by-MAL batch page listing `media` as `(idMal, status, episodes)`,
+/// with `cut` as its `hasNextPage`.
+fn by_mal_page(media: &[(u32, &str, u32)], cut: bool) -> String {
+    let nodes: Vec<String> = media
+        .iter()
+        .map(|(mal, status, eps)| {
+            format!(
+                r#"{{"idMal":{mal},"status":"{status}","episodes":{eps},"nextAiringEpisode":null,"airingSchedule":{{"nodes":[]}}}}"#
+            )
+        })
+        .collect();
+    format!(
+        r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":{cut}}},"media":[{}]}}}}}}"#,
+        nodes.join(",")
+    )
+}
+
+#[tokio::test]
+async fn a_mal_id_several_media_record_is_seeded_as_the_single_lookup_answers() {
+    // AniList 137728 (finished, 52) and 196613 (not yet released)
+    // both record MAL 51039. The batch lists both; the single airing
+    // lookup by MAL id, which the detail page makes, answers 137728.
+    // The batch takes that answer, not whichever node came last.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(by_mal_page(
+                &[
+                    (51039, "FINISHED", 52),
+                    (51039, "NOT_YET_RELEASED", 62),
+                    (7, "FINISHED", 12),
+                ],
+                false,
+            )),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .and(wiremock::matchers::body_string_contains("\"idMal\":51039"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"status":"FINISHED","episodes":52,"nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[51039, 7], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&51039).and_then(|s| s.aired), Some(52));
+    assert_eq!(got.get(&7).and_then(|s| s.aired), Some(12));
+}
+
+#[tokio::test]
+async fn a_by_mal_batch_whose_page_was_cut_is_split_until_every_page_is_whole() {
+    let server = wiremock::MockServer::start().await;
+    for (ids, page) in [
+        ("[1,2]", by_mal_page(&[(1, "FINISHED", 10)], true)),
+        ("[1]", by_mal_page(&[(1, "FINISHED", 10)], false)),
+        ("[2]", by_mal_page(&[(2, "FINISHED", 20)], false)),
+    ] {
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_string_contains(ids))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(page))
+            .mount(&server)
+            .await;
+    }
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[1, 2], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1).and_then(|s| s.aired), Some(10));
+    assert_eq!(got.get(&2).and_then(|s| s.aired), Some(20));
+}
+
+#[tokio::test]
+async fn a_failed_single_lookup_leaves_only_its_mal_id_out_of_the_batch() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(by_mal_page(
+                &[
+                    (51039, "FINISHED", 52),
+                    (51039, "NOT_YET_RELEASED", 62),
+                    (7, "FINISHED", 12),
+                ],
+                false,
+            )),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .respond_with(wiremock::ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[51039, 7], Some(&server.uri()))
+        .await
+        .expect("the batch answered");
+    assert_eq!(got.get(&51039), None);
+    assert_eq!(got.get(&7).and_then(|s| s.aired), Some(12));
+}
+
+#[tokio::test]
+async fn one_mal_id_whose_own_page_is_cut_is_seeded_from_the_single_lookup() {
+    // More media record MAL 1 than a page holds: its page is cut even
+    // alone, so the single lookup answers it. One the single lookup
+    // does not index is left out.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], true)),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .and(wiremock::matchers::body_string_contains("\"idMal\":1"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"status":"FINISHED","episodes":10,"nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[1], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1).and_then(|s| s.aired), Some(10));
+
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatchByMal"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], true)),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .mount(&server)
+        .await;
+    let got = airing_status_batch_by_mal(&reqwest::Client::new(), &[1], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+}
+
+#[tokio::test]
+async fn an_id_keyed_batch_whose_page_is_cut_asks_the_single_lookup_by_anilist_id() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("AiringBatch("))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[]}}}"#,
+            ),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("query Airing("))
+        .and(wiremock::matchers::body_string_contains("\"id\":207141"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"status":"FINISHED","episodes":12,"nextAiringEpisode":null,"airingSchedule":{"nodes":[]}}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let got = airing_status_batch(&reqwest::Client::new(), &[207141], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&207141).and_then(|s| s.aired), Some(12));
+}
+
+#[test]
+fn a_batch_page_missing_what_was_asked_for_is_no_answer() {
+    // The batch asks for pageInfo { hasNextPage }, the media list, and
+    // each node's key. A page that leaves one out cannot say whether it
+    // holds every show, or whose schedule a node is.
+    for body in [
+        r#"{"data":{"Page":{"media":[]}}}"#,
+        r#"{"data":{"Page":{"pageInfo":null,"media":[]}}}"#,
+        r#"{"data":{"Page":{"pageInfo":{},"media":[]}}}"#,
+        r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false}}}}"#,
+        r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"status":"FINISHED","episodes":12}]}}}"#,
+    ] {
+        assert!(
+            matches!(
+                parse_airing_batch_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{body}"
+        );
+    }
+    // A node whose key is null names no show, and is skipped.
+    let got = parse_airing_batch_response(
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":null,"status":"FINISHED","episodes":12,"nextAiringEpisode":null,"airingSchedule":null}]}}}"#,
+    )
+    .expect("an answer");
+    assert!(got.is_empty());
+}
+
+#[test]
+fn a_batch_node_missing_a_field_it_was_asked_for_is_no_answer() {
+    // Each node is asked for its status, episodes, next airing and
+    // schedule. A node that leaves one out cannot say how far the show
+    // has aired; null keeps its meaning (nothing scheduled, unknown).
+    for field in ["status", "episodes", "nextAiringEpisode", "airingSchedule"] {
+        let mut node = serde_json::json!({
+            "id": 5,
+            "status": "RELEASING",
+            "episodes": 12,
+            "nextAiringEpisode": null,
+            "airingSchedule": { "nodes": [] },
+        });
+        node.as_object_mut().expect("object").remove(field);
+        let body = serde_json::json!({
+            "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [node] } }
+        });
+        assert!(
+            matches!(
+                parse_airing_batch_response(body.to_string().as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{field}"
+        );
+    }
+    // A schedule that leaves out its nodes says nothing of what is coming.
+    let no_nodes = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":5,"status":"RELEASING","episodes":12,"nextAiringEpisode":null,"airingSchedule":{}}]}}}"#;
+    assert!(matches!(
+        parse_airing_batch_response(no_nodes),
+        Err(AniError::ParseFailed { .. })
+    ));
+    let nulls = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":5,"status":null,"episodes":null,"nextAiringEpisode":null,"airingSchedule":null}]}}}"#;
+    assert_eq!(
+        parse_airing_batch_response(nulls).expect("an answer").len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_by_mal_batch_refused_partway_is_a_rate_limit_not_a_partial_answer() {
+    // The cut page's first half answers; AniList refuses the second.
+    // The batch is the rate limit, so the seed writes nothing for it —
+    // not the half it heard back as if the rest had no schedule.
+    let server = wiremock::MockServer::start().await;
+    for (ids, reply) in [
+        (
+            "[1,2]",
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], true)),
+        ),
+        (
+            "[1]",
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], false)),
+        ),
+        (
+            "[2]",
+            wiremock::ResponseTemplate::new(429).insert_header("retry-after", "60"),
+        ),
+    ] {
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_string_contains(ids))
+            .respond_with(reply)
+            .mount(&server)
+            .await;
+    }
+    let got =
+        airing_status_batch_by_mal(&reqwest::Client::new(), &[1, 2], Some(&server.uri())).await;
+    assert!(matches!(got, Err(AniError::RateLimited { .. })), "{got:?}");
 }

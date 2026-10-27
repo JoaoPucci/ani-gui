@@ -317,8 +317,14 @@ async fn a_subtitle_track_the_player_loads_waits_behind_its_media() {
         let body = upstream::fetch_subtitle(&client, &budget, &url, "").await;
         (body.is_ok(), tokio::time::Instant::now())
     };
+    // Asked first: the track is waiting at the budget before the media
+    // request arrives. Until then a media request taken first proves
+    // nothing about which waits for which.
     let media = async {
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        crate::held::until("the track waiting at the budget", || {
+            budget.background_waiting(&key)
+        })
+        .await;
         budget.admit(&key).await;
         tokio::time::Instant::now()
     };
@@ -438,8 +444,14 @@ async fn a_downloads_segment_through_the_proxy_waits_behind_the_player() {
         let status = get(router, &uri).await;
         (status, tokio::time::Instant::now())
     };
+    // Asked first: the download's segment is waiting at the budget
+    // before the player's request arrives. Until then a player's
+    // request taken first proves nothing about which waits for which.
     let player = async {
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        crate::held::until("the download's segment waiting at the budget", || {
+            budget.background_waiting(&key)
+        })
+        .await;
         budget.admit(&key).await;
         tokio::time::Instant::now()
     };

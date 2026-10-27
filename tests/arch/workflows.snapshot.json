@@ -84,6 +84,7 @@
       "filter": "filter",
       "fmt": "cargo fmt",
       "picker-oracle": "picker oracle agreement",
+      "picker-oracle-fuzz": "picker oracle fuzz",
       "test": "cargo test"
     },
     "title.yml": {

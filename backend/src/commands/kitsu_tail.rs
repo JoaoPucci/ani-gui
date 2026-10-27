@@ -22,6 +22,7 @@ pub struct KitsuTail<'a> {
     /// Where AniList's airing answer is asked: `None`, AniList itself,
     /// outside tests.
     anilist_base: Option<&'a str>,
+    budget: Option<std::time::Duration>,
 }
 
 impl<'a> KitsuTail<'a> {
@@ -33,6 +34,7 @@ impl<'a> KitsuTail<'a> {
             state,
             kitsu_id,
             anilist_base: None,
+            budget: Some(super::play_native_appended::TAIL_BUDGET),
         })
     }
 
@@ -42,6 +44,20 @@ impl<'a> KitsuTail<'a> {
     pub(crate) fn with_anilist_base(self, base: &'a str) -> Self {
         Self {
             anilist_base: Some(base),
+            ..self
+        }
+    }
+
+    /// The source with no bound on how long its reads may take. A test
+    /// whose outcome is the evidence's, not the budget's, reads through
+    /// it: a machine slow enough to keep a mock server's answers past
+    /// the budget would otherwise end the read and hand the listing to
+    /// the kept reading.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn unbounded(self) -> Self {
+        Self {
+            budget: None,
             ..self
         }
     }
@@ -77,6 +93,10 @@ const KEPT_FOR: std::time::Duration = crate::cache::ttl::TITLE_MATCH_TTL;
 
 #[async_trait::async_trait]
 impl TailSource for KitsuTail<'_> {
+    fn budget(&self) -> Option<std::time::Duration> {
+        self.budget
+    }
+
     fn remembered(&self) -> Option<Remembered> {
         let body = crate::cache::meta_cache_get(&self.state.cache_pool, &kept_key(self.kitsu_id))
             .ok()??;

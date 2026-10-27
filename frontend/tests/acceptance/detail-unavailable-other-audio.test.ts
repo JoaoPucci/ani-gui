@@ -15,6 +15,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -123,6 +124,12 @@ function useHandlers(
 
 const notice = () => target.querySelector('p.unavailable[role="status"]')?.textContent ?? null;
 
+/** The page's probe about the audio it plays. */
+const isProbe = (r: PageFetch) => r.path === '/api/availability';
+/** The page's cache question about `mode`. */
+const isBatch = (mode: string) => (r: PageFetch) =>
+	r.path === '/api/availability/batch' && r.body.mode === mode;
+
 const HAS = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 4 } };
 
 const CASES: [string, 'sub' | 'dub', CacheAnswer | 'fails', () => string][] = [
@@ -177,9 +184,15 @@ describe('detail — a title the provider refused by name', () => {
 		// holding the other audio, the notice must not send the viewer
 		// there, and the page must not ask.
 		const asked = useHandlers('dub', HAS, false, null, 'refused');
+		const { sent, read } = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => notice() !== null, 'the unavailable notice');
-		await new Promise((r) => setTimeout(r, 100));
+		// The page has read the refusal, and what it set off has run to
+		// its next request: the question about the other audio would be
+		// asked by now.
+		await until(() => read.some(isProbe), 'the refusal to be read');
+		await afterRead();
+		expect(sent.filter(isBatch('sub')), 'the other audio is never asked').toEqual([]);
 		expect(notice()).toContain(m.detail_unavailable_message());
 		expect(notice()).not.toContain(m.detail_unavailable_in_dub_message());
 		expect(
@@ -192,11 +205,17 @@ describe('detail — a title the provider refused by name', () => {
 describe('detail — the notice asks about the other audio only while it is up', () => {
 	it('asks nothing about the other audio when the chosen audio has the title', async () => {
 		const asked = useHandlers('dub', HAS, true);
+		const { sent, read } = watchPageFetches();
 		const play = () => target.querySelector('div.actions button.btn-glass');
 		app = mount(DetailPage, { target });
 		await until(() => play() !== null, 'the Play button');
-		await new Promise((r) => setTimeout(r, 50));
+		// Play shows once the probe's answer is applied. That answer has
+		// been read, and what it set off has run to its next request:
+		// a question about the other audio would be asked by now.
+		await until(() => read.some(isProbe), 'the probe answer to be read');
+		await afterRead();
 		expect(notice()).toBeNull();
+		expect(sent.filter(isBatch('sub'))).toEqual([]);
 		expect(asked.batch.filter((b) => b.mode === 'sub')).toEqual([]);
 	});
 
@@ -208,6 +227,7 @@ describe('detail — the notice asks about the other audio only while it is up',
 		useHandlers('dub', { cached: {}, playable_episode_counts: {} });
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));
+		const { read } = watchPageFetches();
 		let askedSub = false;
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
@@ -232,7 +252,10 @@ describe('detail — the notice asks about the other audio only while it is up',
 		);
 		await until(() => notice() !== null, 'the notice in sub');
 		release();
-		await new Promise((r) => setTimeout(r, 50));
+		// The page has read the old answer, and what it set off has run
+		// to its next write.
+		await until(() => read.some(isBatch('sub')), 'the old answer to be read');
+		await afterRead();
 		expect(notice()).toContain(m.detail_unavailable_message());
 		expect(notice()).not.toContain(m.detail_unavailable_in_dub_message());
 		expect(notice()).not.toContain(m.detail_unavailable_in_sub_message());
@@ -243,9 +266,13 @@ describe('detail — the notice asks about the other audio only while it is up',
 			cached: { [KITSU_ID]: true },
 			playable_episode_counts: { [KITSU_ID]: 0 }
 		});
+		const { read } = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => notice() !== null, 'the unavailable notice');
-		await new Promise((r) => setTimeout(r, 50));
+		// The notice shows before the cache answers about the other
+		// audio. The page has read that answer, and applied it.
+		await until(() => read.some(isBatch('sub')), "the other audio's answer to be read");
+		await afterRead();
 		expect(notice()).toContain(m.detail_unavailable_message());
 	});
 });
@@ -292,9 +319,13 @@ describe('detail — a music title never names the other audio', () => {
 		// A positive row for its id is plausible — a probe can match an
 		// unrelated show for it — and must not be believed.
 		const asked = useHandlers('dub', HAS, false, 'music');
+		const { sent } = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => notice() !== null, 'the unavailable notice');
-		await new Promise((r) => setTimeout(r, 50));
+		// The notice is up, which is the state the question would be
+		// asked from, and what it sets off has run to its next request.
+		await afterRead();
+		expect(sent.filter(isBatch('sub'))).toEqual([]);
 		expect(notice()).toContain(m.detail_unavailable_message());
 		expect(asked.batch.filter((b) => b.mode === 'sub')).toEqual([]);
 	});
@@ -310,6 +341,7 @@ describe('detail — an answer for a show the page has left', () => {
 		useHandlers('dub', { cached: {}, playable_episode_counts: {} });
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));
+		const { read, failed } = watchPageFetches();
 		let askedFirst = false;
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
@@ -343,7 +375,16 @@ describe('detail — an answer for a show the page has left', () => {
 		);
 		await until(() => notice() !== null, "the second show's notice");
 		release();
-		await new Promise((r) => setTimeout(r, 50));
+		// The page is done with the first show's question: its answer
+		// has been read, or the move stopped it. What either set off has
+		// run to its next write.
+		const firstShows = (r: PageFetch) =>
+			isBatch('sub')(r) && (r.body.kitsu_ids as string[])[0] === KITSU_ID;
+		await until(
+			() => read.some(firstShows) || failed.some(firstShows),
+			"the first show's question to be answered or stopped"
+		);
+		await afterRead();
 		expect(notice()).toContain(m.detail_unavailable_message());
 	});
 });

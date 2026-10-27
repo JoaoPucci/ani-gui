@@ -17,6 +17,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -476,6 +477,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 		);
 
+		const { sent, read } = watchPageFetches();
 		app = mount(PlayPage, { target });
 		await until(() => probes.length > 0, 'the page-load availability lookup');
 
@@ -484,8 +486,13 @@ describe('play route — clicking a dimmed aired episode', () => {
 		// again spends a slot on an answer already in hand.
 		releaseSettings();
 		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
-		await new Promise((r) => setTimeout(r, 200));
+		// The page has read the settings, and what they set off has run
+		// to its next request: a second lookup would be asked by now.
+		await until(() => read.some((r) => r.path === '/api/settings'), 'the settings to be read');
+		await afterRead();
 
+		const lookups = sent.filter((r) => r.path === '/api/availability' && !r.body.bypass_cache);
+		expect(lookups).toHaveLength(1);
 		expect(probes.filter((p) => !p.bypass_cache)).toHaveLength(1);
 	});
 });
@@ -544,6 +551,7 @@ describe('play route — a navigation the viewer starts while a dimmed episode i
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 		);
 
+		const { sent, read, failed } = watchPageFetches();
 		app = mount(PlayPage, { target });
 		await until(() => card(AIRED) !== null, `the card for episode ${AIRED}`);
 		card(AIRED)!.click();
@@ -551,8 +559,24 @@ describe('play route — a navigation the viewer starts while a dimmed episode i
 
 		startNavigation();
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the re-ask: its answer, which would clear
+		// the gate, has been read (or the request was stopped), and what
+		// it set off has run to its next request.
+		await until(
+			() =>
+				[...read, ...failed].some(
+					(r) => r.path === '/api/availability' && r.body.bypass_cache === true
+				),
+			'the re-ask to be stopped or answered'
+		);
+		await afterRead();
 
+		expect(
+			sent.filter(
+				(r) => r.path === '/api/play' && r.body.episode === String(AIRED) && !r.body.prefetch
+			),
+			'no switch is asked for'
+		).toEqual([]);
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 		expect(goto).not.toHaveBeenCalled();
 	});
