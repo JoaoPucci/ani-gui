@@ -190,10 +190,10 @@ const KITSU_MAPPING_49444: &str = r#"{
     }]
 }"#;
 
-const ANILIST_BATCH_BODY: &str = r#"{"data":{"Page":{"media":[
-    {"id":207141,"status":"RELEASING","episodes":12,
+const ANILIST_BATCH_BODY: &str = r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
+    {"id":207141,"status":"RELEASING","episodes":12,"airingSchedule":{"nodes":[]},
      "nextAiringEpisode":{"episode":3,"airingAt":1784215800}},
-    {"id":185874,"status":"NOT_YET_RELEASED","episodes":13,
+    {"id":185874,"status":"NOT_YET_RELEASED","episodes":13,"airingSchedule":{"nodes":[]},
      "nextAiringEpisode":{"episode":1,"airingAt":1784988000}}
 ]}}}"#;
 
@@ -388,8 +388,8 @@ async fn a_recheck_s_schedule_cuts_a_count_written_before_it() {
 async fn a_batch_seeded_schedule_cuts_a_count_written_before_it() {
     let at = epoch_now() + 2 * 60 * 60;
     let batch = format!(
-        r#"{{"data":{{"Page":{{"media":[
-        {{"id":207141,"status":"RELEASING","episodes":12,
+        r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":false}},"media":[
+        {{"id":207141,"status":"RELEASING","episodes":12,"airingSchedule":{{"nodes":[]}},
          "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
     );
     let (kitsu, anilist) = mappings_and_anilist(batch).await;
@@ -403,8 +403,8 @@ async fn a_batch_seeded_schedule_cuts_a_count_written_before_it() {
 async fn a_batch_seeded_schedule_cuts_a_negative_written_before_it() {
     let at = epoch_now() + 2 * 60 * 60;
     let batch = format!(
-        r#"{{"data":{{"Page":{{"media":[
-        {{"id":207141,"status":"RELEASING","episodes":12,
+        r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":false}},"media":[
+        {{"id":207141,"status":"RELEASING","episodes":12,"airingSchedule":{{"nodes":[]}},
          "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
     );
     let (kitsu, anilist) = mappings_and_anilist(batch).await;
@@ -499,8 +499,8 @@ async fn a_batch_seeded_schedule_cuts_a_mal_only_show_s_count_written_before_it(
         .and(body_string_contains("idMal_in"))
         .respond_with(
             wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                r#"{{"data":{{"Page":{{"media":[
-            {{"idMal":63403,"status":"RELEASING","episodes":12,
+                r#"{{"data":{{"Page":{{"pageInfo":{{"hasNextPage":false}},"media":[
+            {{"idMal":63403,"status":"RELEASING","episodes":12,"airingSchedule":{{"nodes":[]}},
              "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
             )),
         )
@@ -538,8 +538,8 @@ async fn seed_airing_rows_batch_seeds_every_mapping_shape_in_two_requests() {
     wiremock::Mock::given(method("POST"))
         .and(body_string_contains("idMal_in"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[
-            {"idMal":63403,"status":"NOT_YET_RELEASED","episodes":13,
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
+            {"idMal":63403,"status":"NOT_YET_RELEASED","episodes":13,"airingSchedule":{"nodes":[]},
              "nextAiringEpisode":{"episode":1,"airingAt":1784988000}}]}}}"#,
         ))
         .expect(1)
