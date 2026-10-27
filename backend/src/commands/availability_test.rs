@@ -2136,8 +2136,23 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v24:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v24:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v25:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v25:kid-1:dub");
+}
+
+/// A verdict stamped before an undated pick read the genre of the
+/// listing it serves is not served: a positive row for such an entry
+/// can be a hentai listed under one of the entry's own names, and a
+/// clean miss can rest on a page that listed no genre, which is no
+/// answer that its listing was not the entry. Nothing in a row says
+/// which page it was stamped from.
+#[test]
+fn a_verdict_stamped_before_an_undated_pick_read_its_genre_is_not_read() {
+    let current = cache_key("8404", "sub");
+    assert!(
+        !current.starts_with("availability:v24:"),
+        "the key must have moved past v24: {current}"
+    );
 }
 
 /// A verdict stamped from a listing whose rows past Kitsu's count no

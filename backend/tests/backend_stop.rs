@@ -32,9 +32,10 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// The provider's transport: answers every step of hianime's resolve
-/// walk from the script — the search page, the episode list, the
-/// server list, the embed page carrying the player's payload, and the
-/// master — in the `<body>\n<status> <url>` shape the real one prints.
+/// walk from the script — the search page, the show's entry page
+/// (whose genres an undated pick reads), the episode list, the server
+/// list, the embed page carrying the player's payload, and the master
+/// — in the `<body>\n<status> <url>` shape the real one prints.
 /// The URL is curl's operand, the last argument.
 fn transport() -> String {
     use base64::Engine as _;
@@ -50,6 +51,7 @@ fn transport() -> String {
         .map(|(b, k)| b ^ k)
         .collect();
     let search = r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://stand-in.invalid/test-show-1" title="test" class="dynamic-name">test</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#;
+    let entry = r#"<div class="item item-list"><span class="item-head">Genres:</span><a href="/genres/drama" title="Drama">Drama</a></div>"#;
     let list = r#"{"status":true,"html":"<a class=\"ep-item\" data-number=\"1\" data-id=\"1001\"></a><a class=\"ep-item\" data-number=\"2\" data-id=\"1002\"></a>"}"#;
     let servers = format!(
         r#"{{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"{}\"></div>"}}"#,
@@ -64,6 +66,7 @@ fn transport() -> String {
 for url in "$@"; do :; done
 case "$url" in
   */search\?keyword=*) body='{search}' ;;
+  */test-show-1) body='{entry}' ;;
   */api/theme/episode/list/1) body='{list}' ;;
   */api/theme/episode/servers\?episodeId=*) body='{servers}' ;;
   */stream/1/1001/sub) body='{page}' ;;

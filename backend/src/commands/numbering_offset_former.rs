@@ -67,8 +67,10 @@ fn retag_row(
     }
 }
 
-/// [`retag_display`] from a resolve — a play's, a download's — for the
-/// show it resolved.
+/// [`retag_display`] from a resolve — a play's, a warm's, a download's —
+/// for the show it resolved; then, from the same listing, a stamp a warm
+/// moved off the show's legacy history row goes back on it, where the
+/// listing agrees with the sidecar.
 pub fn retag_from_resolve(
     state: &AppState,
     native: &crate::commands::play_native_resolve::NativeResolved,
@@ -76,22 +78,28 @@ pub fn retag_from_resolve(
     retag_display(state, &native.slug, &native.former_tags, &|former| {
         crate::commands::play_native_merge::names_a_row_now(former, native)
     });
+    super::drift::put_drift_right(state, &native.slug, &native.listing, native.unread_past);
     // The pick's other versions: each copy's history row reads a stamp
     // of its own, put right from that copy's listing.
     for (slug, episodes) in &native.other_copies {
-        retag_from_listing(state, slug, episodes);
+        retag_from_listing(state, slug, episodes, native.unread_past);
     }
 }
 
 /// [`retag_display`] from a listing at hand — a probe's, a
-/// download's — for the show `slug` keys. The listing's record is the
-/// walk's to write, at its pick ([`crate::commands::listing_tags`]): a
-/// repair runs once the walk is done, by when a newer walk may have
-/// recorded a newer listing.
+/// download's — for the show `slug` keys; then, from the same listing,
+/// a stamp a warm moved off the show's legacy history row goes back on
+/// it, where the listing agrees with the sidecar. `unread_past` is the
+/// pick's ([`crate::commands::play_native::PickedShow::unread_past`]):
+/// no row past it gets a stamp. The listing's record is the walk's to
+/// write, at its pick ([`crate::commands::listing_tags`]): a repair runs
+/// once the walk is done, by when a newer walk may have recorded a newer
+/// listing.
 pub fn retag_from_listing(
     state: &AppState,
     slug: &str,
     episodes: &[crate::scraper::provider::EpisodeRef],
+    unread_past: Option<u32>,
 ) {
     let shared = |former: &str| {
         episodes.iter().any(|e| {
@@ -106,6 +114,7 @@ pub fn retag_from_listing(
         &crate::commands::play_native_merge::former_tags_of(episodes),
         &shared,
     );
+    super::drift::put_drift_right(state, slug, episodes, unread_past);
 }
 
 #[cfg(test)]

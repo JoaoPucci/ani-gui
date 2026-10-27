@@ -39,6 +39,7 @@ proptest::proptest! {
             version: None,
             former_tags: Vec::new(),
             other_copies: Vec::new(),
+            listing: Vec::new(),
             unread_past: None,
         };
         let row = cached_resolution_for(&resolved);

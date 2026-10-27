@@ -196,6 +196,7 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
             "test-a:show-2".into(),
             vec![row(1, 1, None), row(2, 2, Some("1.25")), row(3, 3, None)],
         )],
+        listing: Vec::new(),
         unread_past: None,
     };
     crate::commands::numbering_offset::retag_from_resolve(&state, &native);
@@ -203,6 +204,7 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
         &state,
         "test-a:show-2",
         &[row(1, 1, None), row(2, 2, Some("1.25"))],
+        None,
     );
     for key in ["test-a:show-uncut-1", "test-a:show-2"] {
         assert_eq!(
@@ -435,6 +437,12 @@ impl crate::scraper::provider::Provider for Ticking {
     }
     async fn detail_year(&self, slug: &str) -> crate::error::Result<Option<u32>> {
         crate::scraper::provider::Provider::detail_year(&self.inner, slug).await
+    }
+    async fn detail_page(
+        &self,
+        slug: &str,
+    ) -> crate::error::Result<crate::scraper::provider::EntryPage> {
+        crate::scraper::provider::Provider::detail_page(&self.inner, slug).await
     }
 }
 
