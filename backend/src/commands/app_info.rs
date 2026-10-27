@@ -117,6 +117,25 @@ mod tests {
     }
 
     #[test]
+    fn app_info_reports_what_the_retired_provider_sweep_changed() {
+        // The sweep removes history rows a newer provider's row
+        // supersedes and rewrites the rest; the page says so.
+        let mut state = fake_state();
+        let report = crate::retired_provider::RetiredSweepReport {
+            superseded: vec!["Naruto Shippuden".into()],
+            renumbered: vec!["The Separation".into()],
+            numbering_rows: 2,
+            cache_rows: 51,
+        };
+        state.legacy_sweep.retired_provider = report.clone();
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(
+            json["retired_provider_sweep"],
+            serde_json::to_value(&report).expect("report")
+        );
+    }
+
+    #[test]
     fn app_info_projects_state_fields() {
         let s = fake_state();
         let info = app_info(&s).unwrap();
