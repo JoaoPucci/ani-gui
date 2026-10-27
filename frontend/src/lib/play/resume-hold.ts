@@ -9,6 +9,14 @@
  * playback is paused: the resume wins. The hold reveals once the seek
  * landed at the point and playback started there, or, autoplay
  * refused, once the frame at the point is in.
+ *
+ * Hiding is the page's part; picture-in-picture, and a <video> that is
+ * itself fullscreen, show the element directly. So an hls stream is
+ * also started at the point (`resumeStartAt`): its engine begins
+ * loading at the point's fragment, so the frames before that fragment
+ * are never fetched, let alone shown. An mp4 stream, played from
+ * `src`, has no start the page can set without racing the element's
+ * own; docs/deferred-work.md has why.
  */
 
 import { HLS_STALL_LOAD_POLICY } from './hls-load-policy';
@@ -44,8 +52,6 @@ export type ResumeHold = {
 	/** Seeks to `seconds`; while the hold is on, it reveals once that
 	 *  seek landed and playback started. */
 	seekTo(seconds: number): void;
-	/** Nothing is to be sought after all: reveal and play from here. */
-	release(): void;
 	/** Ends the hold without starting anything — the source is gone. */
 	end(): void;
 };
@@ -125,7 +131,6 @@ export function holdForResume(input: {
 			}
 			video.currentTime = seconds;
 		},
-		release: reveal,
 		end: finish
 	};
 }
