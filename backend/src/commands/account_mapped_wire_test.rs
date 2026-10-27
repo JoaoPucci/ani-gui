@@ -309,3 +309,166 @@ async fn mal_the_final_chapters_first_special_sends_one_and_no_status() {
     // completed (the row was absent, so the write promotes it).
     assert!(patches[0].contains("status=watching"), "{patches:?}");
 }
+
+/// MAL keeps "finished" only in Completed: its rewatching row is a
+/// Watching one with `is_rewatching` set, and nothing about it says the
+/// show was finished before. A write the map files under an entry being
+/// rewatched puts that entry back at Completed where it reaches its
+/// total, on each path the map writes by.
+async fn mal_get(server: &MockServer, media: u32, body: &str) {
+    Mock::given(method("GET"))
+        .and(path(format!("/anime/{media}")))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body.to_string()))
+        .mount(server)
+        .await;
+}
+
+/// The PATCH bodies MAL received for `media`, in order.
+async fn mal_patches(server: &MockServer, media: u32) -> Vec<String> {
+    let at = format!("/anime/{media}/my_list_status");
+    server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.method.as_str() == "PATCH" && r.url.path() == at)
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .collect()
+}
+
+async fn mal_push(
+    state: &Arc<AppState>,
+    server: &MockServer,
+    kitsu_id: &str,
+    native: u32,
+    update: EntryUpdate,
+) {
+    Mock::given(method("PATCH"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"completed","num_episodes_watched":1,"is_rewatching":false}"#,
+        ))
+        .mount(server)
+        .await;
+    let provider = crate::meta::mal_user::MalProvider::with_bases(
+        reqwest::Client::new(),
+        server.uri(),
+        "http://unused-token".to_string(),
+        crate::meta::mal_user::MalRefreshState::new(),
+    );
+    let tokens = tokens();
+    let ask = MapAsk {
+        state,
+        kind: ProviderKind::MyAnimeList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: None,
+    };
+    push_progress_mapped(&ask, kitsu_id, Some(ProviderMediaId(native)), update)
+        .await
+        .expect("push ok");
+}
+
+fn mal_ranma(state: &AppState) {
+    seed(
+        state,
+        ProviderKind::MyAnimeList,
+        "186",
+        &EpisodeMap {
+            shape: Shape::Chain,
+            segments: vec![
+                segment(210, 18, 1, 18, 0),
+                segment(149_939, 143, 19, 161, 0),
+            ],
+        },
+    );
+}
+
+fn closes_the_rewatch(patch: &str) -> bool {
+    patch.contains("status=completed") && patch.contains("is_rewatching=false")
+}
+
+#[tokio::test]
+async fn mal_the_resolved_entry_s_mapped_finale_puts_its_rewatch_back_at_completed() {
+    let state = state();
+    seed(
+        &state,
+        ProviderKind::MyAnimeList,
+        "47132",
+        &EpisodeMap {
+            shape: Shape::SharedEntry,
+            segments: vec![segment(51_535, 2, 1, 1, 1)],
+        },
+    );
+    let server = MockServer::start().await;
+    mal_get(
+        &server,
+        51_535,
+        r#"{"id":51535,"num_episodes":2,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":1}}"#,
+    )
+    .await;
+    let update = EntryUpdate {
+        status: Some(ListStatus::Completed),
+        progress_episodes: Some(1),
+        ..Default::default()
+    };
+    mal_push(&state, &server, "47132", 51_535, update).await;
+    let patches = mal_patches(&server, 51_535).await;
+    assert_eq!(patches.len(), 1, "{patches:?}");
+    assert!(patches[0].contains("num_watched_episodes=2"), "{patches:?}");
+    assert!(closes_the_rewatch(&patches[0]), "{patches:?}");
+}
+
+#[tokio::test]
+async fn mal_an_earlier_entry_rewatched_to_its_total_is_put_back_at_completed() {
+    let state = state();
+    mal_ranma(&state);
+    let server = MockServer::start().await;
+    mal_get(
+        &server,
+        210,
+        r#"{"id":210,"num_episodes":18,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":18}}"#,
+    )
+    .await;
+    mal_get(&server, 149_939, r#"{"id":149939,"num_episodes":143}"#).await;
+    let update = EntryUpdate {
+        progress_episodes: Some(19),
+        ..Default::default()
+    };
+    mal_push(&state, &server, "186", 210, update).await;
+    let earlier = mal_patches(&server, 210).await;
+    assert_eq!(earlier.len(), 1, "{earlier:?}");
+    assert!(closes_the_rewatch(&earlier[0]), "{earlier:?}");
+    let later = mal_patches(&server, 149_939).await;
+    assert_eq!(later.len(), 1, "{later:?}");
+    assert!(later[0].contains("num_watched_episodes=1"), "{later:?}");
+}
+
+#[tokio::test]
+async fn mal_a_later_entry_s_finale_puts_its_rewatch_back_at_completed() {
+    let state = state();
+    mal_ranma(&state);
+    let server = MockServer::start().await;
+    mal_get(
+        &server,
+        210,
+        r#"{"id":210,"num_episodes":18,"my_list_status":{"status":"completed","num_episodes_watched":18}}"#,
+    )
+    .await;
+    mal_get(
+        &server,
+        149_939,
+        r#"{"id":149939,"num_episodes":143,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":142}}"#,
+    )
+    .await;
+    let update = EntryUpdate {
+        status: Some(ListStatus::Completed),
+        progress_episodes: Some(161),
+        ..Default::default()
+    };
+    mal_push(&state, &server, "186", 210, update).await;
+    assert!(mal_patches(&server, 210).await.is_empty());
+    let later = mal_patches(&server, 149_939).await;
+    assert_eq!(later.len(), 1, "{later:?}");
+    assert!(later[0].contains("num_watched_episodes=143"), "{later:?}");
+    assert!(closes_the_rewatch(&later[0]), "{later:?}");
+}
