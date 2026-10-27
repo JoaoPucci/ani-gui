@@ -10,9 +10,8 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { fade, scale } from 'svelte/transition';
-	import { flip } from 'svelte/animate';
-	import { quintOut } from 'svelte/easing';
+	import { fade } from 'svelte/transition';
+	import { cardScale, cardShift, STILL } from '$lib/transitions/card-motion';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
@@ -29,13 +28,13 @@
 	const deleteAnimationGate = createAnimationGate();
 	function cwOutScale(node: Element) {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return { duration: 0 };
-		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
+		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return STILL;
+		return cardScale(node);
 	}
 	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return { duration: 0 };
-		return flip(node, animation, { duration: 280, easing: quintOut });
+		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return STILL;
+		return cardShift(node, animation);
 	}
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
