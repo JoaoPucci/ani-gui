@@ -109,6 +109,11 @@ function bearerOf(state: ProviderState): string | null {
  * date has passed since (connected to expired): a renewal out for it is
  * still its own, and stays credited.
  */
-export function isSignInChange(prev: ProviderState, next: ProviderState): boolean {
+export function isSignInChange(
+	prev: ProviderState,
+	next: ProviderState,
+	_ownWrites: ReadonlySet<string> = new Set()
+): boolean {
+	void _ownWrites;
 	return bearerOf(prev) !== bearerOf(next);
 }

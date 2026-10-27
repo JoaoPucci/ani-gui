@@ -13,6 +13,7 @@
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
 import { refreshExpiredAccounts } from './refresh-flow';
+import { beginOwnWrite, ownWrites } from './own-writes';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
 import {
 	failuresAfterHydrate,
@@ -110,7 +111,7 @@ class AccountStore {
 		const nowSec = Math.floor(Date.now() / 1000);
 		for (const p of providers) {
 			next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
-			if (isSignInChange(prev[p], next[p])) this.bumpGeneration(p);
+			if (isSignInChange(prev[p], next[p], ownWrites(p))) this.bumpGeneration(p);
 		}
 		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
 		this.byProvider = next;
@@ -140,6 +141,7 @@ class AccountStore {
 			// store snapshot catches up.
 			generation: (provider) => this.accountGeneration[provider],
 			onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
+			ownWrite: beginOwnWrite,
 			// Don't even start an expired refresh for a provider whose
 			// disconnect is mid-flight.
 			changing: (provider) => this.accountChanging[provider]

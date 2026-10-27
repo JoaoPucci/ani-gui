@@ -43,6 +43,9 @@ export interface RefreshFlowDeps {
 	/** Told when a renewal fails, with what the failure says about the
 	 *  sign-in. */
 	onRenewalFailed?(provider: Provider, failure: RenewalFailure): void;
+	/** Told when the renewal starts saving `bearer`; the returned
+	 *  function is called once the save has settled. */
+	ownWrite?(provider: Provider, bearer: string): () => void;
 }
 
 export type RefreshOutcome =
@@ -106,6 +109,7 @@ export async function refreshAccount(
 	// a rejection the same as a resolved {ok:false}: a failed refresh, not
 	// an exception that escapes to abort the caller's best-effort flow.
 	let saved: boolean;
+	const endOwnWrite = deps.ownWrite?.(provider, refreshed.access_token);
 	try {
 		// The write itself is skipped once the account has moved, so the
 		// old sign-in renewed never lands over a newer one in the keychain.
@@ -113,6 +117,8 @@ export async function refreshAccount(
 		saved = (await deps.persistAccount(provider, refreshed, stillCurrent)).ok;
 	} catch {
 		saved = false;
+	} finally {
+		endOwnWrite?.();
 	}
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
