@@ -401,7 +401,7 @@ What the write sends, with the map:
 | The segment entry's last episode, on an entry still airing | its total, no completed status |
 | The last of several Kitsu parts filed under one entry | the entry's total, completed where the tracker has it finished; an earlier part's last episode sends progress alone |
 | The app's finale under extras | the entry's total, completed where the tracker has it finished (Unlimited Blade Works' 12th sends 13) |
-| Any episode of a later segment while its entry is not on the list, or at 0 | first, each earlier segment's entry brought to its total, completed where finished, unless it is already there; then its own number |
+| Any episode of a later segment while its entry is not on the list, or at 0 | first, each earlier segment's entry brought to its total, completed where finished, unless it is already there — a MyAnimeList rewatch at its total is not, so a finished one is closed and its rewatch counted; then its own number |
 | An episode of a show Kitsu resolves to nothing on the tracker, outside every segment | nothing |
 | A row past Kitsu's count left unverified (above), mapped or not | nothing: the renderer makes no write, so the map is not read |
 | Any episode, on an entry being rewatched | on AniList, progress only; the rewatch stays, and AniList closes it at its total. On MyAnimeList, progress only, but the entry's last episode on a finished entry closes the rewatch: completed, and the rewatch counted |

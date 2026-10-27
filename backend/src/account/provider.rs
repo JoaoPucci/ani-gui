@@ -215,7 +215,9 @@ pub trait UserListProvider: Send + Sync {
     ) -> Result<Option<CurrentEntry>>;
 
     /// The same bearer-scoped read as [`Self::current_entry`], plus the
-    /// tracker's own episode total for the media, in one request. The
+    /// tracker's own episode total for the media, in one request — and,
+    /// on MAL, the row's rewatch count, which closing a rewatch counts
+    /// from. The
     /// mark-watched write-back reads this instead, so it can clamp the
     /// count it sends to the tracker's total, and decide the finale's
     /// completed status against it, without a second call.
