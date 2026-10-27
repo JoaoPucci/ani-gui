@@ -413,3 +413,25 @@ async fn the_version_that_served_carries_the_mode_in_the_row() {
         ]
     );
 }
+
+#[tokio::test]
+async fn a_probe_that_settles_nothing_still_records_the_listings_it_picked() {
+    // No version answered for the mode, so the probe settles nothing —
+    // but both versions' listings were at hand, and a replay's check
+    // of a former number reads them.
+    use crate::scraper::table_provider::Answer;
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(modes_answering(
+        || Answer::fails(|| crate::error::AniError::Upstream { status: 404 }),
+        || false.into(),
+    ));
+    let got = check_availability(&state, &args()).await.expect("answered");
+    assert_eq!(got.unsettled, Some(UnsettledReason::Unanswered));
+    for slug in ["the-show-1", "the-show-2"] {
+        assert!(
+            crate::commands::listing_tags::get(&state, &key(slug)).is_some(),
+            "{slug}'s listing is recorded"
+        );
+    }
+}

@@ -955,3 +955,40 @@ async fn a_cached_handoff_names_the_episode_its_resolve_played_in_the_window() {
     assert_eq!(watch.ep_no, "12.5");
     assert_eq!(launch.title.as_deref(), Some("Stitched Show · ep 12.5"));
 }
+
+#[tokio::test]
+async fn a_replay_after_a_failed_play_whose_listing_carries_its_former_number_names_none() {
+    // The listing last recorded leaves "2.5" free. A play of an episode
+    // the provider does not list fails — but the listing it picked tags
+    // another recap "2.5" now, and the replay that follows names no
+    // former number.
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    hear_listing(&state, &stitched_key(), &["1.5"]);
+    let asked = args("1.5");
+    let mut row = first_recap_row(&upstream.uri());
+    row.resolved_slot = Some(2);
+    row.played = Some("1.5".into());
+    row.former_episode = Some("2.5".into());
+    play_resolution_cache::put(&state.cache_pool, &key_for(&asked, "1.5"), &row);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::stitched_shared_former(),
+    ));
+    assert!(
+        play_with_progress(&state, &args("40"), |_| {})
+            .await
+            .is_err(),
+        "episode 40 is not listed"
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(resp.former_episode, None);
+}
