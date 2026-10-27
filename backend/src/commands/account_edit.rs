@@ -61,6 +61,9 @@ async fn get_entry_via(
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
+    // And the entry's own lock, which writes reaching it from another
+    // Kitsu entry (a part filed under it) take too.
+    let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     provider.current_entry(tokens, native).await
 }
 
@@ -100,6 +103,7 @@ async fn set_entry_via(
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(None);
     };
+    let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     let entry = provider.update_entry(tokens, native, update).await?;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
@@ -141,6 +145,7 @@ async fn remove_entry_via(
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(false);
     };
+    let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     // The title may already be gone upstream (double-click Remove, or
     // removed in another client). Providers signal that differently —
     // MAL returns Upstream{404}, AniList fails the row-id lookup with a
