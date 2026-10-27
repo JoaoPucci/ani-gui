@@ -413,3 +413,22 @@ describe('a failed renewal says why', () => {
 		expect(onRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
 	});
 });
+
+describe('a failed renewal after the account changed', () => {
+	it('is superseded, so its failure cannot land on the newer sign-in', async () => {
+		let gen = 0;
+		const out = await refreshAccount(
+			{
+				refreshTokens: vi.fn().mockImplementation(async () => {
+					gen = 1;
+					throw refusedToken;
+				}),
+				persistAccount: vi.fn(),
+				generation: () => gen
+			},
+			'mal',
+			account()
+		);
+		expect(out).toEqual({ kind: 'superseded' });
+	});
+});

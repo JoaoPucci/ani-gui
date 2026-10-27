@@ -69,13 +69,15 @@ describe('handleRefusedBearer', () => {
 		}
 	);
 
-	it('marks a sign-in with no way to renew it as refused', async () => {
+	it('marks a sign-in with no way to renew it expired, and claims no renewal', async () => {
+		// Nothing was renewed, so nothing was refused renewal: the notice
+		// for an expired sign-in with no refresh token is the one to show.
 		const account = acc(null);
 		const d = deps({ kind: 'connected', account, lastSyncedAt: 0 });
 		await handleRefusedBearer(d, 'anilist' as Provider);
 		expect(d.refreshTokens).not.toHaveBeenCalled();
 		expect(d.setExpired).toHaveBeenCalledWith('anilist', account);
-		expect(d.noteRenewalFailed).toHaveBeenCalledWith('anilist', 'rejected');
+		expect(d.noteRenewalFailed).not.toHaveBeenCalled();
 	});
 
 	it('leaves an already expired sign-in alone: its renewal has already been told', async () => {

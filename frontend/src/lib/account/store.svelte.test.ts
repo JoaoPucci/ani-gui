@@ -348,13 +348,21 @@ describe('accountStore renewal failures', () => {
 		expect(accountStore.renewalFailure.mal).toBeNull();
 	});
 
-	it('forgets it when the provider is disconnected or a new sign-in starts', () => {
+	it('forgets it when the provider is disconnected', () => {
 		accountStore.noteRenewalFailed('mal', 'rejected');
 		accountStore.setDisconnected('mal');
 		expect(accountStore.renewalFailure.mal).toBeNull();
+	});
+
+	it('keeps it while a new sign-in is under way, so a cancelled one restores the notice', () => {
+		// The account page restores an expired sign-in after a cancelled
+		// or failed connect; with its failure gone the notice would wait
+		// for a renewal that never comes.
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
 		accountStore.noteRenewalFailed('mal', 'rejected');
 		accountStore.setConnecting('mal');
-		expect(accountStore.renewalFailure.mal).toBeNull();
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
+		expect(accountStore.renewalFailure.mal).toBe('rejected');
 	});
 
 	it('keeps it when the sign-in is marked expired', () => {
@@ -382,5 +390,44 @@ describe('accountStore.retryRenewal', () => {
 		await accountStore.retryRenewal();
 		expect(accountStore.renewalFailure.mal).toBe('rejected');
 		refresh.mockRestore();
+	});
+});
+
+describe('accountStore.hydrate after a refused bearer', () => {
+	it('keeps a sign-in expired when the keychain hands back the bearer the tracker refused', () => {
+		// The token's date says valid, but the tracker refused it: reading
+		// it from the keychain again must not make it look healthy.
+		const refused = payload({ refresh_token: 'rt', expires_at_epoch_s: 1_999_999_999 });
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: {
+				account: {
+					getToken: (p: string) =>
+						p === 'mal' ? { ok: true, payload: refused } : { ok: false, kind: 'not_found' }
+				}
+			}
+		};
+		const refresh = vi.spyOn(accountStore, 'refreshExpired').mockResolvedValue();
+		accountStore.setExpired('mal', refused);
+		accountStore.noteRenewalFailed('mal', 'unreachable');
+		accountStore.hydrate();
+		expect(accountStore.byProvider.mal.kind).toBe('expired');
+		expect(accountStore.renewalFailure.mal).toBe('unreachable');
+		refresh.mockRestore();
+	});
+
+	it('takes a different bearer from the keychain as the sign-in it is', () => {
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: {
+				account: {
+					getToken: (p: string) =>
+						p === 'mal'
+							? { ok: true, payload: payload({ access_token: 'fresh', refresh_token: 'rt' }) }
+							: { ok: false, kind: 'not_found' }
+				}
+			}
+		};
+		accountStore.setExpired('mal', payload({ access_token: 'refused', refresh_token: 'rt' }));
+		accountStore.hydrate();
+		expect(accountStore.byProvider.mal.kind).toBe('connected');
 	});
 });

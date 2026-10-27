@@ -127,4 +127,13 @@ describe('RenewalRetry', () => {
 		r.sync();
 		expect(timers[1].ms).toBe(30_000);
 	});
+
+	it('cancels its pending retry when stopped, and schedules nothing after', () => {
+		const { r, timers } = harness(() => true);
+		r.sync();
+		r.stop();
+		expect(timers[0].cleared).toBe(true);
+		r.sync();
+		expect(timers).toHaveLength(1);
+	});
 });

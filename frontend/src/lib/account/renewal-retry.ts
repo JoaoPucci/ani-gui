@@ -59,6 +59,9 @@ export class RenewalRetry {
 		this.attempt += 1;
 	}
 
+	/** Stop for good. Stub: does nothing yet. */
+	stop(): void {}
+
 	private fire(): void {
 		this.timer = null;
 		this.running = true;
