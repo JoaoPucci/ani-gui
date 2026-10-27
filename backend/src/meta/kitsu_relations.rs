@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::KitsuClient;
 use crate::error::{AniError, Result};
+use crate::meta::present::present;
 
 /// One entry Kitsu relates an anime to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,9 +93,26 @@ struct Node {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NodeAttributes {
+    // Asked of every destination (`fields[anime]`, `fields[manga]`):
+    // missing is no answer, null is Kitsu's "none".
+    #[serde(deserialize_with = "present")]
     subtype: Option<String>,
+    #[serde(deserialize_with = "present")]
     status: Option<String>,
-    episode_count: Option<u32>,
+    // Asked of an anime only: `None` when the node does not carry it,
+    // `Some(None)` when it carries null.
+    #[serde(default, deserialize_with = "carried")]
+    episode_count: Option<Option<u32>>,
+}
+
+/// A field read as carried or not: `Some` with its value (null being
+/// `None`) when the node has it. With `serde(default)`, a node without
+/// it is `None`.
+fn carried<'de, D>(deserializer: D) -> std::result::Result<Option<Option<u32>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    present(deserializer).map(Some)
 }
 
 /// Parse a `media-relationships?include=destination` page. A relation
@@ -127,11 +145,24 @@ pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
                     dst.kind, dst.id
                 ),
             })?;
+        // An anime is asked for its count: one that leaves it out cannot
+        // say how long the related entry is.
+        let episode_count = match (dst.kind.as_str(), node.attributes.episode_count) {
+            ("anime", None) => {
+                return Err(AniError::ParseFailed {
+                    detail: format!(
+                        "kitsu relationships parse: anime {} without its count",
+                        dst.id
+                    ),
+                })
+            }
+            (_, count) => count.flatten(),
+        };
         entries.push(KitsuRelation {
             role: edge.attributes.role,
             subtype: node.attributes.subtype.clone(),
             status: node.attributes.status.clone(),
-            episode_count: node.attributes.episode_count,
+            episode_count,
             kind: dst.kind,
             id: dst.id,
         });

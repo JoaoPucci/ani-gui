@@ -1308,3 +1308,26 @@ async fn refresh_surfaces_429_as_rate_limited() {
         .expect_err("429 must surface");
     assert_rate_limited(&err, Some(60));
 }
+
+#[test]
+fn parse_iso8601_to_epoch_reads_an_offset_it_cannot_parse_as_utc() {
+    // An offset of the right length but not digits reads as UTC, as a
+    // missing one does: the row is placed by its wall clock.
+    let utc = crate::meta::mal_user_parse::parse_iso8601_to_epoch("2026-01-01T00:00:00Z");
+    for malformed in ["2026-01-01T00:00:00+ab:cd", "2026-01-01T00:00:00-0x:30"] {
+        assert_eq!(
+            crate::meta::mal_user_parse::parse_iso8601_to_epoch(malformed),
+            utc,
+            "{malformed}"
+        );
+    }
+}
+
+#[test]
+fn a_saved_status_mal_does_not_name_is_no_answer() {
+    let body = br#"{"status":"binging","num_episodes_watched":3}"#;
+    assert!(matches!(
+        crate::meta::mal_user_parse::parse_list_status_response(body, 1),
+        Err(crate::error::AniError::ParseFailed { .. })
+    ));
+}

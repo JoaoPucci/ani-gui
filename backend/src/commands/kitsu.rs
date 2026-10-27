@@ -1000,8 +1000,9 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
 
 /// The detail page's read: [`kitsu_anime_detail`] plus the AniList
 /// banner the trending row remembered for the show, if it listed it.
-/// Internal callers of the detail read have no use for the banner and
-/// skip the lookup.
+/// Internal callers skip reading that remembered banner; the detail
+/// read itself still asks AniList for one when Kitsu has no cover and
+/// the row is not cached.
 ///
 /// # Errors
 /// Those of [`kitsu_anime_detail`].

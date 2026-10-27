@@ -112,7 +112,7 @@ async fn a_complete_mapping_is_kept_for_thirty_days() {
 
     external_ids_for(&state, "12").await.expect("read");
 
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v1:k12")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k12")
         .expect("cache read")
         .expect("row written");
     assert_eq!(row.ttl_seconds, 30 * DAY);
@@ -136,7 +136,7 @@ async fn a_mapping_missing_a_tracker_is_kept_for_a_day() {
         }
     );
 
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v1:k50497")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k50497")
         .expect("cache read")
         .expect("row written");
     assert_eq!(row.ttl_seconds, DAY);
@@ -153,7 +153,7 @@ async fn a_show_with_no_mapping_at_all_is_kept_for_a_day_too() {
     assert_eq!(first, ExternalIds::default());
     assert_eq!(second, ExternalIds::default());
 
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v1:k999")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k999")
         .expect("cache read")
         .expect("row written");
     assert_eq!(row.ttl_seconds, DAY);
@@ -169,7 +169,7 @@ async fn a_row_this_build_cannot_read_is_fetched_again_and_overwritten() {
     let state = state_with_kitsu(&kitsu.uri());
     crate::cache::meta_cache_put(
         &state.cache_pool,
-        "kitsu:external-ids:v1:k12",
+        "kitsu:external-ids:v2:k12",
         "not the shape",
         DAY,
     )
@@ -183,7 +183,7 @@ async fn a_row_this_build_cannot_read_is_fetched_again_and_overwritten() {
             anilist: Some(21),
         }
     );
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v1:k12")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k12")
         .expect("cache read")
         .expect("row");
     assert_eq!(
@@ -221,4 +221,24 @@ async fn two_concurrent_cold_reads_of_one_show_cost_one_kitsu_request() {
     assert_eq!(first.expect("first read"), want);
     assert_eq!(second.expect("second read"), want);
     // `.expect(1)`: one Kitsu request served both.
+}
+
+/// A v1 row with no ids may be what an earlier build kept from a reply
+/// that was not Kitsu's anime document at all, read then as a show
+/// with no mappings. Nothing in the row tells the two apart, so v1 rows
+/// are not read: the key moved past them, and the show is asked again.
+#[tokio::test]
+async fn an_empty_row_an_earlier_build_kept_is_not_read() {
+    let body = mappings_body("12", &[("myanimelist/anime", 21)]);
+    let kitsu = kitsu_answering("12", ResponseTemplate::new(200).set_body_string(body), 1).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:external-ids:v1:k12",
+        &serde_json::to_string(&ExternalIds::default()).expect("json"),
+        DAY,
+    )
+    .expect("seed");
+    let ids = external_ids_for(&state, "12").await.expect("read");
+    assert_eq!(ids.mal, Some(21), "asked again rather than read from v1");
 }

@@ -36,6 +36,19 @@ impl<'de, T: serde::de::DeserializeOwned> Deserialize<'de> for Present<T> {
     }
 }
 
+/// [`Present`] for a field kept as a plain `Option`: named by
+/// `#[serde(deserialize_with = "present")]`, which leaves a missing
+/// field the missing-field error where a bare `Option` would read it as
+/// `None`. Null is `None`. One reading for both forms: this goes
+/// through [`Present`].
+pub(crate) fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    Present::<T>::deserialize(deserializer).map(Present::into_inner)
+}
+
 #[cfg(test)]
 #[path = "present_prop_test.rs"]
 mod prop_tests;

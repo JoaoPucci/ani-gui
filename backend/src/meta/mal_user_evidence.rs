@@ -1,6 +1,7 @@
 //! MAL's answer to what the episode map asks of an anime; split from
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
+use crate::meta::present::present;
 use serde::Deserialize;
 
 use super::*;
@@ -25,17 +26,6 @@ pub(super) async fn read(
     parse_media_evidence(&provider.get_auth_bytes(&url, tokens).await?)
 }
 
-/// A field the request asks for, read as given: `None` when it is
-/// null. Named by `deserialize_with`, which leaves a missing field the
-/// missing-field error where a bare `Option` would read it as `None`.
-fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
-}
-
 /// Parse an `/anime/{id}?fields=num_episodes,status,media_type,start_date,
 /// end_date,related_anime` response. MAL's `0` for a length not announced
 /// is unknown; a date arrives as `YYYY-MM-DD`, `YYYY-MM` or `YYYY` and is
@@ -58,6 +48,9 @@ pub(in crate::meta) fn parse_media_evidence(body: &[u8]) -> Result<MediaEvidence
         status: Option<String>,
         #[serde(deserialize_with = "present")]
         media_type: Option<String>,
+        // Unlike the fields above, MAL leaves an unset date out rather
+        // than sending null, so a missing date is its answer: these
+        // stay defaulted, not `present`.
         #[serde(default)]
         start_date: Option<String>,
         #[serde(default)]

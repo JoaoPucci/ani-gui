@@ -177,3 +177,42 @@ fn a_relation_that_leaves_out_what_the_page_asks_for_is_no_answer() {
     assert!(got.entries.is_empty());
     assert!(got.complete);
 }
+
+/// The page asks for each destination's subtype and status, and an
+/// anime's episode count: a destination that leaves one out cannot say
+/// what the related entry is, and reading it as "no format, no status,
+/// unknown count" would decide what the relation explains on nothing.
+/// Given as null, each is Kitsu's answer. A manga is not asked for a
+/// count.
+#[test]
+fn a_destination_that_leaves_out_an_asked_attribute_is_no_answer() {
+    let page = |kind: &str, attributes: &str| {
+        format!(
+            r#"{{"data":[{{"id":"r1","type":"mediaRelationships","attributes":{{"role":"sequel"}},"relationships":{{"destination":{{"data":{{"type":"{kind}","id":"2"}}}}}}}}],"included":[{{"id":"2","type":"{kind}","attributes":{attributes}}}],"meta":{{"count":1}}}}"#
+        )
+    };
+    for attributes in [
+        r#"{"status":"finished","episodeCount":12}"#,
+        r#"{"subtype":"TV","episodeCount":12}"#,
+        r#"{"subtype":"TV","status":"finished"}"#,
+    ] {
+        let body = page("anime", attributes);
+        assert!(
+            parse_relationships_response(body.as_bytes()).is_err(),
+            "read {body} as an answer"
+        );
+    }
+    let body = page("manga", r#"{"status":"finished"}"#);
+    assert!(
+        parse_relationships_response(body.as_bytes()).is_err(),
+        "read {body}"
+    );
+    let nulls = page(
+        "anime",
+        r#"{"subtype":null,"status":null,"episodeCount":null}"#,
+    );
+    let got = parse_relationships_response(nulls.as_bytes()).expect("nulls are an answer");
+    assert_eq!(got.entries[0].episode_count, None);
+    let manga = page("manga", r#"{"subtype":"manga","status":"finished"}"#);
+    assert!(parse_relationships_response(manga.as_bytes()).is_ok());
+}
