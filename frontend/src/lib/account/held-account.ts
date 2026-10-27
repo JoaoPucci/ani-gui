@@ -4,6 +4,7 @@
 
 import type { Provider } from './types';
 import { accountStore } from './store.svelte';
+import { hasLeft, standingOf } from './account-standing';
 
 /** The account a fan-out listed a tracker under: its user, or `null`
  *  when the tracker had no account to name. */
@@ -57,42 +58,6 @@ export function accountStanding(
 	return standingOf(listed.user, accountUser(provider));
 }
 
-/** Where a tracker's user `now` stands against the user a write was
- *  `listed` under: `gone` when either is unknown, else `same` or
- *  `other`. */
-export function standingOf(
-	listed: string | null | undefined,
-	now: string | null | undefined
-): 'same' | 'other' | 'gone' {
-	if (listed === null || listed === undefined || now === null || now === undefined) return 'gone';
-	return now === listed ? 'same' : 'other';
-}
-
-/** Where a tracker's account is now, as `hasLeft` reads it. */
-export interface AccountNow {
-	/** An account change is under way. */
-	changing: boolean;
-	/** A sign-in is under way. */
-	connecting: boolean;
-	/** The tracker is disconnected. */
-	disconnected: boolean;
-	/** The user its account names, if it names one. */
-	user: string | null | undefined;
-}
-
-/**
- * Whether a tracker has for good left the user a write was listed under
- * — so a held write need not wait for its end-of-wait check to know it
- * is dropped. Disconnected, or another user's account, is final; a
- * sign-in or an account change under way is not, since either can end
- * on the same user. A write listed under no user was never that user's.
- */
-export function hasLeft(listedUser: string | null | undefined, now: AccountNow): boolean {
-	if (listedUser === null || listedUser === undefined) return true;
-	if (now.changing || now.connecting) return false;
-	return now.disconnected || now.user !== listedUser;
-}
-
 /** `hasLeft` for `provider`'s account as the store holds it now; never
  *  for a write with no listing, which follows no account. */
 export function accountLeft(provider: Provider, listed?: ListedAccount): boolean {
@@ -105,3 +70,5 @@ export function accountLeft(provider: Provider, listed?: ListedAccount): boolean
 		user: state && 'account' in state && state.account ? state.account.user_id : null
 	});
 }
+
+export { hasLeft, standingOf, type AccountNow } from './account-standing';
