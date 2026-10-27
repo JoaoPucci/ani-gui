@@ -2133,8 +2133,25 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v23:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v23:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v24:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v24:kid-1:dub");
+}
+
+/// A verdict stamped from a listing whose rows past Kitsu's count no
+/// reading reached is not served: Noragami's row can hold the
+/// listing's fourteen as its cap, for a play or probe that could not
+/// read whether rows 13 and 14 are its OADs, and for a probe of a
+/// finished show it stood thirty days. A row from such a listing and
+/// one from a reading that refused the extras, where the provider is
+/// simply ahead of Kitsu, both hold a cap past Kitsu's count with no
+/// extras; nothing in a row tells them apart.
+#[test]
+fn a_verdict_stamped_from_an_unread_count_is_not_read() {
+    let current = cache_key("7881", "sub");
+    assert!(
+        !current.starts_with("availability:v23:"),
+        "the key must have moved past v23: {current}"
+    );
 }
 
 /// A verdict stamped while the appended-extras rule checked a TV
