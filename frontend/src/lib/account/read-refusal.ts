@@ -33,15 +33,15 @@ export async function handleRefusedBearer(
 		deps.setExpired(provider, account);
 		return;
 	}
-	const generation = deps.generation(provider);
 	const outcome = await refreshAccount(deps, provider, account);
 	if (outcome.kind === 'refreshed') {
 		deps.setConnected(provider, outcome.account);
 		return;
 	}
-	// The account changed while renewing: the refused bearer was the
-	// old one's, and the new sign-in owes the user no notice.
-	if (outcome.kind !== 'failed' || deps.generation(provider) !== generation) return;
+	// `superseded` when the account changed while renewing: the refused
+	// bearer was the old one's, and the new sign-in owes the user no
+	// notice. refreshAccount checks the generation for a failure too.
+	if (outcome.kind !== 'failed') return;
 	deps.setExpired(provider, account);
 	deps.noteRenewalFailed(provider, outcome.failure);
 }
