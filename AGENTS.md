@@ -255,6 +255,19 @@ is out of scope or too costly and leaving nothing behind. That reads
 as a considered engineering judgement while being, in effect, a
 refusal — and the work is lost, because nothing records it.
 
+A note in the PR's own description or commit message is the same
+failure in a quieter form. "Not covered", "left open", "not done
+here" or "predates this change", written beside a defect the change
+knows about — one it introduced, uncovered, or was told of in
+review — records the gap where it will be read once, as context,
+and then merged past. That defect leaves the change by one of the
+four outcomes above, and the note links whichever carries it: the
+PR, the deferred-work entry, or the question put to the maintainer.
+A reviewer reading such a note with no link beside it treats it as a
+finding, not as a disclosure that settles it. Saying which checks
+were not run, as §10 asks, or describing behaviour that is
+intended, is not such a note.
+
 The same rule applies to your own estimates. Before invoking cost,
 check the cheap path actually is closed: existing conventions in the
 package, a helper already extracted, a test glob that already covers
