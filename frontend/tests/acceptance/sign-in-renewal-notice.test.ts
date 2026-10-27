@@ -315,4 +315,43 @@ describe('opening the app with a dead MAL sign-in', () => {
 		expect(accountStore.byProvider.mal.kind).toBe('connected');
 		expect(signInToasts()).toEqual([REFUSED]);
 	});
+
+	it('tries an unanswered renewal again on its own, and withdraws the notice once it works', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			let renewals = 0;
+			(
+				window as unknown as { aniGui: { account: Record<string, unknown> } }
+			).aniGui.account.setToken = async () => ({ ok: true });
+			server.use(
+				...quietBackend,
+				http.post(`${API_BASE}/api/account/refresh/mal`, () => {
+					renewals += 1;
+					return renewals === 1
+						? HttpResponse.json(
+								{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
+								{ status: 502 }
+							)
+						: HttpResponse.json({
+								access_token: 'renewed',
+								refresh_token: 'rt2',
+								expires_at_epoch_s: 4_000_000_000
+							});
+				})
+			);
+			bootLayout();
+			await vi.advanceTimersByTimeAsync(200);
+			expect(signInToasts()).toEqual([UNREACHABLE]);
+			expect(renewals).toBe(1);
+
+			await vi.advanceTimersByTimeAsync(29_000);
+			expect(renewals, 'not before thirty seconds').toBe(1);
+			await vi.advanceTimersByTimeAsync(1_500);
+			expect(renewals).toBe(2);
+			expect(accountStore.byProvider.mal.kind).toBe('connected');
+			expect(signInToasts()).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
