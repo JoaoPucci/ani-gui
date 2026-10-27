@@ -138,19 +138,40 @@ describe('failuresAfterRetry', () => {
 });
 
 describe('isSignInChange', () => {
-	it('is a change exactly when the kind or the bearer moved', () => {
-		const bearerOf = (s: ProviderState) =>
-			'account' in s && s.account ? s.account.access_token : null;
+	// Built from a kind and the bearer it carries, so the expected answer
+	// comes from the inputs, not from reading the states back.
+	const held = fc.record({
+		kind: fc.constantFrom('disconnected', 'connecting', 'expired', 'connected', 'error'),
+		bearer: token
+	});
+	function build({ kind, bearer }: { kind: string; bearer: string }): {
+		state: ProviderState;
+		holds: string | null;
+	} {
+		if (kind === 'expired') return { state: { kind, account: acc(bearer) }, holds: bearer };
+		if (kind === 'connected')
+			return { state: { kind, account: acc(bearer), lastSyncedAt: 0 }, holds: bearer };
+		if (kind === 'error') return { state: { kind, account: null, message: 'x' }, holds: null };
+		return { state: { kind } as ProviderState, holds: null };
+	}
+
+	it('is a change exactly when the bearer held moved', () => {
 		fc.assert(
-			fc.property(state, state, (prev, next) => {
-				const moved = prev.kind !== next.kind || bearerOf(prev) !== bearerOf(next);
-				return isSignInChange(prev, next) === moved;
+			fc.property(held, held, (a, b) => {
+				const prev = build(a);
+				const next = build(b);
+				return isSignInChange(prev.state, next.state) === (prev.holds !== next.holds);
 			})
 		);
 	});
 
-	it('is no change for the same sign-in read again', () => {
-		const s: ProviderState = { kind: 'expired', account: acc('a') };
-		expect(isSignInChange(s, { kind: 'expired', account: acc('a') })).toBe(false);
+	it('is no change when only the date of the same sign-in passed', () => {
+		// A renewal out for this sign-in is still this sign-in's.
+		expect(
+			isSignInChange(
+				{ kind: 'connected', account: acc('a'), lastSyncedAt: 0 },
+				{ kind: 'expired', account: acc('a') }
+			)
+		).toBe(false);
 	});
 });

@@ -11,6 +11,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountStore } from './store.svelte';
+import { refreshAccount } from './refresh-flow';
+import { persistAccount, refreshTokens } from './api';
 import type { PersistedAccount } from './types';
 
 function payload(overrides: Partial<PersistedAccount> = {}): PersistedAccount {
@@ -499,7 +501,10 @@ describe('a renewal that a hydrate overtakes', () => {
 		};
 	}
 
-	afterEach(() => vi.unstubAllGlobals());
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
 
 	const fresh = payload({ access_token: 'new', refresh_token: 'rt-new' });
 
@@ -578,5 +583,37 @@ describe('a renewal that a hydrate overtakes', () => {
 			kind: 'connected',
 			account: { access_token: 'old-renewed' }
 		});
+	});
+
+	it('still credits a renewal when the re-read finds only that the same sign-in’s date passed', async () => {
+		const r = race(() =>
+			Response.json({
+				access_token: 'renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		const soon = payload({
+			access_token: 'old',
+			refresh_token: 'rt',
+			expires_at_epoch_s: 1_999_999_999
+		});
+		accountStore.setConnected('mal', soon);
+		const renewal = refreshAccount(
+			{
+				refreshTokens,
+				persistAccount,
+				generation: (p) => accountStore.accountGeneration[p]
+			},
+			'mal',
+			soon
+		);
+		await Promise.resolve();
+		r.setKeychain({ ...soon, expires_at_epoch_s: 1 });
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		expect(accountStore.byProvider.mal.kind).toBe('expired');
+		r.release();
+		expect((await renewal).kind).toBe('refreshed');
 	});
 });
