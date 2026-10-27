@@ -340,8 +340,10 @@ pub trait Provider: Send + Sync {
 
     /// The show's entry page as [`EntryPage`] reads it — the year
     /// [`Self::detail_year`] answers, the other names the page gives
-    /// the show and its genres — from the one request. A provider
-    /// whose pages carry neither answers the year alone.
+    /// the show, its genres and its rating — from the one request. A
+    /// provider whose pages carry none of them answers the year alone,
+    /// and the pick then takes none of its listings: a page that lists
+    /// no genre and no rating is never read as safe.
     ///
     /// # Errors
     /// As [`Self::detail_year`].

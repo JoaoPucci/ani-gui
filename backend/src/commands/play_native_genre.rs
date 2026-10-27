@@ -65,6 +65,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         .map_err(|e| gate.miss(e))?;
         // A dated entry's year filter read the page of every listing
         // the pick could serve, and left out each the genre refuses.
+        // An undated pick serves its hit and its versions alone: a
+        // stitched split, whose later parts it would serve too, needs
+        // every part's year to match, which an undated entry has none
+        // of.
+        debug_assert!(year.is_some() || !picked.stitched);
         if year.is_some() || !refused_served(&client, &picked, &mut gate).await? {
             return Ok(picked);
         }
