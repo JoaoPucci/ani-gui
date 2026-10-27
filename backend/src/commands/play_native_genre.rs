@@ -62,7 +62,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
             &mut gate,
         )
         .await
-        .map_err(|e| unread_miss(e, gate.unread))?;
+        .map_err(|e| gate.miss(e))?;
         // A dated entry's year filter read the page of every listing
         // the pick could serve, and left out each the genre refuses.
         if year.is_some() || !refused_served(&client, &picked, &mut gate).await? {
@@ -85,6 +85,10 @@ pub(crate) struct GenreRefusals {
     /// that listed no genre: the pool's miss is then no clean one
     /// ([`unread_miss`]).
     pub(crate) unread: bool,
+    /// A hit the head held only as evidence was left out for a page
+    /// that listed no genre: the refusal by name it may have made is
+    /// no clean miss either ([`unread_miss`]).
+    pub(crate) unread_evidence: bool,
 }
 
 impl GenreRefusals {
@@ -94,20 +98,32 @@ impl GenreRefusals {
         head.retain(|h| !self.excluded.contains(&h.slug));
     }
 
-    /// Notes that the year filter left out, for a page that lists no
-    /// genre (`unread`, by slug), a hit of `head` that could have been
-    /// picked. A hit the head holds only as evidence — refused by the
-    /// entry's titles, or another entry of the show — never could, and
-    /// makes no miss the dead end.
+    /// Notes which hits of `head` the year filter left out for a page
+    /// that lists no genre (`unread`, by slug): one that could have been
+    /// picked — admitted by the entry's titles and not another entry,
+    /// each read past its version tag, as the pick reads them — makes
+    /// the miss the dead end; one the head holds only as evidence never
+    /// could have been, but its refusal by name, had the page been read,
+    /// may have been the verdict, so it keeps the miss from being clean.
     pub(crate) fn note_unread(
         &mut self,
         head: &[BrowseHit],
         unread: &[String],
         entry: EntryTitles<'_>,
     ) {
-        self.unread |= head.iter().any(|h| {
-            unread.contains(&h.slug) && entry.admits(&h.title) && !entry.another_entry(&h.title)
-        });
+        for h in head.iter().filter(|h| unread.contains(&h.slug)) {
+            if entry.admits_as_read(&h.title) && !entry.another_entry_as_read(&h.title) {
+                self.unread = true;
+            } else {
+                self.unread_evidence = true;
+            }
+        }
+    }
+
+    /// The pool's verdict `verdict`, as what the gate left out leaves
+    /// it ([`unread_miss`]).
+    pub(crate) fn miss(&self, verdict: AniError) -> AniError {
+        unread_miss(verdict, self.unread, self.unread_evidence)
     }
 }
 
@@ -147,20 +163,25 @@ pub(crate) async fn refused_served<P: Provider + ?Sized>(
     Ok(refused)
 }
 
-/// The pool's verdict once a listing whose page listed no genre was
-/// left out of it (`unread`): a miss — the clean one, or the refusal by
-/// name — is the answered dead end on a listing that may have been the
-/// entry's, `Upstream { status: 404 }`, as a dead listing's is: never
-/// the absence the availability cache persists, nor the refusal that
-/// says the catalogue lists nothing named for the entry. Any other
-/// verdict, and every verdict of a pool whose pages all said what they
-/// file their listings under, stands as it is.
+/// The pool's verdict once listings whose pages listed no genre were
+/// left out of it. With one that could have been picked among them
+/// (`unread`), a miss — the clean one, or the refusal by name — is the
+/// answered dead end on a listing that may have been the entry's,
+/// `Upstream { status: 404 }`, as a dead listing's is: never the
+/// absence the availability cache persists, nor the refusal that says
+/// the catalogue lists nothing named for the entry. With only evidence
+/// among them (`unread_evidence`), the clean miss is the refusal by
+/// name the evidence may have made: no listing that could have been
+/// picked went unread, but the pool is not known to hold nothing the
+/// count accepts. Any other verdict, and every verdict of a pool whose
+/// pages all said what they file their listings under, stands as it is.
 #[must_use]
-pub(crate) fn unread_miss(verdict: AniError, unread: bool) -> AniError {
+pub(crate) fn unread_miss(verdict: AniError, unread: bool, unread_evidence: bool) -> AniError {
     match verdict {
         AniError::NoResults | AniError::RefusedByName if unread => {
             AniError::Upstream { status: 404 }
         }
+        AniError::NoResults if unread_evidence => AniError::RefusedByName,
         other => other,
     }
 }

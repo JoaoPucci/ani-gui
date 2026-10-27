@@ -72,8 +72,8 @@ struct Recorded {
     dead: Vec<&'static str>,
     /// A recording written out in a test rather than read from the
     /// site: a page it lists lists [`LISTED_GENRE`] unless the
-    /// recording says what it lists, as the site's show pages do (318
-    /// of the 320 the recordings hold list genres).
+    /// recording says what it lists, as the site's show pages do (319
+    /// of the 321 the recordings hold list genres).
     synthetic: bool,
 }
 

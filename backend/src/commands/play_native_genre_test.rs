@@ -403,10 +403,11 @@ fn verdict(kind: u8, status: u16) -> AniError {
 /// Titles a head for "The Show" can hold, each with whether the entry's
 /// titles let it be picked: its own, an unrelated show, another season
 /// held only as evidence.
-const HEAD_TITLES: [(&str, bool); 3] = [
+const HEAD_TITLES: [(&str, bool); 4] = [
     ("The Show", true),
     ("Other", true),
     ("The Show Season 2", false),
+    ("The Show Season 2 [Uncensored]", false),
 ];
 
 proptest! {
@@ -415,7 +416,7 @@ proptest! {
     /// titles let be picked, and once marked the pool stays marked.
     #[test]
     fn the_gate_leaves_out_the_refused_and_notes_only_a_pickable_unread_page(
-        rows in proptest::collection::vec((0usize..3, any::<bool>(), any::<bool>()), 0..8),
+        rows in proptest::collection::vec((0usize..4, any::<bool>(), any::<bool>()), 0..8),
         marked in any::<bool>(),
     ) {
         let head: Vec<BrowseHit> = rows
@@ -428,7 +429,11 @@ proptest! {
         };
         let excluded = slugs(|r| r.1);
         let unread = slugs(|r| r.2);
-        let mut gate = GenreRefusals { excluded: excluded.clone(), unread: marked };
+        let mut gate = GenreRefusals {
+            excluded: excluded.clone(),
+            unread: marked,
+            unread_evidence: false,
+        };
         let mut left = head.clone();
         gate.leave_out(&mut left);
         let kept: Vec<String> = head.iter().map(|h| h.slug.clone()).filter(|s| !excluded.contains(s)).collect();
@@ -436,7 +441,9 @@ proptest! {
         let titles = ["The Show"];
         gate.note_unread(&head, &unread, crate::commands::play_native_title_marker::EntryTitles::new(&titles));
         let pickable_unread = rows.iter().any(|(t, _, u)| *u && HEAD_TITLES[*t].1);
+        let evidence_unread = rows.iter().any(|(t, _, u)| *u && !HEAD_TITLES[*t].1);
         prop_assert_eq!(gate.unread, marked || pickable_unread);
+        prop_assert_eq!(gate.unread_evidence, evidence_unread);
     }
 
     /// The memo keeps a probe's not-found-shaped answer and a transport
@@ -458,13 +465,19 @@ proptest! {
         kind in 0u8..6,
         status in 400u16..600,
         unread in any::<bool>(),
+        evidence in any::<bool>(),
     ) {
         let v = verdict(kind, status);
         let before = format!("{v:?}");
         let miss = matches!(v, AniError::NoResults | AniError::RefusedByName);
-        let after = format!("{:?}", unread_miss(v, unread));
+        let clean = matches!(v, AniError::NoResults);
+        let after = format!("{:?}", unread_miss(v, unread, evidence));
         if unread && miss {
             prop_assert_eq!(after, format!("{:?}", AniError::Upstream { status: 404 }));
+        } else if evidence && clean {
+            // Only evidence went unread: the clean miss is the refusal
+            // by name the evidence may have made.
+            prop_assert_eq!(after, format!("{:?}", AniError::RefusedByName));
         } else {
             prop_assert_eq!(after, before);
         }

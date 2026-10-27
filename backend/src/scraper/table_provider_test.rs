@@ -28,7 +28,7 @@ use crate::scraper::provider::{
 };
 
 /// The genre a table's detail pages list unless the table says
-/// otherwise: the site's show pages list genres (318 of the 320 the
+/// otherwise: the site's show pages list genres (319 of the 321 the
 /// picker recordings hold), and a pick takes no listing whose page
 /// lists none.
 pub(crate) const LISTED_GENRE: &str = "Drama";
