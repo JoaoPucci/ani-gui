@@ -23,16 +23,19 @@ export interface RefusedBearerDeps extends RefreshFlowDeps {
 
 /**
  * Whether a refusal of `refusedBearer` is about the sign-in `state`
- * holds now. For now: whenever the sign-in is connected.
+ * holds now: a connected sign-in carrying that very bearer, with no
+ * account change under way. A refusal that arrives during a
+ * disconnect is the departing account's, and renewing it could land a
+ * save after the disconnect's clear. One for a bearer the account no
+ * longer holds is an older sign-in's, after a reconnect or a renewal.
+ * An expired sign-in's renewal has already run and been reported.
  */
 export function refusalApplies(
 	state: ProviderState,
-	_changing: boolean,
-	_refusedBearer: string
+	changing: boolean,
+	refusedBearer: string
 ): state is Extract<ProviderState, { kind: 'connected' }> {
-	void _changing;
-	void _refusedBearer;
-	return state.kind === 'connected';
+	return !changing && state.kind === 'connected' && state.account.access_token === refusedBearer;
 }
 
 export async function handleRefusedBearer(
@@ -41,8 +44,6 @@ export async function handleRefusedBearer(
 	refusedBearer: string
 ): Promise<void> {
 	const state = deps.state(provider);
-	// An expired sign-in's renewal has already run and been reported;
-	// the read failing with its old bearer adds nothing.
 	if (!refusalApplies(state, deps.changing(provider), refusedBearer)) return;
 	const { account } = state;
 	if (!account.refresh_token) {
