@@ -133,3 +133,47 @@ fn the_tracker_map_s_recorded_relations_read_their_single_sequels() {
         .iter()
         .any(|e| e.role == "prequel" && e.id == "43004" && e.episode_count == Some(13)));
 }
+
+#[test]
+fn a_relation_that_leaves_out_what_the_page_asks_for_is_no_answer() {
+    // The page is asked for each relation's destination, included with
+    // its attributes. A destination without its data key, or one the
+    // page does not include, or an included entry without attributes,
+    // says nothing of what is related: read as dropped or blank, the
+    // single remaining sequel would pass for the only one.
+    let page = |edges: &str, included: &str| {
+        format!(r#"{{"data":[{edges}],"included":[{included}],"meta":{{"count":1}}}}"#)
+    };
+    let edge = |destination: &str| {
+        format!(
+            r#"{{"id":"r1","type":"mediaRelationships","attributes":{{"role":"sequel"}},"relationships":{{"destination":{destination}}}}}"#
+        )
+    };
+    let node = r#"{"id":"2","type":"anime","attributes":{"subtype":"TV","status":"finished","episodeCount":12}}"#;
+    for (edges, included) in [
+        (edge(r#"{"links":{"related":"x"}}"#), node.to_string()),
+        (edge(r#"{"data":{"type":"anime","id":"2"}}"#), String::new()),
+        (
+            edge(r#"{"data":{"type":"anime","id":"2"}}"#),
+            r#"{"id":"2","type":"anime"}"#.to_string(),
+        ),
+        (
+            r#"{"id":"r1","type":"mediaRelationships","attributes":{"role":"sequel"},"relationships":{}}"#.to_string(),
+            node.to_string(),
+        ),
+    ] {
+        let body = page(&edges, &included);
+        assert!(
+            matches!(
+                parse_relationships_response(body.as_bytes()),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{body}"
+        );
+    }
+    // A destination given as null points nowhere: no relation, an answer.
+    let got = parse_relationships_response(page(&edge(r#"{"data":null}"#), "").as_bytes())
+        .expect("an answer");
+    assert!(got.entries.is_empty());
+    assert!(got.complete);
+}
