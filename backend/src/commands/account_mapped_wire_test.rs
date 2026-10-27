@@ -310,11 +310,11 @@ async fn mal_the_final_chapters_first_special_sends_one_and_no_status() {
     assert!(patches[0].contains("status=watching"), "{patches:?}");
 }
 
-/// MAL keeps "finished" only in Completed: its rewatching row is a
-/// Watching one with `is_rewatching` set, and nothing about it says the
-/// show was finished before. A write the map files under an entry being
-/// rewatched puts that entry back at Completed where it reaches its
-/// total, on each path the map writes by.
+/// MAL keeps "finished" in Completed: its rewatching row is a Watching
+/// one with `is_rewatching` set. A write the map files under an entry
+/// being rewatched closes the rewatch where it reaches the entry's
+/// total, on each path the map writes by: back at Completed, and the
+/// entry's count of finished rewatches up by one.
 async fn mal_get(server: &MockServer, media: u32, body: &str) {
     Mock::given(method("GET"))
         .and(path(format!("/anime/{media}")))
@@ -383,12 +383,14 @@ fn mal_ranma(state: &AppState) {
     );
 }
 
-fn closes_the_rewatch(patch: &str) -> bool {
-    patch.contains("status=completed") && patch.contains("is_rewatching=false")
+fn closes_the_rewatch(patch: &str, count: u32) -> bool {
+    patch.contains("status=completed")
+        && patch.contains("is_rewatching=false")
+        && patch.contains(&format!("num_times_rewatched={count}"))
 }
 
 #[tokio::test]
-async fn mal_the_resolved_entry_s_mapped_finale_puts_its_rewatch_back_at_completed() {
+async fn mal_the_resolved_entry_s_mapped_finale_closes_its_rewatch() {
     let state = state();
     seed(
         &state,
@@ -403,7 +405,7 @@ async fn mal_the_resolved_entry_s_mapped_finale_puts_its_rewatch_back_at_complet
     mal_get(
         &server,
         51_535,
-        r#"{"id":51535,"num_episodes":2,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":1}}"#,
+        r#"{"id":51535,"num_episodes":2,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":1,"num_times_rewatched":4}}"#,
     )
     .await;
     let update = EntryUpdate {
@@ -415,18 +417,18 @@ async fn mal_the_resolved_entry_s_mapped_finale_puts_its_rewatch_back_at_complet
     let patches = mal_patches(&server, 51_535).await;
     assert_eq!(patches.len(), 1, "{patches:?}");
     assert!(patches[0].contains("num_watched_episodes=2"), "{patches:?}");
-    assert!(closes_the_rewatch(&patches[0]), "{patches:?}");
+    assert!(closes_the_rewatch(&patches[0], 5), "{patches:?}");
 }
 
 #[tokio::test]
-async fn mal_an_earlier_entry_rewatched_to_its_total_is_put_back_at_completed() {
+async fn mal_an_earlier_entry_rewatched_to_its_total_is_closed() {
     let state = state();
     mal_ranma(&state);
     let server = MockServer::start().await;
     mal_get(
         &server,
         210,
-        r#"{"id":210,"num_episodes":18,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":18}}"#,
+        r#"{"id":210,"num_episodes":18,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":18,"num_times_rewatched":1}}"#,
     )
     .await;
     mal_get(&server, 149_939, r#"{"id":149939,"num_episodes":143}"#).await;
@@ -437,14 +439,14 @@ async fn mal_an_earlier_entry_rewatched_to_its_total_is_put_back_at_completed() 
     mal_push(&state, &server, "186", 210, update).await;
     let earlier = mal_patches(&server, 210).await;
     assert_eq!(earlier.len(), 1, "{earlier:?}");
-    assert!(closes_the_rewatch(&earlier[0]), "{earlier:?}");
+    assert!(closes_the_rewatch(&earlier[0], 2), "{earlier:?}");
     let later = mal_patches(&server, 149_939).await;
     assert_eq!(later.len(), 1, "{later:?}");
     assert!(later[0].contains("num_watched_episodes=1"), "{later:?}");
 }
 
 #[tokio::test]
-async fn mal_a_later_entry_s_finale_puts_its_rewatch_back_at_completed() {
+async fn mal_a_later_entry_s_finale_closes_its_rewatch() {
     let state = state();
     mal_ranma(&state);
     let server = MockServer::start().await;
@@ -457,7 +459,7 @@ async fn mal_a_later_entry_s_finale_puts_its_rewatch_back_at_completed() {
     mal_get(
         &server,
         149_939,
-        r#"{"id":149939,"num_episodes":143,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":142}}"#,
+        r#"{"id":149939,"num_episodes":143,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":142,"num_times_rewatched":0}}"#,
     )
     .await;
     let update = EntryUpdate {
@@ -470,5 +472,5 @@ async fn mal_a_later_entry_s_finale_puts_its_rewatch_back_at_completed() {
     let later = mal_patches(&server, 149_939).await;
     assert_eq!(later.len(), 1, "{later:?}");
     assert!(later[0].contains("num_watched_episodes=143"), "{later:?}");
-    assert!(closes_the_rewatch(&later[0]), "{later:?}");
+    assert!(closes_the_rewatch(&later[0], 1), "{later:?}");
 }

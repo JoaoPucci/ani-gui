@@ -25,7 +25,10 @@ async fn tracked(body: &'static str) -> TrackedMedia {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
-        .and(query_param("fields", "my_list_status,num_episodes"))
+        .and(query_param(
+            "fields",
+            "my_list_status{num_times_rewatched},num_episodes",
+        ))
         .and(query_param("nsfw", "true"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
         .expect(1)
@@ -53,6 +56,25 @@ async fn tracked_media_reads_the_row_and_the_episode_total_in_one_request() {
             }),
             episodes: Some(13),
         }
+    );
+}
+
+/// MAL returns a row's rewatch count only when asked for it by name,
+/// beside the row's default fields; the finale that closes a rewatch
+/// bumps it, so the read asks.
+#[tokio::test]
+async fn tracked_media_reads_the_row_s_rewatch_count() {
+    let got = tracked(
+        r#"{"id":21,"num_episodes":13,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":11,"num_times_rewatched":2}}"#,
+    )
+    .await;
+    assert_eq!(
+        got.entry,
+        Some(CurrentEntry {
+            status: crate::account::status::ListStatus::Rewatching,
+            progress_episodes: 11,
+            times_rewatched: Some(2),
+        })
     );
 }
 
