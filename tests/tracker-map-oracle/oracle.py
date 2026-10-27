@@ -243,7 +243,17 @@ def extras_rule(ev, count, total):
     return [segment(ev["entry"], total, 1, count, 0, [w for w, _ in sorted(extras, key=lambda e: (e[0], e[1] or ""))])]
 
 
+def in_airing_order(parts):
+    """Kitsu's parts up to the first that started before the part it
+    follows, which is no later part: the chain ends before it."""
+    for i in range(1, len(parts)):
+        if started_before(parts[i].get("start"), parts[i - 1].get("start")):
+            return parts[:i]
+    return parts
+
+
 def predict(ev):
+    ev = dict(ev, parts=in_airing_order(ev["parts"]))
     count = ev["kitsu"]["episodes"] or 0
     total = ev["entry"]["episodes"] or 0
     if not count or not total:
@@ -432,8 +442,16 @@ def split_family(rng):
         parts = [kitsu(20 + i, counts[i], months(2018, 3 * i) + "-01", "") for i in range(n)]
         ours = rng.randrange(n)
         total = sum(counts)
-        tweak = rng.choice(["ok", "ok", "ok", "past_sum", "short", "unknown_part", "alone", "own_differs"])
-        if tweak == "past_sum":
+        tweak = rng.choice(["ok", "ok", "ok", "past_sum", "short", "unknown_part", "alone", "own_differs", "aired_first", "same_month_partial", "same_day"])
+        if tweak == "aired_first":
+            # The last part aired a month before the part it follows: no
+            # later part, so the chain ends before it.
+            parts[-1] = dict(parts[-1], start=months(2018, 3 * (n - 2) - 1) + "-15")
+        elif tweak == "same_month_partial":
+            parts[-1] = dict(parts[-1], start=parts[-2]["start"][:7])
+        elif tweak == "same_day":
+            parts[-1] = dict(parts[-1], start=parts[-2]["start"])
+        elif tweak == "past_sum":
             parts.append(kitsu(50, 12, "2030-01-01", ""))
             if rng.random() < 0.5:
                 ours = len(parts) - 1

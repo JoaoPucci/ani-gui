@@ -24,6 +24,18 @@ pub(super) fn started_before(later: Option<&str>, earlier: Option<&str>) -> bool
     }
 }
 
+/// How many of Kitsu's `parts`, in the order Kitsu chains them, are in
+/// airing order: the parts up to the first that started before the part
+/// it follows ([`started_before`]), which is no later part of the entry
+/// and ends the chain there.
+#[must_use]
+pub(super) fn parts_in_airing_order(parts: &[crate::account::episode_map::KitsuShow]) -> usize {
+    parts
+        .windows(2)
+        .position(|w| started_before(w[1].start.as_deref(), w[0].start.as_deref()))
+        .map_or(parts.len(), |i| i + 1)
+}
+
 /// `date` when it names a real whole day.
 fn whole_day(date: Option<&str>) -> Option<&str> {
     date.filter(|d| {

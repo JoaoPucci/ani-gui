@@ -55,6 +55,19 @@ pub fn chain_dates_needed(evidence: &Evidence) -> std::collections::BTreeSet<u32
 /// no explanation — and none leaves the map identity.
 #[must_use]
 pub fn map_show(evidence: &Evidence) -> EpisodeMap {
+    // A part that aired before the part it follows is no later part: the
+    // chain of parts ends before it.
+    let in_order = order::parts_in_airing_order(&evidence.parts);
+    let ordered;
+    let evidence = if in_order < evidence.parts.len() {
+        ordered = Evidence {
+            parts: evidence.parts[..in_order].to_vec(),
+            ..evidence.clone()
+        };
+        &ordered
+    } else {
+        evidence
+    };
     let (Some(kitsu_count), Some(tracker_total)) = (
         evidence.kitsu.episodes.filter(|n| *n > 0),
         evidence.entry.episodes.filter(|n| *n > 0),
