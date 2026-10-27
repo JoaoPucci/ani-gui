@@ -33,6 +33,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { syncWatchedToTrackers } from '../../src/lib/account/push-watched';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { editorFlights } from '../../src/lib/account/editor-flights.svelte';
+import type { Flight } from '../../src/lib/account/editor-flight';
 
 const KITSU_ID = '50498';
 const OTHER_ID = '50499';
@@ -173,6 +175,39 @@ describe('detail route — a held progress write lands while the entry read wait
 		const pending = syncWatchedToTrackers(KITSU_ID, 1);
 		app = mount(DetailPage, { target });
 		await pending;
+		const busy = m.errors_reason_busy_wait({ seconds: 1 });
+		await until(() => (target.textContent ?? '').includes(busy), `the busy notice "${busy}"`);
+	});
+});
+
+describe('detail route — an editor save made elsewhere lands while the entry read waits out a rate limit', () => {
+	it('still ends the read the way a refused read ends: the control says the tracker is busy', async () => {
+		// The user saved the show, left it while the save was held, and came
+		// back during the pause: the page's read of the entry is refused and
+		// waits to ask again. The held save lands in that wait, and the
+		// editor reconciles by reading the entry again — which must not
+		// leave the control waiting for the read it replaced.
+		let refusals = 0;
+		server.use(
+			http.get(`${API_BASE}/api/account/entry/anilist`, () => {
+				entryReads += 1;
+				refusals += 1;
+				return HttpResponse.json(
+					{
+						kind: 'rate_limited',
+						key: 'error.network.rate_limited',
+						retry_after_secs: refusals === 1 ? 2 : 1
+					},
+					{ status: 429 }
+				);
+			})
+		);
+		const held: Flight = { kind: 'saving' };
+		editorFlights.begin(KITSU_ID, held);
+		app = mount(DetailPage, { target });
+		await until(() => entryReads >= 1, 'the first read');
+		await new Promise((r) => setTimeout(r, 300));
+		editorFlights.end(KITSU_ID, held);
 		const busy = m.errors_reason_busy_wait({ seconds: 1 });
 		await until(() => (target.textContent ?? '').includes(busy), `the busy notice "${busy}"`);
 	});
