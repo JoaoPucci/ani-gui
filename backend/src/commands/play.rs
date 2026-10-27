@@ -431,16 +431,19 @@ where
     // A successful resolve is a positive availability fact, same
     // guard — carrying the episode cap the native episodes list
     // already paid for.
-    stamp_availability_after_native(
+    crate::commands::availability::stamp_after_native(
         state,
-        args,
-        true,
-        Some(native.provider),
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
         &availability_at_start,
-        native.episode_cap,
-        &native.extra_tags,
-        &native.versions,
-        native.version,
+        crate::commands::availability::ResolveVerdict::served(
+            native.provider,
+            native.episode_cap,
+            &native.extra_tags,
+        )
+        .with_versions(&native.versions)
+        .with_played(native.version)
+        .with_count_unread(native.unread_past.is_some()),
     )
     .await;
 

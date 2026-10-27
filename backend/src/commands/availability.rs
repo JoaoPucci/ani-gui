@@ -532,8 +532,21 @@ pub async fn stamp_after_native(
             } else if at_start.positive_row_appeared_since(state, &row) {
                 return;
             }
-            match verdict.episode_cap {
-                Some(cap) if verdict.available && mode != "dub" => {
+            if !verdict.available {
+                write_cache(state, id, mode, false, verdict.provider);
+                return;
+            }
+            // A count no reading reached leaves a counted row as it
+            // stands, lifetime and all.
+            let standing = verdict.count_unread
+                && super::availability_unread::standing_counted_row(state, &row).is_some();
+            match super::availability_unread::served_stamp(
+                verdict.episode_cap,
+                mode == "dub",
+                verdict.count_unread,
+                standing,
+            ) {
+                super::availability_unread::ServedStamp::Count(cap) => {
                     write_cache_full(
                         state,
                         id,
@@ -561,9 +574,10 @@ pub async fn stamp_after_native(
                     );
                 }
                 // A positive whose cap is no evidence of the count (a
-                // dub, or none listed) writes the boolean row, the
-                // versions kept; a miss names none.
-                _ if verdict.available => write_boolean_row(
+                // dub, none listed, or rows past Kitsu's count no
+                // reading reached) writes the boolean row, the versions
+                // kept.
+                super::availability_unread::ServedStamp::NoCount => write_boolean_row(
                     state,
                     id,
                     mode,
@@ -571,7 +585,7 @@ pub async fn stamp_after_native(
                     verdict.provider,
                     with_modes_kept(state, &row, verdict.versions, verdict.played),
                 ),
-                _ => write_cache(state, id, mode, false, verdict.provider),
+                super::availability_unread::ServedStamp::Standing => {}
             }
         },
     )
@@ -972,7 +986,8 @@ pub async fn check_availability(
         answered_by: None,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
-    let (available, episode_count, extra_episodes, provider, versions) = match probed {
+    let (available, episode_count, extra_episodes, provider, versions, count_unread) = match probed
+    {
         Ok(attempted) => {
             let (p, present, modes) = attempted.value;
             let Some(present) = present else {
@@ -1002,10 +1017,11 @@ pub async fn check_availability(
                 );
             }
             if present {
+                let (cap, extras) = super::availability_unread::probe_counts(&p);
                 (
                     true,
-                    crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
-                    crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
+                    cap,
+                    extras,
                     Some(attempted.provider),
                     crate::commands::play_native_versions::named_versions(attempted.provider, &p)
                         .0
@@ -1018,6 +1034,7 @@ pub async fn check_availability(
                             ..v
                         })
                         .collect(),
+                    p.unread_past.is_some(),
                 )
             } else if attempted.past_undenied_affinity {
                 // The provider answered absence, but past the
@@ -1048,13 +1065,21 @@ pub async fn check_availability(
                     Vec::new(),
                     Some(attempted.provider),
                     Vec::new(),
+                    false,
                 )
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below, naming the provider whose miss
         // it is, under the same read rule.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, Vec::new()),
+        Err(ne) if ne.clean_miss => (
+            false,
+            None,
+            Vec::new(),
+            attempt.answered_by,
+            Vec::new(),
+            false,
+        ),
         // An answered dead end — a pool refused on how its hits are
         // named, dead listings on a healthy provider, a mode nobody
         // answered for — proves nothing about the show's absence and is
@@ -1127,6 +1152,14 @@ pub async fn check_availability(
                 provider,
                 versions: versions.clone(),
             });
+        }
+        // A count no reading reached does not write over one that
+        // stands: the row, and its count, are the answer.
+        if let Some(stood) = count_unread
+            .then(|| super::availability_unread::standing_counted_row(state, &row))
+            .flatten()
+        {
+            return Ok(stood);
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(

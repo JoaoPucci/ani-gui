@@ -346,7 +346,7 @@ where
                             version,
                             former_tags: former_tags_of(&picked.episodes),
                             other_copies,
-                            unread_past: None,
+                            unread_past: picked.unread_past,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
