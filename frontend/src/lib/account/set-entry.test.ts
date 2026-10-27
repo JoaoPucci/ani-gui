@@ -203,3 +203,50 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 		expect(out.rateLimited).toBe(true);
 	});
 });
+
+// MyAnimeList has no rewatch status, and keeps "you finished this show" only in
+// Completed: a Rewatching save never moves its row.
+describe('setEntryAcrossTrackers — a rewatch on a tracker without one', () => {
+	const completed: EntryView = { status: 'completed', progress: 26 };
+
+	it('writes nothing to a MyAnimeList row that is Completed', async () => {
+		const getEntry = vi.fn(async (): Promise<EntryView | null> => completed);
+		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		const out = await setEntryAcrossTrackers(
+			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
+			'kitsu-1',
+			{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
+		);
+		expect(setEntry).toHaveBeenCalledTimes(1);
+		expect(setEntry).toHaveBeenCalledWith('anilist', 'tok', {
+			kitsu_id: 'kitsu-1',
+			status: 'rewatching',
+			progress: 3
+		});
+		expect(out).toEqual({ written: 1, failed: 0 });
+	});
+
+	it('sends MyAnimeList the progress alone on any other row', async () => {
+		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
+		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		await setEntryAcrossTrackers(
+			{ connected: ['mal'], bearerFor: () => 'tok', getEntry, setEntry },
+			'kitsu-1',
+			{ status: 'rewatching', statusChanged: true, progress: 6, total: 26 }
+		);
+		expect(setEntry).toHaveBeenCalledWith('mal', 'tok', { kitsu_id: 'kitsu-1', progress: 6 });
+	});
+
+	it('creates no MyAnimeList row for a rewatch', async () => {
+		const getEntry = vi.fn(
+			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? completed : null)
+		);
+		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		await setEntryAcrossTrackers(
+			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
+			'kitsu-1',
+			{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
+		);
+		expect(setEntry).not.toHaveBeenCalledWith('mal', expect.anything(), expect.anything());
+	});
+});
