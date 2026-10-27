@@ -87,20 +87,21 @@ struct MediaShape {
     id: Option<u32>,
     #[serde(rename = "idMal", default)]
     id_mal: Option<u32>,
-    // Every airing query asks for the status, and AniList answers
-    // every field it was asked for, null when it has nothing: a node
-    // without it is no answer about the show's airing.
+    // Every airing query asks for these, and AniList answers every
+    // field it was asked for, null when it has nothing: a node without
+    // one is no answer about the show's airing, never "nothing
+    // scheduled". The batch page checks the same fields before it gets
+    // here (`anilist_airing_batch_page.rs`).
     status: Present<String>,
-    episodes: Option<u32>,
+    episodes: Present<u32>,
     #[serde(rename = "nextAiringEpisode")]
-    next_airing_episode: Option<ScheduleNode>,
-    #[serde(rename = "airingSchedule", default)]
-    airing_schedule: Option<Schedule>,
+    next_airing_episode: Present<ScheduleNode>,
+    #[serde(rename = "airingSchedule")]
+    airing_schedule: Present<Schedule>,
 }
 
 #[derive(Deserialize)]
 struct Schedule {
-    #[serde(default)]
     nodes: Vec<ScheduleNode>,
 }
 
@@ -121,9 +122,10 @@ struct ScheduleNode {
 ///     episodes.
 fn derive_status(media: MediaShape) -> AiringStatus {
     let status = media.status.into_inner();
-    let episodes = media.episodes;
+    let episodes = media.episodes.into_inner();
     let upcoming: Vec<UpcomingEpisode> = media
         .airing_schedule
+        .into_inner()
         .map(|s| {
             s.nodes
                 .into_iter()
@@ -134,7 +136,7 @@ fn derive_status(media: MediaShape) -> AiringStatus {
                 .collect()
         })
         .unwrap_or_default();
-    if let Some(next) = media.next_airing_episode {
+    if let Some(next) = media.next_airing_episode.into_inner() {
         AiringStatus {
             aired: Some(next.episode.saturating_sub(1)),
             next_episode: Some(next.episode),
