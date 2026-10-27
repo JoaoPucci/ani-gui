@@ -77,7 +77,8 @@ pub(crate) async fn push_progress_mapped(
         // The resolved entry is a map's first segment, so a write to it
         // starts no later segment: it is written on the read just made.
         Target::Mapped(write) if write.entry == native.0 && write.earlier.is_empty() => {
-            write_episode(ask, &write, &update, media.entry).await
+            let row = media.entry.map(|e| e.as_kept_by(ask.kind));
+            write_episode(ask, &write, &update, row).await
         }
         Target::Mapped(write) => {
             drop(guard);
@@ -95,19 +96,24 @@ async fn hold_entry(ask: &MapAsk<'_>, entry: u32) -> tokio::sync::OwnedMutexGuar
         .await
 }
 
-/// The user's row on tracker entry `entry`.
+/// The user's row on tracker entry `entry`, as the asking tracker keeps
+/// it ([`CurrentEntry::as_kept_by`]): a MAL row being rewatched is the
+/// Watching row MAL lists, so reaching its total puts it back at
+/// Completed.
 async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
     Ok(ask
         .provider
         .tracked_media(ask.tokens, ProviderMediaId(entry))
         .await?
-        .entry)
+        .entry
+        .map(|e| e.as_kept_by(ask.kind)))
 }
 
 /// Bring an earlier segment's entry to its total — completed where the
 /// tracker has it finished — unless the row is already there, reading
 /// and writing it under its own lock. The monotonic reconcile keeps it
-/// from lowering a row and keeps a rewatch.
+/// from lowering a row and keeps an AniList rewatch; a MAL one is read
+/// as Watching ([`row_on`]) and so is put back at Completed.
 async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()> {
     let _guard = hold_entry(ask, earlier.entry).await;
     let row = row_on(ask, earlier.entry).await?;
