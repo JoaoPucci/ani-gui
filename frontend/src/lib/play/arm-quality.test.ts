@@ -50,8 +50,12 @@ class FakeEngine {
 	get autoLevelEnabled() {
 		return this.manual === -1;
 	}
-	startLoad() {
+	/** Where each start asked the engine to load from; undefined is
+	 *  the engine's own choice. */
+	startsAt: (number | undefined)[] = [];
+	startLoad(at?: number) {
 		this.starts += 1;
+		this.startsAt.push(at);
 	}
 	on(event: string, handler: (event: string, data: unknown) => void) {
 		this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
@@ -1270,6 +1274,32 @@ describe('armQuality — settings still on their way', () => {
 		expect(s.engine.loads).toEqual([0]);
 		expect(s.engine.starts).toBe(1);
 		expect(s.views.at(-1)?.levels).toEqual(MASTER);
+	});
+
+	it('a stream resumed at a point is started loading there, and any other from its own start', () => {
+		// The engine's own start is the stream's first fragment, whose
+		// first frame the element would then show before the resume
+		// seek moved it: the point is where loading begins instead.
+		// Built apart from the call, so the option is not an excess
+		// property of the input's literal.
+		const engine = new FakeEngine();
+		const input = {
+			engine: engine as unknown as Hls,
+			events: E,
+			video: new FakeVideo(),
+			setting: () => 'best',
+			holdsStart: true,
+			startAt: 612.5,
+			onView: () => {},
+			now: () => 1_000,
+			log: () => {}
+		};
+		armQuality(input);
+		engine.emit(E.MANIFEST_PARSED, { levels: MASTER });
+		expect(engine.startsAt).toEqual([612.5]);
+		const plain = armHeld(() => 'best');
+		plain.parse();
+		expect(plain.engine.startsAt).toEqual([undefined]);
 	});
 
 	it('settings that fail read as best', async () => {

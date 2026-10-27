@@ -601,13 +601,23 @@ describe('a resume point holds the picture until the seek lands', () => {
 		expect(holding()).toBe(false);
 	});
 
-	it('a point in the last 90 seconds is forgotten and the stream revealed from its start', () => {
+	it('a point in the last 90 seconds is forgotten, and revealed once the stream is back at its start', async () => {
+		// The stream was started at the point, so it sits there when
+		// the length judges the point finished: it is sought back to
+		// its start, and revealed once that seek has landed.
 		savePosition('show-a', 6, 1400, Number.NaN, positions);
 		armHolding('show-a', 6);
-		metadataWith(1420);
-		expect(holding()).toBe(false);
-		expect(play).toHaveBeenCalledTimes(1);
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		video.currentTime = 1400;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(readPosition('show-a', 6, positions)).toBeNull();
 		expect(video.currentTime).toBe(0);
+		expect(holding()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+		seekedAt(0);
+		expect(play).toHaveBeenCalledTimes(1);
+		await settle();
+		expect(holding()).toBe(false);
 	});
 
 	it('a started mark, at zero, holds nothing', () => {
