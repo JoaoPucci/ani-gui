@@ -107,7 +107,10 @@ export async function refreshAccount(
 	// an exception that escapes to abort the caller's best-effort flow.
 	let saved: boolean;
 	try {
-		saved = (await deps.persistAccount(provider, refreshed)).ok;
+		// The write itself is skipped once the account has moved, so the
+		// old sign-in renewed never lands over a newer one in the keychain.
+		const stillCurrent = () => deps.generation(provider) === generationAtStart;
+		saved = (await deps.persistAccount(provider, refreshed, stillCurrent)).ok;
 	} catch {
 		saved = false;
 	}
