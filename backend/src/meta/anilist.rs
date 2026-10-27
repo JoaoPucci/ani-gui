@@ -134,11 +134,6 @@ pub(crate) const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
 /// a full fingerprint — an app-style identifier passes through.
 const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 
-/// The longest a public request sleeps before its one retry, and the
-/// wait it assumes when a 429 carries no `Retry-After`.
-const PUBLIC_RETRY_CAP: std::time::Duration = std::time::Duration::from_secs(3);
-const PUBLIC_RETRY_DEFAULT: std::time::Duration = std::time::Duration::from_secs(1);
-
 /// Shared POST to AniList's public GraphQL endpoint. The public
 /// fetchers (`trending`, the banner lookups, the id lookups) only
 /// differ in query body + parser, so the request build + status
@@ -162,26 +157,11 @@ pub(crate) async fn post_graphql_public(
             .json(body)
             .send()
     };
-    let mut resp = send().await.map_err(|_| AniError::Network)?;
     // AniList rate-limits aggressively (the public API runs degraded
     // at 30 req/min) and the app's own fan-out — trending, episode
     // thumbs, airing lookups, availability seeds — can burst past it
-    // right after launch. One bounded retry absorbs a burst whose
-    // advertised wait is short. A wait past the cap is not retried: a
-    // retry before the window ends is a request spent to be told the
-    // same thing, so the rate limit surfaces at once with its wait
-    // for the caller to honour (`graphql_body`).
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        let advertised = crate::meta::rate_limit::retry_after_secs(resp.headers());
-        if let Some(wait) = crate::meta::rate_limit::retry_wait_within(
-            advertised,
-            PUBLIC_RETRY_CAP,
-            PUBLIC_RETRY_DEFAULT,
-        ) {
-            tokio::time::sleep(wait).await;
-            resp = send().await.map_err(|_| AniError::Network)?;
-        }
-    }
+    // right after launch. The gate owns what is done about that.
+    let resp = crate::meta::anilist_gate::send(url, send).await?;
     crate::meta::anilist_media::graphql_body(resp).await
 }
 

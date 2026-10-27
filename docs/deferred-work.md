@@ -168,7 +168,7 @@ starting it, and delete it when you find it done.
   de Te Koi (Kitsu 40684, MAL 35061) was played as a hentai OVA whose
   listing names MAL 36256 (episode 33370, 2026-10-16); HenSemi (TV) was
   played as Medaka Box Abnormal, whose listing names MAL 14527. Kitsu's mapping is
-  already cached per entry (`kitsu:external-ids:v1:k<id>`). It waited
+  already cached per entry (`kitsu:external-ids:v2:k<id>`). It waited
   because it is not free where it would decide: the listing is fetched
   only after the pick — for the requested episode on the play path, for
   sampled episodes in the availability probe — so choosing among

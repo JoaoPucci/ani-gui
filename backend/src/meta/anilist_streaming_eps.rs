@@ -14,13 +14,12 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
-use crate::meta::anilist_media::{graphql_body, media_is_absent, with_missing_retry, MediaRef};
+use crate::meta::anilist::ANILIST_API;
+use crate::meta::anilist_media::{media_is_absent, with_missing_retry, MediaRef};
 
 #[path = "anilist_streaming_eps_parse.rs"]
 mod parse;
 pub use parse::parse_streaming_episodes_response;
-
-const ANILIST_API: &str = "https://graphql.anilist.co";
 
 /// By-MAL-id query for AniList's `streamingEpisodes` — the
 /// Crunchyroll-style per-episode listing — with the media's own
@@ -70,19 +69,9 @@ async fn post_streaming_episodes(
     base_override: Option<&str>,
 ) -> Result<Option<StreamingListing>> {
     let url = base_override.unwrap_or(ANILIST_API);
-    let resp = client
-        .post(url)
-        .header(
-            "user-agent",
-            "ani-gui/0.1 (https://github.com/pucci/ani-gui)",
-        )
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .json(body)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
-    let bytes = graphql_body(resp).await?;
+    // The same transport, and so the same budget, as every other
+    // public AniList request.
+    let bytes = crate::meta::anilist::post_graphql_public(client, url, body).await?;
     if media_is_absent(&bytes) {
         return Ok(None);
     }

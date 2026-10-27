@@ -7,6 +7,7 @@
 
 pub mod account;
 pub mod account_edit;
+pub(crate) mod account_epoch;
 mod account_mapped;
 pub mod airing;
 mod anilist_banner_memo;
@@ -129,3 +130,7 @@ pub use session::{
 #[cfg(test)]
 #[path = "kitsu_id_compare_test.rs"]
 mod kitsu_id_compare_test;
+
+#[cfg(test)]
+#[path = "anilist_unanswered_test.rs"]
+mod anilist_unanswered_test;

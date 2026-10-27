@@ -105,11 +105,84 @@ describe('toastStore', () => {
 	});
 });
 
+describe('toastStore.update and onClose', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('changes a message where it stands, and leaves a toast no longer there alone', () => {
+		const a = toastStore.push({ kind: 'info', message: 'A', duration: null });
+		const b = toastStore.push({ kind: 'info', message: 'B', duration: null });
+		toastStore.update(a, 'A, again');
+		expect(toastStore.items.map((t) => [t.id, t.message])).toEqual([
+			[a, 'A, again'],
+			[b, 'B']
+		]);
+		toastStore.dismiss(a);
+		toastStore.update(a, 'gone');
+		expect(toastStore.items.map((t) => t.id)).toEqual([b]);
+	});
+
+	it('tells a toast it left, once, by every route', () => {
+		vi.useFakeTimers();
+		const closed: string[] = [];
+		const dismissed = toastStore.push({
+			kind: 'info',
+			message: 'dismissed',
+			duration: null,
+			onClose: () => closed.push('dismissed')
+		});
+		toastStore.push({
+			kind: 'info',
+			message: 'timed out',
+			duration: 1000,
+			onClose: () => closed.push('timed out')
+		});
+		toastStore.dismiss(dismissed);
+		toastStore.dismiss(dismissed);
+		vi.advanceTimersByTime(1000);
+		// A passing toast is the one a later push trims; a pinned one stays.
+		toastStore.push({
+			kind: 'info',
+			message: 'trimmed',
+			duration: 9999,
+			onClose: () => closed.push('trimmed')
+		});
+		for (let i = 0; i < TOAST_MAX_STACK; i += 1) {
+			toastStore.push({ kind: 'info', message: `filler ${i}`, duration: 9999 });
+		}
+		expect(closed).toEqual(['dismissed', 'timed out', 'trimmed']);
+	});
+});
+
+describe('toastStore.update and what is announced', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+
+	it('announces what a toast was pushed with, and what a plain update says', () => {
+		const id = toastStore.push({ kind: 'info', message: 'first', duration: null });
+		expect(toastStore.items[0].announcement).toBe('first');
+		toastStore.update(id, 'second');
+		expect(toastStore.items[0]).toMatchObject({ message: 'second', announcement: 'second' });
+	});
+
+	it('shows a silent update without announcing it', () => {
+		const id = toastStore.push({ kind: 'info', message: 'first', duration: null });
+		toastStore.update(id, 'quietly', { silent: true });
+		expect(toastStore.items[0]).toMatchObject({ message: 'quietly', announcement: 'first' });
+	});
+});
+
 function row(id: number, pinned: boolean): ToastItem {
 	return {
 		id: `toast-${id}`,
 		kind: pinned ? 'warning' : 'info',
 		message: `m${id}`,
+		announcement: `m${id}`,
 		duration: pinned ? null : 4000,
 		actionLabel: null,
 		onAction: null
