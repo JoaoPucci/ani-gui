@@ -532,3 +532,277 @@ async fn a_null_cover_show_whose_remembered_banner_is_dead_asks_anilist_once_and
     assert_eq!(detail.anilist_banner, None);
     anilist.verify().await;
 }
+
+#[tokio::test]
+async fn a_rate_limited_trending_fallback_is_not_kept_as_the_feed() {
+    // AniList refusing this client leaves the home page on Kitsu's own
+    // list for this load. That list is not AniList's answer, so it is
+    // not kept under AniList's feed: the next load asks AniList again.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": { "canonicalTitle": "Show 12", "titles": {}, "subtype": "TV" },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let fallback = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback");
+    assert!(fallback.iter().all(|r| r.anilist_banner.is_none()));
+
+    let next = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("next load");
+    assert_eq!(
+        next.first().and_then(|r| r.anilist_banner.as_deref()),
+        Some(BANNER),
+        "the next load read the fallback back instead of asking AniList"
+    );
+}
+
+#[tokio::test]
+async fn a_rate_limited_banner_backfill_does_not_keep_the_detail_without_it() {
+    // The backfill's answer is missing, not "no banner": the detail is
+    // served without one, but not kept that way.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Media": { "bannerImage": BANNER } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_null_cover_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let first = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    assert_eq!(first.anilist_banner, None);
+
+    let next = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail again");
+    assert_eq!(
+        next.anilist_banner.as_deref(),
+        Some(BANNER),
+        "the rate-limited detail was kept without its banner"
+    );
+}
+
+#[test]
+fn a_background_fill_gives_up_its_turn_before_the_episode_page_gives_up_on_it() {
+    // The episode route stops waiting for the thumbnail backfill after
+    // its enrichment budget. A gate turn taken at the end of a wait as
+    // long as that budget would send a request the route then drops:
+    // spent against AniList's limit, its answer thrown away.
+    assert!(
+        crate::meta::anilist_gate::ANILIST.background_wait < ANILIST_ENRICHMENT_BUDGET,
+        "{:?} is not under {:?}",
+        crate::meta::anilist_gate::ANILIST.background_wait,
+        ANILIST_ENRICHMENT_BUDGET
+    );
+}
+
+/// Kitsu failing its `/mappings` lookups for `ext_id` — under either
+/// site — for the first `times` asks.
+async fn mount_failing_mappings(kitsu: &MockServer, ext_id: &str, times: u64) {
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalId]", ext_id))
+        .respond_with(ResponseTemplate::new(500))
+        .up_to_n_times(times)
+        .with_priority(1)
+        .mount(kitsu)
+        .await;
+}
+
+/// AniList answering every trending ask with `entries`.
+async fn trending_answer(entries: Vec<serde_json::Value>) -> MockServer {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": entries } }
+        })))
+        .mount(&anilist)
+        .await;
+    anilist
+}
+
+#[tokio::test]
+async fn a_feed_kitsu_could_not_bridge_is_not_kept_as_its_fallback() {
+    // AniList answers, but Kitsu fails every lookup that would bridge
+    // the entry: the home page falls back to Kitsu's own list for that
+    // load, and does not keep it under AniList's feed.
+    let anilist = trending_answer(vec![anilist_entry(101, 21, Some(BANNER))]).await;
+    let kitsu = MockServer::start().await;
+    mount_failing_mappings(&kitsu, "21", 1).await;
+    mount_failing_mappings(&kitsu, "101", 1).await;
+    mount_mapping(&kitsu, 21, "12").await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "data": [], "included": [] })),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let first = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback");
+    assert!(first.is_empty(), "{first:?}");
+
+    let next = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("next load");
+    assert_eq!(
+        next.first().map(|r| r.id.as_str()),
+        Some("12"),
+        "the next load read the fallback back instead of bridging AniList's feed"
+    );
+}
+
+#[tokio::test]
+async fn a_feed_with_an_entry_kitsu_could_not_bridge_is_not_kept_without_it() {
+    // One entry bridges, the other's lookups fail: the row shows the
+    // one for this load, and the next load asks for the other again.
+    let anilist = trending_answer(vec![
+        anilist_entry(101, 21, Some(BANNER)),
+        anilist_entry(102, 22, None),
+    ])
+    .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    mount_failing_mappings(&kitsu, "22", 1).await;
+    mount_failing_mappings(&kitsu, "102", 1).await;
+    mount_mapping(&kitsu, 22, "13").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let first = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    assert_eq!(
+        first.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        ["12"]
+    );
+
+    let next = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("next load");
+    assert_eq!(
+        next.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        ["12", "13"],
+        "the row was kept without the entry Kitsu failed to bridge"
+    );
+}
+
+#[tokio::test]
+async fn a_trending_entry_kitsu_has_no_cover_for_takes_anilists_banner_as_its_cover() {
+    let anilist = trending_answer(vec![anilist_entry(101, 21, Some(BANNER))]).await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalId]", "21"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "m-21",
+                "type": "mappings",
+                "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+                "relationships": { "item": { "data": { "type": "anime", "id": "12" } } },
+            }],
+            "included": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": {
+                    "canonicalTitle": "Show 12",
+                    "titles": {},
+                    "subtype": "TV",
+                    "status": "current",
+                    "posterImage": null,
+                    "coverImage": null,
+                },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    assert_eq!(
+        refs[0]
+            .cover_image
+            .as_ref()
+            .and_then(|c| c.large.as_deref()),
+        Some(BANNER)
+    );
+}
+
+#[tokio::test]
+async fn an_empty_trending_answer_falls_back_without_keeping_the_fallback() {
+    let anilist = trending_answer(Vec::new()).await;
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "data": [], "included": [] })),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback");
+    assert!(refs.is_empty());
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, "kitsu:v6:trending_anilist").expect("read"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn an_unreadable_trending_row_is_fetched_again() {
+    let (anilist, kitsu) = trending_fixture().await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:v6:trending_anilist",
+        "not json",
+        60,
+    )
+    .expect("row");
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    assert_eq!(refs.len(), 2);
+}

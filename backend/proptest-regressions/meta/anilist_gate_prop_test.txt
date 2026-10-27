@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 2c20a99eda426d4d614e9478316aff1bca01055fe2098ba663f9155be7e0b016 # shrinks to until_ms = 3467, later_ms = 0, now_ms = 0, background = false, sends = []
+cc 5ef573ab008451cba5d3b3e513b2bdd97c08349a062555815c7e14cd9eddd0ea # shrinks to capacity = 1, reserve = 0, window_ms = 1, gap_ms = 55, mut arrivals = [(6891, false), (6837, false)]
+cc e00c1642d5daf615cba325ecd429d4a26a3e7252c62099049f76c3474ebf86a3 # shrinks to mut arrivals = [(51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51299, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (51179, false), (45993, false), (0, false)]

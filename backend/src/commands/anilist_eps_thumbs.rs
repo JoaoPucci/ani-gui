@@ -12,14 +12,16 @@
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
-use crate::meta::anilist_media::MediaRef;
-use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
+use crate::meta::anilist_streaming_eps::StreamingListing;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
 #[path = "anilist_eps_contain.rs"]
 mod contain;
+#[path = "anilist_eps_fetch.rs"]
+mod fetch;
 #[path = "anilist_eps_fit.rs"]
 mod fit;
+use fetch::{fetch_anilist_eps_thumbs, Miss};
 #[path = "anilist_eps_titles.rs"]
 mod titles;
 
@@ -75,39 +77,16 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
             return listing;
         }
     }
-    let outcome = fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await;
-    cache_anilist_eps_thumbs(&state.cache_pool, kitsu_id, &outcome);
-    outcome.unwrap_or_default()
-}
-
-/// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
-/// AniList streamingEpisodes → [`StreamingListing`]. Any failure step
-/// (no usable mapping, AniList rate limit, parse failure) yields
-/// `Err(())` so the caller can negative-cache an empty result.
-async fn fetch_anilist_eps_thumbs(
-    state: &AppState,
-    kitsu_id: &str,
-    anilist_base: Option<&str>,
-) -> std::result::Result<StreamingListing, ()> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id)
-        .await
-        .map_err(
-            |e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed"),
-        )?;
-    // Neither id: nothing to ask AniList. Err so the empty result
-    // takes the short negative TTL, as a failed lookup does.
-    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
-    streaming_listing_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
-        .await
-        .map_err(|e| {
-            tracing::warn!(
-                kitsu_id,
-                mal_id = ?ids.mal,
-                anilist_id = ?ids.anilist,
-                error = ?e,
-                "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
-            );
-        })
+    match fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await {
+        // AniList refusing this client says nothing about the show:
+        // nothing is kept, and the next view asks again.
+        Err(Miss::RateLimited) => StreamingListing::default(),
+        outcome => {
+            let outcome = outcome.map_err(|_| ());
+            cache_anilist_eps_thumbs(&state.cache_pool, kitsu_id, &outcome);
+            outcome.unwrap_or_default()
+        }
+    }
 }
 
 /// Returns `true` when at least one episode in the page has a
