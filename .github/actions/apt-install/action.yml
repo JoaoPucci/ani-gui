@@ -8,19 +8,22 @@ description: >
 # finds them already in its archive directory and downloads nothing.
 #
 # What stays as it was without the cache: the package lists are still
-# refreshed from the distro's sources before anything else, apt still
-# decides what to install from them, and it still checks every file
-# against the refreshed index. A file is named for its package's
-# version, so a cached file the index no longer names is never used:
-# apt fetches the current one instead. A miss — any pull
-# request whose plan master has not saved yet — downloads everything,
-# as the step always did.
+# refreshed from the distro's sources before anything else, and apt
+# still decides what to install from them. apt takes a file already in
+# its archive directory on its name, which carries the package's
+# version, and its size; a cached file the index no longer names is
+# never used, and apt fetches the current one instead. Only master's
+# own downloads are ever saved. With no cache for the same package
+# list at all, the install downloads everything, as the step always
+# did.
 #
 # The cache key is the download plan itself: the file names, sizes
 # and checksums apt prints for the packages it would fetch, after the
-# refresh. A new package version or a new runner image changes the
-# plan and so the key; the restore then falls back to the newest
-# cache for the same package list, and master saves the new plan once.
+# refresh. A new package version, or a runner image that installs
+# different packages, changes the plan and so the key; the restore
+# then falls back to the newest cache for the same package list, apt
+# downloads only what that cache lacks, and master saves the new plan
+# once.
 #
 # The files live in a directory of their own rather than apt's default
 # one, so nothing that cleans /var/cache/apt/archives (`apt-get clean`,
@@ -50,8 +53,8 @@ runs:
         sudo install -d -o "$(id -u)" -g "$(id -g)" "$ARCHIVES"
         sudo install -d -o _apt -g root -m 700 "$ARCHIVES/partial"
         # With nothing in the directory yet, this lists every file the
-        # install would fetch: 'URI' file size checksum.
-        # shellcheck disable=SC2086 # the package list splits on spaces
+        # install would fetch: 'URI' file size checksum. $PACKAGES is
+        # unquoted here and below on purpose: the list splits on spaces.
         sudo apt-get install --print-uris -qq -o Dir::Cache::Archives="$ARCHIVES" $PACKAGES >"$RUNNER_TEMP/apt-plan"
         want="$RUNNER_TEMP/apt-want"
         awk '{ print $2 }' "$RUNNER_TEMP/apt-plan" | sort -u >"$want"
@@ -83,7 +86,7 @@ runs:
         ARCHIVES: ${{ steps.plan.outputs.archives }}
       run: |
         set -euo pipefail
-        # shellcheck disable=SC2086 # the package list splits on spaces
+        # $PACKAGES is unquoted on purpose: the list splits on spaces.
         sudo apt-get install -y -o Dir::Cache::Archives="$ARCHIVES" -o APT::Keep-Downloaded-Packages=true $PACKAGES
 
     - name: Report what apt kept
