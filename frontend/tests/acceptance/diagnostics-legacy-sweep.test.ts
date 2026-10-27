@@ -70,15 +70,24 @@ afterEach(() => {
 	target.remove();
 });
 
-async function settle() {
-	for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 5));
+async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
+
+/** The app-info answer has been applied: its version is on screen,
+ *  and the sweep section is derived from the same answer. */
+const infoShown = () => (target.textContent ?? '').includes(appInfo([]).version);
 
 describe('diagnostics — the boot sweep', () => {
 	it('names the file the app deleted on the launch that deleted it', async () => {
 		serve([SWEPT]);
 		app = mount(DiagnosticsPage, { target });
-		await settle();
+		await until(infoShown, 'the app-info answer to be applied');
 
 		const text = target.textContent ?? '';
 		expect(text, 'the section heading should be present').toContain(
@@ -96,7 +105,10 @@ describe('diagnostics — the boot sweep', () => {
 		// page.
 		serve([]);
 		app = mount(DiagnosticsPage, { target });
-		await settle();
+		// The section is derived from the answer that puts the version
+		// on screen, so once the version shows the section has had its
+		// chance to render.
+		await until(infoShown, 'the app-info answer to be applied');
 
 		expect(target.textContent ?? '').not.toContain(m.diagnostics_section_legacy_sweep());
 	});

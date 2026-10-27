@@ -14,6 +14,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount, flushSync } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -386,16 +387,32 @@ describe('detail route — the versions of a show listed twice', () => {
 		// — nothing would ask again for the version, and a verdict read
 		// as unknown for it would list episodes past the count to play.
 		const h = useShowHandlers(TWO_VERSIONS, [], 8);
+		const { sent } = watchPageFetches();
+		const asked = () => sent.filter((r) => r.path === '/api/availability').length;
 		app = mount(DetailPage, { target });
 		await until(() => versionGroup() !== null, 'the version choice');
 		await until(() => tiles() === 8, 'the strip cut to the count');
 		const probes = h.probes();
+		const askedBefore = asked();
 
 		versionRadio(m.detail_version_standard())!.click();
 		flushSync();
 		expect(checked(m.detail_version_standard())).toBe('true');
-		await new Promise((r) => setTimeout(r, 50));
+		// The choice has run what it sets off to its requests: the strip
+		// re-warms under the chosen version, from the same flush any
+		// re-ask of the show would be started in. Once that warm's
+		// stream is open and one more turn has run, a question the choice
+		// asked would be on its way.
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes('prefetch=1') && versionOf(i) === 'standard'
+				),
+			'the strip to re-warm under the version chosen'
+		);
+		await afterRead();
 		expect(tiles()).toBe(8);
+		expect(asked(), 'the show is not asked about again').toBe(askedBefore);
 		expect(h.probes()).toBe(probes);
 	});
 });

@@ -53,6 +53,16 @@ pub(crate) struct TreeKillChild {
     /// A teardown already waited the ceiling out: the drop asks for
     /// the kill again but does not wait a second time.
     given_up: bool,
+    /// How long a teardown waits for the tree to exit:
+    /// [`TREE_EXIT_CEILING`], unless a case set its own
+    /// ([`Self::with_ceiling`]).
+    ceiling: std::time::Duration,
+    /// Measure an awaited teardown's ceiling on tokio's clock rather
+    /// than the wall clock, for a case that pauses tokio's clock to
+    /// time the ceiling itself ([`Self::on_tokio_clock`]). The app
+    /// always measures it on the wall clock.
+    #[cfg(test)]
+    tokio_clock: bool,
 }
 
 /// What a guard can do with a child's tree beyond the child itself:
@@ -74,16 +84,10 @@ impl TreeKillChild {
             child,
             tree,
             given_up: false,
+            ceiling: TREE_EXIT_CEILING,
+            #[cfg(test)]
+            tokio_clock: false,
         }
-    }
-
-    /// A guard over `child` whose tree is `tree`, for a case that
-    /// decides what the tree does.
-    #[cfg(test)]
-    pub(crate) fn with_tree(child: tokio::process::Child, tree: Box<dyn Tree>) -> Self {
-        #[cfg(windows)]
-        let child: GuardedChild = Box::new(child);
-        Self::guard(child, Some(tree))
     }
 
     /// The child's stderr, for the caller to read.
@@ -117,12 +121,6 @@ impl TreeKillChild {
         return self.child.inner_mut().try_wait();
     }
 
-    /// Whether anything of the tree is still running, for a case.
-    #[cfg(test)]
-    pub(crate) fn tree_running(&mut self) -> bool {
-        self.tree.as_mut().is_some_and(|t| t.running())
-    }
-
     /// Take the tree down and wait until it has exited: the child
     /// reaped and, of the rest of its tree, nothing left — which is
     /// also what it checks first, so a tree already gone is not
@@ -143,13 +141,13 @@ impl TreeKillChild {
             return true;
         }
         self.kill_tree();
-        let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        let started = (std::time::Instant::now(), tokio::time::Instant::now());
         loop {
             if self.tree_exited() {
                 self.tree = None;
                 return true;
             }
-            if std::time::Instant::now() >= deadline {
+            if self.past_ceiling(started) {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 self.given_up = true;
                 return false;
@@ -177,7 +175,7 @@ impl TreeKillChild {
             return;
         }
         self.kill_tree();
-        let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        let deadline = std::time::Instant::now() + self.ceiling;
         while !self.tree_exited() {
             if std::time::Instant::now() >= deadline {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
@@ -206,6 +204,9 @@ impl TreeKillChild {
         let _ = self.child.start_kill();
     }
 }
+
+#[path = "spawn_guard_seams.rs"]
+mod seams;
 
 impl Drop for TreeKillChild {
     fn drop(&mut self) {

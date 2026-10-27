@@ -23,6 +23,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -39,9 +40,9 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { goto } from '$app/navigation';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { goto } from '$app/navigation';
 import { forgetNavigationListeners, startNavigation } from './navigation';
 
 const KITSU_ID = '42';
@@ -55,6 +56,7 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
+	vi.mocked(goto).mockClear();
 	__resetApiBaseForTests(API_BASE);
 	vi.mocked(goto).mockClear();
 	forgetNavigationListeners();
@@ -80,6 +82,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 /** The blocking overlay the page raises for any long action. */
 const overlay = () => target.querySelector('[role="status"].backdrop');
+
+/** A play of episode `n` the user asked for, as the page sends it. */
+const asksToPlay = (n: number) => (r: PageFetch) =>
+	r.path === '/api/play' && r.body.episode === String(n) && !r.body.prefetch;
+
+/** Whether the page is done with its re-ask: the request was
+ *  stopped, or the page has read its answer. */
+const reAskSettled = (f: ReturnType<typeof watchPageFetches>) =>
+	[...f.read, ...f.failed].some(
+		(r) => r.path === '/api/availability' && r.body.bypass_cache === true
+	);
 
 /** The tile for episode `n`, whatever state it is in. */
 const tile = (n: number) =>
@@ -351,6 +364,12 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			Array.from(target.querySelectorAll<HTMLButtonElement>('button.seg-btn')).find(
 				(b) => b.textContent?.trim() === label
 			)!;
+		const { read } = watchPageFetches();
+		/** The page-load lookups in sub whose answers the page has read. */
+		const subLookupsRead = () =>
+			read.filter(
+				(r) => r.path === '/api/availability' && r.body.mode === 'sub' && !r.body.bypass_cache
+			).length;
 		app = mount(DetailPage, { target });
 		await until(
 			() => tile(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
@@ -370,9 +389,11 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		);
 
 		releaseSubAgain();
-		// The write happens on the microtask after the response
-		// resolves, so anything that was going to clobber has by now.
-		await new Promise((r) => setTimeout(r, 300));
+		// The page has read the second sub lookup's answer, older and
+		// unconfirmed, and what it set off has run to its next write:
+		// anything that was going to clobber has by now.
+		await until(() => subLookupsRead() === 2, 'the second sub lookup to be read');
+		await afterRead();
 
 		// Both halves of the clobber: the special stays, and the cap is
 		// not rolled back to a number nobody confirmed.
@@ -536,6 +557,8 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const fetches = watchPageFetches();
+		const { sent } = fetches;
 		app = mount(DetailPage, { target });
 		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
 		tile(AIRED)!.click();
@@ -548,10 +571,18 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		app = null;
 
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the re-ask: leaving stopped it, or its
+		// answer, which would clear the gate, has been read. Either
+		// way what it set off has run to its next request.
+		await until(() => reAskSettled(fetches), 'the re-ask to be stopped or answered');
+		await afterRead();
 
 		// Clearing the gate here calls startPlay, whose goto would haul
 		// the user back into playback on a page they already left.
+		expect(sent.filter(asksToPlay(AIRED))).toEqual([]);
+		// A play the play cache already holds sends nothing, and would
+		// still open the player.
+		expect(goto).not.toHaveBeenCalled();
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 	});
 
@@ -602,6 +633,8 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const fetches = watchPageFetches();
+		const { sent } = fetches;
 		app = mount(DetailPage, { target });
 		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
 		tile(AIRED)!.click();
@@ -613,10 +646,15 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		startNavigation();
 
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The page is done with the re-ask: its answer, which would clear
+		// the gate, has been read (or the request was stopped), and what
+		// it set off has run to its next request.
+		await until(() => reAskSettled(fetches), 'the re-ask to be stopped or answered');
+		await afterRead();
 
 		// Clearing the gate here calls startPlay, whose goto would cancel
 		// the navigation the user asked for.
+		expect(sent.filter(asksToPlay(AIRED))).toEqual([]);
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 		expect(goto).not.toHaveBeenCalled();
 	});
@@ -720,6 +758,8 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const fetches = watchPageFetches();
+		const { sent } = fetches;
 		app = mount(DetailPage, { target });
 		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
 		tile(AIRED)!.click();
@@ -742,8 +782,13 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		);
 
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		await until(() => reAskSettled(fetches), 'the re-ask to be stopped or answered');
+		await afterRead();
 
+		expect(sent.filter(asksToPlay(AIRED))).toEqual([]);
+		// A play the play cache already holds sends nothing, and would
+		// still open the player.
+		expect(goto).not.toHaveBeenCalled();
 		expect(played.filter((p) => p.episode === String(AIRED) && !p.prefetch)).toEqual([]);
 	});
 
@@ -854,6 +899,7 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const { sent, read } = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => probes.length > 0, 'the fallback availability lookup');
 
@@ -867,8 +913,13 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			`episode ${AIRED} to settle under the cap`,
 			3000
 		);
-		await new Promise((r) => setTimeout(r, 200));
+		// The page has read the settings, and what they set off has run
+		// to its next request: a second lookup would be asked by now.
+		await until(() => read.some((r) => r.path === '/api/settings'), 'the settings to be read');
+		await afterRead();
 
+		const lookups = sent.filter((r) => r.path === '/api/availability' && !r.body.bypass_cache);
+		expect(lookups).toHaveLength(1);
 		expect(probes.filter((p) => !p.bypass_cache)).toHaveLength(1);
 	});
 
@@ -916,13 +967,22 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			})
 		);
 
+		const fetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
 		tile(AIRED)!.click();
 		const notice = () => target.querySelector('p.unavailable[role="status"]')?.textContent ?? null;
 		await until(() => notice() !== null, 'the unavailable notice');
-		await new Promise((r) => setTimeout(r, 100));
+		// The page has read the refusal, and what it set off has run to
+		// its next request: a question about the other audio would be
+		// asked by now.
+		await until(() => reAskSettled(fetches), 'the refusal to be read');
+		await afterRead();
 		expect(notice()).toContain(m.detail_unavailable_message());
+		expect(
+			fetches.sent.filter((r) => r.path === '/api/availability/batch' && r.body.mode === 'dub'),
+			'the other audio is never asked'
+		).toEqual([]);
 		expect(batches, 'the other audio is never asked').not.toContain('dub');
 	});
 });
