@@ -115,7 +115,7 @@ async fn a_prologue_and_a_half_episode_keep_their_numbers() {
 #[tokio::test]
 async fn an_unknown_total_and_an_empty_list_read_as_none() {
     let crafted = r#"{"data":{"Media":{"id":5,"idMal":5,"episodes":null,"status":"NOT_YET_RELEASED","format":"TV",
-        "startDate":{"year":null},"endDate":null,"relations":{"edges":[]},"streamingEpisodes":[]}}}"#;
+        "startDate":{"year":null,"month":null,"day":null},"endDate":null,"relations":{"edges":[]},"streamingEpisodes":[]}}}"#;
     let got = evidence_for(5, crafted).await;
     assert_eq!(got.show.episodes, None);
     assert_eq!(got.show.start, None);
@@ -263,6 +263,49 @@ fn a_media_that_leaves_out_a_field_the_query_asks_for_is_no_answer() {
         assert!(
             evidence::parse_media_evidence_response(body.as_bytes()).is_ok(),
             "{field} null"
+        );
+    }
+}
+
+/// Every field the evidence query asks for is in AniList's answer, null
+/// when it has nothing: the run's dates and each of their parts, the
+/// streaming episodes and each one's title. A reply that leaves one out
+/// is no answer, never "no date" or "no listing".
+#[test]
+fn evidence_that_leaves_out_an_asked_field_is_no_answer() {
+    let full = serde_json::json!({ "data": { "Media": {
+        "id": 5, "idMal": 5, "episodes": 12, "status": "FINISHED", "format": "TV",
+        "startDate": { "year": 2020, "month": 1, "day": 2 },
+        "endDate": { "year": 2020, "month": 3, "day": 4 },
+        "relations": { "edges": [] },
+        "streamingEpisodes": [{ "title": "Episode 1 - A" }]
+    } } });
+    assert!(evidence::parse_media_evidence_response(full.to_string().as_bytes()).is_ok());
+    let without = |path: &[&str]| {
+        let mut doc = full.clone();
+        let mut at = &mut doc;
+        for key in &path[..path.len() - 1] {
+            at = match key.parse::<usize>() {
+                Ok(i) => &mut at[i],
+                Err(_) => &mut at[*key],
+            };
+        }
+        at.as_object_mut().unwrap().remove(path[path.len() - 1]);
+        doc.to_string()
+    };
+    for path in [
+        &["data", "Media", "startDate"][..],
+        &["data", "Media", "endDate"],
+        &["data", "Media", "streamingEpisodes"],
+        &["data", "Media", "startDate", "year"],
+        &["data", "Media", "startDate", "month"],
+        &["data", "Media", "endDate", "day"],
+        &["data", "Media", "streamingEpisodes", "0", "title"],
+    ] {
+        let body = without(path);
+        assert!(
+            evidence::parse_media_evidence_response(body.as_bytes()).is_err(),
+            "read without {path:?} as an answer"
         );
     }
 }

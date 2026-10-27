@@ -56,31 +56,47 @@ export type PersistAccountResult =
 	| { ok: true }
 	| {
 			ok: false;
-			kind: 'no_bridge' | 'encryption_unavailable' | 'bad_request' | 'io_error' | 'unknown';
+			kind:
+				| 'no_bridge'
+				| 'encryption_unavailable'
+				| 'bad_request'
+				| 'io_error'
+				| 'superseded'
+				| 'unknown';
 			detail?: string;
 	  };
 
 /** Encrypt + write to safeStorage. Returns the IPC failure kind on error so the page can act on it. */
 export async function persistAccount(
 	provider: Provider,
-	payload: PersistedAccount
+	payload: PersistedAccount,
+	stillCurrent?: () => boolean
 ): Promise<PersistAccountResult> {
 	const b = bridge();
 	if (!b) return { ok: false, kind: 'no_bridge' };
 	// Serialize with any concurrent clearToken for this provider so a
 	// boot refresh's write can't land after a racing disconnect's clear.
-	const r = await enqueueTokenWrite(provider, () => b.setToken(provider, payload));
+	// `stillCurrent` is asked when the write's turn comes, just before
+	// it is sent: a save that stopped being wanted while it waited is
+	// never written. Once sent, the main process writes it before it
+	// answers any later read, so a re-read after that sees this write.
+	const r = await enqueueTokenWrite(provider, () =>
+		stillCurrent && !stillCurrent()
+			? Promise.resolve({ ok: false as const, kind: 'superseded' })
+			: b.setToken(provider, payload)
+	);
 	if (r.ok) return { ok: true };
 	return { ok: false, kind: normaliseSetTokenKind(r.kind), detail: r.message };
 }
 
 function normaliseSetTokenKind(
 	kind: string
-): 'no_bridge' | 'encryption_unavailable' | 'bad_request' | 'io_error' | 'unknown' {
+): 'no_bridge' | 'encryption_unavailable' | 'bad_request' | 'io_error' | 'superseded' | 'unknown' {
 	switch (kind) {
 		case 'encryption_unavailable':
 		case 'bad_request':
 		case 'io_error':
+		case 'superseded':
 			return kind;
 		default:
 			return 'unknown';

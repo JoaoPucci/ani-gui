@@ -180,17 +180,20 @@ impl AniListProvider {
         tokens: &Tokens,
         body: &serde_json::Value,
     ) -> Result<bytes::Bytes> {
-        let resp = self
-            .client
-            .post(self.api_url())
-            .header("user-agent", ANILIST_USER_AGENT)
-            .header("content-type", "application/json")
-            .header("accept", "application/json")
-            .bearer_auth(&tokens.access_token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|_| AniError::Network)?;
+        // AniList counts this client, not the token: the account's
+        // requests spend the same budget, through the same gate, as
+        // the public ones.
+        let send = || {
+            self.client
+                .post(self.api_url())
+                .header("user-agent", ANILIST_USER_AGENT)
+                .header("content-type", "application/json")
+                .header("accept", "application/json")
+                .bearer_auth(&tokens.access_token)
+                .json(body)
+                .send()
+        };
+        let resp = super::anilist_gate::send(self.api_url(), send).await?;
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(AniError::InvalidToken);
@@ -438,29 +441,37 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<Media>,
+        media: crate::meta::present::Present<Media>,
     }
     #[derive(Deserialize)]
     struct Media {
         #[serde(rename = "mediaListEntry")]
-        entry: Option<Entry>,
+        entry: crate::meta::present::Present<Entry>,
     }
     #[derive(Deserialize)]
+    // Both are asked for: missing, the entry says nothing of where the
+    // viewer is, where null is AniList's own "none".
     struct Entry {
-        status: Option<String>,
-        progress: Option<u32>,
+        status: crate::meta::present::Present<String>,
+        progress: crate::meta::present::Present<u32>,
     }
     let wrap: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist media entry: {e}"),
     })?;
-    Ok(wrap.data.media.and_then(|m| m.entry).map(|e| CurrentEntry {
-        status: e
-            .status
-            .as_deref()
-            .and_then(ListStatus::from_anilist)
-            .unwrap_or(ListStatus::Watching),
-        progress_episodes: e.progress.unwrap_or(0),
-    }))
+    Ok(wrap
+        .data
+        .media
+        .into_inner()
+        .and_then(|m| m.entry.into_inner())
+        .map(|e| CurrentEntry {
+            status: e
+                .status
+                .into_inner()
+                .as_deref()
+                .and_then(ListStatus::from_anilist)
+                .unwrap_or(ListStatus::Watching),
+            progress_episodes: e.progress.into_inner().unwrap_or(0),
+        }))
 }
 
 /// Pure parser for the [`MEDIA_TRACKED_GQL`] response: the viewer's
@@ -602,12 +613,10 @@ fn parse_media_list_page(body: &[u8]) -> Result<MediaListPage> {
     struct Collection {
         #[serde(rename = "hasNextChunk")]
         has_next_chunk: bool,
-        #[serde(default)]
         lists: Vec<ListBucket>,
     }
     #[derive(Deserialize)]
     struct ListBucket {
-        #[serde(default)]
         entries: Vec<RawEntry>,
     }
     #[derive(Deserialize)]
@@ -906,6 +915,10 @@ fn jwt_exp_claim(access_token: &str) -> Option<i64> {
     let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     json.get("exp")?.as_i64()
 }
+
+#[cfg(test)]
+#[path = "anilist_user_shape_prop_test.rs"]
+mod shape_prop_tests;
 
 #[cfg(test)]
 #[path = "anilist_user_test.rs"]

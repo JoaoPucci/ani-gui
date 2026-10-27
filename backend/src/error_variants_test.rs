@@ -52,8 +52,7 @@ fn pairs() -> Vec<Pair> {
             host: Some("zokoanime.video".into()),
         },
         AniError::RateLimited { .. } => AniError::RateLimited {
-            retry_after_secs: Some(9),
-        },
+            retry_after_secs: Some(9), refused_by: None },
         AniError::ParseFailed { .. } => AniError::ParseFailed { detail: "x".into() },
         AniError::FfmpegMissing => AniError::FfmpegMissing,
         AniError::Upstream { .. } => AniError::Upstream { status: 503 },

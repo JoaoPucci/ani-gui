@@ -14,9 +14,13 @@
 	import { m } from '$lib/paraglide/messages';
 	import type { ToastKind } from '$lib/toasts/store.svelte';
 
-	let { kind, message, actionLabel, onAction, onDismiss } = $props<{
+	let { kind, message, announcement, actionLabel, onAction, onDismiss } = $props<{
 		kind: ToastKind;
 		message: string;
+		/** What the live region announces; the message when omitted. A
+		 *  countdown keeps it on its first words while the shown number
+		 *  changes, so a screen reader is not read a number a second. */
+		announcement?: string;
 		actionLabel?: string | null;
 		onAction?: (() => void) | null;
 		onDismiss: () => void;
@@ -38,7 +42,8 @@
 
 <div class="toast" data-kind={kind} role="status" aria-live="polite">
 	<span class="bar" aria-hidden="true"></span>
-	<span class="message">{message}</span>
+	<span class="message" aria-hidden="true">{message}</span>
+	<span class="sr-only">{announcement ?? message}</span>
 	{#if hasAction}
 		<button type="button" class="action" onclick={handleAction}>
 			{actionLabel}
@@ -93,6 +98,14 @@
 		background: var(--toast-accent);
 		border-start-start-radius: var(--radius-card, 8px);
 		border-end-start-radius: var(--radius-card, 8px);
+	}
+	.sr-only {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.message {
 		flex: 1 1 auto;

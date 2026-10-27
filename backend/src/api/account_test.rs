@@ -579,12 +579,14 @@ fn me_failure_allows_fallback_for_a_tracker_rate_limit() {
     // for an outage.
     assert!(me_failure_allows_renderer_fallback(
         &AniError::RateLimited {
-            retry_after_secs: Some(60)
+            retry_after_secs: Some(60),
+            refused_by: None
         }
     ));
     assert!(me_failure_allows_renderer_fallback(
         &AniError::RateLimited {
-            retry_after_secs: None
+            retry_after_secs: None,
+            refused_by: None
         }
     ));
 }
