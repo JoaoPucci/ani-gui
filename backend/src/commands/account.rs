@@ -952,7 +952,7 @@ pub(crate) async fn push_progress_from(
     push_progress_read(state, kind, provider, tokens, native, update, media, began).await
 }
 
-/// [`push_progress_via`] with the tracker's media already read: the
+/// [`push_progress_from`] with the tracker's media already read: the
 /// count is fitted to the tracker's own total — nothing exceeds a
 /// shorter entry, and a finale completes only where the total is
 /// unknown or equals the episode — then reconciled to stay monotonic,

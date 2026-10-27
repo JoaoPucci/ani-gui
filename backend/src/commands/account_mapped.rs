@@ -33,7 +33,7 @@ pub(crate) async fn push_progress_mapped(
     push_progress_mapped_at(ask, kitsu_id, native, update, began).await
 }
 
-/// [`push_progress_mapped`] for a request that arrived in connection
+/// The mapped write-back for a request that arrived in connection
 /// epoch `began`: each entry's write-through lands only if no
 /// disconnect purged the cache since.
 pub(crate) async fn push_progress_mapped_at(
