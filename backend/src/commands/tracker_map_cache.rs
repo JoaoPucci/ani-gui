@@ -16,6 +16,10 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 /// nothing. A remapped show or a recount of the resolved entry is a new
 /// key; a show resolving to nothing is kept only for the short window,
 /// since its key names no entry.
+///
+/// v2: the chain rule places a segment outside Kitsu's start and end
+/// dates by Kitsu's own episode dates. A v1 row, written before it could,
+/// says identity for chains it now maps.
 #[must_use]
 pub(crate) fn map_key(
     kind: ProviderKind,
@@ -29,7 +33,7 @@ pub(crate) fn map_key(
         ),
         None => "unresolved".to_string(),
     };
-    format!("tracker-map:v1:{}:k{kitsu_id}:{place}", kind.slug())
+    format!("tracker-map:v2:{}:k{kitsu_id}:{place}", kind.slug())
 }
 
 /// How long `map` is served from its row: the long window only for a

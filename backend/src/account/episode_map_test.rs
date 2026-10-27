@@ -892,6 +892,173 @@ fn a_number_written_with_trailing_zeros_is_the_same_number() {
     assert_eq!(map.segments[0].extras_after, vec![0, 6]);
 }
 
+// --- a chain Kitsu's dates leave out, which its own episodes date -----
+
+fn airdates(pairs: &[(u32, &str)]) -> std::collections::BTreeMap<u32, String> {
+    pairs.iter().map(|(n, d)| (*n, (*d).to_string())).collect()
+}
+
+/// Sonic X on AniList: 52 + 26 = Kitsu's 78, but Kitsu dates the show
+/// to the Japanese broadcast (2003-04-06 → 2004-03-28) while the third
+/// season ran 2005-09-10 → 2006-05-06.
+fn sonic_x() -> Evidence {
+    Evidence {
+        kitsu: kitsu("1633", Some(78), "2003-04-06", "2004-03-28"),
+        entry: show(1816, Some(52), true, "2003-04-06", "2004-03-28"),
+        chain: vec![show(129_610, Some(26), true, "2005-09-10", "2006-05-06")],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_segment_outside_kitsu_s_run_is_admitted_where_kitsu_s_own_episodes_date_it() {
+    let mut ev = sonic_x();
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    // Kitsu's episode 53 aired 2005-09-10 and its 78th 2006-05-06: its
+    // own list puts the third season where AniList does.
+    ev.kitsu_airdates = airdates(&[
+        (1, "2003-08-23"),
+        (52, "2005-03-26"),
+        (53, "2005-09-10"),
+        (78, "2006-05-06"),
+    ]);
+    let map = map_show(&ev);
+    assert_eq!(map.shape, Shape::Chain);
+    assert_eq!(map.target(53), mapped(129_610, 1, false, &[(1816, 52)]));
+}
+
+#[test]
+fn kitsu_s_dates_for_a_segment_must_meet_its_run_at_both_ends() {
+    // The third season lies wholly past Kitsu's end, so both its bounds
+    // need Kitsu's own dates. Only the start dated: the end is not
+    // vouched for.
+    let mut ev = sonic_x();
+    ev.kitsu_airdates = airdates(&[(53, "2005-09-10")]);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    // Dated, but not in the month the segment's run ends.
+    ev.kitsu_airdates = airdates(&[(53, "2005-09-10"), (78, "2006-06-06")]);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_first_segment_kitsu_dates_later_is_admitted_by_its_first_episode_s_date() {
+    // Monsuno: AniList's first season premiered 2012-02-23 (Kitsu's own
+    // episode 1 is dated that day); Kitsu's start date is 2012-10-03.
+    let ev = Evidence {
+        kitsu: kitsu("6907", Some(52), "2012-10-03", "2013-09-25"),
+        entry: show(13_185, Some(26), true, "2012-02-23", "2012-11-21"),
+        chain: vec![show(197_976, Some(26), true, "2013-04-03", "2013-09-25")],
+        kitsu_airdates: airdates(&[(1, "2012-02-23")]),
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev).shape, Shape::Chain);
+    let mut undated = ev;
+    undated.kitsu_airdates.clear();
+    assert_eq!(map_show(&undated), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_run_a_day_or_two_past_kitsu_s_across_a_month_is_inside_it() {
+    // Youkoso Japari Park: Kitsu ends 2020-09-30, AniList's second
+    // season 2020-10-01.
+    let ev = Evidence {
+        kitsu: kitsu("41933", Some(36), "2018-08-10", "2020-09-30"),
+        entry: show(104_187, Some(24), true, "2018-08-12", "2019-10-15"),
+        chain: vec![show(118_168, Some(12), true, "2020-04-15", "2020-10-01")],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev).shape, Shape::Chain);
+    // Three days is not a day's disagreement.
+    let mut late = ev.clone();
+    late.chain[0].end = Some("2020-10-03".into());
+    assert_eq!(map_show(&late), identity(Identity::Unexplained));
+    // A year's (Ooya-san to Boku: Kitsu 2021, the trackers 2020) is not.
+    let ooya = Evidence {
+        kitsu: kitsu("44220", Some(10), "2021-03-02", "2021-06-12"),
+        entry: show(117_280, Some(5), true, "2020-03-02", "2020-03-06"),
+        chain: vec![show(149_039, Some(5), true, "2020-06-08", "2020-06-12")],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ooya), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_segment_past_kitsu_s_end_needs_its_start_dated_too() {
+    // Sonic X's third season lies wholly after Kitsu's end: its start is
+    // after Kitsu's start but also after Kitsu's end, so both of its
+    // bounds need Kitsu's own dates.
+    let mut ev = sonic_x();
+    ev.kitsu_airdates = airdates(&[(78, "2006-05-06")]);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    // Kitsu's own list putting episode 53 in 2004 contradicts it.
+    ev.kitsu_airdates = airdates(&[(53, "2004-01-10"), (78, "2006-05-06")]);
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+}
+
+#[test]
+fn a_segment_before_kitsu_s_start_needs_its_end_dated_too() {
+    // A first season Kitsu dates later than the tracker does, ending
+    // before Kitsu's start: the end needs Kitsu's date as well.
+    let ev = Evidence {
+        kitsu: kitsu("1", Some(24), "2013-01-05", "2013-06-29"),
+        entry: show(10, Some(12), true, "2012-01-07", "2012-03-31"),
+        chain: vec![show(11, Some(12), true, "2013-04-06", "2013-06-29")],
+        kitsu_airdates: airdates(&[(1, "2012-01-07")]),
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev), identity(Identity::Unexplained));
+    let mut both = ev;
+    both.kitsu_airdates = airdates(&[(1, "2012-01-07"), (12, "2012-03-31")]);
+    assert_eq!(map_show(&both).shape, Shape::Chain);
+}
+
+#[test]
+fn a_start_a_day_or_two_before_kitsu_s_is_inside_it() {
+    let ev = Evidence {
+        kitsu: kitsu("1", Some(24), "2015-01-01", "2015-06-30"),
+        entry: show(10, Some(12), true, "2014-12-30", "2015-03-25"),
+        chain: vec![show(11, Some(12), true, "2015-04-01", "2015-06-24")],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev).shape, Shape::Chain);
+    let mut early = ev;
+    early.entry.start = Some("2014-12-28".into());
+    assert_eq!(map_show(&early), identity(Identity::Unexplained));
+}
+
+#[test]
+fn the_kitsu_episodes_a_chain_needs_dated_are_its_unplaced_bounds() {
+    // Sonic X: only the third season's end needs a date… and, as its
+    // start is past Kitsu's end, its start too.
+    assert_eq!(
+        chain_dates_needed(&sonic_x()),
+        std::collections::BTreeSet::from([53, 78])
+    );
+    // A chain inside Kitsu's run needs none; nor a claimed one, nor one
+    // whose sum misses, nor one missing a date.
+    assert!(chain_dates_needed(&ranma()).is_empty());
+    let mut claimed = sonic_x();
+    claimed.claimed = vec![129_610];
+    assert!(chain_dates_needed(&claimed).is_empty());
+    let mut short = sonic_x();
+    short.chain[0].episodes = Some(25);
+    assert!(chain_dates_needed(&short).is_empty());
+    let mut undated = sonic_x();
+    undated.chain[0].end = None;
+    assert!(chain_dates_needed(&undated).is_empty());
+    // A one-and-one chain is a chain too.
+    let one_and_one = Evidence {
+        kitsu: kitsu("1", Some(2), "2020-01-01", "2020-01-31"),
+        entry: show(10, Some(1), true, "2020-01-01", "2020-01-01"),
+        chain: vec![show(11, Some(1), true, "2021-05-01", "2021-05-01")],
+        ..Default::default()
+    };
+    assert_eq!(
+        chain_dates_needed(&one_and_one),
+        std::collections::BTreeSet::from([2])
+    );
+}
+
 #[test]
 fn a_chain_whose_dates_name_no_real_day_or_month_is_refused() {
     for bad in [

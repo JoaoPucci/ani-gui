@@ -46,6 +46,31 @@ class CaseTable(unittest.TestCase):
         ev["chain"][0]["end"] = "1993-01-01"
         self.assertEqual(predict(ev)["why"], "unexplained")
 
+    def test_a_segment_past_kitsu_s_run_is_inside_where_kitsu_s_episodes_date_it(self):
+        ev = evidence(
+            kitsu(1633, 78, "2003-04-06", "2004-03-28"),
+            show(1816, 52, True, "2003-04-06", "2004-03-28"),
+            chain=[show(129610, 26, True, "2005-09-10", "2006-05-06")],
+        )
+        self.assertEqual(predict(ev)["why"], "unexplained")
+        ev["kitsu_airdates"] = {"53": "2005-09-10", "78": "2006-05-06"}
+        self.assertEqual(predict(ev)["shape"], "chain")
+        ev["kitsu_airdates"] = {"53": "2005-09-10"}
+        self.assertEqual(predict(ev)["why"], "unexplained")
+        # Wholly past Kitsu's end, the start needs its date too.
+        ev["kitsu_airdates"] = {"78": "2006-05-06"}
+        self.assertEqual(predict(ev)["why"], "unexplained")
+
+    def test_a_run_two_days_past_kitsu_s_is_inside_and_three_is_not(self):
+        def ev(end):
+            return evidence(
+                kitsu(1, 36, "2018-08-10", "2020-09-30"),
+                show(2, 24, True, "2018-08-12", "2019-10-15"),
+                chain=[show(3, 12, True, "2020-04-15", end)],
+            )
+        self.assertEqual(predict(ev("2020-10-02"))["shape"], "chain")
+        self.assertEqual(predict(ev("2020-10-03"))["why"], "unexplained")
+
     def test_a_claimed_segment_is_identity(self):
         ev = ranma()
         ev["claimed"] = [149939]
@@ -129,6 +154,20 @@ class CaseTable(unittest.TestCase):
         self.assertEqual(targets(predict(ev), 161)[160], [149939, 143, False, [[210, 18, True]]])
 
 
+    def test_only_ascii_digits_read_as_a_date_or_a_number(self):
+        # The map reads ASCII digits alone; other scripts' digits are no
+        # date, no day to count slack from, and no listed number.
+        arabic = "\u0662\u0660\u0662\u0660"  # 2020 in Arabic-Indic digits
+        self.assertEqual(oracle.month("2020-01"), "2020-01")
+        self.assertIsNone(oracle.month(arabic + "-01"))
+        self.assertIsNone(oracle.month(arabic + "-01-01"))
+        self.assertTrue(oracle.slack("2020-01-01", "2020-01-03"))
+        self.assertFalse(oracle.slack(arabic + "-01-01", "2020-01-03"))
+        self.assertFalse(oracle.slack("2020-01-01", arabic + "-01-03"))
+        self.assertEqual(oracle.listed_number("3"), (3, None))
+        self.assertIsNone(oracle.listed_number("\u0663"))
+        self.assertIsNone(oracle.listed_number("3.\u0665"))
+
 class Generation(unittest.TestCase):
     def test_the_set_is_reproducible_and_ids_unique(self):
         a, b = oracle.gen(), oracle.gen()
@@ -141,6 +180,10 @@ class Generation(unittest.TestCase):
         families = {c["family"].split("-")[0] for c in cases}
         for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull", "split_overfull", "chain_rival"):
             self.assertIn(f, families)
+        full = {c["family"] for c in cases}
+        for f in ("chain-dated-both", "chain-dated-start_only", "chain-slack-1", "chain-slack-3",
+                  "chain-early-dated-both", "chain-start-slack-2", "chain-middle-dated"):
+            self.assertIn(f, full)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
         self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})
         self.assertTrue(any(c["family"] == "extras-multi-ok" for c in cases))

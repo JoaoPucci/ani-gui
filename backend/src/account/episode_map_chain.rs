@@ -2,6 +2,9 @@
 //! entries. Split from [`super`] so each file stays inside the CRAP
 //! gate's per-file bar.
 
+use std::collections::BTreeSet;
+
+use super::dates::{inside_kitsu_run, unplaced_bounds};
 use crate::account::episode_map::{Evidence, Segment, TrackerShow};
 
 /// A segment filing Kitsu's `from..=to` under the whole of `show`.
@@ -17,20 +20,9 @@ fn whole_entry(show: &TrackerShow, total: u32, from: u32, to: u32) -> Segment {
     }
 }
 
-/// `YYYY-MM` of a date, `None` when the date is unknown or is not a
-/// real calendar date or month
-/// ([`crate::account::episode_map_calendar::parse_date`]). Runs are compared by month: the sources disagree by a day
-/// about the same broadcast often enough that a day would refuse
-/// chains that are plainly right.
-fn month(date: Option<&str>) -> Option<&str> {
-    let date = date?;
-    crate::account::episode_map_calendar::parse_date(date)?;
-    date.get(..7)
-}
-
 /// The chain rule: `entry` and its sequels, in the order the tracker
 /// chains them, sum exactly to Kitsu's count, every segment's run lies
-/// inside Kitsu's run by month, and no segment past the first is a
+/// inside Kitsu's run ([`inside_kitsu_run`]), and no segment past the first is a
 /// Kitsu entry's own. Each segment then takes the Kitsu episodes it
 /// counts, in order.
 pub(super) fn chain(
@@ -38,6 +30,22 @@ pub(super) fn chain(
     kitsu_count: u32,
     tracker_total: u32,
 ) -> Option<Vec<Segment>> {
+    let (segments, shows) = exact_chain(evidence, kitsu_count, tracker_total)?;
+    shows
+        .iter()
+        .zip(&segments)
+        .all(|(show, segment)| inside_kitsu_run(evidence, show, segment))
+        .then_some(segments)
+}
+
+/// The chain's segments with the entry each files, when the counts sum
+/// exactly to Kitsu's over at least one hop and no segment past the
+/// first is a Kitsu entry's own — the chain rule short of its dates.
+fn exact_chain(
+    evidence: &Evidence,
+    kitsu_count: u32,
+    tracker_total: u32,
+) -> Option<(Vec<Segment>, Vec<&TrackerShow>)> {
     let mut segments = vec![whole_entry(
         &evidence.entry,
         tracker_total,
@@ -66,16 +74,28 @@ pub(super) fn chain(
     {
         return None;
     }
-    let kitsu_start = month(evidence.kitsu.start.as_deref())?;
-    let kitsu_end = month(evidence.kitsu.end.as_deref())?;
-    for show in shows {
-        let start = month(show.start.as_deref())?;
-        let end = month(show.end.as_deref())?;
-        if start < kitsu_start || end > kitsu_end {
-            return None;
-        }
+    Some((segments, shows))
+}
+
+/// The Kitsu episodes whose own air dates could place an exact,
+/// unclaimed chain whose every date is known but which the dates alone
+/// leave outside Kitsu's run; none otherwise.
+pub(super) fn chain_dates_needed(
+    evidence: &Evidence,
+    kitsu_count: u32,
+    tracker_total: u32,
+) -> BTreeSet<u32> {
+    let Some((segments, shows)) = exact_chain(evidence, kitsu_count, tracker_total) else {
+        return BTreeSet::new();
+    };
+    let mut needed = BTreeSet::new();
+    for (show, segment) in shows.iter().zip(&segments) {
+        let Some(unplaced) = unplaced_bounds(evidence, show, segment) else {
+            return BTreeSet::new();
+        };
+        needed.extend(unplaced.iter().map(|(n, _)| *n));
     }
-    Some(segments)
+    needed
 }
 
 #[cfg(test)]

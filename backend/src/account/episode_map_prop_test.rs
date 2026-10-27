@@ -8,9 +8,16 @@
 //! thousands of characters long, and the Windows test build's debug info
 //! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
+use super::extras_rule::first_part_extras;
+use super::parts_rule::split_parts;
 use super::*;
 use crate::account::episode_map::{EpisodeMap, Evidence, KitsuShow, Shape, Target, TrackerShow};
 use proptest::prelude::*;
+
+/// The calendar and chain models the date and chain properties across
+/// the rules' test modules compare against.
+#[path = "episode_map_model_test.rs"]
+pub(super) mod model;
 
 fn kitsu(id: &str, episodes: u32, start: &str, end: &str) -> KitsuShow {
     KitsuShow {
@@ -306,6 +313,18 @@ fn any_kitsu_show(id: &'static str) -> BoxedStrategy<KitsuShow> {
         .boxed()
 }
 
+/// Kitsu's air dates as its episode list could give them: a few
+/// episode numbers, small or anywhere in the range, each dated with any
+/// text a date field could carry.
+fn any_airdates() -> BoxedStrategy<std::collections::BTreeMap<u32, String>> {
+    prop::collection::btree_map(
+        prop_oneof![3 => 0u32..=12, 1 => any::<u32>()],
+        any_date().prop_filter_map("a date", |d| d),
+        0..4,
+    )
+    .boxed()
+}
+
 /// Evidence as the gatherer could hand it over, every field free.
 fn any_evidence() -> BoxedStrategy<Evidence> {
     (
@@ -316,25 +335,72 @@ fn any_evidence() -> BoxedStrategy<Evidence> {
         proptest::option::of(prop::collection::vec("[0-9.]{0,5}", 0..6)),
         prop::collection::vec(any_kitsu_show("s"), 0..4),
         prop::collection::vec(any_kitsu_show("p"), 0..4),
+        any_airdates(),
     )
-        .prop_map(|(kitsu, entry, mut chain, claim, listed, sharing, parts)| {
-            for (i, hop) in chain.iter_mut().enumerate() {
-                hop.id = 2 + u32::try_from(i).unwrap_or(0);
+        .prop_map(
+            |(kitsu, entry, mut chain, claim, listed, sharing, parts, kitsu_airdates)| {
+                for (i, hop) in chain.iter_mut().enumerate() {
+                    hop.id = 2 + u32::try_from(i).unwrap_or(0);
+                }
+                let claimed = if claim {
+                    chain.iter().map(|s| s.id).take(1).collect()
+                } else {
+                    Vec::new()
+                };
+                Evidence {
+                    kitsu,
+                    entry,
+                    chain,
+                    claimed,
+                    listed,
+                    sharing,
+                    kitsu_airdates,
+                    parts,
+                }
+            },
+        )
+        .boxed()
+}
+
+/// Free evidence, often with Kitsu's count moved to the entry's plus a
+/// prefix of its hops', so that exact chains come up, and often with
+/// every run dated from a few real dates and months either side of a
+/// month boundary, so that those chains need dates.
+fn chain_prone_evidence() -> BoxedStrategy<Evidence> {
+    let real = prop::sample::select(vec![
+        "2001-03-05",
+        "2001-03",
+        "2001-02-27",
+        "2005-06-15",
+        "2009-10",
+        "2009-10-31",
+        "2009-11-01",
+    ]);
+    (
+        any_evidence(),
+        prop::option::weighted(0.7, 1usize..=4),
+        prop::option::weighted(0.7, prop::collection::vec(real, 10)),
+    )
+        .prop_map(|(mut ev, hops, dates)| {
+            if let Some(hops) = hops {
+                let sum: u64 = std::iter::once(&ev.entry)
+                    .chain(ev.chain.iter().take(hops))
+                    .map(|s| u64::from(s.episodes.unwrap_or(0)))
+                    .sum();
+                if let Ok(count) = u32::try_from(sum) {
+                    ev.kitsu.episodes = Some(count);
+                }
             }
-            let claimed = if claim {
-                chain.iter().map(|s| s.id).take(1).collect()
-            } else {
-                Vec::new()
-            };
-            Evidence {
-                kitsu,
-                entry,
-                chain,
-                claimed,
-                listed,
-                sharing,
-                parts,
+            if let Some(dates) = dates {
+                let mut dates = dates.into_iter().map(|d| Some(d.to_string()));
+                ev.kitsu.start = dates.next().flatten();
+                ev.kitsu.end = dates.next().flatten();
+                for show in std::iter::once(&mut ev.entry).chain(ev.chain.iter_mut()) {
+                    show.start = dates.next().flatten();
+                    show.end = dates.next().flatten();
+                }
             }
+            ev
         })
         .boxed()
 }
@@ -411,6 +477,85 @@ proptest! {
         if let Some(count) = ev.kitsu.episodes.filter(|n| *n <= 500) {
             check_mapped(&map, count)?;
         }
+    }
+
+    /// The episodes the gatherer is told it needs are Kitsu's own: each
+    /// one lies within `1..=` Kitsu's count, and none is asked for while
+    /// that count is unknown or zero.
+    #[test]
+    fn the_dates_needed_are_kitsu_s_own_episodes(ev in chain_prone_evidence()) {
+        let needed = chain_dates_needed(&ev);
+        let count = ev.kitsu.episodes.unwrap_or(0);
+        prop_assert!(needed.iter().all(|n| (1..=count).contains(n)), "{needed:?} past {count}");
+    }
+
+    /// The episodes needed bound the exact chain the counts alone build:
+    /// each is the first or the last Kitsu episode of one of its
+    /// segments, and there are none where the counts build no exact
+    /// chain — the entry's count unknown, zero or not below Kitsu's, a
+    /// hop's count unknown before the sum reaches Kitsu's, the sum
+    /// passing it, or a hop a Kitsu entry claims.
+    #[test]
+    fn the_dates_needed_bound_the_exact_chain_the_counts_build(ev in chain_prone_evidence()) {
+        let needed = chain_dates_needed(&ev);
+        let links = match (ev.kitsu.episodes, ev.entry.episodes) {
+            (Some(count), Some(total)) if total > 0 => model::exact_chain_model(&ev, count, total),
+            _ => None,
+        };
+        let bounds: std::collections::BTreeSet<u32> = links
+            .iter()
+            .flatten()
+            .flat_map(|link| [link.from, link.to])
+            .collect();
+        prop_assert!(needed.is_subset(&bounds), "{needed:?} not in {bounds:?}");
+    }
+
+    /// No dates are needed where no prefix of the entry and its chain —
+    /// the entry's count plus any number of hops', unknown counted as
+    /// none, summed in `u64` — is Kitsu's count.
+    #[test]
+    fn no_dates_are_needed_where_no_prefix_sums_to_kitsu_s_count(ev in chain_prone_evidence()) {
+        let count = ev.kitsu.episodes.map(u64::from);
+        let mut sum = u64::from(ev.entry.episodes.unwrap_or(0));
+        let mut reached = false;
+        for hop in &ev.chain {
+            sum += u64::from(hop.episodes.unwrap_or(0));
+            reached |= count == Some(sum);
+        }
+        if !reached {
+            prop_assert!(chain_dates_needed(&ev).is_empty());
+        }
+    }
+
+    /// The episodes needed are exactly the ones the documented chain
+    /// rule reads Kitsu's episode list for: where the counts build an
+    /// exact, unclaimed chain from an entry with episodes and every
+    /// link's four dates are real, each bound the dates alone leave
+    /// outside Kitsu's run, as its segment's first or last Kitsu episode
+    /// ([`model::dates_needed_model`]); none otherwise.
+    #[test]
+    fn the_dates_needed_are_the_unplaced_bounds_of_a_dated_exact_chain(
+        ev in chain_prone_evidence()
+    ) {
+        let want = match (ev.kitsu.episodes, ev.entry.episodes) {
+            (Some(count), Some(total)) if total > 0 => model::dates_needed_model(&ev, count, total),
+            _ => std::collections::BTreeSet::new(),
+        };
+        prop_assert_eq!(chain_dates_needed(&ev), want);
+    }
+
+    /// Whatever the evidence, the air dates the gatherer is told it
+    /// needs are all the map reads of them — over free evidence, and
+    /// over evidence prone to exact chains whose dates need placing,
+    /// where the dates needed are not empty.
+    #[test]
+    fn any_evidence_maps_the_same_from_the_dates_needed_alone(
+        ev in prop_oneof![any_evidence(), chain_prone_evidence()]
+    ) {
+        let needed = chain_dates_needed(&ev);
+        let mut restricted = ev.clone();
+        restricted.kitsu_airdates.retain(|n, _| needed.contains(n));
+        prop_assert_eq!(map_show(&restricted), map_show(&ev));
     }
 }
 
@@ -817,7 +962,9 @@ proptest! {
     }
 
     /// The split-parts rule yields at most its own placement and the
-    /// extras rival to it, the placement first. A contradicted chain
+    /// extras rival to it, the placement first; the rival is the extras
+    /// rule at the show's count where the show is the first part, and
+    /// the first part's extras otherwise. A contradicted chain
     /// explains nothing of its own: it stands only as a rival to a
     /// shared set, and then alone.
     #[test]
@@ -841,6 +988,16 @@ proptest! {
                 }
                 if *contradicted {
                     prop_assert!(found.len() <= 1);
+                } else {
+                    // The rival is the extras rule read at the show's own
+                    // count where the show is the first part, and from the
+                    // first part otherwise.
+                    let rival = if ev.parts.first().is_some_and(|p| p.id == ev.kitsu.id) {
+                        extras(&ev, kitsu_count, total)
+                    } else {
+                        first_part_extras(&ev, total)
+                    };
+                    prop_assert_eq!(found.get(1).map(|(_, s)| s.clone()), rival);
                 }
             }
         }

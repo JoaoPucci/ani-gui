@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f3e8b4adf13b6718a4fc2b292ac7c1a0609fe66ce88b994fa8ddcd7e448e0606 # shrinks to a = (AniList, "0", None), b = (AniList, "0", None), same = false

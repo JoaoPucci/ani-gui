@@ -37,7 +37,7 @@ def month(date):
     (`YYYY-MM-DD`) or month (`YYYY-MM`)."""
     import datetime
 
-    if not date or not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", date):
+    if not date or not re.fullmatch(r"[0-9]{4}-[0-9]{2}(-[0-9]{2})?", date):
         return None
     try:
         datetime.date(int(date[:4]), int(date[5:7]), int(date[8:]) if len(date) == 10 else 1)
@@ -60,8 +60,9 @@ def segment(entry, total, from_, to, lead=0, extras=()):
 
 def chain_rule(ev, count, total):
     """One Kitsu entry spans the tracker's chain: the entry and its single
-    sequels sum exactly to Kitsu's count, every run inside Kitsu's run by
-    month, no later segment a Kitsu entry's own."""
+    sequels sum exactly to Kitsu's count, every run inside Kitsu's run
+    (each bound by month, two days' slack, or Kitsu's own episode date),
+    no later segment a Kitsu entry's own."""
     segs = [segment(ev["entry"], total, 1, total)]
     shows = [ev["entry"]]
     covered = total
@@ -81,11 +82,50 @@ def chain_rule(ev, count, total):
     ks, ke = month(ev["kitsu"]["start"]), month(ev["kitsu"]["end"])
     if not ks or not ke:
         return None
-    for show in shows:
-        s, e = month(show["start"]), month(show["end"])
-        if not s or not e or s < ks or e > ke:
+    for show, seg in zip(shows, segs):
+        bounds = unplaced(ev, show, seg)
+        if bounds is None:
+            return None
+        if not all(aired_in(ev, n, bound) for n, bound in bounds):
             return None
     return segs
+
+
+def unplaced(ev, show, seg):
+    """The bounds of a segment's run the dates alone leave outside Kitsu's
+    run, as (Kitsu episode, bound date): a start must be no earlier than
+    Kitsu's start (by month, or two days) and no later than its end; an
+    end no later than Kitsu's end (by month, or two days) and no earlier
+    than its start. None when a date is missing."""
+    ks, ke = month(ev["kitsu"]["start"]), month(ev["kitsu"]["end"])
+    s, e = month(show["start"]), month(show["end"])
+    if not (ks and ke and s and e):
+        return None
+    out = []
+    if not ((s >= ks or slack(show["start"], ev["kitsu"]["start"])) and s <= ke):
+        out.append((seg["kitsu_from"], show["start"]))
+    if not ((e <= ke or slack(ev["kitsu"]["end"], show["end"])) and e >= ks):
+        out.append((seg["kitsu_to"], show["end"]))
+    return out
+
+
+def slack(earlier, later):
+    """Whether `later` is at most two days after `earlier`, both full dates."""
+    import datetime
+
+    try:
+        full = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+        a = datetime.date.fromisoformat(earlier) if earlier and full.fullmatch(earlier) else None
+        b = datetime.date.fromisoformat(later) if later and full.fullmatch(later) else None
+    except ValueError:
+        return False
+    return bool(a and b and (b - a).days <= 2)
+
+
+def aired_in(ev, number, bound):
+    """Whether Kitsu's own episode `number` is dated in `bound`'s month."""
+    aired = (ev.get("kitsu_airdates") or {}).get(str(number))
+    return bool(month(aired) and month(aired) == month(bound))
 
 
 def place(parts, ours, own, total, taken_out=None):
@@ -163,7 +203,7 @@ def split_rule(ev, total):
 
 def listed_number(text):
     """A listed number as (whole, fraction digits or None)."""
-    m = re.fullmatch(r"(\d+)(?:\.(\d+))?", text)
+    m = re.fullmatch(r"([0-9]+)(?:\.([0-9]+))?", text)
     if not m:
         return None
     fraction = (m.group(2) or "").rstrip("0") or None
@@ -272,7 +312,7 @@ def kitsu(i, n, start="2010-01-05", end="2010-12-20"):
 
 
 def evidence(k, entry, **kw):
-    ev = {"kitsu": k, "entry": entry, "chain": [], "claimed": [], "listed": None, "sharing": [], "parts": []}
+    ev = {"kitsu": k, "entry": entry, "chain": [], "claimed": [], "listed": None, "sharing": [], "parts": [], "kitsu_airdates": {}}
     ev.update(kw)
     return ev
 
@@ -559,6 +599,62 @@ def borrowed_family(rng):
     return out
 
 
+def dated_family(rng):
+    """A chain past Kitsu's run that Kitsu's own episodes date, at one end,
+    both, the wrong month, or none; and runs a day or more past it."""
+    out = []
+    for _ in range(150):
+        a, b = rng.randint(2, 40), rng.randint(2, 40)
+        k = kitsu(80, a + b, "2010-01-04", "2010-12-27")
+        first = show(81, a, True, "2010-01-04", "2010-12-27")
+        late = show(82, b, True, "2012-04-07", "2012-09-29")
+        tweak = rng.choice(["both", "both", "start_only", "end_only", "wrong_month", "none"])
+        dates = {
+            "both": {str(a + 1): "2012-04-07", str(a + b): "2012-09-29"},
+            "start_only": {str(a + 1): "2012-04-07"},
+            "end_only": {str(a + b): "2012-09-29"},
+            "wrong_month": {str(a + b): "2012-08-30"},
+            "none": {},
+        }[tweak]
+        out.append(("chain-dated-" + tweak, evidence(k, first, chain=[late], kitsu_airdates=dates)))
+    for _ in range(80):
+        # A first segment Kitsu dates later, ending before Kitsu's start:
+        # its start and its end each need a date.
+        a, b = rng.randint(2, 40), rng.randint(2, 40)
+        k = kitsu(86, a + b, "2013-01-05", "2013-06-29")
+        first = show(87, a, True, "2012-01-07", "2012-03-31")
+        late = show(88, b, True, "2013-04-06", "2013-06-29")
+        tweak = rng.choice(["both", "start_only", "end_only"])
+        dates = {"both": {"1": "2012-01-07", str(a): "2012-03-31"}, "start_only": {"1": "2012-01-07"}, "end_only": {str(a): "2012-03-31"}}[tweak]
+        out.append(("chain-early-dated-" + tweak, evidence(k, first, chain=[late], kitsu_airdates=dates)))
+    for _ in range(60):
+        # A start a day or a few before Kitsu's.
+        a, b = rng.randint(2, 40), rng.randint(2, 40)
+        under = rng.choice([1, 2, 3, 4])
+        k = kitsu(89, a + b, "2015-01-01", "2015-06-30")
+        first = show(90, a, True, "2014-12-%02d" % (32 - under), "2015-03-25")
+        late = show(91, b, True, "2015-04-01", "2015-06-24")
+        out.append(("chain-start-slack-%d" % under, evidence(k, first, chain=[late])))
+    for _ in range(60):
+        # Three segments, the middle one outside and dated or not.
+        a, b, c = (rng.randint(2, 30) for _ in range(3))
+        k = kitsu(92, a + b + c, "2010-01-04", "2010-12-27")
+        s1 = show(93, a, True, "2010-01-04", "2010-04-26")
+        s2 = show(94, b, True, "2011-05-02", "2011-08-29")
+        s3 = show(95, c, True, "2010-09-06", "2010-12-27")
+        dated = rng.random() < 0.5
+        dates = {str(a + 1): "2011-05-02", str(a + b): "2011-08-29"} if dated else {}
+        out.append(("chain-middle-" + ("dated" if dated else "undated"), evidence(k, s1, chain=[s2, s3], kitsu_airdates=dates)))
+    for _ in range(80):
+        a, b = rng.randint(2, 40), rng.randint(2, 40)
+        over = rng.choice([1, 2, 3, 5])
+        k = kitsu(83, a + b, "2018-08-10", "2020-09-30")
+        first = show(84, a, True, "2018-08-12", "2019-10-15")
+        late = show(85, b, True, "2020-04-15", "2020-10-%02d" % over)
+        out.append(("chain-slack-%d" % over, evidence(k, first, chain=[late])))
+    return out
+
+
 def plain_family(rng):
     out = []
     for _ in range(100):
@@ -582,7 +678,7 @@ def recorded():
 def gen():
     rng = random.Random(20261018)
     raw = []
-    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, plain_family, later_part_family, shared_overfull_family, split_overfull_family, chain_rival_family):
+    for family in (chain_family, shared_family, split_family, extras_family, conflict_family, borrowed_family, dated_family, plain_family, later_part_family, shared_overfull_family, split_overfull_family, chain_rival_family):
         raw += family(rng)
     cases, seen = [], set()
     for family, ev in raw:
