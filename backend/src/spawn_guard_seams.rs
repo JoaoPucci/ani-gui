@@ -33,15 +33,21 @@ impl TreeKillChild {
     /// Whether an awaited teardown begun at `started` (on the wall
     /// clock, and on tokio's) is past its ceiling.
     pub(super) fn past_ceiling(&self, started: (std::time::Instant, tokio::time::Instant)) -> bool {
+        self.since_past(started, self.ceiling)
+    }
+
+    /// Whether `bound` has passed since `since` (on the wall clock, and
+    /// on tokio's), on the clock the guard measures its ceiling on.
+    pub(super) fn since_past(
+        &self,
+        since: (std::time::Instant, tokio::time::Instant),
+        bound: std::time::Duration,
+    ) -> bool {
         #[cfg(test)]
         let on_tokio = self.tokio_clock;
         #[cfg(not(test))]
         let on_tokio = false;
-        ceiling_passed(
-            (started.0.elapsed(), started.1.elapsed()),
-            on_tokio,
-            self.ceiling,
-        )
+        ceiling_passed((since.0.elapsed(), since.1.elapsed()), on_tokio, bound)
     }
 
     /// A guard over `child` whose tree is `tree`, for a case that
