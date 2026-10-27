@@ -98,6 +98,7 @@
 	"list_episode_label": "Episodio",
 	"list_rate_limited": "Los trackers están limitando las solicitudes. Inténtalo de nuevo en un momento.",
 	"list_remove": "Quitar de la lista",
+	"list_rewatch_mal_note": "MyAnimeList no tiene un estado de volver a ver, así que deja esta entrada como está.",
 	"list_removed": "Eliminado de tu lista",
 	"list_removing": "Quitando…",
 	"list_save": "Guardar",

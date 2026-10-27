@@ -25,7 +25,7 @@
 		type PendingEdit
 	} from '$lib/account/list-entry-pending';
 	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
-	import { statusOptionsForTrackers } from '$lib/account/rewatch-trackers';
+	import { rewatchNoteShown, statusOptionsForTrackers } from '$lib/account/rewatch-trackers';
 	import { accountStore } from '$lib/account/store.svelte';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -371,6 +371,9 @@
 					<span class="le-caret" aria-hidden="true">▾</span>
 				</div>
 			</label>
+			{#if rewatchNoteShown(accountStore.connected, editStatus)}
+				<p class="le-note">{m.detail_list_rewatch_mal_note()}</p>
+			{/if}
 
 			<!-- Plan to Watch means not started, so there's no episode to set. -->
 			{#if editStatus !== 'planning'}
@@ -526,6 +529,14 @@
 	.le-field {
 		display: grid;
 		gap: var(--space-1);
+	}
+	/* What a picked status will not change on a tracker: quiet, under the
+	   status it is about. */
+	.le-note {
+		margin: 0;
+		max-inline-size: 36ch;
+		font-size: var(--type-meta);
+		color: var(--bone-300);
 	}
 	.le-label {
 		font-family: var(--font-mono);
