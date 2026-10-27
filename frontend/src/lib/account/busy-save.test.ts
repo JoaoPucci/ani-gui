@@ -317,6 +317,79 @@ describe('a held write dropped while it waits', () => {
 		vi.useRealTimers();
 	});
 
+	/** A write listed under u1, refused once with `secs` to wait, then taken. */
+	function heldUnderU1(id: string, secs: number) {
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(secs))
+			.mockResolvedValue('saved');
+		const pending = saveWhenTrackerAllows('anilist', id, write, undefined, { user: 'u1' }).catch(
+			(e: unknown) => e
+		);
+		return { write, pending };
+	}
+
+	it('keeps waiting through a reconnect, and goes when the same user is back', async () => {
+		const { write, pending } = heldUnderU1('91', 5);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.setConnecting('anilist');
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(toastStore.items.filter((t) => t.kind === 'info')).toHaveLength(1);
+		accountStore.setConnected('anilist', as('u1'));
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(await pending).toBe('saved');
+		expect(write).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps waiting through an account change that ends on the same user', async () => {
+		const { write, pending } = heldUnderU1('92', 5);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.beginAccountChange('anilist');
+		await vi.advanceTimersByTimeAsync(2000);
+		accountStore.setConnected('anilist', as('u1'));
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(await pending).toBe('saved');
+		expect(write).toHaveBeenCalledTimes(2);
+	});
+
+	it('is dropped within a second once a reconnect ends on another user', async () => {
+		const { write, pending } = heldUnderU1('93', 60);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.setConnecting('anilist');
+		await vi.advanceTimersByTimeAsync(2000);
+		accountStore.setConnected('anilist', as('u2'));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await pending).toBeInstanceOf(SupersededError);
+		expect(write).toHaveBeenCalledTimes(1);
+	});
+
+	it('is dropped at the end of its wait while the reconnect is still under way', async () => {
+		const { write, pending } = heldUnderU1('94', 5);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.setConnecting('anilist');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBeInstanceOf(SupersededError);
+		expect(write).toHaveBeenCalledTimes(1);
+	});
+
+	it('is dropped within a second once the account is disconnected', async () => {
+		const { write, pending } = heldUnderU1('95', 60);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.setDisconnected('anilist');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await pending).toBeInstanceOf(SupersededError);
+		expect(write).toHaveBeenCalledTimes(1);
+	});
+
+	it('waits no longer than it was told when the clock jumps back', async () => {
+		const { write, pending } = heldUnderU1('96', 5);
+		await vi.advanceTimersByTimeAsync(0);
+		vi.setSystemTime(Date.now() - 60_000);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBe('saved');
+		expect(write).toHaveBeenCalledTimes(2);
+	});
+
 	it('ends its wait and takes its notice down within a second of its account changing', async () => {
 		const write = vi.fn<() => Promise<string>>().mockRejectedValueOnce(refused(60));
 		const pending = saveWhenTrackerAllows('anilist', '90', write, undefined, { user: 'u1' }).catch(
