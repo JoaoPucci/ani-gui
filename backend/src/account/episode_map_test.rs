@@ -213,6 +213,41 @@ fn a_chain_outside_kitsu_s_run_explains_nothing() {
     assert_eq!(map_show(&early), identity(Identity::Unexplained));
 }
 
+/// A tracker's sequel that aired before the entry it follows started
+/// is no later part of the show, whatever its relation says: both runs
+/// lying inside Kitsu's does not place them in the chain's order.
+/// Order is read only where the dates settle it — a month apart, or
+/// whole days apart within one month — so a sequel dated by month alone
+/// in its entry's month is read as it was.
+#[test]
+fn a_sequel_that_aired_before_its_entry_started_is_no_chain() {
+    let ev = |entry_start: &str, sequel_start: &str| Evidence {
+        kitsu: kitsu("1", Some(12), "2010-01-05", "2010-12-20"),
+        entry: show(10, Some(6), true, entry_start, "2010-08-10"),
+        chain: vec![show(11, Some(6), true, sequel_start, "2010-09-20")],
+        ..Default::default()
+    };
+    assert_eq!(
+        map_show(&ev("2010-07-01", "2010-01-10")),
+        identity(Identity::Unexplained),
+        "months apart"
+    );
+    assert_eq!(
+        map_show(&ev("2010-07-20", "2010-07-03")),
+        identity(Identity::Unexplained),
+        "days apart in one month"
+    );
+    assert_eq!(
+        map_show(&ev("2010-07-01", "2010-08-01")).shape,
+        Shape::Chain
+    );
+    assert_eq!(map_show(&ev("2010-07", "2010-07")).shape, Shape::Chain);
+    assert_eq!(
+        map_show(&ev("2010-07-03", "2010-07-03")).shape,
+        Shape::Chain
+    );
+}
+
 #[test]
 fn the_run_is_compared_by_month_so_a_day_s_disagreement_does_not_refuse_a_chain() {
     let mut ev = ranma();
