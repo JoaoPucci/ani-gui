@@ -6,6 +6,7 @@ import {
 	hydratedState,
 	isExpired,
 	isSameBearer,
+	isSignInChange,
 	withFailure
 } from './hydrated-state';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
@@ -133,5 +134,23 @@ describe('failuresAfterRetry', () => {
 				fs
 			)
 		).toBe(fs);
+	});
+});
+
+describe('isSignInChange', () => {
+	it('is a change exactly when the kind or the bearer moved', () => {
+		const bearerOf = (s: ProviderState) =>
+			'account' in s && s.account ? s.account.access_token : null;
+		fc.assert(
+			fc.property(state, state, (prev, next) => {
+				const moved = prev.kind !== next.kind || bearerOf(prev) !== bearerOf(next);
+				return isSignInChange(prev, next) === moved;
+			})
+		);
+	});
+
+	it('is no change for the same sign-in read again', () => {
+		const s: ProviderState = { kind: 'expired', account: acc('a') };
+		expect(isSignInChange(s, { kind: 'expired', account: acc('a') })).toBe(false);
 	});
 });
