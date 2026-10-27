@@ -114,6 +114,13 @@ pub trait TailSource: Send + Sync + std::fmt::Debug {
     /// no `None`: the refusal stands whatever a later read would say.
     async fn tail(&self, listing: &[EpisodeRef], count: u32) -> Option<EntryTail>;
 
+    /// How long [`fit_appended`] waits for [`Self::tail`] before it
+    /// reads the listing as if nothing could be read: [`TAIL_BUDGET`],
+    /// or no bound at all.
+    fn budget(&self) -> Option<std::time::Duration> {
+        Some(TAIL_BUDGET)
+    }
+
     /// The reading the evidence last proved for the entry, if any.
     fn remembered(&self) -> Option<Remembered> {
         None
@@ -182,9 +189,13 @@ pub async fn fit_appended(
         count,
         ids: past_ids(&picked.episodes, count),
     };
-    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(&picked.episodes, count)).await
-    {
-        Ok(Some(tail)) => {
+    let read = source.tail(&picked.episodes, count);
+    let tail = match source.budget() {
+        Some(budget) => tokio::time::timeout(budget, read).await.ok().flatten(),
+        None => read.await,
+    };
+    let fitted = match tail {
+        Some(tail) => {
             let fitted = appended_extras(&picked.episodes, count, &tail);
             source.remember(fitted.as_ref().map(|_| &reading));
             fitted
