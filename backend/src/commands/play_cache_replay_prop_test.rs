@@ -541,3 +541,31 @@ async fn a_pick_walks_hearing_spans_its_listing_fetches() {
     .expect("picks");
     assert_spans_the_fetches(&provider, &kept);
 }
+
+/// A record left by another run — whatever its stamps, which count that
+/// run's hearings — is replaced by the first listing heard now.
+#[test]
+fn a_record_another_run_left_is_replaced_by_a_hearing_now() {
+    let state = crate::commands::play::tests::state_with_proxy_origin();
+    let key = "test-a:show-1";
+    crate::commands::listing_tags::put(
+        &state,
+        key,
+        &["24.5".to_string()],
+        crate::commands::listing_tags::Hearing {
+            run: 0,
+            start: u64::MAX - 1,
+            at: u64::MAX,
+        },
+    );
+    crate::commands::listing_tags::put(
+        &state,
+        key,
+        &[],
+        crate::commands::listing_tags::Begun::now().picked(),
+    );
+    assert_eq!(
+        crate::commands::listing_tags::get(&state, key),
+        Some(vec![])
+    );
+}
