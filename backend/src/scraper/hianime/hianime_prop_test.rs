@@ -268,6 +268,7 @@ proptest::proptest! {
         pad in "[ \n]{0,3}",
         quality in proptest::bool::ANY,
         decoys in proptest::collection::vec(prop_oneof![Just("Rx"), Just("PG-13"), Just("18+")], 0..4),
+        bounded in proptest::bool::ANY,
     ) {
         let mark = own
             .as_ref()
@@ -278,10 +279,14 @@ proptest::proptest! {
             .iter()
             .map(|d| format!(r#"<div class="flw-item"><div class="tick-item tick-pg">{d}</div><div class="tick-item tick-rate">{d}</div></div>"#))
             .collect();
+        // Without the buttons that end the show's own stats, the block
+        // has no bound, and nothing is read as the show's.
+        let buttons = if bounded { r#"<div class="film-buttons"></div>"# } else { r#"<div class="film-actions"></div>"# };
         let page = format!(
-            r#"<h2 class="film-name dynamic-name">Show</h2><div class="film-stats"><div class="tick">{quality}{mark}<span class="item">TV</span></div></div><div class="film-buttons"></div>{cards}"#
+            r#"<h2 class="film-name dynamic-name">Show</h2><div class="film-stats"><div class="tick">{quality}{mark}<span class="item">TV</span></div></div>{buttons}{cards}"#
         );
-        proptest::prop_assert_eq!(parse_detail_rating(&page), own);
+        let expected = if bounded { own } else { None };
+        proptest::prop_assert_eq!(parse_detail_rating(&page), expected);
     }
 
     /// The genres are the Genres row's links in order, whatever sits

@@ -611,6 +611,11 @@ fn the_entry_page_rating_is_its_own_heading_s_mark() {
         None,
         "a blank mark is no rating"
     );
+    // Without the buttons that end the show's stats, nothing says where
+    // its own block stops: another show's card further down is not read
+    // for it, and the page carries no rating the parser can vouch for.
+    let unbounded = UNRATED_HEADING.replace("class=\"film-buttons\"", "class=\"film-actions\"");
+    assert_eq!(parse_detail_rating(&unbounded), None);
 }
 
 #[test]

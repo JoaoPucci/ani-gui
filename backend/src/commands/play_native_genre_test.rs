@@ -442,7 +442,14 @@ async fn a_probe_heard_dead_is_not_asked_again() {
         hit("the-show-1", "The Show"),
         hit("the-show-tv-2", "The Show TV"),
     ];
-    let _ = pick(&client, &hits, Some(12), None, &["The Show TV"]).await;
+    // The first round picks "The Show" over the dead copy and the gate
+    // refuses it; the round made again finds only the dead one left, the
+    // weather it was in the first round.
+    match pick(&client, &hits, Some(12), None, &["The Show TV"]).await {
+        Ok(p) => panic!("picked {}", p.hit.slug),
+        Err(e) => assert!(matches!(e, AniError::Network), "{e:?}"),
+    }
+    assert_eq!(pages_read(&client), ["the-show-1"]);
     let asked: Vec<String> = probes(&client)
         .into_iter()
         .filter(|s| s == "the-show-tv-2")

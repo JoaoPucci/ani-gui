@@ -226,8 +226,8 @@ fn lines<'a>(rows: impl Iterator<Item = (&'a String, String)>) -> String {
 }
 
 /// The maps a recording ends with — the cards' romanized names, and
-/// the names and genres every entry page read gives — written as the
-/// recordings write their maps.
+/// the names, genres and rating every entry page read gives — written
+/// as the recordings write their maps.
 fn name_maps(reads: &Reads, hits: impl Iterator<Item = BrowseHit>) -> String {
     let jnames: BTreeMap<String, String> =
         hits.filter_map(|h| h.jname.map(|j| (h.slug, j))).collect();
@@ -241,11 +241,16 @@ fn name_maps(reads: &Reads, hits: impl Iterator<Item = BrowseHit>) -> String {
         .iter()
         .filter(|(_, p)| !p.genres.is_empty())
         .map(|(s, p)| (s, names_row(&p.genres)));
+    let ratings = reads
+        .pages
+        .iter()
+        .filter_map(|(s, p)| Some((s, json(p.rating.as_ref()?))));
     format!(
-        " \"jnames\": {},\n \"page_names\": {},\n \"genres\": {}\n",
+        " \"jnames\": {},\n \"page_names\": {},\n \"genres\": {},\n \"ratings\": {}\n",
         braced(&lines(jnames.iter().map(|(s, j)| (s, json(j))))),
         braced(&lines(names)),
         braced(&lines(genres)),
+        braced(&lines(ratings)),
     )
 }
 
@@ -510,6 +515,20 @@ fn with_line(text: &str, map: &str, key: &str, value: &str) -> String {
     )
 }
 
+/// `text` with `"key": value` written into its ratings map, the map
+/// added after the genres where a recording from before ratings were
+/// read has none.
+fn with_ratings_line(text: &str, key: &str, value: &str) -> String {
+    if text.contains("\n \"ratings\": ") {
+        return with_line(text, "ratings", key, value);
+    }
+    let body = text
+        .strip_suffix("\n}\n")
+        .expect("a recording ends on its brace");
+    let added = format!("{body},\n \"ratings\": {{}}\n}}\n");
+    with_line(&added, "ratings", key, value)
+}
+
 /// Every recorded fixture given the entry pages its walk reads that the
 /// recording does not hold — the page of the listing an undated entry's
 /// pick would serve, which the walk did not read when the fixture was
@@ -565,6 +584,9 @@ async fn record_the_pages_the_walk_reads() {
             }
             if !page.genres.is_empty() {
                 text = with_line(&text, "genres", slug, &names_row(&page.genres));
+            }
+            if let Some(rating) = &page.rating {
+                text = with_ratings_line(&text, slug, &json(rating));
             }
         }
         std::fs::write(&path, text).expect("write fixture");

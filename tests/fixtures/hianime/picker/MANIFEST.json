@@ -100,9 +100,9 @@
     "sha256": "e66f8cb005e1a12f6b35dd2a3e8cfa6476ed2b0614dc7a9d39825849719054a5"
   },
   "40684.json": {
-    "source": "kitsu.io /api/edge/anime/40684; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs); the entry page of the hit the undated walk played, read 2026-10-16 for its year, names and genres",
+    "source": "kitsu.io /api/edge/anime/40684; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs); the entry page of the hit the undated walk played, read 2026-10-16 for its year, names and genres; the hentai listing's own-heading age rating, read from its entry page fetched on 2026-10-28 with the bundled impersonating transport and reduced by the client's parser",
     "captured": "2026-10-15",
-    "sha256": "5f40627782e2c13adaac593d736c36f38716a26713b74989d13549430be9705e"
+    "sha256": "7d6d037ae295cec383da41b8301e5a23fc274ad84f5cb0ea66783f36194b310e"
   },
   "41046.json": {
     "source": "kitsu.io /api/edge/anime/41046; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs)",
@@ -500,9 +500,9 @@
     "sha256": "6cc7443c84583d840799eb7ed92ddab13fc887d07b04dd6c21dec89dffc2d3ad"
   },
   "8404.json": {
-    "source": "kitsu.io /api/edge/anime/8404; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs); the entry page of the hit the undated walk played, read 2026-10-16 for its year, names and genres",
+    "source": "kitsu.io /api/edge/anime/8404; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs); the entry page of the hit the undated walk played, read 2026-10-16 for its year, names and genres; the hentai listing's own-heading age rating, read from its entry page fetched on 2026-10-28 with the bundled impersonating transport and reduced by the client's parser",
     "captured": "2026-10-15",
-    "sha256": "007926d7f035b213bebc0a7f33e2fcb466ea435b8a119eff1febb8680d702383"
+    "sha256": "0bb9d4a8abc3dc41b0ad2c5ec04ca14f01b095c9cf1dfc1e6f9a6783df98e261"
   },
   "8671.json": {
     "source": "kitsu.io /api/edge/anime/8671; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the search cards' romanized names and the entry pages' other names and genres fetched again on 2026-10-16 with the bundled impersonating transport and reduced by the client's parsers (play_native_walk_record_test.rs)",
