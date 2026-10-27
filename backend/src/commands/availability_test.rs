@@ -124,6 +124,7 @@ fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
     // the same budget.
     let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
         retry_after_secs: Some(9),
+        refused_by: None,
     });
     assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(9));
 }
@@ -132,6 +133,7 @@ fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
 fn warm_backoff_defaults_conservatively_when_the_hint_is_missing() {
     let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
         retry_after_secs: None,
+        refused_by: None,
     });
     assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(10));
 }
@@ -160,7 +162,7 @@ proptest::proptest! {
     #[test]
     fn warm_backoff_honours_every_advertised_wait(n in 0u64..=100_000u64) {
         let outcome: Result<AvailabilityResponse> =
-            Err(crate::error::AniError::RateLimited { retry_after_secs: Some(n) });
+            Err(crate::error::AniError::RateLimited { retry_after_secs: Some(n), refused_by: None });
         let want = std::time::Duration::from_secs(n.max(1));
         proptest::prop_assert_eq!(warm_backoff(&outcome), want);
     }

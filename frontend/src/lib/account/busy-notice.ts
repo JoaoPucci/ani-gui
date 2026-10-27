@@ -44,7 +44,12 @@ export function monotonic(): number {
  *  the save is going; it stays up until taken down — by the write it is
  *  about, a newer write, or the user — and its timer stops whenever it
  *  leaves. Returns its id. */
-export function noticeBusy(provider: Provider, seconds: number): string {
+export function noticeBusy(
+	provider: Provider,
+	seconds: number,
+	refusedBy: Provider | null = null
+): string {
+	void refusedBy;
 	let stop: (() => void) | null = null;
 	const id = toastStore.push({
 		kind: 'info',

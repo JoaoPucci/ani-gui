@@ -430,7 +430,8 @@ async fn a_rate_limited_evidence_read_fails_the_map_with_its_wait() {
         matches!(
             err,
             crate::error::AniError::RateLimited {
-                retry_after_secs: Some(30)
+                retry_after_secs: Some(30),
+                ..
             }
         ),
         "{err:?}"
@@ -687,7 +688,8 @@ async fn ranma_s_nineteenth_episode_is_not_written_while_the_evidence_is_rate_li
         matches!(
             err,
             crate::error::AniError::RateLimited {
-                retry_after_secs: Some(30)
+                retry_after_secs: Some(30),
+                ..
             }
         ),
         "{err:?}"

@@ -57,6 +57,7 @@
 	"primary_hint": "Se muestra en la barra superior. El riel Ver más tarde ordena por lo actualizado más recientemente en tu rastreador; cuando un título está en ambos, se usa la copia de este rastreador. El progreso se sigue sincronizando con todos los rastreadores conectados.",
 	"primary_save_error": "No se pudo guardar el rastreador principal. Inténtalo de nuevo.",
 	"busy_saving": "{provider} está ocupado; se guardará en {seconds} s",
+	"busy_saving_for": "{busy} está ocupado; se guardará en {provider} en {seconds} s",
 	"busy_saving_now": "Guardando en {provider}…",
 	"progress_save_failed": "No se pudo guardar tu progreso en {provider}"
 }

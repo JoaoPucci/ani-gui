@@ -20,6 +20,7 @@ pub(super) fn not_sent(wait: Duration, class: Class) -> AniError {
     );
     AniError::RateLimited {
         retry_after_secs: Some(retry_after_secs),
+        refused_by: None,
     }
 }
 

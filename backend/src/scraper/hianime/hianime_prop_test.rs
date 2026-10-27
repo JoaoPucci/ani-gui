@@ -58,8 +58,10 @@ fn arb_weather() -> impl Strategy<Value = AniError> {
     prop_oneof![
         (100u16..600).prop_map(|status| AniError::Upstream { status }),
         "[a-z ]{1,20}".prop_map(|detail| AniError::ParseFailed { detail }),
-        proptest::option::of(0u64..10_000)
-            .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        proptest::option::of(0u64..10_000).prop_map(|retry_after_secs| AniError::RateLimited {
+            retry_after_secs,
+            refused_by: None
+        }),
         proptest::bool::ANY.prop_map(|dropped| if dropped {
             AniError::Network
         } else {

@@ -335,6 +335,7 @@ fn answers_blocks_and_refusals_pass_through_the_episode_step_as_they_are() {
         AniError::Upstream { status: 503 },
         AniError::RateLimited {
             retry_after_secs: Some(3),
+            refused_by: None,
         },
         AniError::GateRefused,
     ] {
@@ -528,8 +529,7 @@ proptest::proptest! {
                 host: Some("zokoanime.video".into()),
             },
             _ => AniError::RateLimited {
-                retry_after_secs: None,
-            },
+                retry_after_secs: None, refused_by: None },
         };
         let stops = error.is_provider_block() || matches!(error, AniError::GateRefused);
         let dead_end = !stops
@@ -700,7 +700,13 @@ mod verdict_props {
             any::<()>().prop_map(|()| (AniError::Timeout, Verdict::StreamServer)),
             any::<()>().prop_map(|()| (AniError::GateRefused, Verdict::Kept)),
             prop::option::of(0u64..100_000).prop_map(|retry_after_secs| {
-                (AniError::RateLimited { retry_after_secs }, Verdict::Kept)
+                (
+                    AniError::RateLimited {
+                        retry_after_secs,
+                        refused_by: None,
+                    },
+                    Verdict::Kept,
+                )
             }),
             "[a-z ]{0,24}"
                 .prop_map(|detail| (AniError::ParseFailed { detail }, Verdict::StreamServer)),

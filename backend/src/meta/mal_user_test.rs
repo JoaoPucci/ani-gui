@@ -1212,7 +1212,9 @@ fn rate_limit_tokens() -> crate::account::provider::Tokens {
 
 fn assert_rate_limited(err: &crate::error::AniError, wait: Option<u64>) {
     match err {
-        crate::error::AniError::RateLimited { retry_after_secs } => {
+        crate::error::AniError::RateLimited {
+            retry_after_secs, ..
+        } => {
             assert_eq!(*retry_after_secs, wait, "advertised wait: {err:?}");
         }
         other => panic!("expected RateLimited {{ retry_after_secs: {wait:?} }}, got {other:?}"),

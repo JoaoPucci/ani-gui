@@ -45,6 +45,7 @@ fn breaker_outcome_treats_answered_verdicts_as_health() {
     let limited = NativeError {
         error: AniError::RateLimited {
             retry_after_secs: Some(30),
+            refused_by: None,
         },
         clean_miss: false,
         failed_at: None,
@@ -249,8 +250,10 @@ fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
             _ => AniError::GateRefused,
         }),
         (0u16..1000).prop_map(|status| AniError::Upstream { status }),
-        proptest::option::of(0u64..100_000)
-            .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        proptest::option::of(0u64..100_000).prop_map(|retry_after_secs| AniError::RateLimited {
+            retry_after_secs,
+            refused_by: None
+        }),
         proptest::option::of("[a-z.]{1,12}").prop_map(|host| AniError::StreamServerFailed {
             stage: "embed",
             host,
@@ -288,7 +291,7 @@ proptest::proptest! {
                 AniError::GateRefused => None,
                 AniError::NoResults | AniError::EpisodeUnavailable => Some(ScrapeOutcome::Success),
                 AniError::Timeout if background && !stamped => None,
-                AniError::RateLimited { retry_after_secs } => {
+                AniError::RateLimited { retry_after_secs, .. } => {
                     Some(ScrapeOutcome::RateLimited {
                         retry_after: retry_after_secs
                             .map(std::time::Duration::from_secs),

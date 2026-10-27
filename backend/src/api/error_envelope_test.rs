@@ -29,6 +29,7 @@ async fn every_http_error_carries_its_kind_and_stable_key() {
 async fn an_http_error_keeps_its_variant_fields() {
     let r = AniError::RateLimited {
         retry_after_secs: Some(9),
+        refused_by: None,
     }
     .into_response();
     let bytes = r.into_body().collect().await.expect("body").to_bytes();

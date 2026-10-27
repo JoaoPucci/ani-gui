@@ -70,7 +70,7 @@ describe('saveWhenAllowed', () => {
 			.mockRejectedValueOnce(refused(40))
 			.mockResolvedValueOnce('saved');
 		expect(await saveWhenAllowed(attempt, { notify, wait })).toBe('saved');
-		expect(notify).toHaveBeenCalledExactlyOnceWith(40);
+		expect(notify).toHaveBeenCalledExactlyOnceWith(40, null);
 		expect(wait).toHaveBeenCalledExactlyOnceWith(40_000);
 		expect(attempt).toHaveBeenCalledTimes(2);
 	});

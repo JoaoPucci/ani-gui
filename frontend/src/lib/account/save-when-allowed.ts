@@ -18,6 +18,8 @@ export const DEFAULT_WAIT_S = 60;
 /** The longest a write is held for one refusal. */
 export const MAX_WAIT_S = 120;
 
+import type { Provider } from './types';
+
 export { ALL_FIELDS, keepFields, keepWrite, type HeldWrite, type WriteField } from './write-fields';
 
 /** A held write a newer write for the same show replaced while it
@@ -54,8 +56,9 @@ function advertisedSecs(body: string): number | null {
 }
 
 export interface SaveWaitDeps {
-	/** Tell the user the write waits `seconds` before it goes again. */
-	notify: (seconds: number) => void;
+	/** Tell the user the write waits `seconds` before it goes again,
+	 *  and which tracker refused it, when the refusal named one. */
+	notify: (seconds: number, refusedBy: Provider | null) => void;
 	/** Resolve after `ms`. */
 	wait: (ms: number) => Promise<void>;
 	/** Attempts in all; {@link MAX_SAVE_ATTEMPTS} when omitted. */
@@ -82,7 +85,7 @@ export async function saveWhenAllowed<T>(
 		} catch (e) {
 			const secs = busyWaitSecs(e);
 			if (secs === null || tried >= max) throw e;
-			deps.notify(secs);
+			deps.notify(secs, null);
 			await deps.wait(secs * 1000);
 			if (deps.stillWanted && !deps.stillWanted()) throw new SupersededError();
 		}

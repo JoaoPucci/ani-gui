@@ -101,7 +101,7 @@ async fn rate_limiting_tracker() -> MockServer {
 
 fn assert_rate_limited_for(err: &AniError, wait: u64) {
     assert!(
-        matches!(err, AniError::RateLimited { retry_after_secs: Some(w) } if *w == wait),
+        matches!(err, AniError::RateLimited { retry_after_secs: Some(w), .. } if *w == wait),
         "expected RateLimited {{ retry_after_secs: Some({wait}) }}, got {err:?}"
     );
 }
