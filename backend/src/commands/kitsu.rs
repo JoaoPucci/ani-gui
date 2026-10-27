@@ -244,8 +244,10 @@ pub(crate) async fn kitsu_episode_page(
 /// format or status.
 ///
 /// v3: each relation carries the day its destination started, which
-/// orders Kitsu's parts. A v2 row carries none, read then as parts
-/// whose order the dates do not settle.
+/// orders Kitsu's parts, and a destination that leaves out its subtype,
+/// status, count or start is no answer. A v2 row carries no start, read
+/// then as parts whose order the dates do not settle, and may come from
+/// the looser reader before that.
 ///
 /// # Errors
 /// As the client's, on a miss.
