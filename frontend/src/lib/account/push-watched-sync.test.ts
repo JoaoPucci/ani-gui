@@ -92,11 +92,16 @@ describe('syncWatchedToTrackers', () => {
 	it('holds a progress write AniList refuses, says so, and sends it when the wait ends', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		updateProgress.mockRejectedValueOnce(refused(0)).mockResolvedValueOnce(null);
+		const push = vi.spyOn(toastStore, 'push');
 		await syncWatchedToTrackers('kitsu-12', 7);
+		const pushed = push.mock.calls.map(([args]) => args.message);
+		push.mockRestore();
 		expect(updateProgress).toHaveBeenCalledTimes(2);
-		expect(toastStore.items.map((t) => t.message)).toContain(
-			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 0 })
-		);
+		// A 0 s wait says the save is going now, and the notice is down once
+		// it landed.
+		const now = m.account_busy_saving_now({ provider: m.account_provider_anilist() });
+		expect(pushed).toContain(now);
+		expect(toastStore.items.map((t) => t.message)).not.toContain(now);
 	});
 
 	it('tells the user a progress write that could not be saved', async () => {

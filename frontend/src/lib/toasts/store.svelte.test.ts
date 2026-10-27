@@ -103,3 +103,55 @@ describe('toastStore', () => {
 		expect(toastStore.items).toHaveLength(0);
 	});
 });
+
+describe('toastStore.update and onClose', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('changes a message where it stands, and leaves a toast no longer there alone', () => {
+		const a = toastStore.push({ kind: 'info', message: 'A', duration: null });
+		const b = toastStore.push({ kind: 'info', message: 'B', duration: null });
+		toastStore.update(a, 'A, again');
+		expect(toastStore.items.map((t) => [t.id, t.message])).toEqual([
+			[a, 'A, again'],
+			[b, 'B']
+		]);
+		toastStore.dismiss(a);
+		toastStore.update(a, 'gone');
+		expect(toastStore.items.map((t) => t.id)).toEqual([b]);
+	});
+
+	it('tells a toast it left, once, by every route', () => {
+		vi.useFakeTimers();
+		const closed: string[] = [];
+		const dismissed = toastStore.push({
+			kind: 'info',
+			message: 'dismissed',
+			duration: null,
+			onClose: () => closed.push('dismissed')
+		});
+		toastStore.push({
+			kind: 'info',
+			message: 'timed out',
+			duration: 1000,
+			onClose: () => closed.push('timed out')
+		});
+		toastStore.dismiss(dismissed);
+		toastStore.dismiss(dismissed);
+		vi.advanceTimersByTime(1000);
+		toastStore.push({
+			kind: 'info',
+			message: 'trimmed',
+			duration: null,
+			onClose: () => closed.push('trimmed')
+		});
+		for (let i = 0; i < TOAST_MAX_STACK; i += 1) {
+			toastStore.push({ kind: 'info', message: `filler ${i}`, duration: null });
+		}
+		expect(closed).toEqual(['dismissed', 'timed out', 'trimmed']);
+	});
+});

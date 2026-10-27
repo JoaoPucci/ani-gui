@@ -103,7 +103,7 @@ interface Saves {
 	bodies: unknown[];
 }
 
-function useTracker(saves: Saves) {
+function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S) {
 	server.use(
 		http.get(`${API_BASE}/api/account/entry/anilist`, () =>
 			HttpResponse.json({ status: 'watching', progress: 3 })
@@ -116,7 +116,7 @@ function useTracker(saves: Saves) {
 					{
 						kind: 'rate_limited',
 						key: 'error.network.rate_limited',
-						retry_after_secs: RETRY_AFTER_S
+						retry_after_secs: retryAfter
 					},
 					{ status: 429 }
 				);
@@ -281,5 +281,35 @@ describe('list editor — a save still waiting on one show', () => {
 
 		// The first show's save still lands, and says so.
 		await until(() => (stack.textContent ?? '').includes(m.detail_list_saved()), 'the saved toast');
+	});
+});
+
+describe('list editor — the busy notice counts down', () => {
+	it('changes its seconds while the save is held, and says when the save goes', async () => {
+		const saves: Saves = { at: [], bodies: [] };
+		useTracker(saves, 3);
+		toasts = mount(ToastHost, { target: stack });
+		editor = mount(ListEntryEditor, {
+			target,
+			props: { kitsuId: KITSU_ID, total: 12, current: { status: 'watching', progress: 3 } }
+		});
+
+		trigger().click();
+		await until(() => statusSelect() !== null, 'the status control');
+		const select = statusSelect()!;
+		select.value = 'dropped';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await until(() => saveButton() !== null, 'the Save control');
+		saveButton()!.click();
+
+		const provider = m.account_provider_anilist();
+		const shown = () => stack.textContent ?? '';
+		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 3 })), '3 s');
+		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 2 })), '2 s');
+		await until(() => shown().includes(m.account_busy_saving({ provider, seconds: 1 })), '1 s');
+		expect(saves.at).toHaveLength(1);
+		await until(() => shown().includes(m.detail_list_saved()), 'the saved toast');
+		// The notice went with the save it was about.
+		expect(shown()).not.toContain(m.account_busy_saving_now({ provider }));
 	});
 });

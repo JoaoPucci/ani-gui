@@ -24,16 +24,107 @@ describe('providerName', () => {
 });
 
 describe('noticeBusy', () => {
-	it('stays up for the wait, and no shorter than a plain toast', () => {
-		noticeBusy('anilist', 40);
-		noticeBusy('mal', 1);
-		const [long, short] = toastStore.items;
-		expect(long).toMatchObject({
-			kind: 'info',
-			message: m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 40 }),
-			duration: 40_000
-		});
-		expect(short.duration).toBe(4000);
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const busy = (seconds: number) =>
+		m.account_busy_saving({ provider: m.account_provider_anilist(), seconds });
+	const now = () => m.account_busy_saving_now({ provider: m.account_provider_anilist() });
+
+	it('counts the wait down once a second, in place, and then says the save is going', async () => {
+		// The countdown replaced the notice that sat on its first number for
+		// the whole wait: it is pinned while the write is held, and its own
+		// write takes it down (see the write's cases below).
+		vi.useFakeTimers();
+		const id = noticeBusy('anilist', 3);
+		const row = () => toastStore.items.find((t) => t.id === id);
+		expect(row()).toMatchObject({ kind: 'info', message: busy(3), duration: null });
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(row()?.message).toBe(busy(2));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(row()?.message).toBe(busy(1));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(row()?.message).toBe(now());
+		// Never a negative number, nor a frozen zero.
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(row()?.message).toBe(now());
+		expect(toastStore.items).toHaveLength(1);
+	});
+
+	it('reads the deadline, not a count of ticks: a late tick shows the true remainder', async () => {
+		vi.useFakeTimers();
+		const id = noticeBusy('anilist', 10);
+		// The clock runs on four seconds without the timers firing — a page
+		// in the background, a busy main thread — then one tick comes.
+		vi.setSystemTime(Date.now() + 4000);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(busy(5));
+	});
+
+	it('stops its timer once the notice leaves the stack, whoever takes it down', async () => {
+		vi.useFakeTimers();
+		const before = vi.getTimerCount();
+		const id = noticeBusy('anilist', 30);
+		expect(vi.getTimerCount()).toBe(before + 1);
+		toastStore.dismiss(id);
+		expect(vi.getTimerCount()).toBe(before);
+	});
+
+	it('starts at "saving now" for a wait of nothing, with no timer to run', async () => {
+		vi.useFakeTimers();
+		const before = vi.getTimerCount();
+		noticeBusy('anilist', 0);
+		expect(toastStore.items.at(-1)?.message).toBe(now());
+		expect(vi.getTimerCount()).toBe(before);
+	});
+});
+
+describe('the notice of a held write', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const busyNotices = () => toastStore.items.filter((t) => t.kind === 'info');
+
+	it('says the save is going when the wait ends, and goes once the write lands', async () => {
+		let land: (v: string) => void = () => {};
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(2))
+			.mockImplementationOnce(() => new Promise<string>((r) => (land = r)));
+		const pending = saveWhenTrackerAllows('anilist', '80', write);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(busyNotices().map((t) => t.message)).toEqual([
+			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 2 })
+		]);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(busyNotices().map((t) => t.message)).toEqual([
+			m.account_busy_saving_now({ provider: m.account_provider_anilist() })
+		]);
+		const timers = vi.getTimerCount();
+		land('saved');
+		expect(await pending).toBe('saved');
+		expect(busyNotices()).toEqual([]);
+		expect(vi.getTimerCount()).toBeLessThanOrEqual(timers);
+	});
+
+	it('goes once the write fails, its timer with it', async () => {
+		const before = vi.getTimerCount();
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(3))
+			.mockRejectedValueOnce(new Error('offline'));
+		const pending = saveWhenTrackerAllows('anilist', '81', write).catch((e: unknown) => e);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(busyNotices()).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(await pending).toBeInstanceOf(Error);
+		expect(busyNotices()).toEqual([]);
+		expect(vi.getTimerCount()).toBe(before);
 	});
 });
 

@@ -56,8 +56,19 @@ const refused = (secs: number) =>
 		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs })
 	});
 
-const busyNotice = () =>
-	m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 0 });
+/** A 0 s wait: the notice says the save is going now. */
+const busyNotice = () => m.account_busy_saving_now({ provider: m.account_provider_anilist() });
+
+/** The messages pushed to the toast stack while `run` goes. */
+async function noticesDuring<T>(run: () => Promise<T>): Promise<{ out: T; pushed: string[] }> {
+	const push = vi.spyOn(toastStore, 'push');
+	try {
+		const out = await run();
+		return { out, pushed: push.mock.calls.map(([args]) => args.message) };
+	} finally {
+		push.mockRestore();
+	}
+}
 
 beforeEach(() => {
 	getEntry.mockClear();
@@ -113,25 +124,26 @@ describe('a save the tracker holds back', () => {
 	it('waits it out with a notice, re-reads, and lands', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		setEntry.mockRejectedValueOnce(refused(0));
-		const out = await syncSetEntry('kitsu-12', {
-			status: 'dropped',
-			statusChanged: true,
-			progress: 3
-		});
+		const { out, pushed } = await noticesDuring(() =>
+			syncSetEntry('kitsu-12', { status: 'dropped', statusChanged: true, progress: 3 })
+		);
 		expect(out).toEqual({ written: 1, failed: 0 });
 		expect(setEntry).toHaveBeenCalledTimes(2);
 		// The retry decides off a fresh read of the tracker's row.
 		expect(getEntry).toHaveBeenCalledTimes(2);
-		expect(toastStore.items.map((t) => t.message)).toContain(busyNotice());
+		expect(pushed).toContain(busyNotice());
+		// Landed: the notice is down.
+		expect(toastStore.items.map((t) => t.message)).not.toContain(busyNotice());
 	});
 
 	it('waits out a removal the same way', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		removeEntry.mockRejectedValueOnce(refused(0));
-		const out = await syncRemoveEntry('kitsu-12');
+		const { out, pushed } = await noticesDuring(() => syncRemoveEntry('kitsu-12'));
 		expect(out).toEqual({ removed: 1, failed: 0 });
 		expect(removeEntry).toHaveBeenCalledTimes(2);
-		expect(toastStore.items.map((t) => t.message)).toContain(busyNotice());
+		expect(pushed).toContain(busyNotice());
+		expect(toastStore.items.map((t) => t.message)).not.toContain(busyNotice());
 	});
 });
 
