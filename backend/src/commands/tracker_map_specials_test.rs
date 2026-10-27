@@ -571,11 +571,13 @@ async fn a_rate_limited_read_of_the_related_season_fails_the_special_naming_anil
 }
 
 /// A relations page that leaves out the day a related anime started is
-/// no answer, as one that leaves out its count is: the special's map
-/// fails with it and is kept nowhere, rather than reading the season as
-/// undated.
+/// no answer, as one that leaves out its count is: the show's map fails
+/// with it and is kept nowhere, rather than reading the season as
+/// undated. The page is the show's own, which the walk through its
+/// prequels reads first, so this is the map failing, whichever read
+/// meets the page.
 #[tokio::test]
-async fn a_relations_page_without_the_season_s_start_fails_the_special() {
+async fn a_relations_page_without_the_season_s_start_fails_the_map() {
     let kitsu = ubw_kitsu().await;
     lone_special(
         &kitsu,
