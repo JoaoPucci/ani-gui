@@ -88,21 +88,20 @@ proptest! {
     /// again only as one of the two halves of a cut one.
     #[test]
     fn a_chunk_is_a_page_or_half_a_cut_one(counts in media_per_id()) {
-        let (asked, pages, _) = walk(&counts);
+        let (asked, pages, alone) = walk(&counts);
         prop_assert!(asked.iter().all(|c| !c.is_empty() && c.len() <= PAGE_CAP));
         for page in &pages {
             let held: u32 = page.iter().map(|i| counts[*i as usize]).sum();
             prop_assert!(held as usize <= PAGE_CAP);
         }
-        // Each id is asked once in the first chunks, and once more in
-        // each cut chunk it was part of: at most once per halving.
+        // Every ask is a first chunk or one half of a split one: a cut
+        // chunk of several ids is split in two, a cut id alone is not.
         let first_chunks = counts.len().div_ceil(PAGE_CAP);
-        let cuts = asked.len() - pages.len();
-        prop_assert!(asked.len() <= first_chunks + 2 * cuts);
-        prop_assert!(
-            asked.iter().take(first_chunks.min(1)).all(|c| c.first() == Some(&0)),
-            "the walk starts at the first id"
-        );
+        let splits = asked.len() - pages.len() - alone.len();
+        prop_assert_eq!(asked.len(), first_chunks + 2 * splits);
+        if let Some(first) = asked.first() {
+            prop_assert_eq!(first.first(), Some(&0), "the walk starts at the first id");
+        }
     }
 
     /// An error asking ends the walk with it: nothing is asked after.
@@ -156,6 +155,6 @@ proptest! {
         prop_assert!(cut_zero, "{:?}", got);
         // Halving down to id 0 alone, and nothing asked after it.
         let halvings = usize::try_from(len.min(PAGE_CAP).ilog2()).unwrap_or(0);
-        prop_assert!(asked.into_inner() <= halvings + 2);
+        prop_assert_eq!(asked.into_inner(), halvings + 1);
     }
 }
