@@ -294,6 +294,28 @@ describe('play route — what the trackers receive for a watched episode', () =>
 		expect(writes).toEqual([]);
 	});
 
+	it('an unverified episode of a show the tracker files under several entries sends nothing', async () => {
+		// Ranma ½: Kitsu's 161 episodes, which AniList files as an
+		// 18-episode entry and its 143-episode sequel. The backend
+		// writes such a show through its episode map, and the map is
+		// reached only through the progress route; a row past Kitsu's
+		// count that no reading reached posts nothing to that route, so
+		// neither the map nor any entry it names is written.
+		const show = { kitsuCount: 161, status: 'finished', providerCount: 162 };
+		setUrl(`/play/${KITSU_ID}`, { episode: '161' });
+		serve(show);
+		app = mount(PlayPage, { target });
+		await until(() => card(162) !== null, 'the card for row 162');
+		card(162)!.click();
+		await until(() => {
+			const es = openStreamFor(162);
+			if (es) land(es, 162, true);
+			return marked.includes('162');
+		}, 'row 162 marked watched');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(writes).toEqual([]);
+	});
+
 	it('an episode before the finale sends its number alone', async () => {
 		await watch({ kitsuCount: 12, status: 'finished', providerCount: 12 }, 12, 11);
 		expect(nth(0)).toEqual(both({ kitsu_id: KITSU_ID, progress: 11 }));
