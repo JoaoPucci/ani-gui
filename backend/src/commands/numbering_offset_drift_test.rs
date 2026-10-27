@@ -39,7 +39,7 @@ fn a_row_past_the_recap_whose_stamp_a_warm_moved_gets_it_back() {
     // Episode 5 was watched (slot 6), then a warm of episode 6 moved
     // the stamp to slot 7: the row read as 6.
     assert_eq!(
-        restamp("6", 0, &stamp(7, "6"), &recap_after_three()),
+        restamp("6", 0, &stamp(7, "6"), &recap_after_three(), None),
         Some(Restamp {
             display: stamp(6, "5"),
             former: None,
@@ -49,37 +49,58 @@ fn a_row_past_the_recap_whose_stamp_a_warm_moved_gets_it_back() {
 
 #[test]
 fn a_row_the_stamp_still_names_is_left_as_it_is() {
-    assert_eq!(restamp("6", 0, &stamp(6, "5"), &recap_after_three()), None);
+    assert_eq!(
+        restamp("6", 0, &stamp(6, "5"), &recap_after_three(), None),
+        None
+    );
 }
 
 #[test]
 fn a_row_whose_tag_is_its_slot_is_left_as_it_is() {
     // Slot 2 is episode 2: it reads right without the stamp.
-    assert_eq!(restamp("2", 0, &stamp(7, "6"), &recap_after_three()), None);
+    assert_eq!(
+        restamp("2", 0, &stamp(7, "6"), &recap_after_three(), None),
+        None
+    );
 }
 
 #[test]
 fn a_listing_that_numbers_the_show_on_another_offset_proves_nothing() {
     // The stamps were written against a listing shifted by 12; this one
     // is not that listing.
-    assert_eq!(restamp("6", 12, &stamp(7, "6"), &recap_after_three()), None);
+    assert_eq!(
+        restamp("6", 12, &stamp(7, "6"), &recap_after_three(), None),
+        None
+    );
 }
 
 #[test]
 fn a_listing_that_tags_the_stamped_row_otherwise_proves_nothing() {
     // The stamp says slot 7 is "6"; a listing where it is "5" was
     // re-listed since, and its slot 6 need not be the row's episode.
-    assert_eq!(restamp("6", 0, &stamp(7, "5"), &recap_after_three()), None);
+    assert_eq!(
+        restamp("6", 0, &stamp(7, "5"), &recap_after_three(), None),
+        None
+    );
     // Nor one that no longer lists the stamped slot at all.
-    assert_eq!(restamp("6", 0, &stamp(9, "8"), &recap_after_three()), None);
+    assert_eq!(
+        restamp("6", 0, &stamp(9, "8"), &recap_after_three(), None),
+        None
+    );
 }
 
 #[test]
 fn a_row_the_listing_does_not_carry_proves_nothing() {
-    assert_eq!(restamp("12", 0, &stamp(7, "6"), &recap_after_three()), None);
-    assert_eq!(restamp("x", 0, &stamp(7, "6"), &recap_after_three()), None);
     assert_eq!(
-        restamp("5.5", 0, &stamp(7, "6"), &recap_after_three()),
+        restamp("12", 0, &stamp(7, "6"), &recap_after_three(), None),
+        None
+    );
+    assert_eq!(
+        restamp("x", 0, &stamp(7, "6"), &recap_after_three(), None),
+        None
+    );
+    assert_eq!(
+        restamp("5.5", 0, &stamp(7, "6"), &recap_after_three(), None),
         None
     );
 }
@@ -88,14 +109,14 @@ fn a_row_the_listing_does_not_carry_proves_nothing() {
 fn a_listing_that_lists_the_row_s_slot_twice_proves_nothing() {
     let mut listing = recap_after_three();
     listing.push(row(6, Some("9")));
-    assert_eq!(restamp("6", 0, &stamp(7, "6"), &listing), None);
+    assert_eq!(restamp("6", 0, &stamp(7, "6"), &listing, None), None);
 }
 
 #[test]
 fn a_listing_that_lists_the_stamped_slot_twice_proves_nothing() {
     let mut listing = recap_after_three();
     listing.push(row(7, Some("9")));
-    assert_eq!(restamp("6", 0, &stamp(7, "6"), &listing), None);
+    assert_eq!(restamp("6", 0, &stamp(7, "6"), &listing, None), None);
 }
 
 #[test]
@@ -109,7 +130,7 @@ fn a_row_tagged_with_its_own_slot_is_left_as_it_is() {
         row(4, Some("4")),
         row(5, Some("5")),
     ];
-    assert_eq!(restamp("5", 1, &stamp(2, "3"), &listing), None);
+    assert_eq!(restamp("5", 1, &stamp(2, "3"), &listing, None), None);
 }
 
 #[test]
@@ -119,7 +140,7 @@ fn a_row_an_earlier_version_tagged_otherwise_keeps_that_tag_beside_it() {
     let mut listing = recap_after_three();
     listing[3].former_tag = Some("4.5".into());
     assert_eq!(
-        restamp("4", 0, &stamp(7, "6"), &listing),
+        restamp("4", 0, &stamp(7, "6"), &listing, None),
         Some(Restamp {
             display: stamp(4, "3.5"),
             former: Some(stamp(4, "4.5")),
@@ -132,7 +153,7 @@ fn a_former_tag_another_row_carries_now_is_not_kept() {
     let mut listing = recap_after_three();
     listing[3].former_tag = Some("6".into());
     assert_eq!(
-        restamp("4", 0, &stamp(7, "6"), &listing),
+        restamp("4", 0, &stamp(7, "6"), &listing, None),
         Some(Restamp {
             display: stamp(4, "3.5"),
             former: None,
@@ -186,7 +207,7 @@ proptest! {
         prop_assume!(!stamped.is_empty());
         let other = stamped[stamp_at % stamped.len()];
         let before = (other.number, shown(other));
-        let got = restamp(&held.number.to_string(), offset, &before, &rows);
+        let got = restamp(&held.number.to_string(), offset, &before, &rows, None);
         if let Some(fix) = &got {
             prop_assert_eq!(fix.display.0, held.number);
         }
@@ -212,7 +233,7 @@ proptest! {
         let held = &rows[row_at % rows.len()];
         let other = &rows[stamp_at % rows.len()];
         prop_assert_eq!(
-            restamp(&held.number.to_string(), stored, &(other.number, shown(other)), &rows),
+            restamp(&held.number.to_string(), stored, &(other.number, shown(other)), &rows, None),
             None
         );
     }
@@ -232,7 +253,7 @@ proptest! {
         prop_assume!(!rows.iter().any(|e| e.number == stamp_slot
             && crate::commands::play_native_episode::tag_matches(&shown(e), &stamp_tag)));
         prop_assert_eq!(
-            restamp(&held.number.to_string(), offset, &(stamp_slot, stamp_tag), &rows),
+            restamp(&held.number.to_string(), offset, &(stamp_slot, stamp_tag), &rows, None),
             None
         );
     }

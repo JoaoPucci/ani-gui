@@ -29,6 +29,7 @@ pub(super) fn restamp(
     offset: u32,
     stamp: &(u32, String),
     listing: &[EpisodeRef],
+    _unread_past: Option<u32>,
 ) -> Option<Restamp> {
     use crate::commands::play_native_episode::tag_matches;
     let slot: u32 = row_ep.trim().parse().ok()?;

@@ -26,7 +26,12 @@ use rule::Restamp;
 /// Decided again under the store's locks, against the stamp as it
 /// stands there; a show with no stamp, no legacy row, or a history file
 /// that cannot be read is not written.
-pub(super) fn put_drift_right(state: &AppState, slug: &str, listing: &[EpisodeRef]) {
+pub(super) fn put_drift_right(
+    state: &AppState,
+    slug: &str,
+    listing: &[EpisodeRef],
+    unread_past: Option<u32>,
+) {
     let numbering = Numbering::read(&state.history_path);
     let Some(stamp) = numbering.display(slug) else {
         return;
@@ -38,7 +43,15 @@ pub(super) fn put_drift_right(state: &AppState, slug: &str, listing: &[EpisodeRe
     let Some(row) = rows.into_iter().find(|e| e.id == slug && !e.own_number) else {
         return;
     };
-    if restamp(&row.ep_no, numbering.offset(slug), &stamp, listing).is_none() {
+    if restamp(
+        &row.ep_no,
+        numbering.offset(slug),
+        &stamp,
+        listing,
+        unread_past,
+    )
+    .is_none()
+    {
         return;
     }
     let change = |rows: &mut Vec<Row>| {
@@ -48,7 +61,7 @@ pub(super) fn put_drift_right(state: &AppState, slug: &str, listing: &[EpisodeRe
         let Some(stamp) = store_row.display.as_ref() else {
             return;
         };
-        if let Some(fix) = restamp(&row.ep_no, store_row.offset, stamp, listing) {
+        if let Some(fix) = restamp(&row.ep_no, store_row.offset, stamp, listing, unread_past) {
             store_row.display = Some(fix.display);
             store_row.former = fix.former;
         }
