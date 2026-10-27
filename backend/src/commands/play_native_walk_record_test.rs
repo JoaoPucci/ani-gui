@@ -378,9 +378,9 @@ async fn record_a_picker_fixture() {
 }
 
 /// Every recorded fixture given the romanized names its search cards
-/// carry and the names and genres its entry pages give: each recorded
-/// search and each recorded entry page is read again and reduced by
-/// the same parsers, and the three maps are written after the
+/// carry and the names, genres and ratings its entry pages give: each
+/// recorded search and each recorded entry page is read again and
+/// reduced by the same parsers, and the four maps are written after the
 /// recording's own, which are left byte for byte as they were. A
 /// search that no longer answers with the recorded cards, or a page
 /// that no longer names the recorded year, is reported; the names of

@@ -7,6 +7,10 @@ use crate::scraper::provider::EntryPage;
 
 use super::markup::decode_entities;
 
+#[path = "detail_rating.rs"]
+mod rating;
+pub use rating::parse_detail_rating;
+
 /// The rest of a row after its label: up to the row's
 /// closing tag or the next row's label, whichever comes first, so
 /// the value read stays inside the row that carries the label.
@@ -94,26 +98,6 @@ pub fn parse_detail_genres(html: &str) -> Vec<String> {
             (!text.is_empty()).then(|| text.to_string())
         })
         .collect()
-}
-
-/// The age rating the entry page gives the show: the text of the
-/// rating mark (`tick-pg`) in the stats under the show's own heading,
-/// entity-decoded and trimmed — "G", "PG-13", "R+", "Rx". Read inside
-/// that stats block alone, which ends where the page's buttons begin,
-/// so a mark on another show's card further down the page is never the
-/// show's. `None` when the heading carries no such mark, and when the
-/// page carries no buttons to end the block: nothing then says where
-/// the show's own stats stop.
-#[must_use]
-pub fn parse_detail_rating(html: &str) -> Option<String> {
-    let (_, heading) = html.split_once("<h2 class=\"film-name")?;
-    let (_, stats) = heading.split_once("class=\"film-stats\"")?;
-    let (stats, _) = stats.split_once("class=\"film-buttons\"")?;
-    let (_, mark) = stats.split_once("tick-item tick-pg\"")?;
-    let text = mark.split_once('>')?.1.split('<').next()?;
-    let text = decode_entities(text);
-    let text = text.trim();
-    (!text.is_empty()).then(|| text.to_string())
 }
 
 /// The entry page as the picker reads it: [`parse_detail_year`],

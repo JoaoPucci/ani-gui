@@ -12,7 +12,7 @@ use crate::commands::play_native_year::PageNames;
 
 /// One pick over `hits`, leaving out of its bounded head every listing
 /// `gate` refused, and noting in it when the year filter left out a
-/// listing that could have been picked for a page that lists no genre and no rating.
+/// listing that could have been picked for a page that lists no genre and no rating on the site's scale.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn pick_over<P: Provider + ?Sized>(
     client: &P,

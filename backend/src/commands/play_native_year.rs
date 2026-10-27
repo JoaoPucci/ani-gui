@@ -65,14 +65,17 @@ pub(crate) fn genre_of(page: &EntryPage) -> Genre {
 /// vouching for the candidate.
 /// An unknown year (a page without a season link) never excludes on
 /// its own, so a markup change that loses the year degrades to
-/// year-blind picking. A hit its page files under [`HENTAI`] is
-/// excluded the same way a year off is: no entry the app shows is one.
-/// So is a hit whose page lists no genre and no rating at all ([`Genre::Unread`]) —
+/// year-blind picking. A hit its page files under [`HENTAI`], or whose
+/// heading rates it [`ADULT_RATING`], is excluded the same way a year
+/// off is: no entry the app shows is one.
+/// So is a hit whose page lists no genre and no rating on the site's scale at all ([`Genre::Unread`]) —
 /// a 404ing page reads as one — which nothing says is not one; its slug
 /// joins `unread`, since a pool whose verdict rests on a page that
 /// said nothing is no clean miss (see `play_native_genre`), and a
-/// markup change that loses the Genres row empties every dated pool
-/// into that dead end rather than taking a listing as safe. A pool whose every
+/// markup change that lost both the Genres row and the rating would
+/// empty every dated pool into that dead end rather than take a listing
+/// as safe; losing the Genres row alone does not, where the heading
+/// still carries an ordinary rating. A pool whose every
 /// candidate carries a known mismatched year, or the genre, contains
 /// the show nowhere — that is a rejection
 /// ([`crate::error::AniError::NoResults`]), so the walk can try the
@@ -117,14 +120,14 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
             None => false,
         };
         // A hentai is never the entry: Kitsu serves the app no adult
-        // entry, so a hit its own page files under the genre is out,
-        // as a hit from another year is — and so is one whose page
-        // lists no genre and no rating, which nothing says is not one.
+        // entry, so a hit its own page files under the genre or rates
+        // Rx is out, as a hit from another year is — and so is one whose page
+        // lists no genre and no rating on the site's scale, which nothing says is not one.
         match genre {
             Genre::Listed => kept.push((h, confirmed)),
             Genre::Hentai => {}
             Genre::Unread => {
-                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre and no rating; not taken as safe");
+                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre and no rating on the site's scale; not taken as safe");
                 unread.push(h.slug.clone());
             }
         }

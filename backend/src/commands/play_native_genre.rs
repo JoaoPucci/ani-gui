@@ -1,6 +1,6 @@
 //! The pick's genre gate: no listing its own entry page files under
-//! Hentai is ever a pick, and none whose page lists no genre and no rating is taken
-//! as safe — split from `play_native_titled` so each file stays inside
+//! Hentai or rates Rx is ever a pick, and none whose page lists no
+//! genre and no rating on the site's scale is taken as safe — split from `play_native_titled` so each file stays inside
 //! the complexity ratchet's per-file bar.
 //!
 //! A dated entry's year filter reads every considered hit's page and
@@ -30,11 +30,11 @@ pub(crate) use memo::Memo;
 /// tell the entry from its parts.
 ///
 /// No listing its own entry page files under Hentai is picked, nor one
-/// whose page lists no genre and no rating: a dated entry's year filter leaves both
+/// whose page lists no genre and no rating on the site's scale: a dated entry's year filter leaves both
 /// out of the head, and an undated entry's pick reads the page of each
 /// listing it would serve and, when one fails, is made again without it
 /// (see the module docs). A pool a listing that could have been picked
-/// was left out of for a page that listed no genre and no rating is never the clean
+/// was left out of for a page that listed no genre and no rating on the site's scale is never the clean
 /// miss.
 ///
 /// # Errors
@@ -81,17 +81,17 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
 /// What the genre gate has learned of one pool: the listings their own
 /// pages refuse, which the pick leaves out of its head as the year
 /// filter leaves a hit out, and whether a listing that could have been
-/// picked was left out because its page listed no genre and no rating.
+/// picked was left out because its page listed no genre and no rating on the site's scale.
 #[derive(Debug, Default)]
 pub(crate) struct GenreRefusals {
     /// The slugs of the listings the gate refused.
     pub(crate) excluded: Vec<String>,
     /// A listing that could have been picked was left out for a page
-    /// that listed no genre and no rating: the pool's miss is then no clean one
+    /// that listed no genre and no rating on the site's scale: the pool's miss is then no clean one
     /// ([`unread_miss`]).
     pub(crate) unread: bool,
     /// A hit the head held only as evidence was left out for a page
-    /// that listed no genre and no rating: the refusal by name it may have made is
+    /// that listed no genre and no rating on the site's scale: the refusal by name it may have made is
     /// no clean miss either ([`unread_miss`]).
     pub(crate) unread_evidence: bool,
 }
@@ -104,7 +104,7 @@ impl GenreRefusals {
     }
 
     /// Notes which hits of `head` the year filter left out for a page
-    /// that lists no genre and no rating (`unread`, by slug): one that could have been
+    /// that lists no genre and no rating on the site's scale (`unread`, by slug): one that could have been
     /// picked — admitted by the entry's titles and not another entry,
     /// each read past its version tag, as the pick reads them — makes
     /// the miss the dead end; one the head holds only as evidence never
@@ -133,11 +133,12 @@ impl GenreRefusals {
 }
 
 /// Whether a listing `picked` would serve — its hit, then each
-/// version's — is one its own page refuses: filed under Hentai, or
-/// listing no genre and no rating, which sets `gate.unread`. Each one refused joins
-/// `gate.excluded`. A page that answers says nothing new is read once
-/// ([`Memo`]); one whose genre is unread is logged, since a markup
-/// change that loses the row would refuse every listing.
+/// version's — is one its own page refuses: filed under Hentai or rated
+/// Rx, or listing no genre and no rating on the site's scale, which sets
+/// `gate.unread`. Each one refused joins `gate.excluded`. A page that
+/// answers says nothing new is read once ([`Memo`]); one whose genre is
+/// unread is logged, since a markup change that lost both the Genres
+/// row and the rating would refuse every listing.
 ///
 /// # Errors
 /// A page's provider block or transport failure, verbatim: as in the
@@ -158,7 +159,7 @@ pub(crate) async fn refused_served<P: Provider + ?Sized>(
             Genre::Listed => continue,
             Genre::Hentai => {}
             Genre::Unread => {
-                tracing::warn!(slug = %hit.slug, "pick: the entry page lists no genre and no rating; not taken as safe");
+                tracing::warn!(slug = %hit.slug, "pick: the entry page lists no genre and no rating on the site's scale; not taken as safe");
                 gate.unread = true;
             }
         }
@@ -168,7 +169,7 @@ pub(crate) async fn refused_served<P: Provider + ?Sized>(
     Ok(refused)
 }
 
-/// The pool's verdict once listings whose pages listed no genre and no rating were
+/// The pool's verdict once listings whose pages listed no genre and no rating on the site's scale were
 /// left out of it. With one that could have been picked among them
 /// (`unread`), a miss — the clean one, or the refusal by name — is the
 /// answered dead end on a listing that may have been the entry's,
