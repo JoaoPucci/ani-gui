@@ -20,5 +20,11 @@ jobs:
           sudo mv actionlint /usr/local/bin/actionlint
       - name: actionlint (workflow syntax)
         run: actionlint
+      - name: Install PyYAML
+        # ci_caches.sh reads the workflows and composite actions
+        # through it, and fails rather than skips without it.
+        uses: ./.github/actions/apt-install
+        with:
+          packages: python3-yaml
       - name: Run architectural invariants
         run: bash tests/arch/run-all.sh
