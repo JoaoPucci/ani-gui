@@ -394,3 +394,34 @@ async fn remove_entry_via_treats_a_404_delete_as_already_removed() {
     .expect("a 404 delete must not surface as an error");
     assert!(removed, "an already-removed title still reports removed");
 }
+
+/// An edit with nothing in it makes no request: MAL's PATCH upserts, so
+/// an empty one would create a row of MAL's defaults on a show not on
+/// the list. The edit is a no-op, not a failure.
+#[tokio::test]
+async fn set_entry_via_sends_nothing_for_an_empty_edit() {
+    use wiremock::matchers::method;
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"watching","num_episodes_watched":0,"is_rewatching":false}"#,
+        ))
+        .expect(0)
+        .mount(&mal)
+        .await;
+    mount_mal_me(&mal).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let got = set_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &test_tokens(),
+        "12",
+        EntryUpdate::default(),
+    )
+    .await
+    .expect("a no-op, not a failure");
+    assert!(got.is_none());
+}

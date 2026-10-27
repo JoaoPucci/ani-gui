@@ -457,3 +457,29 @@ async fn mal_a_replay_behind_a_rewatching_row_writes_nothing() {
     let server = mal_server_with_row(12, row, &[], 0).await;
     assert!(push_to_mal(&server, episode(3)).await.is_none());
 }
+
+/// The write-back's own write with nothing in it makes no request
+/// either, and is a no-op.
+#[tokio::test]
+async fn an_empty_write_back_sends_no_request() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"watching","num_episodes_watched":0,"is_rewatching":false}"#,
+        ))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu("http://unused-kitsu");
+    let got = push_progress_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &mal_provider(&server.uri()),
+        &test_tokens(),
+        ProviderMediaId(21),
+        EntryUpdate::default(),
+    )
+    .await
+    .expect("a no-op, not a failure");
+    assert!(got.is_none());
+}
