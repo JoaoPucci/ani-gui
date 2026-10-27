@@ -539,7 +539,8 @@ pub async fn stamp_after_native(
             // A count no reading reached leaves a counted row as it
             // stands, lifetime and all.
             let standing = verdict.count_unread
-                && super::availability_unread::standing_counted_row(state, &row).is_some();
+                && super::availability_unread::standing_counted_row(state, &row, verdict.provider)
+                    .is_some();
             match super::availability_unread::served_stamp(
                 verdict.episode_cap,
                 mode == "dub",
@@ -1162,7 +1163,7 @@ pub async fn check_availability(
         // A count no reading reached does not write over one that
         // stands: the row, and its count, are the answer.
         if let Some(stood) = count_unread
-            .then(|| super::availability_unread::standing_counted_row(state, &row))
+            .then(|| super::availability_unread::standing_counted_row(state, &row, provider))
             .flatten()
         {
             return Ok(stood);

@@ -26,8 +26,9 @@ pub(crate) enum ServedStamp {
 /// The stamp for a served stream whose listing's cap is `cap`. The cap
 /// is a count only in sub (`dub` names the dubbed slice) and only where
 /// the rows past Kitsu's count were read (`count_unread` says they were
-/// not). An unread count leaves a row that stands with a count of its
-/// own (`standing_counted`) as it is.
+/// not). An unread count leaves a row that stands with a count it
+/// could have been read against (`standing_counted`, [`counts_for`])
+/// as it is.
 #[must_use]
 pub(crate) fn served_stamp(
     cap: Option<u32>,
@@ -44,11 +45,32 @@ pub(crate) fn served_stamp(
     }
 }
 
-/// The positive row with a count that stands at `row`, if one does.
-pub(crate) fn standing_counted_row(state: &AppState, row: &str) -> Option<AvailabilityResponse> {
+/// Whether `stood` holds a count an unread one leaves standing: an
+/// exact count on a positive row from `provider`, the provider that
+/// served. Another provider's count says nothing of the listing that
+/// played, and an approximate one is no count the read rule serves.
+#[must_use]
+pub(crate) fn counts_for(
+    stood: &AvailabilityResponse,
+    provider: Option<crate::scraper::provider::ProviderId>,
+) -> bool {
+    stood.available
+        && stood.episode_count.is_some()
+        && !stood.episode_count_approximate
+        && stood.provider.is_some()
+        && stood.provider == provider
+}
+
+/// The row standing at `row` whose count an unread one leaves standing
+/// ([`counts_for`]), if one does.
+pub(crate) fn standing_counted_row(
+    state: &AppState,
+    row: &str,
+    provider: Option<crate::scraper::provider::ProviderId>,
+) -> Option<AvailabilityResponse> {
     let body = meta_cache_get(&state.cache_pool, row).ok().flatten()?;
     let stood: AvailabilityResponse = serde_json::from_str(&body).ok()?;
-    (stood.available && stood.episode_count.is_some()).then_some(stood)
+    counts_for(&stood, provider).then_some(stood)
 }
 
 /// The cap and extras a probe's pick gives: the listing's, unless the
