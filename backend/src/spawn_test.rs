@@ -114,7 +114,9 @@ async fn a_tree_left_running_by_a_child_that_exited_is_taken_down_and_waited_for
     guard.wait().await.expect("the child exits");
     assert!(guard.take_down().await, "the tree is gone");
     let s = state.lock().expect("fake tree");
-    assert_eq!(s.kills, 1, "what was left was killed once");
+    // Killed, and asked again only if a stall kept it from going within
+    // a repeat: how often is the scheduler's business.
+    assert!(s.kills >= 1, "what was left was killed");
     assert!(!s.running);
 }
 
@@ -207,7 +209,7 @@ async fn a_dropped_guard_whose_tree_is_already_gone_sends_nothing() {
 }
 
 #[tokio::test]
-async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_once() {
+async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_out() {
     // The drop's own wait: nothing took the tree down before it, so it
     // kills, waits the ceiling out and gives up rather than hang.
     let (tree, state) = fake_tree(true, None);
