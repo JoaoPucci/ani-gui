@@ -102,7 +102,8 @@ function bearerOf(state: ProviderState): string | null {
 
 /**
  * Whether a hydrate's `next` state holds a different sign-in than
- * `prev`: another bearer, or none where there was one. A result already
+ * `prev`: another bearer, or none where there was one, unless that
+ * bearer is one a renewal is saving now (`ownWrites`). A result already
  * in flight for `prev` must not be credited to it, so hydrate moves the
  * provider's generation, as connecting, connected and disconnected
  * transitions do. The same bearer read again is the same sign-in, even when its
@@ -112,8 +113,12 @@ function bearerOf(state: ProviderState): string | null {
 export function isSignInChange(
 	prev: ProviderState,
 	next: ProviderState,
-	_ownWrites: ReadonlySet<string> = new Set()
+	ownWrites: ReadonlySet<string> = new Set()
 ): boolean {
-	void _ownWrites;
-	return bearerOf(prev) !== bearerOf(next);
+	const read = bearerOf(next);
+	// A bearer a renewal of this renderer is saving right now is its own
+	// write read back, not a different sign-in: the renewal reports it
+	// in a moment, and superseding it would drop the renewed bearer.
+	if (read !== null && ownWrites.has(read)) return false;
+	return bearerOf(prev) !== read;
 }
