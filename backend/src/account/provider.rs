@@ -263,13 +263,16 @@ impl CurrentEntry {
 
 /// Lean snapshot of the user's existing list row for one media, read
 /// before a write-back so the reconcile can stay monotonic and
-/// status-preserving. Only the two fields the reconcile needs.
+/// status-preserving. Only the fields the reconcile needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CurrentEntry {
     /// The row's current unified status.
     pub status: ListStatus,
     /// Episodes the user has watched so far.
     pub progress_episodes: u32,
+    /// How many times the user has finished a rewatch of the show, where
+    /// the tracker's read carries it; `None` when it is unknown.
+    pub times_rewatched: Option<u32>,
 }
 
 #[cfg(test)]

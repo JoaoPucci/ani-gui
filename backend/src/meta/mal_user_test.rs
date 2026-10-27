@@ -1056,7 +1056,8 @@ async fn current_entry_reads_status_and_num_episodes_watched() {
         got,
         Some(CurrentEntry {
             status: ListStatus::Rewatching,
-            progress_episodes: 10
+            progress_episodes: 10,
+            times_rewatched: None,
         })
     );
 }

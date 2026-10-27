@@ -75,6 +75,7 @@ pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<
             .and_then(|st| ListStatus::from_mal(st, s.is_rewatching.unwrap_or(false)))
             .unwrap_or(ListStatus::Watching),
         progress_episodes: s.num_episodes_watched.unwrap_or(0),
+        times_rewatched: None,
     }))
 }
 

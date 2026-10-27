@@ -28,7 +28,7 @@ proptest! {
         kind in proptest::sample::select(KINDS.to_vec()),
         progress in 0u32..2000,
     ) {
-        let row = CurrentEntry { status, progress_episodes: progress };
+        let row = CurrentEntry { status, progress_episodes: progress, times_rewatched: None };
         let kept = row.as_kept_by(kind);
         prop_assert_eq!(kept.progress_episodes, progress);
         if kind == ProviderKind::MyAnimeList && status == ListStatus::Rewatching {
