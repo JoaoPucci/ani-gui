@@ -471,7 +471,9 @@ describe('a renewal that a hydrate overtakes', () => {
 			refresh_token: 'rt',
 			expires_at_epoch_s: 1
 		});
-		const setToken = vi.fn(async () => ({ ok: true }));
+		const setToken = vi.fn<(p: string, a: PersistedAccount) => Promise<{ ok: boolean }>>(
+			async () => ({ ok: true })
+		);
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {
 				apiBase: 'http://127.0.0.1:1',
@@ -615,5 +617,46 @@ describe('a renewal that a hydrate overtakes', () => {
 		expect(accountStore.byProvider.mal.kind).toBe('expired');
 		r.release();
 		expect((await renewal).kind).toBe('refreshed');
+	});
+
+	it('does not write the old renewal over the sign-in a re-read found while its save waited', async () => {
+		// The exchange has answered, and the save is queued behind an
+		// earlier write for the provider. The re-read lands while it
+		// waits: the save must not reach the keychain.
+		const r = race(() =>
+			Response.json({
+				access_token: 'old-renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		let releaseWrite: () => void = () => {};
+		const writeHeld = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		r.setToken.mockImplementationOnce(async () => {
+			await writeHeld;
+			return { ok: true };
+		});
+		const earlier = persistAccount('mal', payload({ access_token: 'earlier' }));
+		accountStore.setExpired(
+			'mal',
+			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: 1 })
+		);
+		const renewal = accountStore.refreshExpired();
+		r.release();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		r.setKeychain(fresh);
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		releaseWrite();
+		await earlier;
+		await renewal;
+		const written = r.setToken.mock.calls.map((c) => c[1].access_token);
+		expect(written).toEqual(['earlier']);
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'new' }
+		});
 	});
 });
