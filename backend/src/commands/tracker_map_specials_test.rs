@@ -402,3 +402,128 @@ async fn kamitsubaki_s_special_is_its_series_entry_s_first_episode_on_anilist() 
         crate::account::episode_map::Target::Identity => panic!("filed nowhere"),
     }
 }
+
+/// A one-episode special Kitsu maps to nothing, related only to UBW's TV
+/// season, as Kitsu serves it with `relations` for the special's page.
+async fn lone_special(kitsu: &MockServer, relations: &str) {
+    detail_of(
+        kitsu,
+        "90001",
+        &UBW_PROLOGUE_KITSU.replace("\"9718\"", "\"90001\""),
+    )
+    .await;
+    relations_of(kitsu, "90001", relations).await;
+    mapped_as(kitsu, "90001", None, None).await;
+}
+
+/// The special's page relating it to UBW's TV season alone.
+fn sequel_7882(count: usize) -> String {
+    format!(
+        r#"{{"data":[{{"id":"r1","type":"mediaRelationships","attributes":{{"role":"sequel"}},
+            "relationships":{{"destination":{{"data":{{"type":"anime","id":"7882"}}}}}}}}],
+          "included":[{{"id":"7882","type":"anime","attributes":{{"subtype":"TV","status":"finished",
+            "episodeCount":12,"startDate":"2014-10-12"}}}}],
+          "meta":{{"count":{count}}}}}"#
+    )
+}
+
+/// On MyAnimeList the special rule is never asked: a show Kitsu maps to
+/// nothing there, with no prequel, writes nothing, and the tracker is
+/// asked nothing.
+#[tokio::test]
+async fn a_show_unresolved_on_mal_is_never_asked_about_as_a_special() {
+    let kitsu = ubw_kitsu().await;
+    lone_special(&kitsu, &sequel_7882(1)).await;
+    let mal_server = MockServer::start().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let tokens = tokens();
+    let base = mal_server.uri();
+    let map = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::MyAnimeList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    assert!(mal_server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .is_empty());
+}
+
+/// A page of the special's relations that did not hold them all says
+/// nothing of which entry is the only one: it is filed nowhere.
+#[tokio::test]
+async fn a_special_whose_relations_kitsu_did_not_list_whole_is_filed_nowhere() {
+    let kitsu = ubw_kitsu().await;
+    lone_special(&kitsu, &sequel_7882(2)).await;
+    let anilist_server = MockServer::start().await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let map = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    // No related entry was read for its extras.
+    let evidence_reads = anilist_server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| String::from_utf8_lossy(&r.body).contains("streamingEpisodes"))
+        .count();
+    assert_eq!(evidence_reads, 0);
+}
+
+/// A related entry the tracker answers is gone holds nothing: an
+/// answer, so the special is filed nowhere and the map is kept. Any
+/// other failed read of it fails the map, which is kept nowhere.
+#[tokio::test]
+async fn a_related_entry_gone_holds_nothing_and_a_failed_read_fails_the_map() {
+    for (status, fails) in [(404u16, false), (500, true)] {
+        let kitsu = ubw_kitsu().await;
+        lone_special(&kitsu, &sequel_7882(1)).await;
+        let anilist_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("streamingEpisodes"))
+            .respond_with(ResponseTemplate::new(status))
+            .mount(&anilist_server)
+            .await;
+        no_anilist_answer(&anilist_server).await;
+        let state = state_with_kitsu(&kitsu.uri());
+        let provider = anilist(&anilist_server.uri());
+        let tokens = tokens();
+        let base = anilist_server.uri();
+        let got = episode_map_for_unresolved(
+            &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+            "90001",
+        )
+        .await;
+        let key = map_key(ProviderKind::AniList, "90001", None);
+        if fails {
+            assert!(got.is_err(), "{status}: {got:?}");
+            assert!(
+                meta_cache_get(&state.cache_pool, &key)
+                    .expect("read")
+                    .is_none(),
+                "{status}: kept nowhere"
+            );
+        } else {
+            assert_eq!(
+                got.expect("the map"),
+                EpisodeMap::identity(Identity::Unexplained)
+            );
+            assert!(meta_cache_get(&state.cache_pool, &key)
+                .expect("read")
+                .is_some());
+        }
+    }
+}

@@ -457,7 +457,7 @@ async fn a_mapped_write_below_an_entry_s_progress_starts_no_rewatch() {
         &state,
         "9718",
         &EpisodeMap {
-            shape: Shape::SplitParts,
+            shape: Shape::SpecialExtras,
             segments: vec![segment(19_603, 13, 1, 1, 0, &[])],
         },
     );
