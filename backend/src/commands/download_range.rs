@@ -134,6 +134,9 @@ where
         super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode).await;
     let remembered = at_start.remembered();
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    // Every listing the start picks is recorded, whether or not its
+    // first episode serves.
+    let recorder = crate::commands::listing_tags::Recorder(state);
     let mut attempt = RangeStartAttempt {
         args,
         first,
@@ -142,7 +145,7 @@ where
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
         answered_by: None,
-        heard: None,
+        heard: Some(&recorder),
     };
     let attempted = match super::providers::run_from(state, remembered, prio, &mut attempt).await {
         Ok(attempted) => attempted,
