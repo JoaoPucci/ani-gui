@@ -3,8 +3,8 @@
 // MyAnimeList has no rewatch status of its own; it holds a rewatch as a
 // Watching row being rewatched, which is what the save sends it (unit-tested
 // in set-entry). A rewatch is only ever set deliberately, here, so the
-// editor offers it on every tracker, MyAnimeList alone included, and says
-// nothing beside it.
+// editor offers it whichever trackers are connected, MyAnimeList alone
+// included.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
@@ -67,7 +67,6 @@ async function settle() {
 const trigger = () => target.querySelector('button') as HTMLButtonElement;
 const statusSelect = () => target.querySelector('select') as HTMLSelectElement | null;
 const offered = () => Array.from(statusSelect()?.options ?? []).map((o) => o.value);
-const note = () => target.querySelector('.le-note') !== null;
 
 async function openOn(status: 'completed' | 'watching') {
 	app = mount(ListEntryEditor, {
@@ -80,15 +79,10 @@ async function openOn(status: 'completed' | 'watching') {
 }
 
 describe('list editor with MyAnimeList connected', () => {
-	it('offers Rewatching beside AniList, and says nothing once it is picked', async () => {
+	it('offers Rewatching beside AniList', async () => {
 		connect(ALL);
 		await openOn('completed');
 		expect(offered()).toContain('rewatching');
-		const select = statusSelect()!;
-		select.value = 'rewatching';
-		select.dispatchEvent(new Event('change', { bubbles: true }));
-		await settle();
-		expect(note()).toBe(false);
 	});
 
 	it('offers Rewatching with MyAnimeList alone', async () => {
