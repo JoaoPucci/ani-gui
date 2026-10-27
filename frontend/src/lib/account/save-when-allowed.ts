@@ -99,6 +99,8 @@ export function waitWhileWanted(
 	ms: number,
 	deps: {
 		after: (ms: number, tick: () => void) => () => void;
+		/** The clock the wait is measured on, in milliseconds. */
+		now: () => number;
 		stillWanted: () => boolean;
 		checkEvery?: number;
 	}

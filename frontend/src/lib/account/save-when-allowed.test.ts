@@ -185,6 +185,7 @@ describe('waitWhileWanted', () => {
 		const h = setTimeout(() => tick(), ms);
 		return () => clearTimeout(h);
 	};
+	const now = () => performance.now();
 	afterEach(() => {
 		vi.useRealTimers();
 	});
@@ -192,7 +193,7 @@ describe('waitWhileWanted', () => {
 	it('waits the whole time while the write is wanted', async () => {
 		vi.useFakeTimers();
 		let done = false;
-		void waitWhileWanted(3000, { after, stillWanted: () => true }).then(() => {
+		void waitWhileWanted(3000, { after, now, stillWanted: () => true }).then(() => {
 			done = true;
 		});
 		await vi.advanceTimersByTimeAsync(2999);
@@ -205,7 +206,7 @@ describe('waitWhileWanted', () => {
 		vi.useFakeTimers();
 		let wanted = true;
 		let done = false;
-		void waitWhileWanted(60_000, { after, stillWanted: () => wanted }).then(() => {
+		void waitWhileWanted(60_000, { after, now, stillWanted: () => wanted }).then(() => {
 			done = true;
 		});
 		await vi.advanceTimersByTimeAsync(2500);
@@ -220,7 +221,7 @@ describe('waitWhileWanted', () => {
 	it('ends at once for a wait of nothing', async () => {
 		vi.useFakeTimers();
 		let done = false;
-		void waitWhileWanted(0, { after, stillWanted: () => true }).then(() => {
+		void waitWhileWanted(0, { after, now, stillWanted: () => true }).then(() => {
 			done = true;
 		});
 		await vi.advanceTimersByTimeAsync(0);

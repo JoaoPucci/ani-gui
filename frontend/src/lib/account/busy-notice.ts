@@ -32,6 +32,12 @@ export function after(ms: number, tick: () => void): () => void {
 	return () => clearTimeout(handle);
 }
 
+/** The clock a held write's wait and its notice are measured on: one
+ *  that runs on steadily, whatever is done to the wall clock. */
+export function monotonic(): number {
+	return performance.now();
+}
+
 /** The toast shown while `provider` waits `seconds` to take a write. It
  *  counts the wait down in place, read from one deadline, and then says
  *  the save is going; it stays up until taken down — by the write it is

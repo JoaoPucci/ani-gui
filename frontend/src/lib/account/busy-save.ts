@@ -16,7 +16,7 @@ import {
 import { coverFields, fieldsLeft, type Coverage } from './write-fields';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { accountLeft, followAccount, type ListedAccount } from './held-account';
-import { after, noticeBusy } from './busy-notice';
+import { after, monotonic, noticeBusy } from './busy-notice';
 
 /** Per tracker and show: the count of writes started, the newest write
  *  to cover each field, and the busy notice on screen. A write held
@@ -107,6 +107,7 @@ export function saveWhenTrackerAllows<T>(
 		wait: (ms) =>
 			waitWhileWanted(ms, {
 				after,
+				now: monotonic,
 				stillWanted: () =>
 					fieldsLeft(coverage.get(key), fields, generation).length > 0 &&
 					!accountLeft(provider, listed)
