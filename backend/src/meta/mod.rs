@@ -8,7 +8,9 @@
 
 pub mod anilist;
 pub mod anilist_airing;
+pub(crate) mod anilist_gate;
 pub mod anilist_media;
+pub(crate) mod anilist_pages;
 pub mod anilist_streaming_eps;
 pub mod anilist_user;
 pub mod aniskip;
@@ -21,3 +23,11 @@ mod mal_user_net;
 mod mal_user_parse;
 pub(crate) mod present;
 pub(crate) mod rate_limit;
+
+#[cfg(test)]
+#[path = "shape_test.rs"]
+mod shape_tests;
+
+#[cfg(test)]
+#[path = "shape_prop_test.rs"]
+pub(crate) mod shape_prop_tests;

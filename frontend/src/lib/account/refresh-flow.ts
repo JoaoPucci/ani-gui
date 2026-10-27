@@ -26,9 +26,12 @@ export interface RefreshFlowDeps {
 		refresh_token: string | null;
 		expires_at_epoch_s: number;
 	}>;
+	/** Save `payload`. `stillCurrent`, when given, is asked just before
+	 *  the write is sent. */
 	persistAccount(
 		provider: Provider,
-		payload: PersistedAccount
+		payload: PersistedAccount,
+		stillCurrent?: () => boolean
 	): Promise<{ ok: true } | { ok: false; kind: string; detail?: string }>;
 	/** Monotonic per-provider counter, bumped on every account state
 	 *  change (connect / disconnect / expire / error) and synchronously
@@ -40,6 +43,9 @@ export interface RefreshFlowDeps {
 	/** Told when a renewal fails, with what the failure says about the
 	 *  sign-in. */
 	onRenewalFailed?(provider: Provider, failure: RenewalFailure): void;
+	/** Told when the renewal starts saving `bearer`; the returned
+	 *  function is called once the save has settled. */
+	ownWrite?(provider: Provider, bearer: string): () => void;
 }
 
 export type RefreshOutcome =
@@ -103,10 +109,16 @@ export async function refreshAccount(
 	// a rejection the same as a resolved {ok:false}: a failed refresh, not
 	// an exception that escapes to abort the caller's best-effort flow.
 	let saved: boolean;
+	const endOwnWrite = deps.ownWrite?.(provider, refreshed.access_token);
 	try {
-		saved = (await deps.persistAccount(provider, refreshed)).ok;
+		// The write itself is skipped once the account has moved, so the
+		// old sign-in renewed never lands over a newer one in the keychain.
+		const stillCurrent = () => deps.generation(provider) === generationAtStart;
+		saved = (await deps.persistAccount(provider, refreshed, stillCurrent)).ok;
 	} catch {
 		saved = false;
+	} finally {
+		endOwnWrite?.();
 	}
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
