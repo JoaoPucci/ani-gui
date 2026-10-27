@@ -35,6 +35,8 @@ impl<V: Clone> Default for Inflight<V> {
 struct Running<'a, V> {
     running: &'a Mutex<HashMap<String, broadcast::Sender<V>>>,
     key: &'a str,
+    /// The run's own channel: what its entry under `key` holds.
+    sender: broadcast::Sender<V>,
 }
 
 impl<V> Running<'_, V> {
@@ -65,24 +67,26 @@ impl<V: Clone> Inflight<V> {
             let waiting = {
                 let mut running = self.running.lock().expect("inflight map poisoned");
                 match running.get(&key) {
-                    Some(sender) => Some(sender.subscribe()),
+                    Some(sender) => Ok(sender.subscribe()),
                     None => {
-                        running.insert(key.clone(), broadcast::channel(1).0);
-                        None
+                        let sender = broadcast::channel(1).0;
+                        running.insert(key.clone(), sender.clone());
+                        Err(sender)
                     }
                 }
             };
             match waiting {
-                Some(mut answer) => {
+                Ok(mut answer) => {
                     if let Ok(value) = answer.recv().await {
                         return value;
                     }
                     // The caller running it went away unanswered: ask again.
                 }
-                None => {
+                Err(sender) => {
                     let guard = Running {
                         running: &self.running,
                         key: &key,
+                        sender,
                     };
                     let value = start().await;
                     // Off the map first, then answered: a caller arriving
