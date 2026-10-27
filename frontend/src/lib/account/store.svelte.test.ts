@@ -434,3 +434,27 @@ describe('accountStore.hydrate after a refused bearer', () => {
 		expect(accountStore.renewalFailure.mal).toBeNull();
 	});
 });
+
+describe('accountStore.refreshExpired and a refused renewal', () => {
+	it('records what the tracker answered', async () => {
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:1' }
+		};
+		const fetch = vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' }),
+					{ status: 401 }
+				)
+		);
+		vi.stubGlobal('fetch', fetch);
+		try {
+			accountStore.setExpired('mal', payload({ refresh_token: 'rt', expires_at_epoch_s: 1 }));
+			await accountStore.refreshExpired();
+			expect(fetch).toHaveBeenCalledTimes(1);
+			expect(accountStore.renewalFailure.mal).toBe('rejected');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
