@@ -397,7 +397,9 @@
     [32947, 1, null]
   ]
  },
- "years": {},
+ "years": {
+  "naruto-shinsaku-anime-1984": null
+ },
  "jnames": {
   "boruto-naruto-next-generations-650": "Boruto: Naruto Next Generations",
   "boruto-naruto-the-movie-2800": "Boruto: Naruto the Movie",
@@ -420,6 +422,10 @@
   "naruto-x-ut-5294": "Naruto x UT",
   "road-of-naruto-2012": "Road of Naruto"
  },
- "page_names": {},
- "genres": {}
+ "page_names": {
+  "naruto-shinsaku-anime-1984": ["ナルト新作アニメ"]
+ },
+ "genres": {
+  "naruto-shinsaku-anime-1984": ["Adventure", "Fantasy", "Shounen", "Martial Arts", "Action"]
+ }
 }

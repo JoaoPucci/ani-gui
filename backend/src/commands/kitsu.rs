@@ -1660,6 +1660,24 @@ mod tests {
     }
 
     #[test]
+    fn a_mapping_stamped_before_an_undated_pick_read_its_genre_is_not_read() {
+        // An undated entry's pick read no entry page: a hentai listed
+        // under one of the entry's own names could be its pick, and the
+        // hentai's key was bound to the entry.
+        let state = state_with_kitsu_at("http://unused");
+        let key =
+            "hianime:muttsuri-dosukebe-tsuyu-gibo-shimai-no-honshitsu-minuite-sex-sanmai-2256";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v8:{key}"),
+            "8404",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
     fn a_mapping_stamped_before_a_dated_counted_entry_needed_a_name_is_not_read() {
         // A dated entry with a count took any hit its year and count
         // fit: Medaka Box Abnormal's key bound to HenSemi (TV), under a

@@ -151,11 +151,10 @@ impl Provider for Recorded {
         unreachable!("the pick walk reads no playlists")
     }
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
-        Ok(*self
-            .doc
-            .years
-            .get(slug)
-            .unwrap_or_else(|| panic!("fixture {} holds no entry page for {slug}", self.id)))
+        match self.doc.years.get(slug) {
+            Some(year) => Ok(*year),
+            None => panic!("fixture {} holds no entry page for {slug}", self.id),
+        }
     }
     async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
         let listed = || {
@@ -661,6 +660,10 @@ async fn a_single_video_with_neither_the_entry_s_name_nor_its_year_is_not_the_en
             .episodes
             .insert(slug.to_string(), vec![(9, 1, None)]);
         site.doc.years.insert(slug.to_string(), year);
+        // Its page lists a genre, as the site's show pages do.
+        site.doc
+            .genres
+            .insert(slug.to_string(), vec![LISTED_GENRE.to_string()]);
         match walk_over(site).await {
             Ok(p) => panic!("year {year:?}: picked {}", p.hit.slug),
             Err(e) => assert_eq!(e.clean_miss, clean, "year {year:?}: {:?}", e.error),
@@ -734,6 +737,15 @@ async fn an_entry_with_no_count_or_year_takes_the_hit_named_as_it() {
         "dragon-ball-super-the-galactic-patrol-1".to_string(),
         vec![(1, 1, None)],
     );
+    // Its page names no year and lists a genre, as the site's show
+    // pages do: the pick reads the page of the listing it serves.
+    site.doc
+        .years
+        .insert("dragon-ball-super-the-galactic-patrol-1".to_string(), None);
+    site.doc.genres.insert(
+        "dragon-ball-super-the-galactic-patrol-1".to_string(),
+        vec![LISTED_GENRE.to_string()],
+    );
     let picked = walk_over(site).await.expect("the entry's listing");
     assert_eq!(picked.hit.slug, "dragon-ball-super-the-galactic-patrol-1");
 }
@@ -749,7 +761,7 @@ async fn a_hit_reading_as_the_entry_is_named_as_it() {
  "searches": {"Show 2nd Season": [["other-1", "Other Show", "TV"],
                                   ["show-season-2-2", "Show Season 2", "TV"]]},
  "episodes": {"other-1": [[1, 1, null]], "show-season-2-2": [[2, 1, null]]},
- "years": {}
+ "years": {"show-season-2-2": null}
 }"#;
     let picked = walk_over(Recorded::inline("inline", json))
         .await
@@ -3155,6 +3167,10 @@ async fn a_dated_walk_over_the_same_pools_refuses_the_unnamed_fit() {
                 "{:?}",
                 e.error
             );
+            // The pool's Fei Ren Zai parts are refused by the entry's
+            // titles and probed only as evidence; that their pages list
+            // no genre leaves the refusal what it is.
+            assert!(e.refused_by_name, "not the refusal by name: {e:?}");
         }
     }
 }
@@ -3182,17 +3198,19 @@ async fn dated_entries_the_catalogue_does_not_list_are_refused() {
 /// A hit its own entry page files under the genre Hentai is never a
 /// pick: the app reads Kitsu anonymously, and Kitsu serves no adult
 /// entry that way, so no entry the app shows is one. Ohanashi de Te Koi
-/// (40684) and Tsubu★Doll (8404) played hentai OVAs on master; undated,
-/// their walks read no entry page, and the count-alone rule is what
-/// refuses them (`UNDATED_REFUSED`). The pages are recorded beside
-/// them. Here each entry is given the hentai's own premiere year, and
-/// the hentai's title among its names — so its year, its count and a
-/// name all vouch for it — and the walk still takes nothing, the pool
-/// it answered from holding nothing else the entry could be, which is
-/// the clean miss a pool of other years' shows is; with the genre left
-/// off the page, the same walk takes the hentai. The same holds with
-/// the entry's count taken away: a dated countless entry reads the page
-/// too.
+/// (40684) and Tsubu★Doll (8404) played hentai OVAs on master, and the
+/// count-alone rule is what refuses them as recorded
+/// (`UNDATED_REFUSED`); the hentai's page is recorded beside them. Here
+/// each entry is given the hentai's title among its names — so its
+/// count and a name vouch for it — and, dated, the hentai's own
+/// premiere year besides. The walk still takes nothing, dated or not:
+/// a dated entry's year filter reads the hit's page and drops it, and
+/// an undated entry's pick reads the page of the listing it would serve
+/// and is made again without it. Either way the pools hold nothing
+/// else the entry could be — the clean miss a pool of other years'
+/// shows is. With the page listing another genre in its place, the
+/// same walk takes the hentai. The same holds with the entry's count
+/// taken away.
 #[tokio::test]
 async fn a_hit_filed_under_hentai_is_never_picked() {
     for (id, slug) in [
@@ -3205,7 +3223,7 @@ async fn a_hit_filed_under_hentai_is_never_picked() {
             "muttsuri-dosukebe-tsuyu-gibo-shimai-no-honshitsu-minuite-sex-sanmai-2256",
         ),
     ] {
-        let vouched_for = |genres: bool| {
+        let vouched_for = |hentai: bool, dated: bool, counted: bool| {
             let mut site = Recorded::load(id);
             let (query, title) = site
                 .doc
@@ -3219,32 +3237,36 @@ async fn a_hit_filed_under_hentai_is_never_picked() {
             let pool = site.doc.searches[&query].clone();
             site.doc.searches.insert(title.clone(), pool);
             site.doc.kitsu.alt_titles.push(title);
-            site.doc.kitsu.year = site.doc.years[slug];
-            if !genres {
-                site.doc.genres.remove(slug);
+            if dated {
+                site.doc.kitsu.year = site.doc.years[slug];
+            }
+            if !counted {
+                site.doc.kitsu.episode_count = None;
+            }
+            if !hentai {
+                site.doc
+                    .genres
+                    .insert(slug.to_string(), vec![LISTED_GENRE.to_string()]);
             }
             site
         };
-        // With its count and without one: every path that reads the
-        // page drops the hit, a dated countless entry's included.
-        for counted in [true, false] {
-            let site = |genres: bool| {
-                let mut site = vouched_for(genres);
-                if !counted {
-                    site.doc.kitsu.episode_count = None;
+        for dated in [true, false] {
+            // With its count and without one: every path drops the
+            // hit, a countless entry's included.
+            for counted in [true, false] {
+                let case = format!("{id} dated {dated} counted {counted}");
+                match walk_over(vouched_for(true, dated, counted)).await {
+                    Ok(p) => panic!("{case}: picked {} ({})", p.hit.slug, p.hit.title),
+                    // The page says the listing is not the entry's, as
+                    // a year off it would, and nothing else in either
+                    // pool is named for the entry: the clean miss.
+                    Err(e) => assert!(e.clean_miss, "{case}: {:?}", e.error),
                 }
-                site
-            };
-            match walk_over(site(true)).await {
-                Ok(p) => panic!("{id} {counted}: picked {} ({})", p.hit.slug, p.hit.title),
-                // The page says the listing is not the entry's, as a
-                // year off it would: the clean miss.
-                Err(e) => assert!(e.clean_miss, "{id} {counted}: {:?}", e.error),
+                let control = walk_over(vouched_for(false, dated, counted))
+                    .await
+                    .unwrap_or_else(|e| panic!("{case}: the control refused: {e:?}"));
+                assert_eq!(control.hit.slug, slug, "{case}: the control's pick");
             }
-            let control = walk_over(site(false))
-                .await
-                .unwrap_or_else(|e| panic!("{id} {counted}: the control refused: {e:?}"));
-            assert_eq!(control.hit.slug, slug, "{id} {counted}: the control's pick");
         }
     }
 }
