@@ -201,6 +201,7 @@ fn two_related_entries_whose_maps_both_could_hold_it_file_it_nowhere() {
     ev.related[0].entry.episodes = Some(13);
     ev.related[0].entry.start = Some("2014-10-01".into());
     ev.related[0].entry.end = Some("2014-12-28".into());
+    ev.related[0].related.start = Some("2014-10-12".into());
     assert_eq!(special_extras(&ev), None);
 }
 
@@ -218,10 +219,11 @@ fn a_special_whose_date_does_not_lie_in_the_entry_s_run_is_filed_nowhere() {
         ev.special.start = (!start.is_empty()).then(|| start.into());
         assert_eq!(special_extras(&ev), None, "{start:?}");
     }
-    // The run is the entry's, compared by month: late in its last month
-    // is inside.
+    // The run is the entry's, compared by month: a recap late in its last
+    // month is inside.
     let mut late = ubw();
     late.special.start = Some("2014-12-31".into());
+    late.related[1].map = extras_map(19_603, 13, 12, &[6]);
     assert!(special_extras(&late).is_some());
     // An entry whose own dates are not known places nothing.
     let mut undated = ubw();
@@ -276,4 +278,69 @@ fn the_special_rule_and_the_others_together() {
     };
     assert_eq!(with_special(other.clone(), Some(filed)), conflict);
     assert_eq!(with_special(other.clone(), None), other);
+}
+
+/// A special that aired after its season began is no prologue: the
+/// slot before the season's first episode is the prologue's, and a
+/// special takes it only where it started no more than two days after
+/// the season, the sources' slack about one broadcast. Lupin's special,
+/// a day after its series as Kitsu dates it, is within it. Where the
+/// season's own start is not a whole day, nothing settles it.
+#[test]
+fn a_special_that_aired_after_its_season_began_is_no_prologue() {
+    for start in ["2014-10-15", "2014-11-02", "2014-12-28"] {
+        let mut ev = ubw();
+        ev.special.start = Some(start.into());
+        assert_eq!(special_extras(&ev), None, "{start}");
+    }
+    for start in ["2014-10-13", "2014-10-14", "2014-10-01"] {
+        let mut ev = ubw();
+        ev.special.start = Some(start.into());
+        assert!(special_extras(&ev).is_some(), "{start}");
+    }
+    for season_start in [None, Some("2014-10"), Some("2014-10-32")] {
+        let mut ev = ubw();
+        ev.related[1].related.start = season_start.map(str::to_string);
+        assert_eq!(special_extras(&ev), None, "{season_start:?}");
+    }
+}
+
+/// A recap the entry lists among the season's episodes is placed there
+/// only where the season had begun: a special that aired before it, or
+/// whose order beside it the dates do not settle, is no recap of it.
+#[test]
+fn a_recap_is_placed_only_after_its_season_began() {
+    let recap = |special: &str, season: &str| {
+        let mut ev = ubw();
+        ev.special.start = Some(special.into());
+        ev.related[1].related.start = Some(season.into());
+        ev.related[1].map = extras_map(19_603, 13, 12, &[6]);
+        special_extras(&ev)
+    };
+    assert_eq!(
+        written(&recap("2014-11-16", "2014-10-12").expect("filed"), 1),
+        Some((19_603, 7, false))
+    );
+    assert_eq!(recap("2014-10-05", "2014-10-12"), None, "before the season");
+    assert_eq!(recap("2014-10-12", "2014-10-12"), None, "the same day");
+    assert_eq!(recap("2014-11-16", "2014-11"), None, "unsettled");
+}
+
+/// Kitsu relating the special to one entry twice, in two roles, is one
+/// entry holding it, not two.
+#[test]
+fn one_entry_related_twice_holds_the_special_once() {
+    let mut ev = ubw();
+    let twice = RelatedFiling {
+        related: KitsuShow {
+            id: "7882".into(),
+            ..ev.related[1].related.clone()
+        },
+        ..ev.related[1].clone()
+    };
+    ev.related.push(twice);
+    assert_eq!(
+        written(&special_extras(&ev).expect("filed"), 1),
+        Some((19_603, 1, false))
+    );
 }
