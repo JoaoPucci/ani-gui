@@ -5,9 +5,13 @@
  * owned by the store itself so call sites (play page, settings,
  * future Syncplay entry) don't have to manage their own timeouts.
  *
- * Stack policy: at most TOAST_MAX_STACK rows on-screen. Spam-clicks
- * trim the oldest entries so the corner doesn't fill up with stale
- * "Sent to mpv." rows piling on a single retry burst.
+ * Stack policy: at most TOAST_MAX_STACK passing rows on-screen.
+ * Spam-clicks trim the oldest passing entries so the corner doesn't
+ * fill up with stale "Sent to mpv." rows piling on a single retry
+ * burst. Pinned rows (`duration: null`) wait for the user and are never
+ * trimmed, so a stack of pinned rows can go past the cap by the one
+ * passing row pushed beside them; only the sign-in notice pins, one
+ * per provider, and the busy notice of a held tracker write.
  */
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
@@ -46,6 +50,21 @@ const DEFAULT_DURATION_MS = 4000;
 
 let nextId = 1;
 
+/**
+ * The rows that stay when one more is pushed onto a stack capped at
+ * `max`. A pinned row waits for the user to act on it, so it always
+ * stays; the passing rows make room, oldest first, until the stack
+ * with the new row fits the cap or only pinned rows are left.
+ */
+export function keepOnPush(items: ToastItem[], max: number): ToastItem[] {
+	let surplus = items.length - (max - 1);
+	return items.filter((item) => {
+		if (surplus <= 0 || item.duration === null) return true;
+		surplus -= 1;
+		return false;
+	});
+}
+
 class ToastStore {
 	items: ToastItem[] = $state([]);
 	/** Per toast id, what to call when it leaves the stack. */
@@ -66,9 +85,9 @@ class ToastStore {
 		// Trim oldest entries if a push would exceed the cap. Slice +
 		// concat rather than splice so the assignment triggers
 		// reactivity (matches download/store.svelte.ts's pattern).
-		const trimmed = this.items.slice(-(TOAST_MAX_STACK - 1));
-		const dropped = this.items.slice(0, this.items.length - trimmed.length);
-		this.items = [...trimmed, row];
+		const kept = keepOnPush(this.items, TOAST_MAX_STACK);
+		const dropped = this.items.filter((i) => !kept.includes(i));
+		this.items = [...kept, row];
 		if (args.onClose) this.closers.set(id, args.onClose);
 		for (const gone of dropped) this.closed(gone.id);
 		if (duration !== null) {

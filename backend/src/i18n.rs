@@ -18,9 +18,14 @@
 //! - `error.request.*` — a value the renderer sent that is not one the
 //!   route takes
 //! - `error.stream.*` — stream proxy + tokens
+//! - `error.account.*` — tracker sign-ins
 
 /// Key constants. Keep alphabetized within each block.
 pub mod keys {
+    // --- error.account.* ---
+    /// A tracker refused to renew a sign-in (`AniError::RefreshRejected`).
+    pub const ACCOUNT_REFRESH_REJECTED: &str = "error.account.refresh_rejected";
+
     // --- error.cache.* ---
     /// Generic SQLite failure.
     pub const CACHE_GENERIC: &str = "error.cache.generic";
