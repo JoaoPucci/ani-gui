@@ -959,3 +959,39 @@ async fn an_entry_anilist_cannot_answer_for_gives_no_tail() {
         anilist.verify().await;
     }
 }
+
+/// Kitsu relations an earlier build kept under `kitsu:relations:v1`
+/// may hold an entry whose destination the page did not include, read
+/// then as an entry of no format or status; the parser now refuses such
+/// a page, and nothing in a kept row tells which it was. The key moved
+/// past v1: a v1 row is not read, and the relations are asked again.
+#[tokio::test]
+async fn relations_an_earlier_build_kept_are_asked_again() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/7881/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_bytes(fixture("kitsu-relations-7881.json")),
+        )
+        .expect(1)
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let unexplained = crate::meta::kitsu::KitsuRelations {
+        entries: Vec::new(),
+        complete: true,
+    };
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:relations:v1:7881",
+        &serde_json::to_string(&unexplained).expect("json"),
+        60,
+    )
+    .expect("seed");
+    let read = crate::commands::kitsu::kitsu_relationships(&state, "7881")
+        .await
+        .expect("read");
+    assert!(!read.entries.is_empty(), "asked Kitsu, not the v1 row");
+}

@@ -65,6 +65,19 @@ pub const ANILIST_ID_MAP_TTL: Duration = TITLE_MATCH_TTL;
 /// keeps the detail page from re-asking on every open meanwhile.
 pub const ANILIST_ID_MAP_MISS_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
+/// TTL for a show's episode map on one tracker when it rests on
+/// evidence that does not move: the counts agreeing, or a rule
+/// explaining their difference from the tracker's own relations and
+/// lists. The same reasoning as [`EXTERNAL_IDS_TTL`].
+pub const TRACKER_MAP_TTL: Duration = TITLE_MATCH_TTL;
+
+/// TTL for an episode map that rests on evidence that was missing or
+/// inconclusive — a count not yet announced, a difference nothing
+/// explained. The count may be announced and the tracker's relations
+/// filled in within days, so the map is asked for again daily rather
+/// than left on identity for a month.
+pub const TRACKER_MAP_UNSETTLED_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
+
 /// TTL for cached play resolutions (canonical_title + mode + quality +
 /// episode → upstream URL + referer + media_kind). 7d is
 /// generous because the *real* validity gate is the per-read HEAD

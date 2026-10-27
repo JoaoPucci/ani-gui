@@ -85,7 +85,8 @@
       "fmt": "cargo fmt",
       "picker-oracle": "picker oracle agreement",
       "picker-oracle-fuzz": "picker oracle fuzz",
-      "test": "cargo test"
+      "test": "cargo test",
+      "tracker-map-oracle": "episode map oracle agreement"
     },
     "title.yml": {
       "main": "Validate PR Title"

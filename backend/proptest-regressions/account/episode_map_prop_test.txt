@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 94ffc9485ff778d7bb3bf556b5b9ec37a2d68427557a5b52c6b5321d5e310d22 # shrinks to ev = Evidence { kitsu: KitsuShow { id: "k", episodes: Some(4294967255), start: None, end: None }, entry: TrackerShow { id: 1, id_mal: None, episodes: Some(479542204), finished: false, start: None, end: None }, chain: [TrackerShow { id: 2, id_mal: None, episodes: Some(4294967255), finished: false, start: None, end: None }], claimed: [], listed: None, sharing: [], parts: [] }
+cc a60d1d1418cb9d77309ef75d9d8accd2cf6a68b6e4d0476f0b079b30527b75b6 # shrinks to (ev, total) = (Evidence { kitsu: KitsuShow { id: "p0", episodes: None, start: None, end: None }, entry: TrackerShow { id: 9, id_mal: None, episodes: Some(4294967295), finished: false, start: None, end: None }, chain: [], claimed: [], listed: None, sharing: [], parts: [KitsuShow { id: "p0", episodes: Some(4294967289), start: None, end: None }, KitsuShow { id: "p1", episodes: Some(4294967289), start: None, end: None }] }, 4294967295)
