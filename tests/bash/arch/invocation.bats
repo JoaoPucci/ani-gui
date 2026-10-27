@@ -767,9 +767,34 @@ FLAP
 
 # The local composite actions a workflow's steps call, one name per
 # line, as a function so a fixture spelling runs through exactly the
-# derivation the live workflows do.
+# derivation the live workflows do. Read through PyYAML, so a step is
+# a step however it is spelled (AGENTS.md §2: what YAML means is a
+# parser's question, not a pattern's); without the parser this fails
+# rather than pairing nothing.
 local_actions_used() {
-    sed -n 's#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}uses:[[:space:]]*\./\.github/actions/\([^/[:space:]]*\).*#\2#p' "$1" | sort -u
+    _actions_py=$(resolution_python) || {
+        printf 'action pairing unavailable: no python3 with PyYAML\n' >&2
+        return 1
+    }
+    "$_actions_py" -I - "$1" <<'PYUSES'
+import sys
+
+import yaml
+
+PREFIX = "./.github/actions/"
+names = set()
+with open(sys.argv[1], encoding="utf-8") as handle:
+    for doc in yaml.safe_load_all(handle):
+        jobs = doc.get("jobs") if isinstance(doc, dict) else None
+        for job in (jobs or {}).values() if isinstance(jobs, dict) else ():
+            steps = job.get("steps") if isinstance(job, dict) else None
+            for step in steps if isinstance(steps, list) else ():
+                uses = step.get("uses") if isinstance(step, dict) else None
+                if isinstance(uses, str) and uses.startswith(PREFIX):
+                    names.add(uses[len(PREFIX):].split("/", 1)[0].split("@", 1)[0])
+for name in sorted(names):
+    print(name)
+PYUSES
 }
 
 @test "a composite action is found however the step spells its uses" {
@@ -793,14 +818,16 @@ local_actions_used() {
     # A job that skips its steps when nothing it reads changed has to
     # count the composite actions it calls as read, or a broken action
     # lands certified by the no-op successes of the jobs that use it.
-    # The pairs come from the workflows themselves: every
-    # `uses: ./.github/actions/<name>` line in a workflow with a
-    # governing relevance line. A workflow without one either has no
+    # The pairs come from the workflows themselves: every step whose
+    # `uses` names ./.github/actions/<name>, parsed by
+    # local_actions_used, in a workflow with a governing relevance
+    # line. A workflow without one either has no
     # filter (arch.yml, mutation.yml) or decides in a script — rust.yml,
     # whose tools/rust-workflow-filter.sh rust_workflow_filter.bats runs
     # over the same change.
     pairs=0
-    for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+    for wf in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
+        [ -f "$wf" ] || continue
         pattern=$(relevance_pattern "$wf") || continue
         [ -n "$pattern" ] || continue
         actions=$(local_actions_used "$wf")
