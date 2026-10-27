@@ -31,9 +31,8 @@ export interface PushWatchedDeps {
  * Only the finale of a finished finite series (episode N of N) sets a
  * status — `completed`. Every other progress update returns `null` and
  * sends progress alone, so a normal next-episode write never overrides
- * the user's status. Critically this preserves a `rewatching`/repeating
- * row: sending `watching` would downgrade it (AniList `CURRENT`, MAL
- * `is_rewatching=false`).
+ * the user's status. Critically this preserves AniList's `rewatching`
+ * (REPEATING) row: sending `watching` would downgrade it to `CURRENT`.
  *
  * `seriesFinished` gates completion: a
  * currently-airing show only ever has the latest released episode, so
@@ -48,7 +47,9 @@ export interface PushWatchedDeps {
  *
  * The backend reads `completed` on the progress route as this finale
  * and drops it where the tracker's own episode total is known and
- * differs from the episode (and, as before, for a rewatching row), so
+ * differs from the episode (and, as before, for an AniList rewatching row,
+ * which AniList closes itself; MyAnimeList's rewatching row, a Watching one
+ * there, is completed), so
  * nothing else may send `completed` through `updateProgress`.
  */
 export function watchedStatus(

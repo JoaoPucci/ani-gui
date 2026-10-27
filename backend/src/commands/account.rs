@@ -678,8 +678,9 @@ pub fn build_entry_update(
 ///   - a status-less *advancing* progress write promotes a planning row
 ///     (or a not-yet-on-the-list show) to `Watching` so a Plan-to-Watch
 ///     title leaves Watch Later, but leaves any
-///     other status untouched — preserving `Rewatching`/`Completed`/
-///     `Paused`;
+///     other status untouched — preserving `Rewatching` (AniList's; the
+///     caller hands a MAL rewatching row in as the Watching row MAL lists)/
+///     `Completed`/`Paused`;
 ///   - a non-advancing `Watching` is dropped (it could only downgrade or
 ///     no-op).
 pub fn reconcile_monotonic(
@@ -703,9 +704,12 @@ pub fn reconcile_monotonic(
     }
     // Preserve a rewatching/repeating row at the finale: the fan-out sends
     // Completed when a finished series' last episode is watched, but completing
-    // a row that's mid-rewatch would clear AniList REPEATING / MAL
-    // is_rewatching. Drop the Completed status so the rewatch state survives;
-    // any advancing progress field still flows below.
+    // a row that's mid-rewatch would clear AniList's REPEATING, which AniList
+    // closes itself at its total. Drop the Completed status so the rewatch
+    // state survives; any advancing progress field still flows below. A MAL
+    // row reaches here as MAL lists it (`CurrentEntry::as_kept_by`): MAL has
+    // no rewatch status, so its rewatching row is a Watching one, and the
+    // finale completes it.
     if update.status == Some(ListStatus::Completed)
         && current.map(|c| c.status) == Some(ListStatus::Rewatching)
     {
