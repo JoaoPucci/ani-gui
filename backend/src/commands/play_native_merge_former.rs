@@ -35,6 +35,21 @@ pub(crate) fn names_a_row_now(
     carries_tag(&native.extra_tags, &own)
 }
 
+/// The former number a replay names: the one its cached row kept,
+/// while the listing's extra tags as the app last had the listing at
+/// hand (`listing_tags`) carry no row by it. `None` for the tags is a
+/// listing the app does not know, and then no former number is named:
+/// whether it has come to name another episode is unknown, and a
+/// position followed under it could be that episode's.
+pub(crate) fn former_on_replay(
+    kept: Option<&str>,
+    listing_tags: Option<&[String]>,
+) -> Option<String> {
+    let kept = kept?;
+    let tags = listing_tags?;
+    (!carries_tag(tags, kept)).then(|| kept.to_string())
+}
+
 /// Whether `tags`, a listing's extra tags in the entry's numbering,
 /// carry `number`: the same value where both read as numbers ("12.50"
 /// is "12.5"), the same text otherwise.

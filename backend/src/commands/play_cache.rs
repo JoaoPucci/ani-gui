@@ -208,8 +208,14 @@ pub(crate) async fn try_serve_cached(
     // The episode the resolve behind the row played; a row from before
     // the field names none.
     resp.episode.clone_from(&cached.played);
-    resp.former_episode.clone_from(&cached.former_episode);
     resp.episode_unverified = cached.episode_unverified;
+    // The former number the row kept, while the listing the app last had
+    // at hand for the row's show leaves it free.
+    let tags = crate::commands::listing_tags::get(state, &cached.show_id);
+    resp.former_episode = crate::commands::play_native_merge::former_on_replay(
+        cached.former_episode.as_deref(),
+        tags.as_deref(),
+    );
     Some(resp)
 }
 
