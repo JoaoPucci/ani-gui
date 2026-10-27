@@ -78,19 +78,6 @@ impl ListStatus {
         }
     }
 
-    /// What a write sends MAL for this status: [`Self::to_mal`], except
-    /// for [`Self::Rewatching`], which sends nothing. MAL has no rewatch
-    /// status — a row it reads as rewatching is listed as Watching — and
-    /// keeps the record that a show was finished only in Completed, so a
-    /// rewatch written to MAL would erase it.
-    #[must_use]
-    pub fn to_mal_write(self) -> Option<(&'static str, bool)> {
-        match self {
-            Self::Rewatching => None,
-            other => Some(other.to_mal()),
-        }
-    }
-
     /// Inverse of [`Self::to_mal`]. The `is_rewatching` flag only
     /// carries meaning when `status == "watching"`; on other statuses
     /// it's ignored (users may carry stale `is_rewatching=true` on
@@ -245,7 +232,3 @@ mod tests {
         );
     }
 }
-
-#[cfg(test)]
-#[path = "status_write_test.rs"]
-mod write_tests;
