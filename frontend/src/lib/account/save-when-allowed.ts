@@ -95,3 +95,32 @@ export const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
 		setTimeout(() => resolve(), ms);
 	});
+
+/**
+ * Wait `ms`, looking every `checkEvery` ms whether the write is still
+ * `stillWanted`, and end the wait at the first look that finds it is
+ * not: a write dropped while it waits — its account changed, or newer
+ * writes took every field — is let go of then, not when the wait is up.
+ */
+export function waitWhileWanted(
+	ms: number,
+	deps: {
+		after: (ms: number, tick: () => void) => () => void;
+		stillWanted: () => boolean;
+		checkEvery?: number;
+	}
+): Promise<void> {
+	const step = deps.checkEvery ?? 1000;
+	return new Promise((resolve) => {
+		const deadline = Date.now() + ms;
+		const look = () => {
+			const left = deadline - Date.now();
+			if (left <= 0 || !deps.stillWanted()) {
+				resolve();
+				return;
+			}
+			deps.after(Math.min(step, left), look);
+		};
+		deps.after(Math.min(step, Math.max(0, ms)), look);
+	});
+}

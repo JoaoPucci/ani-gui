@@ -16,6 +16,10 @@ export interface ToastItem {
 	id: string;
 	kind: ToastKind;
 	message: string;
+	/** What the toast's live region announces: its message, except where
+	 *  an update is a silent one (`update(…, { silent: true })`), which
+	 *  changes what is shown and leaves the announcement as it was. */
+	announcement: string;
 	/** Auto-dismiss after this many ms. `null` pins the toast — only
 	 *  user dismiss removes it. Useful for action-required toasts the
 	 *  user shouldn't miss. */
@@ -54,6 +58,7 @@ class ToastStore {
 			id,
 			kind: args.kind,
 			message: args.message,
+			announcement: args.message,
 			duration,
 			actionLabel: args.actionLabel ?? null,
 			onAction: args.onAction ?? null
@@ -81,11 +86,14 @@ class ToastStore {
 	}
 
 	/** Change toast `id`'s message where it stands: the row is kept, so it
-	 *  neither moves nor animates in again. A toast no longer on the
-	 *  stack is left alone. */
-	update(id: string, message: string): void {
+	 *  neither moves nor animates in again. A `silent` update changes what
+	 *  is shown and not what is announced. A toast no longer on the stack
+	 *  is left alone. */
+	update(id: string, message: string, opts: { silent?: boolean } = {}): void {
 		if (!this.items.some((i) => i.id === id && i.message !== message)) return;
-		this.items = this.items.map((i) => (i.id === id ? { ...i, message } : i));
+		this.items = this.items.map((i) =>
+			i.id === id ? { ...i, message, announcement: opts.silent ? i.announcement : message } : i
+		);
 	}
 
 	private closed(id: string): void {
