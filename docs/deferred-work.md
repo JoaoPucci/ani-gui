@@ -212,18 +212,6 @@ starting it, and delete it when you find it done.
 
 ## Testing and CI
 
-- **The picker oracle reads a mixed-width catalogue tag otherwise than
-  the picker.** The picker folds each character of a bracketed tag to
-  ASCII on its own, so "(ｔv)" is a format tag to it; the oracle's
-  model (`tests/picker-oracle/oracle.py`, its tag pattern) matches a
-  tag written all in ASCII or all in full-width, so it is not. The
-  docs say "brackets and tag alike ASCII or full-width" and do not
-  settle the mixed form. Repro: entry ["Show (ｔv)"], count 12, no
-  year, rows "Show (TV)" 12 and "Other" 12 — the picker picks "Show
-  (TV)", the model refuses. The docs decide it first, then the model
-  follows; a tagged family mixing widths would hold it. The generated
-  set never reaches it, which is why it waited.
-
 - **The CRAP ratchet can disagree between CI and local.** Coverage
   attribution differs between the runner's toolchain and local ones,
   and once put the high-risk count at 26 in one and 25 in the other.
@@ -264,25 +252,6 @@ starting it, and delete it when you find it done.
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
   only, since nothing builds or launches the Windows app in CI.
-- **Frontend tests that sleep, then assert something did not
-  happen.** Many acceptance cases (`frontend/tests/acceptance/`) wait
-  a fixed 10 to 1,500 ms and then assert that no request went out, no
-  notice showed or no state changed. On a slow run the page may not
-  have reached the point where it would have done the thing, and the
-  negative passes without having checked anything. They never fail
-  falsely, so no run has surfaced them. The backend's tests of this
-  shape were converted to positive witnesses, and so were the cases
-  the version picker (#255) and the request lanes (#257) added. The
-  rest are not converted: the older cases, and newer ones such as
-  those the navigation-state, Reload and per-audio verdict fixes added
-  (#267, #268, #269).
-
-  A 0 ms timer is a sleep of the same kind wherever the page's
-  requests pass through MSW: one turn of the event loop is not known
-  to carry them to a handler. Where every stand-in lives in memory, as
-  in the unit tests and in acceptance cases built on a fake
-  EventSource alone, one turn drains every microtask and settles the
-  question.
 
 ## Correctness in the app (continued)
 

@@ -15,9 +15,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -30,6 +31,18 @@ vi.mock('$app/state', () => ({
 		return page;
 	}
 }));
+// The evictions the page asks for, counted as it calls for them: a
+// recovery calls for its eviction in the turn it starts, before the
+// request is on its way.
+const asked = vi.hoisted(() => ({ evictions: 0 }));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		asked.evictions += 1;
+		return real.evictPlayCache(args);
+	};
+	return { ...real, evictPlayCache };
+});
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -49,6 +62,7 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	asked.evictions = 0;
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -94,13 +108,12 @@ interface Scenario {
 }
 
 interface Seen {
-	availabilityAnswered: boolean;
 	evictions: number;
 	resolves: number;
 }
 
 function useHandlers(s: Scenario): Seen {
-	const seen: Seen = { availabilityAnswered: false, evictions: 0, resolves: 0 };
+	const seen: Seen = { evictions: 0, resolves: 0 };
 	const mode = s.mode ?? 'sub';
 	const airing = s.aired ?? null;
 	server.use(
@@ -121,10 +134,9 @@ function useHandlers(s: Scenario): Seen {
 		}),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () => {
-			seen.availabilityAnswered = true;
-			return HttpResponse.json({ ...s.availability, extra_episodes: [] });
-		}),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json({ ...s.availability, extra_episodes: [] })
+		),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const body = (await request.json()) as { mode: string };
 			return HttpResponse.json(body.mode === mode ? NOTHING_CACHED : (s.other ?? NOTHING_CACHED));
@@ -155,16 +167,25 @@ function useHandlers(s: Scenario): Seen {
 	return seen;
 }
 
+const isLookup = (r: PageFetch) => r.path === '/api/availability';
+
+/** The page has read the provider's answer about the show, and has
+ *  written it back: the write follows the read in memory, so one turn
+ *  carries it there. */
+async function availabilityApplied(read: PageFetch[]) {
+	await until(() => read.some(isLookup), 'the availability answer to be read');
+	await afterRead();
+}
+
 /** Mount on episode `episode`'s session, wait for what the page learns
  *  about the show, then fail the stream with MediaError `code`. */
-async function failStream(seen: Seen, episode: number, code: number) {
+async function failStream(episode: number, code: number) {
+	const { read } = watchPageFetches();
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: String(episode), kind: 'mp4' });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
-	await until(() => seen.availabilityAnswered, 'the availability answer');
-	// The answer is written back once its response is read.
-	await new Promise((r) => setTimeout(r, 50));
+	await availabilityApplied(read);
 	const video = playerVideo();
 	Object.defineProperty(video, 'error', { value: { code }, configurable: true });
 	video.dispatchEvent(new Event('error'));
@@ -193,54 +214,54 @@ const NETWORK = 2;
 
 describe('play route — the player-error overlay offers Reload only where it can work', () => {
 	it('a show the provider no longer lists: the catalogue notice, no Reload', async () => {
-		const seen = useHandlers({ availability: { available: false, episode_count: null } });
-		await failStream(seen, 1, DECODE);
+		useHandlers({ availability: { available: false, episode_count: null } });
+		await failStream(1, DECODE);
 		await bodyBecomes(m.detail_unavailable_message());
 		expectDeadEnd();
 	});
 
 	it('a show delisted in dub that the cache has subtitled names the other audio', async () => {
-		const seen = useHandlers({
+		useHandlers({
 			mode: 'dub',
 			availability: { available: false, episode_count: null },
 			other: { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } }
 		});
-		await failStream(seen, 1, DECODE);
+		await failStream(1, DECODE);
 		await bodyBecomes(m.play_error_stream_unavailable_in_dub());
 		expectDeadEnd();
 	});
 
 	it('a show delisted in sub that the cache has dubbed names the other audio', async () => {
-		const seen = useHandlers({
+		useHandlers({
 			mode: 'sub',
 			availability: { available: false, episode_count: null },
 			other: { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } }
 		});
-		await failStream(seen, 1, DECODE);
+		await failStream(1, DECODE);
 		await bodyBecomes(m.play_error_stream_unavailable_in_sub());
 		expectDeadEnd();
 	});
 
 	it('an episode past the playable count: the episode verdict, no Reload', async () => {
-		const seen = useHandlers({ availability: { available: true, episode_count: 8 } });
-		await failStream(seen, 10, DECODE);
+		useHandlers({ availability: { available: true, episode_count: 8 } });
+		await failStream(10, DECODE);
 		await bodyBecomes(m.play_play_failure_episode_unavailable());
 		expectDeadEnd();
 	});
 
 	it('past the count, with the other audio cached as covering it, suggests that audio', async () => {
-		const seen = useHandlers({
+		useHandlers({
 			availability: { available: true, episode_count: 8 },
 			other: { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } }
 		});
-		await failStream(seen, 10, DECODE);
+		await failStream(10, DECODE);
 		await bodyBecomes(m.play_play_failure_episode_unavailable_try_other_audio());
 		expectDeadEnd();
 	});
 
 	it('an episode the schedule calls unaired: says so, no Reload', async () => {
-		const seen = useHandlers({ availability: { available: true, episode_count: 12 }, aired: 5 });
-		await failStream(seen, 7, DECODE);
+		useHandlers({ availability: { available: true, episode_count: 12 }, aired: 5 });
+		await failStream(7, DECODE);
 		await bodyBecomes(m.detail_ep_unaired_tooltip());
 		expectDeadEnd();
 	});
@@ -248,7 +269,7 @@ describe('play route — the player-error overlay offers Reload only where it ca
 	it('a network failure on a delisted show is not sent on a recovery that cannot land', async () => {
 		const seen = useHandlers({ availability: { available: false, episode_count: null } });
 		const toastsBefore = toastStore.items.length;
-		await failStream(seen, 1, NETWORK);
+		await failStream(1, NETWORK);
 		await bodyBecomes(m.detail_unavailable_message());
 		expectDeadEnd();
 		// No eviction and no "recovering" notice: the recovery would end
@@ -271,15 +292,17 @@ describe('play route — the player-error overlay offers Reload only where it ca
 			reloadResolves: true
 		});
 		const toastsBefore = toastStore.items.length;
-		await failStream(seen, 1, NETWORK);
+		await failStream(1, NETWORK);
 		expect(seen.evictions).toBe(0);
 		expect(toastStore.items.length).toBe(toastsBefore);
 		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
 		// A Reload clicked while the lookup is out would be declined in
-		// the same way: it does nothing, and the overlay stays.
+		// the same way: it does nothing, and the overlay stays. A
+		// recovery the click started would have called for its eviction,
+		// and taken the overlay down, before the click returned.
 		(reloadButton() as HTMLButtonElement).click();
-		await new Promise((r) => setTimeout(r, 50));
-		expect(seen.evictions).toBe(0);
+		expect(asked.evictions, 'no eviction is asked for').toBe(0);
+		flushSync();
 		expect(reloadButton()).not.toBeNull();
 		// Once the lookup lands, the Reload goes through.
 		settle();
@@ -290,8 +313,8 @@ describe('play route — the player-error overlay offers Reload only where it ca
 	});
 
 	it('a failure on an episode the switch would take keeps its Reload', async () => {
-		const seen = useHandlers({ availability: { available: true, episode_count: 12 } });
-		await failStream(seen, 1, DECODE);
+		useHandlers({ availability: { available: true, episode_count: 12 } });
+		await failStream(1, DECODE);
 		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
 		expect(body()).toBe(m.play_error_stream_body());
 	});
@@ -314,7 +337,7 @@ describe('play route — the player-error overlay offers Reload only where it ca
 			},
 			reloadResolves: true
 		});
-		await failStream(seen, 1, DECODE);
+		await failStream(1, DECODE);
 		expect(reloadButton()?.textContent?.trim()).toBe(m.play_error_stream_reload());
 		expect(body()).toBe(m.play_error_stream_body());
 		(reloadButton() as HTMLButtonElement).click();
@@ -327,10 +350,10 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		// it names no versions: the version remembered for the show has
 		// nothing to set it apart.
 		applyChoice(KITSU_ID, 'standard');
-		const seen = useHandlers({
+		useHandlers({
 			availability: { available: false, episode_count: null, versions: [] }
 		});
-		await failStream(seen, 1, DECODE);
+		await failStream(1, DECODE);
 		await bodyBecomes(m.detail_unavailable_message());
 		expectDeadEnd();
 	});
@@ -350,7 +373,6 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		server.use(
 			http.post(`${API_BASE}/api/availability`, async () => {
 				await listingHeld;
-				seen.availabilityAnswered = true;
 				return HttpResponse.json({ available: false, episode_count: null, extra_episodes: [] });
 			}),
 			http.post(`${API_BASE}/api/play/cache/evict`, async () => {
@@ -359,6 +381,7 @@ describe('play route — the player-error overlay offers Reload only where it ca
 				return new HttpResponse(null, { status: 204 });
 			})
 		);
+		const { read } = watchPageFetches();
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 		await until(() => playerVideoInSlot(), 'the video in its slot');
@@ -368,9 +391,10 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		video.dispatchEvent(new Event('error'));
 		await until(() => seen.evictions === 1, "the recovery's eviction");
 
+		// The dead end is learned while the eviction is out: the page has
+		// written the answer back before the eviction answers.
 		answerListing();
-		await until(() => seen.availabilityAnswered, 'the availability answer');
-		await new Promise((r) => setTimeout(r, 50));
+		await availabilityApplied(read);
 		releaseEvict();
 
 		await bodyBecomes(m.detail_unavailable_message());

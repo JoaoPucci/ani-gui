@@ -17,6 +17,7 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { HOLD_DELAYS_MS } from '../../src/lib/play/stall-machine';
+import { heldRetries, heldRetriesSettled } from './held-retries';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -29,6 +30,10 @@ vi.mock('$app/navigation', () => ({
 	beforeNavigate: vi.fn(),
 	afterNavigate: vi.fn()
 }));
+
+vi.mock('../../src/lib/play/held-retry', async (importOriginal) =>
+	(await import('./held-retries')).trackHeldRetries(await importOriginal())
+);
 
 vi.mock('hls.js', () => {
 	type Handler = (event: string, data: unknown) => void;
@@ -102,6 +107,7 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	FakeEventSource.instances.length = 0;
 	hlsInstances().length = 0;
+	heldRetries.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
@@ -198,7 +204,11 @@ describe('play route — a network failure with buffered media in hand is held',
 
 		hls.emit(ERROR, NETWORK_FATAL);
 		expect(hls.startLoadCalls).toBe(0);
-		await new Promise((r) => setTimeout(r, 150));
+		// The failure is held: its retry is armed and waiting. The
+		// handler decides synchronously, and a hold returns before the
+		// paths that show or swap anything; the check after the retry
+		// below covers the hold's whole run.
+		expect(heldRetries.map((r) => r.state)).toEqual(['pending']);
 		expect(toastStore.items.length).toBe(toastsBefore);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 
@@ -217,7 +227,9 @@ describe('play route — a network failure with buffered media in hand is held',
 		hls.emit(ERROR, { ...NETWORK_FATAL, frag: { type: 'main' } });
 		hls.emit(ERROR, { ...NETWORK_FATAL, frag: { type: 'audio' } });
 		await until(() => hls.startLoadCalls >= 1, 'the held retry', HOLD_DELAYS_MS[0] + 3000);
-		await new Promise((r) => setTimeout(r, 500));
+		// Every retry the two failures armed has fired or been
+		// cancelled, so a second startLoad would already be counted.
+		await until(heldRetriesSettled, 'every armed retry to fire or be cancelled');
 		expect(hls.startLoadCalls).toBe(1);
 	});
 
@@ -238,7 +250,10 @@ describe('play route — a network failure with buffered media in hand is held',
 			() => FakeEventSource.instances.length > streamsBefore,
 			'the recovery resolve stream'
 		);
-		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		// The retry the hold armed is no longer able to fire: once it
+		// has fired or been cancelled, whatever it did is counted.
+		await until(heldRetriesSettled, 'the held retry to fire or be cancelled');
+		expect(heldRetries.map((r) => r.state)).toEqual(['cancelled']);
 		expect(hls.startLoadCalls).toBe(0);
 	});
 
@@ -255,7 +270,8 @@ describe('play route — a network failure with buffered media in hand is held',
 
 		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
 		video.dispatchEvent(new Event('error'));
-		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		await until(heldRetriesSettled, 'the held retry to fire or be cancelled');
+		expect(heldRetries.map((r) => r.state)).toEqual(['cancelled']);
 		expect(hls.startLoadCalls).toBe(0);
 	});
 
@@ -280,7 +296,14 @@ describe('play route — a network failure with buffered media in hand is held',
 
 		hls.emit(ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(0);
-		await new Promise((r) => setTimeout(r, 150));
+		// The hold runs its course: its retry fires, and a notice the
+		// hold put up at any point of it would be on the list by then.
+		await until(
+			() => heldRetries.length === 1 && heldRetriesSettled(),
+			'the held retry',
+			HOLD_DELAYS_MS[0] + 3000
+		);
+		expect(hls.startLoadCalls).toBe(1);
 		expect(toastStore.items.length).toBe(toastsBefore);
 	});
 
