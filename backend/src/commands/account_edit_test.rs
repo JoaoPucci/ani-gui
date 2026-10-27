@@ -397,23 +397,27 @@ async fn remove_entry_via_treats_a_404_delete_as_already_removed() {
 
 // ─── A disconnect while a write is out ─────────────────────────────────
 
-/// MAL answering the editor's PATCH for MAL 21 after `delay_ms`.
-async fn mal_slow_patch(delay_ms: u64) -> wiremock::MockServer {
+/// MAL's answer to the editor's PATCH for MAL 21.
+fn mal_patch_answer() -> wiremock::ResponseTemplate {
+    wiremock::ResponseTemplate::new(200)
+        .set_body_string(r#"{"status":"watching","num_episodes_watched":3,"is_rewatching":false}"#)
+}
+
+/// MAL answering the editor's PATCH for MAL 21 — held until `hold`'s
+/// gate is released, when there is one — and `/users/@me`.
+async fn mount_mal_patch(mal: &wiremock::MockServer, hold: Option<crate::held::Hold>) {
     use wiremock::matchers::{method, path};
-    let mal = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("PATCH"))
-        .and(path("/anime/21/my_list_status"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(
-                    r#"{"status":"watching","num_episodes_watched":3,"is_rewatching":false}"#,
-                )
-                .set_delay(std::time::Duration::from_millis(delay_ms)),
-        )
-        .mount(&mal)
-        .await;
-    mount_mal_me(&mal).await;
-    mal
+    let patch = wiremock::Mock::given(method("PATCH")).and(path("/anime/21/my_list_status"));
+    match hold {
+        Some(hold) => {
+            patch
+                .respond_with(crate::held::Held::new(hold, mal_patch_answer()))
+                .mount(mal)
+                .await;
+        }
+        None => patch.respond_with(mal_patch_answer()).mount(mal).await,
+    }
+    mount_mal_me(mal).await;
 }
 
 fn cached_rows(state: &AppState) -> usize {
@@ -428,7 +432,10 @@ async fn a_save_that_lands_after_a_disconnect_does_not_put_the_account_back_in_t
     // disconnect purges the account's cached list, and the save's
     // answer arriving afterwards must not write a row for it again.
     let kitsu = mappable_kitsu().await;
-    let mal = mal_slow_patch(300).await;
+    // The server first, so the gate goes first however the test ends.
+    let mal = wiremock::MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
+    mount_mal_patch(&mal, Some(hold)).await;
     let state = state_with_kitsu(&kitsu.uri());
     let provider = mal_provider(&mal.uri());
     let tokens = test_tokens();
@@ -443,10 +450,13 @@ async fn a_save_that_lands_after_a_disconnect_does_not_put_the_account_back_in_t
             ..Default::default()
         },
     );
+    // The disconnect lands while the PATCH is at MAL: held there until
+    // the purge is done.
     let disconnect = async {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        gate.asked().await;
         crate::commands::account::clear_cache(&state, ProviderKind::MyAnimeList, "4242")
             .expect("purge");
+        gate.release();
     };
     let (saved, ()) = tokio::join!(save, disconnect);
     saved.expect("the tracker took the write");
@@ -462,7 +472,8 @@ async fn a_save_started_after_a_reconnect_is_cached_again() {
     // A disconnect does not stop the cache for good: the account
     // connected again writes through as before.
     let kitsu = mappable_kitsu().await;
-    let mal = mal_slow_patch(0).await;
+    let mal = wiremock::MockServer::start().await;
+    mount_mal_patch(&mal, None).await;
     let state = state_with_kitsu(&kitsu.uri());
     crate::commands::account::clear_cache(&state, ProviderKind::MyAnimeList, "4242")
         .expect("purge");
@@ -490,7 +501,8 @@ async fn a_save_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_a
     // the user disconnects while it waits. Its request began before the
     // purge, so its answer must not write the account back.
     let kitsu = mappable_kitsu().await;
-    let mal = mal_slow_patch(0).await;
+    let mal = wiremock::MockServer::start().await;
+    mount_mal_patch(&mal, None).await;
     let state = state_with_kitsu(&kitsu.uri());
     let provider = mal_provider(&mal.uri());
     let tokens = test_tokens();
@@ -498,6 +510,9 @@ async fn a_save_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_a
         .account_write_locks
         .for_show(ProviderKind::MyAnimeList, "12");
     let guard = lock.lock().await;
+    // Queued behind the lock: the save has arrived, and noted its
+    // epoch, before the purge.
+    let queue = crate::held::queue(crate::held::lock_key(&*lock));
     let save = set_entry_via(
         &state,
         ProviderKind::MyAnimeList,
@@ -510,7 +525,7 @@ async fn a_save_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_a
         },
     );
     let disconnect = async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        queue.joined().await;
         crate::commands::account::clear_cache(&state, ProviderKind::MyAnimeList, "4242")
             .expect("purge");
         drop(guard);
