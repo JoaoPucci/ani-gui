@@ -158,6 +158,10 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller knows the entry
     /// ([`super::play_native_appended`]).
     pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
+    /// Where each listing the walk picks is handed as it is picked,
+    /// whether or not the episode then serves
+    /// ([`crate::commands::listing_tags`]). `None` hands it nowhere.
+    pub heard: Option<&'a dyn crate::commands::listing_tags::ListingSink>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -267,6 +271,16 @@ where
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
+                        // Every version's listing is at hand now, served
+                        // or not.
+                        if let Some(sink) = req.heard {
+                            for (hit, episodes) in picked.copies() {
+                                sink.heard(
+                                    &ShowKey::new(client.id(), hit.slug.clone()).to_string(),
+                                    episodes,
+                                );
+                            }
+                        }
                         // The version asked for, or the next that
                         // carries the episode in the mode, each read
                         // through its own display stamp.

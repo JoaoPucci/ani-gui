@@ -152,6 +152,7 @@ impl PlayArgs {
             version: self.version,
             stamps_beside,
             tail,
+            heard: None,
         }
     }
 }

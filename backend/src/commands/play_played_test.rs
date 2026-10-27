@@ -611,6 +611,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
             version: None,
             stamps_beside: None,
             tail: None,
+            heard: None,
         },
         &mut |_| {},
     )
@@ -798,6 +799,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             version: None,
             stamps_beside: None,
             tail: None,
+            heard: None,
         },
         &mut |_| {},
     )

@@ -34,6 +34,12 @@ pub(crate) fn put(state: &AppState, show_key: &str, tags: &[String]) {
     }
 }
 
+/// Where a walk hands each listing it picks, as it picks it.
+pub trait ListingSink: Send + Sync + std::fmt::Debug {
+    /// `episodes`, the listing of `show_key`, is at hand.
+    fn heard(&self, show_key: &str, episodes: &[crate::scraper::provider::EpisodeRef]);
+}
+
 /// The extra tags `show_key`'s listing last carried, or `None` when the
 /// app has not had that listing at hand within the record's lifetime.
 pub(crate) fn get(state: &AppState, show_key: &str) -> Option<Vec<String>> {
