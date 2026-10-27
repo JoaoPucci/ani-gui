@@ -39,6 +39,9 @@ struct FakeState {
     looks: u32,
     looks_since_kill: u32,
     gone_after_looks: Option<u32>,
+    /// Gone once killed this many times: a member that joined the tree
+    /// as a kill landed survives that kill, and goes with the next.
+    gone_after_kills: Option<u32>,
 }
 
 impl Tree for FakeTree {
@@ -57,7 +60,11 @@ impl Tree for FakeTree {
     }
 
     fn kill(&mut self) {
-        self.state.lock().expect("fake tree").kills += 1;
+        let mut s = self.state.lock().expect("fake tree");
+        s.kills += 1;
+        if s.gone_after_kills.is_some_and(|n| s.kills >= n) {
+            s.running = false;
+        }
     }
 }
 
@@ -107,7 +114,9 @@ async fn a_tree_left_running_by_a_child_that_exited_is_taken_down_and_waited_for
     guard.wait().await.expect("the child exits");
     assert!(guard.take_down().await, "the tree is gone");
     let s = state.lock().expect("fake tree");
-    assert_eq!(s.kills, 1, "what was left was killed once");
+    // Killed, and asked again only if a stall kept it from going within
+    // a repeat: how often is the scheduler's business.
+    assert!(s.kills >= 1, "what was left was killed");
     assert!(!s.running);
 }
 
@@ -132,6 +141,11 @@ async fn a_tree_that_never_empties_is_given_up_and_the_drop_does_not_wait_again(
     let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
     guard.wait().await.expect("the child exits");
     assert!(!guard.take_down().await, "past the ceiling it is given up");
+    let asked = state.lock().expect("fake tree").kills;
+    assert!(
+        asked > 1,
+        "the teardown asked again while the tree was left"
+    );
     // Waiting is looking: the guard's wait looks at the tree until it
     // is gone or the ceiling passes. A drop that does not look has not
     // waited, however long the machine took to run it.
@@ -142,15 +156,16 @@ async fn a_tree_that_never_empties_is_given_up_and_the_drop_does_not_wait_again(
         s.looks, looked,
         "the drop waited for the tree a second time"
     );
-    assert_eq!(s.kills, 2, "the drop asks for the kill again");
+    assert_eq!(s.kills, asked + 1, "the drop asks for the kill again");
 }
 
 /// The app's ceiling itself: a teardown whose tree never empties gives
-/// up at the ceiling, not before it and not a look's wait after. Timed
-/// on tokio's clock paused ([`TreeKillChild::on_tokio_clock`]), which
-/// moves only from one of the teardown's waits between looks to the
-/// next, so how fast the machine runs the looks has no say in it. The
-/// app measures the same deadline on the wall clock.
+/// up at the ceiling, not before it and not a look's wait after, and
+/// asks again every repeat while it waits. Timed on tokio's clock
+/// paused ([`TreeKillChild::on_tokio_clock`]), which moves only from
+/// one of the teardown's waits between looks to the next, so how fast
+/// the machine runs the looks has no say in it. The app measures the
+/// same deadline on the wall clock.
 #[tokio::test(start_paused = true)]
 async fn a_teardown_gives_up_at_the_ceiling_exactly() {
     let (tree, state) = fake_tree(true, None);
@@ -164,7 +179,11 @@ async fn a_teardown_gives_up_at_the_ceiling_exactly() {
     let look = std::time::Duration::from_millis(12);
     assert!(took >= TREE_EXIT_CEILING, "gave up early: {took:?}");
     assert!(took <= TREE_EXIT_CEILING + look, "gave up late: {took:?}");
-    assert_eq!(state.lock().expect("fake tree").kills, 1);
+    // The first kill, then one every repeat until the ceiling, which
+    // ends the wait before the ask that would fall on it.
+    let repeats = TREE_EXIT_CEILING.as_millis() / TREE_KILL_REPEAT.as_millis();
+    let want = u32::try_from(repeats).expect("a few repeats");
+    assert_eq!(state.lock().expect("fake tree").kills, want);
 }
 
 #[tokio::test]
@@ -190,7 +209,7 @@ async fn a_dropped_guard_whose_tree_is_already_gone_sends_nothing() {
 }
 
 #[tokio::test]
-async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_once() {
+async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_out() {
     // The drop's own wait: nothing took the tree down before it, so it
     // kills, waits the ceiling out and gives up rather than hang.
     let (tree, state) = fake_tree(true, None);
@@ -200,12 +219,58 @@ async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_once() {
     drop(guard);
     let took = dropped.elapsed();
     // A wait ends at the ceiling or after it, never before, however
-    // fast the machine; how far after is the scheduler's business. Each
-    // of the guard's waits starts with a kill, so one kill is one wait.
+    // fast the machine; how far after is the scheduler's business. A
+    // wait asks again every repeat while the tree is left, so its kills
+    // no longer count its waits: the drop's teardown has one wait, and
+    // the case reads that it asked again and looked while it waited.
     assert!(took >= TREE_EXIT_CEILING, "it waited: {took:?}");
     let s = state.lock().expect("fake tree");
-    assert_eq!(s.kills, 1, "it waited once");
+    assert!(s.kills > 1, "it asked again while the tree was left");
     assert!(s.looks > 1, "it looked at the tree while it waited");
+}
+
+/// A kill reaches the members a tree has as it lands. A tool forking
+/// as its kill lands can add a member after it. Linux delivers a group
+/// signal that lands mid-fork to the child as well, or cancels the fork
+/// when the signal is fatal, so the child is killed too; macOS documents
+/// no such guarantee, and a child that escapes the kill runs on inside
+/// the group. A teardown that asked once then waits out its ceiling on a
+/// member nobody asked to die, and the run it tore down ends as
+/// outlived. A teardown asks again while anything of the tree is left.
+#[tokio::test]
+async fn a_member_that_joins_the_tree_as_it_is_killed_is_killed_too() {
+    let (tree, state) = fake_tree_gone_after_kills(2);
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    guard.wait().await.expect("the child exits");
+    assert!(
+        guard.take_down().await,
+        "the member that joined after the kill was killed too"
+    );
+    assert_eq!(state.lock().expect("fake tree").kills, 2);
+}
+
+/// The drop's own teardown, for the same tree.
+#[tokio::test]
+async fn a_dropped_guard_kills_a_member_that_joins_the_tree_as_it_is_killed() {
+    let (tree, state) = fake_tree_gone_after_kills(2);
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    guard.wait().await.expect("the child exits");
+    drop(guard);
+    let s = state.lock().expect("fake tree");
+    assert_eq!(
+        s.kills, 2,
+        "the member that joined after the kill was killed too"
+    );
+    assert!(!s.running);
+}
+
+/// A tree running until killed `kills` times.
+fn fake_tree_gone_after_kills(
+    kills: u32,
+) -> (FakeTree, std::sync::Arc<std::sync::Mutex<FakeState>>) {
+    let (tree, state) = fake_tree(true, None);
+    state.lock().expect("fake tree").gone_after_kills = Some(kills);
+    (tree, state)
 }
 
 /// A tool whose first act is to start a helper and exit. On Windows a
