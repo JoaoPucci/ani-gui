@@ -573,9 +573,9 @@ fn a_migration_that_fails_leaves_none_of_its_batch_applied() {
     assert_eq!(applied, 0, "no migration recorded as applied");
 }
 
-/// The one-time pass runs inside its own single write and only once:
-/// on a fresh cache it is the third of the three commits, and opening
-/// the cache again writes nothing.
+/// The one-time pass runs only once: a fresh cache ends at version 2,
+/// and opening it again writes nothing. That the pass is one of the
+/// fresh cache's three commits is `a_fresh_cache_is_made_in_three_commits`.
 #[test]
 fn a_fresh_cache_runs_the_one_time_pass_once() {
     let dir = tempfile::tempdir().unwrap();
