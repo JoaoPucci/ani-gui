@@ -93,3 +93,27 @@ async fn two_identical_writes_at_once_each_go_out() {
     );
     let _ = (a, b);
 }
+
+proptest::proptest! {
+    /// A body is a write exactly when its query opens with `mutation`,
+    /// whatever whitespace leads it; a query, or a body with no query
+    /// text, is not.
+    #[test]
+    fn a_body_is_a_write_exactly_when_its_query_opens_with_mutation(
+        lead in "[ \t\n]{0,3}",
+        word in proptest::sample::select(vec!["mutation", "query", "Mutation", "subscription", ""]),
+        rest in "[ A-Za-z{}()$:!]{0,20}",
+    ) {
+        let text = format!("{lead}{word}{rest}");
+        let body = serde_json::json!({ "query": text });
+        proptest::prop_assert_eq!(super::is_mutation(&body), word == "mutation");
+    }
+
+    #[test]
+    fn a_body_without_query_text_is_not_a_write(n in proptest::num::i64::ANY) {
+        let numeric = serde_json::json!({ "query": n });
+        let no_query = serde_json::json!({ "variables": n });
+        proptest::prop_assert!(!super::is_mutation(&numeric));
+        proptest::prop_assert!(!super::is_mutation(&no_query));
+    }
+}
