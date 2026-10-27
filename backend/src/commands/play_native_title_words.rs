@@ -123,13 +123,32 @@ pub(crate) fn cardinal(word: &str) -> Option<u32> {
 }
 
 /// A one- or two-digit number glued to the end of a Japanese word
-/// ("ショー2", "怪獣8号" aside — that one ends on a kanji).
+/// ("ショー2", "怪獣8号" aside — that one ends on a kanji). After any
+/// other letter the digits are the word's own: "Show2", "ＳＨＯＷ２",
+/// "Café2".
 pub(crate) fn glued_number(word: &str) -> Option<u32> {
     let digits = word.len() - word.trim_end_matches(|c: char| c.is_ascii_digit()).len();
     let (head, tail) = word.split_at(word.len() - digits);
     head.chars()
         .last()
-        .is_some_and(|c| !c.is_ascii())
+        .is_some_and(is_japanese)
         .then(|| small_number(tail))
         .flatten()
+}
+
+/// Whether `c` is a Japanese letter: a letter of the Hiragana and
+/// Katakana blocks, of the CJK ideographs' main block or its first
+/// extension, the iteration and closing marks (々, 〆, 〇), or a letter
+/// of half-width katakana. The long-vowel marks ー and ｰ and the
+/// half-width sound marks ﾞ and ﾟ are letters; ・, ゠ and the spacing
+/// sound marks ゛ and ゜ are none.
+pub(crate) fn is_japanese(c: char) -> bool {
+    matches!(
+        c,
+        '\u{3005}'..='\u{3007}'
+            | '\u{3040}'..='\u{30FF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{FF66}'..='\u{FF9F}'
+    ) && c.is_alphanumeric()
 }

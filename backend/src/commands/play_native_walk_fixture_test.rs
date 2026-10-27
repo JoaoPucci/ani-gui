@@ -2418,6 +2418,107 @@ async fn another_entry_of_the_same_show_leaves_a_clean_miss() {
     }
 }
 
+/// A number glued to a word outside Japanese is the word's: "ＳＨＯＷ２"
+/// is no season before "ＳＨＯＷ３", as "Show2" is none before "Show 3",
+/// and is picked; glued to a Japanese word it is a number, refused by
+/// title as "Show 2" is for "Show 3".
+#[tokio::test]
+async fn a_number_glued_to_a_word_outside_japanese_is_the_word_s() {
+    for (entry, listing) in [
+        ("ＳＨＯＷ３", "ＳＨＯＷ２"),
+        ("Café3", "Café2"),
+        ("Шоу3", "Шоу2"),
+        ("Show 3", "Show2"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
+        match walk_over(site).await {
+            Ok(p) => assert_eq!(p.hit.slug, "x", "{entry}"),
+            Err(e) => panic!("{entry}: {listing} refused: {e:?}"),
+        }
+    }
+    for (entry, listing) in [
+        ("ショー３", "ショー２"),
+        ("ｼｮｰ3", "ｼｮｰ2"),
+        ("時々3", "時々2"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
+        match walk_over(site).await {
+            Err(e) => assert!(e.refused_by_name && !e.clean_miss, "{entry}: {e:?}"),
+            Ok(p) => panic!("{entry}: picked {}", p.hit.slug),
+        }
+    }
+}
+
+/// Digits glued before a letter outside Japanese are a word, not a
+/// number in the stem's place: "Show 1é Season 1" opens past "Show"
+/// on the word "1é", which names no division, so it names no season
+/// before "Show 2" and is picked, as "Show Arc Season 1" would be read.
+#[tokio::test]
+async fn digits_before_a_letter_outside_japanese_are_no_number_in_the_stem_s_place() {
+    for count in [Some(12), None] {
+        let site = pool_of(
+            &["Show 2"],
+            count,
+            2020,
+            "Show 2",
+            &[("x", "Show 1é Season 1", 12)],
+        );
+        match walk_over(site).await {
+            Ok(p) => assert_eq!(p.hit.slug, "x", "{count:?}"),
+            Err(e) => panic!("{count:?}: refused: {e:?}"),
+        }
+    }
+}
+
+/// An entry title that is nothing but a division has an empty stem,
+/// which is no stem: nothing is read past it, so "1st Season" names no
+/// season before "Season 2" any more than "Season 1" does, and both are
+/// picked. "2nd Season" for "Season 3" names a 2 the entry does not, and
+/// is refused by title as "Show 2nd Season" is for "Show Season 3".
+#[tokio::test]
+async fn nothing_is_read_past_an_empty_stem() {
+    for count in [Some(12), None] {
+        for (entry, listing) in [("Season 2", "Season 1"), ("Season 2", "1st Season")] {
+            let site = pool_of(&[entry], count, 2020, entry, &[("x", listing, 12)]);
+            match walk_over(site).await {
+                Ok(p) => assert_eq!(p.hit.slug, "x", "{entry}, {listing}, {count:?}"),
+                Err(e) => panic!("{entry}, {listing}, {count:?}: refused: {e:?}"),
+            }
+        }
+        let site = pool_of(
+            &["Season 3"],
+            count,
+            2020,
+            "Season 3",
+            &[("x", "2nd Season", 12)],
+        );
+        match walk_over(site).await {
+            Err(e) => assert!(e.refused_by_name && !e.clean_miss, "{count:?}: {e:?}"),
+            Ok(p) => panic!("{count:?}: picked 2nd Season ({})", p.hit.slug),
+        }
+    }
+}
+
+/// An empty name is no name for the entry before either, whatever marks
+/// open the title: "・第1期" is not the entry before "・第2期", nor
+/// "- Season 1" before "- Season 2"; each is picked.
+#[tokio::test]
+async fn an_empty_name_names_no_entry_before() {
+    for (entry, listing) in [
+        ("・第2期", "・第1期"),
+        ("- Season 2", "- Season 1"),
+        (": Season 2", ": Season 1"),
+    ] {
+        for count in [Some(12), None] {
+            let site = pool_of(&[entry], count, 2020, entry, &[("x", listing, 12)]);
+            match walk_over(site).await {
+                Ok(p) => assert_eq!(p.hit.slug, "x", "{entry}, {count:?}"),
+                Err(e) => panic!("{entry}, {listing}, {count:?}: refused: {e:?}"),
+            }
+        }
+    }
+}
+
 /// A separator between the name and its first divisions is no mark of
 /// its own, and the name is compared word by word: each of these is
 /// the entry before the entry, never picked.
@@ -2430,6 +2531,8 @@ async fn a_separator_does_not_hide_the_entry_before() {
         ("Steins;Gate 0", "Steins Gate"),
         ("ショー第2期", "ショー：第1期"),
         ("[Oshi no Ko] 2nd Season", "Oshi no Ko"),
+        ("［Oshi no Ko］ 2nd Season", "Oshi no Ko"),
+        ("［Show］ 2", "Show"),
     ] {
         let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
         if let Ok(p) = walk_over(site).await {

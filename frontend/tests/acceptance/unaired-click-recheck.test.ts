@@ -14,6 +14,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 
@@ -22,6 +23,20 @@ vi.mock('$app/state', () => ({
 		return page;
 	}
 }));
+// Both routes run an unaired click through `runUnairedClick`, whose
+// promise settles once the click has acted on its check's answer, and
+// resolves to what it did. Recording each lets a case wait for that
+// and read it, rather than wait a fixed time.
+const unairedClicks = vi.hoisted(() => [] as Promise<string>[]);
+vi.mock('$lib/detail/unaired-click', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/detail/unaired-click')>();
+	const runUnairedClick: typeof real.runUnairedClick = (deps) => {
+		const click = real.runUnairedClick(deps);
+		unairedClicks.push(click);
+		return click;
+	};
+	return { ...real, runUnairedClick };
+});
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -119,6 +134,7 @@ function serve(
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	vi.mocked(goto).mockClear();
+	unairedClicks.length = 0;
 	forgetNavigationListeners();
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -139,6 +155,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 		await new Promise((r) => setTimeout(r, 10));
 	}
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
+}
+
+/** What the last unaired click did, once it has done it. Whatever it
+ *  set off — a play, a switch — has asked what it asks by the time the
+ *  page's requests have settled. */
+async function unairedClickOver(pageFetches: { settled(what: string): Promise<void> }) {
+	await until(() => unairedClicks.length > 0, 'an unaired click');
+	const plan = await unairedClicks[unairedClicks.length - 1];
+	await afterRead();
+	await pageFetches.settled('what the click set off');
+	return plan;
 }
 
 const tile = (n: number) =>
@@ -176,8 +203,19 @@ describe('detail route — clicking an episode the page calls unaired', () => {
 		);
 		await until(() => tile(3)?.getAttribute('aria-disabled') === 'false', 'the page released');
 
+		// The second click is answered from the first one's verdict:
+		// the user hears it again, which is the click having run to its
+		// end, and the refresh it would otherwise send is counted as the
+		// page sends it.
+		const { sent } = watchPageFetches();
+		const told = () =>
+			toastStore.items.filter((t) => t.message === m.detail_ep_unaired_still()).length;
+		const toldBefore = told();
 		tile(3)!.click();
-		await new Promise((r) => setTimeout(r, 100));
+		await until(() => told() > toldBefore, 'the still-unaired message again');
+		await afterRead();
+		expect(sent.filter((r) => r.query.get('refresh') === 'true')).toEqual([]);
+		expect(sent.filter((r) => r.path === '/api/play' && !r.body.prefetch)).toEqual([]);
 		expect(refreshes).toHaveLength(2);
 		expect(playedEpisode(3)).toBe(false);
 	});
@@ -194,6 +232,7 @@ describe('leaving the show while the check is out', () => {
 		setParams({ id: '7004' });
 		serve('7004', { airsOnRefresh: true, hold });
 		serve('7005', { airsOnRefresh: false, aired: 1 });
+		const pageFetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => tile(3)?.classList.contains('ep-tile-unaired') === true, 'tile 3 unaired');
 
@@ -211,7 +250,11 @@ describe('leaving the show while the check is out', () => {
 			() => target.querySelector('[role="status"].backdrop') === null,
 			'the page let go once the check for the show left behind settled'
 		);
-		await new Promise((r) => setTimeout(r, 100));
+		// The check's answer is about the show left behind: the click
+		// does nothing with it, and nothing it would have set off is
+		// asked for.
+		expect(await unairedClickOver(pageFetches)).toBe('none');
+		expect(pageFetches.sent.filter((r) => r.path === '/api/play' && !r.body.prefetch)).toEqual([]);
 		expect(tile(2)?.classList.contains('ep-tile-unaired')).toBe(true);
 		expect(tile(3)?.classList.contains('ep-tile-unaired')).toBe(true);
 		expect(playedEpisode(3)).toBe(false);
@@ -243,6 +286,7 @@ describe('a navigation the viewer starts while the check is out', () => {
 		const hold = new Promise<void>((r) => (release = r));
 		setParams({ id: '7006' });
 		serve('7006', { airsOnRefresh: true, hold });
+		const pageFetches = watchPageFetches();
 		app = mount(DetailPage, { target });
 		await until(() => tile(3)?.classList.contains('ep-tile-unaired') === true, 'tile 3 unaired');
 
@@ -250,8 +294,12 @@ describe('a navigation the viewer starts while the check is out', () => {
 		await until(() => refreshes.length === 2, 'the check to go out');
 		startNavigation();
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The check's answer is the one about a page the viewer is
+		// leaving: the click does nothing with it, and nothing it would
+		// have set off is asked for.
+		expect(await unairedClickOver(pageFetches)).toBe('none');
 
+		expect(pageFetches.sent.filter((r) => r.path === '/api/play' && !r.body.prefetch)).toEqual([]);
 		expect(playedEpisode(3)).toBe(false);
 		expect(goto).not.toHaveBeenCalled();
 		expect(target.querySelector('[role="status"].backdrop')).toBeNull();
@@ -263,6 +311,7 @@ describe('a navigation the viewer starts while the check is out', () => {
 		setParams({ id: '7007' });
 		setUrl('/play/7007', { episode: '1' });
 		serve('7007', { airsOnRefresh: true, hold });
+		const pageFetches = watchPageFetches();
 		app = mount(PlayPage, { target });
 		await until(() => tile(3)?.classList.contains('ep-card-unaired') === true, 'card 3 unaired');
 
@@ -270,8 +319,12 @@ describe('a navigation the viewer starts while the check is out', () => {
 		await until(() => refreshes.length === 2, 'the check to go out');
 		startNavigation();
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		// The check's answer is the one about a page the viewer is
+		// leaving: the click does nothing with it, and nothing it would
+		// have set off is asked for.
+		expect(await unairedClickOver(pageFetches)).toBe('none');
 
+		expect(pageFetches.sent.filter((r) => r.path === '/api/play' && !r.body.prefetch)).toEqual([]);
 		expect(playedEpisode(3)).toBe(false);
 		expect(goto).not.toHaveBeenCalled();
 	});
