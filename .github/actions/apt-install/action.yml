@@ -25,6 +25,21 @@ description: >
 # downloads only what that cache lacks, and master saves the new plan
 # once.
 #
+# The plan depends on what the runner image already has installed,
+# and while a new image rolls out, runners of one ImageOS serve jobs
+# on two image versions at once: the Rust jobs' list planned 106 files
+# on image 20261012.163.1, which needed three curl upgrades, and 103
+# on 20261025.179.1. The image version is not in the key prefix, so
+# jobs, and runs of one job, sharing a package list do not necessarily
+# share a key; each distinct plan gets its own cache, about 75 MB per
+# extra plan for the Rust jobs' list. A run whose plan master has
+# saved restores it exactly and saves nothing; one whose plan is new
+# to master falls back to the list's most recently saved cache (which
+# can be the other image's plan), apt downloads only what that cache
+# lacks, and master saves the new plan the first time it meets it. A
+# list whose packages are all installed at their newest version plans
+# no download, and nothing is restored or saved.
+#
 # The files live in a directory of their own rather than apt's default
 # one, so nothing that cleans /var/cache/apt/archives (`apt-get clean`,
 # or a container image's post-install hook) can empty it before the
