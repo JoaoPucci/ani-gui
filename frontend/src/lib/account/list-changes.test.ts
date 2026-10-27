@@ -66,6 +66,20 @@ describe('railNeedsReread', () => {
 		expect(railNeedsReread(change(['mal'], 'progress'), ['mal'])).toBe(true);
 	});
 
+	it('is not wanted when every write the row would show failed: a failed write leaves the cached list as it was', () => {
+		expect(
+			railNeedsReread({ kitsuId: '12', providers: ['anilist'], landed: [], source: 'editor' }, [
+				'anilist'
+			])
+		).toBe(false);
+		expect(
+			railNeedsReread(
+				{ kitsuId: '12', providers: ['anilist', 'mal'], landed: ['mal'], source: 'editor' },
+				['anilist']
+			)
+		).toBe(false);
+	});
+
 	it('is not wanted for a tracker the row does not show', () => {
 		expect(railNeedsReread(change(['mal']), ['anilist'])).toBe(false);
 		expect(railNeedsReread(change(['anilist']), [])).toBe(false);

@@ -148,3 +148,32 @@ describe("detail route — a held progress write for the show lands while it's o
 		expect(entryReads).toBe(before);
 	});
 });
+
+describe('detail route — a held progress write lands while the entry read waits out a rate limit', () => {
+	it('still ends the read the way a refused read ends: the control says the tracker is busy', async () => {
+		// The page opens while AniList's allowance is spent: its read of the
+		// entry is refused, and refused again when it asks once more. The
+		// progress write lands in between. Its re-read must not leave the
+		// control waiting for a read nobody is making.
+		let refusals = 0;
+		server.use(
+			http.get(`${API_BASE}/api/account/entry/anilist`, () => {
+				entryReads += 1;
+				refusals += 1;
+				return HttpResponse.json(
+					{
+						kind: 'rate_limited',
+						key: 'error.network.rate_limited',
+						retry_after_secs: refusals === 1 ? 2 : 1
+					},
+					{ status: 429 }
+				);
+			})
+		);
+		const pending = syncWatchedToTrackers(KITSU_ID, 1);
+		app = mount(DetailPage, { target });
+		await pending;
+		const busy = m.errors_reason_busy_wait({ seconds: 1 });
+		await until(() => (target.textContent ?? '').includes(busy), `the busy notice "${busy}"`);
+	});
+});
