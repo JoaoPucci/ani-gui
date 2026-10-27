@@ -186,7 +186,11 @@ use crate::proxy::MediaKind;
 // and a HEAD-passing hit for a request naming that extra — a history
 // row's Continue, a link — would keep playing and recording it as the
 // extra; bumping re-resolves.
-const SCHEMA: &str = "v24";
+// v25: a row records whether its episode is a row past Kitsu's count
+// no reading reached (episode_unverified), which a replay hands the
+// renderer so it writes nothing to the trackers. A v24 row reads as
+// verified whatever its reading was; bumping re-resolves.
+const SCHEMA: &str = "v25";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
