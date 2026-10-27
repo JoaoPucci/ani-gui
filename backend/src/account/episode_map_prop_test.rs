@@ -956,7 +956,15 @@ proptest! {
         if ev.kitsu.episodes.filter(|n| *n > 0 && *n < total).is_none() {
             return Ok(());
         }
-        if shared_entry(&ev, total).is_some() && chain_files_otherwise(&ev, total) {
+        // The chain the map reads ends before a part that aired first.
+        let mut ordered = ev.clone();
+        let in_order = ordered
+            .parts
+            .windows(2)
+            .position(|w| model::aired_first(w[1].start.as_deref(), w[0].start.as_deref()))
+            .map_or(ordered.parts.len(), |i| i + 1);
+        ordered.parts.truncate(in_order);
+        if shared_entry(&ordered, total).is_some() && chain_files_otherwise(&ordered, total) {
             prop_assert_eq!(map_show(&ev), EpisodeMap::identity(Identity::Conflict));
         }
     }

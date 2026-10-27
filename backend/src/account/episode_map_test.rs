@@ -828,9 +828,22 @@ fn two_rules_filing_the_episodes_the_same_way_are_one_explanation() {
     let map = map_show(&ev);
     assert_eq!(map.shape, Shape::SharedEntry);
     assert_eq!(map.target(1), mapped(51_535, 2, true, &[]));
-    // Filing them differently is still a conflict.
+    // Filing them differently is still a conflict, where the dates do
+    // not settle which aired first.
     ev.parts.reverse();
+    for part in &mut ev.parts {
+        part.start = Some("2023-03".into());
+    }
     assert_eq!(map_show(&ev), identity(Identity::Conflict));
+    // Chained the other way round with the dates Kitsu gives them, the
+    // later special aired first: it is no later part, and the chain ends
+    // before it, so only the shared set files the entry.
+    let mut dated = final_chapters("47132");
+    dated.parts = vec![
+        kitsu("47132", Some(1), "2023-11-04", "2023-11-04"),
+        kitsu("46038", Some(1), "2023-03-03", "2023-03-03"),
+    ];
+    assert_eq!(map_show(&dated), map);
 }
 
 #[test]
