@@ -296,8 +296,35 @@ async fn a_resolve_keeps_the_former_number_with_its_cached_row() {
     assert_eq!(kept.former_episode.as_deref(), Some("2.5"));
 }
 
-#[tokio::test]
-async fn a_replay_names_the_former_number_its_row_keeps() {
+/// A listing the app has at hand for `show_key`: episodes 1 to 12,
+/// with a row tagged by each of `tags` among them.
+fn hear_listing(state: &AppState, show_key: &str, tags: &[&str]) {
+    let mut episodes: Vec<crate::scraper::provider::EpisodeRef> = (1..=12)
+        .map(|n| crate::scraper::provider::EpisodeRef {
+            id: u64::from(n),
+            number: n,
+            number2: None,
+            former_tag: None,
+            title: None,
+        })
+        .collect();
+    for (i, tag) in tags.iter().enumerate() {
+        episodes.push(crate::scraper::provider::EpisodeRef {
+            id: 100 + i as u64,
+            number: 13 + i as u32,
+            number2: Some((*tag).to_string()),
+            former_tag: None,
+            title: None,
+        });
+    }
+    crate::commands::numbering_offset::retag_from_listing(state, show_key, &episodes);
+}
+
+/// Replay the slot-13 recap from a row that keeps the former number
+/// "24.5", after `heard` (if any) — the show keys and tags of the
+/// listings the app had at hand since — and answer the replay's
+/// session.
+async fn replay_after(heard: &[(&str, &[&str])]) -> CreateSessionResponse {
     let upstream = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("HEAD"))
         .respond_with(wiremock::ResponseTemplate::new(200))
@@ -306,6 +333,9 @@ async fn a_replay_names_the_former_number_its_row_keeps() {
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
     std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    for (show_key, tags) in heard {
+        hear_listing(&state, show_key, tags);
+    }
     let asked = args("12.5");
     let mut row = first_recap_row(&upstream.uri());
     row.former_episode = Some("24.5".into());
@@ -314,7 +344,111 @@ async fn a_replay_names_the_former_number_its_row_keeps() {
         .await
         .expect("replays");
     assert!(resp.cache_hit);
+    resp
+}
+
+#[tokio::test]
+async fn a_replay_names_the_former_number_its_row_keeps() {
+    // The listing the app last had at hand carries no "24.5": a position
+    // kept under it is the recap's, and the replay names it.
+    let resp = replay_after(&[(&stitched_key(), &["12.5", "12.75"])]).await;
     assert_eq!(resp.former_episode.as_deref(), Some("24.5"));
+}
+
+#[tokio::test]
+async fn a_replay_names_no_former_number_the_listing_has_come_to_carry() {
+    // Since the row was written, a listing at hand has come to tag
+    // another episode "24.5": a position under it may be that one's.
+    let resp = replay_after(&[
+        (&stitched_key(), &["12.5"]),
+        (&stitched_key(), &["12.5", "24.5"]),
+    ])
+    .await;
+    assert_eq!(resp.former_episode, None);
+}
+
+#[tokio::test]
+async fn a_replay_names_no_former_number_when_no_listing_is_known() {
+    // Nothing records the listing: whether "24.5" names another episode
+    // is unknown, and an unknown is not replayed as a fact.
+    assert_eq!(replay_after(&[]).await.former_episode, None);
+    // Another show's listing — another version's, another provider's —
+    // says nothing of this one's.
+    let other = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        "stitched-show-uncut-5",
+    )
+    .to_string();
+    assert_eq!(
+        replay_after(&[(&other, &["12.5"])]).await.former_episode,
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_replay_after_a_play_whose_listing_carries_its_former_number_names_none() {
+    // The row's resolve found the opening recap's former number "2.5"
+    // free. Since, the provider's listing tags another recap "2.5", and a
+    // play of episode 5 had that listing at hand; the replay of the
+    // opening recap names no former number.
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let asked = args("1.5");
+    let mut row = first_recap_row(&upstream.uri());
+    row.resolved_slot = Some(2);
+    row.played = Some("1.5".into());
+    row.former_episode = Some("2.5".into());
+    play_resolution_cache::put(&state.cache_pool, &key_for(&asked, "1.5"), &row);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::stitched_shared_former(),
+    ));
+    play_with_progress(&state, &args("5"), |_| {})
+        .await
+        .expect("plays episode 5");
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(resp.former_episode, None);
+}
+
+#[tokio::test]
+async fn a_click_replaying_its_prefetch_names_the_former_number_the_resolve_found() {
+    // The page's prefetch resolves the recap, its former number "2.5"
+    // with it, and leaves the cached row; the click replays the row, and
+    // the listing the prefetch had at hand still leaves "2.5" free.
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let mut prefetch = args("1.5");
+    prefetch.prefetch = true;
+    play_with_progress(&state, &prefetch, |_| {})
+        .await
+        .expect("prefetches");
+    let key = key_for(&prefetch, "1.5");
+    let mut row = play_resolution_cache::get(&state.cache_pool, &key)
+        .expect("readable")
+        .expect("kept");
+    // The stub's stream is not served over HTTP; point the row at one
+    // that answers the replay's check.
+    row.upstream_url = format!("{}/x/master.m3u8", upstream.uri());
+    play_resolution_cache::put(&state.cache_pool, &key, &row);
+    let resp = play_with_progress(&state, &args("1.5"), |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(resp.former_episode.as_deref(), Some("2.5"));
 }
 
 #[tokio::test]
