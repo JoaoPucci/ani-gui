@@ -205,6 +205,36 @@ describe('Watch Later on Home, while a held write waits', () => {
 		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
 	});
 
+	it('grows the first card into an empty row, the same way', async () => {
+		planned = [];
+		backend();
+		const pending = save();
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([]);
+		expect(target.textContent).toContain(m.account_watch_later_empty());
+
+		await pending;
+		await settle();
+		expect(railTitles()).toEqual([NEW.title]);
+		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
+	});
+
+	it('shrinks the last card out, leaving the empty row', async () => {
+		planned = [NEW];
+		backend();
+		const pending = syncRemoveEntry(String(NEW.malId));
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title]);
+
+		await pending;
+		await settle();
+		expect(railTitles()).toEqual([]);
+		expect(target.textContent).toContain(m.account_watch_later_empty());
+		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
+	});
+
 	it('changes nothing when the held add is dropped for another account', async () => {
 		planned = [ALREADY];
 		backend();
