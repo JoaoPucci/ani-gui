@@ -119,7 +119,8 @@ function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S, landAfterM
 					{
 						kind: 'rate_limited',
 						key: 'error.network.rate_limited',
-						retry_after_secs: retryAfter
+						retry_after_secs: retryAfter,
+						refused_by: 'anilist'
 					},
 					{ status: 429 }
 				);

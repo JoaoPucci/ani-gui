@@ -51,12 +51,12 @@ import { toastStore } from '$lib/toasts/store.svelte';
 import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
 
-/** The backend holding a write back: 429 with the wait, by shape (the
- *  api module is mocked here). */
+/** AniList holding a write back: 429 with the wait and the tracker
+ *  that refused, by shape (the api module is mocked here). */
 const refused = (secs: number) =>
 	Object.assign(new Error('rate limited'), {
 		status: 429,
-		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs })
+		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs, refused_by: 'anilist' })
 	});
 
 beforeEach(() => {
