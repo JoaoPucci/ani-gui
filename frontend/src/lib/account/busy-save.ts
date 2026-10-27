@@ -97,9 +97,6 @@ export function saveWhenTrackerAllows<T>(
 			mine = noticeBusy(provider, seconds);
 			notices.set(key, mine);
 		},
-		// Let go of at the first look after it is no longer wanted — its
-		// account changed, or newer writes took every field — rather than
-		// when the wait is up.
 		// Ended early only on what cannot come back: newer writes took every
 		// field, or the tracker is disconnected or another user's. A sign-in
 		// or an account change under way may end on the same user; the

@@ -39,7 +39,8 @@ export function monotonic(): number {
 }
 
 /** The toast shown while `provider` waits `seconds` to take a write. It
- *  counts the wait down in place, read from one deadline, and then says
+ *  counts the wait down in place, read from one deadline on the wait's
+ *  clock, and then says
  *  the save is going; it stays up until taken down — by the write it is
  *  about, a newer write, or the user — and its timer stops whenever it
  *  leaves. Returns its id. */
@@ -51,8 +52,10 @@ export function noticeBusy(provider: Provider, seconds: number): string {
 		duration: null,
 		onClose: () => stop?.()
 	});
-	stop = startCountdown(Date.now() + seconds * 1000, {
-		now: () => Date.now(),
+	// The wait's own clock, so the notice says the save is going when it
+	// does.
+	stop = startCountdown(monotonic() + seconds * 1000, {
+		now: monotonic,
 		after,
 		// The number changes on screen each second without being read out;
 		// the save going is announced.

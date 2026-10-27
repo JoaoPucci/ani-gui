@@ -90,10 +90,11 @@ export async function saveWhenAllowed<T>(
 }
 
 /**
- * Wait `ms`, looking every `checkEvery` ms whether the write is still
- * `stillWanted`, and end the wait at the first look that finds it is
- * not: a write dropped while it waits — its account changed, or newer
- * writes took every field — is let go of then, not when the wait is up.
+ * Wait `ms` on the `now` clock, looking every `checkEvery` ms whether
+ * the write is still `stillWanted`. The wait ends at the first look at
+ * or past its deadline — however late the timer woke for it — or at the
+ * first that finds the write no longer wanted, which the caller decides:
+ * a write let go of then, not when the wait is up.
  */
 export function waitWhileWanted(
 	ms: number,
@@ -106,21 +107,19 @@ export function waitWhileWanted(
 	}
 ): Promise<void> {
 	const step = deps.checkEvery ?? 1000;
-	// Counted in the timer's own steps, not read from the clock: a clock
-	// that jumps cannot make the wait longer than it was told.
-	let left = Math.max(0, ms);
+	const wait = Math.max(0, ms);
+	// A deadline, not a count of steps: a hidden window's throttled timers
+	// wake late, and each late step would add to the wait.
+	const deadline = deps.now() + wait;
 	return new Promise((resolve) => {
 		const look = () => {
+			const left = deadline - deps.now();
 			if (left <= 0 || !deps.stillWanted()) {
 				resolve();
 				return;
 			}
-			const next = Math.min(step, left);
-			left -= next;
-			deps.after(next, look);
+			deps.after(Math.min(step, left), look);
 		};
-		const first = Math.min(step, left);
-		left -= first;
-		deps.after(first, look);
+		deps.after(Math.min(step, wait), look);
 	});
 }
