@@ -62,6 +62,12 @@ struct RowCounts {
 #[derive(Clone, Default)]
 pub struct AvailabilityRefreshes {
     inner: Arc<Mutex<HashMap<String, RowCounts>>>,
+    /// The walks out for each row, so a second lookup of the row
+    /// joins the one already walking. Kept here, beside the row's
+    /// write ordering, because every app state builds this value.
+    pub(crate) flights: crate::commands::availability_flight::AvailabilityFlights,
+    /// The warm's queue and its one worker.
+    pub(crate) warm_queue: crate::commands::availability_warm::WarmQueue,
     locks: Arc<Mutex<HashMap<String, RowLock>>>,
 }
 
