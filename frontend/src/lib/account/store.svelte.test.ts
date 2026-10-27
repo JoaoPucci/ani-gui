@@ -644,11 +644,20 @@ describe('a renewal that a hydrate overtakes', () => {
 			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: 1 })
 		);
 		const renewal = accountStore.refreshExpired();
+		let settled = false;
+		void renewal.then(() => {
+			settled = true;
+		});
 		r.release();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		r.setKeychain(fresh);
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
 		accountStore.hydrate();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// Still waiting means its save is in the queue behind the earlier
+		// write: the re-read landed where this case says, not before the
+		// exchange answered (where the renewal would already be over).
+		expect(settled, 'the renewal is waiting to save').toBe(false);
 		releaseWrite();
 		await earlier;
 		await renewal;
