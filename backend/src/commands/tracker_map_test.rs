@@ -2261,3 +2261,6 @@ async fn a_part_past_the_total_mapped_only_through_the_other_tracker_still_contr
     .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
 }
+
+#[path = "tracker_map_specials_test.rs"]
+mod specials;

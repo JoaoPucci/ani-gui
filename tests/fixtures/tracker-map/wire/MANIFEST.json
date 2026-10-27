@@ -20,11 +20,41 @@
       "size": 545,
       "sha256": "73d67051ab7ea14f4c852e9b3c84de28184ff817b8e26a95d6422f0e4fb3b1d5"
     },
+    "anilist-media-21452.json": {
+      "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 21452)",
+      "notes": "Seikaisuru Kado: 13 episodes against Kitsu's 12, the streaming list holding both an Episode 0 and an Episode 6.5.",
+      "size": 849,
+      "sha256": "7b3899cd50e457b7968d5e22ccd63d2e6069558740ba9eb8e16009d7c100bed0"
+    },
     "anilist-media-4382.json": {
       "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 4382)",
       "notes": "Suzumiya Haruhi no Yuuutsu (2009): 28 episodes, a MOVIE sequel, 28 streaming episodes numbered 1–28 in story order.",
       "size": 2460,
       "sha256": "e15ca4bf2b6f96a0367a1ec2670310a3a4b5da17c04dc5e5334c3720c21fc67a"
+    },
+    "kitsu-anime-11490.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/11490?fields[anime]=<ANIME_FIELDS>",
+      "notes": "Seikaisuru Kado (TV): 12 episodes, 2017-04-07 to 2017-06-30.",
+      "size": 2466,
+      "sha256": "5b304daab5b5e96c8b90e5e1900c4524643e2101508a4c41a9136806dff74f0d"
+    },
+    "kitsu-anime-13323.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/13323?fields[anime]=<ANIME_FIELDS>",
+      "notes": "Seikaisuru Kado: Ninovo, its prologue ONA: 1 episode, 2017-04-06.",
+      "size": 1601,
+      "sha256": "992c362b07cd7ac0ce2acd4ec097ec4868cb526c21f677682fe9541e931d00a0"
+    },
+    "kitsu-anime-7882.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/7882?fields[anime]=<ANIME_FIELDS>",
+      "notes": "Fate/stay night: Unlimited Blade Works (TV): 12 episodes, 2014-10-12 to 2014-12-28.",
+      "size": 2102,
+      "sha256": "0221717b65a0b2a92eb52a72eca6390582a758dbda094445ab59cb7d2caed170"
+    },
+    "kitsu-anime-9718.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/9718?fields[anime]=<ANIME_FIELDS>",
+      "notes": "Unlimited Blade Works' Prologue special: 1 episode, 2014-10-05.",
+      "size": 2553,
+      "sha256": "65559715cdc4fc5b64d155f0f0ff9c6fb7da56c6c606aa661fee5a381a3e73b8"
     },
     "kitsu-mappings-anilist-153406.json": {
       "request": "GET https://kitsu.io/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=153406&include=item&fields[anime]=<ANIME_FIELDS>",
@@ -32,11 +62,47 @@
       "size": 3963,
       "sha256": "146712c55ab9095b004dd97a89fc91dee2eb4477d6f0588a05fa72487c0b3d54"
     },
+    "kitsu-mappings-anilist-19603.json": {
+      "request": "GET https://kitsu.app/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=19603&include=item&fields[anime]=<ANIME_FIELDS>&page[limit]=20",
+      "notes": "One mapping: Kitsu 7882.",
+      "size": 3340,
+      "sha256": "f79427f7090cb4013db98c9abee102d9f8c768c999cb6b846717a31101f4c3dd"
+    },
+    "kitsu-mappings-anilist-21452.json": {
+      "request": "GET https://kitsu.app/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=21452&include=item&fields[anime]=<ANIME_FIELDS>&page[limit]=20",
+      "notes": "One mapping: Kitsu 11490.",
+      "size": 3705,
+      "sha256": "7f0654ab56e240f9ee5b8be42338e6f31f179751ad551be5921b8d6f600718d8"
+    },
+    "kitsu-mappings-mal-22297.json": {
+      "request": "GET https://kitsu.app/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=22297&include=item&fields[anime]=<ANIME_FIELDS>&page[limit]=20",
+      "notes": "One mapping: Kitsu 7882.",
+      "size": 3296,
+      "sha256": "b9a42a3c5a7f3dc0f167d19834802afa38ca955c124506ac3063861892bfdbac"
+    },
+    "kitsu-mappings-mal-32032.json": {
+      "request": "GET https://kitsu.app/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=32032&include=item&fields[anime]=<ANIME_FIELDS>&page[limit]=20",
+      "notes": "One mapping: Kitsu 11490.",
+      "size": 3665,
+      "sha256": "d4221f80e329028983ac76816c123691cb44e3f8142d0dc5f6264628b10437fa"
+    },
     "kitsu-mappings-mal-51535.json": {
       "request": "GET https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=51535&include=item&fields[anime]=<ANIME_FIELDS>",
       "notes": "Two Kitsu entries (46038, 47132) mapped to one MyAnimeList id.",
       "size": 6834,
       "sha256": "49b684699a0867e02f7e48a4fe5a1dfc6d7a6caf21367110f8bf1fc6f21677cc"
+    },
+    "kitsu-relationships-11490.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/11490/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20",
+      "notes": "Four relations: Ninovo (13323) as prequel, two one-episode summaries (13523, 41390), the manga.",
+      "size": 3547,
+      "sha256": "71fe7955feaf09db8a45ec35a1272e36ff960be7c67f3b4d2652a66460c88711"
+    },
+    "kitsu-relationships-13323.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/13323/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20",
+      "notes": "One relation: the TV series (11490) as its sequel.",
+      "size": 1233,
+      "sha256": "e7f9e15e866838b79fd0aead1bf0e4085896bdc94c876bd77a8a8f4519ca5dbe"
     },
     "kitsu-relationships-186.json": {
       "request": "GET https://kitsu.io/api/edge/anime/186/media-relationships?include=destination&page[limit]=20&fields[anime]=<ANIME_FIELDS>",
@@ -49,6 +115,18 @@
       "notes": "Tower of God 2nd Season: a prequel, a manga adaptation, and the sequel Koubou-sen (49244) inlined with its 13-episode count.",
       "size": 11275,
       "sha256": "60b9048f7e0a1c499299e5e50ddaa607f361509cfd6612bceaf0d027f5c6379e"
+    },
+    "kitsu-relationships-7882.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/7882/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20",
+      "notes": "Six relations: the prologue 9718 as its prequel, the second season 10052 as its sequel, three alternative versions and the manga.",
+      "size": 5095,
+      "sha256": "dfd5e54321dfce0ed18739a51cd57c8f8d467632648c961b488f01ebed51ae4f"
+    },
+    "kitsu-relationships-9718.json": {
+      "request": "GET https://kitsu.app/api/edge/anime/9718/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20",
+      "notes": "Three relations: Fate/Zero's second season (7658) as prequel, the TV series (7882) as sequel, the manga.",
+      "size": 2771,
+      "sha256": "45720d3be8c022e01d00fbb4221d947d8725ab40d1e9365be3072a31a6048f07"
     },
     "mal-anime-210.json": {
       "request": "GET https://api.myanimelist.net/v2/anime/210?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true",
