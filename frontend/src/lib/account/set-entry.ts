@@ -56,7 +56,8 @@ export interface RemoveEntryDeps {
  *  clean save (`failed === 0`) from a partial one (a connected tracker the
  *  edit didn't reach). An unmappable provider counts toward neither. */
 export interface SetOutcome {
-	/** Trackers the edit was written to. */
+	/** Trackers the edit was written to, or kept as they are because their
+	 *  row is already as the edit wants it ([`editForTracker`]). */
 	written: number;
 	/** Trackers we couldn't confirm written — a write that threw, or an
 	 *  unreachable (no-bearer) provider. */
@@ -98,10 +99,10 @@ export async function setEntryAcrossTrackers(
 						progress: save.progress,
 						total: save.total ?? null
 					}),
-					current?.status ?? null
+					current
 				);
-				// Nothing to write here: neither landed nor failed.
-				if (edit === null) return 'neither';
+				// Kept as it is: the row is already as the save wants it.
+				if (edit === null) return 'ok';
 				const res = await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
 				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
 			} catch (e) {

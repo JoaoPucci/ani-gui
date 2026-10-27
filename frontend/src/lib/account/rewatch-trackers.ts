@@ -6,7 +6,7 @@
 // listed as Watching, and "finished" lives only in Completed, so a rewatch
 // written to it would erase the record that the user finished the show.
 
-import type { ListStatus, Provider } from './types';
+import type { EntryView, ListStatus, Provider } from './types';
 
 /** Whether a tracker has a rewatch status of its own. */
 export function holdsRewatches(provider: Provider): boolean {
@@ -37,19 +37,25 @@ export function rewatchNoteShown(connected: Provider[], status: ListStatus): boo
 }
 
 /**
- * The edit to send a tracker, given its own `current` status: as built,
- * except that a tracker without a rewatch status is sent no Rewatching. Its
- * row keeps its status — nothing at all is written to a Completed row, and
- * no row is created — while any other row still takes the progress. `null`
- * when nothing is to be written.
+ * The edit to send a tracker, given its own `current` row: as built, except
+ *   - a Completed row whose status the edit leaves alone is never written
+ *     below its count (a rewatch's count, beside it, when the total is
+ *     unknown and cannot snap Completed to it);
+ *   - a tracker without a rewatch status is sent no Rewatching: its row keeps
+ *     its status — nothing at all is written to a Completed row, and no row
+ *     is created — while any other row still takes the progress.
+ * `null` when nothing is to be written: the tracker is kept as it is.
  */
 export function editForTracker<E extends { status?: ListStatus; progress: number }>(
 	provider: Provider,
 	edit: E,
-	current: ListStatus | null
+	current: EntryView | null
 ): Omit<E, 'status'> | E | null {
+	if (current?.status === 'completed' && edit.status === undefined) {
+		if (edit.progress < current.progress) return null;
+	}
 	if (holdsRewatches(provider) || edit.status !== 'rewatching') return edit;
-	if (current === null || current === 'completed') return null;
+	if (current === null || current.status === 'completed') return null;
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { status, ...rest } = edit;
 	return rest;
