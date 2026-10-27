@@ -17,8 +17,10 @@
 //! resolve stamps the offset only for a show with no row here, and no
 //! longer stamps the displaced row it lands on, so neither moves to
 //! another row under such a row.
-//! The rows anidb.app's resolves stamped stay: they are what keeps the
-//! history rows from its days readable.
+//! A retired provider's rows stay while a history row of its still
+//! reads through them; the launch sweep ([`crate::retired_provider`])
+//! writes a kept row's episode in the app's own numbering and then
+//! drops them.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
 //! which is exactly today's behavior.
 //!

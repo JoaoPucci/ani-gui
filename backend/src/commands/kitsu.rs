@@ -355,7 +355,8 @@ pub(crate) const LEGACY_TITLE_MATCH_SEGMENT: &str = "legacy";
 /// The segments a bare history row's title matches were written under
 /// before bare keys named no provider: anidb.app's label, while the
 /// app shipped it. They are no longer read; a removal of the row still
-/// takes them.
+/// takes them, and the launch sweep takes every row under a segment no
+/// walked provider names ([`crate::retired_provider`]).
 pub(crate) const RETIRED_TITLE_MATCH_SEGMENTS: &[&str] = &["anidb.app"];
 
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
