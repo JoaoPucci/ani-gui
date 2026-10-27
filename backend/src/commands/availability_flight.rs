@@ -10,7 +10,7 @@
 //! background admissions and slowing all of them toward the deadline.
 //!
 //! So a walk is a flight, kept per cache row — `(kitsu_id, mode)`, the
-//! key [`cache_key`] names — and a lookup of a row whose walk is out
+//! key [`cache_key`](crate::commands::availability::cache_key) names — and a lookup of a row whose walk is out
 //! waits on that walk instead of starting another. The walk runs in a
 //! task of its own, not inside any one caller, so who leaves when is a
 //! question of bookkeeping rather than of whose future is dropped:
@@ -64,7 +64,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use tokio::sync::watch;
 use tokio::task::AbortHandle;
 
-use super::availability::{cache_key, check_availability, AvailabilityArgs, AvailabilityResponse};
+use super::availability::{check_availability, AvailabilityArgs, AvailabilityResponse};
 use crate::app::AppState;
 use crate::error::Result;
 
@@ -98,21 +98,6 @@ struct Table {
     next_id: u64,
     /// Live background walks nobody is waiting on.
     unwatched: usize,
-}
-
-impl Table {
-    /// Take the flight out of the table, if `id` is still the one out
-    /// for `key`.
-    fn take(&mut self, key: &str, id: u64) -> Option<Flight> {
-        if self.flights.get(key)?.id != id {
-            return None;
-        }
-        let flight = self.flights.remove(key)?;
-        if flight.waiters == 0 {
-            self.unwatched -= 1;
-        }
-        Some(flight)
-    }
 }
 
 /// The walks in flight, per row. One per app state; a clone shares
@@ -261,46 +246,6 @@ fn flight_is_interactive(table: &Table, key: &str) -> bool {
     table.flights.get(key).is_some_and(|f| f.interactive)
 }
 
-/// The walk itself, run in a task of its own.
-async fn walk(
-    state: Arc<AppState>,
-    args: AvailabilityArgs,
-    flights: AvailabilityFlights,
-    key: String,
-    id: u64,
-) {
-    let mut out = Out {
-        flights,
-        key,
-        id,
-        done: false,
-    };
-    let got = check_availability(&state, &args).await;
-    out.done = true;
-    let finished = out.flights.table().take(&out.key, id);
-    if let Some(flight) = finished {
-        flight.slot.send_replace(Slot::Answered(got));
-    }
-}
-
-/// Takes a walk that did not finish — aborted, or unwinding from a
-/// panic — out of the table. An aborted walk is out already; a
-/// panicking one would otherwise stay there for good.
-struct Out {
-    flights: AvailabilityFlights,
-    key: String,
-    id: u64,
-    done: bool,
-}
-
-impl Drop for Out {
-    fn drop(&mut self) {
-        if !self.done {
-            drop(self.flights.table().take(&self.key, self.id));
-        }
-    }
-}
-
 /// One caller waiting on a walk; dropping it — the caller answered,
 /// or gone — is that caller leaving.
 struct Waiting {
@@ -315,54 +260,14 @@ impl Drop for Waiting {
     }
 }
 
-/// The row a lookup's walk can be shared under: its cache row, unless
-/// it has none or asks the provider past the cache.
-pub(crate) fn shared_row(args: &AvailabilityArgs) -> Option<String> {
-    if args.bypass_cache {
-        return None;
-    }
-    let id = args.kitsu_id.as_deref().filter(|id| !id.is_empty())?;
-    Some(cache_key(id, &args.mode))
-}
+#[path = "availability_flight_rule.rs"]
+mod rule;
+pub(crate) use rule::{joins, outlives_its_callers, shared_row};
 
-/// Whether a caller joins the walk already out for its row: a
-/// background caller joins any walk, an interactive one only another
-/// interactive walk.
-pub(crate) fn joins(walk_interactive: bool, caller_interactive: bool) -> bool {
-    walk_interactive || !caller_interactive
-}
-
-/// Whether a walk its last caller left keeps walking, given how many
-/// walks already do.
-pub(crate) fn outlives_its_callers(interactive: bool, unwatched: usize) -> bool {
-    !interactive && unwatched < UNWATCHED_MAX
-}
+#[path = "availability_flight_walk.rs"]
+mod walk;
+use walk::walk;
 
 #[cfg(test)]
-impl AvailabilityFlights {
-    /// Walks in flight.
-    pub(crate) fn live(&self) -> usize {
-        self.table().flights.len()
-    }
-
-    /// Callers waiting on the walk out for `key`, if one is.
-    pub(crate) fn waiting(&self, key: &str) -> Option<usize> {
-        self.table().flights.get(key).map(|f| f.waiters)
-    }
-
-    /// Every live walk nobody waits on is counted, and nothing else.
-    pub(crate) fn assert_consistent(&self) {
-        let table = self.table();
-        let unwatched = table.flights.values().filter(|f| f.waiters == 0).count();
-        assert_eq!(table.unwatched, unwatched, "the unwatched count");
-    }
-
-    /// Whether the walk out for `key` is interactive, if one is.
-    pub(crate) fn interactive(&self, key: &str) -> Option<bool> {
-        self.table().flights.get(key).map(|f| f.interactive)
-    }
-}
-
-#[cfg(test)]
-#[path = "availability_flight_prop_test.rs"]
-mod prop_tests;
+#[path = "availability_flight_probe.rs"]
+mod probe;
