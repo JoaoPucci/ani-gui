@@ -43,8 +43,8 @@ export function changeOf(
 	source: WriteSource,
 	ends: Partial<Record<Provider, WriteEnd>>
 ): ListChange | null {
-	// A dropped write sent nothing; a failed one may still have reached
-	// the tracker before its answer was lost, so its list is read again.
+	// A dropped write sent nothing; a failed one went out, and a view
+	// that reads the tracker live reads it again.
 	const providers = TRACKERS.filter((p) => ends[p] === 'landed' || ends[p] === 'failed');
 	const landed = TRACKERS.filter((p) => ends[p] === 'landed');
 	return providers.length === 0 ? null : { kitsuId, providers, landed, source };
@@ -53,7 +53,10 @@ export function changeOf(
 /** Whether a view showing the lists of `shown` reads them again for
  *  `change`. */
 export function railNeedsReread(change: ListChange, shown: readonly Provider[]): boolean {
-	return change.providers.some((p) => shown.includes(p));
+	// The row shows the backend's cached list, which only a write the
+	// tracker took changes (its write-through); a failed one left it as
+	// it was.
+	return change.landed.some((p) => shown.includes(p));
 }
 
 /** Whether a detail page showing `kitsuId`'s entry reads it again for

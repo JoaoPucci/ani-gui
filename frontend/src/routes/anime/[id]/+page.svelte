@@ -1073,10 +1073,13 @@
 	// A watched episode's progress write for this show that settles while
 	// the page is open — one held back by the tracker can land minutes
 	// after the play — is read again quietly, as the editor reconciles its
-	// own save. `id` is read when the change comes, not tracked.
+	// own save. `id` is read when the change comes, not tracked. A read
+	// still loading — the page opened during a rate limit, and its read
+	// waits to ask again — is replaced by a loud one, so the control ends
+	// on that read's outcome instead of waiting on the one it superseded.
 	$effect(() =>
 		listChanges.subscribe((change) => {
-			if (entryNeedsReread(change, id || null)) readListEntry(true);
+			if (entryNeedsReread(change, id || null)) readListEntry(!listEntryLoading);
 		})
 	);
 
