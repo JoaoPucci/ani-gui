@@ -7,7 +7,7 @@ import type { Provider } from './types';
 import {
 	ALL_FIELDS,
 	saveWhenAllowed,
-	sleep,
+	waitWhileWanted,
 	SupersededError,
 	type HeldWrite,
 	type WriteField
@@ -57,7 +57,9 @@ export function noticeBusy(provider: Provider, seconds: number): string {
 	stop = startCountdown(Date.now() + seconds * 1000, {
 		now: () => Date.now(),
 		after,
-		show: (left) => toastStore.update(id, busyText(provider, left))
+		// The number changes on screen each second without being read out;
+		// the save going is announced.
+		show: (left) => toastStore.update(id, busyText(provider, left), { silent: left > 0 })
 	});
 	return id;
 }
@@ -141,7 +143,10 @@ export function saveWhenTrackerAllows<T>(
 			mine = noticeBusy(provider, seconds);
 			notices.set(key, mine);
 		},
-		wait: sleep,
+		// Let go of at the first look after it is no longer wanted — its
+		// account changed, or newer writes took every field — rather than
+		// when the wait is up.
+		wait: (ms) => waitWhileWanted(ms, { after, stillWanted: () => held.left().length > 0 }),
 		stillWanted: () => held.left().length > 0
 	}).finally(() => {
 		// Landed, failed or superseded: its notice goes with it, unless a
