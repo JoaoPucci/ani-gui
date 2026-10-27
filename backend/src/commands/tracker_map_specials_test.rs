@@ -709,3 +709,154 @@ async fn a_related_entry_reading_no_extras_is_not_read_again_for_the_special() {
         .count();
     assert_eq!(season_reads, 0, "the season's Kitsu entry was read");
 }
+
+/// How often AniList was asked for `id`'s evidence.
+async fn evidence_reads(server: &MockServer, id: u32) -> usize {
+    server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .filter(|b| b.contains("streamingEpisodes") && b.contains(&format!("\"mediaId\":{id}")))
+        .count()
+}
+
+/// A special Kitsu gives no episode count for has no extras to match:
+/// it is asked about as nothing, and no related entry is read.
+#[tokio::test]
+async fn a_special_of_no_count_is_filed_nowhere() {
+    let kitsu = ubw_kitsu().await;
+    detail_of(
+        &kitsu,
+        "90001",
+        &UBW_PROLOGUE_KITSU
+            .replace("\"9718\"", "\"90001\"")
+            .replace("\"episodeCount\":1", "\"episodeCount\":null"),
+    )
+    .await;
+    relations_of(&kitsu, "90001", &sequel_7882(1)).await;
+    mapped_as(&kitsu, "90001", None, None).await;
+    let anilist_server = MockServer::start().await;
+    evidence_of(&anilist_server, 19_603, UBW_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let map = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    assert_eq!(evidence_reads(&anilist_server, 19_603).await, 0);
+}
+
+/// The special's page relating it to UBW's TV season twice, and to an
+/// entry that resolves to nothing on the tracker.
+fn twice_7882_and_one_unresolved() -> String {
+    r#"{"data":[
+        {"id":"r1","type":"mediaRelationships","attributes":{"role":"sequel"},
+         "relationships":{"destination":{"data":{"type":"anime","id":"7882"}}}},
+        {"id":"r2","type":"mediaRelationships","attributes":{"role":"parent_story"},
+         "relationships":{"destination":{"data":{"type":"anime","id":"7882"}}}},
+        {"id":"r3","type":"mediaRelationships","attributes":{"role":"side_story"},
+         "relationships":{"destination":{"data":{"type":"anime","id":"90002"}}}}],
+      "included":[
+        {"id":"7882","type":"anime","attributes":{"subtype":"TV","status":"finished",
+         "episodeCount":12,"startDate":"2014-10-12"}},
+        {"id":"90002","type":"anime","attributes":{"subtype":"special","status":"finished",
+         "episodeCount":1,"startDate":"2014-10-05"}}],
+      "meta":{"count":3}}"#
+        .to_string()
+}
+
+/// A one-episode special related to UBW's TV season, whose extra at 0
+/// UBW's own prologue could equally be, is filed nowhere: that prologue
+/// has no AniList entry either, so it contests the slot. The season,
+/// related twice, is read once, and a related entry that resolves to
+/// nothing is not read at all.
+#[tokio::test]
+async fn a_special_whose_slot_another_unresolved_special_could_take_is_filed_nowhere() {
+    let kitsu = ubw_kitsu().await;
+    lone_special(&kitsu, &twice_7882_and_one_unresolved()).await;
+    mapped_as(&kitsu, "90002", None, None).await;
+    mapped_as(&kitsu, "4788", Some(6922), Some(6922)).await;
+    mapped_as(&kitsu, "8675", Some(25_537), Some(20_791)).await;
+    let anilist_server = MockServer::start().await;
+    evidence_of(&anilist_server, 19_603, UBW_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let map = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    // Once for the season's own map, once for the special's evidence:
+    // the second relation to the season reads nothing more.
+    assert_eq!(evidence_reads(&anilist_server, 19_603).await, 2);
+}
+
+/// Where Kitsu's page of the season's own relations did not hold them
+/// all, another special could be past it: the slot is contested, and
+/// the special filed nowhere. The season's map is the one a whole page
+/// gave, kept.
+#[tokio::test]
+async fn a_special_whose_season_s_relations_kitsu_did_not_list_whole_is_filed_nowhere() {
+    let whole = ubw_kitsu().await;
+    let anilist_server = MockServer::start().await;
+    evidence_of(&anilist_server, 19_603, UBW_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let read = state_with_kitsu(&whole.uri());
+    let season = episode_map_for(
+        &ask(&read, ProviderKind::AniList, &provider, &tokens, &base),
+        "7882",
+        ProviderMediaId(19_603),
+        Some(13),
+    )
+    .await
+    .expect("the season's map");
+    assert_eq!(season.shape, Shape::Extras);
+
+    let kitsu = ubw_kitsu().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/7882/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            UBW_RELATIONS.replace("\"meta\":{\"count\":6}", "\"meta\":{\"count\":7}"),
+        ))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    lone_special(&kitsu, &sequel_7882(1)).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    remember(
+        &state,
+        &map_key(ProviderKind::AniList, "7882", Some((19_603, Some(13)))),
+        &season,
+    );
+    let map = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+    let season_relations = kitsu
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| r.url.path() == "/anime/7882/media-relationships")
+        .count();
+    assert_eq!(season_relations, 1);
+}
