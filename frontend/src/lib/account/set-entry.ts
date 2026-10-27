@@ -7,7 +7,6 @@ import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
 import { isRateLimit, tallyFanout, type FanoutResult } from './set-entry-outcome';
 import { buildListEdit } from './list-entry-edit';
-import { editForTracker } from './rewatch-trackers';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
@@ -56,8 +55,7 @@ export interface RemoveEntryDeps {
  *  clean save (`failed === 0`) from a partial one (a connected tracker the
  *  edit didn't reach). An unmappable provider counts toward neither. */
 export interface SetOutcome {
-	/** Trackers the edit was written to, or kept as they are because their
-	 *  row is already as the edit wants it ([`editForTracker`]). */
+	/** Trackers the edit was written to. */
 	written: number;
 	/** Trackers we couldn't confirm written — a write that threw, or an
 	 *  unreachable (no-bearer) provider. */
@@ -90,20 +88,13 @@ export async function setEntryAcrossTrackers(
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm written
 			try {
 				const current = await deps.getEntry(provider, bearer, kitsuId);
-				const edit = editForTracker(
-					provider,
-					buildListEdit({
-						current: current?.status ?? null,
-						statusChanged: save.statusChanged,
-						status: save.status,
-						progress: save.progress,
-						total: save.total ?? null
-					}),
-					current,
-					save.status
-				);
-				// Kept as it is: the row is already as the save wants it.
-				if (edit === null) return 'ok';
+				const edit = buildListEdit({
+					current: current?.status ?? null,
+					statusChanged: save.statusChanged,
+					status: save.status,
+					progress: save.progress,
+					total: save.total ?? null
+				});
 				const res = await deps.setEntry(provider, bearer, { kitsu_id: kitsuId, ...edit });
 				return res !== null ? 'ok' : 'neither'; // null = unmappable → neither
 			} catch (e) {
