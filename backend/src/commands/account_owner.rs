@@ -44,3 +44,7 @@ impl OwnerMemo {
         Ok(provider.me(tokens).await?.user_id)
     }
 }
+
+#[cfg(test)]
+#[path = "account_owner_test.rs"]
+mod tests;

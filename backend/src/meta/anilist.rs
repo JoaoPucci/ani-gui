@@ -392,3 +392,7 @@ fn overflowing(ids: &[u32]) -> AniError {
 #[cfg(test)]
 #[path = "anilist_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_shared_test.rs"]
+mod shared_tests;

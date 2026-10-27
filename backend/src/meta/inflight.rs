@@ -40,3 +40,7 @@ impl<V: Clone> Inflight<V> {
         start().await
     }
 }
+
+#[cfg(test)]
+#[path = "inflight_test.rs"]
+mod tests;
