@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use super::episode_map::{EpisodeMap, Identity, KitsuShow, Segment, Shape, TrackerShow};
 
+#[path = "episode_map_special_dates.rs"]
+mod dates;
+use dates::{dated_for_slot, in_run, whole_day};
+
 /// One entry Kitsu relates the special to that resolves on the tracker:
 /// the Kitsu entry, the tracker entry it resolves to, that entry's map
 /// for it, and whether another of its Kitsu relations could be the same
@@ -65,7 +69,8 @@ pub fn special_extras(evidence: &SpecialEvidence) -> Option<EpisodeMap> {
         if !dated_for_slot(start, filing.related.start.as_deref(), segment.lead) {
             continue;
         }
-        // One entry Kitsu relates the special to twice holds it once.
+        // Filings that place the special alike are one place: one entry
+        // Kitsu relates it to twice holds it once.
         if !held.contains(&segment) {
             held.push(segment);
         }
@@ -77,21 +82,6 @@ pub fn special_extras(evidence: &SpecialEvidence) -> Option<EpisodeMap> {
         shape: Shape::SpecialExtras,
         segments: vec![segment.clone()],
     })
-}
-
-/// Whether a special that started on `start` can take the slot after
-/// Kitsu's episode `after` of a season that started on `season`: the
-/// slot before the season's first episode is a prologue's, which a
-/// special takes only where it started no more than the sources' slack
-/// after the season; a slot after one of the season's episodes is a
-/// recap's, which a special takes only where the season, as the dates
-/// settle it, started first.
-fn dated_for_slot(start: &str, season: Option<&str>, after: u32) -> bool {
-    if after == 0 {
-        super::episode_map_rules::within_slack(season, Some(start))
-    } else {
-        super::episode_map_rules::started_before(season, Some(start))
-    }
 }
 
 /// The segment filing the special's `count` episodes as the extras
@@ -126,30 +116,6 @@ fn slots(filing: &RelatedFiling, count: u32) -> Option<Segment> {
         lead: after,
         extras_after: Vec::new(),
     })
-}
-
-/// `date` when it names a real whole day.
-fn whole_day(date: Option<&str>) -> Option<&str> {
-    date.filter(|d| super::episode_map_calendar::parse_date(d).is_some_and(|p| p.day.is_some()))
-}
-
-/// Whether `start` falls in `entry`'s run, compared by month.
-fn in_run(start: &str, entry: &TrackerShow) -> bool {
-    match (
-        month_of(Some(start)),
-        month_of(entry.start.as_deref()),
-        month_of(entry.end.as_deref()),
-    ) {
-        (Some(s), Some(from), Some(to)) => from <= s && s <= to,
-        _ => false,
-    }
-}
-
-/// `YYYY-MM` of a real date or month.
-fn month_of(date: Option<&str>) -> Option<&str> {
-    let date = date?;
-    super::episode_map_calendar::parse_date(date)?;
-    date.get(..7)
 }
 
 /// `existing`, the map the other rules gave the special, together with
