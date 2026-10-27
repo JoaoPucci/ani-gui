@@ -355,6 +355,38 @@ async fn an_unread_page_on_evidence_leaves_the_refusal_by_name() {
     assert_eq!(pages_read(&client), ["the-show-season-2-1", "other-2"]);
 }
 
+/// The evidence hit is dropped with its unread page — a stitched part
+/// is served, so it may not stand — and the verdict is no cleaner for
+/// it: alone in its pool, "The Show Season 2" fits the count and is
+/// refused by the entry's titles, the refusal by name it is with its
+/// page read, never the clean miss the availability cache persists.
+#[tokio::test]
+async fn an_unread_page_on_evidence_alone_is_still_no_clean_miss() {
+    let client = site(&[(1, 12)]).genres(1, &[]);
+    let hits = [hit("the-show-season-2-1", "The Show Season 2")];
+    match pick(&client, &hits, Some(12), Some(YEAR), &[]).await {
+        Ok(p) => panic!("picked {}", p.hit.slug),
+        Err(e) => assert!(matches!(e, AniError::RefusedByName), "{e:?}"),
+    }
+}
+
+/// Whether a hit could have been picked is read past its version tag,
+/// as the pick reads it: "The Show Season 2 [Uncensored]" is another
+/// season's copy, held only as evidence, and its unread page leaves the
+/// refusal by name standing.
+#[tokio::test]
+async fn an_unread_page_on_tagged_evidence_leaves_the_refusal_by_name() {
+    let client = site(&[(1, 12), (2, 12)]).genres(1, &[]);
+    let hits = [
+        hit("the-show-season-2-1", "The Show Season 2 [Uncensored]"),
+        hit("other-2", "Other"),
+    ];
+    match pick(&client, &hits, Some(12), Some(YEAR), &[]).await {
+        Ok(p) => panic!("picked {}", p.hit.slug),
+        Err(e) => assert!(matches!(e, AniError::RefusedByName), "{e:?}"),
+    }
+}
+
 /// One of the verdicts a pick ends on, by `kind`, a status for the
 /// upstream one.
 fn verdict(kind: u8, status: u16) -> AniError {
