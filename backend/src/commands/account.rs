@@ -936,5 +936,9 @@ mod tests;
 mod key_tests;
 
 #[cfg(test)]
+#[path = "account_reconcile_for_test.rs"]
+mod reconcile_for_tests;
+
+#[cfg(test)]
 #[path = "account_resolve_test.rs"]
 mod resolve_tests;
