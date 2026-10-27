@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import {
-	detectExpiredProviders,
 	detectSignInNotices,
 	ExpiryToastTracker,
 	signInNotice,
@@ -31,14 +30,14 @@ function build(over: Partial<Record<Provider, ProviderState>>): Record<Provider,
 	};
 }
 
-describe('detectExpiredProviders', () => {
+describe('detectSignInNotices without renewal failures', () => {
 	it('returns an empty list when every provider is disconnected', () => {
-		expect(detectExpiredProviders(build({}))).toEqual([]);
+		expect(detectSignInNotices(build({}))).toEqual([]);
 	});
 
 	it('returns an empty list when every connected session is still valid', () => {
 		expect(
-			detectExpiredProviders(
+			detectSignInNotices(
 				build({
 					anilist: { kind: 'connected', account: acc({ username: 'shiro' }), lastSyncedAt: 0 }
 				})
@@ -47,14 +46,14 @@ describe('detectExpiredProviders', () => {
 	});
 
 	it('flags an expired AniList session with its username', () => {
-		const out = detectExpiredProviders(
+		const out = detectSignInNotices(
 			build({ anilist: { kind: 'expired', account: acc({ username: 'shiro' }) } })
 		);
-		expect(out).toEqual([{ provider: 'anilist', username: 'shiro' }]);
+		expect(out).toEqual([{ provider: 'anilist', username: 'shiro', notice: 'expired' }]);
 	});
 
 	it('returns expired providers in priority order (AniList → MAL → InHouse)', () => {
-		const out = detectExpiredProviders(
+		const out = detectSignInNotices(
 			build({
 				mal: { kind: 'expired', account: acc({ username: 'mal-user' }) },
 				anilist: { kind: 'expired', account: acc({ username: 'al-user' }) }
@@ -65,7 +64,7 @@ describe('detectExpiredProviders', () => {
 
 	it('does NOT flag an error-with-account state (different surface — chip dot + /account)', () => {
 		expect(
-			detectExpiredProviders(
+			detectSignInNotices(
 				build({
 					anilist: { kind: 'error', account: acc({ username: 'shiro' }), message: 'boom' }
 				})
@@ -75,9 +74,7 @@ describe('detectExpiredProviders', () => {
 
 	it('does NOT flag connecting / disconnected providers', () => {
 		expect(
-			detectExpiredProviders(
-				build({ anilist: { kind: 'connecting' }, mal: { kind: 'disconnected' } })
-			)
+			detectSignInNotices(build({ anilist: { kind: 'connecting' }, mal: { kind: 'disconnected' } }))
 		).toEqual([]);
 	});
 });
