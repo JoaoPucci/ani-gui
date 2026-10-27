@@ -204,136 +204,37 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 	});
 });
 
-// MyAnimeList has no rewatch status, and keeps "you finished this show" only in
-// Completed: a Rewatching save never moves its row.
-describe('setEntryAcrossTrackers — a rewatch on a tracker without one', () => {
-	const completed: EntryView = { status: 'completed', progress: 26 };
-
-	it('writes nothing to a MyAnimeList row that is Completed', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => completed);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const out = await setEntryAcrossTrackers(
-			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
-		);
-		expect(setEntry).toHaveBeenCalledTimes(1);
-		expect(setEntry).toHaveBeenCalledWith('anilist', 'tok', {
-			kitsu_id: 'kitsu-1',
-			status: 'rewatching',
-			progress: 3
+// A rewatch is set deliberately, so it reaches every tracker as picked —
+// MyAnimeList, which has no rewatch status of its own, holds it as a Watching
+// row being rewatched — whatever row the tracker had.
+describe('setEntryAcrossTrackers — a rewatch reaches every tracker', () => {
+	const rows: [string, EntryView | null][] = [
+		['a Completed row', { status: 'completed', progress: 26 }],
+		['a Watching row', present],
+		['no row', null]
+	];
+	for (const [name, row] of rows) {
+		it(`sends MyAnimeList the rewatch on ${name}`, async () => {
+			const getEntry = vi.fn(async (): Promise<EntryView | null> => row);
+			const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+			const out = await setEntryAcrossTrackers(
+				{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
+				'kitsu-1',
+				{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
+			);
+			for (const p of ['anilist', 'mal'] as Provider[]) {
+				expect(setEntry).toHaveBeenCalledWith(p, 'tok', {
+					kitsu_id: 'kitsu-1',
+					status: 'rewatching',
+					progress: 3
+				});
+			}
+			expect(out).toEqual({ written: 2, failed: 0 });
 		});
-		// MyAnimeList's row is as the save wants it — kept at Completed — so it
-		// counts as written, not as a tracker the save failed to reach.
-		expect(out).toEqual({ written: 2, failed: 0 });
-	});
-
-	it('is a clean save when MyAnimeList is kept and the other tracker cannot map the show', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => completed);
-		const setEntry = vi.fn(async (p: Provider) => (p === 'anilist' ? null : fakeEntry(p)));
-		const out = await setEntryAcrossTrackers(
-			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
-		);
-		expect(out).toEqual({ written: 1, failed: 0 });
-	});
-
-	it('never writes a Completed row below its count when the total is unknown', async () => {
-		const getEntry = vi.fn(
-			async (p: Provider): Promise<EntryView | null> =>
-				p === 'anilist'
-					? { status: 'rewatching', progress: 3 }
-					: { status: 'completed', progress: 12 }
-		);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const out = await setEntryAcrossTrackers(
-			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: false, progress: 3, total: null }
-		);
-		expect(setEntry).not.toHaveBeenCalledWith('mal', expect.anything(), expect.anything());
-		expect(setEntry).toHaveBeenCalledWith('anilist', 'tok', { kitsu_id: 'kitsu-1', progress: 3 });
-		expect(out).toEqual({ written: 2, failed: 0 });
-	});
-
-	it('never lowers an AniList Completed row beside a MyAnimeList rewatch when the total is unknown', async () => {
-		const getEntry = vi.fn(
-			async (p: Provider): Promise<EntryView | null> =>
-				p === 'mal' ? { status: 'rewatching', progress: 3 } : { status: 'completed', progress: 12 }
-		);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		const out = await setEntryAcrossTrackers(
-			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: false, progress: 3, total: null }
-		);
-		expect(setEntry).not.toHaveBeenCalledWith('anilist', expect.anything(), expect.anything());
-		expect(setEntry).toHaveBeenCalledWith('mal', 'tok', { kitsu_id: 'kitsu-1', progress: 3 });
-		expect(out).toEqual({ written: 2, failed: 0 });
-	});
-
-	it('still sends a deliberate lower count on a Completed row whose total is unknown', async () => {
-		const getEntry = vi.fn(
-			async (): Promise<EntryView | null> => ({
-				status: 'completed',
-				progress: 12
-			})
-		);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		await setEntryAcrossTrackers(
-			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'completed', statusChanged: false, progress: 10, total: null }
-		);
-		for (const p of ['anilist', 'mal'] as Provider[]) {
-			expect(setEntry).toHaveBeenCalledWith(p, 'tok', { kitsu_id: 'kitsu-1', progress: 10 });
-		}
-	});
-
-	it('sends a MyAnimeList row it reads as rewatching its progress alone', async () => {
-		const getEntry = vi.fn(
-			async (): Promise<EntryView | null> => ({
-				status: 'rewatching',
-				progress: 5
-			})
-		);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		await setEntryAcrossTrackers(
-			{ connected: ['mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: false, progress: 6, total: 26 }
-		);
-		expect(setEntry).toHaveBeenCalledWith('mal', 'tok', { kitsu_id: 'kitsu-1', progress: 6 });
-	});
-
-	it('sends MyAnimeList the progress alone on any other row', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		await setEntryAcrossTrackers(
-			{ connected: ['mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: true, progress: 6, total: 26 }
-		);
-		expect(setEntry).toHaveBeenCalledWith('mal', 'tok', { kitsu_id: 'kitsu-1', progress: 6 });
-	});
-
-	it('creates no MyAnimeList row for a rewatch', async () => {
-		const getEntry = vi.fn(
-			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? completed : null)
-		);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
-		await setEntryAcrossTrackers(
-			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
-			'kitsu-1',
-			{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
-		);
-		expect(setEntry).not.toHaveBeenCalledWith('mal', expect.anything(), expect.anything());
-	});
+	}
 });
 
-// What the rewatch change must not move: every other status still reaches
-// MyAnimeList as the user picked it.
+// Every other status reaches MyAnimeList as the user picked it too.
 describe('setEntryAcrossTrackers — every other status on MyAnimeList', () => {
 	const cases: [ListStatus, number][] = [
 		['watching', 6],

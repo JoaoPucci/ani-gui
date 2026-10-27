@@ -393,31 +393,21 @@ describe('clampProgress', () => {
 	});
 });
 
-// AniList keeps a rewatch in a status of its own; MyAnimeList, which has none,
-// keeps its row at Completed. Folded together, the rewatch is what the user is
-// doing, so it is what the detail page shows and the editor opens on.
+// A finished row is furthest along, whatever the other trackers hold: a
+// Completed row seeds Completed, at the highest count, beside a rewatch too.
 describe('pickSeedEntry — a rewatch beside a Completed row', () => {
-	it('shows the rewatch, at its own count, over a Completed row', () => {
-		expect(
-			pickSeedEntry([
+	it('seeds Completed, at the highest count', () => {
+		for (const entries of [
+			[
 				{ status: 'completed', progress: 26 },
 				{ status: 'rewatching', progress: 3 }
-			])
-		).toEqual({ status: 'rewatching', progress: 3 });
-		expect(
-			pickSeedEntry([
+			],
+			[
 				{ status: 'rewatching', progress: 3 },
 				{ status: 'completed', progress: 26 }
-			])
-		).toEqual({ status: 'rewatching', progress: 3 });
-	});
-
-	it('still never seeds below an unfinished row', () => {
-		expect(
-			pickSeedEntry([
-				{ status: 'rewatching', progress: 3 },
-				{ status: 'watching', progress: 10 }
-			])
-		).toEqual({ status: 'rewatching', progress: 10 });
+			]
+		] as EntryView[][]) {
+			expect(pickSeedEntry(entries)).toEqual({ status: 'completed', progress: 26 });
+		}
 	});
 });
