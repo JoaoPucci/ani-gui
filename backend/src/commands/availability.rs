@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::availability_refresh::hold_if_still_ours;
-use crate::commands::play_native_walk::pick_native_walk;
+use crate::commands::play_native_walk::pick_native_walk_heard;
 use crate::error::Result;
 
 /// Cache TTL for positive results on FINISHED shows — 30 days.
@@ -1267,7 +1267,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     tail: Option<&dyn super::play_native_appended::TailSource>,
     heard: &dyn crate::commands::listing_tags::ListingSink,
 ) -> std::result::Result<ShowModes, crate::commands::play_native_resolve::NativeError> {
-    let picked = pick_native_walk(
+    let picked = pick_native_walk_heard(
         client,
         &args.title,
         &args.alt_titles,
@@ -1275,17 +1275,12 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.year,
         args.subtype.as_deref(),
         tail,
+        Some(heard),
     )
     .await?;
-    // The pick's listings are at hand, whatever the probe goes on to
-    // answer — a mode read that fails, or one the walk moves on from as
-    // inconclusive, included.
-    for (hit, episodes) in picked.copies() {
-        heard.heard(
-            &crate::scraper::provider::ShowKey::new(client.id(), hit.slug.clone()).to_string(),
-            episodes,
-        );
-    }
+    // The walk recorded the pick's listings as it made the pick, whatever
+    // the probe goes on to answer — a mode read that fails, or one the
+    // walk moves on from as inconclusive, included.
     let fail = |error| crate::commands::play_native_resolve::NativeError {
         error,
         clean_miss: false,

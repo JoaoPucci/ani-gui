@@ -10,7 +10,7 @@ use super::download::{DownloadArgs, DownloadProgress};
 use super::play_native::PickedShow;
 use super::play_native_episode::ResolvedEpisode;
 use super::play_native_resolve::NativeError;
-use super::play_native_walk::pick_native_walk;
+use super::play_native_walk::pick_native_walk_heard;
 use super::providers::{gate_of, Attempt};
 use crate::scraper::provider::Provider;
 
@@ -59,7 +59,7 @@ impl Attempt for RangeStartAttempt<'_> {
         &mut self,
         provider: &dyn Provider,
     ) -> std::result::Result<(PickedShow, PickedShow, ResolvedEpisode), NativeError> {
-        let picked = pick_native_walk(
+        let picked = pick_native_walk_heard(
             provider,
             &self.args.title,
             &self.args.alt_titles,
@@ -67,18 +67,10 @@ impl Attempt for RangeStartAttempt<'_> {
             self.args.year,
             self.args.subtype.as_deref(),
             self.tail,
+            self.heard,
         )
         .await?
         .choose(self.args.version);
-        if let Some(sink) = self.heard {
-            for (hit, episodes) in picked.copies() {
-                sink.heard(
-                    &crate::scraper::provider::ShowKey::new(provider.id(), hit.slug.clone())
-                        .to_string(),
-                    episodes,
-                );
-            }
-        }
         // The first episode from the version named, or the next that
         // carries it; the range keeps the version named for the rest,
         // and the version that served names the episode's file.

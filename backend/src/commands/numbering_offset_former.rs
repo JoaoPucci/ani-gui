@@ -78,7 +78,12 @@ pub fn retag_from_resolve(
         crate::commands::play_native_merge::names_a_row_now(former, native)
     });
     // The listing's tags, for a replay's check of a former number.
-    crate::commands::listing_tags::put(state, &native.slug, &native.extra_tags);
+    crate::commands::listing_tags::put(
+        state,
+        &native.slug,
+        &native.extra_tags,
+        crate::commands::listing_tags::heard_now(),
+    );
     // The pick's other versions: each copy's history row reads a stamp
     // of its own, put right from that copy's listing.
     for (slug, episodes) in &native.other_copies {
@@ -112,6 +117,7 @@ pub fn retag_from_listing(
         state,
         slug,
         &crate::commands::play_native_numbering::extra_episode_tags(episodes),
+        crate::commands::listing_tags::heard_now(),
     );
 }
 

@@ -259,6 +259,9 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        // The listing was heard as the pick was made —
+                        // before the appended-extras rule's own reads.
+                        let heard_at = crate::commands::listing_tags::heard_now();
                         // The version asked for first, so the listing
                         // the appended-extras rule reads is the one that
                         // plays.
@@ -278,6 +281,7 @@ where
                                 sink.heard(
                                     &ShowKey::new(client.id(), hit.slug.clone()).to_string(),
                                     episodes,
+                                    heard_at,
                                 );
                             }
                         }

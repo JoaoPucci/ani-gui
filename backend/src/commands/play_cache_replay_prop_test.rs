@@ -87,7 +87,7 @@ proptest! {
     ) {
         let state = crate::commands::play::tests::state_with_proxy_origin();
         let show_key = format!("test-a:{slug}");
-        crate::commands::listing_tags::put(&state, &show_key, &recorded);
+        crate::commands::listing_tags::put(&state, &show_key, &recorded, 1);
         prop_assert_eq!(
             crate::commands::listing_tags::get(&state, &show_key),
             Some(recorded)

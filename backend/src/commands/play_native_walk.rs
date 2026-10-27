@@ -30,6 +30,33 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
     subtype: Option<&str>,
     tail: Option<&dyn super::play_native_appended::TailSource>,
 ) -> std::result::Result<PickedShow, NativeError> {
+    pick_native_walk_heard(
+        client,
+        title,
+        alt_titles,
+        expected_count,
+        year,
+        subtype,
+        tail,
+        None,
+    )
+    .await
+}
+
+/// [`pick_native_walk`], handing `heard` every version's listing of the
+/// pick, stamped with the moment the pick was made — before the
+/// appended-extras rule's own reads ([`crate::commands::listing_tags`]).
+#[allow(clippy::too_many_arguments)]
+pub async fn pick_native_walk_heard<P: Provider + ?Sized>(
+    client: &P,
+    title: &str,
+    alt_titles: &[String],
+    expected_count: Option<u32>,
+    year: Option<u32>,
+    subtype: Option<&str>,
+    tail: Option<&dyn super::play_native_appended::TailSource>,
+    heard: Option<&dyn crate::commands::listing_tags::ListingSink>,
+) -> std::result::Result<PickedShow, NativeError> {
     let entry_titles: Vec<&str> = std::iter::once(title)
         .chain(alt_titles.iter().map(String::as_str))
         .collect();
@@ -57,12 +84,24 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                 .await
                 {
                     Ok(picked) => {
-                        return Ok(super::play_native_appended::fit_appended(
-                            picked,
-                            expected_count,
-                            tail,
-                        )
-                        .await)
+                        let heard_at = crate::commands::listing_tags::heard_now();
+                        let picked =
+                            super::play_native_appended::fit_appended(picked, expected_count, tail)
+                                .await;
+                        if let Some(sink) = heard {
+                            for (hit, episodes) in picked.copies() {
+                                sink.heard(
+                                    &crate::scraper::provider::ShowKey::new(
+                                        client.id(),
+                                        hit.slug.clone(),
+                                    )
+                                    .to_string(),
+                                    episodes,
+                                    heard_at,
+                                );
+                            }
+                        }
+                        return Ok(picked);
                     }
                     // A rejected pool is a clean verdict about THIS
                     // pool; the next alias may carry the real show.
