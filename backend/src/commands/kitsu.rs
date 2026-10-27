@@ -49,165 +49,13 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
     .await
 }
 
-/// AniList-backed trending — the hero / Trending strip on home use
-/// this in preference to [`kitsu_trending`] because AniList's
-/// `TRENDING_DESC` is recency-weighted (its `trending` value counts
-/// viewer activity over the past hour), which keeps evergreens like
-/// One Piece from anchoring the top of the row regardless of what is
-/// hot now.
-///
-/// Pipeline:
-///   1. Fetch AniList trending (top N).
-///   2. For each entry, bridge MAL id → Kitsu anime via Kitsu's
-///      /mappings endpoint, concurrent with bounded parallelism.
-///   3. Drop entries that don't bridge (rare — AniList show without
-///      a Kitsu mapping). Preserve the AniList ranking for the rest.
-///   4. Cache the resulting `Vec<KitsuAnimeRef>` for [`TRENDING_TTL`]
-///      (1h). AniList trending updates faster than that, but home
-///      doesn't need sub-hour freshness.
-///
-/// Falls back to [`kitsu_trending`] (currently-airing-by-user-count)
-/// when AniList errors or returns zero usable entries — the page
-/// still loads, just with the older static feed.
-///
-/// # Errors
-/// Bubbles AniList / Kitsu transport failures only when the fallback
-/// also fails. Cache write failures are silently ignored.
-pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
-    kitsu_trending_anilist_with_base(state, None).await
-}
-
-/// [`kitsu_trending_anilist`] with the AniList endpoint overridable,
-/// so tests can point the trending fetch at wiremock. Production
-/// passes `None`.
-pub(crate) async fn kitsu_trending_anilist_with_base(
-    state: &AppState,
-    anilist_base: Option<&str>,
-) -> Result<Vec<KitsuAnimeRef>> {
-    // v5: the bridge gained the anilist/anime mapping fallback for
-    //     entries Kitsu hasn't MAL-mapped yet. v4 rows were built
-    //     without it and silently omit exactly the newest seasonal
-    //     shows (TYBW's fourth cour was missing from the strip);
-    //     bumping refreshes them.
-    // v4: bridge backfills cover_image from AniList's bannerImage
-    //     when Kitsu's is null (new ongoing shows). v3 rows have
-    //     null covers for those entries; bumping forces a refresh.
-    // v6: each ref keeps AniList's bannerImage as `anilist_banner`
-    //     beside Kitsu's cover; v5 rows were built without it.
-    const KEY: &str = "kitsu:v6:trending_anilist";
-    if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
-        if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
-            warm_signed_image_urls(state, &body);
-            return Ok(drop_music(hits));
-        }
-    }
-
-    // AniList → MAL ids → bridge to Kitsu refs.
-    let anilist =
-        crate::meta::anilist::trending(&state.meta_http, ANILIST_TRENDING_LIMIT, anilist_base)
-            .await;
-    if let Err(ref e) = anilist {
-        tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
-    }
-    let bridged = match anilist {
-        Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu(state, v).await,
-        _ => Vec::new(),
-    };
-    // Only AniList's own answer says anything about a banner; Kitsu's
-    // fallback list below never carries one.
-    super::anilist_banner_memo::remember(&state.cache_pool, &bridged);
-
-    // AniList errored or every entry failed to bridge — fall back
-    // so home still has SOMETHING to render.
-    let hits = if bridged.is_empty() {
-        kitsu_trending(state).await?
-    } else {
-        bridged
-    };
-
-    // Bridged refs come from lookup_by_mal_id (single-resource parse), not
-    // the list parser, so sanitize music here too.
-    let hits = drop_music(hits);
-    if let Ok(body) = serde_json::to_string(&hits) {
-        let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
-        warm_signed_image_urls(state, &body);
-    }
-    Ok(hits)
-}
-
-/// AniList trending page size — N entries fetched, then bridged to
-/// Kitsu. We render the hero from items 0..5 and the Trending strip
-/// from the rest, so 25 leaves comfortable headroom for shows that
-/// fail to bridge (rare; a couple per page at most).
-const ANILIST_TRENDING_LIMIT: u8 = 25;
-
-/// Concurrent AniList → Kitsu lookups for a list of AniList refs.
-/// Each entry tries Kitsu's `myanimelist/anime` mapping first, then
-/// its `anilist/anime` mapping — Kitsu's MAL table lags brand-new
-/// seasonal entries by weeks while the AniList row exists from day
-/// one, and a drop here removes exactly the season's hottest shows
-/// from the strip. Entries mapped on neither site are dropped.
-/// Preserves the AniList ranking — order matters because the home
-/// hero takes the first 5–6 entries. `FuturesOrdered` runs the
-/// lookups concurrently and yields results in the input order; the
-/// resulting Kitsu /mappings calls fan out at once. 25 lookups
-/// against a single endpoint is fine and the cache layer absorbs
-/// the cost on subsequent visits.
-pub(super) async fn bridge_anilist_to_kitsu(
-    state: &AppState,
-    anilist: Vec<crate::meta::anilist::AniListAnimeRef>,
-) -> Vec<KitsuAnimeRef> {
-    use futures_util::stream::{FuturesOrdered, StreamExt};
-
-    let mut futures = FuturesOrdered::new();
-    for entry in anilist {
-        let kitsu = state.kitsu.clone();
-        let pool = state.cache_pool.clone();
-        futures.push_back(async move {
-            // AniList may still list a banner its CDN has told the
-            // image proxy is gone; that one is not offered again.
-            let banner = entry
-                .banner_image
-                .clone()
-                .filter(|url| !crate::meta::images::is_dead(&pool, url));
-            let by_mal = match entry.id_mal {
-                Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
-                None => None,
-            };
-            let mut kref = match by_mal {
-                Some(k) => k,
-                None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
-            };
-            // AniList's banner rides beside Kitsu's cover, free: this
-            // request already carried it.
-            kref.anilist_banner.clone_from(&banner);
-            // Backfill banner from AniList when Kitsu hasn't
-            // catalogued one. New ongoing shows like Slime S4 land
-            // on Kitsu before their cataloguers upload a banner;
-            // AniList typically has it from day one. The image
-            // proxy accepts any https URL so the renderer doesn't
-            // need to know the source.
-            if kref.cover_image.is_none() {
-                if let Some(url) = banner {
-                    kref.cover_image = Some(KitsuCoverImage {
-                        tiny: None,
-                        small: None,
-                        large: Some(url.clone()),
-                        original: Some(url),
-                    });
-                }
-            }
-            Some(kref)
-        });
-    }
-    let mut out = Vec::new();
-    while let Some(maybe_ref) = futures.next().await {
-        if let Some(r) = maybe_ref {
-            out.push(r);
-        }
-    }
-    out
-}
+#[path = "kitsu_trending_anilist.rs"]
+mod trending_anilist;
+#[cfg(test)]
+use trending_anilist::bridge_anilist_to_kitsu;
+pub use trending_anilist::kitsu_trending_anilist;
+#[cfg(test)]
+pub(crate) use trending_anilist::kitsu_trending_anilist_with_base;
 
 /// Top-rated anime (averageRating ≥ 70/100). Cache key:
 /// `kitsu:top_rated`, TTL [`DISCOVERY_TTL`] (6 hours).
@@ -1156,8 +1004,9 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
 
 /// The detail page's read: [`kitsu_anime_detail`] plus the AniList
 /// banner the trending row remembered for the show, if it listed it.
-/// Internal callers of the detail read have no use for the banner and
-/// skip the lookup.
+/// Internal callers skip reading that remembered banner; the detail
+/// read itself still asks AniList for one when Kitsu has no cover and
+/// the row is not cached.
 ///
 /// # Errors
 /// Those of [`kitsu_anime_detail`].
@@ -1258,13 +1107,21 @@ async fn anime_detail_read(
     // round-trips on cold cache (Kitsu's mappings, then AniList), or
     // three when AniList lacks the MAL id and is asked again by
     // AniList's own id; the result is cached for the detail row's
-    // lifetime.
+    // lifetime — when there is one. A lookup that got no answer (a
+    // rate limit, a failed request) is not "no banner": the detail is
+    // served without one but not kept, so the next read asks again.
+    let mut answered = true;
     if detail.cover_image.is_none() {
         // A show the trending row listed already brought its banner
         // with that one request; only an unlisted show asks AniList.
         let banner = match super::anilist_banner_memo::remembered(&state.cache_pool, id) {
             Some(b) => Some(b),
-            None => anilist_banner_for(state, id, anilist_base).await,
+            None => anilist_banner_for(state, id, anilist_base)
+                .await
+                .unwrap_or_else(|()| {
+                    answered = false;
+                    None
+                }),
         }
         // AniList can answer with a URL its CDN has said is gone; no
         // cover is better than a dead one, and the renderer's poster
@@ -1283,7 +1140,7 @@ async fn anime_detail_read(
 
     let body = serde_json::to_string(&detail).ok();
     super::kitsu_gone::publish_served(state, id, fetched, || {
-        if let Some(body) = &body {
+        if let Some(body) = body.as_ref().filter(|_| answered) {
             let ttl = anime_detail_ttl(detail.status.as_deref());
             let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
         }
@@ -1295,20 +1152,26 @@ async fn anime_detail_read(
 }
 
 /// AniList's `bannerImage` for a Kitsu anime, reached through the
-/// ids Kitsu's mappings carry. `None` on any failure or when AniList
-/// has no banner — the caller keeps its null-cover fallback.
+/// ids Kitsu's mappings carry. `Ok(None)` when AniList has no banner;
+/// `Err` when a step got no answer — the caller keeps its null-cover
+/// fallback either way, and keeps the row only on an answer.
 async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> Option<String> {
+) -> std::result::Result<Option<String>, ()> {
     let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
-        .ok()?;
-    crate::meta::anilist_media::banner_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
-        .await
-        .ok()
-        .flatten()
+        .map_err(|_| ())?;
+    // The detail renders without it: a background fill.
+    crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
+        &state.meta_http,
+        ids.mal,
+        ids.anilist,
+        anilist_base,
+    ))
+    .await
+    .map_err(|_| ())
 }
 
 #[cfg(test)]

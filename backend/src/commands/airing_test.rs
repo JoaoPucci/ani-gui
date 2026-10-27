@@ -44,7 +44,8 @@ const KITSU_ANILIST_ONLY_MAPPING_BODY: &str = r#"{
 
 const ANILIST_RELEASING_BODY: &str = r#"{"data":{"Media":{
     "status":"RELEASING","episodes":12,
-    "nextAiringEpisode":{"episode":3,"airingAt":1784215800}
+    "nextAiringEpisode":{"episode":3,"airingAt":1784215800},
+    "airingSchedule":null
 }}}"#;
 
 #[tokio::test]
@@ -352,7 +353,7 @@ fn releasing_in_two_hours() -> String {
     let at = epoch_now() + 2 * 60 * 60;
     format!(
         r#"{{"data":{{"Media":{{"status":"RELEASING","episodes":12,
-        "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}}}}}"#
+        "nextAiringEpisode":{{"episode":8,"airingAt":{at}}},"airingSchedule":null}}}}}}"#
     )
 }
 
@@ -431,7 +432,7 @@ async fn a_detail_page_s_schedule_past_the_count_cuts_it_to_the_floor() {
     let at = epoch_now() + 6 * 24 * 60 * 60;
     let body = format!(
         r#"{{"data":{{"Media":{{"status":"RELEASING","episodes":12,
-        "nextAiringEpisode":{{"episode":9,"airingAt":{at}}}}}}}}}"#
+        "nextAiringEpisode":{{"episode":9,"airingAt":{at}}},"airingSchedule":null}}}}}}"#
     );
     let (kitsu, anilist) = mappings_and_anilist(body).await;
     let state = state_with_kitsu(&kitsu.uri());

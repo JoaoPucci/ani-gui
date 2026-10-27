@@ -28,7 +28,7 @@ pub const ANILIST_CLIENT_SECRET: &str = "B5ay8XNwslA819aukVNC8ejQBvUXtpuLiPf1yvL
 pub const ANILIST_REDIRECT_URI: &str = "http://localhost:53682/callback";
 
 /// AniList GraphQL endpoint (data API).
-pub const ANILIST_API: &str = "https://graphql.anilist.co";
+pub const ANILIST_API: &str = crate::meta::anilist::ANILIST_API;
 
 /// AniList OAuth authorize URL (browser-side).
 pub const ANILIST_AUTH_URL: &str = "https://anilist.co/api/v2/oauth/authorize";

@@ -11,8 +11,9 @@
 // statusWriteIntended), so a retry — including re-choosing the ORIGINAL status
 // to undo the change — propagates to every tracker that still lags.
 //
-// Pure + unit-tested; the component holds one slot keyed by kitsuId (the
-// detail page shows one show at a time) and clears it on a clean save/remove.
+// Pure + unit-tested; the editor keeps one per show in the app-lifetime
+// store `editor-flights.svelte.ts`, and clears a show's on a clean
+// save/remove.
 
 import type { ListStatus } from './types';
 import { editorInitial, type ListEntryView } from './list-entry-view';
@@ -75,8 +76,8 @@ export function statusWriteIntended(
  * The pending edit after a save outcome:
  *   - `partial` that wrote status (`statusChanged`): record the intended status
  *     (latest pick) so a dismissed, reopened retry still re-sends it. A repeat
- *     status partial for the same show refreshes the intent; one for a
- *     different show replaces it (one slot, current show wins).
+ *     status partial for the same show refreshes the intent; another show's
+ *     is kept beside it, one per show.
  *   - `partial` that was progress-only (`!statusChanged`): leave the record
  *     as-is — there's no status intent to carry, so a retry stays progress-only
  *     and can't force-write the seed status onto a divergent tracker.

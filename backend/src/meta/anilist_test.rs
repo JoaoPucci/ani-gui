@@ -174,7 +174,8 @@ async fn trending_surfaces_429_as_a_rate_limit() {
         matches!(
             err,
             AniError::RateLimited {
-                retry_after_secs: None
+                retry_after_secs: None,
+                ..
             }
         ),
         "{err:?}"
@@ -558,7 +559,8 @@ async fn post_graphql_public_gives_up_after_one_429_retry() {
         matches!(
             err,
             AniError::RateLimited {
-                retry_after_secs: Some(0)
+                retry_after_secs: Some(0),
+                ..
             }
         ),
         "{err:?}"
@@ -589,7 +591,8 @@ async fn post_graphql_public_does_not_retry_a_wait_it_cannot_honour() {
         matches!(
             err,
             AniError::RateLimited {
-                retry_after_secs: Some(60)
+                retry_after_secs: Some(60),
+                ..
             }
         ),
         "{err:?}"

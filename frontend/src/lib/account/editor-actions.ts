@@ -22,12 +22,17 @@ export type SaveResult =
 	// the furthest-along value across providers, so the button keeps `live`;
 	// the caller warns that not every tracker synced.
 	| { kind: 'partial'; live: EntryView; rateLimited?: boolean }
-	| { kind: 'failed'; rateLimited?: boolean };
+	| { kind: 'failed'; rateLimited?: boolean }
+	// A newer write of the show replaced this one while it waited: nothing
+	// to report, and nothing for the editor to take.
+	| { kind: 'superseded' };
 
 /** Outcome of a Remove. `removed` clears the entry; see {@link SaveResult}.
  *  `failed` carries `rateLimited` so the editor can show a retry-specific
  *  toast when a tracker 429'd. */
-export type RemoveResult = { kind: 'noop' | 'removed' } | { kind: 'failed'; rateLimited?: boolean };
+export type RemoveResult =
+	| { kind: 'noop' | 'removed' | 'superseded' }
+	| { kind: 'failed'; rateLimited?: boolean };
 
 /**
  * Run the editor's Save against every connected tracker (via the injected
@@ -66,6 +71,7 @@ export async function runEditorSave(
 				? { kind: 'partial', live, rateLimited: true }
 				: { kind: 'partial', live };
 		}
+		if (failed === 0 && outcome.superseded) return { kind: 'superseded' };
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
 		return { kind: 'failed' };
@@ -90,9 +96,14 @@ export async function runEditorRemove(
 		// `failed === 0` means no present tracker was left behind — whether we
 		// deleted the row (`removed > 0`) or it was already absent everywhere
 		// (`removed === 0`). Both satisfy "not on any list", so clear the entry.
+		if (outcome.failed === 0 && outcome.removed === 0 && outcome.superseded) {
+			return { kind: 'superseded' };
+		}
 		if (outcome.failed === 0) return { kind: 'removed' };
 		return outcome.rateLimited ? { kind: 'failed', rateLimited: true } : { kind: 'failed' };
 	} catch {
 		return { kind: 'failed' };
 	}
 }
+
+export { editorToggle, settleRemove, settleSave, type Settled } from './editor-settle';

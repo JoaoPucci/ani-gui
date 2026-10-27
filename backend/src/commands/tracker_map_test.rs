@@ -430,7 +430,8 @@ async fn a_rate_limited_evidence_read_fails_the_map_with_its_wait() {
         matches!(
             err,
             crate::error::AniError::RateLimited {
-                retry_after_secs: Some(30)
+                retry_after_secs: Some(30),
+                ..
             }
         ),
         "{err:?}"
@@ -687,7 +688,8 @@ async fn ranma_s_nineteenth_episode_is_not_written_while_the_evidence_is_rate_li
         matches!(
             err,
             crate::error::AniError::RateLimited {
-                retry_after_secs: Some(30)
+                retry_after_secs: Some(30),
+                ..
             }
         ),
         "{err:?}"
@@ -1480,7 +1482,7 @@ async fn a_relation_is_single_only_on_a_whole_page_with_one_of_its_role() {
         let included: Vec<String> = sequels
             .iter()
             .map(|id| {
-                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"episodeCount":12}}}}"#)
+                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"subtype":null,"status":null,"episodeCount":12,"startDate":null}}}}"#)
             })
             .collect();
         format!(
@@ -2278,6 +2280,49 @@ async fn a_part_past_the_total_mapped_only_through_the_other_tracker_still_contr
     .await
     .expect("the map");
     assert_eq!(map, EpisodeMap::identity(Identity::Unexplained));
+}
+
+#[tokio::test]
+async fn an_anilist_refusal_of_a_mal_entry_s_ownership_check_names_anilist() {
+    // MyAnimeList's 70 is owned through the AniList media that record
+    // it; AniList refusing that read fails the check with AniList named
+    // as the tracker that refused, so the notice of the MyAnimeList
+    // write it holds up does not say MyAnimeList is busy.
+    let kitsu = MockServer::start().await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 70, EMPTY_PAGE).await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdsByMals"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "30"))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal("http://unused-mal");
+    let tokens = tokens();
+    let base = kitsu.uri();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::MyAnimeList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: Some(&base),
+    };
+    let show = TrackerShow {
+        id: 70,
+        ..Default::default()
+    };
+    let err = super::owners::claimed_on_kitsu(&ask, &show)
+        .await
+        .expect_err("AniList refused");
+    assert!(
+        matches!(
+            err,
+            crate::error::AniError::RateLimited {
+                retry_after_secs: Some(30),
+                refused_by: Some("anilist"),
+            }
+        ),
+        "{err:?}"
+    );
 }
 
 #[path = "tracker_map_specials_test.rs"]

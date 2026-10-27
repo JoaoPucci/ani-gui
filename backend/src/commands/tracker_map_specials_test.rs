@@ -527,3 +527,79 @@ async fn a_related_entry_gone_holds_nothing_and_a_failed_read_fails_the_map() {
         }
     }
 }
+
+/// AniList refusing the related season's read — its rate limit, through
+/// the pacing gate every AniList request takes — fails the special's
+/// map with the wait AniList asked for and AniList named as the service
+/// that refused, so the write's notice says AniList is busy. Nothing is
+/// kept, and nothing is written.
+#[tokio::test]
+async fn a_rate_limited_read_of_the_related_season_fails_the_special_naming_anilist() {
+    let kitsu = ubw_kitsu().await;
+    lone_special(&kitsu, &sequel_7882(1)).await;
+    let anilist_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("streamingEpisodes"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "30"))
+        .mount(&anilist_server)
+        .await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let err = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect_err("AniList refused");
+    assert!(
+        matches!(
+            err,
+            crate::error::AniError::RateLimited {
+                retry_after_secs: Some(30),
+                refused_by: Some("anilist"),
+            }
+        ),
+        "{err:?}"
+    );
+    let key = map_key(ProviderKind::AniList, "90001", None);
+    assert!(meta_cache_get(&state.cache_pool, &key)
+        .expect("read")
+        .is_none());
+}
+
+/// A relations page that leaves out the day a related anime started is
+/// no answer, as one that leaves out its count is: the special's map
+/// fails with it and is kept nowhere, rather than reading the season as
+/// undated.
+#[tokio::test]
+async fn a_relations_page_without_the_season_s_start_fails_the_special() {
+    let kitsu = ubw_kitsu().await;
+    lone_special(
+        &kitsu,
+        &sequel_7882(1).replace(r#","startDate":"2014-10-12""#, ""),
+    )
+    .await;
+    let anilist_server = MockServer::start().await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let err = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect_err("no answer");
+    assert!(
+        matches!(err, crate::error::AniError::ParseFailed { .. }),
+        "{err:?}"
+    );
+    let key = map_key(ProviderKind::AniList, "90001", None);
+    assert!(meta_cache_get(&state.cache_pool, &key)
+        .expect("read")
+        .is_none());
+}
