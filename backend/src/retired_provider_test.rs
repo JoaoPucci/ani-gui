@@ -252,7 +252,9 @@ fn cache_rows_only_a_retired_provider_could_be_read_by_go() {
         meta_cache_get(&state.cache_pool, &title_match_key(None, "The Separation")).unwrap(),
         Some("46903".to_string())
     );
-    assert!(report.cache_rows >= 8, "{report:?}");
+    // The cache pass's own deletions; the superseded row's stamp, mapping,
+    // resolution row and title match went with its removal.
+    assert_eq!(report.cache_rows, 7, "{report:?}");
 }
 
 #[test]
@@ -289,4 +291,140 @@ fn a_history_with_nothing_retired_is_left_as_it_is() {
 
     assert_eq!(sweep(&state), RetiredSweepReport::default());
     assert!(!dir.path().join("ani-gui-offsets").exists());
+}
+
+#[test]
+fn a_walked_row_known_by_a_guess_supersedes_nothing() {
+    // A play from a guessed Continue card records no Kitsu id, so the
+    // walked row is matched by its title alone; the detail page reads
+    // the retired row by its mapping and would lose its resume.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[
+            entry("7", "old-show-505", "Old Show", None, None),
+            entry(
+                "8",
+                "test-a:old-show-9",
+                "Old Show",
+                Some(1_793_125_986_100),
+                None,
+            ),
+        ],
+    )
+    .unwrap();
+    put(&state, "allmanga2kitsu:v8:old-show-505", "262");
+    put(&state, &title_match_key(None, "Old Show"), "262");
+    put(
+        &state,
+        &title_match_key(Some(ProviderId::TestA), "Old Show"),
+        "262",
+    );
+
+    let report = sweep(&state);
+
+    assert!(report.superseded.is_empty(), "{report:?}");
+    assert_eq!(read_all(&state.history_path).unwrap().len(), 2);
+}
+
+#[test]
+fn a_walked_row_whose_recorded_entry_is_gone_supersedes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[
+            entry("7", "old-show-505", "Old Show", None, None),
+            entry(
+                "8",
+                "test-a:old-show-9",
+                "Old Show",
+                Some(1_793_125_986_100),
+                Some("262"),
+            ),
+        ],
+    )
+    .unwrap();
+    put(&state, &title_match_key(None, "Old Show"), "262");
+    put(
+        &state,
+        &format!("{}262", crate::commands::kitsu_gone::GONE_PREFIX),
+        "1",
+    );
+    assert!(
+        crate::commands::kitsu_gone::is_gone(&state, "262").unwrap(),
+        "the case marks the entry gone the way the detail fetch does"
+    );
+
+    assert!(sweep(&state).superseded.is_empty());
+}
+
+#[test]
+fn a_kept_row_under_a_known_retired_label_keeps_its_own_title_match() {
+    // A provider known to the app but no longer walked files its rows'
+    // title matches under its label; a kept row's must stay, or every
+    // launch would delete what the next Home load writes back.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[entry("3", "hianime:kept-1", "Kept Show", None, None)],
+    )
+    .unwrap();
+    let own = title_match_key(Some(ProviderId::Hianime), "Kept Show");
+    let other = title_match_key(Some(ProviderId::Hianime), "Removed Show");
+    put(&state, &own, "5");
+    put(&state, &other, "6");
+
+    let _ = sweep(&state);
+
+    assert!(present(&state, &own));
+    assert!(!present(&state, &other));
+    assert_eq!(sweep(&state), RetiredSweepReport::default());
+}
+
+#[test]
+fn a_kept_rows_former_number_stays_with_its_numbering() {
+    // The former stamp is what a position kept under the row's earlier
+    // number is found by.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[entry("5", "old-show-1", "Old", None, None)],
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("ani-gui-offsets"),
+        "old-show-1\t0\t5\t4\t5\t5\n",
+    )
+    .unwrap();
+
+    let _ = sweep(&state);
+
+    assert!(
+        offsets(dir.path()).contains("old-show-1"),
+        "{}",
+        offsets(dir.path())
+    );
+}
+
+#[test]
+fn the_cache_count_is_what_the_sweep_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[entry("1", "test-a:a-1", "A", Some(1), Some("9"))],
+    )
+    .unwrap();
+    put(
+        &state,
+        "availability:v24:1:sub",
+        r#"{"available":true,"provider":"hianime"}"#,
+    );
+    put(&state, "kitsu:v5:anime:1", "{}");
+
+    assert_eq!(sweep(&state).cache_rows, 1);
 }
