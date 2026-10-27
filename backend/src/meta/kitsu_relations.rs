@@ -70,7 +70,8 @@ struct EdgeLinks {
 
 #[derive(Deserialize)]
 struct Destination {
-    data: Option<Ref>,
+    // Null when the relation points nowhere; missing, it says nothing.
+    data: crate::meta::present::Present<Ref>,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -85,11 +86,10 @@ struct Node {
     #[serde(rename = "type")]
     kind: String,
     id: String,
-    #[serde(default)]
     attributes: NodeAttributes,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NodeAttributes {
     subtype: Option<String>,
@@ -108,25 +108,34 @@ pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
         detail: format!("kitsu relationships parse: {e}"),
     })?;
     let read = doc.data.len();
-    let entries = doc
-        .data
-        .into_iter()
-        .filter_map(|edge| {
-            let dst = edge.relationships.destination.data?;
-            let attrs = doc
-                .included
-                .iter()
-                .find(|n| n.kind == dst.kind && n.id == dst.id);
-            Some(KitsuRelation {
-                role: edge.attributes.role,
-                subtype: attrs.and_then(|n| n.attributes.subtype.clone()),
-                status: attrs.and_then(|n| n.attributes.status.clone()),
-                episode_count: attrs.and_then(|n| n.attributes.episode_count),
-                kind: dst.kind,
-                id: dst.id,
-            })
-        })
-        .collect();
+    let mut entries = Vec::new();
+    for edge in doc.data {
+        let Some(dst) = edge.relationships.destination.data.into_inner() else {
+            continue;
+        };
+        // The page is asked for with its destinations included: one
+        // that is not says nothing of what the related entry is, and
+        // reading it as an entry of no format or status would decide
+        // what the relation explains on nothing.
+        let node = doc
+            .included
+            .iter()
+            .find(|n| n.kind == dst.kind && n.id == dst.id)
+            .ok_or_else(|| AniError::ParseFailed {
+                detail: format!(
+                    "kitsu relationships parse: {} {} not included",
+                    dst.kind, dst.id
+                ),
+            })?;
+        entries.push(KitsuRelation {
+            role: edge.attributes.role,
+            subtype: node.attributes.subtype.clone(),
+            status: node.attributes.status.clone(),
+            episode_count: node.attributes.episode_count,
+            kind: dst.kind,
+            id: dst.id,
+        });
+    }
     let complete = doc.meta.and_then(|m| m.count) == Some(read);
     Ok(KitsuRelations { entries, complete })
 }
