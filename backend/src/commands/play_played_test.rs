@@ -296,8 +296,8 @@ async fn a_resolve_keeps_the_former_number_with_its_cached_row() {
     assert_eq!(kept.former_episode.as_deref(), Some("2.5"));
 }
 
-/// A listing the app has at hand for `show_key`: episodes 1 to 12,
-/// with a row tagged by each of `tags` among them.
+/// A listing the app has at hand for `show_key`, heard now: episodes 1
+/// to 12, with a row tagged by each of `tags` among them.
 fn hear_listing(state: &AppState, show_key: &str, tags: &[&str]) {
     let mut episodes: Vec<crate::scraper::provider::EpisodeRef> = (1..=12)
         .map(|n| crate::scraper::provider::EpisodeRef {
@@ -317,7 +317,12 @@ fn hear_listing(state: &AppState, show_key: &str, tags: &[&str]) {
             title: None,
         });
     }
-    crate::commands::numbering_offset::retag_from_listing(state, show_key, &episodes);
+    crate::commands::listing_tags::record_listing(
+        state,
+        show_key,
+        &episodes,
+        crate::commands::listing_tags::heard_now(),
+    );
 }
 
 /// Replay the slot-13 recap from a row that keeps the former number

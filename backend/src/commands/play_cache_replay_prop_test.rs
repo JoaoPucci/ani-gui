@@ -134,11 +134,27 @@ proptest! {
     }
 }
 
-/// A resolve records the listing of the copy it played and of every
-/// other version of the pick, each under its own show key, so a replay
-/// of any of them knows its own listing.
+/// Two walks of a show overlap: one picks the show, a later one picks it
+/// again and records the listing it heard, and the first records its
+/// older listing after that. The record keeps the later listing.
 #[test]
-fn a_resolve_records_every_versions_listing_under_its_own_key() {
+fn an_older_listing_recorded_last_leaves_the_newer_one() {
+    let state = crate::commands::play::tests::state_with_proxy_origin();
+    let key = "test-a:show-1";
+    crate::commands::listing_tags::put(&state, key, &["24.5".to_string()], 200);
+    crate::commands::listing_tags::put(&state, key, &[], 100);
+    assert_eq!(
+        crate::commands::listing_tags::get(&state, key),
+        Some(vec!["24.5".to_string()])
+    );
+}
+
+/// A play's numbering repair runs once its resolve has finished, which
+/// can be after another walk heard a newer listing of the same show. The
+/// repair leaves that record — of the copy it played and of every other
+/// version — as the newer walk wrote it.
+#[test]
+fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
     let state = crate::commands::play::tests::state_with_proxy_origin();
     let row = |id: u64, number: u32, tag: Option<&str>| crate::scraper::provider::EpisodeRef {
         id,
@@ -147,6 +163,10 @@ fn a_resolve_records_every_versions_listing_under_its_own_key() {
         former_tag: None,
         title: None,
     };
+    let newer = crate::commands::listing_tags::heard_now() + 60_000;
+    for key in ["test-a:show-uncut-1", "test-a:show-2"] {
+        crate::commands::listing_tags::put(&state, key, &["2.5".to_string()], newer);
+    }
     let native = crate::commands::play_native_resolve::NativeResolved {
         slug: "test-a:show-uncut-1".into(),
         title: "Show".into(),
@@ -169,12 +189,16 @@ fn a_resolve_records_every_versions_listing_under_its_own_key() {
         unread_past: None,
     };
     crate::commands::numbering_offset::retag_from_resolve(&state, &native);
-    assert_eq!(
-        crate::commands::listing_tags::get(&state, "test-a:show-uncut-1"),
-        Some(vec!["1.5".to_string()])
+    crate::commands::numbering_offset::retag_from_listing(
+        &state,
+        "test-a:show-2",
+        &[row(1, 1, None), row(2, 2, Some("1.25"))],
     );
-    assert_eq!(
-        crate::commands::listing_tags::get(&state, "test-a:show-2"),
-        Some(vec!["1.25".to_string()])
-    );
+    for key in ["test-a:show-uncut-1", "test-a:show-2"] {
+        assert_eq!(
+            crate::commands::listing_tags::get(&state, key),
+            Some(vec!["2.5".to_string()]),
+            "{key}"
+        );
+    }
 }
