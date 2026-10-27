@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import { standingOf } from './held-account';
+import { hasLeft, standingOf } from './held-account';
 
 const user = fc.oneof(
 	fc.string({ minLength: 1, maxLength: 4 }),
@@ -25,6 +25,28 @@ describe('standingOf, by property', () => {
 			fc.property(user, user, (a, b) => {
 				expect(standingOf(a, b)).toBe(standingOf(b, a));
 			})
+		);
+	});
+});
+
+describe('hasLeft, by property', () => {
+	it('is final only for a disconnect or another user, never while a sign-in or a change is under way', () => {
+		fc.assert(
+			fc.property(
+				user,
+				fc.record({
+					changing: fc.boolean(),
+					connecting: fc.boolean(),
+					disconnected: fc.boolean(),
+					user
+				}),
+				(listed, now) => {
+					const left = hasLeft(listed, now);
+					if (listed == null) expect(left).toBe(true);
+					else if (now.changing || now.connecting) expect(left).toBe(false);
+					else expect(left).toBe(now.disconnected || now.user !== listed);
+				}
+			)
 		);
 	});
 });

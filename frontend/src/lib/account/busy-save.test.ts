@@ -390,6 +390,36 @@ describe('a held write dropped while it waits', () => {
 		expect(write).toHaveBeenCalledTimes(2);
 	});
 
+	it("goes at the end of its wait once the sign-in was marked expired for the same user, and its refusal is the caller's to report", async () => {
+		// A read's refused bearer, with no renewal possible, marks the
+		// sign-in expired: the same user, so the held write is still that
+		// user's. It goes when its wait ends; the tracker's 401 comes back
+		// to the caller as the failure it is, never dropped as superseded.
+		const unauthorized = Object.assign(new Error('unauthorized'), { status: 401, detail: '' });
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(5))
+			.mockRejectedValueOnce(unauthorized);
+		const pending = saveWhenTrackerAllows('anilist', '97', write, undefined, { user: 'u1' }).catch(
+			(e: unknown) => e
+		);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.setExpired('anilist', as('u1'));
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBe(unauthorized);
+		expect(write).toHaveBeenCalledTimes(2);
+		expect(toastStore.items.filter((t) => t.kind === 'info')).toEqual([]);
+	});
+
+	it('keeps waiting when its sign-in is renewed for the same user, and goes at the end', async () => {
+		const { write, pending } = heldUnderU1('98', 5);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.setConnected('anilist', { ...as('u1'), access_token: 'renewed' });
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBe('saved');
+		expect(write).toHaveBeenCalledTimes(2);
+	});
+
 	it('ends its wait and takes its notice down within a second of its account changing', async () => {
 		const write = vi.fn<() => Promise<string>>().mockRejectedValueOnce(refused(60));
 		const pending = saveWhenTrackerAllows('anilist', '90', write, undefined, { user: 'u1' }).catch(
