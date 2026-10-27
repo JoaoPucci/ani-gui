@@ -233,3 +233,13 @@ async fn a_list_pull_and_a_removal_with_no_known_user_still_ask_for_it() {
         .await
         .expect("removed");
 }
+
+proptest::proptest! {
+    /// AniList's user id reads back as the number it is, and anything
+    /// that is not one is a parse failure, never a user.
+    #[test]
+    fn a_viewer_id_reads_as_its_number_and_nothing_else_does(n in proptest::num::i64::ANY, junk in "[a-z ]{1,8}") {
+        proptest::prop_assert_eq!(super::viewer_id(&n.to_string()).ok(), Some(n));
+        proptest::prop_assert!(super::viewer_id(&junk).is_err());
+    }
+}
