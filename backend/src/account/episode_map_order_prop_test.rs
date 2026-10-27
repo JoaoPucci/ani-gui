@@ -9,7 +9,8 @@
 //! hits the linker's PDB limit (LNK4319). Box each new strategy too.
 
 use super::super::prop_tests::model;
-use super::started_before;
+use super::{parts_in_airing_order, started_before};
+use crate::account::episode_map::KitsuShow;
 use proptest::prelude::*;
 
 /// A start date as a source could send it, in a two-year window so
@@ -48,5 +49,31 @@ proptest! {
             !(started_before(a.as_deref(), b.as_deref())
                 && started_before(b.as_deref(), a.as_deref()))
         );
+    }
+
+    /// The parts in airing order are the longest prefix of the chain in
+    /// which no part is settled, by the model, as having started before
+    /// the one it follows; every part when none is, and at least the
+    /// first.
+    #[test]
+    fn the_parts_end_before_the_first_that_aired_first(
+        starts in proptest::collection::vec(start(), 0..6)
+    ) {
+        let parts: Vec<KitsuShow> = starts
+            .iter()
+            .enumerate()
+            .map(|(i, s)| KitsuShow {
+                id: i.to_string(),
+                episodes: Some(1),
+                start: s.clone(),
+                end: None,
+            })
+            .collect();
+        let want = (1..parts.len())
+            .find(|&i| model::aired_first(starts[i].as_deref(), starts[i - 1].as_deref()))
+            .unwrap_or(parts.len());
+        let got = parts_in_airing_order(&parts);
+        prop_assert_eq!(got, want);
+        prop_assert!(got >= parts.len().min(1));
     }
 }
