@@ -30,3 +30,7 @@ fn whole_day(date: Option<&str>) -> Option<&str> {
         crate::account::episode_map_calendar::parse_date(d).is_some_and(|p| p.day.is_some())
     })
 }
+
+#[cfg(test)]
+#[path = "episode_map_order_prop_test.rs"]
+mod tests;
