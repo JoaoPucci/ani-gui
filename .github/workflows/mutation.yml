@@ -68,6 +68,7 @@ jobs:
       - name: pnpm install
         uses: ./.github/actions/pnpm-install
         with:
+          working-directory: .
           args: --frozen-lockfile --filter ani-gui-frontend
       - name: stryker (lib/ only)
         run: pnpm exec stryker run

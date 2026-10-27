@@ -98,6 +98,7 @@ jobs:
         name: pnpm install (workspace)
         uses: ./.github/actions/pnpm-install
         with:
+          working-directory: .
           args: --frozen-lockfile
 
       - if: needs.filter.outputs.relevant == 'true'

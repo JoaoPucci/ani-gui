@@ -1,7 +1,8 @@
 #!/bin/sh
 
-# Architectural invariant: only master saves an Actions cache, and
-# every apt install goes through the cached install action.
+# Architectural invariant: only master saves an Actions cache, every
+# apt install goes through the cached install action, and every call
+# of the cached pnpm install runs it from the workspace root.
 #
 # The repository's Actions caches share one 10 GB limit, and GitHub
 # evicts the least recently used entry once it is reached. A cache a
@@ -29,6 +30,11 @@
 #   - an actions/setup-* step given a `cache` input: setup-node's
 #     built-in cache saves from every ref, and has no setting that
 #     stops it. .github/actions/pnpm-install is the master-only form;
+#   - a call of that action without `working-directory: .`: every
+#     caller installs from the workspace root, its arguments choosing
+#     what to install, so no two callers that share a cache key differ
+#     in where they run (composite steps ignore a job's defaults, so
+#     the input is the only place the directory can be said);
 #   - a `run` that installs with apt or apt-get anywhere but the
 #     install action .github/actions/apt-install, whose download cache
 #     the runner's slow mirror makes worth having in every job; and an
@@ -37,7 +43,9 @@
 #     --print-uris, what the install would fetch).
 #
 # What this does NOT check: an action other than these that caches on
-# its own (a third-party action keeping a cache internally), or a
+# its own (a third-party action keeping a cache internally), a call
+# of this repository's actions by remote reference
+# (`owner/ani-gui/.github/actions/...@ref`) rather than `./`, or a
 # script a step runs that calls apt or the cache service itself — only
 # the steps' own text is read — or an apt install split across a line
 # continuation so that no one line carries both `apt` and `install`,
@@ -77,6 +85,7 @@ fi
 
 "$py" -I - <<'PY'
 import glob
+import posixpath
 import re
 import sys
 
@@ -85,6 +94,7 @@ import yaml
 MASTER_SAVE_IF = "${{ github.ref == 'refs/heads/master' }}"
 MASTER_REF = "github.ref == 'refs/heads/master'"
 APT_ACTION = ".github/actions/apt-install/action.yml"
+PNPM_DIR = "."
 APT_INSTALL = re.compile(r"(^|[^\w-])apt(-get)?\s(.*\s)?install([^\w-]|$)")
 
 findings = []
@@ -130,7 +140,9 @@ def check(path, doc):
         where = "%s: %s" % (path, name)
         uses = step.get("uses")
         uses = uses if isinstance(uses, str) else ""
-        # GitHub resolves an action's owner and name case-insensitively.
+        # GitHub resolves an action's owner and name case-insensitively;
+        # a local `./` path folds too, which over-matches the safe way
+        # (a case-insensitive filesystem would resolve it).
         action = uses.split("@", 1)[0].lower()
         inputs = step.get("with") if isinstance(step.get("with"), dict) else {}
         if action == "swatinem/rust-cache":
@@ -146,6 +158,9 @@ def check(path, doc):
                 restore_at = index
         elif action.startswith("actions/setup-") and "cache" in inputs:
             findings.append("%s caches through the setup action, which saves from every ref; drop `cache:` (pnpm: use ./.github/actions/pnpm-install)" % where)
+        elif action.startswith("./") and posixpath.normpath(action) == ".github/actions/pnpm-install":
+            if inputs.get("working-directory") != PNPM_DIR:
+                findings.append("%s has to run its install from the workspace root; give it\n    working-directory: %s" % (where, PNPM_DIR))
         run = step.get("run")
         if isinstance(run, str) and any(APT_INSTALL.search(line) for line in run.splitlines()):
             if path != APT_ACTION:
