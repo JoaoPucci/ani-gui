@@ -27,14 +27,62 @@ pub(super) struct Restamp {
 /// `listing`, given the show's stamped `offset` and the display `stamp`
 /// it has now; `None` where the row reads right already, or where the
 /// listing does not prove what it is.
+///
+/// The listing proves it when it is the listing the sidecar was written
+/// against: it numbers the show on the stamped offset, and tags the
+/// stamped slot as the stamp does. Then the row's slot, listed once, is
+/// the episode its tag says; a slot whose tag is its slot reads right
+/// without a stamp, and one the stamp names already reads through it.
 pub(super) fn restamp(
     row_ep: &str,
     offset: u32,
     stamp: &(u32, String),
     listing: &[EpisodeRef],
 ) -> Option<Restamp> {
-    let _ = (row_ep, offset, stamp, listing);
-    None
+    use crate::commands::play_native_episode::tag_matches;
+    let slot: u32 = row_ep.trim().parse().ok()?;
+    let (stamped, stamped_tag) = stamp;
+    if *stamped == slot
+        || crate::commands::play_native_numbering::numbering_offset(listing) != offset
+    {
+        return None;
+    }
+    let stamped_row = only_row(listing, *stamped)?;
+    let shown = stamped_row
+        .number2
+        .clone()
+        .unwrap_or_else(|| stamped_row.number.to_string());
+    if !tag_matches(&shown, stamped_tag) {
+        return None;
+    }
+    let row = only_row(listing, slot)?;
+    let tag = row.number2.clone()?;
+    if tag_matches(&tag, &slot.to_string()) {
+        return None;
+    }
+    // What is kept under a former tag another row carries now may be
+    // that row's.
+    let shared = |former: &str| {
+        listing
+            .iter()
+            .any(|e| e.number2.as_deref().is_some_and(|t| tag_matches(t, former)))
+    };
+    let former = row
+        .former_tag
+        .clone()
+        .filter(|f| !shared(f))
+        .map(|f| (slot, f));
+    Some(Restamp {
+        display: (slot, tag),
+        former,
+    })
+}
+
+/// The listing's row in `slot`, when it lists exactly one.
+fn only_row(listing: &[EpisodeRef], slot: u32) -> Option<&EpisodeRef> {
+    let mut rows = listing.iter().filter(|e| e.number == slot);
+    let row = rows.next()?;
+    rows.next().is_none().then_some(row)
 }
 
 /// Put the display stamp of the show `slug` keys back on its legacy

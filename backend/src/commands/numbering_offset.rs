@@ -10,13 +10,16 @@
 //! records that number itself, marked as such
 //! ([`crate::history::HistoryEntry::own_number`]). For the rows from
 //! before, the resolver's shift is persisted per show key, with the
-//! (slot, tag) display stamp the last displaced resolve left — warms
-//! included, so a row past a recap whose stamp a warm moved before
-//! this build reads one episode high until its show is next watched —
-//! and the read boundary subtracts and translates through them. A
-//! resolve stamps the offset only for a show with no row here, and no
-//! longer stamps the displaced row it lands on, so neither moves to
-//! another row under such a row.
+//! (slot, tag) display stamp the last displaced resolve left, and the
+//! read boundary subtracts and translates through them. A resolve
+//! stamps the offset only for a show with no row here, and no longer
+//! stamps the displaced row it lands on, so neither moves to another
+//! row under such a row. Builds before the marker stamped warms too,
+//! which could move the stamp off a row past a recap and leave it
+//! reading one episode high; the next listing of its show at hand puts
+//! the stamp back on the row's slot where the listing proves it
+//! (`numbering_offset_drift.rs`), and a row no such listing reaches
+//! reads one episode high until its show is next watched.
 //! The rows anidb.app's resolves stamped stay: they are what keeps the
 //! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
