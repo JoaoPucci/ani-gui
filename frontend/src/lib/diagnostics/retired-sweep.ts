@@ -33,6 +33,13 @@ export interface RetiredSweepView {
 export function retiredSweepView(
 	report: Partial<RetiredSweepReport> | undefined | null
 ): RetiredSweepView {
-	void report;
-	return { visible: false, superseded: [], renumbered: [], storedEntries: 0 };
+	const superseded = report?.superseded ?? [];
+	const renumbered = report?.renumbered ?? [];
+	const storedEntries = (report?.numbering_rows ?? 0) + (report?.cache_rows ?? 0);
+	return {
+		visible: superseded.length > 0 || renumbered.length > 0 || storedEntries > 0,
+		superseded,
+		renumbered,
+		storedEntries
+	};
 }
