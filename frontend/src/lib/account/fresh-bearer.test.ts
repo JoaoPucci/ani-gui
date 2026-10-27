@@ -256,4 +256,19 @@ describe('bearerRefusedFor', () => {
 		expect(store.setExpired).toHaveBeenCalledWith('mal', a);
 		expect(store.noteRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
 	});
+
+	it('renews nothing while the account is being disconnected', async () => {
+		store.byProvider.mal = { kind: 'connected', account: account() };
+		store.accountChanging.mal = true;
+		await bearerRefusedFor('mal', 'old');
+		expect(refreshTokens).not.toHaveBeenCalled();
+		expect(store.setExpired).not.toHaveBeenCalled();
+	});
+
+	it('leaves a sign-in alone whose bearer is not the one refused', async () => {
+		store.byProvider.mal = { kind: 'connected', account: account({ access_token: 'new' }) };
+		await bearerRefusedFor('mal', 'old');
+		expect(refreshTokens).not.toHaveBeenCalled();
+		expect(store.setExpired).not.toHaveBeenCalled();
+	});
 });

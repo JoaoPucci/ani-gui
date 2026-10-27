@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AccountApiError } from './api';
-import { handleRefusedBearer, type RefusedBearerDeps } from './read-refusal';
+import fc from 'fast-check';
+import { handleRefusedBearer, refusalApplies, type RefusedBearerDeps } from './read-refusal';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
 function acc(refresh_token: string | null): PersistedAccount {
@@ -107,5 +108,59 @@ describe('handleRefusedBearer', () => {
 		expect(d.setConnected).not.toHaveBeenCalled();
 		expect(d.setExpired).not.toHaveBeenCalled();
 		expect(d.noteRenewalFailed).not.toHaveBeenCalled();
+	});
+});
+
+describe('a refusal belongs to the sign-in whose bearer was refused', () => {
+	it('renews nothing while the account is being changed', async () => {
+		// A 401 that arrives after a disconnect began would otherwise
+		// renew the account being removed, and its save could land after
+		// the disconnect's clear.
+		const d = deps(
+			{ kind: 'connected', account: acc('rt'), lastSyncedAt: 0 },
+			{ changing: () => true }
+		);
+		await handleRefusedBearer(d, 'mal', 'old');
+		expect(d.refreshTokens).not.toHaveBeenCalled();
+		expect(d.setExpired).not.toHaveBeenCalled();
+		expect(d.noteRenewalFailed).not.toHaveBeenCalled();
+	});
+
+	it('leaves a newer sign-in alone when the refused bearer was the old one', async () => {
+		// The user reconnected while the read was out: the refusal is the
+		// old sign-in's, not the one connected now.
+		const d = deps({
+			kind: 'connected',
+			account: { ...acc('rt'), access_token: 'new' },
+			lastSyncedAt: 0
+		});
+		await handleRefusedBearer(d, 'mal', 'old');
+		expect(d.refreshTokens).not.toHaveBeenCalled();
+		expect(d.setExpired).not.toHaveBeenCalled();
+	});
+
+	it('applies only to a connected sign-in holding that bearer, with no change under way', () => {
+		const bearer = fc.constantFrom('old', 'new');
+		const state = fc.oneof(
+			fc.constant<ProviderState>({ kind: 'disconnected' }),
+			fc.constant<ProviderState>({ kind: 'connecting' }),
+			bearer.map<ProviderState>((t) => ({
+				kind: 'expired',
+				account: { ...acc('rt'), access_token: t }
+			})),
+			bearer.map<ProviderState>((t) => ({
+				kind: 'connected',
+				account: { ...acc('rt'), access_token: t },
+				lastSyncedAt: 0
+			})),
+			fc.constant<ProviderState>({ kind: 'error', account: null, message: 'x' })
+		);
+		fc.assert(
+			fc.property(state, fc.boolean(), bearer, (st, changing, refused) => {
+				const expected =
+					st.kind === 'connected' && !changing && st.account.access_token === refused;
+				return refusalApplies(st, changing, refused) === expected;
+			})
+		);
 	});
 });
