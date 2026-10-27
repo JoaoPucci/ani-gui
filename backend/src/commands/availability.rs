@@ -1657,65 +1657,23 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
     }
 }
 
-/// Warm the cache for a set of titles. Each entry carries the data
-/// needed to run check_availability (title + alt_titles + mode +
-/// kitsu_id). Entries with an existing fresh cache entry are
-/// skipped; the rest are probed sequentially with a 500ms gap
-/// between queries so we don't hammer the provider.
+/// Warm the cache for a set of titles, and return once the warm has
+/// walked them. Each entry carries the data needed to run
+/// check_availability (title + alt_titles + mode + kitsu_id). The
+/// items join the state's warm queue (see `availability_warm`):
+/// entries with a fresh cache row are skipped, the rest are probed
+/// one at a time with a 500ms gap between queries so we don't hammer
+/// the provider.
 ///
-/// Designed to be called fire-and-forget after a list view renders;
-/// the caller doesn't wait for the result. The next visit to the
-/// same list reads the now-populated cache and filters known-
-/// unavailable cards.
+/// The route hands its items to the queue and returns at once; the
+/// next visit to the same list reads the now-populated cache and
+/// filters known-unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
-    // Nobody waits on a warm: every AniList request it makes is a
-    // background fill.
-    crate::meta::anilist_gate::in_background(warm_items(state, items)).await;
+    let queue = state.availability_refreshes.warm_queue.clone();
+    queue.push(&state, items);
+    queue.drained().await;
 }
 
-async fn warm_items(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
-    use tokio::time::sleep;
-    let seed_ids = schedule_seed_ids(&state, &items);
-    crate::commands::airing::seed_airing_rows_batch(&state, &seed_ids, None).await;
-    for args in items {
-        let mode = if args.mode == "dub" { "dub" } else { "sub" };
-        let id = match args.kitsu_id.as_deref() {
-            Some(id) if !id.is_empty() => id,
-            _ => continue,
-        };
-        // Skip entries whose fresh row the readers would serve — the
-        // same rule the probe and the batch read apply, so a negative
-        // row nobody stands behind is a miss here as it is there.
-        if has_usable_row(&state, id, mode) {
-            continue;
-        }
-        // Warm probes are background by definition — enforce it
-        // server-side regardless of what the caller sent, so the
-        // scraper gate paces them and skips them while its breaker
-        // is open.
-        let mut args = args;
-        args.background = true;
-        let outcome = check_availability(&state, &args).await;
-        let backoff = warm_backoff(&outcome);
-        if let Err(crate::error::AniError::RateLimited {
-            retry_after_secs, ..
-        }) = &outcome
-        {
-            tracing::info!(
-                retry_after_secs = ?retry_after_secs,
-                wait = ?backoff,
-                "availability warm: provider rate limited; backing off",
-            );
-        }
-        sleep(backoff).await;
-    }
-}
-
-/// Whether the cache holds a row for `(kitsu_id, mode)` that the
-/// readers would serve — fresh, and usable under
-/// [`cache_hit_is_usable`]: a count-less or approximate positive
-/// re-probes, and so does a negative row whose provider no longer
-/// stands behind it.
 /// The warm entries whose airing row is batch-seeded before they
 /// probe: every entry still on air or to come that will actually
 /// probe (no fresh availability row). One AniList request per id
@@ -1723,7 +1681,7 @@ async fn warm_items(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs
 /// covers a rail of up to 50 shows. A pre-premiere probe's per-show seed becomes a cache
 /// hit, and a current show's positive row is bounded by its next
 /// airing when it is written rather than holding the ongoing day.
-fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String> {
+pub(super) fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
     for args in items {
         let mode = if args.mode == "dub" { "dub" } else { "sub" };
@@ -1743,7 +1701,12 @@ fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String
     ids
 }
 
-fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
+/// Whether the cache holds a row for `(kitsu_id, mode)` that the
+/// readers would serve — fresh, and usable under
+/// [`cache_hit_is_usable`]: a count-less or approximate positive
+/// re-probes, and so does a negative row whose provider no longer
+/// stands behind it.
+pub(super) fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
     let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &cache_key(kitsu_id, mode)) else {
         return false;
     };
@@ -1760,7 +1723,7 @@ fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
 /// the same budget. Every other outcome keeps the half-second
 /// cadence. The rate-limited row stays unwritten; a later warm pass
 /// re-probes it.
-fn warm_backoff(outcome: &Result<AvailabilityResponse>) -> std::time::Duration {
+pub(super) fn warm_backoff(outcome: &Result<AvailabilityResponse>) -> std::time::Duration {
     match outcome {
         Err(crate::error::AniError::RateLimited {
             retry_after_secs, ..

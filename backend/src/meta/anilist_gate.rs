@@ -67,6 +67,13 @@ pub(crate) async fn in_background<F: Future>(f: F) -> F::Output {
     CLASS.scope(Class::Background, f).await
 }
 
+/// `f`, with every AniList request it sends counted in the class of
+/// whoever calls this — for work handed to a task of its own, which
+/// would otherwise count as interactive whoever asked for it.
+pub(crate) fn in_callers_class<F: Future>(f: F) -> impl Future<Output = F::Output> {
+    CLASS.scope(current_class(), f)
+}
+
 fn current_class() -> Class {
     CLASS.try_with(|c| *c).unwrap_or(Class::Interactive)
 }
