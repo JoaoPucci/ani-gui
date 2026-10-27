@@ -1685,7 +1685,10 @@ async fn a_progress_write_waiting_on_its_show_lock_through_a_disconnect_does_not
         drop(guard);
     };
     let (written, ()) = tokio::join!(write, disconnect);
-    written.expect("the tracker took the write");
+    assert!(
+        written.expect("the tracker took the write").is_some(),
+        "the write was made, so its write-through was the one held back"
+    );
     let cached = list_entries(&state.cache_pool, ProviderKind::MyAnimeList, "4242").unwrap();
     assert!(
         cached.is_empty(),
