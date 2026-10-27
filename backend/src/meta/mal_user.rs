@@ -243,3 +243,7 @@ mod parse_prop_tests;
 #[cfg(test)]
 #[path = "mal_user_tracked_test.rs"]
 mod tracked_tests;
+
+#[cfg(test)]
+#[path = "mal_user_refresh_refusal_test.rs"]
+mod refresh_refusal_tests;

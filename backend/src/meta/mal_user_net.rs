@@ -26,6 +26,8 @@ use crate::error::{AniError, Result};
 
 #[path = "mal_user_net_refresh.rs"]
 mod refresh;
+#[cfg(test)]
+pub(super) use refresh::refresh_refusal;
 pub(super) use refresh::url_origin;
 
 /// `User-Agent` advertised on every MAL request. Per the API license
