@@ -39,13 +39,19 @@ impl MalProvider {
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
         ];
-        let tokens = self.post_token_form(&form).await?;
+        let tokens = self.post_token_form(&form).await.map_err(refresh_refusal)?;
         *guard = Some(CoalescedRefresh {
             input_refresh_token: refresh_token.to_string(),
             tokens: tokens.clone(),
         });
         Ok(tokens)
     }
+}
+
+/// What a failed refresh grant means to the caller. For now the token
+/// endpoint's own error, unchanged.
+pub(in crate::meta) fn refresh_refusal(e: AniError) -> AniError {
+    e
 }
 
 /// Extract the (scheme, host, port) tuple of a URL string for origin
