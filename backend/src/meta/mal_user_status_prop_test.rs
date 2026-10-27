@@ -55,9 +55,9 @@ proptest! {
     #[test]
     fn a_row_missing_its_status_or_count_is_no_answer(
         status in proptest::sample::select(STATUSES.to_vec()).boxed(),
-        watched in 0u32..5000,
+        watched in (0u32..5000).boxed(),
         times in optional(any::<u32>()),
-        drop_status in any::<bool>(),
+        drop_status in any::<bool>().boxed(),
     ) {
         let mut row = serde_json::json!({ "status": status, "num_episodes_watched": watched });
         if let Some(t) = times { row["num_times_rewatched"] = t.into(); }

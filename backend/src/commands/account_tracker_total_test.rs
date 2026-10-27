@@ -486,11 +486,15 @@ async fn mal_a_rewatch_close_held_by_a_rate_limit_closes_once_on_its_retry() {
         .and(path("/anime/21"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(rewatching))
         .up_to_n_times(2)
+        // The refused attempt's read and the retry's own.
+        .expect(2)
         .mount(&server)
         .await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(closed))
+        // The replay's read.
+        .expect(1)
         .mount(&server)
         .await;
     // The first write is refused; the next ones land.

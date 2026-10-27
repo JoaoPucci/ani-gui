@@ -59,4 +59,23 @@ proptest! {
         let none = status.is_none() && progress.is_none() && score.is_none() && repeat.is_none();
         prop_assert_eq!(update.is_empty(), none);
     }
+
+    /// A row stands at a total exactly when, as the tracker keeps it, it
+    /// has reached that total and is Completed or a rewatch the tracker
+    /// closes itself: a MAL rewatch never does, an AniList one does.
+    #[test]
+    fn a_row_stands_at_a_total_only_finished_as_its_tracker_keeps_it(
+        status in proptest::sample::select(STATUSES.to_vec()),
+        kind in proptest::sample::select(KINDS.to_vec()),
+        progress in 0u32..30,
+        total in 0u32..30,
+    ) {
+        let row = CurrentEntry { status, progress_episodes: progress, times_rewatched: None };
+        let finished = match status {
+            ListStatus::Completed => true,
+            ListStatus::Rewatching => kind != ProviderKind::MyAnimeList,
+            _ => false,
+        };
+        prop_assert_eq!(row.stands_at(kind, total), progress >= total && finished);
+    }
 }
