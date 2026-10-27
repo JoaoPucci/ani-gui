@@ -857,6 +857,46 @@ fn a_later_part_is_not_filed_where_its_first_part_s_map_would_conflict() {
     assert_eq!(map_show(&plain).target(1), mapped(173_335, 13, true, &[]));
 }
 
+/// Kamitsubaki as Kitsu dates it: the one-episode special Kitsu files
+/// as the TV series' sequel, "Witchling - Zenpen", aired on 2025-07-03,
+/// six days before the series began on 2025-07-09. A part that aired
+/// before the part it follows is no later part of the entry, whatever
+/// its relation says: the parts end before it, and the series' own
+/// count with AniList's listed Episode 0 explains the entry alone. The
+/// special is no part either, so nothing files it. Where the dates do
+/// not settle the order — the same day, or a month named alone in the
+/// other's month — the parts are read as Kitsu chains them, and the two
+/// readings still conflict.
+#[test]
+fn a_later_part_that_aired_before_the_part_it_follows_is_no_later_part() {
+    let ev = |ours: &str, ours_count: u32, special_start: &str| Evidence {
+        kitsu: kitsu(ours, Some(ours_count), "", ""),
+        entry: show(173_335, Some(13), true, "2025-07-03", "2025-09-25"),
+        listed: listed(&["0", "1", "2", "3", "4"]),
+        sharing: vec![kitsu("49900", Some(12), "2025-07-09", "2025-09-25")],
+        parts: vec![
+            kitsu("49900", Some(12), "2025-07-09", "2025-09-25"),
+            kitsu("50027", Some(1), special_start, special_start),
+        ],
+        ..Default::default()
+    };
+    let series = map_show(&ev("49900", 12, "2025-07-03"));
+    assert_eq!(series.shape, Shape::Extras, "{series:?}");
+    assert_eq!(series.target(1), mapped(173_335, 2, false, &[]));
+    assert_eq!(series.target(12), mapped(173_335, 13, true, &[]));
+    assert_eq!(
+        map_show(&ev("50027", 1, "2025-07-03")),
+        identity(Identity::Unexplained)
+    );
+    for unsettled in ["2025-07-09", "2025-07"] {
+        assert_eq!(
+            map_show(&ev("49900", 12, unsettled)),
+            identity(Identity::Conflict),
+            "{unsettled}"
+        );
+    }
+}
+
 #[test]
 fn extras_are_read_only_for_an_entry_s_one_kitsu_entry() {
     // A second season with no AniList entry of its own, filed through
