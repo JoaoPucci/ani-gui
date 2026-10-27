@@ -326,3 +326,64 @@ async fn anilist_a_replay_behind_the_row_writes_nothing() {
     assert!(push_to_anilist(&server, episode(3)).await.is_none());
     assert!(anilist_saves(&server).await.is_empty());
 }
+
+// ── what the MAL rewatch change must not move ──────────────────────────
+
+#[tokio::test]
+async fn anilist_a_rewatch_mid_series_sends_its_progress_alone() {
+    let server = anilist_server("12", r#"{"status":"REPEATING","progress":5}"#).await;
+    assert!(push_to_anilist(&server, episode(6)).await.is_some());
+    assert_eq!(
+        anilist_saves(&server).await,
+        vec![serde_json::json!({"mediaId": 21, "progress": 6})]
+    );
+}
+
+#[tokio::test]
+async fn anilist_a_planning_row_is_promoted_to_watching() {
+    let server = anilist_server("12", r#"{"status":"PLANNING","progress":0}"#).await;
+    assert!(push_to_anilist(&server, episode(1)).await.is_some());
+    assert_eq!(
+        anilist_saves(&server).await,
+        vec![serde_json::json!({"mediaId": 21, "status": "CURRENT", "progress": 1})]
+    );
+}
+
+#[tokio::test]
+async fn mal_a_planning_row_is_promoted_to_watching() {
+    let row = r#"{"status":"plan_to_watch","num_episodes_watched":0}"#;
+    let server = mal_server_with_row(
+        12,
+        row,
+        &[
+            "status=watching",
+            "is_rewatching=false",
+            "num_watched_episodes=1",
+        ],
+        1,
+    )
+    .await;
+    assert!(push_to_mal(&server, episode(1)).await.is_some());
+}
+
+/// A row MAL already reads as rewatching takes a mid-series episode's
+/// progress alone: only a finished show's finale completes it.
+#[tokio::test]
+async fn mal_a_rewatching_row_mid_series_sends_its_progress_alone() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":5}"#;
+    let server = mal_server_with_row(12, row, &["num_watched_episodes=6"], 1).await;
+    assert!(push_to_mal(&server, episode(6)).await.is_some());
+    let bodies = patch_bodies(&server).await;
+    assert!(
+        bodies
+            .iter()
+            .all(|b| !b.contains("status=") && !b.contains("is_rewatching=")),
+        "mid-series, the row's status is left alone: {bodies:?}"
+    );
+}
+
+#[tokio::test]
+async fn mal_the_finale_completes_a_watching_row_when_the_totals_agree() {
+    let server = mal_server(12, 11, &["num_watched_episodes=12", "status=completed"], 1).await;
+    assert!(push_to_mal(&server, finale(12)).await.is_some());
+}

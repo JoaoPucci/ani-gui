@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { removeEntryAcrossTrackers, setEntryAcrossTrackers } from './set-entry';
 import { AccountApiError } from './api';
-import type { EntryView, ListEntry, Provider } from './types';
+import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 
 function fakeEntry(provider: Provider): ListEntry {
 	return {
@@ -249,4 +249,33 @@ describe('setEntryAcrossTrackers — a rewatch on a tracker without one', () => 
 		);
 		expect(setEntry).not.toHaveBeenCalledWith('mal', expect.anything(), expect.anything());
 	});
+});
+
+// What the rewatch change must not move: every other status still reaches
+// MyAnimeList as the user picked it.
+describe('setEntryAcrossTrackers — every other status on MyAnimeList', () => {
+	const cases: [ListStatus, number][] = [
+		['watching', 6],
+		['paused', 6],
+		['dropped', 6],
+		['planning', 0],
+		['completed', 26]
+	];
+	for (const [status, progress] of cases) {
+		it(`sends ${status} as picked`, async () => {
+			const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
+			const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+			const out = await setEntryAcrossTrackers(
+				{ connected: ['mal'], bearerFor: () => 'tok', getEntry, setEntry },
+				'kitsu-1',
+				{ status, statusChanged: true, progress: status === 'planning' ? 0 : 6, total: 26 }
+			);
+			expect(out).toEqual({ written: 1, failed: 0 });
+			expect(setEntry).toHaveBeenCalledWith('mal', 'tok', {
+				kitsu_id: 'kitsu-1',
+				...(status === 'watching' ? {} : { status }),
+				progress
+			});
+		});
+	}
 });

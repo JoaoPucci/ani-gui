@@ -1352,3 +1352,103 @@ async fn update_entry_sends_mal_no_status_for_a_rewatch() {
     assert!(bodies[0].contains("num_watched_episodes=3"), "{bodies:?}");
     assert!(bodies[0].contains("score=9"), "{bodies:?}");
 }
+
+/// Every status but Rewatching still reaches MAL as before, with
+/// is_rewatching=false beside it, and the score with it.
+#[tokio::test]
+async fn update_entry_sends_mal_every_other_status_as_before() {
+    use crate::account::status::ListStatus;
+    use wiremock::matchers::{method, path};
+    for (status, wire) in [
+        (ListStatus::Planning, "status=plan_to_watch"),
+        (ListStatus::Watching, "status=watching"),
+        (ListStatus::Completed, "status=completed"),
+        (ListStatus::Paused, "status=on_hold"),
+        (ListStatus::Dropped, "status=dropped"),
+    ] {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("PATCH"))
+            .and(path("/anime/21/my_list_status"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(MAL_LIST_STATUS_RESPONSE),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = make_provider(&server.uri(), "http://unused-token");
+        let tokens = crate::account::provider::Tokens {
+            access_token: "mal-access".into(),
+            refresh_token: None,
+            expires_at_epoch_s: i64::MAX,
+        };
+        let update = crate::account::provider::EntryUpdate {
+            status: Some(status),
+            progress_episodes: Some(4),
+            score_0_to_100: Some(70),
+            repeat_count: None,
+        };
+        provider
+            .update_entry(&tokens, ProviderMediaId(21), update)
+            .await
+            .expect("update_entry ok");
+        let body = server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+            .next()
+            .expect("one PATCH");
+        for want in [
+            wire,
+            "is_rewatching=false",
+            "num_watched_episodes=4",
+            "score=7",
+        ] {
+            assert!(
+                body.contains(want),
+                "{status:?}: {want} missing from {body}"
+            );
+        }
+    }
+}
+
+/// A row MAL already reads as rewatching still reads back as one, in
+/// the list as in a single lookup, so existing rows display as they are.
+#[tokio::test]
+async fn list_all_still_reads_a_mal_rewatch_as_rewatching() {
+    let body = r#"{
+        "data": [
+            {
+                "node": { "id": 1, "title": "Cowboy Bebop" },
+                "list_status": {
+                    "status": "watching",
+                    "score": 10,
+                    "num_episodes_watched": 26,
+                    "is_rewatching": true,
+                    "updated_at": "2026-10-25T08:05:21+00:00"
+                }
+            }
+        ],
+        "paging": {}
+    }"#;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused");
+    let tokens = crate::account::provider::Tokens {
+        access_token: "t".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    };
+    let entries = provider.list_all(&tokens).await.expect("list_all ok");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].status,
+        crate::account::status::ListStatus::Rewatching
+    );
+    assert_eq!(entries[0].progress_episodes, 26);
+}
