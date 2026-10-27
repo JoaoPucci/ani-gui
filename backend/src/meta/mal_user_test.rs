@@ -1305,13 +1305,12 @@ async fn refresh_surfaces_429_as_rate_limited() {
     assert_rate_limited(&err, Some(60));
 }
 
-/// MAL has no rewatch status: a row it reads as rewatching is listed as
-/// Watching, and the record that the show was finished lives only in
-/// Completed. A write asking for Rewatching sends MAL no status at all,
-/// so it never takes a row out of Completed; what else it carries still
-/// goes.
+/// MAL has no rewatch status of its own: a rewatch is a Watching row
+/// with `is_rewatching` set, which is what a Rewatching write sends it.
+/// A rewatch is only ever set deliberately, so MAL showing it is what
+/// the user asked for; what else the write carries goes with it.
 #[tokio::test]
-async fn update_entry_sends_mal_no_status_for_a_rewatch() {
+async fn update_entry_sends_mal_a_rewatch_as_watching_and_rewatching() {
     use wiremock::matchers::{method, path};
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("PATCH"))
@@ -1346,10 +1345,8 @@ async fn update_entry_sends_mal_no_status_for_a_rewatch() {
         .map(|r| String::from_utf8_lossy(&r.body).into_owned())
         .collect();
     assert_eq!(bodies.len(), 1, "{bodies:?}");
-    assert!(
-        !bodies[0].contains("status=") && !bodies[0].contains("is_rewatching="),
-        "a rewatch sends MAL no status: {bodies:?}"
-    );
+    assert!(bodies[0].contains("status=watching"), "{bodies:?}");
+    assert!(bodies[0].contains("is_rewatching=true"), "{bodies:?}");
     assert!(bodies[0].contains("num_watched_episodes=3"), "{bodies:?}");
     assert!(bodies[0].contains("score=9"), "{bodies:?}");
 }
