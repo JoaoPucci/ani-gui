@@ -65,3 +65,7 @@ pub(crate) fn probe_counts(
         crate::commands::play_native_numbering::extra_episode_tags(&picked.episodes),
     )
 }
+
+#[cfg(test)]
+#[path = "availability_unread_prop_test.rs"]
+mod prop_tests;
