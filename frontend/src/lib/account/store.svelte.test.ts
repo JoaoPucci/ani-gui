@@ -332,3 +332,34 @@ describe('accountStore.hydrate triggers refresh', () => {
 		expect(spy).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('accountStore renewal failures', () => {
+	it('records what a failed renewal said, per provider', () => {
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
+		accountStore.noteRenewalFailed('mal', 'unreachable');
+		expect(accountStore.renewalFailure.mal).toBe('unreachable');
+		expect(accountStore.renewalFailure.anilist).toBeNull();
+	});
+
+	it('forgets it once the sign-in is renewed or reconnected', () => {
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
+		accountStore.noteRenewalFailed('mal', 'rejected');
+		accountStore.setConnected('mal', payload({ refresh_token: 'rt' }));
+		expect(accountStore.renewalFailure.mal).toBeNull();
+	});
+
+	it('forgets it when the provider is disconnected or a new sign-in starts', () => {
+		accountStore.noteRenewalFailed('mal', 'rejected');
+		accountStore.setDisconnected('mal');
+		expect(accountStore.renewalFailure.mal).toBeNull();
+		accountStore.noteRenewalFailed('mal', 'rejected');
+		accountStore.setConnecting('mal');
+		expect(accountStore.renewalFailure.mal).toBeNull();
+	});
+
+	it('keeps it when the sign-in is marked expired', () => {
+		accountStore.noteRenewalFailed('mal', 'unreachable');
+		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));
+		expect(accountStore.renewalFailure.mal).toBe('unreachable');
+	});
+});

@@ -10,6 +10,7 @@ import {
 	type RefreshFlowDeps
 } from './refresh-flow';
 import type { PersistedAccount, Provider, ProviderState } from './types';
+import { AccountApiError } from './api';
 
 function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
@@ -353,5 +354,62 @@ describe('freshBearer', () => {
 		const bearer = await freshBearer(deps, 'mal', acct);
 		expect(bearer).toBe('old');
 		expect(deps.onRefreshed).not.toHaveBeenCalled();
+	});
+});
+
+const refusedToken = new AccountApiError(
+	401,
+	JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
+);
+
+describe('a failed renewal says why', () => {
+	it('carries what the tracker said on the failed outcome', async () => {
+		const out = await refreshAccount(
+			{
+				refreshTokens: vi.fn().mockRejectedValue(refusedToken),
+				persistAccount: vi.fn(),
+				generation: () => 0
+			},
+			'mal',
+			account()
+		);
+		expect(out).toEqual({ kind: 'failed', failure: 'rejected' });
+	});
+
+	it('tells the store when an expired sign-in fails to renew', async () => {
+		const onRenewalFailed = vi.fn();
+		await refreshExpiredAccounts({
+			byProvider: () =>
+				({
+					anilist: { kind: 'disconnected' },
+					mal: { kind: 'expired', account: account() },
+					inhouse: { kind: 'disconnected' }
+				}) as unknown as Record<Provider, ProviderState>,
+			onRefreshed: vi.fn(),
+			onRenewalFailed,
+			refreshTokens: vi.fn().mockRejectedValue(refusedToken),
+			persistAccount: vi.fn(),
+			generation: () => 0,
+			changing: () => false
+		});
+		expect(onRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
+	});
+
+	it('tells the store when a proactive renewal fails, and still hands back the bearer', async () => {
+		const onRenewalFailed = vi.fn();
+		const bearer = await freshBearer(
+			{
+				refreshTokens: vi.fn().mockRejectedValue(refusedToken),
+				persistAccount: vi.fn(),
+				generation: () => 0,
+				onRefreshed: vi.fn(),
+				onRenewalFailed,
+				now: () => 1_000
+			},
+			'mal',
+			account({ expires_at_epoch_s: 2 })
+		);
+		expect(bearer).toBe('old-access');
+		expect(onRenewalFailed).toHaveBeenCalledWith('mal', 'rejected');
 	});
 });

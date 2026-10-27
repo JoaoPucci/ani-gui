@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { detectExpiredProviders, ExpiryToastTracker, type ExpirySyncDeps } from './expiry-toast';
+import fc from 'fast-check';
+import {
+	detectExpiredProviders,
+	detectSignInNotices,
+	ExpiryToastTracker,
+	signInNotice,
+	type ExpirySyncDeps
+} from './expiry-toast';
+import { NO_RENEWAL_FAILURES, type RenewalFailure } from './renewal-failure';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
 function acc(over: Partial<PersistedAccount> = {}): PersistedAccount {
@@ -154,7 +162,7 @@ describe('ExpiryToastTracker', () => {
 			deps
 		);
 		expect(dismiss).toHaveBeenCalledWith('toast-anilist');
-		expect(push).toHaveBeenLastCalledWith({ provider: 'mal', username: 'm' });
+		expect(push).toHaveBeenLastCalledWith({ provider: 'mal', username: 'm', notice: 'expired' });
 	});
 
 	it('re-pushes after a provider recovers and expires again later', () => {
@@ -170,5 +178,141 @@ describe('ExpiryToastTracker', () => {
 		t.sync(connected, deps);
 		t.sync(expired, deps);
 		expect(push).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('signInNotice', () => {
+	const renewable = acc({ refresh_token: 'rt' });
+	const final = acc({ refresh_token: null });
+
+	it('says nothing while a renewable sign-in is still being renewed', () => {
+		// Before the renewal answers, nothing is known: the sign-in may
+		// be renewed in a moment, and a notice now would flash and go.
+		expect(signInNotice({ kind: 'expired', account: renewable }, null)).toBeNull();
+	});
+
+	it('calls a sign-in with no way to renew it expired', () => {
+		expect(signInNotice({ kind: 'expired', account: final }, null)).toBe('expired');
+	});
+
+	it.each<[RenewalFailure, string]>([
+		['rejected', 'refused'],
+		['unreachable', 'unreachable'],
+		['unknown', 'unknown']
+	])('names a %s renewal of an expired sign-in as %s', (failure, notice) => {
+		expect(signInNotice({ kind: 'expired', account: renewable }, failure)).toBe(notice);
+	});
+
+	it('tells a still-valid sign-in only that its renewal was refused', () => {
+		// A valid token keeps working; only a refused refresh token
+		// means the session is about to end.
+		const connected: ProviderState = { kind: 'connected', account: renewable, lastSyncedAt: 0 };
+		expect(signInNotice(connected, 'rejected')).toBe('refused');
+		expect(signInNotice(connected, 'unreachable')).toBeNull();
+		expect(signInNotice(connected, 'unknown')).toBeNull();
+		expect(signInNotice(connected, null)).toBeNull();
+	});
+
+	it('never asks to reconnect unless the tracker refused or the session ran out unrenewably', () => {
+		const failure = fc.constantFrom<RenewalFailure | null>(
+			'rejected',
+			'unreachable',
+			'unknown',
+			null
+		);
+		const state = fc.oneof(
+			fc.constant<ProviderState>({ kind: 'disconnected' }),
+			fc.constant<ProviderState>({ kind: 'connecting' }),
+			fc.boolean().map<ProviderState>((rt) => ({
+				kind: 'expired',
+				account: acc({ refresh_token: rt ? 'rt' : null })
+			})),
+			fc.boolean().map<ProviderState>((rt) => ({
+				kind: 'connected',
+				account: acc({ refresh_token: rt ? 'rt' : null }),
+				lastSyncedAt: 0
+			})),
+			fc.constant<ProviderState>({ kind: 'error', account: null, message: 'x' })
+		);
+		fc.assert(
+			fc.property(state, failure, (st, f) => {
+				const notice = signInNotice(st, f);
+				if (notice === 'refused') return f === 'rejected';
+				if (notice === 'expired')
+					return st.kind === 'expired' && !st.account.refresh_token && f === null;
+				if (notice === 'unreachable') return f === 'unreachable' && st.kind === 'expired';
+				if (notice === 'unknown') return f === 'unknown' && st.kind === 'expired';
+				return true;
+			})
+		);
+	});
+});
+
+describe('ExpiryToastTracker with renewal failures', () => {
+	function fakeDeps() {
+		let n = 0;
+		const push = vi.fn().mockImplementation(() => `toast-${++n}`);
+		const dismiss = vi.fn();
+		const deps: ExpirySyncDeps = { push, dismiss };
+		return { deps, push, dismiss };
+	}
+	const expiredMal = build({
+		mal: { kind: 'expired', account: acc({ refresh_token: 'rt', username: 'm' }) }
+	});
+
+	it('waits for the renewal before saying anything', () => {
+		const { deps, push } = fakeDeps();
+		new ExpiryToastTracker().sync(expiredMal, deps, NO_RENEWAL_FAILURES);
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it('pushes the notice the renewal earned, with what it says', () => {
+		const { deps, push } = fakeDeps();
+		new ExpiryToastTracker().sync(expiredMal, deps, { ...NO_RENEWAL_FAILURES, mal: 'rejected' });
+		expect(push).toHaveBeenCalledWith({ provider: 'mal', username: 'm', notice: 'refused' });
+	});
+
+	it('shows one toast per incident however often the renewal fails the same way', () => {
+		const { deps, push } = fakeDeps();
+		const t = new ExpiryToastTracker();
+		const failing = { ...NO_RENEWAL_FAILURES, mal: 'unreachable' as const };
+		for (let i = 0; i < 5; i += 1) t.sync(expiredMal, deps, { ...failing });
+		expect(push).toHaveBeenCalledTimes(1);
+	});
+
+	it('replaces the notice when the renewal later says something else', () => {
+		const { deps, push, dismiss } = fakeDeps();
+		const t = new ExpiryToastTracker();
+		t.sync(expiredMal, deps, { ...NO_RENEWAL_FAILURES, mal: 'unreachable' });
+		t.sync(expiredMal, deps, { ...NO_RENEWAL_FAILURES, mal: 'rejected' });
+		expect(dismiss).toHaveBeenCalledWith('toast-1');
+		expect(push).toHaveBeenLastCalledWith({ provider: 'mal', username: 'm', notice: 'refused' });
+	});
+
+	it('clears the notice once the sign-in is renewed or reconnected', () => {
+		const { deps, dismiss } = fakeDeps();
+		const t = new ExpiryToastTracker();
+		t.sync(expiredMal, deps, { ...NO_RENEWAL_FAILURES, mal: 'unreachable' });
+		t.sync(
+			build({ mal: { kind: 'connected', account: acc({ refresh_token: 'rt' }), lastSyncedAt: 0 } }),
+			deps,
+			NO_RENEWAL_FAILURES
+		);
+		expect(dismiss).toHaveBeenCalledWith('toast-1');
+	});
+
+	it('lists notices in priority order with their kinds', () => {
+		expect(
+			detectSignInNotices(
+				build({
+					anilist: { kind: 'expired', account: acc({ username: 'al' }) },
+					mal: { kind: 'expired', account: acc({ refresh_token: 'rt', username: 'm' }) }
+				}),
+				{ ...NO_RENEWAL_FAILURES, mal: 'unknown' }
+			)
+		).toEqual([
+			{ provider: 'anilist', username: 'al', notice: 'expired' },
+			{ provider: 'mal', username: 'm', notice: 'unknown' }
+		]);
 	});
 });
