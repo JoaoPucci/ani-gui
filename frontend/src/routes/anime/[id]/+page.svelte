@@ -126,6 +126,7 @@
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
+	import { entryNeedsReread, listChanges } from '$lib/account/list-changes';
 	import { readEntryWithRetry, readFailureNotice } from '$lib/account/list-entry-read';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
@@ -1068,6 +1069,16 @@
 			listEntryReadSeq += 1; // cancel any in-flight read on teardown
 		};
 	});
+
+	// A watched episode's progress write for this show that settles while
+	// the page is open — one held back by the tracker can land minutes
+	// after the play — is read again quietly, as the editor reconciles its
+	// own save. `id` is read when the change comes, not tracked.
+	$effect(() =>
+		listChanges.subscribe((change) => {
+			if (entryNeedsReread(change, id || null)) readListEntry(true);
+		})
+	);
 
 	// Episodes-fallback derivations live in script so they can be used in
 	// the markup without {@const} (which only accepts Svelte-block parents).

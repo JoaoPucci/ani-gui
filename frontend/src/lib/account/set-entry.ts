@@ -11,6 +11,7 @@ import { sendRemoval, sendSave } from './set-entry-send';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { announceEnds, listChanges, recordEnd, type WriteEnd } from './list-changes';
 import { saveWhenTrackerAllows } from './busy-save';
 import { listAccounts } from './held-account';
 
@@ -214,6 +215,7 @@ export async function removeEntryAcrossTrackers(
 export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<SetOutcome> {
 	const connected = accountStore.connected;
 	const listed = listAccounts(connected);
+	const ends: Partial<Record<Provider, WriteEnd>> = {};
 	const outcome = await setEntryAcrossTrackers(
 		{
 			connected,
@@ -221,12 +223,18 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<S
 			getEntry,
 			setEntry,
 			runWrite: (provider, id, attempt, fields) =>
-				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				recordEnd(
+					ends,
+					provider,
+					saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				)
 		},
 		kitsuId,
 		save
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
+	// The views showing these lists read them again (`list-changes`).
+	announceEnds(listChanges, kitsuId, 'editor', ends);
 	return outcome;
 }
 
@@ -236,6 +244,7 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<S
 export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 	const connected = accountStore.connected;
 	const listed = listAccounts(connected);
+	const ends: Partial<Record<Provider, WriteEnd>> = {};
 	const outcome = await removeEntryAcrossTrackers(
 		{
 			connected,
@@ -243,10 +252,16 @@ export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 			getEntry,
 			removeEntry,
 			runWrite: (provider, id, attempt, fields) =>
-				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				recordEnd(
+					ends,
+					provider,
+					saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				)
 		},
 		kitsuId
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
+	// The views showing these lists read them again (`list-changes`).
+	announceEnds(listChanges, kitsuId, 'editor', ends);
 	return outcome;
 }

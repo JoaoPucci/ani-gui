@@ -6,7 +6,8 @@
 // forward (`cardScale` as an `in:`); the cards around it slide to their
 // new places (`cardShift` as an `animate:`). Which cards move at all is
 // the caller's gate — `$lib/history/animation-gate` — so a strip that
-// fills or re-sorts on load does not animate.
+// fills or re-sorts on load does not animate. Under prefers-reduced-motion
+// nothing moves: the strip shows its new state at once.
 
 import { scale, type TransitionConfig } from 'svelte/transition';
 import { flip, type AnimationConfig } from 'svelte/animate';
@@ -21,9 +22,18 @@ export const CARD_SHIFT = { duration: 280, easing: quintOut } as const;
 /** No motion: what a card the gate does not let move gets. */
 export const STILL: TransitionConfig = { duration: 0 };
 
+/** Whether the user asked for less motion: then every card holds still
+ *  and the strip simply shows its new state. */
+function reducedMotion(): boolean {
+	return (
+		typeof window !== 'undefined' &&
+		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+	);
+}
+
 /** The scale transition of a card leaving or arriving. */
 export function cardScale(node: Element): TransitionConfig {
-	return scale(node, CARD_SCALE);
+	return scale(node, reducedMotion() ? { ...CARD_SCALE, duration: 0 } : CARD_SCALE);
 }
 
 /** The slide of a card whose place in the strip changed. */
@@ -31,5 +41,5 @@ export function cardShift(
 	node: Element,
 	animation: { from: DOMRect; to: DOMRect }
 ): AnimationConfig {
-	return flip(node, animation, CARD_SHIFT);
+	return flip(node, animation, reducedMotion() ? { ...CARD_SHIFT, duration: 0 } : CARD_SHIFT);
 }

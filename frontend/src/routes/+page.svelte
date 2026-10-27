@@ -36,6 +36,19 @@
 		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return STILL;
 		return cardShift(node, animation);
 	}
+	// The Watch Later row moves its cards the same way, for the ones a
+	// settled tracker write added or removed — and only those.
+	const watchLaterMotion = createRailMotionGate();
+	const cellId = (node: Element) => (node as HTMLElement).dataset.animeId ?? '';
+	function wlIn(node: Element) {
+		return watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL;
+	}
+	function wlOut(node: Element) {
+		return watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL;
+	}
+	function wlFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+		return watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL;
+	}
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
@@ -67,6 +80,8 @@
 	import { isBearerRefused } from '$lib/account/renewal-failure';
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { listChanges, railNeedsReread } from '$lib/account/list-changes';
+	import { createRailMotionGate, railDelta } from '$lib/account/watch-later-motion';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import {
 		isWatchLaterStale,
@@ -614,14 +629,23 @@
 	}
 
 	// Re-read the cached snapshot and re-render the rail. Shared by the
-	// initial load path and post-refresh.
-	async function reloadWatchLaterRail() {
+	// initial load path, post-refresh, and a settled tracker write — the
+	// one caller that moves the cards it changed (`moved`).
+	async function reloadWatchLaterRail(moved = false) {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const seq = ++watchLaterLoadSeq;
 		try {
 			const refs = await loadWatchLater(buildWatchLaterDeps());
 			const filtered = await filterAvailable(refs, filterMode);
 			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+			if (moved && watchLater) {
+				watchLaterMotion.open(
+					railDelta(
+						watchLater.map((a) => a.id),
+						filtered.map((a) => a.id)
+					)
+				);
+			}
 			watchLater = filtered;
 			watchLaterFailed = false;
 		} catch (e) {
@@ -634,6 +658,16 @@
 			watchLaterFailed = true;
 		}
 	}
+
+	// A tracker write that settled while the row is on screen — one held
+	// back by the tracker lands long after the user left the editor — is
+	// read again here, as the editor reads its own entry again.
+	$effect(() =>
+		listChanges.subscribe((change) => {
+			const shown = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
+			if (railNeedsReread(change, shown)) void reloadWatchLaterRail(true);
+		})
+	);
 
 	// Re-pull each connected provider's list from the tracker (picking up
 	// entries added on the provider's website), then re-render. Drives
@@ -1304,7 +1338,9 @@
 		headerTrailing={watchLaterRefresh}
 	>
 		{#each watchLater as anime (anime.id)}
-			<PosterCard {anime} />
+			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+				<PosterCard {anime} />
+			</div>
 		{/each}
 	</Strip>
 {:else if accountStore.hasAny && watchLaterFailed}
@@ -1771,6 +1807,9 @@
 	   own --accent variable so the chip inherits the same hue. */
 	.resume-cell {
 		position: relative;
+		display: block;
+	}
+	.watch-later-cell {
 		display: block;
 	}
 	/* X chip — top-right of the rounded poster, fades in with the

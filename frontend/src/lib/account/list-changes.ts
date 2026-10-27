@@ -7,6 +7,10 @@
 // says what the tracker now holds.
 
 import type { Provider } from './types';
+import { SupersededError } from './save-when-allowed';
+
+/** The trackers in the order a change names them. */
+const TRACKERS: readonly Provider[] = ['anilist', 'mal', 'inhouse'];
 
 /** How one tracker's write of a show ended: taken, refused or failed
  *  for good, or dropped unsent — a newer write took every field, or the
@@ -25,25 +29,37 @@ export interface ListChange {
 }
 
 /** How a tracker write ended, from how its promise settled. */
-export const writeEnd: (settled: PromiseSettledResult<unknown>) => WriteEnd = () => 'failed';
+export function writeEnd(settled: PromiseSettledResult<unknown>): WriteEnd {
+	if (settled.status === 'fulfilled') return 'landed';
+	return settled.reason instanceof SupersededError ? 'dropped' : 'failed';
+}
 
 /** The change a write of `kitsuId` made across trackers, from how each
  *  ended; `null` when none of them can have changed a list. */
-export const changeOf: (
+export function changeOf(
 	kitsuId: string,
 	source: WriteSource,
 	ends: Partial<Record<Provider, WriteEnd>>
-) => ListChange | null = () => null;
+): ListChange | null {
+	// A dropped write sent nothing; a failed one may still have reached
+	// the tracker before its answer was lost, so its list is read again.
+	const providers = TRACKERS.filter((p) => ends[p] === 'landed' || ends[p] === 'failed');
+	return providers.length === 0 ? null : { kitsuId, providers, source };
+}
 
 /** Whether a view showing the lists of `shown` reads them again for
  *  `change`. */
-export const railNeedsReread: (change: ListChange, shown: readonly Provider[]) => boolean = () =>
-	false;
+export function railNeedsReread(change: ListChange, shown: readonly Provider[]): boolean {
+	return change.providers.some((p) => shown.includes(p));
+}
 
 /** Whether a detail page showing `kitsuId`'s entry reads it again for
  *  `change`. */
-export const entryNeedsReread: (change: ListChange, kitsuId: string | null) => boolean = () =>
-	false;
+export function entryNeedsReread(change: ListChange, kitsuId: string | null): boolean {
+	// The editor's own save is reconciled by the editor that made it, or
+	// by the one mounted for the show since (`editor-flights`).
+	return change.source === 'progress' && kitsuId !== null && change.kitsuId === kitsuId;
+}
 
 /** The channel the writes announce on and the views listen to. */
 export interface ListChanges {
@@ -53,10 +69,49 @@ export interface ListChanges {
 }
 
 export function createListChanges(): ListChanges {
+	const listeners = new Set<(change: ListChange) => void>();
 	return {
-		announce: () => {},
-		subscribe: () => () => {}
+		announce(change) {
+			// A copy, so a listener that stops listening while it is told
+			// does not cut the others short.
+			for (const listener of [...listeners]) {
+				try {
+					listener(change);
+				} catch {
+					// One view going wrong must not keep the others stale.
+				}
+			}
+		},
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		}
 	};
+}
+
+/** Run one tracker's write, recording in `ends` how it ended, and
+ *  return it as it came. */
+export function recordEnd<T>(
+	ends: Partial<Record<Provider, WriteEnd>>,
+	provider: Provider,
+	write: Promise<T>
+): Promise<T> {
+	write.then(
+		(value) => (ends[provider] = writeEnd({ status: 'fulfilled', value })),
+		(reason: unknown) => (ends[provider] = writeEnd({ status: 'rejected', reason }))
+	);
+	return write;
+}
+
+/** Announce the change a write of `kitsuId` made, if it made one. */
+export function announceEnds(
+	channel: ListChanges,
+	kitsuId: string,
+	source: WriteSource,
+	ends: Partial<Record<Provider, WriteEnd>>
+): void {
+	const change = changeOf(kitsuId, source, ends);
+	if (change) channel.announce(change);
 }
 
 /** The app's one channel. */
