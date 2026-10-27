@@ -177,11 +177,11 @@ fn cache_anilist_eps_thumbs_caches_success_listing_by_kitsu_id() {
 }
 
 #[test]
-fn cache_anilist_eps_thumbs_negative_caches_empty_on_error() {
-    // A failed lookup — no usable mapping, an unreadable answer — is
-    // negative-cached as an empty map so the next 5 minutes of
-    // navigation see a cache hit instead of re-burning the budget. A
-    // rate limit is not one of these: it is never written
+fn cache_anilist_eps_thumbs_negative_caches_a_show_with_no_ids() {
+    // A show Kitsu maps to neither AniList nor MAL has nothing to ask
+    // AniList about; it is negative-cached as an empty map so the next
+    // 5 minutes of navigation see a cache hit. A lookup that got no
+    // answer is not one of these: it is never written
     // (`a_rate_limited_listing_is_not_cached_as_an_empty_one`).
     // The kitsu_id-level key means a subsequent hit also avoids
     // re-running the Kitsu /mappings lookup.
@@ -302,28 +302,27 @@ async fn thumbs_for_show_returns_cached_listing_without_network() {
 }
 
 #[tokio::test]
-async fn thumbs_for_show_negative_caches_on_cache_miss_with_unreachable_kitsu() {
-    // The miss path: nothing in cache, Kitsu mappings lookup errors
-    // (state.kitsu points at an unbound port). `fetch_anilist_eps_thumbs`
-    // returns Err, `cache_anilist_eps_thumbs` writes an empty map to
-    // the negative cache, and the caller sees the empty result. A
-    // second call hits cache and returns instantly.
+async fn thumbs_for_show_caches_nothing_when_kitsu_is_unreachable() {
+    // The miss path: nothing in cache, Kitsu's mappings lookup errors
+    // (state.kitsu points at an unbound port). Kitsu not answering
+    // says nothing about which ids the show has, so the caller sees
+    // the empty result and nothing is cached: the next view asks
+    // again.
     let state = state_for_cache_only_tests();
     let first = thumbs_for_show(&state, "999").await;
     assert!(first.entries.is_empty());
-    // Verify the negative cache was written.
-    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k999")
-        .expect("cache read")
-        .expect("negative cache hit");
-    let cached: StreamingListing = serde_json::from_str(&body).expect("json");
-    assert_eq!(cached, StreamingListing::default());
+    assert_eq!(
+        meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k999").expect("cache read"),
+        None,
+        "an unanswered mappings lookup was cached as a show without stills"
+    );
 }
 
 #[tokio::test]
 async fn thumbs_for_show_returns_empty_on_cached_negative() {
-    // The negative-cached branch: an earlier failed lookup wrote
-    // an empty map. Subsequent calls hit cache and return empty
-    // without retrying the network.
+    // The negative-cached branch: an earlier lookup found the show
+    // mapped to neither tracker and wrote an empty map. Subsequent
+    // calls hit cache and return empty without retrying the network.
     let state = state_for_cache_only_tests();
     cache_anilist_eps_thumbs(&state.cache_pool, "778", &Err(()));
     let got = thumbs_for_show(&state, "778").await;
@@ -611,12 +610,14 @@ async fn a_cached_row_that_is_not_a_listing_is_fetched_again() {
 }
 
 #[tokio::test]
-async fn an_anilist_failure_is_cached_as_an_empty_listing() {
+async fn an_anilist_failure_is_asked_again_rather_than_cached() {
+    // A 502 is AniList not answering: each view gets no listing, and
+    // the next one asks again.
     let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(502))
-        .expect(1)
+        .expect(2)
         .mount(&anilist)
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
@@ -742,5 +743,28 @@ async fn a_rate_limited_listing_is_not_cached_as_an_empty_one() {
         meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k12").expect("cache read"),
         None,
         "a rate limit was cached as an empty listing"
+    );
+}
+
+#[tokio::test]
+async fn an_anilist_answer_that_cannot_be_read_is_asked_again_rather_than_cached() {
+    // A 200 whose body is not AniList's shape says nothing about the
+    // show's episodes: each view gets no listing, and the next asks
+    // again.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("not json"))
+        .expect(2)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    for _ in 0..2 {
+        let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+        assert_eq!(got, StreamingListing::default());
+    }
+    assert_eq!(
+        meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k12").expect("cache read"),
+        None
     );
 }
