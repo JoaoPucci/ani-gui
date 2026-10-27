@@ -83,7 +83,10 @@ async fn the_client_asks_for_the_destinations_it_reads() {
     Mock::given(method("GET"))
         .and(path("/anime/7881/media-relationships"))
         .and(query_param("include", "destination"))
-        .and(query_param("fields[anime]", "subtype,status,episodeCount"))
+        .and(query_param(
+            "fields[anime]",
+            "subtype,status,episodeCount,startDate",
+        ))
         .respond_with(
             ResponseTemplate::new(200).set_body_bytes(fixture("kitsu-relations-7881.json")),
         )
@@ -177,4 +180,42 @@ fn a_relation_that_leaves_out_what_the_page_asks_for_is_no_answer() {
         .expect("an answer");
     assert!(got.entries.is_empty());
     assert!(got.complete);
+}
+
+/// A relation carries the day its destination started, as Kitsu gives
+/// it: Kamitsubaki's series relates its special, which aired on
+/// 2025-07-03, before the series; the special relates the series,
+/// which began on 2025-07-09.
+#[test]
+fn a_relation_carries_the_day_its_destination_started() {
+    let read = |name: &str| {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("tests/fixtures/tracker-map/wire")
+            .join(name);
+        parse_relationships_response(&std::fs::read(&path).expect("fixture")).expect("parsed")
+    };
+    let series = read("kitsu-relationships-49900.json");
+    assert_eq!(
+        series
+            .entries
+            .iter()
+            .map(|e| (e.role.as_str(), e.id.as_str(), e.start.as_deref()))
+            .collect::<Vec<_>>(),
+        [("sequel", "50027", Some("2025-07-03"))]
+    );
+    let special = read("kitsu-relationships-50027.json");
+    assert_eq!(special.entries[0].start.as_deref(), Some("2025-07-09"));
+    // A manga has no start the page asks for.
+    let ubw = read("kitsu-relationships-7882.json");
+    assert!(ubw
+        .entries
+        .iter()
+        .filter(|e| e.kind == "manga")
+        .all(|e| e.start.is_none()));
+    assert!(ubw
+        .entries
+        .iter()
+        .any(|e| e.id == "9718" && e.start.as_deref() == Some("2014-10-05")));
 }

@@ -36,6 +36,19 @@ const KADO_MAPPED_ANILIST: &str =
 const KADO_MAPPED_MAL: &str =
     include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-mappings-mal-32032.json");
 
+const KAMITSUBAKI_ANILIST: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/anilist-media-173335.json");
+const KAMITSUBAKI_KITSU: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-anime-49900.json");
+const KAMITSUBAKI_RELATIONS: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-relationships-49900.json");
+const ZENPEN_RELATIONS: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-relationships-50027.json");
+const KAMITSUBAKI_MAPPED_ANILIST: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-mappings-anilist-173335.json");
+const KAMITSUBAKI_MAPPED_MAL: &str =
+    include_str!("../../../tests/fixtures/tracker-map/wire/kitsu-mappings-mal-57820.json");
+
 /// Kitsu's detail for `id`, as recorded, however often it is read.
 async fn detail_of(kitsu: &MockServer, id: &str, body: &str) {
     Mock::given(method("GET"))
@@ -238,4 +251,60 @@ async fn seikaisuru_kado_and_its_prologue_special_stay_identity_on_anilist() {
         special.segments.is_empty(),
         "the special writes nothing: {special:?}"
     );
+}
+
+/// Kitsu and AniList as they answer for Kamitsubaki-shi Kensetsuchuu.:
+/// the series (49900, MAL 57820, AniList 173335) and the one-episode
+/// special Kitsu chains after it, Witchling - Zenpen (50027, MAL 61971
+/// only, which AniList does not know). AniList also answers for the
+/// banner of a show Kitsu has no cover for, with nothing.
+async fn kamitsubaki() -> (MockServer, MockServer) {
+    let kitsu = MockServer::start().await;
+    detail_of(&kitsu, "49900", KAMITSUBAKI_KITSU).await;
+    relations_of(&kitsu, "49900", KAMITSUBAKI_RELATIONS).await;
+    relations_of(&kitsu, "50027", ZENPEN_RELATIONS).await;
+    mapped_as(&kitsu, "49900", Some(57_820), Some(173_335)).await;
+    mapped_as(&kitsu, "50027", Some(61_971), None).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 173_335, KAMITSUBAKI_MAPPED_ANILIST).await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 57_820, KAMITSUBAKI_MAPPED_MAL).await;
+    let anilist_server = MockServer::start().await;
+    anilist_media(&anilist_server, 173_335, KAMITSUBAKI_ANILIST).await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaIdByMal"))
+        .and(body_string_contains("\"idMal\":57820"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":173335}}}"#),
+        )
+        .mount(&anilist_server)
+        .await;
+    (kitsu, anilist_server)
+}
+
+/// The special Kitsu chains after Kamitsubaki's series aired six days
+/// before it, as the relations Kitsu serves date it: no later part. The
+/// series' map is AniList's listed Episode 0 alone — Kitsu's 1 sends 2,
+/// its finale sends 173335's 13, completed — where reading the special
+/// as the 13th episode made it a conflict.
+#[tokio::test]
+async fn kamitsubaki_s_series_reads_its_episode_0_on_anilist() {
+    let (kitsu, anilist_server) = kamitsubaki().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let map = episode_map_for(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "49900",
+        ProviderMediaId(173_335),
+        Some(13),
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map.shape, Shape::Extras, "{map:?}");
+    let write = |k| match map.target(k) {
+        crate::account::episode_map::Target::Mapped(w) => Some((w.entry, w.progress, w.complete)),
+        crate::account::episode_map::Target::Identity => None,
+    };
+    assert_eq!(write(1), Some((173_335, 2, false)));
+    assert_eq!(write(12), Some((173_335, 13, true)));
 }
