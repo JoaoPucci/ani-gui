@@ -38,6 +38,7 @@ pub mod meta;
 pub mod parent_watch;
 pub mod provider_set;
 pub mod proxy;
+pub mod retired_provider_plan;
 pub mod scraper;
 pub mod shutdown;
 pub mod spawn;
