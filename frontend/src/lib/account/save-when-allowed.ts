@@ -89,13 +89,6 @@ export async function saveWhenAllowed<T>(
 	}
 }
 
-/** A real timer, wrapped in an arrow: `setTimeout` called off an object
- *  is an "Illegal invocation" in Chromium. */
-export const sleep = (ms: number): Promise<void> =>
-	new Promise((resolve) => {
-		setTimeout(() => resolve(), ms);
-	});
-
 /**
  * Wait `ms`, looking every `checkEvery` ms whether the write is still
  * `stillWanted`, and end the wait at the first look that finds it is
