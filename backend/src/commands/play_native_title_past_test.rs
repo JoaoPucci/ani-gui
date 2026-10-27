@@ -77,3 +77,21 @@ proptest! {
         prop_assert_eq!(past_stem(&title, wide), None);
     }
 }
+
+proptest! {
+    /// A stem whose last word is a number glued to a Japanese word, as
+    /// "ショー2" writes one, is read without that number as a stem
+    /// written apart is, the number its own.
+    #[test]
+    fn a_glued_japanese_stem_number_comes_off_as_one_apart_does(
+        before in proptest::sample::select(vec!["", "Big ", "Big Small "]),
+        j in proptest::sample::select(vec!["ショー", "推しの子", "ｼｮｰ"]),
+        n in 1u32..100,
+    ) {
+        let glued = stem(&format!("{before}{j}{n}"));
+        let apart = stem(&format!("{before}{j} {n}"));
+        prop_assert_eq!(&glued, &apart);
+        let want = format!("{}{j}", before.to_lowercase());
+        prop_assert_eq!(without_stem_number(&glued), Some((want, n)));
+    }
+}
