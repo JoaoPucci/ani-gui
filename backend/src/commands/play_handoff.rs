@@ -111,17 +111,28 @@ pub async fn resolve_launch_args(
 }
 
 /// The launch a resolve describes: the stream, the referer its
-/// provider named, the title, and the user's player settings.
+/// provider named, the title, and the user's player settings. The
+/// title names the episode the watch records
+/// ([`crate::commands::play_native_record::matched_episode`]), so the
+/// window and history agree on what played.
 pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Config) -> LaunchArgs {
+    let played = crate::commands::play_native_record::matched_episode(&native, &args.episode);
     LaunchArgs {
+        title: Some(window_title(&args.title, &played)),
         stream_url: native.master_url,
         referer: native.referer,
-        title: Some(format!("{} · ep {}", args.title, args.episode)),
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
         subtitle_urls: subtitle_urls_default_first(&native.subtitles),
     }
+}
+
+/// The external player's window title: the show and the episode
+/// played.
+#[must_use]
+pub(crate) fn window_title(show: &str, episode: &str) -> String {
+    format!("{show} · ep {episode}")
 }
 
 /// The tracks' URLs with the provider's default first: a player that

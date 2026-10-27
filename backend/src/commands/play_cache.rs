@@ -276,19 +276,21 @@ pub(crate) fn cached_watch(
 /// The launch a cached resolution describes: the row's stream and
 /// referer, its sidecar tracks with the provider's default first —
 /// as the fresh resolve lists them — and the user's player settings.
+/// The title names the episode the watch records ([`cached_watch`]).
 pub(crate) fn cached_launch_args(
     cached: play_resolution_cache::CachedResolution,
     args: &super::play::PlayArgs,
     cfg: &crate::config::Config,
 ) -> LaunchArgs {
+    let played = cached_watch(&cached, &args.episode).ep_no;
     LaunchArgs {
+        title: Some(super::play_handoff::window_title(&args.title, &played)),
         stream_url: cached.upstream_url,
         referer: if cached.referer.is_empty() {
             None
         } else {
             Some(cached.referer)
         },
-        title: Some(format!("{} · ep {}", args.title, args.episode)),
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
