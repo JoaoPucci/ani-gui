@@ -29,7 +29,7 @@ impl OwnerMemo {
 
     /// Forget every bearer of `kind`: its account is gone.
     pub(crate) fn forget(&self, kind: ProviderKind) {
-        let _ = (self.owners(), kind);
+        self.owners().retain(|(k, _), _| *k != kind);
     }
 
     /// The user `tokens` belongs to on `provider`: remembered, or asked
@@ -40,8 +40,13 @@ impl OwnerMemo {
         provider: &dyn UserListProvider,
         tokens: &Tokens,
     ) -> Result<String> {
-        let _ = kind;
-        Ok(provider.me(tokens).await?.user_id)
+        let key = (kind, tokens.access_token.clone());
+        if let Some(user) = self.owners().get(&key) {
+            return Ok(user.clone());
+        }
+        let user = provider.me(tokens).await?.user_id;
+        self.owners().insert(key, user.clone());
+        Ok(user)
     }
 }
 

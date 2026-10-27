@@ -29,15 +29,72 @@ impl<V: Clone> Default for Inflight<V> {
     }
 }
 
+/// Takes the key off the running map when the caller running it is done
+/// with it — answered, or dropped before it answered, so a caller left
+/// waiting runs the lookup itself.
+struct Running<'a, V> {
+    running: &'a Mutex<HashMap<String, broadcast::Sender<V>>>,
+    key: &'a str,
+}
+
+impl<V> Running<'_, V> {
+    fn take(&self) -> Option<broadcast::Sender<V>> {
+        self.running
+            .lock()
+            .expect("inflight map poisoned")
+            .remove(self.key)
+    }
+}
+
+impl<V> Drop for Running<'_, V> {
+    fn drop(&mut self) {
+        let _ = self.take();
+    }
+}
+
 impl<V: Clone> Inflight<V> {
-    /// Run `start` under `key`. Each caller runs its own for now.
+    /// Run `start` under `key`, or wait for the caller already running it
+    /// and take a copy of its answer. A caller whose leader went away
+    /// without answering runs the lookup itself.
     pub(crate) async fn run<F, Fut>(&self, key: String, start: F) -> V
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = V>,
     {
-        let _ = (&self.running, key);
-        start().await
+        loop {
+            let waiting = {
+                let mut running = self.running.lock().expect("inflight map poisoned");
+                match running.get(&key) {
+                    Some(sender) => Some(sender.subscribe()),
+                    None => {
+                        running.insert(key.clone(), broadcast::channel(1).0);
+                        None
+                    }
+                }
+            };
+            match waiting {
+                Some(mut answer) => {
+                    if let Ok(value) = answer.recv().await {
+                        return value;
+                    }
+                    // The caller running it went away unanswered: ask again.
+                }
+                None => {
+                    let guard = Running {
+                        running: &self.running,
+                        key: &key,
+                    };
+                    let value = start().await;
+                    // Off the map first, then answered: a caller arriving
+                    // after this runs anew rather than waiting on a sender
+                    // that has already spoken.
+                    if let Some(sender) = guard.take() {
+                        let _ = sender.send(value.clone());
+                    }
+                    return value;
+                }
+            }
+        }
     }
 }
 
