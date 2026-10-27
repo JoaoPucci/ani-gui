@@ -58,6 +58,7 @@
 	"primary_save_error": "No se pudo guardar el rastreador principal. Inténtalo de nuevo.",
 	"busy_saving": "{provider} está ocupado; se guardará en {seconds} s",
 	"busy_saving_for": "{busy} está ocupado; se guardará en {provider} en {seconds} s",
+	"busy_saving_unnamed": "Un servicio está ocupado; se guardará en {provider} en {seconds} s",
 	"busy_saving_now": "Guardando en {provider}…",
 	"progress_save_failed": "No se pudo guardar tu progreso en {provider}"
 }
