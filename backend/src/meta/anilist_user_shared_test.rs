@@ -117,3 +117,119 @@ proptest::proptest! {
         proptest::prop_assert!(!super::is_mutation(&no_query));
     }
 }
+
+#[tokio::test]
+async fn a_read_sent_after_a_write_never_takes_the_answer_from_before_it() {
+    // The editor's re-read after a save, sent while an older read of the
+    // same entry is still out, must reach the tracker: the older read's
+    // answer may predate the write.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("mediaListEntry"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(
+                    r#"{"data":{"Media":{"mediaListEntry":{"status":"CURRENT","progress":3}}}}"#,
+                )
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .expect(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("SaveMediaListEntry"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"SaveMediaListEntry":{"id":1,"mediaId":21,"status":"CURRENT","progress":4,"score":0,"updatedAt":1,"media":{"idMal":21,"title":{"romaji":"x","english":null}}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let anilist = provider(&server);
+    let tokens = bearer("tok-a");
+    let before = anilist.current_entry(&tokens, ProviderMediaId(21));
+    let after = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let _ = anilist
+            .update_entry(
+                &tokens,
+                ProviderMediaId(21),
+                EntryUpdate {
+                    progress_episodes: Some(4),
+                    ..Default::default()
+                },
+            )
+            .await;
+        anilist.current_entry(&tokens, ProviderMediaId(21)).await
+    };
+    let (a, b) = tokio::join!(before, after);
+    a.expect("read");
+    b.expect("read");
+    // `.expect(2)`: the read after the write went out on its own.
+}
+
+/// AniList answering the account's reads, with the `Viewer` query
+/// expected `viewers` times.
+async fn anilist_account(server: &MockServer, viewers: u64) {
+    Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Viewer":{"id":4242,"name":"shiro","avatar":{"large":null,"medium":null},"statistics":{"anime":{"count":0,"meanScore":0}}}}}"#,
+        ))
+        .expect(viewers)
+        .mount(server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MediaListCollection"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"MediaListCollection":{"hasNextChunk":false,"lists":[]}}}"#,
+        ))
+        .mount(server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("$mediaId: Int!, $userId: Int!"))
+        .and(body_string_contains("\"userId\":4242"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"MediaList":{"id":7777}}}"#),
+        )
+        .mount(server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("DeleteMediaListEntry"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"DeleteMediaListEntry":{"deleted":true}}}"#),
+        )
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_list_pull_for_a_known_user_asks_anilist_nothing_about_the_viewer() {
+    let server = MockServer::start().await;
+    anilist_account(&server, 0).await;
+    provider(&server)
+        .list_all_for(&bearer("tok-a"), "4242")
+        .await
+        .expect("pulled");
+}
+
+#[tokio::test]
+async fn a_removal_for_a_known_user_asks_anilist_nothing_about_the_viewer() {
+    let server = MockServer::start().await;
+    anilist_account(&server, 0).await;
+    provider(&server)
+        .delete_entry_for(&bearer("tok-a"), ProviderMediaId(21), "4242")
+        .await
+        .expect("removed");
+}
+
+#[tokio::test]
+async fn a_list_pull_and_a_removal_with_no_known_user_still_ask_for_it() {
+    let server = MockServer::start().await;
+    anilist_account(&server, 2).await;
+    let anilist = provider(&server);
+    anilist.list_all(&bearer("tok-a")).await.expect("pulled");
+    anilist
+        .delete_entry(&bearer("tok-a"), ProviderMediaId(21))
+        .await
+        .expect("removed");
+}

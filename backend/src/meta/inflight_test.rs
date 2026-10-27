@@ -83,3 +83,34 @@ async fn a_caller_whose_leader_went_away_unanswered_runs_the_lookup_itself() {
     assert_eq!(answer, 2, "the follower ran it itself");
     assert_eq!(runs.load(Ordering::SeqCst), 2);
 }
+
+#[test]
+fn a_finished_run_leaves_the_next_run_of_its_key_in_place() {
+    // A run that answered must not take a newer run's entry off the map
+    // as it goes: the newer run's waiters would be cut loose and each
+    // start a run of its own.
+    let shared = Inflight::<u32>::default();
+    let ours = tokio::sync::broadcast::channel::<u32>(1).0;
+    shared
+        .running
+        .lock()
+        .expect("map")
+        .insert("k".to_owned(), ours.clone());
+    let guard = super::Running {
+        running: &shared.running,
+        key: "k",
+        sender: ours,
+    };
+    assert!(guard.take().is_some(), "the run takes its own entry");
+    let newer = tokio::sync::broadcast::channel::<u32>(1).0;
+    shared
+        .running
+        .lock()
+        .expect("map")
+        .insert("k".to_owned(), newer);
+    drop(guard);
+    assert!(
+        shared.running.lock().expect("map").contains_key("k"),
+        "the newer run's entry is still there"
+    );
+}
