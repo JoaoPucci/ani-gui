@@ -101,12 +101,14 @@ function bearerOf(state: ProviderState): string | null {
 }
 
 /**
- * Whether a hydrate's `next` state is a different sign-in state than
- * `prev`: another kind, or another bearer. A result already in flight
- * for `prev` must not be credited to it, so hydrate moves the
- * provider's generation, as every other transition does. The same
- * sign-in read again is no change, and its renewal stays credited.
+ * Whether a hydrate's `next` state holds a different sign-in than
+ * `prev`: another bearer, or none where there was one. A result already
+ * in flight for `prev` must not be credited to it, so hydrate moves the
+ * provider's generation, as connecting, connected and disconnected
+ * transitions do. The same bearer read again is the same sign-in, even when its
+ * date has passed since (connected to expired): a renewal out for it is
+ * still its own, and stays credited.
  */
 export function isSignInChange(prev: ProviderState, next: ProviderState): boolean {
-	return prev.kind !== next.kind || bearerOf(prev) !== bearerOf(next);
+	return bearerOf(prev) !== bearerOf(next);
 }

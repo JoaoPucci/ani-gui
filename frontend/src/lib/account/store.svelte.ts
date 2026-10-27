@@ -94,8 +94,10 @@ class AccountStore {
 
 	/**
 	 * Read every provider's persisted token (via Electron safeStorage)
-	 * and seed the store. Called once at cold launch from
-	 * `+layout.svelte`'s onMount.
+	 * and seed the store. Called at cold launch from `+layout.svelte`'s
+	 * onMount, and again when the account page mounts. A provider whose
+	 * re-read holds a different sign-in moves its generation, so a
+	 * renewal still out for the old one is superseded.
 	 *
 	 * AniList 1-year JWT expiry is checked here: if `expires_at_epoch_s`
 	 * is in the past, state is `expired` (renderer surfaces a Sign-in-
