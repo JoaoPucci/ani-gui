@@ -954,6 +954,7 @@ async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
         episodes,
         stitched: false,
         versions: Vec::new(),
+        unread_past: None,
     };
     let resolved =
         crate::commands::play_native_episode::resolve_episode(&c, &picked, "7.5", "sub", "720")
@@ -4506,7 +4507,7 @@ async fn a_healthy_server_is_still_asked_when_the_attempt_has_the_reserve_and_a_
 /// The control: a deadline already past, never cleared, caps the
 /// bounded server at nothing, and the walk moves to the remainder's
 /// server, whose master never answers.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_stale_deadline_caps_a_healthy_bounded_server_at_nothing() {
     let c = client_with_server_budget(100);
     c.bound_attempt(Some(

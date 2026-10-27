@@ -251,6 +251,130 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # after the entry's own season, it admits as before
         self.assertEqual(oracle.predict(pool(["Show 2nd Season"], E, [("x", "Show 2nd Season [Uncensored]", E)])), pick("x"))
 
+    def test_a_tag_is_read_a_character_at_a_time(self):
+        # each character of a tag in ASCII or full-width on its own: a tag
+        # mixing the two is the tag, a catalogue tag and a version tag alike
+        for mixed, ascii in [
+            ("(ｔv)", "tv"),
+            ("（Ｏna）", "ona"),
+            ("[oＶａ]", "ova"),
+            ("（２0２0）", "2020"),
+            ("【２０2４】", "2024"),
+            ("［ＴＶ］", "tv"),
+            ("［2020］", "2020"),
+        ]:
+            self.assertEqual(oracle.written(f"Show {mixed}"), f"show {ascii}", mixed)
+            self.assertEqual(oracle.norm(f"Show {mixed} Season 2"), "show season 2", mixed)
+        for mixed in ("(ｕncensored)", "［ＵＮＣＥＮsored］", "（Uncenｓｏｒｅｄ）", "【uＮＣＥＮＳＯＲＥＤ】"):
+            self.assertEqual(oracle.version_of(f"Show {mixed}"), ("show", "uncensored"), mixed)
+        # a word that is not the tag in either width is no tag, whatever its widths
+        self.assertEqual(oracle.version_of("Show (ｕncensor)"), (oracle.written("Show (ｕncensor)"), "standard"))
+        self.assertEqual(oracle.written("Show (ｔvx)"), "show (ｔvx)")
+        # the docs' consequence: the entry's mixed-width tag is the listing's ASCII one
+        rows = [("t", "Show (TV)", E), ("o", "Other", E)]
+        self.assertEqual(oracle.predict(pool(["Show (ｔv)"], E, rows, year=None)), pick("t"))
+        both = [("p", "Show", E), ("u", "Show (ｕncensored)", E)]
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, both)),
+            {"pick": "u", "count": E, "versions": [["p", "standard"], ["u", "uncensored"]]},
+        )
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("x", "Show Season 2 [ｕncensored]", E)])))
+
+    def test_a_tag_inside_other_bracketed_words_is_the_tag(self):
+        # a bracket holding no tag is read past its opener, so the tag
+        # inside it is found, by both readers alike
+        self.assertEqual(oracle.version_of("Show (Shin (Uncensored)"), ("show (shin", "uncensored"))
+        self.assertEqual(oracle.written("Show [Extra (TV)]"), "show [extra ] tv")
+        rows = [("p", "Show (Shin", E), ("u", "Show (Shin (Uncensored)", E)]
+        self.assertEqual(
+            oracle.predict(pool(["Show (Shin"], E, rows)),
+            {"pick": "u", "count": E, "versions": [["p", "standard"], ["u", "uncensored"]]},
+        )
+        self.assertTrue(any(c["family"] == "nested-tag" for c in oracle.gen()))
+
+    def test_a_closing_bracket_around_the_name_is_a_separator_in_either_width(self):
+        for entry in ("[Oshi no Ko] 2nd Season", "［Oshi no Ko］ 2nd Season"):
+            self.assertIsNone(oracle.predict(pool([entry], E, [("x", "Oshi no Ko", E)])), entry)
+        self.assertIsNone(oracle.predict(pool(["［Show］ 2"], E, [("x", "Show", E)])))
+
+    def test_a_word_is_letters_and_digits_in_any_script(self):
+        # a number is ASCII or full-width digits; any other letter or digit
+        # is a word's, so "Show²" and "Show ٢" add a word to "Show"
+        self.assertEqual(oracle._tokenize(oracle.norm("Pokémon Season 2")), ["pokémon", "season", "2"])
+        self.assertEqual(oracle._tokenize(oracle.norm("Show² Season 1")), ["show²", "season", "1"])
+        for cand in ("Show ٢", "Show² Season 1", "Show ١"):
+            self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", cand, E)])), pick("x"), cand)
+        self.assertIsNone(oracle.predict(pool(["Pokémon 2"], E, [("x", "Pokémon", E)])))
+        # read past a name only at a word's end or before a glued digit or 第
+        self.assertIsNone(oracle.past_stem("Showtime Season 1", "Show 2"))
+        self.assertIsNone(oracle.past_stem("Show² Season 1", "Show 2"))
+        self.assertEqual(oracle.past_stem("Show2 Part 2", "Show"), ("2 part 2", []))
+        # a digit glued to a Latin word is the word's: "Show2" is no "Show 2"
+        self.assertEqual(oracle.predict(pool(["Show 3"], E, [("x", "Show2", E)])), pick("x"))
+        self.assertIsNone(oracle.predict(pool(["ショー３"], E, [("x", "ショー２", E)])))
+        # the season before by a lower number: the candidate's stem ends on it
+        self.assertFalse(oracle.season_before_entry(["Show 2"], "Show 1 Shin"))
+        self.assertFalse(oracle.season_before_entry(["Show 2 Season 3"], "Show 1 Shin Season 1"))
+        self.assertTrue(oracle.season_before_entry(["Show 3 Part 2"], "Show 2 Part 2"))
+        self.assertTrue(any(c["family"] == "unicode-words" for c in oracle.gen()))
+
+    def test_a_version_tag_folds_as_the_picker_folds(self):
+        # ASCII or full-width, either case, each letter on its own — and no
+        # Unicode case folding: "ſ" is no "s"
+        for tag in ("(UNCENsored)", "（ＵＮＣＥＮsored）", "(ｕＮcensored)"):
+            self.assertEqual(oracle.version_of(f"Show {tag}"), ("show", "uncensored"), tag)
+            self.assertEqual(oracle._past_vtag(f"Show 1 {tag}"), "Show 1", tag)
+        self.assertEqual(oracle.version_of("Show (Uncenſored)")[1], "standard")
+        self.assertEqual(oracle._past_vtag("Show 1 (Uncenſored)"), "Show 1 (Uncenſored)")
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("p", "Show", E), ("u", "Show (Uncenſored)", E)])), pick("p"))
+        self.assertTrue(any(c["family"] == "not-a-tag" for c in oracle.gen()))
+
+    def test_letters_and_spaces_are_the_picker_s(self):
+        # the picker's letters and digits: char::is_alphanumeric, a combining
+        # mark of a letter included, and ・ or _ none
+        for c in ("é", "²", "٢", "ा", "Ⓢ", "ー", "々"):
+            self.assertTrue(oracle._alnum(c), c)
+        for c in ("・", "_", "゛", " ", "-"):
+            self.assertFalse(oracle._alnum(c), c)
+        self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Showा Season 1", E)])), pick("x"))
+        self.assertIsNone(oracle.predict(pool(["ショー・2"], E, [("x", "ショー", E)])))
+        # a Roman numeral is a whole word, not letters inside one
+        self.assertEqual(oracle.named(["Show éii"]), oracle.named(["Show"]))
+        # U+001C to U+001F are marks, not spaces, as Rust's trim reads them
+        self.assertEqual(oracle.version_of("Show (\x1fUncensored)")[1], "standard")
+        self.assertEqual(oracle.version_of("Show ( Uncensored )")[1], "uncensored")
+        # a number glued to a word is a number only after a Japanese letter
+        for entry, cand in [("ＳＨＯＷ３", "ＳＨＯＷ２"), ("Café3", "Café2"), ("Шоу3", "Шоу2"), ("나혼자만레벨업3", "나혼자만레벨업2")]:
+            self.assertEqual(oracle.predict(pool([entry], E, [("x", cand, E)])), pick("x"), entry)
+        for entry, cand in [("ショー３", "ショー２"), ("ｼｮｰ3", "ｼｮｰ2"), ("時々3", "時々2")]:
+            self.assertIsNone(oracle.predict(pool([entry], E, [("x", cand, E)])), entry)
+        # digits before a letter outside Japanese are a word: "1é" is no
+        # number in the stem's place, and names no division, so nothing
+        # after it names a season before the entry
+        self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Show 1é Season 1", E)])), pick("x"))
+        self.assertEqual(oracle._opening_items("1é season 1"), [])
+        self.assertEqual([o for o, _, _, _ in oracle._opening_items("season 1 arc")], [[1]])
+        # an empty name is no name: nothing is read past it
+        self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])), pick("x"))
+        self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "Season 1", E)])), pick("x"))
+        self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "First Half", E)])), pick("x"))
+        # a marker is read off a title that is nothing but one: "2nd Season"
+        # names a 2 "Season 3" does not, and is refused by title
+        self.assertEqual(oracle.refusal_expected(pool(["Season 3"], E, [("x", "2nd Season", E)])), ("NoResults", False))
+
+    def test_the_generated_set_spells_tags_in_mixed_widths(self):
+        def mixed(text):
+            return any(
+                "！" <= a <= "～" and "!" <= b <= "~" or "!" <= a <= "~" and "！" <= b <= "～"
+                for a, b in zip(text, text[1:])
+            )
+
+        cases = oracle.gen()
+        rows = [(c, r[1]) for c in cases for r in c["rows"]]
+        self.assertTrue(any(mixed(m.group(0)[1:-1]) for _, t in rows for m in [oracle.VTAG.search(t.lower())] if m))
+        self.assertTrue(any(mixed(m.group(0)[1:-1]) for _, t in rows for m in [oracle.CTAG.search(t.lower())] if m))
+        self.assertTrue(any(mixed(m.group(0)[1:-1]) for c in cases for t in c["titles"] for m in [oracle.CTAG.search(t.lower())] if m))
+
     def test_the_countless_pick_takes_only_what_something_vouches_for(self):
         # with the entry's year, every listing's page year (the driver writes
         # 2020 on each) vouches for it: part agreement, then provider order
@@ -372,7 +496,9 @@ class TheModelReadsTheDocs(unittest.TestCase):
     def test_a_span_through_the_first_part_reads_as_the_whole(self):
         self.assertEqual(oracle.Reading("Haikyuu!!: To the Top (Part 1+2)").ords, [])
         self.assertTrue(oracle.names(["Haikyuu!!: To the Top"], "Haikyuu!!: To the Top (Part 1+2)"))
-        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [(2, 3)])
+        # a span's ordinals are read in turn, as "Show Part 2 III" reads
+        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [2, 3])
+        self.assertEqual(oracle.Reading("Show Part 2 III").ords, [2, 3])
 
     def test_a_marker_season_below_an_entry_s_bare_number_is_the_season_before(self):
         self.assertFalse(oracle.pickable(["Show 3 Part 2"], "Show Season 2 Part 2"))
@@ -407,7 +533,26 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # the lead, and a first part completes no bare title: both pools are
         # decided by the rules the predicates read
         self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show 2", 6), ("b", "Show 2 Part 2", 6)])))
-        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])))
+        # with no year the bare title is short of the count and nothing
+        # else is read; with the entry's year it is an airing part, and the
+        # rescue takes it alone
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)], year=None)))
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])),
+            {"pick": "a", "count": 6},
+        )
+
+    def test_the_airing_rescue_takes_a_short_part_of_the_entry_s_year(self):
+        # "Airing rescue (confirmed, short of E) | distance, exact title,
+        # part agreement": only a hit whose year is the entry's, and only
+        # when nothing fits
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("x", "Show", 5)])), {"pick": "x", "count": 5})
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("x", "Show", 5)], year=None)))
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, [("a", "Show Arc", 4), ("b", "Show", 7)])),
+            {"pick": "b", "count": 7},
+        )
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("x", "Show", 5), ("y", "Show", 11)])), {"pick": "y", "count": 11})
 
     def test_a_half_names_its_ordinal_and_is_no_sequel_guard_marker(self):
         self.assertTrue(oracle.admitted(["Show 2nd Half"], "Show Season 2"))

@@ -15,11 +15,16 @@ use super::*;
 pub(crate) fn is_name_and_first_divisions(candidate: &str, title: &str) -> bool {
     let (candidate, title) = (untagged_normalized(candidate), untagged_normalized(title));
     let named = name(&title);
+    // An empty name — a title that is nothing but a division — is no
+    // name, and nothing is read past it.
+    if named.is_empty() {
+        return false;
+    }
     let (Some(c), Some(t)) = (name_end(&candidate, &named), name_end(&title, &named)) else {
         return false;
     };
     marks_after(&candidate, c) == marks_after(&title, t)
-        && first_divisions_only(&words(&candidate[c..]))
+        && first_divisions_only(&read_words(&candidate[c..]))
 }
 
 /// Where `named` ends at the start of `text`: the shortest prefix whose
@@ -33,7 +38,7 @@ fn name_end(text: &str, named: &[String]) -> Option<usize> {
         .is_some_and(|c| c.is_ascii_digit());
     text.char_indices()
         .map(|(i, c)| i + c.len_utf8())
-        .filter(|&end| words(&text[..end]) == named)
+        .filter(|&end| read_words(&text[..end]) == named)
         .find(|&end| {
             text[end..].chars().next().is_none_or(|c| {
                 let digit = half_width(c).is_ascii_digit();
@@ -57,7 +62,7 @@ fn marks_after(text: &str, end: usize) -> String {
 /// The marks that separate a name from what follows it rather than
 /// belong to it, full-width forms and a closing bracket around the
 /// name included.
-const SEPARATORS: &str = ":-–—~,.・、：－～，．]）)】」』";
+const SEPARATORS: &str = ":-–—~,.・、：－～，．]］）)】」』";
 
 /// Whether `words` are first divisions and nothing else, each read by
 /// `division_at`, with the "Half" a first half writes after its
@@ -76,3 +81,7 @@ fn first_divisions_only(words: &[String]) -> bool {
     }
     true
 }
+
+#[cfg(test)]
+#[path = "play_native_title_entry_before_test.rs"]
+mod tests;

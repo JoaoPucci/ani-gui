@@ -99,7 +99,8 @@ fn anilist_media_replies_need_the_media_field() {
 
 #[test]
 fn anilist_batches_need_their_media_lists() {
-    let body = r#"{"data":{"Page":{}}}"#;
+    // pageInfo present, so the refusal is the missing media list's.
+    let body = r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false}}}}"#;
     fails(
         "airing batch",
         body,
@@ -190,7 +191,7 @@ fn anilist_airing_needs_what_it_asked_for() {
         empty,
         anilist_airing::parse_airing_response(empty.as_bytes()),
     );
-    let node = r#"{"data":{"Page":{"media":[{"id":5}]}}}"#;
+    let node = r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":5}]}}}"#;
     fails(
         "airing batch",
         node,

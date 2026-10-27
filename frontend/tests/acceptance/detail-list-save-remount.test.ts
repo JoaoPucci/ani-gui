@@ -71,6 +71,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	if (detail) unmount(detail);
 	if (toasts) unmount(toasts);
 	detail = null;
@@ -312,6 +313,14 @@ describe('detail route — a held list save across an editor remount', () => {
 		detail = mount(DetailPage, { target });
 		await until(() => trigger() !== null && !trigger()!.disabled, 'the list control again');
 		const readsBefore = seen.reads[SHOW_A] ?? 0;
+		// The reads counted at the instant the held write's flight ends, read
+		// where the store is told — before anything can act on the ending.
+		let readsWhenTheFlightEnded: number | null = null;
+		const end = editorFlights.end.bind(editorFlights);
+		vi.spyOn(editorFlights, 'end').mockImplementation((id, flight) => {
+			if (id === SHOW_A) readsWhenTheFlightEnded = seen.reads[SHOW_A] ?? 0;
+			end(id, flight);
+		});
 
 		// AniList is now another user's: the held save is no longer this
 		// account's to send, and the lock lifts — but nothing has landed.
@@ -324,12 +333,18 @@ describe('detail route — a held list save across an editor remount', () => {
 			avatar_url: null
 		});
 		// The page reads the entry once for the new account, as on any account
-		// change; the lifted lock adds no read of its own.
-		await new Promise((r) => setTimeout(r, 800));
-		expect(seen.reads[SHOW_A] ?? 0).toBe(readsBefore + 1);
+		// change: the positive witness that the switch has been taken in.
+		await until(() => (seen.reads[SHOW_A] ?? 0) >= readsBefore + 1, "the new account's read");
 
-		// The held write settles at the end of its wait, superseded unsent;
-		// that is when the editor has the page re-read.
+		// The held write settles at the end of its wait, superseded unsent.
+		// Its flight ending is the witness that the lifted lock has had all
+		// the time it will get: the reads counted at that moment, before the
+		// editor can act on the ending, are the account's read and nothing
+		// more — a re-read on the lock lifting would be among them.
+		await until(() => readsWhenTheFlightEnded !== null, 'the held write to settle');
+		expect(readsWhenTheFlightEnded).toBe(readsBefore + 1);
+
+		// Then the editor has the page re-read.
 		await until(
 			() => (seen.reads[SHOW_A] ?? 0) > readsBefore + 1,
 			'the re-read once the write settled'

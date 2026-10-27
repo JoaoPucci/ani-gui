@@ -212,7 +212,9 @@ fn write_history_on_cache_hit(
 
 /// Stamp the availability cache with a native resolution's verdict —
 /// the shared [`crate::commands::availability::stamp_after_native`],
-/// keyed by the play's own show and mode.
+/// keyed by the play's own show and mode. `count_unread` says the
+/// listing's rows past Kitsu's count were not read
+/// ([`crate::commands::availability::ResolveVerdict::count_unread`]).
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn stamp_availability_after_native(
     state: &AppState,
@@ -224,6 +226,7 @@ pub(super) async fn stamp_availability_after_native(
     extra_tags: &[String],
     versions: &[crate::commands::play_native_versions::VersionInfo],
     played: Option<crate::commands::play_native_versions::VersionKind>,
+    count_unread: bool,
 ) {
     crate::commands::availability::stamp_after_native(
         state,
@@ -237,6 +240,7 @@ pub(super) async fn stamp_availability_after_native(
             extra_tags,
             versions,
             played,
+            count_unread,
         },
     )
     .await;
@@ -397,6 +401,7 @@ where
                     &[],
                     &[],
                     None,
+                    false,
                 )
                 .await;
             }
@@ -430,16 +435,19 @@ where
     // A successful resolve is a positive availability fact, same
     // guard — carrying the episode cap the native episodes list
     // already paid for.
-    stamp_availability_after_native(
+    crate::commands::availability::stamp_after_native(
         state,
-        args,
-        true,
-        Some(native.provider),
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
         &availability_at_start,
-        native.episode_cap,
-        &native.extra_tags,
-        &native.versions,
-        native.version,
+        crate::commands::availability::ResolveVerdict::served(
+            native.provider,
+            native.episode_cap,
+            &native.extra_tags,
+        )
+        .with_versions(&native.versions)
+        .with_played(native.version)
+        .with_count_unread(native.unread_past.is_some()),
     )
     .await;
 
@@ -515,6 +523,7 @@ where
     let mut resp = CreateSessionResponse {
         episode: Some(episode),
         former_episode,
+        episode_unverified: cached_resolution.episode_unverified,
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);
@@ -550,6 +559,10 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
             native, "",
         )),
         former_episode: crate::commands::play_native_merge::former_number(native),
+        episode_unverified: crate::commands::play_native_appended::past_an_unread_count(
+            native.unread_past,
+            native.resolved_slot,
+        ),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
         versions: native.versions.clone(),
@@ -682,6 +695,7 @@ pub(crate) mod tests {
             &["1061.5".to_string()],
             &[],
             None,
+            false,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -751,6 +765,7 @@ pub(crate) mod tests {
             &["1061.5".to_string()],
             &[],
             None,
+            false,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -1075,6 +1090,7 @@ pub(crate) mod tests {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         }
     }
 
@@ -1461,6 +1477,7 @@ pub(crate) mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
     }
@@ -1511,6 +1528,7 @@ pub(crate) mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
     }
@@ -1950,6 +1968,7 @@ pub(crate) mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let cfg = external_cfg();
@@ -2238,6 +2257,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
 
@@ -2288,6 +2308,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
@@ -2338,6 +2359,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
         let key = crate::commands::availability::cache_key("dub-2", "dub");
@@ -2393,6 +2415,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(

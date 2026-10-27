@@ -336,6 +336,7 @@ proptest! {
     #[test]
     fn an_anilist_airing_batch_reads_each_node_or_none(
         ids in proptest::collection::btree_set(1u32..100_000, 0..5),
+        cut in any::<bool>(),
         extra in extras(),
     ) {
         let list: Vec<Value> = ids
@@ -343,15 +344,25 @@ proptest! {
             .map(|id| json!({ "id": id, "status": "FINISHED", "episodes": 12,
                               "nextAiringEpisode": null, "airingSchedule": { "nodes": [] } }))
             .collect();
-        let doc = json!({ "data": { "Page": { "media": list } } });
+        let doc = json!({ "data": { "Page": {
+            "pageInfo": { "hasNextPage": cut }, "media": list } } });
         let read = anilist_airing::parse_airing_batch_response(&decorated(doc.clone(), &extra))
             .expect("an answer");
         prop_assert_eq!(read.keys().copied().collect::<std::collections::BTreeSet<_>>(), ids.clone());
-        prop_assert!(anilist_airing::parse_airing_batch_response(
-            &decorated(without(doc.clone(), &["data", "Page", "media"]), &extra)).is_err());
-        if !ids.is_empty() {
+        for path in [&["data", "Page", "media"][..], &["data", "Page", "pageInfo"],
+                     &["data", "Page", "pageInfo", "hasNextPage"]] {
             prop_assert!(anilist_airing::parse_airing_batch_response(
-                &decorated(without(doc, &["data", "Page", "media", "0", "status"]), &extra)).is_err());
+                &decorated(without(doc.clone(), path), &extra)).is_err(), "without {:?}", path);
+        }
+        if !ids.is_empty() {
+            for field in ["id", "status", "episodes", "nextAiringEpisode", "airingSchedule"] {
+                prop_assert!(anilist_airing::parse_airing_batch_response(
+                    &decorated(without(doc.clone(), &["data", "Page", "media", "0", field]), &extra))
+                    .is_err(), "without {}", field);
+            }
+            prop_assert!(anilist_airing::parse_airing_batch_response(
+                &decorated(without(doc, &["data", "Page", "media", "0", "airingSchedule", "nodes"]), &extra))
+                .is_err());
         }
     }
 }

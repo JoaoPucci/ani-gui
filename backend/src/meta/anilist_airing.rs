@@ -78,92 +78,6 @@ pub async fn airing_status(
     parse_airing_response(&bytes)
 }
 
-/// Batch variant of [`AIRING_GQL`]: one `Page` request answers
-/// airing for a whole rail. Includes `id` so the response maps back
-/// to the requested shows.
-const AIRING_BATCH_GQL: &str = "query AiringBatch($ids: [Int]) { \
-        Page(page: 1, perPage: 50) { \
-            media(id_in: $ids, type: ANIME) { \
-                id status episodes nextAiringEpisode { episode airingAt } \
-                airingSchedule(notYetAired: true, perPage: 25) { \
-                    nodes { episode airingAt } \
-                } \
-            } \
-        } \
-    }";
-
-/// [`AIRING_BATCH_GQL`] addressed by MAL id, for shows Kitsu maps to
-/// MAL alone. A separate request rather than a second filter on the
-/// same `media` field: AniList ANDs `id_in` with `idMal_in`. Selects
-/// `idMal` so the response maps back.
-const AIRING_BATCH_BY_MAL_GQL: &str = "query AiringBatchByMal($malIds: [Int]) { \
-        Page(page: 1, perPage: 50) { \
-            media(idMal_in: $malIds, type: ANIME) { \
-                idMal status episodes nextAiringEpisode { episode airingAt } \
-                airingSchedule(notYetAired: true, perPage: 25) { \
-                    nodes { episode airingAt } \
-                } \
-            } \
-        } \
-    }";
-
-/// Fetch [`AiringStatus`] for many AniList ids in as few requests as
-/// possible (chunks of 50 — the `Page` cap). Ids AniList doesn't
-/// return are simply absent from the map. Empty input skips the
-/// network entirely.
-///
-/// # Errors
-/// Network / Upstream / ParseFailed from the underlying client.
-pub async fn airing_status_batch(
-    client: &reqwest::Client,
-    anilist_ids: &[u32],
-    base_override: Option<&str>,
-) -> Result<std::collections::HashMap<u32, AiringStatus>> {
-    fetch_batch(client, BatchIds::AniList(anilist_ids), base_override).await
-}
-
-/// [`airing_status_batch`] keyed by MAL id: the map is keyed by the
-/// MAL ids AniList returned.
-///
-/// # Errors
-/// As [`airing_status_batch`].
-pub async fn airing_status_batch_by_mal(
-    client: &reqwest::Client,
-    mal_ids: &[u32],
-    base_override: Option<&str>,
-) -> Result<std::collections::HashMap<u32, AiringStatus>> {
-    fetch_batch(client, BatchIds::Mal(mal_ids), base_override).await
-}
-
-/// Which id space a batch request addresses.
-#[derive(Clone, Copy)]
-enum BatchIds<'a> {
-    AniList(&'a [u32]),
-    Mal(&'a [u32]),
-}
-
-async fn fetch_batch(
-    client: &reqwest::Client,
-    ids: BatchIds<'_>,
-    base_override: Option<&str>,
-) -> Result<std::collections::HashMap<u32, AiringStatus>> {
-    let url = base_override.unwrap_or(ANILIST_API);
-    let (all, query, var) = match ids {
-        BatchIds::AniList(ids) => (ids, AIRING_BATCH_GQL, "ids"),
-        BatchIds::Mal(ids) => (ids, AIRING_BATCH_BY_MAL_GQL, "malIds"),
-    };
-    let mut out = std::collections::HashMap::with_capacity(all.len());
-    for chunk in all.chunks(50) {
-        let body = serde_json::json!({
-            "query": query,
-            "variables": { var: chunk },
-        });
-        let bytes = post_graphql_public(client, url, &body).await?;
-        out.extend(parse_batch(&bytes, matches!(ids, BatchIds::Mal(_)))?);
-    }
-    Ok(out)
-}
-
 /// Raw serde shape of one `Media` node, shared by the single and
 /// batch parsers. `id` and `idMal` are only present in the batch
 /// queries' selection sets, hence the defaults.
@@ -265,47 +179,9 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
     Ok(parsed.data.media.into_inner().map(derive_status))
 }
 
-/// Pure parser for the batch response: every returned media node
-/// with an `id` becomes a map entry via [`derive_status`].
-///
-/// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't the expected
-/// envelope.
-pub fn parse_airing_batch_response(
-    body: &[u8],
-) -> Result<std::collections::HashMap<u32, AiringStatus>> {
-    parse_batch(body, false)
-}
-
-/// Batch parser keyed by `idMal` (`by_mal`) or `id`.
-fn parse_batch(body: &[u8], by_mal: bool) -> Result<std::collections::HashMap<u32, AiringStatus>> {
-    #[derive(Deserialize)]
-    struct Wrap {
-        data: Data,
-    }
-    #[derive(Deserialize)]
-    struct Data {
-        #[serde(rename = "Page")]
-        page: Page,
-    }
-    #[derive(Deserialize)]
-    struct Page {
-        media: Vec<MediaShape>,
-    }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("anilist airing batch response: {e}"),
-    })?;
-    Ok(parsed
-        .data
-        .page
-        .media
-        .into_iter()
-        .filter_map(|m| {
-            let key = if by_mal { m.id_mal } else { m.id };
-            key.map(|k| (k, derive_status(m)))
-        })
-        .collect())
-}
+#[path = "anilist_airing_batch.rs"]
+mod batch;
+pub use batch::{airing_status_batch, airing_status_batch_by_mal, parse_airing_batch_response};
 
 #[cfg(test)]
 #[path = "anilist_airing_test.rs"]

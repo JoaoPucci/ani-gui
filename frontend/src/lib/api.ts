@@ -283,6 +283,11 @@ export interface CreateSessionResponse {
 	/** The number an earlier version gave the same episode, when it gave
 	 *  another: what a position kept from then is keyed by. */
 	former_episode?: string;
+	/** Whether `episode` is a row the provider lists past Kitsu's count
+	 *  whose reading could not be read: an extra it appended or a whole
+	 *  episode, unknown which. Absent (false) otherwise and from older
+	 *  backends. */
+	episode_unverified?: boolean;
 	/** The played show's versions when its pick has several (see
 	 *  {@link VersionInfo}); absent when it has one. */
 	versions?: VersionInfo[];

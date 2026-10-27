@@ -114,6 +114,13 @@ pub trait TailSource: Send + Sync + std::fmt::Debug {
     /// no `None`: the refusal stands whatever a later read would say.
     async fn tail(&self, listing: &[EpisodeRef], count: u32) -> Option<EntryTail>;
 
+    /// How long [`fit_appended`] waits for [`Self::tail`] before it
+    /// reads the listing as if nothing could be read: [`TAIL_BUDGET`],
+    /// or no bound at all.
+    fn budget(&self) -> Option<std::time::Duration> {
+        Some(TAIL_BUDGET)
+    }
+
     /// The reading the evidence last proved for the entry, if any.
     fn remembered(&self) -> Option<Remembered> {
         None
@@ -152,7 +159,8 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 /// itself otherwise — no source, a stitched listing, a listing of
 /// another shape (either of which, given a count, forgets a reading
 /// kept for its slug), evidence that reads and falls short of proof
-/// (which forgets a kept reading), or no evidence and nothing kept.
+/// (which forgets a kept reading), or no evidence and nothing kept,
+/// which the pick names as its [`PickedShow::unread_past`].
 pub async fn fit_appended(
     picked: PickedShow,
     expected: Option<u32>,
@@ -182,17 +190,32 @@ pub async fn fit_appended(
         count,
         ids: past_ids(&picked.episodes, count),
     };
-    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(&picked.episodes, count)).await
-    {
-        Ok(Some(tail)) => {
+    let read = source.tail(&picked.episodes, count);
+    let tail = match source.budget() {
+        Some(budget) => tokio::time::timeout(budget, read).await.ok().flatten(),
+        None => read.await,
+    };
+    let fitted = match tail {
+        Some(tail) => {
             let fitted = appended_extras(&picked.episodes, count, &tail);
             source.remember(fitted.as_ref().map(|_| &reading));
             fitted
         }
-        _ => source
-            .remembered()
-            .is_some_and(|kept| kept == reading || kept_for_a_version(&picked, &kept))
-            .then(|| tag_past(&picked.episodes, count)),
+        _ => {
+            let kept = source
+                .remembered()
+                .is_some_and(|kept| kept == reading || kept_for_a_version(&picked, &kept));
+            if !kept {
+                // Nothing read the rows past the count, and nothing
+                // proved before stands in: they are listed as they
+                // came, which says nothing of what they are.
+                return PickedShow {
+                    unread_past: Some(count),
+                    ..picked
+                };
+            }
+            Some(tag_past(&picked.episodes, count))
+        }
     };
     match fitted {
         // Every version is the same episodes under its own ids: the
@@ -238,7 +261,7 @@ pub use titles::same_title;
 #[path = "play_native_appended_slots.rs"]
 mod slots;
 use slots::past_ids;
-pub use slots::{extra_for_slot, tag_past};
+pub use slots::{extra_for_slot, past_an_unread_count, tag_past};
 
 #[cfg(test)]
 #[path = "play_native_appended_test.rs"]

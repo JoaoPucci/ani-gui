@@ -77,6 +77,11 @@ pub struct CreateSessionResponse {
     /// gave another: what a position kept from then is keyed by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub former_episode: Option<String>,
+    /// Whether [`Self::episode`] is a row past Kitsu's count whose
+    /// reading could not be read: an appended extra or a whole episode,
+    /// unknown which. The renderer writes no tracker progress for it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub episode_unverified: bool,
 }
 
 /// Validate the inputs and register a new [`StreamSession`] in
@@ -155,6 +160,7 @@ fn create_session_inner(
         // The play layer names the episode it resolved.
         episode: None,
         former_episode: None,
+        episode_unverified: false,
     })
 }
 
@@ -315,6 +321,7 @@ mod tests {
             version: None,
             episode: None,
             former_episode: None,
+            episode_unverified: false,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));

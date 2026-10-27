@@ -45,7 +45,8 @@ vi.mock('./store.svelte', () => ({
 }));
 
 import { syncWatchedToTrackers } from './push-watched';
-import { saveWhenTrackerAllows } from './busy-save';
+import { saveWhenTrackerAllows, trackedWriteKeys } from './busy-save';
+import { recordPlayed } from '$lib/play/owned-play';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
@@ -215,5 +216,61 @@ describe('a progress write whose account goes before it starts', () => {
 		await write;
 		expect(updateProgress).not.toHaveBeenCalled();
 		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+});
+
+describe('a play the session could not verify, beside the held-write machinery', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const play = (unverified: boolean) =>
+		recordPlayed(
+			{
+				args: { kitsu_id: 'kitsu-90', episode: 13 } as unknown as Parameters<
+					typeof recordPlayed
+				>[0]['args'],
+				showId: 'kitsu-90',
+				episode: 13,
+				show: null,
+				mirror: true,
+				unverified
+			},
+			{ markWatched: async () => {}, syncTrackers: syncWatchedToTrackers }
+		);
+
+	it.each([
+		['refusing', () => updateProgress.mockRejectedValue(refused(1))],
+		['answering', () => updateProgress.mockResolvedValue(null)]
+	])('holds no write and shows no busy notice, AniList %s', async (_how, answer) => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		answer();
+		// Timers advanced before the play is awaited: a regression that let
+		// the write out would be held by the wait, and fail on what it sent
+		// rather than on a timeout.
+		const p = play(true);
+		// Past every wait a held write could take (four attempts, a
+		// second apart).
+		await vi.advanceTimersByTimeAsync(10_000);
+		await p;
+		expect(updateProgress).not.toHaveBeenCalled();
+		expect(trackedWriteKeys()).toBe(0);
+		expect(toastStore.items).toEqual([]);
+	});
+
+	it('is the only difference: the same play verified is held and noticed', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const write = play(false);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(trackedWriteKeys()).toBe(1);
+		expect(toastStore.items.map((t) => t.message)).toContain(
+			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 1 })
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+		await write;
+		expect(updateProgress).toHaveBeenCalledTimes(2);
 	});
 });

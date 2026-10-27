@@ -93,5 +93,6 @@ pub(crate) fn stitched(
         episodes: merge_parts(&listings),
         stitched: true,
         versions: Vec::new(),
+        unread_past: None,
     })
 }

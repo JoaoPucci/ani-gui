@@ -739,7 +739,6 @@ async fn push_progress_waits_for_the_show_lock_before_resolving() {
     // resolve window. Hold the Kitsu-id lock and assert push_progress
     // can't begin (blocks at the lock, never reaching resolve) until it's
     // released.
-    use std::time::Duration;
     let state = state_with_kitsu("http://127.0.0.1:1");
     let tokens = Tokens {
         access_token: "t".into(),
@@ -754,8 +753,12 @@ async fn push_progress_waits_for_the_show_lock_before_resolving() {
         progress_episodes: Some(5),
         ..Default::default()
     };
+    // Queued behind the lock, not merely not there yet: a push that
+    // has not reached the lock has not proceeded past it either, and
+    // proves nothing.
+    let queue = crate::held::queue(crate::held::lock_key(&*show_lock));
     tokio::select! {
-        _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+        () = queue.joined() => {}
         _ = push_progress(&state, ProviderKind::MyAnimeList, &tokens, "12", update) => {
             panic!("push_progress proceeded while the show's Kitsu-id lock was held");
         }
@@ -1490,7 +1493,9 @@ async fn a_progress_write_that_lands_after_a_disconnect_does_not_put_the_account
 {
     use crate::account::cache::list_entries;
     use wiremock::matchers::{method, path};
+    // The server first, so the gate goes first however the test ends.
     let mal = wiremock::MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21}"#))
@@ -1498,13 +1503,12 @@ async fn a_progress_write_that_lands_after_a_disconnect_does_not_put_the_account
         .await;
     wiremock::Mock::given(method("PATCH"))
         .and(path("/anime/21/my_list_status"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(
-                    r#"{"status":"watching","num_episodes_watched":5,"is_rewatching":false}"#,
-                )
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"status":"watching","num_episodes_watched":5,"is_rewatching":false}"#,
+            ),
+        ))
         .mount(&mal)
         .await;
     wiremock::Mock::given(method("GET"))
@@ -1529,8 +1533,9 @@ async fn a_progress_write_that_lands_after_a_disconnect_does_not_put_the_account
         },
     );
     let disconnect = async {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        gate.asked().await;
         clear_provider_cache(&state, ProviderKind::MyAnimeList).expect("purge");
+        gate.release();
     };
     let (written, ()) = tokio::join!(write, disconnect);
     written.expect("the tracker took the write");
@@ -1545,14 +1550,15 @@ async fn a_progress_write_that_lands_after_a_disconnect_does_not_put_the_account
 async fn a_list_read_that_lands_after_a_disconnect_does_not_refill_the_cache() {
     use crate::account::cache::list_entries;
     use wiremock::matchers::{method, path};
+    // The server first, so the gate goes first however the test ends.
     let mal = wiremock::MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(method("GET"))
         .and(path("/users/@me/animelist"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":[{"node":{"id":21,"title":"x"},"list_status":{"status":"watching","num_episodes_watched":2,"score":0,"updated_at":"2024-01-01T00:00:00+00:00"}}],"paging":{}}"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":[{"node":{"id":21,"title":"x"},"list_status":{"status":"watching","num_episodes_watched":2,"score":0,"updated_at":"2024-01-01T00:00:00+00:00"}}],"paging":{}}"#),
+        ))
         .mount(&mal)
         .await;
     let state = state_with_kitsu("http://unused-kitsu");
@@ -1566,8 +1572,9 @@ async fn a_list_read_that_lands_after_a_disconnect_does_not_refill_the_cache() {
         "4242",
     );
     let disconnect = async {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        gate.asked().await;
         clear_cache(&state, ProviderKind::MyAnimeList, "4242").expect("purge");
+        gate.release();
     };
     let (read, ()) = tokio::join!(read, disconnect);
     assert_eq!(read.expect("the tracker answered").len(), 1);
@@ -1619,6 +1626,9 @@ async fn a_progress_write_waiting_on_its_show_lock_through_a_disconnect_does_not
         .account_write_locks
         .for_show(ProviderKind::MyAnimeList, "12");
     let guard = lock.lock().await;
+    // Queued behind the lock: the write has arrived, and noted its
+    // epoch, before the purge.
+    let queue = crate::held::queue(crate::held::lock_key(&*lock));
     let write = push_progress_resolved_via(
         &state,
         ProviderKind::MyAnimeList,
@@ -1632,7 +1642,7 @@ async fn a_progress_write_waiting_on_its_show_lock_through_a_disconnect_does_not
         None,
     );
     let disconnect = async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        queue.joined().await;
         clear_provider_cache(&state, ProviderKind::MyAnimeList).expect("purge");
         drop(guard);
     };
@@ -1649,14 +1659,15 @@ async fn a_progress_write_waiting_on_its_show_lock_through_a_disconnect_does_not
 async fn a_list_read_whose_owner_lookup_spans_a_disconnect_does_not_refill_the_cache() {
     use crate::account::cache::list_entries;
     use wiremock::matchers::{method, path};
+    // The server first, so the gate goes first however the test ends.
     let mal = wiremock::MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(method("GET"))
         .and(path("/users/@me"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"id":4242,"name":"s"}"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"s"}"#),
+        ))
         .mount(&mal)
         .await;
     wiremock::Mock::given(method("GET"))
@@ -1671,8 +1682,9 @@ async fn a_list_read_whose_owner_lookup_spans_a_disconnect_does_not_refill_the_c
     let tokens = test_tokens();
     let read = list_for_bearer_via(&state, ProviderKind::MyAnimeList, &provider, &tokens);
     let disconnect = async {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        gate.asked().await;
         clear_cache(&state, ProviderKind::MyAnimeList, "4242").expect("purge");
+        gate.release();
     };
     let (read, ()) = tokio::join!(read, disconnect);
     assert_eq!(read.expect("the tracker answered").len(), 1);
