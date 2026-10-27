@@ -212,7 +212,9 @@ fn write_history_on_cache_hit(
 
 /// Stamp the availability cache with a native resolution's verdict —
 /// the shared [`crate::commands::availability::stamp_after_native`],
-/// keyed by the play's own show and mode.
+/// keyed by the play's own show and mode. `count_unread` says the
+/// listing's rows past Kitsu's count were not read
+/// ([`crate::commands::availability::ResolveVerdict::count_unread`]).
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn stamp_availability_after_native(
     state: &AppState,
@@ -224,6 +226,7 @@ pub(super) async fn stamp_availability_after_native(
     extra_tags: &[String],
     versions: &[crate::commands::play_native_versions::VersionInfo],
     played: Option<crate::commands::play_native_versions::VersionKind>,
+    count_unread: bool,
 ) {
     crate::commands::availability::stamp_after_native(
         state,
@@ -237,7 +240,7 @@ pub(super) async fn stamp_availability_after_native(
             extra_tags,
             versions,
             played,
-            count_unread: false,
+            count_unread,
         },
     )
     .await;
@@ -398,6 +401,7 @@ where
                     &[],
                     &[],
                     None,
+                    false,
                 )
                 .await;
             }
@@ -691,6 +695,7 @@ pub(crate) mod tests {
             &["1061.5".to_string()],
             &[],
             None,
+            false,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -760,6 +765,7 @@ pub(crate) mod tests {
             &["1061.5".to_string()],
             &[],
             None,
+            false,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -2251,6 +2257,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
 
@@ -2301,6 +2308,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
@@ -2351,6 +2359,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
         let key = crate::commands::availability::cache_key("dub-2", "dub");
@@ -2406,6 +2415,7 @@ pub(crate) mod tests {
             &[],
             &[],
             None,
+            false,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
