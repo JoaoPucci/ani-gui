@@ -138,6 +138,9 @@ pub enum Shape {
     SplitParts,
     /// The tracker's entry counts episodes Kitsu does not list.
     Extras,
+    /// A special the tracker has no entry for is among the extras a
+    /// related entry's own map reads.
+    SpecialExtras,
 }
 
 /// A show's filing on one tracker: its shape and, unless identity, the

@@ -1078,6 +1078,7 @@ fn any_shape() -> BoxedStrategy<Shape> {
         Just(Shape::SharedEntry),
         Just(Shape::SplitParts),
         Just(Shape::Extras),
+        Just(Shape::SpecialExtras),
     ]
     .boxed()
 }
@@ -1101,6 +1102,7 @@ proptest! {
             Shape::SharedEntry => true,
             Shape::SplitParts => true,
             Shape::Extras => true,
+            Shape::SpecialExtras => true,
         };
         prop_assert_eq!(map.conclusive(), want);
     }
