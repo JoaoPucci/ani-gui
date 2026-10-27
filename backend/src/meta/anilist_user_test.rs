@@ -925,7 +925,8 @@ async fn me_surfaces_429_as_rate_limited_with_the_advertised_wait() {
         matches!(
             err,
             AniError::RateLimited {
-                retry_after_secs: Some(30)
+                retry_after_secs: Some(30),
+                ..
             }
         ),
         "expected RateLimited {{ retry_after_secs: Some(30) }}, got {err:?}"
@@ -949,7 +950,8 @@ async fn current_entry_surfaces_429_without_a_wait_as_rate_limited() {
         matches!(
             err,
             AniError::RateLimited {
-                retry_after_secs: None
+                retry_after_secs: None,
+                ..
             }
         ),
         "expected RateLimited {{ retry_after_secs: None }}, got {err:?}"
@@ -973,7 +975,8 @@ async fn exchange_code_surfaces_429_as_rate_limited() {
         matches!(
             err,
             AniError::RateLimited {
-                retry_after_secs: Some(60)
+                retry_after_secs: Some(60),
+                ..
             }
         ),
         "expected RateLimited {{ retry_after_secs: Some(60) }}, got {err:?}"
