@@ -14,6 +14,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 
@@ -108,8 +109,13 @@ const notice = () => target.querySelector('p.unavailable[role="status"]');
 const tiles = () => Array.from(target.querySelectorAll<HTMLButtonElement>('button.ep-tile'));
 const play = () => target.querySelector('div.actions button.btn-glass');
 
-/** Delisted in sub, then switched to dub, with the dub question out. */
-async function switchToDub(asked: { dub: boolean }) {
+/** The page's probe about the show in dub. */
+const isDubProbe = (r: PageFetch) => r.path === '/api/availability' && r.body.mode === 'dub';
+
+/** Delisted in sub, then switched to dub, with the dub question out
+ *  and, where it ends, its end taken by the page. */
+async function switchToDub(asked: { dub: boolean }, dub: DubAnswer) {
+	const { sent, read, failed } = watchPageFetches();
 	app = mount(DetailPage, { target });
 	await until(() => notice() !== null, 'the sub notice');
 	await until(() => tiles().length > 0, 'the episode tiles');
@@ -119,15 +125,26 @@ async function switchToDub(asked: { dub: boolean }) {
 	) as HTMLButtonElement;
 	dubButton.click();
 	await until(() => asked.dub, 'the dub question');
-	// Whatever the dub question comes back with is read by now.
-	await new Promise((r) => setTimeout(r, 50));
+	// The page has taken whatever the dub question comes back with —
+	// read its answer, or seen it fail — and what that set off has run
+	// to its next write. A question still out ends nowhere, so for it
+	// the question being asked is the whole of what the page will see.
+	if (dub === 'pending') {
+		await until(() => sent.some(isDubProbe), 'the dub question to be asked');
+	} else {
+		await until(
+			() => [...read, ...failed].some(isDubProbe),
+			'the dub answer to be read or to fail'
+		);
+	}
+	await afterRead();
 }
 
 describe('detail — a verdict for sub does not gate dub', () => {
 	for (const dub of ['failed', 'unsettled', 'pending'] as const) {
 		it(`delisted in sub, with the dub answer ${dub}: the tiles are not held delisted`, async () => {
 			const asked = useHandlers(dub);
-			await switchToDub(asked);
+			await switchToDub(asked, dub);
 			await until(
 				() => tiles().length > 0 && !tiles().some((t) => t.classList.contains('ep-tile-disabled')),
 				'tiles not held delisted'
