@@ -1,6 +1,7 @@
 //! Properties of the special rule: it files a special exactly as a
-//! model written from the documented rule does; a special it files is
-//! never its entry's last episode and writes nowhere but that entry; and
+//! model written from the documented rule does; a special it files
+//! completes its entry only at the entry's last slot and writes nowhere
+//! but that entry; and
 //! weighing it against the other rules' map is the documented table.
 //!
 //! Every strategy function returns a `BoxedStrategy`. Composed without
@@ -34,13 +35,13 @@ fn shape() -> BoxedStrategy<Shape> {
     .boxed()
 }
 
-/// A related entry: its tracker entry, and a map of one segment or none
-/// that mostly reads extras over a season of the entry's count less
-/// them, sometimes off in one way.
+/// A related entry: its season's dates, its tracker entry, and a map of
+/// one segment or none that mostly reads extras over a season of the
+/// entry's count less them, sometimes off in one way.
 fn filing() -> BoxedStrategy<RelatedFiling> {
     (
         (1u32..=3, 5u32..=24, prop::collection::vec(0u32..=6, 0..=3)),
-        (date(), date(), shape(), any::<bool>(), date()),
+        (date(), date(), shape(), any::<bool>(), date(), date()),
         (
             prop_oneof![6 => Just(0u32), 1 => 1u32..=3],
             prop_oneof![6 => Just(1u32), 1 => 2u32..=3],
@@ -50,7 +51,7 @@ fn filing() -> BoxedStrategy<RelatedFiling> {
         .prop_map(
             |(
                 (id, season, mut after),
-                (start, end, shape, finished, season_start),
+                (start, end, shape, finished, season_start, season_end),
                 (lead, from, elsewhere),
             )| {
                 after.sort_unstable();
@@ -80,7 +81,7 @@ fn filing() -> BoxedStrategy<RelatedFiling> {
                         id: format!("k{id}"),
                         episodes: Some(season),
                         start: season_start,
-                        end: None,
+                        end: season_end,
                     },
                     entry,
                     map,
@@ -95,7 +96,7 @@ fn filing() -> BoxedStrategy<RelatedFiling> {
 /// off: a special of `k` episodes dated in the run of an entry whose
 /// season's map reads `k` extras after one Kitsu episode.
 fn firing_evidence() -> BoxedStrategy<SpecialEvidence> {
-    (1u32..=3, 0u32..=5, 6u32..=24, 0u8..=8)
+    (1u32..=3, 0u32..=5, 6u32..=24, 0u8..=11)
         .prop_map(|(k, w, season, knock)| {
             let total = season + k;
             let mut f = RelatedFiling {
@@ -103,7 +104,7 @@ fn firing_evidence() -> BoxedStrategy<SpecialEvidence> {
                     id: "k1".into(),
                     episodes: Some(season),
                     start: Some("2015-03-09".into()),
-                    end: None,
+                    end: Some("2015-06-20".into()),
                 },
                 entry: TrackerShow {
                     id: 1,
@@ -142,6 +143,20 @@ fn firing_evidence() -> BoxedStrategy<SpecialEvidence> {
                 6 => f.map.segments[0].lead = 1,
                 8 if w == 0 => special.start = Some("2015-03-20".into()),
                 8 => special.start = Some("2015-03-02".into()),
+                // An epilogue: its extras after the season's last episode,
+                // the special dated on, after, or just before its end — or
+                // too early for it.
+                9..=11 => {
+                    f.map.segments[0].extras_after = vec![season; k as usize];
+                    special.start = Some(
+                        match knock {
+                            9 => "2015-06-20",
+                            10 => "2015-07-15",
+                            _ => "2015-06-10",
+                        }
+                        .into(),
+                    );
+                }
                 _ => {}
             }
             let mut related = vec![f.clone()];
@@ -250,12 +265,6 @@ fn special_model(ev: &SpecialEvidence) -> Option<EpisodeMap> {
         .related
         .iter()
         .filter(|f| !f.contested)
-        .filter(|f| {
-            matches!(
-                (month_model(f.entry.start.as_deref()), month_model(f.entry.end.as_deref())),
-                (Some(a), Some(b)) if a <= s && s <= b
-            )
-        })
         .filter_map(|f| {
             let seg = match (f.map.shape, f.map.segments.as_slice()) {
                 (Shape::Extras, [seg]) => seg,
@@ -267,9 +276,22 @@ fn special_model(ev: &SpecialEvidence) -> Option<EpisodeMap> {
                 && seg.lead == 0
                 && seg.extras_after.len() == k as usize
                 && seg.extras_after.iter().all(|e| *e == w)
-                && u64::from(w) + u64::from(k) < u64::from(seg.entry_total);
-            let dated =
-                dated_for_slot_model(ev.special.start.as_deref(), f.related.start.as_deref(), w);
+                && u64::from(w) + u64::from(k) <= u64::from(seg.entry_total);
+            let in_run = matches!(
+                (month_model(f.entry.start.as_deref()), month_model(f.entry.end.as_deref())),
+                (Some(a), Some(b)) if a <= s && s <= b
+            );
+            // An epilogue's slot, after the season's last episode, is
+            // dated by the season's end and may lie past the entry's run.
+            let dated = if w == seg.kitsu_to && w > 0 {
+                matches!(
+                    (day_of_year_model(ev.special.start.as_deref()), day_of_year_model(f.related.end.as_deref())),
+                    (Some(a), Some(b)) if i64::from(b) - i64::from(a) <= 2
+                )
+            } else {
+                in_run
+                    && dated_for_slot_model(ev.special.start.as_deref(), f.related.start.as_deref(), w)
+            };
             (fits && dated).then(|| Segment {
                 entry: seg.entry,
                 entry_total: seg.entry_total,
@@ -305,11 +327,13 @@ proptest! {
         prop_assert_eq!(special_extras(&ev), special_model(&ev));
     }
 
-    /// A special filed is never its entry's last episode: every one of
-    /// its episodes writes to one entry, below the entry's total, never
-    /// completing it and bringing no entry up first.
+    /// A special filed writes every one of its episodes to its one
+    /// entry, at its slot, bringing no entry up first; it completes the
+    /// entry only at the entry's last episode, on an entry the tracker has
+    /// finished; and each write needs the episodes before its slot on the
+    /// entry, so none claims an episode the user has not watched.
     #[test]
-    fn a_special_never_completes_its_entry(ev in evidence()) {
+    fn a_special_completes_its_entry_only_at_the_entry_s_last_slot(ev in evidence()) {
         let Some(map) = special_extras(&ev) else {
             return Ok(());
         };
@@ -319,8 +343,13 @@ proptest! {
             match map.target(episode) {
                 Target::Mapped(w) => {
                     prop_assert_eq!(w.entry, seg.entry);
-                    prop_assert!(w.progress >= 1 && w.progress < seg.entry_total);
-                    prop_assert!(!w.complete);
+                    prop_assert_eq!(w.progress, seg.lead + episode);
+                    prop_assert!(w.progress >= 1 && w.progress <= seg.entry_total);
+                    prop_assert_eq!(
+                        w.complete,
+                        w.progress == seg.entry_total && seg.entry_finished
+                    );
+                    prop_assert_eq!(w.needs, (seg.lead > 0).then_some(seg.lead));
                     prop_assert!(w.earlier.is_empty());
                 }
                 Target::Identity => prop_assert!(false, "episode {} filed nowhere", episode),

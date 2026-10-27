@@ -605,3 +605,107 @@ async fn a_relations_page_without_the_season_s_start_fails_the_map() {
         .expect("read")
         .is_none());
 }
+
+/// A special dated after its season's last episode, where the season's
+/// AniList entry lists an extra after that episode, takes that slot: the
+/// entry's last. The season's end is Kitsu's, read with the season's own
+/// entry. Its write needs the season's episodes on the entry already.
+#[tokio::test]
+async fn an_epilogue_after_its_season_takes_the_entry_s_last_slot() {
+    let kitsu = MockServer::start().await;
+    detail_of(&kitsu, "7882", UBW_KITSU).await;
+    relations_of(&kitsu, "7882", UBW_RELATIONS).await;
+    relations_of(&kitsu, "9718", UBW_PROLOGUE_RELATIONS).await;
+    mapped_as(&kitsu, "7882", Some(22_297), Some(19_603)).await;
+    // The prologue resolves to an entry of its own here, so it does not
+    // contest the epilogue: an unresolved one-episode sibling would.
+    mapped_as(&kitsu, "9718", Some(27_821), Some(30_000)).await;
+    mapped_as(&kitsu, "7658", Some(11_741), Some(11_741)).await;
+    mapped_as(&kitsu, "10052", Some(28_701), Some(20_792)).await;
+    mapped_as(&kitsu, "4788", Some(6922), Some(6922)).await;
+    mapped_as(&kitsu, "8675", Some(25_537), Some(20_791)).await;
+    kitsu_mapped(&kitsu, "anilist/anime", 19_603, UBW_MAPPED_ANILIST).await;
+    kitsu_mapped(&kitsu, "myanimelist/anime", 22_297, UBW_MAPPED_MAL).await;
+    detail_of(
+        &kitsu,
+        "90001",
+        &UBW_PROLOGUE_KITSU
+            .replace("\"9718\"", "\"90001\"")
+            .replace("2014-10-05", "2014-12-30"),
+    )
+    .await;
+    relations_of(&kitsu, "90001", &sequel_7882(1)).await;
+    mapped_as(&kitsu, "90001", None, None).await;
+    let anilist_server = MockServer::start().await;
+    evidence_of(
+        &anilist_server,
+        19_603,
+        &UBW_ANILIST.replace("Episode 0 - Prologue", "Episode 12.5 - Epilogue"),
+    )
+    .await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let map = episode_map_for_unresolved(
+        &ask(&state, ProviderKind::AniList, &provider, &tokens, &base),
+        "90001",
+    )
+    .await
+    .expect("the map");
+    assert_eq!(map.shape, Shape::SpecialExtras, "{map:?}");
+    match map.target(1) {
+        crate::account::episode_map::Target::Mapped(w) => {
+            assert_eq!(
+                (w.entry, w.progress, w.complete, w.needs),
+                (19_603, 13, true, Some(12))
+            );
+        }
+        crate::account::episode_map::Target::Identity => panic!("filed nowhere"),
+    }
+}
+
+/// A related entry whose map reads no extras holds no slot for the
+/// special, so its own Kitsu entry is not read for the special: here
+/// Seikaisuru Kado's season, whose map is kept while its Kitsu entry is
+/// not, as happens once the detail row is older than its window and the
+/// map is not. Kitsu would answer nothing for it.
+#[tokio::test]
+async fn a_related_entry_reading_no_extras_is_not_read_again_for_the_special() {
+    let kitsu = MockServer::start().await;
+    detail_of(&kitsu, "13323", KADO_NINOVO_KITSU).await;
+    relations_of(&kitsu, "13323", KADO_NINOVO_RELATIONS).await;
+    mapped_as(&kitsu, "11490", Some(32_032), Some(21_452)).await;
+    mapped_as(&kitsu, "13323", Some(35_369), None).await;
+    let anilist_server = MockServer::start().await;
+    evidence_of(&anilist_server, 21_452, KADO_ANILIST).await;
+    no_anilist_answer(&anilist_server).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    remember(
+        &state,
+        &map_key(ProviderKind::AniList, "11490", Some((21_452, Some(13)))),
+        &EpisodeMap::identity(Identity::Unexplained),
+    );
+    let provider = anilist(&anilist_server.uri());
+    let tokens = tokens();
+    let base = anilist_server.uri();
+    let ask = ask(&state, ProviderKind::AniList, &provider, &tokens, &base);
+    let special = episode_map_for_unresolved(&ask, "13323")
+        .await
+        .expect("the special's map");
+    assert!(
+        special.segments.is_empty(),
+        "the special writes nothing: {special:?}"
+    );
+    let season_reads = kitsu
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| r.url.path() == "/anime/11490")
+        // The detail read, not the mappings read that resolves it.
+        .filter(|r| !r.url.query().is_some_and(|q| q.contains("include")))
+        .count();
+    assert_eq!(season_reads, 0, "the season's Kitsu entry was read");
+}

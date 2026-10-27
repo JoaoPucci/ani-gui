@@ -179,12 +179,79 @@ fn several_episodes_take_consecutive_extras_or_none() {
     assert_eq!(special_extras(&ev), None);
 }
 
+/// The slot after the season's last episode is an epilogue's. A special
+/// dated before the season ended, like UBW's prologue, is no epilogue:
+/// it is filed nowhere there.
 #[test]
-fn an_extra_that_is_the_entry_s_last_episode_is_filed_nowhere() {
-    // Filed there, the special's one episode would complete the entry.
+fn a_special_dated_before_its_season_ended_is_no_epilogue() {
     let mut ev = ubw();
+    ev.related[1].related.end = Some("2014-12-28".into());
     ev.related[1].map = extras_map(19_603, 13, 12, &[12]);
     assert_eq!(special_extras(&ev), None);
+}
+
+/// A special that aired on or after its season's last episode, or
+/// within the sources' two days' slack before it, takes the slot the
+/// entry lists after that episode. Being the entry's last, it completes
+/// the entry, but only from the season's own finale: the write needs
+/// the entry to hold the season's episodes already, and claims none the
+/// user has not watched. A season whose end is not a whole day settles
+/// nothing.
+#[test]
+fn an_epilogue_dated_after_its_season_ended_is_the_entry_s_last_episode() {
+    let epilogue = |special: &str, season_end: Option<&str>| {
+        let mut ev = ubw();
+        ev.special.start = Some(special.into());
+        ev.related[1].related.end = season_end.map(str::to_string);
+        ev.related[1].map = extras_map(19_603, 13, 12, &[12]);
+        special_extras(&ev)
+    };
+    for special in ["2014-12-28", "2015-01-20", "2014-12-26"] {
+        let map = epilogue(special, Some("2014-12-28")).expect("filed");
+        assert_eq!(
+            map.target(1),
+            Target::Mapped(crate::account::episode_map::MappedWrite {
+                entry: 19_603,
+                progress: 13,
+                complete: true,
+                earlier: Vec::new(),
+                needs: Some(12),
+            }),
+            "{special}"
+        );
+    }
+    assert_eq!(
+        epilogue("2014-12-25", Some("2014-12-28")),
+        None,
+        "three days early"
+    );
+    assert_eq!(
+        epilogue("2014-11-16", Some("2014-12-28")),
+        None,
+        "mid-season"
+    );
+    for unsettled in [None, Some("2014-12")] {
+        assert_eq!(epilogue("2015-01-20", unsettled), None, "{unsettled:?}");
+    }
+}
+
+/// A special at a slot after one of the season's episodes needs the
+/// entry to hold the episodes before its slot; a prologue's slot comes
+/// before every episode and needs nothing.
+#[test]
+fn a_special_needs_the_episodes_before_its_slot() {
+    let prologue = special_extras(&ubw()).expect("filed");
+    match prologue.target(1) {
+        Target::Mapped(w) => assert_eq!(w.needs, None),
+        Target::Identity => panic!("filed nowhere"),
+    }
+    let mut ev = ubw();
+    ev.special.start = Some("2014-11-16".into());
+    ev.related[1].map = extras_map(19_603, 13, 12, &[6]);
+    match special_extras(&ev).expect("filed").target(1) {
+        Target::Mapped(w) => assert_eq!((w.progress, w.needs), (7, Some(6))),
+        Target::Identity => panic!("filed nowhere"),
+    }
 }
 
 #[test]

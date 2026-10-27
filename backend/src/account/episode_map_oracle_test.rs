@@ -37,7 +37,8 @@ struct RelatedCase {
 
 /// Every Kitsu episode's write under `map`, 1 to `count + 1` (one past
 /// the end, which is outside every segment): `null` for identity, else
-/// `[entry, progress, complete, [[earlier entry, total, finished], …]]`.
+/// `[entry, progress, complete, [[earlier entry, total, finished], …],
+/// needs]`.
 fn targets(map: &EpisodeMap, count: u32) -> serde_json::Value {
     let count = count.min(TARGET_CAP);
     (1..=count + 1)
@@ -50,7 +51,8 @@ fn targets(map: &EpisodeMap, count: u32) -> serde_json::Value {
                 w.earlier
                     .iter()
                     .map(|e| serde_json::json!([e.entry, e.total, e.finished]))
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>(),
+                w.needs
             ]),
         })
         .collect()
@@ -136,9 +138,9 @@ fn an_outcome_lists_the_map_and_every_episode_s_write() {
     assert_eq!(
         got["targets"],
         serde_json::json!([
-            [210, 1, true, []],
-            [9, 1, false, [[210, 1, true]]],
-            [9, 2, false, [[210, 1, true]]],
+            [210, 1, true, [], null],
+            [9, 1, false, [[210, 1, true]], null],
+            [9, 2, false, [[210, 1, true]], null],
             null
         ])
     );

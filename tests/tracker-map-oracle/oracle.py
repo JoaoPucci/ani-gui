@@ -312,11 +312,12 @@ def special_rule(sp):
     """A special the tracker has no entry for, among the extras of exactly
     one related entry: that entry's own map reads the season's extras
     over the whole season from the entry's first episode, as many as the
-    special has episodes, one after another, none of them the entry's
-    last; no other related entry could be the special; and the special
-    started on a whole real day inside the entry's run, by month, on the
-    side of the season's start its slot is on. Its episodes are those
-    extras, where the tracker lists them, never completing the entry."""
+    special has episodes, one after another; no other related entry could be the special; and the special
+    started on a whole real day where the dates put its slot. Its
+    episodes are those extras, where the tracker lists them; at the
+    entry's last slot it completes the entry where the tracker has the
+    entry finished, and every write needs the
+    episodes before its slot on the entry."""
     k = sp["special"]["episodes"] or 0
     start = whole_day(sp["special"]["start"])
     if not k or not start:
@@ -327,8 +328,7 @@ def special_rule(sp):
         if f["contested"]:
             continue
         s, a, b = month(start), month(e["start"]), month(e["end"])
-        if not (s and a and b and a <= s <= b):
-            continue
+        in_run = bool(s and a and b and a <= s <= b)
         m = predict(f["evidence"])
         if m["shape"] != "extras" or len(m["segments"]) != 1:
             continue
@@ -338,15 +338,24 @@ def special_rule(sp):
             continue
         if len(after) != k or any(w != after[0] for w in after):
             continue
-        if after[0] + k >= seg["entry_total"]:
+        if after[0] + k > seg["entry_total"]:
             continue
-        # A prologue's slot is taken only within two days of the season's
-        # start; a recap's only once the season, as the dates settle it,
-        # started first.
+        # Dates decide the slot. A prologue's (before the season's first
+        # episode) only within two days of the season's start; an
+        # epilogue's (after its last) only on or after the season ended,
+        # or within two days before, and it may be past the entry's run;
+        # a recap's only once the season, as the dates settle it, started
+        # first. Prologues and recaps lie inside the entry's run.
         season_start = f["related"].get("start")
-        if after[0] == 0 and not slack(season_start, start):
+        season_end = f["related"].get("end")
+        if after[0] == seg["kitsu_to"] and after[0] > 0:
+            if not slack(start, season_end):
+                continue
+        elif not in_run:
             continue
-        if after[0] > 0 and not started_before(season_start, start):
+        elif after[0] == 0 and not slack(season_start, start):
+            continue
+        elif after[0] > 0 and not started_before(season_start, start):
             continue
         fit = {
             "entry": seg["entry"],
@@ -393,7 +402,9 @@ def targets(m, count):
         )
         progress = s["entry_total"] if ends else position
         earlier = [[e["entry"], e["entry_total"], e["entry_finished"]] for e in m["segments"][:i]]
-        out.append([s["entry"], progress, ends and s["entry_finished"], earlier])
+        # A special's write needs the episodes before its slot on the entry.
+        needs = s["lead"] if m["shape"] == "special_extras" and s["lead"] > 0 else None
+        out.append([s["entry"], progress, ends and s["entry_finished"], earlier, needs])
     return out
 
 
@@ -796,8 +807,8 @@ def special_family(rng):
         count = rng.choice([11, 12, 13, 24, 25])
         k = rng.choice([1, 1, 1, 2])
         w = rng.choice([0, 0, 0, rng.randint(1, count - 1)])
-        tweak = rng.choice(["ok", "ok", "ok", "ok", "contested", "count_mismatch", "apart", "last_slot", "before_run", "after_run", "partial_date", "undated", "two_fits", "season_conflict", "counts_agree", "unrelated", "prologue_late", "recap_early", "twice"])
-        if tweak == "last_slot":
+        tweak = rng.choice(["ok", "ok", "ok", "ok", "contested", "count_mismatch", "apart", "last_slot", "before_run", "after_run", "partial_date", "undated", "two_fits", "season_conflict", "counts_agree", "unrelated", "prologue_late", "recap_early", "twice", "epilogue", "epilogue_late", "epilogue_early"])
+        if tweak in ("last_slot", "epilogue", "epilogue_late", "epilogue_early"):
             w = count
         elif tweak == "prologue_late":
             w = 0
@@ -823,7 +834,11 @@ def special_family(rng):
         # slack); a recap after it.
         fitting = rng.choice(["2015-01-04", "2015-01-10", "2015-01-13"]) if w == 0 else rng.choice(["2015-01-12", "2015-02-20", "2015-03-29"])
         start = {"before_run": "2014-12-28", "after_run": "2015-04-02", "partial_date": "2015-01", "undated": None,
-                 "prologue_late": "2015-01-14", "recap_early": "2015-01-10"}.get(tweak, fitting)
+                 "prologue_late": "2015-01-14", "recap_early": "2015-01-10",
+                 # The season ends on 2015-03-29: an epilogue on its day, a
+                 # fortnight after (past the entry's run), or a week early.
+                 "epilogue": "2015-03-29", "epilogue_late": "2015-04-12",
+                 "epilogue_early": "2015-03-22"}.get(tweak, fitting)
         special_count = k + 1 if tweak == "count_mismatch" else k
         sp = {
             "special": kitsu(73, special_count, start or "", start or ""),
