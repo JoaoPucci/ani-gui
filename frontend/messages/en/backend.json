@@ -1,4 +1,5 @@
 {
+	"error_account_refresh_rejected": "The tracker refused to renew this sign-in. Reconnect the account to keep syncing.",
 	"error_account_unsupported_pkce": "Sign-in couldn't start: the account service doesn't accept the sign-in method the app asked for. Update the app and try again.",
 	"error_cache_generic": "The app's local database failed. Restart the app and try again.",
 	"error_config_parse": "The settings file couldn't be read or saved. Restart the app, or fix the file by hand if you edited it.",

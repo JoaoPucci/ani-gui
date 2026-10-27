@@ -110,7 +110,7 @@ fn anilist_batches_need_their_media_lists() {
     fails(
         "media ids by MAL",
         no_mal,
-        anilist::parse_media_ids_by_mal_response(no_mal.as_bytes()),
+        anilist::parse_media_listed_by_mal_response(no_mal.as_bytes()),
     );
 }
 

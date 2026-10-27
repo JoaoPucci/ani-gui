@@ -1,45 +1,22 @@
 // The live wiring of `saveWhenAllowed` for a tracker write the user
-// made: the notice that it waits, on the toast stack, naming the tracker
-// by its display name, and a real timer. Split from the pure module so
-// that one stays free of the toast store and the message bundle.
+// made: the ledger of writes per tracker and show that decides what a
+// held write may still send, a real timer, and the busy notice
+// (`busy-notice.ts`) put up and taken down around each wait. Split from
+// the pure module so that one stays free of the toast store.
 
 import type { Provider } from './types';
 import {
 	ALL_FIELDS,
 	saveWhenAllowed,
-	sleep,
+	waitWhileWanted,
 	SupersededError,
 	type HeldWrite,
 	type WriteField
 } from './save-when-allowed';
 import { coverFields, fieldsLeft, type Coverage } from './write-fields';
 import { toastStore } from '$lib/toasts/store.svelte';
-import { followAccount, type ListedAccount } from './held-account';
-import { m } from '$lib/paraglide/messages';
-
-/** A tracker's display name; the provider id for one without a name. */
-export function providerName(provider: Provider): string {
-	if (provider === 'anilist') return m.account_provider_anilist();
-	if (provider === 'mal') return m.account_provider_mal();
-	return provider;
-}
-
-/** How long the busy notice stays up for a wait of `seconds`: the wait
- *  itself, and no shorter than a plain toast. */
-export function noticeDurationMs(seconds: number): number {
-	return Math.max(4000, seconds * 1000);
-}
-
-/** The toast shown while `provider` waits `seconds` to take a write: up
- *  for as long as the wait, and no shorter than the stack's default.
- *  Returns its id. */
-export function noticeBusy(provider: Provider, seconds: number): string {
-	return toastStore.push({
-		kind: 'info',
-		message: m.account_busy_saving({ provider: providerName(provider), seconds }),
-		duration: noticeDurationMs(seconds)
-	});
-}
+import { accountLeft, followAccount, type ListedAccount } from './held-account';
+import { after, monotonic, noticeBusy } from './busy-notice';
 
 /** Per tracker and show: the count of writes started, the newest write
  *  to cover each field, and the busy notice on screen. A write held
@@ -112,25 +89,33 @@ export function saveWhenTrackerAllows<T>(
 	};
 	const run = () =>
 		held.left().length > 0 ? attempt(held) : Promise.reject(new SupersededError());
+	// This write's notice, while it is the show's.
+	let mine: string | null = null;
 	return saveWhenAllowed(run, {
 		notify: (seconds) => {
 			takeDownNotice(key);
-			notices.set(key, noticeBusy(provider, seconds));
+			mine = noticeBusy(provider, seconds);
+			notices.set(key, mine);
 		},
-		wait: sleep,
+		// Ended early only on what cannot come back: newer writes took every
+		// field, or the tracker is disconnected or another user's. A sign-in
+		// or an account change under way may end on the same user; the
+		// checks at the end of the wait and before the send decide then.
+		wait: (ms) =>
+			waitWhileWanted(ms, {
+				after,
+				now: monotonic,
+				stillWanted: () =>
+					fieldsLeft(coverage.get(key), fields, generation).length > 0 &&
+					!accountLeft(provider, listed)
+			}),
 		stillWanted: () => held.left().length > 0
-	})
-		.catch((e: unknown) => {
-			if (e instanceof SupersededError && started.get(key) === generation) takeDownNotice(key);
-			throw e;
-		})
-		.finally(() => settle(key));
-}
-
-/** The error toast for a progress write that could not be saved. */
-export function reportProgressNotSaved(provider: Provider): void {
-	toastStore.push({
-		kind: 'error',
-		message: m.account_progress_save_failed({ provider: providerName(provider) })
+	}).finally(() => {
+		// Landed, failed or superseded: its notice goes with it, unless a
+		// newer write's has replaced it.
+		if (mine !== null && notices.get(key) === mine) takeDownNotice(key);
+		settle(key);
 	});
 }
+
+export { noticeBusy, providerName, reportProgressNotSaved } from './busy-notice';

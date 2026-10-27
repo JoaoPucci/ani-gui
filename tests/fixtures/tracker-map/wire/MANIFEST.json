@@ -1,0 +1,78 @@
+{
+  "$comment": "Bodies the trackers and Kitsu served for the shows the episode map's evidence readers are checked against, captured with the production queries (fields[anime] abbreviated as <ANIME_FIELDS>, the constant in backend/src/meta/kitsu.rs). Re-capture with the request recorded on each entry.",
+  "captured_at": "2026-10-18",
+  "fixtures": {
+    "anilist-media-149939.json": {
+      "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 149939)",
+      "notes": "Ranma ½: Nettou-hen: 143 episodes, idMal null, a PREQUEL edge to 210 and an OVA sequel.",
+      "size": 1176,
+      "sha256": "8be4396eda251fd7cc862c0e8f3a1c759450dd58f6bc60c8e3f6c89b8ce24111"
+    },
+    "anilist-media-19603.json": {
+      "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 19603)",
+      "notes": "Fate/stay night: Unlimited Blade Works: 13 episodes, the streaming list opening on Episode 0 and running through the second season.",
+      "size": 2407,
+      "sha256": "efc89d6e018838ba4ec11719ae9fbd6524929f5ac85e670fbf3ae2c5b2ae2896"
+    },
+    "anilist-media-210.json": {
+      "request": "POST https://graphql.anilist.co — the media_evidence query (Media(id: 210) { id idMal episodes status format startDate endDate relations { edges { relationType node { id type format } } } streamingEpisodes { title } })",
+      "notes": "Ranma ½: 18 episodes, one series sequel (149939), no streaming list.",
+      "size": 545,
+      "sha256": "73d67051ab7ea14f4c852e9b3c84de28184ff817b8e26a95d6422f0e4fb3b1d5"
+    },
+    "anilist-media-4382.json": {
+      "request": "POST https://graphql.anilist.co — the media_evidence query for Media(id: 4382)",
+      "notes": "Suzumiya Haruhi no Yuuutsu (2009): 28 episodes, a MOVIE sequel, 28 streaming episodes numbered 1–28 in story order.",
+      "size": 2460,
+      "sha256": "e15ca4bf2b6f96a0367a1ec2670310a3a4b5da17c04dc5e5334c3720c21fc67a"
+    },
+    "kitsu-mappings-anilist-153406.json": {
+      "request": "GET https://kitsu.io/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=153406&include=item&fields[anime]=<ANIME_FIELDS>",
+      "notes": "One Kitsu entry (46312) mapped to AniList's Tower of God 2nd Season.",
+      "size": 3963,
+      "sha256": "146712c55ab9095b004dd97a89fc91dee2eb4477d6f0588a05fa72487c0b3d54"
+    },
+    "kitsu-mappings-mal-51535.json": {
+      "request": "GET https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=51535&include=item&fields[anime]=<ANIME_FIELDS>",
+      "notes": "Two Kitsu entries (46038, 47132) mapped to one MyAnimeList id.",
+      "size": 6834,
+      "sha256": "49b684699a0867e02f7e48a4fe5a1dfc6d7a6caf21367110f8bf1fc6f21677cc"
+    },
+    "kitsu-relationships-186.json": {
+      "request": "GET https://kitsu.io/api/edge/anime/186/media-relationships?include=destination&page[limit]=20&fields[anime]=<ANIME_FIELDS>",
+      "notes": "Ranma ½: fifteen relationships — one sequel (the OVA), side stories, others; no Kitsu entry for Nettou-hen.",
+      "size": 41309,
+      "sha256": "8321c6ca42743a50fa826c9e9594ab34f2a5ed94989628c3010dc94fa40f6067"
+    },
+    "kitsu-relationships-46312.json": {
+      "request": "GET https://kitsu.io/api/edge/anime/46312/media-relationships?include=destination&page[limit]=20&fields[anime]=<ANIME_FIELDS>",
+      "notes": "Tower of God 2nd Season: a prequel, a manga adaptation, and the sequel Koubou-sen (49244) inlined with its 13-episode count.",
+      "size": 11275,
+      "sha256": "60b9048f7e0a1c499299e5e50ddaa607f361509cfd6612bceaf0d027f5c6379e"
+    },
+    "mal-anime-210.json": {
+      "request": "GET https://api.myanimelist.net/v2/anime/210?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true",
+      "notes": "Ranma ½ on MyAnimeList: all 161 episodes in one entry; related_anime names the OVA as sequel.",
+      "size": 4834,
+      "sha256": "79ddb85b6bdfcccd143d2c4b8bf2bae59945d545f85482ced9866427de126a21"
+    },
+    "mal-anime-23135.json": {
+      "request": "GET https://api.myanimelist.net/v2/anime/23135?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true",
+      "notes": "PriPara: 140 episodes, three Kitsu seasons under it; one sequel.",
+      "size": 3632,
+      "sha256": "f494f3d7bb727cfe7d317dadff58a513379b420ff1d584cf7f4e713d836af6c0"
+    },
+    "mal-anime-437.json": {
+      "request": "GET https://api.myanimelist.net/v2/anime/437?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true (X-MAL-CLIENT-ID, no bearer), captured 2026-10-27",
+      "notes": "Perfect Blue: a single film with no related anime. MyAnimeList sends related_anime as an empty list rather than leaving the key out, so a missing related_anime stays no answer.",
+      "size": 334,
+      "sha256": "956d6a4d73c0e452266d5de52a26429523b8bc4b40a1da376df754991328762a"
+    },
+    "mal-anime-51535.json": {
+      "request": "GET https://api.myanimelist.net/v2/anime/51535?fields=num_episodes,status,media_type,start_date,end_date,related_anime&nsfw=true",
+      "notes": "Attack on Titan: The Final Season - Final Chapters: a 2-episode tv_special two Kitsu entries map to; a prequel and no sequel.",
+      "size": 998,
+      "sha256": "c9026ccaf037dfeb3d636b17b7d7190f90526da9fb1c1c0ecbd8d2ead44cc91b"
+    }
+  }
+}

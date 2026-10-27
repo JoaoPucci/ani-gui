@@ -5,6 +5,10 @@
 use super::*;
 use crate::meta::present::Present;
 
+#[path = "anilist_parse_page.rs"]
+mod page;
+pub use page::{page_has_next, parse_media_ids_recording_mal, parse_media_listed_by_mal_response};
+
 /// Pure parser for the by-media `idMal` response.
 ///
 /// # Errors
@@ -35,45 +39,6 @@ pub fn parse_mal_id_response(body: &[u8]) -> Result<Option<u32>> {
         .media
         .into_inner()
         .and_then(|m| m.id_mal.into_inner()))
-}
-
-/// Pure parser for the batched by-MAL response: `{ data: { Page: {
-/// media: [{ id, idMal }] } } }` → `idMal → id` map. Entries without
-/// an `idMal` are skipped.
-///
-/// # Errors
-/// Returns [`AniError::ParseFailed`] when the body isn't the expected
-/// envelope.
-pub fn parse_media_ids_by_mal_response(body: &[u8]) -> Result<std::collections::HashMap<u32, u32>> {
-    #[derive(Deserialize)]
-    struct Wrap {
-        data: Data,
-    }
-    #[derive(Deserialize)]
-    struct Data {
-        #[serde(rename = "Page")]
-        page: Page,
-    }
-    #[derive(Deserialize)]
-    struct Page {
-        media: Vec<Media>,
-    }
-    #[derive(Deserialize)]
-    struct Media {
-        id: u32,
-        #[serde(rename = "idMal")]
-        id_mal: Present<u32>,
-    }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("anilist batched idMal response: {e}"),
-    })?;
-    Ok(parsed
-        .data
-        .page
-        .media
-        .into_iter()
-        .filter_map(|m| m.id_mal.into_inner().map(|mal| (mal, m.id)))
-        .collect())
 }
 
 /// Pure parser for the by-MAL `mediaId` response.

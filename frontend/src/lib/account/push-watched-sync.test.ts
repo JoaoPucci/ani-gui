@@ -92,11 +92,16 @@ describe('syncWatchedToTrackers', () => {
 	it('holds a progress write AniList refuses, says so, and sends it when the wait ends', async () => {
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		updateProgress.mockRejectedValueOnce(refused(0)).mockResolvedValueOnce(null);
+		const push = vi.spyOn(toastStore, 'push');
 		await syncWatchedToTrackers('kitsu-12', 7);
+		const pushed = push.mock.calls.map(([args]) => args.message);
+		push.mockRestore();
 		expect(updateProgress).toHaveBeenCalledTimes(2);
-		expect(toastStore.items.map((t) => t.message)).toContain(
-			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 0 })
-		);
+		// A 0 s wait says the save is going now, and the notice is down once
+		// it landed.
+		const now = m.account_busy_saving_now({ provider: m.account_provider_anilist() });
+		expect(pushed).toContain(now);
+		expect(toastStore.items.map((t) => t.message)).not.toContain(now);
 	});
 
 	it('tells the user a progress write that could not be saved', async () => {
@@ -272,5 +277,31 @@ describe('a play the session could not verify, beside the held-write machinery',
 		await vi.advanceTimersByTimeAsync(1000);
 		await write;
 		expect(updateProgress).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('a progress write whose episode map could not be read', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('waits out the read’s rate limit with the notice, then sends again', async () => {
+		// The backend fails a mapped write whose evidence read AniList
+		// refused, with that read's wait: the renderer sees the same 429
+		// as any other and holds the write for it.
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(30)).mockResolvedValue(null);
+		const write = syncWatchedToTrackers('kitsu-186', 19);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(toastStore.items.map((t) => t.message)).toContain(
+			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 30 })
+		);
+		await vi.advanceTimersByTimeAsync(29_000);
+		expect(updateProgress).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1_000);
+		await write;
+		expect(updateProgress).toHaveBeenCalledTimes(2);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
 	});
 });

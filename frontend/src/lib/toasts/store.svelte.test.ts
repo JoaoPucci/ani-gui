@@ -3,7 +3,8 @@
 // Svelte 5 runes via SvelteKit Vite plugin (vitest.config.ts).
 // happy-dom for the `$state` runtime — see download/store.svelte.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toastStore, TOAST_MAX_STACK } from './store.svelte';
+import fc from 'fast-check';
+import { keepOnPush, toastStore, TOAST_MAX_STACK, type ToastItem } from './store.svelte';
 
 describe('toastStore', () => {
 	beforeEach(() => {
@@ -101,5 +102,130 @@ describe('toastStore', () => {
 		// All TOAST_MAX_STACK + 1 timers fire; the trimmed-out one's
 		// dismiss is a no-op, the surviving three dismiss themselves.
 		expect(toastStore.items).toHaveLength(0);
+	});
+});
+
+describe('toastStore.update and onClose', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('changes a message where it stands, and leaves a toast no longer there alone', () => {
+		const a = toastStore.push({ kind: 'info', message: 'A', duration: null });
+		const b = toastStore.push({ kind: 'info', message: 'B', duration: null });
+		toastStore.update(a, 'A, again');
+		expect(toastStore.items.map((t) => [t.id, t.message])).toEqual([
+			[a, 'A, again'],
+			[b, 'B']
+		]);
+		toastStore.dismiss(a);
+		toastStore.update(a, 'gone');
+		expect(toastStore.items.map((t) => t.id)).toEqual([b]);
+	});
+
+	it('tells a toast it left, once, by every route', () => {
+		vi.useFakeTimers();
+		const closed: string[] = [];
+		const dismissed = toastStore.push({
+			kind: 'info',
+			message: 'dismissed',
+			duration: null,
+			onClose: () => closed.push('dismissed')
+		});
+		toastStore.push({
+			kind: 'info',
+			message: 'timed out',
+			duration: 1000,
+			onClose: () => closed.push('timed out')
+		});
+		toastStore.dismiss(dismissed);
+		toastStore.dismiss(dismissed);
+		vi.advanceTimersByTime(1000);
+		// A passing toast is the one a later push trims; a pinned one stays.
+		toastStore.push({
+			kind: 'info',
+			message: 'trimmed',
+			duration: 9999,
+			onClose: () => closed.push('trimmed')
+		});
+		for (let i = 0; i < TOAST_MAX_STACK; i += 1) {
+			toastStore.push({ kind: 'info', message: `filler ${i}`, duration: 9999 });
+		}
+		expect(closed).toEqual(['dismissed', 'timed out', 'trimmed']);
+	});
+});
+
+describe('toastStore.update and what is announced', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+
+	it('announces what a toast was pushed with, and what a plain update says', () => {
+		const id = toastStore.push({ kind: 'info', message: 'first', duration: null });
+		expect(toastStore.items[0].announcement).toBe('first');
+		toastStore.update(id, 'second');
+		expect(toastStore.items[0]).toMatchObject({ message: 'second', announcement: 'second' });
+	});
+
+	it('shows a silent update without announcing it', () => {
+		const id = toastStore.push({ kind: 'info', message: 'first', duration: null });
+		toastStore.update(id, 'quietly', { silent: true });
+		expect(toastStore.items[0]).toMatchObject({ message: 'quietly', announcement: 'first' });
+	});
+});
+
+function row(id: number, pinned: boolean): ToastItem {
+	return {
+		id: `toast-${id}`,
+		kind: pinned ? 'warning' : 'info',
+		message: `m${id}`,
+		announcement: `m${id}`,
+		duration: pinned ? null : 4000,
+		actionLabel: null,
+		onAction: null
+	};
+}
+
+describe('keepOnPush', () => {
+	it('keeps a pinned toast that later toasts would have pushed off the stack', () => {
+		// A pinned toast waits for the user to act on it; a burst of
+		// passing toasts must not drop it before they have seen it.
+		const items = [row(1, true), row(2, false), row(3, false)];
+		expect(keepOnPush(items, 3).map((r) => r.id)).toEqual(['toast-1', 'toast-3']);
+	});
+
+	it('keeps every pinned toast, in order, and drops the oldest passing ones first', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.boolean(), { maxLength: 12 }),
+				fc.integer({ min: 2, max: 6 }),
+				(pins, max) => {
+					const items = pins.map((p, i) => row(i, p));
+					const kept = keepOnPush(items, max);
+					const pinned = items.filter((r) => r.duration === null);
+					const keptIds = kept.map((r) => r.id);
+					const inOrder = keptIds.every(
+						(id, i) =>
+							i === 0 ||
+							items.findIndex((r) => r.id === id) > items.findIndex((r) => r.id === keptIds[i - 1])
+					);
+					const allPinned = pinned.every((r) => keptIds.includes(r.id));
+					const room = Math.max(max - 1, pinned.length);
+					const passing = kept.filter((r) => r.duration !== null);
+					const newestPassing = items
+						.filter((r) => r.duration !== null)
+						.slice(-passing.length || items.length + 1);
+					return (
+						inOrder &&
+						allPinned &&
+						kept.length === Math.min(items.length, room) &&
+						passing.every((r, i) => r.id === newestPassing[i]?.id)
+					);
+				}
+			)
+		);
 	});
 });

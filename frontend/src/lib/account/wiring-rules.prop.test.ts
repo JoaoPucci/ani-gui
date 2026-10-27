@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
 import { savedFields } from './set-entry';
-import { noticeDurationMs, providerName } from './busy-save';
+import { providerName } from './busy-save';
 import { isRateLimit } from './set-entry-outcome';
 import { m } from '$lib/paraglide/messages';
 import type { ListStatus } from './types';
@@ -50,19 +50,6 @@ describe('isRateLimit, by property', () => {
 			fc.property(fc.anything(), (value) => {
 				fc.pre(!(value instanceof Error));
 				expect(isRateLimit(value)).toBe(false);
-			})
-		);
-	});
-});
-
-describe('noticeDurationMs, by property', () => {
-	it('lasts the wait, and never less than four seconds', () => {
-		fc.assert(
-			fc.property(fc.nat(10_000), (seconds) => {
-				const ms = noticeDurationMs(seconds);
-				expect(ms).toBe(Math.max(4000, seconds * 1000));
-				expect(ms).toBeGreaterThanOrEqual(4000);
-				expect(ms).toBeGreaterThanOrEqual(seconds * 1000);
 			})
 		);
 	});

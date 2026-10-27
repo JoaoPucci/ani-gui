@@ -777,9 +777,12 @@ async fn refresh_rotates_tokens_with_form_body_carrying_refresh_token() {
 
 #[tokio::test]
 async fn refresh_surfaces_4xx_as_upstream() {
+    // 400 and 401 read as a refused token
+    // (mal_user_refresh_refusal_test.rs); any other 4xx says nothing
+    // about the token and keeps the endpoint's status.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .respond_with(wiremock::ResponseTemplate::new(401))
+        .respond_with(wiremock::ResponseTemplate::new(403))
         .mount(&server)
         .await;
     let provider = make_provider("http://unused-api", &server.uri());
@@ -788,8 +791,8 @@ async fn refresh_surfaces_4xx_as_upstream() {
         .await
         .expect_err("4xx must surface");
     match err {
-        crate::error::AniError::Upstream { status } => assert_eq!(status, 401),
-        other => panic!("expected Upstream {{ status: 401 }}, got {other:?}"),
+        crate::error::AniError::Upstream { status } => assert_eq!(status, 403),
+        other => panic!("expected Upstream {{ status: 403 }}, got {other:?}"),
     }
 }
 

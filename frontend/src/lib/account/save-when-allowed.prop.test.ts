@@ -7,7 +7,8 @@ import {
 	MAX_SAVE_ATTEMPTS,
 	MAX_WAIT_S,
 	saveWhenAllowed,
-	SupersededError
+	SupersededError,
+	waitWhileWanted
 } from './save-when-allowed';
 
 /** An error of the shape the account api rejects with. */
@@ -172,6 +173,62 @@ describe('saveWhenAllowed once the write is no longer wanted, by property', () =
 				expect(attempts).toBe(wantedFor + 1);
 				expect(asked).toBe(wantedFor + 1);
 			})
+		);
+	});
+});
+
+describe('waitWhileWanted, by property', () => {
+	it('ends at the first look at or past its deadline or that finds it unwanted, however late each timer wakes', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc.integer({ min: 0, max: 300_000 }),
+				fc.integer({ min: 1, max: 5000 }),
+				fc.array(fc.integer({ min: 0, max: 120_000 }), { maxLength: 50 }),
+				fc.option(fc.integer({ min: 0, max: 60 }), { nil: undefined }),
+				async (ms, step, lateness, unwantedFrom) => {
+					let clock = 0;
+					const looks: number[] = [];
+					const timer: { fire: (() => void) | null } = { fire: null };
+					const after = (d: number, tick: () => void) => {
+						// Never asked to sleep past the deadline, nor longer than a step.
+						expect(d).toBeGreaterThanOrEqual(0);
+						expect(d).toBeLessThanOrEqual(step);
+						expect(clock + d).toBeLessThanOrEqual(Math.max(ms, clock));
+						const late = lateness[looks.length] ?? 0;
+						timer.fire = () => {
+							clock += d + late;
+							looks.push(clock);
+							tick();
+						};
+						return () => (timer.fire = null);
+					};
+					const unwanted = () => unwantedFrom !== undefined && looks.length > unwantedFrom;
+					let done = false;
+					void waitWhileWanted(ms, {
+						after,
+						now: () => clock,
+						stillWanted: () => !unwanted(),
+						checkEvery: step
+					}).then(() => {
+						done = true;
+					});
+					while (timer.fire) {
+						const fire = timer.fire;
+						timer.fire = null;
+						fire();
+					}
+					await new Promise((r) => setTimeout(r, 0));
+					expect(done).toBe(true);
+					// The last look ended it; every look before it found the write
+					// wanted and the deadline still ahead.
+					const end = looks.length - 1;
+					expect(looks[end] >= ms || unwantedFrom === end).toBe(true);
+					for (let i = 0; i < end; i += 1) {
+						expect(looks[i]).toBeLessThan(ms);
+						expect(unwantedFrom !== undefined && i > unwantedFrom).toBe(false);
+					}
+				}
+			)
 		);
 	});
 });

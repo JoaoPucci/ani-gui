@@ -8,10 +8,17 @@
 // on the page, from the Kitsu show it loaded: only Kitsu's own last
 // episode of a finished show sends it. Everything that depends on the
 // tracker's own row — its episode total, a rewatch, progress already
-// past the episode — is decided by the backend behind that route, and
-// is covered against MAL and AniList in
-// `backend/src/commands/account_tracker_total_test.rs`. These
-// scenarios pin the page's half: what each tracker's route receives.
+// past the episode — is decided by the backend behind that route. A
+// show whose episode map leaves it as Kitsu numbers it is covered
+// against MAL and AniList (a shorter entry against MAL only) in
+// `backend/src/commands/account_tracker_total_test.rs`. A show the map
+// files under other entries or numbers is written by
+// `backend/src/commands/account_mapped.rs`, which decides each entry's
+// completion from the map and does not read the page's `completed`;
+// that is covered in `backend/src/commands/account_mapped_test.rs`,
+// and the requests each tracker receives for it in
+// `account_mapped_wire_test.rs`. These scenarios pin the page's half:
+// what each tracker's route receives.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -283,6 +290,29 @@ describe('play route — what the trackers receive for a watched episode', () =>
 		}, 'episode 13 marked watched');
 		// The write-back fires beside the watch stamp; give it the turn
 		// it would take.
+		await new Promise((r) => setTimeout(r, 50));
+		expect(writes).toEqual([]);
+	});
+
+	it('an unverified episode of a show the tracker files under several entries sends nothing', async () => {
+		// Ranma ½: Kitsu's 161 episodes, which AniList files as an
+		// 18-episode entry and its 143-episode sequel. The page cannot
+		// see the map: the backend writes such a show through it behind
+		// the progress route, and is told nothing of whether the episode
+		// was verified. This pins that boundary: the page's skip is the
+		// only guard, and for a mapped show it posts nothing to that
+		// route, so neither the map nor any entry it names is written.
+		const show = { kitsuCount: 161, status: 'finished', providerCount: 162 };
+		setUrl(`/play/${KITSU_ID}`, { episode: '161' });
+		serve(show);
+		app = mount(PlayPage, { target });
+		await until(() => card(162) !== null, 'the card for row 162');
+		card(162)!.click();
+		await until(() => {
+			const es = openStreamFor(162);
+			if (es) land(es, 162, true);
+			return marked.includes('162');
+		}, 'row 162 marked watched');
 		await new Promise((r) => setTimeout(r, 50));
 		expect(writes).toEqual([]);
 	});

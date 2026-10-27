@@ -251,6 +251,15 @@ pub enum AniError {
     /// its key is older than the account uses.
     #[error("invalid stream token")]
     InvalidToken,
+
+    /// A tracker refused to renew a sign-in: MAL's token endpoint
+    /// answering the refresh grant with a 400 or 401. The request was
+    /// refused, not lost, so sending it again is refused again and
+    /// only a new sign-in restores the account. Distinct from
+    /// [`Self::Upstream`], which the same endpoint's 5xx stays, so the
+    /// renderer can say "reconnect" only when that is what happened.
+    #[error("refresh token refused")]
+    RefreshRejected,
 }
 
 /// How a download tool failed, for [`AniError::Scraper`]. A closed set,
@@ -299,6 +308,7 @@ impl AniError {
             Self::Config => "error.config.parse",
             Self::Metadata => "error.metadata.source",
             Self::UnsupportedPkce => "error.account.unsupported_pkce",
+            Self::RefreshRejected => crate::i18n::keys::ACCOUNT_REFRESH_REJECTED,
             Self::InvalidKitsuId => crate::i18n::keys::REQUEST_INVALID_KITSU_ID,
             Self::InvalidSearchOffset => crate::i18n::keys::REQUEST_INVALID_SEARCH_OFFSET,
             Self::InvalidRequestBody => crate::i18n::keys::REQUEST_INVALID_BODY,
@@ -342,7 +352,7 @@ impl AniError {
     pub fn http_status_code(&self) -> u16 {
         match self {
             Self::NoResults | Self::RefusedByName | Self::EpisodeUnavailable => 404,
-            Self::InvalidToken => 401,
+            Self::InvalidToken | Self::RefreshRejected => 401,
             // A rate-limit passes through verbatim so the frontend can tell it
             // apart from a generic bad gateway and tell the user to retry.
             Self::Upstream { status: 429 } => 429,

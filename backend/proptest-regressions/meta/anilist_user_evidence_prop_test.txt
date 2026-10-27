@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc cc4b740b3bd17ba448fc4660e67106ef61401b765c6fe9cc04d5712e5add8e67 # shrinks to media = Object {"episodes": Null, "format": String("TV"), "id": Number(0), "idMal": Null, "status": String("FINISHED")}

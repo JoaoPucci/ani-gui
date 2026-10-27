@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d988840d979232337a3da1324849d1953cdd93464211077a11a40725564578a7 # shrinks to wire = Object {"id": Number(0)}
+cc 33cd9e368794af68810b5206b70b0f6def22445b7628fd25100063f3194c6e82 # shrinks to wire = Object {"id": Number(0), "related_anime": Array []}

@@ -178,3 +178,7 @@ impl KitsuClient {
 #[cfg(test)]
 #[path = "kitsu_relations_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "kitsu_relations_prop_test.rs"]
+mod prop_tests;

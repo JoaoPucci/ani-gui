@@ -33,8 +33,8 @@ use crate::account::credentials::{
 };
 use crate::account::pkce::{Pkce, PkceMethod};
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, TrackedMedia,
-    UserListProvider, UserProfile,
+    CurrentEntry, EntryUpdate, ListEntry, MediaEvidence, ProviderKind, ProviderMediaId, Tokens,
+    TrackedMedia, UserListProvider, UserProfile,
 };
 use crate::error::{AniError, Result};
 
@@ -230,7 +230,14 @@ impl UserListProvider for MalProvider {
         let bytes = self.get_auth_bytes(&url, tokens).await?;
         parse_tracked_media(&bytes)
     }
+
+    async fn media_evidence(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<MediaEvidence> {
+        evidence::read(self, tokens, id).await
+    }
 }
+
+#[path = "mal_user_evidence.rs"]
+mod evidence;
 
 #[cfg(test)]
 #[path = "mal_user_test.rs"]
@@ -243,3 +250,11 @@ mod parse_prop_tests;
 #[cfg(test)]
 #[path = "mal_user_tracked_test.rs"]
 mod tracked_tests;
+
+#[cfg(test)]
+#[path = "mal_user_refresh_refusal_test.rs"]
+mod refresh_refusal_tests;
+
+#[cfg(test)]
+#[path = "mal_user_evidence_test.rs"]
+mod evidence_tests;

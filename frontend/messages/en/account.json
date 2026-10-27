@@ -46,10 +46,17 @@
 	"chip_pop_disconnect": "Disconnect",
 	"expiry_toast_message": "Your {provider} session expired. Sign in again to keep syncing.",
 	"expiry_toast_action": "Sign in",
+	"signin_refused_message": "{provider} refused to renew your sign-in. Reconnect to keep syncing.",
+	"signin_refused_action": "Reconnect",
+	"signin_unreachable_message": "Couldn't reach {provider} to renew your sign-in. It may still be valid; the app keeps trying.",
+	"signin_unreachable_action": "Try now",
+	"signin_unknown_message": "Couldn't renew your {provider} sign-in. Try again, or reconnect if it keeps failing.",
+	"signin_unknown_action": "Try again",
 	"primary_badge": "Primary",
 	"primary_make": "Make primary",
 	"primary_hint": "Shown in the topbar. The Watch Later rail lists most recently updated on your tracker first; this tracker's copy is the one used when a title is on both. Progress still syncs to every connected tracker.",
 	"primary_save_error": "Couldn't save your primary tracker. Try again.",
 	"busy_saving": "{provider} is busy, saving in {seconds} s",
+	"busy_saving_now": "Saving to {provider}…",
 	"progress_save_failed": "Couldn't save your progress to {provider}"
 }

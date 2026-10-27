@@ -290,27 +290,22 @@ proptest! {
     ) {
         let list: Vec<Value> = nodes.iter().map(|(id, mal)| json!({ "id": id, "idMal": mal })).collect();
         let doc = json!({ "data": { "Page": { "media": list } } });
-        let read = anilist::parse_media_ids_by_mal_response(&decorated(doc.clone(), &extra))
+        let read = anilist::parse_media_listed_by_mal_response(&decorated(doc.clone(), &extra))
             .expect("an answer");
-        // Each MAL id AniList listed maps to its node's id; one listed by
-        // two nodes maps to one of them.
+        // Each MAL id AniList listed maps to every node recording it, in
+        // id order; a node whose idMal is null records none.
+        let mut expected: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
         for (id, mal) in &nodes {
             if let Some(mal) = mal {
-                let ids: Vec<u32> = nodes
-                    .iter()
-                    .filter(|(_, m)| m.as_ref() == Some(mal))
-                    .map(|(i, _)| *i)
-                    .collect();
-                prop_assert!(ids.contains(&read[mal]), "{} for {}", read[mal], id);
+                expected.entry(*mal).or_default().push(*id);
             }
         }
-        prop_assert_eq!(
-            read.len(),
-            nodes.values().flatten().collect::<std::collections::BTreeSet<_>>().len()
-        );
+        prop_assert_eq!(read, expected);
         if !nodes.is_empty() {
-            prop_assert!(anilist::parse_media_ids_by_mal_response(
-                &decorated(without(doc, &["data", "Page", "media", "0", "idMal"]), &extra)).is_err());
+            prop_assert!(anilist::parse_media_listed_by_mal_response(
+                &decorated(without(doc.clone(), &["data", "Page", "media", "0", "idMal"]), &extra)).is_err());
+            prop_assert!(anilist::parse_media_listed_by_mal_response(
+                &decorated(without(doc, &["data", "Page", "media", "0", "id"]), &extra)).is_err());
         }
     }
 

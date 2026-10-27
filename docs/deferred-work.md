@@ -432,6 +432,19 @@ starting it, and delete it when you find it done.
   from its own failures, or fetching announcements from somewhere it
   trusts — and choosing one is the design work, along with which
   signals feed the surface and what persistence they get.
+
+  Tracker sign-in problems are among the notices the first job would
+  gather. A tracker can refuse to
+  renew a sign-in, which means reconnecting, or fail to answer the
+  renewal, which means the sign-in may still be valid and the app keeps
+  trying. Until the centre exists, a pinned toast carries both, and it
+  is the stopgap rather than the design: one toast per incident is all
+  it can do. It is not kept anywhere, so once dismissed it is gone.
+  While the sign-in stays expired, the amber dot on the account chip is
+  the only trace. A sign-in still valid whose renewal was refused
+  leaves none. A tracker list
+  pull for the Watch Later rail that fails for any other reason is
+  quieter still: the rail keeps its saved copy and nothing says so.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
   entry has been matched to a Kitsu show, is a button that tries to

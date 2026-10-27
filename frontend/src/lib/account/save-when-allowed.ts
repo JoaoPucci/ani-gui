@@ -89,9 +89,37 @@ export async function saveWhenAllowed<T>(
 	}
 }
 
-/** A real timer, wrapped in an arrow: `setTimeout` called off an object
- *  is an "Illegal invocation" in Chromium. */
-export const sleep = (ms: number): Promise<void> =>
-	new Promise((resolve) => {
-		setTimeout(() => resolve(), ms);
+/**
+ * Wait `ms` on the `now` clock, looking every `checkEvery` ms whether
+ * the write is still `stillWanted`. The wait ends at the first look at
+ * or past its deadline — however late the timer woke for it — or at the
+ * first that finds the write no longer wanted, which the caller decides:
+ * a write let go of then, not when the wait is up.
+ */
+export function waitWhileWanted(
+	ms: number,
+	deps: {
+		after: (ms: number, tick: () => void) => () => void;
+		/** The clock the wait is measured on, in milliseconds. */
+		now: () => number;
+		stillWanted: () => boolean;
+		checkEvery?: number;
+	}
+): Promise<void> {
+	const step = deps.checkEvery ?? 1000;
+	const wait = Math.max(0, ms);
+	// A deadline, not a count of steps: a hidden window's throttled timers
+	// wake late, and each late step would add to the wait.
+	const deadline = deps.now() + wait;
+	return new Promise((resolve) => {
+		const look = () => {
+			const left = deadline - deps.now();
+			if (left <= 0 || !deps.stillWanted()) {
+				resolve();
+				return;
+			}
+			deps.after(Math.min(step, left), look);
+		};
+		deps.after(Math.min(step, wait), look);
 	});
+}

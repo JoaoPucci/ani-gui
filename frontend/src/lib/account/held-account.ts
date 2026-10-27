@@ -4,6 +4,7 @@
 
 import type { Provider } from './types';
 import { accountStore } from './store.svelte';
+import { hasLeft, standingOf } from './account-standing';
 
 /** The account a fan-out listed a tracker under: its user, or `null`
  *  when the tracker had no account to name. */
@@ -57,13 +58,17 @@ export function accountStanding(
 	return standingOf(listed.user, accountUser(provider));
 }
 
-/** Where a tracker's user `now` stands against the user a write was
- *  `listed` under: `gone` when either is unknown, else `same` or
- *  `other`. */
-export function standingOf(
-	listed: string | null | undefined,
-	now: string | null | undefined
-): 'same' | 'other' | 'gone' {
-	if (listed === null || listed === undefined || now === null || now === undefined) return 'gone';
-	return now === listed ? 'same' : 'other';
+/** `hasLeft` for `provider`'s account as the store holds it now; never
+ *  for a write with no listing, which follows no account. */
+export function accountLeft(provider: Provider, listed?: ListedAccount): boolean {
+	if (!listed) return false;
+	const state = accountStore.byProvider[provider];
+	return hasLeft(listed.user, {
+		changing: accountStore.accountChanging[provider],
+		connecting: state?.kind === 'connecting',
+		disconnected: !state || state.kind === 'disconnected',
+		user: state && 'account' in state && state.account ? state.account.user_id : null
+	});
 }
+
+export { hasLeft, standingOf, type AccountNow } from './account-standing';

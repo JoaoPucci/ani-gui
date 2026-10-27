@@ -1,4 +1,5 @@
 {
+	"error_account_refresh_rejected": "El servicio de seguimiento rechazó renovar este inicio de sesión. Vuelve a conectar la cuenta para seguir sincronizando.",
 	"error_account_unsupported_pkce": "No se pudo iniciar sesión: el servicio de la cuenta no acepta el método de inicio de sesión que pidió la app. Actualiza la app e inténtalo de nuevo.",
 	"error_cache_generic": "La base de datos local de la app falló. Reinicia la app e inténtalo de nuevo.",
 	"error_config_parse": "El archivo de configuración no se pudo leer o guardar. Reinicia la app o, si lo editaste, corrige el archivo a mano.",
