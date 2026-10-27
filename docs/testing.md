@@ -178,6 +178,26 @@ Trigger condition: CI green for 30 days with total CI duration under 8 minutes.
 - **Rust**: `cargo-mutants` nightly, scoped to `proxy/`, `cache/`, `history/`, `scraper/`. Target survival rate < 15%.
 - **TS**: `stryker-js` nightly, scoped to `lib/` (DOM mutation noise on components is too high).
 
+## Asserting that something did not happen
+
+A test that waits a fixed time and then asserts that no request went
+out, no notice showed or no state changed cannot fail on a slow run:
+the subject may not yet have reached the point where it would have
+acted, and the negative passes without having checked anything. Wait
+instead for a positive witness, something the subject does only once
+it is past that point (the next request it sends, a state it reaches),
+and assert the negative then. Where the action would begin before a
+call returns, such as a click whose handler would send its request
+straight away, count it where the request is made rather than where a
+handler answers it, and the negative can be read as soon as the call
+returns.
+
+A 0 ms timer is a sleep of the same kind wherever the page's requests
+pass through MSW: one turn of the event loop is not known to carry
+them to a handler. Where every stand-in lives in memory, as in the
+unit tests and in acceptance cases built on a fake EventSource alone,
+one turn drains every microtask and settles the question.
+
 ## Test-discipline expectations for AI agents
 
 Every PR shows the red→green pair in `git log`:
