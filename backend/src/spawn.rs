@@ -21,9 +21,11 @@ pub(crate) use guard::{TREE_EXIT_CEILING, TREE_KILL_REPEAT};
 
 /// Take down a spawned downloader's whole process group, on Unix.
 ///
-/// Shared by the drop guard and by the in-flight stop, so both paths
-/// use the same command and the same test seam. On Windows the tree
-/// ends through its job instead; see [`GuardedCommand`].
+/// Called only by the process group's kill, the one way a guard's
+/// teardown — awaited or dropped, whatever ended the run — signals a
+/// tree on Unix, so every teardown uses the same command and the same
+/// test seam. On Windows the tree ends through its job instead; see
+/// [`GuardedCommand`].
 #[cfg(unix)]
 pub(crate) fn kill_process_tree(pid: u32) {
     #[cfg(test)]
