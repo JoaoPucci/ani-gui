@@ -10,7 +10,7 @@
  */
 
 import { recoveryResume } from '$lib/play/resume-after-recovery';
-import { holdForResume, type ResumeHold } from '$lib/play/resume-hold';
+import { holdForResume, resumeStartAt, type ResumeHold } from '$lib/play/resume-hold';
 import { stallMachine } from '$lib/play/stall-machine';
 import type { SourceScope } from '$lib/play/source-scope';
 import {
@@ -53,9 +53,8 @@ export function armSourceScopedListeners(input: {
 	// A point to seek to holds the picture back from the attach on, so
 	// the stream's first frame is never shown, nor played, before it.
 	// A started mark, at zero, has nowhere to seek.
-	const point = recovered ?? kept;
 	const hold: ResumeHold | null =
-		point !== null && point > 0
+		resumeStartAt(recovered, kept) !== null
 			? holdForResume({ video, onHold: (holding) => onResumeHold?.(holding) })
 			: null;
 	// Progress means frames actually rendered — the `playing` event —

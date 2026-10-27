@@ -29,6 +29,14 @@ export const SEEK_LANDED_WITHIN_S = 2;
  *  it counts the load as timed out. */
 export const RESUME_HOLD_BOUND_MS = HLS_STALL_LOAD_POLICY.fragLoadPolicy.default.maxLoadTimeMs;
 
+/** Where a stream attaching now resumes: a pending recovery's point,
+ *  or else where the episode was kept; null when there is nowhere to
+ *  seek to — no point, or a started mark at zero. */
+export function resumeStartAt(recovered: number | null, kept: number | null): number | null {
+	const point = recovered ?? kept;
+	return point !== null && point > 0 ? point : null;
+}
+
 /** `HTMLMediaElement.HAVE_CURRENT_DATA`: the frame at the playhead is in. */
 const HAVE_CURRENT_DATA = 2;
 
