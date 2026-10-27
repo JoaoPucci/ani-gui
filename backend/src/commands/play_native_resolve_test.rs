@@ -1287,6 +1287,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
         }],
         stitched: false,
         versions: Vec::new(),
+        unread_past: None,
     }
 }
 

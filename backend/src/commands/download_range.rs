@@ -178,7 +178,8 @@ where
         )
         .with_versions(&versions)
         // The copy that served the first episode carries the mode.
-        .with_played(played),
+        .with_played(played)
+        .with_count_unread(picked.unread_past.is_some()),
     )
     .await;
     let client = attempted.client;
