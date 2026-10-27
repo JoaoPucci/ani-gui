@@ -19,8 +19,11 @@ inputs:
     description: The arguments to pnpm install.
     required: true
   working-directory:
-    description: The directory pnpm install runs in.
-    default: .
+    description: >
+      The directory pnpm install runs in. Every caller passes `.`, the
+      workspace root, and lets the arguments choose what to install;
+      tests/arch/ci_caches.sh holds them to it.
+    required: true
 runs:
   using: composite
   steps:
