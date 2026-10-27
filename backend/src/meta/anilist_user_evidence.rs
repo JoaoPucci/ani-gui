@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::account::episode_map::TrackerShow;
+use crate::meta::present::present;
 
 #[path = "anilist_user_evidence_text.rs"]
 mod text;
@@ -21,17 +22,6 @@ pub(super) const MEDIA_EVIDENCE_GQL: &str = "query Evidence($mediaId: Int!) { \
             streamingEpisodes { title } \
         } \
     }";
-
-/// A field the query asks for, read as given: `None` when it is null.
-/// Named by `deserialize_with`, which leaves a missing field the
-/// missing-field error where a bare `Option` would read it as `None`.
-fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
-}
 
 /// Whether a format is a series': a movie or a music video is not.
 fn is_series(format: Option<&str>) -> bool {

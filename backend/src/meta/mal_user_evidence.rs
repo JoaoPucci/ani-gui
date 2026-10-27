@@ -1,6 +1,7 @@
 //! MAL's answer to what the episode map asks of an anime; split from
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
+use crate::meta::present::present;
 use serde::Deserialize;
 
 use super::*;
@@ -23,17 +24,6 @@ pub(super) async fn read(
         id.0
     );
     parse_media_evidence(&provider.get_auth_bytes(&url, tokens).await?)
-}
-
-/// A field the request asks for, read as given: `None` when it is
-/// null. Named by `deserialize_with`, which leaves a missing field the
-/// missing-field error where a bare `Option` would read it as `None`.
-fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
 }
 
 /// Parse an `/anime/{id}?fields=num_episodes,status,media_type,start_date,

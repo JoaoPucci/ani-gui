@@ -6,6 +6,7 @@
 //! gate's per-file bar.
 
 use super::*;
+use crate::meta::present::present;
 
 /// A side-loaded resource of any type; only `anime` ones are read.
 #[derive(Deserialize)]
@@ -42,17 +43,6 @@ fn inlined_anime(included: Vec<Included>) -> HashMap<String, KitsuAnimeRef> {
 struct Pointer {
     #[serde(deserialize_with = "present")]
     data: Option<PointerRef>,
-}
-
-/// A field the request asks for, read as given: `None` when it is
-/// null. Named by `deserialize_with`, which leaves a missing field the
-/// missing-field error where a bare `Option` would read it as `None`.
-fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
 }
 
 #[derive(Deserialize)]
