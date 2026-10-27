@@ -28,6 +28,11 @@ impl Numbering {
         self.0.iter().find(|r| r.slug == slug)
     }
 
+    /// Every slug the store holds a row for, in file order.
+    pub fn slugs(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(|r| r.slug.as_str())
+    }
+
     /// Whether the slug has a row at all.
     #[must_use]
     pub fn has(&self, slug: &str) -> bool {

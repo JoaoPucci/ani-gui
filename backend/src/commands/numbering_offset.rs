@@ -74,6 +74,14 @@ pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> st
     remove_rows(state, |r| removed.contains(r.slug.as_str()))
 }
 
+/// Drop the rows whose slug `forget` names, whatever made them.
+///
+/// # Errors
+/// The store's read or write failure, as [`forget`].
+pub(crate) fn forget_where(state: &AppState, forget: impl Fn(&str) -> bool) -> std::io::Result<()> {
+    remove_rows(state, |r| forget(&r.slug))
+}
+
 /// The slug's stamped (slot, display tag) pair, when one exists.
 pub fn display_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
     Numbering::read(&state.history_path).display(slug)

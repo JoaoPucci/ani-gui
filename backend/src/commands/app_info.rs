@@ -98,6 +98,7 @@ mod tests {
         let mut state = fake_state();
         state.legacy_sweep = crate::legacy_script::SweepReport {
             removed: vec![PathBuf::from("/home/u/.cache/ani-gui/ani-cli")],
+            ..crate::legacy_script::SweepReport::default()
         };
         let info = app_info(&state).expect("info");
         assert_eq!(
