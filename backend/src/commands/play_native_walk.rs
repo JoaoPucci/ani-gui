@@ -72,6 +72,8 @@ pub async fn pick_native_walk_heard<P: Provider + ?Sized>(
                 if hits.is_empty() {
                     continue;
                 }
+                // The pick fetches the candidates' listings from here.
+                let begun = crate::commands::listing_tags::Begun::now();
                 match pick_candidate_titled(
                     client,
                     &hits,
@@ -84,23 +86,16 @@ pub async fn pick_native_walk_heard<P: Provider + ?Sized>(
                 .await
                 {
                     Ok(picked) => {
-                        let heard_at = crate::commands::listing_tags::heard_now();
+                        let hearing = begun.picked();
                         let picked =
                             super::play_native_appended::fit_appended(picked, expected_count, tail)
                                 .await;
-                        if let Some(sink) = heard {
-                            for (hit, episodes) in picked.copies() {
-                                sink.heard(
-                                    &crate::scraper::provider::ShowKey::new(
-                                        client.id(),
-                                        hit.slug.clone(),
-                                    )
-                                    .to_string(),
-                                    episodes,
-                                    heard_at,
-                                );
-                            }
-                        }
+                        crate::commands::listing_tags::hand_copies(
+                            heard,
+                            client.id(),
+                            &picked,
+                            hearing,
+                        );
                         return Ok(picked);
                     }
                     // A rejected pool is a clean verdict about THIS

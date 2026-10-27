@@ -247,6 +247,8 @@ where
                 if hits.is_empty() {
                     continue;
                 }
+                // The pick fetches the candidates' listings from here.
+                let begun = crate::commands::listing_tags::Begun::now();
                 match pick_candidate_titled(
                     client,
                     &hits,
@@ -259,9 +261,9 @@ where
                 .await
                 {
                     Ok(picked) => {
-                        // The listing was heard as the pick was made —
-                        // before the appended-extras rule's own reads.
-                        let heard_at = crate::commands::listing_tags::heard_now();
+                        // The listing was heard by the pick — before the
+                        // appended-extras rule's own reads.
+                        let heard = begun.picked();
                         // The version asked for first, so the listing
                         // the appended-extras rule reads is the one that
                         // plays.
@@ -276,15 +278,12 @@ where
                         });
                         // Every version's listing is at hand now, served
                         // or not.
-                        if let Some(sink) = req.heard {
-                            for (hit, episodes) in picked.copies() {
-                                sink.heard(
-                                    &ShowKey::new(client.id(), hit.slug.clone()).to_string(),
-                                    episodes,
-                                    heard_at,
-                                );
-                            }
-                        }
+                        crate::commands::listing_tags::hand_copies(
+                            req.heard,
+                            client.id(),
+                            &picked,
+                            heard,
+                        );
                         // The version asked for, or the next that
                         // carries the episode in the mode, each read
                         // through its own display stamp.

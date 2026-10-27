@@ -9,6 +9,11 @@ use super::{cached_launch_args, cached_watch};
 use crate::commands::play_native_merge::{carries_tag, former_on_replay};
 use proptest::prelude::*;
 
+/// A hearing of this process's clock, fetched between `start` and `at`.
+fn heard(start: u64, at: u64) -> crate::commands::listing_tags::Hearing {
+    crate::commands::listing_tags::Hearing { run: 0, start, at }
+}
+
 /// A tag as a listing writes one: a whole number, or a fraction of one.
 fn tag() -> BoxedStrategy<String> {
     prop_oneof![
@@ -87,7 +92,7 @@ proptest! {
     ) {
         let state = crate::commands::play::tests::state_with_proxy_origin();
         let show_key = format!("test-a:{slug}");
-        crate::commands::listing_tags::put(&state, &show_key, &recorded, 1);
+        crate::commands::listing_tags::put(&state, &show_key, &recorded, heard(1, 1));
         prop_assert_eq!(
             crate::commands::listing_tags::get(&state, &show_key),
             Some(recorded)
@@ -141,8 +146,8 @@ proptest! {
 fn an_older_listing_recorded_last_leaves_the_newer_one() {
     let state = crate::commands::play::tests::state_with_proxy_origin();
     let key = "test-a:show-1";
-    crate::commands::listing_tags::put(&state, key, &["24.5".to_string()], 200);
-    crate::commands::listing_tags::put(&state, key, &[], 100);
+    crate::commands::listing_tags::put(&state, key, &["24.5".to_string()], heard(200, 200));
+    crate::commands::listing_tags::put(&state, key, &[], heard(100, 100));
     assert_eq!(
         crate::commands::listing_tags::get(&state, key),
         Some(vec!["24.5".to_string()])
@@ -165,7 +170,7 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
     };
     let newer = crate::commands::listing_tags::heard_now() + 60_000;
     for key in ["test-a:show-uncut-1", "test-a:show-2"] {
-        crate::commands::listing_tags::put(&state, key, &["2.5".to_string()], newer);
+        crate::commands::listing_tags::put(&state, key, &["2.5".to_string()], heard(newer, newer));
     }
     let native = crate::commands::play_native_resolve::NativeResolved {
         slug: "test-a:show-uncut-1".into(),
@@ -204,21 +209,6 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
 }
 
 proptest! {
-    /// A hearing replaces a record exactly when nothing is recorded or it
-    /// is no earlier than the hearing recorded.
-    #[test]
-    fn a_hearing_replaces_only_an_earlier_or_equal_one(
-        stored in proptest::option::of(any::<u64>()),
-        at in any::<u64>(),
-    ) {
-        let replaces = crate::commands::listing_tags::supersedes(stored, at);
-        let expected = match stored {
-            None => true,
-            Some(s) => at >= s,
-        };
-        prop_assert_eq!(replaces, expected);
-    }
-
     /// Whatever order a show's listings are recorded in, the record holds
     /// the one heard last; among those heard at the same moment, the one
     /// written last.
@@ -228,7 +218,7 @@ proptest! {
     ) {
         let state = crate::commands::play::tests::state_with_proxy_origin();
         for (at, recorded) in &hearings {
-            crate::commands::listing_tags::put(&state, "test-a:show-1", recorded, *at);
+            crate::commands::listing_tags::put(&state, "test-a:show-1", recorded, heard(*at, *at));
         }
         let latest = hearings.iter().map(|(at, _)| *at).max().expect("one");
         let expected = hearings

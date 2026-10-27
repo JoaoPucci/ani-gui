@@ -321,7 +321,7 @@ fn hear_listing(state: &AppState, show_key: &str, tags: &[&str]) {
         state,
         show_key,
         &episodes,
-        crate::commands::listing_tags::heard_now(),
+        crate::commands::listing_tags::Begun::now().picked(),
     );
 }
 
