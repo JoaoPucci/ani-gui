@@ -185,3 +185,15 @@ check() {
     check
     [ "$status" -eq 1 ]
 }
+
+@test "an action named in another case is still the action" {
+    # GitHub resolves owner and repository names case-insensitively.
+    for uses in 'swatinem/rust-cache@v2' 'Actions/Cache@v4'; do
+        workflow "      - uses: $uses"
+        check
+        [ "$status" -eq 1 ] || {
+            echo "accepted: $uses"
+            return 1
+        }
+    done
+}

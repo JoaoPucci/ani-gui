@@ -39,7 +39,12 @@
 # What this does NOT check: an action other than these that caches on
 # its own (a third-party action keeping a cache internally), or a
 # script a step runs that calls apt or the cache service itself — only
-# the steps' own text is read. Whether the install action's cache
+# the steps' own text is read — or an apt install split across a line
+# continuation so that no one line carries both `apt` and `install`:
+# the install rule reads a run one line at a time, and joining shell
+# lines is parsing shell, which AGENTS.md §2 puts out of bounds. A
+# comment line spelling an install is a finding, which errs the safe
+# way. Whether the install action's cache
 # actually works is a runtime question; its report step prints how
 # many planned files apt kept, in every job that uses it.
 
@@ -123,9 +128,10 @@ def check(path, doc):
         where = "%s: %s" % (path, name)
         uses = step.get("uses")
         uses = uses if isinstance(uses, str) else ""
-        action = uses.split("@", 1)[0]
+        # GitHub resolves an action's owner and name case-insensitively.
+        action = uses.split("@", 1)[0].lower()
         inputs = step.get("with") if isinstance(step.get("with"), dict) else {}
-        if action == "Swatinem/rust-cache":
+        if action == "swatinem/rust-cache":
             if inputs.get("save-if") != MASTER_SAVE_IF:
                 findings.append("%s saves its cache from every ref; give it\n    save-if: %s" % (where, MASTER_SAVE_IF))
         elif action == "actions/cache":

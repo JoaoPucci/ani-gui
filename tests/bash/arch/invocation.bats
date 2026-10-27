@@ -769,19 +769,28 @@ FLAP
     # A job that skips its steps when nothing it reads changed has to
     # count the composite actions it calls as read, or a broken action
     # lands certified by the no-op successes of the jobs that use it.
-    # rust.yml's filter is a script, and rust_workflow_filter.bats runs
-    # it over the same change.
-    for pair in e2e:apt-install crap:apt-install \
-        frontend:pnpm-install e2e:pnpm-install crap:pnpm-install; do
-        wf=${pair%%:*}
-        action=${pair#*:}
-        pattern=$(relevance_pattern "$REPO_ROOT/.github/workflows/$wf.yml")
-        [ -n "$pattern" ]
-        grep -qE "^($pattern)" <<<".github/actions/$action/action.yml" || {
-            echo "$wf.yml does not select on .github/actions/$action/"
-            return 1
-        }
+    # The pairs come from the workflows themselves: every
+    # `uses: ./.github/actions/<name>` line in a workflow with a
+    # governing relevance line. A workflow without one either has no
+    # filter (arch.yml, mutation.yml) or decides in a script — rust.yml,
+    # whose tools/rust-workflow-filter.sh rust_workflow_filter.bats runs
+    # over the same change.
+    pairs=0
+    for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+        pattern=$(relevance_pattern "$wf") || continue
+        [ -n "$pattern" ] || continue
+        actions=$(sed -n 's#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}uses:[[:space:]]*\./\.github/actions/\([^/[:space:]]*\).*#\2#p' "$wf" | sort -u)
+        for action in $actions; do
+            pairs=$((pairs + 1))
+            grep -qE "^($pattern)" <<<".github/actions/$action/action.yml" || {
+                echo "$(basename "$wf") does not select on .github/actions/$action/"
+                return 1
+            }
+        done
     done
+    # The derivation has to find the uses it exists for, or it passes
+    # having compared nothing.
+    [ "$pairs" -ge 5 ]
 }
 
 # Whether a workflow sets up the upstream remote, as a function so a
