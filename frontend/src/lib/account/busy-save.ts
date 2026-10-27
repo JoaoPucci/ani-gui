@@ -13,6 +13,7 @@ import {
 	type WriteField
 } from './save-when-allowed';
 import { coverFields, fieldsLeft, type Coverage } from './write-fields';
+import { startCountdown } from './busy-countdown';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { followAccount, type ListedAccount } from './held-account';
 import { m } from '$lib/paraglide/messages';
@@ -30,15 +31,41 @@ export function noticeDurationMs(seconds: number): number {
 	return Math.max(4000, seconds * 1000);
 }
 
-/** The toast shown while `provider` waits `seconds` to take a write: up
- *  for as long as the wait, and no shorter than the stack's default.
- *  Returns its id. */
+/** The notice's words with `seconds` left: the wait, or once it is over,
+ *  that the save is going. */
+function busyText(provider: Provider, seconds: number): string {
+	const name = providerName(provider);
+	return seconds > 0
+		? m.account_busy_saving({ provider: name, seconds })
+		: m.account_busy_saving_now({ provider: name });
+}
+
+/** A real once-a-second timer, wrapped in arrows: `setInterval` called
+ *  off an object is an "Illegal invocation" in Chromium. */
+function everySecond(ms: number, tick: () => void): () => void {
+	const handle = setInterval(() => tick(), ms);
+	return () => clearInterval(handle);
+}
+
+/** The toast shown while `provider` waits `seconds` to take a write. It
+ *  counts the wait down in place, read from one deadline, and then says
+ *  the save is going; it stays up until taken down — by the write it is
+ *  about, a newer write, or the user — and its timer stops whenever it
+ *  leaves. Returns its id. */
 export function noticeBusy(provider: Provider, seconds: number): string {
-	return toastStore.push({
+	let stop = () => {};
+	const id = toastStore.push({
 		kind: 'info',
-		message: m.account_busy_saving({ provider: providerName(provider), seconds }),
-		duration: noticeDurationMs(seconds)
+		message: busyText(provider, seconds),
+		duration: null,
+		onClose: () => stop()
 	});
+	stop = startCountdown(Date.now() + seconds * 1000, {
+		now: () => Date.now(),
+		every: everySecond,
+		show: (left) => toastStore.update(id, busyText(provider, left))
+	});
+	return id;
 }
 
 /** Per tracker and show: the count of writes started, the newest write
@@ -112,19 +139,22 @@ export function saveWhenTrackerAllows<T>(
 	};
 	const run = () =>
 		held.left().length > 0 ? attempt(held) : Promise.reject(new SupersededError());
+	// This write's notice, while it is the show's.
+	let mine: string | null = null;
 	return saveWhenAllowed(run, {
 		notify: (seconds) => {
 			takeDownNotice(key);
-			notices.set(key, noticeBusy(provider, seconds));
+			mine = noticeBusy(provider, seconds);
+			notices.set(key, mine);
 		},
 		wait: sleep,
 		stillWanted: () => held.left().length > 0
-	})
-		.catch((e: unknown) => {
-			if (e instanceof SupersededError && started.get(key) === generation) takeDownNotice(key);
-			throw e;
-		})
-		.finally(() => settle(key));
+	}).finally(() => {
+		// Landed, failed or superseded: its notice goes with it, unless a
+		// newer write's has replaced it.
+		if (mine !== null && notices.get(key) === mine) takeDownNotice(key);
+		settle(key);
+	});
 }
 
 /** The error toast for a progress write that could not be saved. */
