@@ -92,8 +92,10 @@ fn run() -> u64 {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
         // The low bits of the start instant, mixed with the process id:
-        // two runs drawing the same value would need both to match.
-        (nanos as u64) ^ (u64::from(std::process::id()) << 32)
+        // two runs drawing the same value would need both to match. A
+        // run is never 0, which a record no run of this build wrote can
+        // carry and be told apart by.
+        ((nanos as u64) ^ (u64::from(std::process::id()) << 32)) | 1
     })
 }
 
