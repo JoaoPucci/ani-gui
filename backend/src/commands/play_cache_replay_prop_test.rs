@@ -385,3 +385,159 @@ proptest! {
         );
     }
 }
+
+// ── where a walk's span sits around its listing fetches ─────────────
+
+/// A provider that answers as `inner` does, noting a tick of the
+/// hearings' clock as each listing is fetched.
+struct Ticking {
+    inner: crate::scraper::table_provider::TableProvider,
+    fetched: std::sync::Mutex<Vec<u64>>,
+}
+
+#[async_trait::async_trait]
+impl crate::scraper::provider::Provider for Ticking {
+    fn id(&self) -> crate::scraper::provider::ProviderId {
+        crate::scraper::provider::Provider::id(&self.inner)
+    }
+    async fn search(
+        &self,
+        q: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::BrowseHit>> {
+        crate::scraper::provider::Provider::search(&self.inner, q).await
+    }
+    async fn episodes(
+        &self,
+        slug: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::EpisodeRef>> {
+        let got = crate::scraper::provider::Provider::episodes(&self.inner, slug).await;
+        self.fetched
+            .lock()
+            .expect("fetched")
+            .push(crate::commands::listing_tags::tick_for_tests());
+        got
+    }
+    async fn has_mode(&self, id: u64, mode: &str) -> crate::error::Result<bool> {
+        crate::scraper::provider::Provider::has_mode(&self.inner, id, mode).await
+    }
+    async fn master_playlist_url(
+        &self,
+        id: u64,
+        mode: &str,
+    ) -> crate::error::Result<crate::scraper::provider::StreamSource> {
+        crate::scraper::provider::Provider::master_playlist_url(&self.inner, id, mode).await
+    }
+    async fn playlist(&self, url: &str, referer: Option<&str>) -> crate::error::Result<String> {
+        crate::scraper::provider::Provider::playlist(&self.inner, url, referer).await
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        crate::scraper::provider::Provider::last_attempt_at(&self.inner)
+    }
+    async fn detail_year(&self, slug: &str) -> crate::error::Result<Option<u32>> {
+        crate::scraper::provider::Provider::detail_year(&self.inner, slug).await
+    }
+}
+
+/// A sink keeping every hearing it is handed.
+#[derive(Debug, Default)]
+struct Kept(std::sync::Mutex<Vec<crate::commands::listing_tags::Hearing>>);
+
+impl crate::commands::listing_tags::ListingSink for Kept {
+    fn heard(
+        &self,
+        _show_key: &str,
+        _episodes: &[crate::scraper::provider::EpisodeRef],
+        heard: crate::commands::listing_tags::Hearing,
+    ) {
+        self.0.lock().expect("kept").push(heard);
+    }
+}
+
+fn two_version_show() -> Ticking {
+    use crate::scraper::provider::BrowseHit;
+    use crate::scraper::table_provider::{listing_of, TableProvider};
+    let card = |slug: &str, title: &str| BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    Ticking {
+        inner: TableProvider::new()
+            .search_default(vec![
+                card("the-show-1", "The Show"),
+                card("the-show-2", "The Show (Uncensored)"),
+            ])
+            .listing(1, listing_of(1, 3))
+            .listing(2, listing_of(2, 3))
+            .year(1, Some(2020))
+            .year(2, Some(2020))
+            .stream(
+                2001,
+                "sub",
+                crate::commands::play_native_test_provider::MASTER,
+            )
+            .mode(2001, "sub", true),
+        fetched: std::sync::Mutex::new(Vec::new()),
+    }
+}
+
+/// Every hearing a walk hands over spans every listing fetch of its
+/// pick: it began before the first, and was closed after the last.
+fn assert_spans_the_fetches(provider: &Ticking, kept: &Kept) {
+    let fetched = provider.fetched.lock().expect("fetched").clone();
+    let hearings = kept.0.lock().expect("kept").clone();
+    assert!(!fetched.is_empty(), "the pick fetched its listings");
+    assert!(!hearings.is_empty(), "the walk handed its listings over");
+    for h in hearings {
+        for f in &fetched {
+            assert!(
+                h.start < *f && *f < h.at,
+                "{h:?} does not span the fetch at {f}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_resolves_hearing_spans_its_picks_listing_fetches() {
+    let provider = two_version_show();
+    let kept = Kept::default();
+    let req = crate::commands::play_native_resolve::NativeResolveRequest {
+        title: "The Show",
+        alt_titles: &[],
+        episode: "1",
+        mode: "sub",
+        quality: "best",
+        expected_count: Some(3),
+        year: Some(2020),
+        subtype: Some("TV"),
+        version: None,
+        stamps_beside: None,
+        tail: None,
+        heard: Some(&kept),
+    };
+    crate::commands::play_native_resolve::resolve_native(&provider, req, &mut |_| {})
+        .await
+        .expect("resolves");
+    assert_spans_the_fetches(&provider, &kept);
+}
+
+#[tokio::test]
+async fn a_pick_walks_hearing_spans_its_listing_fetches() {
+    let provider = two_version_show();
+    let kept = Kept::default();
+    crate::commands::play_native_walk::pick_native_walk_heard(
+        &provider,
+        "The Show",
+        &[],
+        Some(3),
+        Some(2020),
+        Some("TV"),
+        None,
+        Some(&kept),
+    )
+    .await
+    .expect("picks");
+    assert_spans_the_fetches(&provider, &kept);
+}

@@ -76,6 +76,13 @@ fn tick() -> u64 {
     CLOCK.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
+/// A tick of [`tick`]'s clock, for a test to place a moment among a
+/// walk's stamps.
+#[cfg(test)]
+pub(crate) fn tick_for_tests() -> u64 {
+    tick()
+}
+
 /// The run this process's hearings belong to: drawn once, at the first
 /// hearing.
 fn run() -> u64 {
