@@ -32,13 +32,16 @@ const STATUS_COMMITMENT: Record<ListStatus, number> = {
  */
 export function pickSeedEntry(entries: (EntryView | null)[]): EntryView | null {
 	let best: EntryView | null = null;
-	let maxProgress = 0;
 	for (const e of entries) {
 		if (!e) continue;
-		maxProgress = Math.max(maxProgress, coherentProgress(e));
 		if (best === null || furtherAlong(e, best)) best = e;
 	}
 	if (best === null) return null;
+	// A rewatch's count is its own: a Completed row beside it stands at the
+	// total and snaps back to it on a Save, so only the other rows count.
+	const counted = (e: EntryView | null): e is EntryView =>
+		e !== null && !(best?.status === 'rewatching' && e.status === 'completed');
+	const maxProgress = Math.max(0, ...entries.filter(counted).map(coherentProgress));
 	// Status from the furthest-along entry, but progress from the furthest-along
 	// *tracker*: a Save fans the seed out to ALL trackers, so seeding below the
 	// highest known count would lower one. This matters most for a stale
@@ -55,16 +58,24 @@ function coherentProgress(e: EntryView): number {
 	return e.status === 'planning' ? 0 : e.progress;
 }
 
+/** A finished show: Completed, or Rewatching — finished and watched again. */
+function finished(e: EntryView): boolean {
+	return e.status === 'completed' || e.status === 'rewatching';
+}
+
 /**
- * Is entry `e` further along the watch lifecycle than `best`? A Completed
- * row always wins (it finished, even if its stored count is stale/zero);
- * otherwise more (coherent) progress wins, and on a tie the more-committed
- * status does.
+ * Is entry `e` further along the watch lifecycle than `best`? A finished row
+ * always wins (it finished, even if its stored count is stale/zero), and
+ * between a rewatch and a Completed row the rewatch does — it is the finished
+ * show being watched again, which a tracker without a rewatch status keeps at
+ * Completed; otherwise more (coherent) progress wins, and on a tie the
+ * more-committed status does.
  */
 function furtherAlong(e: EntryView, best: EntryView): boolean {
-	const eDone = e.status === 'completed';
-	const bDone = best.status === 'completed';
+	const eDone = finished(e);
+	const bDone = finished(best);
 	if (eDone !== bDone) return eDone;
+	if (eDone && e.status !== best.status) return e.status === 'rewatching';
 	const ep = coherentProgress(e);
 	const bp = coherentProgress(best);
 	if (ep !== bp) return ep > bp;
