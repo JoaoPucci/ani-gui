@@ -1532,3 +1532,66 @@ async fn a_version_numbered_otherwise_is_not_refitted() {
     assert_eq!(extra_episode_tags(&fitted.episodes), vec!["12.1", "12.2"]);
     assert_eq!(fitted.versions[1].episodes, before);
 }
+
+/// A source whose evidence is still on its way when the budget ends.
+#[derive(Debug)]
+struct Late;
+
+#[async_trait::async_trait]
+impl TailSource for Late {
+    async fn tail(&self, _listing: &[EpisodeRef], _count: u32) -> Option<EntryTail> {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        None
+    }
+    fn budget(&self) -> Option<std::time::Duration> {
+        Some(std::time::Duration::from_millis(5))
+    }
+}
+
+/// Rows past Kitsu's count that no reading reached are listed as they
+/// came, and that is no answer that they are episodes: the pick says
+/// its count is unread, whether the evidence failed or ran past the
+/// budget. Every reading that answers, and a kept one standing in for
+/// one that could not be read, leaves nothing unread; so does a
+/// listing that does not run past the count.
+#[tokio::test]
+async fn rows_past_a_count_no_reading_reached_are_unread() {
+    let (rows, tail) = noragami();
+    let never = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(None),
+    };
+    let unread = fit_appended(picked(rows.clone()), Some(12), Some(&never)).await;
+    assert_eq!(unread.episodes, rows, "listed as they came");
+    assert_eq!(unread.unread_past, Some(12), "a failed read");
+    let late = fit_appended(picked(rows.clone()), Some(12), Some(&Late)).await;
+    assert_eq!(late.unread_past, Some(12), "the budget spent");
+
+    let proving = Kept {
+        tail: Some(tail.clone()),
+        kept: std::sync::Mutex::new(None),
+    };
+    let proved = fit_appended(picked(rows.clone()), Some(12), Some(&proving)).await;
+    assert_eq!(proved.unread_past, None, "a proved reading");
+    let standing = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(proving.remembered()),
+    };
+    let kept = fit_appended(picked(rows.clone()), Some(12), Some(&standing)).await;
+    assert_eq!(extra_episode_tags(&kept.episodes), vec!["12.1", "12.2"]);
+    assert_eq!(kept.unread_past, None, "a kept reading");
+    let refusing = Kept {
+        tail: Some(EntryTail {
+            finished: false,
+            ..tail
+        }),
+        kept: std::sync::Mutex::new(None),
+    };
+    let refused = fit_appended(picked(rows.clone()), Some(12), Some(&refusing)).await;
+    assert_eq!(refused.episodes, rows);
+    assert_eq!(refused.unread_past, None, "a reading that refuses");
+    let within = fit_appended(picked(rows[..12].to_vec()), Some(12), Some(&never)).await;
+    assert_eq!(within.unread_past, None, "nothing past the count");
+    let no_source = fit_appended(picked(rows.clone()), Some(12), None).await;
+    assert_eq!(no_source.unread_past, None, "no entry to read for");
+}
