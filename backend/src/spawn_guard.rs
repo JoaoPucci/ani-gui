@@ -56,6 +56,16 @@ pub(crate) struct TreeKillChild {
     /// A teardown already waited the ceiling out: the drop asks for
     /// the kill again but does not wait a second time.
     given_up: bool,
+    /// How long a teardown waits for the tree to exit:
+    /// [`TREE_EXIT_CEILING`], unless a case set its own
+    /// ([`Self::with_ceiling`]).
+    ceiling: std::time::Duration,
+    /// Measure an awaited teardown's ceiling on tokio's clock rather
+    /// than the wall clock, for a case that pauses tokio's clock to
+    /// time the ceiling itself ([`Self::on_tokio_clock`]). The app
+    /// always measures it on the wall clock.
+    #[cfg(test)]
+    tokio_clock: bool,
 }
 
 /// What a guard can do with a child's tree beyond the child itself:
@@ -77,16 +87,10 @@ impl TreeKillChild {
             child,
             tree,
             given_up: false,
+            ceiling: TREE_EXIT_CEILING,
+            #[cfg(test)]
+            tokio_clock: false,
         }
-    }
-
-    /// A guard over `child` whose tree is `tree`, for a case that
-    /// decides what the tree does.
-    #[cfg(test)]
-    pub(crate) fn with_tree(child: tokio::process::Child, tree: Box<dyn Tree>) -> Self {
-        #[cfg(windows)]
-        let child: GuardedChild = Box::new(child);
-        Self::guard(child, Some(tree))
     }
 
     /// The child's stderr, for the caller to read.
@@ -120,12 +124,6 @@ impl TreeKillChild {
         return self.child.inner_mut().try_wait();
     }
 
-    /// Whether anything of the tree is still running, for a case.
-    #[cfg(test)]
-    pub(crate) fn tree_running(&mut self) -> bool {
-        self.tree.as_mut().is_some_and(|t| t.running())
-    }
-
     /// Take the tree down and wait until it has exited: the child
     /// reaped and, of the rest of its tree, nothing left — which is
     /// also what it checks first, so a tree already gone is not
@@ -146,14 +144,14 @@ impl TreeKillChild {
             return true;
         }
         self.kill_tree();
-        let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
-        let mut asked = std::time::Instant::now();
+        let started = (std::time::Instant::now(), tokio::time::Instant::now());
+        let mut asked = started;
         loop {
             if self.tree_exited() {
                 self.tree = None;
                 return true;
             }
-            if std::time::Instant::now() >= deadline {
+            if self.past_ceiling(started) {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 self.given_up = true;
                 return false;
@@ -182,14 +180,19 @@ impl TreeKillChild {
             return;
         }
         self.kill_tree();
-        let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
+        // The drop's wait sleeps the thread, so its ceiling and its asks
+        // are on the wall clock whatever clock an awaited teardown uses.
+        let deadline = std::time::Instant::now() + self.ceiling;
         let mut asked = std::time::Instant::now();
         while !self.tree_exited() {
             if std::time::Instant::now() >= deadline {
                 tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 return;
             }
-            self.ask_again(&mut asked);
+            if asked.elapsed() >= TREE_KILL_REPEAT {
+                self.kill_tree();
+                asked = std::time::Instant::now();
+            }
             std::thread::sleep(TREE_EXIT_POLL);
         }
     }
@@ -200,11 +203,12 @@ impl TreeKillChild {
     /// fork in flight then can add one after it — Linux guarantees the
     /// child is killed too, macOS documents no such guarantee — which
     /// nobody asked to die, and which would otherwise run on past the
-    /// ceiling.
-    fn ask_again(&mut self, asked: &mut std::time::Instant) {
-        if asked.elapsed() >= TREE_KILL_REPEAT {
+    /// ceiling. The last ask is timed on the clock the awaited
+    /// teardown's ceiling is ([`Self::since_past`]).
+    fn ask_again(&mut self, asked: &mut (std::time::Instant, tokio::time::Instant)) {
+        if self.since_past(*asked, TREE_KILL_REPEAT) {
             self.kill_tree();
-            *asked = std::time::Instant::now();
+            *asked = (std::time::Instant::now(), tokio::time::Instant::now());
         }
     }
 
@@ -228,6 +232,9 @@ impl TreeKillChild {
     }
 }
 
+#[path = "spawn_guard_seams.rs"]
+mod seams;
+
 impl Drop for TreeKillChild {
     fn drop(&mut self) {
         // A tree already known to be gone reads `None` and is left
@@ -250,4 +257,4 @@ const TREE_EXIT_POLL: std::time::Duration = std::time::Duration::from_millis(10)
 /// before it asks again. A process the kill reached exits in
 /// milliseconds; asking again this long after reaches one it did not,
 /// and costs nothing for one merely slow to go.
-const TREE_KILL_REPEAT: std::time::Duration = std::time::Duration::from_millis(100);
+pub(crate) const TREE_KILL_REPEAT: std::time::Duration = std::time::Duration::from_millis(100);

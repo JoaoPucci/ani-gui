@@ -15,9 +15,9 @@ mod guard;
 mod tree;
 
 pub(crate) use command::GuardedCommand;
-#[cfg(test)]
-pub(crate) use guard::TREE_EXIT_CEILING;
 pub(crate) use guard::{Tree, TreeKillChild};
+#[cfg(test)]
+pub(crate) use guard::{TREE_EXIT_CEILING, TREE_KILL_REPEAT};
 
 /// Take down a spawned downloader's whole process group, on Unix.
 ///
@@ -34,14 +34,42 @@ pub(crate) fn kill_process_tree(pid: u32) {
         // kill nobody sends.
         let probe = TREE_KILL_PROBE.lock().expect("probe lock");
         if let Some(probe) = probe.as_deref() {
-            let _ = std::process::Command::new(probe)
-                .arg(pid.to_string())
-                .status();
+            run_probe(probe, pid);
             return;
         }
     }
     let (prog, args) = tree_kill_args(pid);
     let _ = std::process::Command::new(prog).args(&args).output();
+}
+
+/// Run the registered probe with `pid`, waiting out a busy script. A
+/// case stages its probe a moment before a teardown runs it, and a
+/// fork elsewhere in the test binary in that moment holds the script's
+/// write descriptor until the child execs: the exec is refused as busy
+/// (ETXTBSY), which is transient by construction. Taken for done, it
+/// would be a kill nobody sends. Retried until it runs, under a
+/// deadline long enough for any machine to get there: one counted in
+/// a few short retries would give up on a slow machine for nothing.
+#[cfg(all(test, unix))]
+fn run_probe(probe: &std::path::Path, pid: u32) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        match std::process::Command::new(probe)
+            .arg(pid.to_string())
+            .status()
+        {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && std::time::Instant::now() < deadline =>
+            {
+                // Busy: say so to a case holding it, which can then let
+                // it go knowing the retry is what it tests.
+                crate::held::queued(&probe.display().to_string());
+                std::thread::sleep(std::time::Duration::from_millis(30));
+            }
+            _ => return,
+        }
+    }
 }
 
 /// Test seam: when a probe is registered, the teardown runs it (child

@@ -35,6 +35,8 @@ struct FakeTree {
 struct FakeState {
     running: bool,
     kills: u32,
+    /// Every look at the tree, before a kill or after.
+    looks: u32,
     looks_since_kill: u32,
     gone_after_looks: Option<u32>,
     /// Gone once killed this many times: a member that joined the tree
@@ -45,6 +47,7 @@ struct FakeState {
 impl Tree for FakeTree {
     fn running(&mut self) -> bool {
         let mut s = self.state.lock().expect("fake tree");
+        s.looks += 1;
         if s.kills > 0 {
             if let Some(n) = s.gone_after_looks {
                 if s.looks_since_kill >= n {
@@ -102,9 +105,12 @@ fn quick_child() -> tokio::process::Child {
 async fn a_tree_left_running_by_a_child_that_exited_is_taken_down_and_waited_for() {
     // The tool exited by itself and left a helper running in its
     // tree. The teardown kills what is left and returns once it is
-    // gone, whichever platform's tree it is.
+    // gone, whichever platform's tree it is. What is asserted is that
+    // it waited for the tree, not how fast: under the app's ceiling a
+    // runner that stalls the case past it fails it with nothing wrong.
     let (tree, state) = fake_tree(true, Some(3));
-    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    let mut guard =
+        TreeKillChild::with_tree(quick_child(), Box::new(tree)).with_ceiling(CASE_DEADLINE);
     guard.wait().await.expect("the child exits");
     assert!(guard.take_down().await, "the tree is gone");
     let s = state.lock().expect("fake tree");
@@ -138,14 +144,44 @@ async fn a_tree_that_never_empties_is_given_up_and_the_drop_does_not_wait_again(
         asked > 1,
         "the teardown asked again while the tree was left"
     );
-    let dropped = std::time::Instant::now();
+    // Waiting is looking: the guard's wait looks at the tree until it
+    // is gone or the ceiling passes. A drop that does not look has not
+    // waited, however long the machine took to run it.
+    let looked = state.lock().expect("fake tree").looks;
     drop(guard);
-    assert!(
-        dropped.elapsed() < TREE_EXIT_CEILING / 2,
-        "the drop waited the ceiling a second time"
-    );
     let s = state.lock().expect("fake tree");
+    assert_eq!(
+        s.looks, looked,
+        "the drop waited for the tree a second time"
+    );
     assert_eq!(s.kills, asked + 1, "the drop asks for the kill again");
+}
+
+/// The app's ceiling itself: a teardown whose tree never empties gives
+/// up at the ceiling, not before it and not a look's wait after, and
+/// asks again every repeat while it waits. Timed on tokio's clock
+/// paused ([`TreeKillChild::on_tokio_clock`]), which moves only from
+/// one of the teardown's waits between looks to the next, so how fast
+/// the machine runs the looks has no say in it. The app measures the
+/// same deadline on the wall clock.
+#[tokio::test(start_paused = true)]
+async fn a_teardown_gives_up_at_the_ceiling_exactly() {
+    let (tree, state) = fake_tree(true, None);
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree)).on_tokio_clock();
+    guard.wait().await.expect("the child exits");
+    let start = tokio::time::Instant::now();
+    assert!(!guard.take_down().await, "past the ceiling it is given up");
+    let took = start.elapsed();
+    // One look's wait — the teardown's ten-millisecond poll — and the
+    // millisecond ticks tokio's timers fire on.
+    let look = std::time::Duration::from_millis(12);
+    assert!(took >= TREE_EXIT_CEILING, "gave up early: {took:?}");
+    assert!(took <= TREE_EXIT_CEILING + look, "gave up late: {took:?}");
+    // The first kill, then one every repeat until the ceiling, which
+    // ends the wait before the ask that would fall on it.
+    let repeats = TREE_EXIT_CEILING.as_millis() / TREE_KILL_REPEAT.as_millis();
+    let want = u32::try_from(repeats).expect("a few repeats");
+    assert_eq!(state.lock().expect("fake tree").kills, want);
 }
 
 #[tokio::test]
@@ -180,12 +216,15 @@ async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_once() {
     let dropped = std::time::Instant::now();
     drop(guard);
     let took = dropped.elapsed();
+    // A wait ends at the ceiling or after it, never before, however
+    // fast the machine; how far after is the scheduler's business. A
+    // wait asks again every repeat while the tree is left, so its kills
+    // no longer count its waits: the drop's teardown has one wait, and
+    // the case reads that it asked again and looked while it waited.
     assert!(took >= TREE_EXIT_CEILING, "it waited: {took:?}");
-    assert!(took < TREE_EXIT_CEILING * 2, "once: {took:?}");
-    assert!(
-        state.lock().expect("fake tree").kills > 1,
-        "it asked again while the tree was left"
-    );
+    let s = state.lock().expect("fake tree");
+    assert!(s.kills > 1, "it asked again while the tree was left");
+    assert!(s.looks > 1, "it looked at the tree while it waited");
 }
 
 /// A kill reaches the members a tree has as it lands. A tool forking
@@ -258,9 +297,14 @@ fn helper_then_exit() -> tokio::process::Command {
 
 #[tokio::test]
 async fn a_helper_the_tool_starts_first_is_in_its_tree() {
+    // A real kill and reap: under a failure bound of the case's own,
+    // since the app's ceiling is one a loaded runner can stall past,
+    // and whatever probe another case has registered may serve this
+    // teardown and land its kill late.
     let mut guard = GuardedCommand::new(helper_then_exit())
         .spawn()
-        .expect("spawn");
+        .expect("spawn")
+        .with_ceiling(CASE_DEADLINE);
     guard.wait().await.expect("the tool exits");
     assert!(
         guard.tree_running(),
@@ -286,6 +330,29 @@ fn a_windows_guarded_command_is_suspended_until_its_jobs_and_ends_them_on_close(
     assert!(guarded.wraps_outer_job());
 }
 
+/// How long a case waits for a step the subject takes on its own before
+/// it fails: long enough for any machine to get there, so only a step
+/// that never comes ends the case.
+const CASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Releases a held probe run when dropped, and withdraws the probe, so
+/// a case that fails before it lets go leaves no run waiting and no
+/// probe registered whose script is about to be removed — every later
+/// teardown in the binary would run that missing script and send no
+/// kill.
+#[cfg(unix)]
+struct Released(std::path::PathBuf);
+
+#[cfg(unix)]
+impl Drop for Released {
+    fn drop(&mut self) {
+        let _ = std::fs::write(&self.0, b"");
+        *TREE_KILL_PROBE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+}
+
 /// A case that registers a probe withdraws it as it ends and removes
 /// the script with its directory. A teardown elsewhere in the run may
 /// be running that probe in that moment — read before the withdrawal,
@@ -304,12 +371,18 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
     let probe = dir.path().join("probe");
     // Every case's teardown in the binary is served by whatever probe
     // is registered, so this one kills any tree but the placeholder's
-    // at once, as a real teardown would. Bounded, so a red run leaves
-    // nothing behind.
+    // at once, as a real teardown would. The placeholder's run is held
+    // until the case releases it, and only then ends: a run that ended
+    // by itself first — after so many looks, on a machine slow enough —
+    // would let the withdrawal through early and fail the case for
+    // nothing. The case releases it however it ends ([`Released`]); the
+    // bound on the looks is there only so a test binary killed outright
+    // leaves no probe behind, minutes past any case's own deadline.
+    let _released = Released(release.clone());
     std::fs::write(
         &probe,
         format!(
-            "#!/bin/sh\nif [ \"$1\" != 4000000 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > {started}\ni=0\nwhile [ ! -f {release} ] && [ \"$i\" -lt 1000 ]; do sleep 0.01; i=$((i+1)); done\nexit 0\n",
+            "#!/bin/sh\nif [ \"$1\" != 4000000 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > {started}\ni=0\nwhile [ ! -f {release} ] && [ \"$i\" -lt 30000 ]; do sleep 0.01; i=$((i+1)); done\nexit 0\n",
             started = crate::stub_file::sh_quote(&started),
             release = crate::stub_file::sh_quote(&release),
         ),
@@ -319,7 +392,7 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
     *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe);
     // The pid is only the probe's argument: this probe signals nothing.
     let teardown = std::thread::spawn(|| kill_process_tree(4_000_000));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + CASE_DEADLINE;
     while !started.exists() {
         assert!(
             std::time::Instant::now() < deadline,
@@ -352,11 +425,11 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
         let _ = withdrawn.send(());
     });
     let held = on_found
-        .recv_timeout(std::time::Duration::from_secs(10))
+        .recv_timeout(CASE_DEADLINE)
         .expect("the withdrawal asked for the probe");
     let early = on_withdrawn.try_recv();
     std::fs::write(&release, b"").expect("release");
-    let late = on_withdrawn.recv_timeout(std::time::Duration::from_secs(10));
+    let late = on_withdrawn.recv_timeout(CASE_DEADLINE);
     teardown.join().expect("teardown");
     withdraw.join().expect("withdraw");
     assert!(
@@ -368,4 +441,71 @@ fn a_probe_is_not_withdrawn_while_a_teardown_is_running_it() {
         "the probe was withdrawn while a teardown was running it"
     );
     assert!(late.is_ok(), "and is withdrawn once the run has ended");
+}
+
+/// Linux only: ETXTBSY on exec of a write-open file is a Linux
+/// guarantee. macOS permits the exec, so there is no race to wait out
+/// and the assertion below would describe nothing.
+///
+/// A case stages its probe a moment before a teardown runs it, and a
+/// fork anywhere else in the test binary in that moment carries the
+/// script's write descriptor into the child until the child execs.
+/// A teardown that execs the probe then is told the file is busy, and
+/// a teardown that takes that for done sends no kill at all: the tree
+/// the probe stands in for outlives its teardown, and the case that
+/// waits on the probe's run never sees it. The teardown waits a busy
+/// probe out, as every spawn of a freshly staged tool does.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_busy_probe_is_waited_out_rather_than_skipped() {
+    use std::os::unix::fs::PermissionsExt;
+    let _scope = TREE_KILL_PROBE_SCOPE.blocking_lock();
+    let dir = tempfile::tempdir().expect("probe dir");
+    let ran = dir.path().join("ran");
+    let probe = dir.path().join("probe");
+    // Any other case's tree is killed at once, as a real teardown
+    // would; the placeholder's run is only recorded.
+    std::fs::write(
+        &probe,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" != 4000001 ]; then kill -s KILL -- -\"$1\" 2>/dev/null; exit 0; fi\n: > {ran}\nexit 0\n",
+            ran = crate::stub_file::sh_quote(&ran),
+        ),
+    )
+    .expect("write probe");
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&probe)
+        .expect("hold the probe open for writing");
+    // Self-evidencing: the race is live on this host, or the case
+    // below proves nothing.
+    let plain = std::process::Command::new(&probe).status();
+    assert!(
+        matches!(
+            plain.as_ref().err().map(std::io::Error::kind),
+            Some(std::io::ErrorKind::ExecutableFileBusy)
+        ),
+        "a write-open probe must be busy for this case to mean anything: {plain:?}"
+    );
+    *TREE_KILL_PROBE.lock().expect("probe lock") = Some(probe.clone());
+    // Let go once the teardown has found the probe busy: one that came
+    // to it after the release would run it at once and retry nothing.
+    let queue = crate::held::queue(probe.display().to_string());
+    let releaser = std::thread::spawn(move || {
+        queue.joined_blocking(|| false);
+        drop(held);
+    });
+    // The pid is only the probe's argument: this probe signals nothing.
+    kill_process_tree(4_000_001);
+    let released = releaser.join();
+    *TREE_KILL_PROBE.lock().expect("probe lock") = None;
+    assert!(
+        released.is_ok(),
+        "the teardown never found the probe busy, so it never waited"
+    );
+    assert!(
+        ran.exists(),
+        "a busy probe must be waited out, not taken for a kill sent"
+    );
 }
