@@ -1612,6 +1612,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1662,6 +1663,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1732,6 +1734,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         // A stamp for another row, which no longer matters to a new row.
@@ -1792,6 +1795,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1855,6 +1859,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1914,6 +1919,7 @@ mod tests {
                     version: None,
                     played: None,
                     former_episode: None,
+                    episode_unverified: false,
                 },
             );
         }
@@ -2001,6 +2007,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -2107,6 +2114,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2202,6 +2210,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2308,6 +2317,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
 
@@ -2420,6 +2430,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2477,6 +2488,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2610,6 +2622,7 @@ mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let pool = state.cache_pool.clone();

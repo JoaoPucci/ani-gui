@@ -89,6 +89,7 @@ interface TrackerWrite {
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let writes: TrackerWrite[];
+let marked: string[];
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -97,6 +98,7 @@ beforeEach(() => {
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
 	writes = [];
+	marked = [];
 	setParams({ id: KITSU_ID });
 	// The write-back fans out to every connected tracker. `hydrate()`
 	// reads the Electron keychain from the layout, which a page-level
@@ -185,7 +187,11 @@ function serve(show: Show) {
 				episode_count_approximate: false
 			})
 		),
-		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+		http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
+			const body = (await request.json()) as { episode?: string };
+			marked.push(String(body.episode));
+			return new HttpResponse(null, { status: 204 });
+		}),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null)),
 		http.post(`${API_BASE}/api/account/update/:provider`, async ({ request, params }) => {
@@ -208,7 +214,7 @@ function openStreamFor(episode: number): FakeEventSource | undefined {
 		.at(-1);
 }
 
-function land(es: FakeEventSource, episode: number) {
+function land(es: FakeEventSource, episode: number, unverified = false) {
 	es.landed = true;
 	es.dispatch(
 		'done',
@@ -216,7 +222,8 @@ function land(es: FakeEventSource, episode: number) {
 			session_id: `session-${episode}-${FakeEventSource.instances.length}`,
 			media_url: `${API_BASE}/s/session-${episode}-${FakeEventSource.instances.length}/master.m3u8`,
 			media_kind: 'hls',
-			episode: `${episode}`
+			episode: `${episode}`,
+			...(unverified ? { episode_unverified: true } : {})
 		})
 	);
 }
@@ -264,6 +271,49 @@ describe('play route — what the trackers receive for a watched episode', () =>
 	it("an episode the provider lists past Kitsu's count sends its number without completed", async () => {
 		await watch({ kitsuCount: 12, status: 'finished', providerCount: 13 }, 12, 13);
 		expect(nth(0)).toEqual(both({ kitsu_id: KITSU_ID, progress: 13 }));
+	});
+
+	it('an episode the session could not verify is marked watched and sends nothing', async () => {
+		// Row 13 of a twelve-episode show whose rows past the count no
+		// reading reached: an appended extra or a thirteenth episode,
+		// unknown which. A tracker would clamp 13 to its own total.
+		const show = { kitsuCount: 12, status: 'finished', providerCount: 13 };
+		setUrl(`/play/${KITSU_ID}`, { episode: '12' });
+		serve(show);
+		app = mount(PlayPage, { target });
+		await until(() => card(13) !== null, 'the card for episode 13');
+		card(13)!.click();
+		await until(() => {
+			const es = openStreamFor(13);
+			if (es) land(es, 13, true);
+			return marked.includes('13');
+		}, 'episode 13 marked watched');
+		// The write-back fires beside the watch stamp; give it the turn
+		// it would take.
+		await new Promise((r) => setTimeout(r, 50));
+		expect(writes).toEqual([]);
+	});
+
+	it('an unverified episode of a show the tracker files under several entries sends nothing', async () => {
+		// Ranma ½: Kitsu's 161 episodes, which AniList files as an
+		// 18-episode entry and its 143-episode sequel. The backend
+		// writes such a show through its episode map, and the map is
+		// reached only through the progress route; a row past Kitsu's
+		// count that no reading reached posts nothing to that route, so
+		// neither the map nor any entry it names is written.
+		const show = { kitsuCount: 161, status: 'finished', providerCount: 162 };
+		setUrl(`/play/${KITSU_ID}`, { episode: '161' });
+		serve(show);
+		app = mount(PlayPage, { target });
+		await until(() => card(162) !== null, 'the card for row 162');
+		card(162)!.click();
+		await until(() => {
+			const es = openStreamFor(162);
+			if (es) land(es, 162, true);
+			return marked.includes('162');
+		}, 'row 162 marked watched');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(writes).toEqual([]);
 	});
 
 	it('an episode before the finale sends its number alone', async () => {

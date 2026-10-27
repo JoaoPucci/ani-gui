@@ -126,6 +126,20 @@ describe('makeStartResume (click orchestration)', () => {
 		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
 	});
 
+	it('writes nothing to the trackers for an episode the session could not verify', async () => {
+		const h = makeHarness({
+			resolvePlay: vi.fn().mockResolvedValue({
+				session_id: 's1',
+				episode: '13',
+				episode_unverified: true
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 14), 12, true);
+		expect(h.deps.markWatched).toHaveBeenCalled();
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
 	it('a failed play resolution clears busy and reports the failure', async () => {
 		const h = makeHarness({
 			resolvePlay: vi.fn().mockRejectedValue(new Error('no sources'))

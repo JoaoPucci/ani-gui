@@ -186,7 +186,11 @@ use crate::proxy::MediaKind;
 // and a HEAD-passing hit for a request naming that extra — a history
 // row's Continue, a link — would keep playing and recording it as the
 // extra; bumping re-resolves.
-const SCHEMA: &str = "v24";
+// v25: a row records whether its episode is a row past Kitsu's count
+// no reading reached (episode_unverified), which a replay hands the
+// renderer so it writes nothing to the trackers. A v24 row reads as
+// verified whatever its reading was; bumping re-resolves.
+const SCHEMA: &str = "v25";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -243,6 +247,13 @@ pub struct CachedResolution {
     /// The version the row plays, when the pick had several.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// Whether the episode the row plays is a row past Kitsu's count
+    /// whose reading could not be read, which a replay's session says
+    /// as the fresh resolve's did
+    /// ([`crate::commands::session::CreateSessionResponse::episode_unverified`]).
+    /// `false` on rows from before the field.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub episode_unverified: bool,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the

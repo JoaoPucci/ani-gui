@@ -56,6 +56,12 @@ pub struct PickedShow {
     /// `hit` names among them — empty unless the pick has copies under
     /// another version tag (see `play_native_versions`).
     pub versions: Vec<ShowVersion>,
+    /// Kitsu's count, when the listing runs past it and whether the
+    /// rows past it are extras the provider appended could not be read
+    /// ([`super::play_native_appended::fit_appended`]): those rows are
+    /// listed as they came, which is no answer that they are episodes.
+    /// `None` for every other listing.
+    pub unread_past: Option<u32>,
 }
 
 impl PickedShow {
@@ -69,6 +75,7 @@ impl PickedShow {
             episodes: crate::commands::play_native_merge::mark_offset_recaps(episodes),
             stitched: false,
             versions: Vec::new(),
+            unread_past: None,
         }
     }
 }

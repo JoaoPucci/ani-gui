@@ -458,3 +458,22 @@ proptest! {
         prop_assert_eq!(appended_extras(&rows, count, &tail), None);
     }
 }
+
+proptest! {
+    /// A row is past an unread count exactly when a count went unread
+    /// and the row's slot lies beyond it: no row is, where every count
+    /// was read, and the count's own last slot never is.
+    #[test]
+    fn a_row_is_past_an_unread_count_only_beyond_it(
+        unread_past in proptest::option::of(any::<u32>()),
+        slot in any::<u32>(),
+    ) {
+        let got = past_an_unread_count(unread_past, slot);
+        prop_assert_eq!(got, unread_past.is_some_and(|c| u64::from(slot) > u64::from(c)));
+        prop_assert!(!past_an_unread_count(None, slot));
+        if let Some(count) = unread_past {
+            prop_assert!(!past_an_unread_count(Some(count), count));
+            prop_assert_eq!(past_an_unread_count(Some(count), count.saturating_add(1)), count < u32::MAX);
+        }
+    }
+}

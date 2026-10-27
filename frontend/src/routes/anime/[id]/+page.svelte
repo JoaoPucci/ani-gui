@@ -1578,7 +1578,8 @@
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: true
+					mirror: true,
+					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);

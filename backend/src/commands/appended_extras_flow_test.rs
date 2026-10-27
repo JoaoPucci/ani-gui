@@ -517,3 +517,6 @@ async fn a_recount_that_takes_the_rows_in_forgets_the_reading() {
         "13"
     );
 }
+
+#[path = "appended_unread_flow_test.rs"]
+mod unread;

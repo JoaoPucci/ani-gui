@@ -95,6 +95,7 @@ async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
             former_episode: None,
             versions: Vec::new(),
             version: None,
+            episode_unverified: false,
         },
     );
     let resp = play_with_progress(&state, &asked, |_| {})
@@ -204,6 +205,7 @@ fn first_recap_row(upstream: &str) -> CachedResolution {
         former_episode: None,
         versions: Vec::new(),
         version: None,
+        episode_unverified: false,
     }
 }
 

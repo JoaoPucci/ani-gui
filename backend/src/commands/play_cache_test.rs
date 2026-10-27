@@ -34,6 +34,7 @@ fn cached_launch_args_lead_with_the_providers_default_track() {
         version: None,
         played: None,
         former_episode: None,
+        episode_unverified: false,
     };
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
         serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub" }),
@@ -479,6 +480,7 @@ fn a_cached_watch_records_the_episode_played() {
         version: None,
         played: None,
         former_episode: None,
+        episode_unverified: false,
     };
     let stamped = super::cached_watch(&row(Some(5)), "4");
     assert_eq!(
@@ -510,6 +512,7 @@ fn a_cached_watch_records_the_episode_the_resolve_matched() {
         former_episode: None,
         versions: Vec::new(),
         version: None,
+        episode_unverified: false,
     };
     assert_eq!(
         super::cached_watch(&row(Some("12.5")), "24.5").ep_no,
@@ -559,6 +562,7 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
     let cfg = crate::config::Config {
@@ -644,6 +648,7 @@ fn seed_cached_row(
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
 }
@@ -776,6 +781,7 @@ mod row_provider_props {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         }
     }
 
@@ -848,6 +854,7 @@ async fn row_redirecting_elsewhere(
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
     (mock, elsewhere)
@@ -962,6 +969,7 @@ fn seed_versioned_row(
             version: Some(crate::commands::play_native_versions::VersionKind::Uncensored),
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
 }

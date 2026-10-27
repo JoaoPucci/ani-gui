@@ -86,6 +86,10 @@ pub struct NativeResolved {
     /// own listing, whichever copy played. Empty for a pick with one
     /// version.
     pub other_copies: Vec<(String, Vec<crate::scraper::provider::EpisodeRef>)>,
+    /// The pick's [`crate::commands::play_native::PickedShow::unread_past`]:
+    /// Kitsu's count, when whether the listing's rows past it are
+    /// appended extras could not be read.
+    pub unread_past: Option<u32>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -342,6 +346,7 @@ where
                             version,
                             former_tags: former_tags_of(&picked.episodes),
                             other_copies,
+                            unread_past: picked.unread_past,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
