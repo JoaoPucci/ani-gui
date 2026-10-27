@@ -36,8 +36,13 @@ class AccountStore {
 	/** Whether `account` is the sign-in already marked expired here, by
 	 *  its bearer: one the tracker refused, whatever its date says. */
 	private isRefusedBearer(provider: Provider, account: PersistedAccount): boolean {
+		return this.byProvider[provider].kind === 'expired' && this.isSameBearer(provider, account);
+	}
+
+	/** Whether `account` carries the bearer the provider holds now. */
+	private isSameBearer(provider: Provider, account: PersistedAccount): boolean {
 		const prev = this.byProvider[provider];
-		return prev.kind === 'expired' && prev.account.access_token === account.access_token;
+		return 'account' in prev && prev.account?.access_token === account.access_token;
 	}
 
 	/** Forget a provider's renewal failure: its sign-in changed. */
@@ -112,6 +117,8 @@ class AccountStore {
 					isExpired(r.account) || this.isRefusedBearer(p, r.account)
 						? { kind: 'expired', account: r.account }
 						: { kind: 'connected', account: r.account, lastSyncedAt: null };
+				// A different sign-in than the one a failure was told of.
+				if (!this.isSameBearer(p, r.account)) this.clearRenewalFailure(p);
 				continue;
 			}
 			if (r.kind === 'not_found') {

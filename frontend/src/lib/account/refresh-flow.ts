@@ -102,20 +102,22 @@ export async function refreshAccount(
 	// a rejected write for the caller (e.g. a safeStorage/IPC error). Treat
 	// a rejection the same as a resolved {ok:false}: a failed refresh, not
 	// an exception that escapes to abort the caller's best-effort flow.
-	let persisted;
+	let saved: boolean;
 	try {
-		persisted = await deps.persistAccount(provider, refreshed);
+		saved = (await deps.persistAccount(provider, refreshed)).ok;
 	} catch {
-		return { kind: 'failed', failure: 'unknown' };
+		saved = false;
 	}
-	if (!persisted.ok) return { kind: 'failed', failure: 'unknown' };
 	// Re-check after the persist await too: a disconnect / re-auth could
 	// have landed in the gap between the network-await check and the
-	// safeStorage write completing. If the generation moved, don't report
-	// 'refreshed' — the caller must not reconnect the superseded account.
+	// safeStorage write completing. If the generation moved, the outcome
+	// is the old account's, saved or not: don't report 'refreshed' (the
+	// caller must not reconnect the superseded account) nor a failure
+	// (it must not be told of the newer sign-in).
 	if (deps.generation(provider) !== generationAtStart) {
 		return { kind: 'superseded' };
 	}
+	if (!saved) return { kind: 'failed', failure: 'unknown' };
 	return { kind: 'refreshed', account: refreshed };
 }
 
