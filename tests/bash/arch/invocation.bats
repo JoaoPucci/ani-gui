@@ -753,6 +753,37 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "the bats job runs when a composite action changes" {
+    # apt_sources.sh and ci_caches.sh read the local composite actions
+    # under .github/actions/ as well as the workflows, and the bats
+    # job installs through one, so the directory is a subject too.
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
+    [ -n "$pattern" ]
+    for action in apt-install pnpm-install; do
+        run grep -qE "^($pattern)" <<<".github/actions/$action/action.yml"
+        [ "$status" -eq 0 ]
+    done
+}
+
+@test "a composite action selects every filtered job that uses it" {
+    # A job that skips its steps when nothing it reads changed has to
+    # count the composite actions it calls as read, or a broken action
+    # lands certified by the no-op successes of the jobs that use it.
+    # rust.yml's filter is a script, and rust_workflow_filter.bats runs
+    # it over the same change.
+    for pair in e2e:apt-install crap:apt-install \
+        frontend:pnpm-install e2e:pnpm-install crap:pnpm-install; do
+        wf=${pair%%:*}
+        action=${pair#*:}
+        pattern=$(relevance_pattern "$REPO_ROOT/.github/workflows/$wf.yml")
+        [ -n "$pattern" ]
+        grep -qE "^($pattern)" <<<".github/actions/$action/action.yml" || {
+            echo "$wf.yml does not select on .github/actions/$action/"
+            return 1
+        }
+    done
+}
+
 # Whether a workflow sets up the upstream remote, as a function so a
 # gutted spelling runs through exactly the check the live file does.
 @test "a check pointed at a missing file exits nonzero" {
