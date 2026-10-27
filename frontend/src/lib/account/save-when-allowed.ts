@@ -18,6 +18,8 @@ export const DEFAULT_WAIT_S = 60;
 /** The longest a write is held for one refusal. */
 export const MAX_WAIT_S = 120;
 
+import type { Provider } from './types';
+
 export { ALL_FIELDS, keepFields, keepWrite, type HeldWrite, type WriteField } from './write-fields';
 
 /** A held write a newer write for the same show replaced while it
@@ -44,6 +46,19 @@ export function busyWaitSecs(error: unknown): number | null {
 	return Math.min(secs, MAX_WAIT_S);
 }
 
+/** The tracker a 429's body names as the one that refused — AniList or
+ *  MyAnimeList — or `null` when it names neither. A write to one tracker
+ *  can be refused by the other, whose answer it needed first. */
+function refuserOf(error: unknown): Provider | null {
+	const { detail } = error as { detail?: unknown };
+	try {
+		const by: unknown = JSON.parse(typeof detail === 'string' ? detail : '')?.refused_by;
+		return by === 'anilist' || by === 'mal' ? by : null;
+	} catch {
+		return null;
+	}
+}
+
 function advertisedSecs(body: string): number | null {
 	try {
 		const secs: unknown = JSON.parse(body)?.retry_after_secs;
@@ -54,8 +69,9 @@ function advertisedSecs(body: string): number | null {
 }
 
 export interface SaveWaitDeps {
-	/** Tell the user the write waits `seconds` before it goes again. */
-	notify: (seconds: number) => void;
+	/** Tell the user the write waits `seconds` before it goes again,
+	 *  and which tracker refused it, when the refusal named one. */
+	notify: (seconds: number, refusedBy: Provider | null) => void;
 	/** Resolve after `ms`. */
 	wait: (ms: number) => Promise<void>;
 	/** Attempts in all; {@link MAX_SAVE_ATTEMPTS} when omitted. */
@@ -82,7 +98,7 @@ export async function saveWhenAllowed<T>(
 		} catch (e) {
 			const secs = busyWaitSecs(e);
 			if (secs === null || tried >= max) throw e;
-			deps.notify(secs);
+			deps.notify(secs, refuserOf(e));
 			await deps.wait(secs * 1000);
 			if (deps.stillWanted && !deps.stillWanted()) throw new SupersededError();
 		}

@@ -142,7 +142,8 @@ async fn after_a_429_nothing_reaches_anilist_until_its_retry_after_passes() {
         matches!(
             first,
             Err(AniError::RateLimited {
-                retry_after_secs: Some(2)
+                retry_after_secs: Some(2),
+                ..
             })
         ),
         "a genuine 429 is reported with its wait: {first:?}"
@@ -245,6 +246,7 @@ async fn a_write_held_back_by_the_cool_down_lands_after_it() {
         .await;
     let Err(AniError::RateLimited {
         retry_after_secs: Some(wait),
+        ..
     }) = held
     else {
         panic!("expected the write held back with its wait, got {held:?}");
@@ -388,14 +390,15 @@ async fn a_429_without_a_wait_holds_anilist_back_for_its_documented_minute() {
         matches!(
             first,
             Err(AniError::RateLimited {
-                retry_after_secs: None
+                retry_after_secs: None,
+                ..
             })
         ),
         "{first:?}"
     );
     let held = public(&server.uri()).await;
     assert!(
-        matches!(held, Err(AniError::RateLimited { retry_after_secs: Some(s) }) if (59..=60).contains(&s)),
+        matches!(held, Err(AniError::RateLimited { retry_after_secs: Some(s), .. }) if (59..=60).contains(&s)),
         "{held:?}"
     );
 }

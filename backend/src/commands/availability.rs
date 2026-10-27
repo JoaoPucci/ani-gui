@@ -1696,7 +1696,10 @@ async fn warm_items(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs
         args.background = true;
         let outcome = check_availability(&state, &args).await;
         let backoff = warm_backoff(&outcome);
-        if let Err(crate::error::AniError::RateLimited { retry_after_secs }) = &outcome {
+        if let Err(crate::error::AniError::RateLimited {
+            retry_after_secs, ..
+        }) = &outcome
+        {
             tracing::info!(
                 retry_after_secs = ?retry_after_secs,
                 wait = ?backoff,
@@ -1758,9 +1761,9 @@ fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
 /// re-probes it.
 fn warm_backoff(outcome: &Result<AvailabilityResponse>) -> std::time::Duration {
     match outcome {
-        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
-            std::time::Duration::from_secs(retry_after_secs.unwrap_or(10).max(1))
-        }
+        Err(crate::error::AniError::RateLimited {
+            retry_after_secs, ..
+        }) => std::time::Duration::from_secs(retry_after_secs.unwrap_or(10).max(1)),
         _ => std::time::Duration::from_millis(500),
     }
 }

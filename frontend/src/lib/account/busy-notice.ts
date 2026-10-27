@@ -16,13 +16,16 @@ export function providerName(provider: Provider): string {
 	return provider;
 }
 
-/** The notice's words with `seconds` left: the wait, or once it is over,
- *  that the save is going. */
-function busyText(provider: Provider, seconds: number): string {
+/** The notice's words with `seconds` left: the wait — naming the
+ *  tracker that refused, both trackers when it is not the one the save
+ *  is for, and no busy tracker when the refusal named none (Kitsu's 429
+ *  on the id resolve or a map read) — or, once it is over, that the save is going. */
+function busyText(provider: Provider, seconds: number, refusedBy: Provider | null): string {
 	const name = providerName(provider);
-	return seconds > 0
-		? m.account_busy_saving({ provider: name, seconds })
-		: m.account_busy_saving_now({ provider: name });
+	if (seconds <= 0) return m.account_busy_saving_now({ provider: name });
+	if (refusedBy === null) return m.account_busy_saving_unnamed({ provider: name, seconds });
+	if (refusedBy === provider) return m.account_busy_saving({ provider: name, seconds });
+	return m.account_busy_saving_for({ busy: providerName(refusedBy), provider: name, seconds });
 }
 
 /** A real one-shot timer, wrapped in arrows: `setTimeout` called off an
@@ -38,17 +41,22 @@ export function monotonic(): number {
 	return performance.now();
 }
 
-/** The toast shown while `provider` waits `seconds` to take a write. It
- *  counts the wait down in place, read from one deadline on the wait's
- *  clock, and then says
+/** The toast shown while a write to `provider` waits `seconds`, after
+ *  `refusedBy` refused it — the tracker the refusal named, when it named
+ *  one, which may be another than the write's. It counts the wait down
+ *  in place, read from one deadline on the wait's clock, and then says
  *  the save is going; it stays up until taken down — by the write it is
  *  about, a newer write, or the user — and its timer stops whenever it
  *  leaves. Returns its id. */
-export function noticeBusy(provider: Provider, seconds: number): string {
+export function noticeBusy(
+	provider: Provider,
+	seconds: number,
+	refusedBy: Provider | null = null
+): string {
 	let stop: (() => void) | null = null;
 	const id = toastStore.push({
 		kind: 'info',
-		message: busyText(provider, seconds),
+		message: busyText(provider, seconds, refusedBy),
 		duration: null,
 		onClose: () => stop?.()
 	});
@@ -59,7 +67,7 @@ export function noticeBusy(provider: Provider, seconds: number): string {
 		after,
 		// The number changes on screen each second without being read out;
 		// the save going is announced.
-		show: (left) => toastStore.update(id, busyText(provider, left), { silent: left > 0 })
+		show: (left) => toastStore.update(id, busyText(provider, left, refusedBy), { silent: left > 0 })
 	});
 	return id;
 }

@@ -92,9 +92,9 @@ export function saveWhenTrackerAllows<T>(
 	// This write's notice, while it is the show's.
 	let mine: string | null = null;
 	return saveWhenAllowed(run, {
-		notify: (seconds) => {
+		notify: (seconds, refusedBy) => {
 			takeDownNotice(key);
-			mine = noticeBusy(provider, seconds);
+			mine = noticeBusy(provider, seconds, refusedBy);
 			notices.set(key, mine);
 		},
 		// Ended early only on what cannot come back: newer writes took every

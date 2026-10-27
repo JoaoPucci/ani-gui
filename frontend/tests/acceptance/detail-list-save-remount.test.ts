@@ -148,7 +148,8 @@ function useShows(seen: Seen) {
 					{
 						kind: 'rate_limited',
 						key: 'error.network.rate_limited',
-						retry_after_secs: RETRY_AFTER_S
+						retry_after_secs: RETRY_AFTER_S,
+						refused_by: 'anilist'
 					},
 					{ status: 429 }
 				);
@@ -162,7 +163,8 @@ function useShows(seen: Seen) {
 					{
 						kind: 'rate_limited',
 						key: 'error.network.rate_limited',
-						retry_after_secs: RETRY_AFTER_S
+						retry_after_secs: RETRY_AFTER_S,
+						refused_by: 'anilist'
 					},
 					{ status: 429 }
 				);

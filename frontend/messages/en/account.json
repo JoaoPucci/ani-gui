@@ -57,6 +57,8 @@
 	"primary_hint": "Shown in the topbar. The Watch Later rail lists most recently updated on your tracker first; this tracker's copy is the one used when a title is on both. Progress still syncs to every connected tracker.",
 	"primary_save_error": "Couldn't save your primary tracker. Try again.",
 	"busy_saving": "{provider} is busy, saving in {seconds} s",
+	"busy_saving_for": "{busy} is busy, saving to {provider} in {seconds} s",
+	"busy_saving_unnamed": "A service is busy, saving to {provider} in {seconds} s",
 	"busy_saving_now": "Saving to {provider}…",
 	"progress_save_failed": "Couldn't save your progress to {provider}"
 }

@@ -49,7 +49,7 @@ describe('noticeBusy', () => {
 		// the whole wait: it is pinned while the write is held, and its own
 		// write takes it down (see the write's cases below).
 		vi.useFakeTimers();
-		const id = noticeBusy('anilist', 3);
+		const id = noticeBusy('anilist', 3, 'anilist');
 		const row = () => toastStore.items.find((t) => t.id === id);
 		expect(row()).toMatchObject({ kind: 'info', message: busy(3), duration: null });
 		await vi.advanceTimersByTimeAsync(1000);
@@ -66,7 +66,7 @@ describe('noticeBusy', () => {
 
 	it('reads the deadline, not a count of ticks: a late tick shows the true remainder', async () => {
 		vi.useFakeTimers();
-		const id = noticeBusy('anilist', 10);
+		const id = noticeBusy('anilist', 10, 'anilist');
 		// Time runs on four seconds without the timers firing — a page in
 		// the background, a busy main thread — then one tick comes.
 		runClockAhead(4000);
@@ -76,7 +76,7 @@ describe('noticeBusy', () => {
 
 	it('keeps its count through a wall-clock jump either way', async () => {
 		vi.useFakeTimers();
-		const id = noticeBusy('anilist', 10);
+		const id = noticeBusy('anilist', 10, 'anilist');
 		vi.setSystemTime(Date.now() + 60_000);
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(busy(9));
@@ -89,7 +89,7 @@ describe('noticeBusy', () => {
 	it('stops its timer once the notice leaves the stack, whoever takes it down', async () => {
 		vi.useFakeTimers();
 		const before = vi.getTimerCount();
-		const id = noticeBusy('anilist', 30);
+		const id = noticeBusy('anilist', 30, 'anilist');
 		expect(vi.getTimerCount()).toBe(before + 1);
 		toastStore.dismiss(id);
 		expect(vi.getTimerCount()).toBe(before);
@@ -97,7 +97,7 @@ describe('noticeBusy', () => {
 
 	it('stays on the stack, counting, however many passing toasts come after it', async () => {
 		vi.useFakeTimers();
-		const id = noticeBusy('anilist', 5);
+		const id = noticeBusy('anilist', 5, 'anilist');
 		for (let i = 0; i < 5; i += 1) {
 			toastStore.push({ kind: 'info', message: `passing ${i}`, duration: 9999 });
 		}
@@ -109,9 +109,84 @@ describe('noticeBusy', () => {
 	it('starts at "saving now" for a wait of nothing, with no timer to run', async () => {
 		vi.useFakeTimers();
 		const before = vi.getTimerCount();
-		noticeBusy('anilist', 0);
+		noticeBusy('anilist', 0, 'anilist');
 		expect(toastStore.items.at(-1)?.message).toBe(now());
 		expect(vi.getTimerCount()).toBe(before);
+	});
+});
+
+describe('the notice of a write another tracker refused', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+	const anilist = () => m.account_provider_anilist();
+	const mal = () => m.account_provider_mal();
+
+	it('names the tracker that is busy and the one the save is for, counting down', async () => {
+		vi.useFakeTimers();
+		const id = noticeBusy('mal', 3, 'anilist');
+		const row = () => toastStore.items.find((t) => t.id === id);
+		expect(row()?.message).toBe(
+			m.account_busy_saving_for({ busy: anilist(), provider: mal(), seconds: 3 })
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(row()?.message).toBe(
+			m.account_busy_saving_for({ busy: anilist(), provider: mal(), seconds: 2 })
+		);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(row()?.message).toBe(m.account_busy_saving_now({ provider: mal() }));
+		toastStore.dismiss(id);
+	});
+
+	it("says the save's own tracker is busy when that one refused", () => {
+		const id = noticeBusy('mal', 4, 'mal');
+		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(
+			m.account_busy_saving({ provider: mal(), seconds: 4 })
+		);
+		toastStore.dismiss(id);
+	});
+
+	it('names no busy tracker when the refusal named none, as a Kitsu 429 on the map read does', async () => {
+		// Kitsu's 429 reaches the write as a 429 that names no tracker: the
+		// write's own tracker did not refuse it, and the notice does not say
+		// it did.
+		vi.useFakeTimers();
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(
+				Object.assign(new Error('upstream'), {
+					status: 429,
+					detail: JSON.stringify({ kind: 'upstream', status: 429 })
+				})
+			)
+			.mockResolvedValue('saved');
+		const pending = saveWhenTrackerAllows('mal', '61', write);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(toastStore.items.filter((t) => t.kind === 'info').map((t) => t.message)).toEqual([
+			m.account_busy_saving_unnamed({ provider: mal(), seconds: 60 })
+		]);
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(await pending).toBe('saved');
+	});
+
+	it('is what a MyAnimeList write AniList refused shows', async () => {
+		vi.useFakeTimers();
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(
+				Object.assign(new Error('rate limited'), {
+					status: 429,
+					detail: JSON.stringify({ retry_after_secs: 5, refused_by: 'anilist' })
+				})
+			)
+			.mockResolvedValue('saved');
+		const pending = saveWhenTrackerAllows('mal', '60', write);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(toastStore.items.filter((t) => t.kind === 'info').map((t) => t.message)).toEqual([
+			m.account_busy_saving_for({ busy: anilist(), provider: mal(), seconds: 5 })
+		]);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(await pending).toBe('saved');
 	});
 });
 
@@ -175,11 +250,11 @@ describe('reportProgressNotSaved', () => {
 	});
 });
 
-/** The backend holding a write back for `secs`. */
+/** AniList holding a write back for `secs`. */
 const refused = (secs: number) =>
 	Object.assign(new Error('rate limited'), {
 		status: 429,
-		detail: JSON.stringify({ retry_after_secs: secs })
+		detail: JSON.stringify({ retry_after_secs: secs, refused_by: 'anilist' })
 	});
 
 const busyNotices = () => toastStore.items.filter((t) => t.kind === 'info');
@@ -524,7 +599,7 @@ describe('what the notice announces', () => {
 
 	it('announces its first words, not each second, and then that the save is going', async () => {
 		vi.useFakeTimers();
-		const id = noticeBusy('anilist', 3);
+		const id = noticeBusy('anilist', 3, 'anilist');
 		const row = () => toastStore.items.find((t) => t.id === id)!;
 		const first = m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 3 });
 		expect(row().announcement).toBe(first);

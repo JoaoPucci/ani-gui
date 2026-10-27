@@ -41,7 +41,10 @@ pub(crate) fn rate_limited(provider: &'static str, resp: &reqwest::Response) -> 
         retry_after = ?retry_after_secs,
         "tracker answered 429"
     );
-    AniError::RateLimited { retry_after_secs }
+    AniError::RateLimited {
+        retry_after_secs,
+        refused_by: Some(provider),
+    }
 }
 
 #[cfg(test)]

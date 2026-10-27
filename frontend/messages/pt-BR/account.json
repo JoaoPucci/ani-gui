@@ -57,6 +57,8 @@
 	"primary_hint": "Exibido na barra superior. O trilho Assistir mais tarde ordena pelo que foi atualizado mais recentemente no seu rastreador; quando um título está em ambos, é usada a cópia deste rastreador. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
 	"primary_save_error": "Não foi possível salvar o rastreador principal. Tente novamente.",
 	"busy_saving": "{provider} está ocupado; salvando em {seconds} s",
+	"busy_saving_for": "{busy} está ocupado; salvando no {provider} em {seconds} s",
+	"busy_saving_unnamed": "Um serviço está ocupado; salvando no {provider} em {seconds} s",
 	"busy_saving_now": "Salvando no {provider}…",
 	"progress_save_failed": "Não foi possível salvar seu progresso no {provider}"
 }
