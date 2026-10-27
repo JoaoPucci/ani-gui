@@ -439,9 +439,10 @@ starting it, and delete it when you find it done.
   renewal, which means the sign-in may still be valid and the app keeps
   trying. Until the centre exists, a pinned toast carries both, and it
   is the stopgap rather than the design: one toast per incident is all
-  it can do. It is not kept anywhere, so once dismissed it is gone, and
-  while the sign-in stays expired the amber dot on the account chip is
-  the only trace. A tracker list
+  it can do. It is not kept anywhere, so once dismissed it is gone.
+  While the sign-in stays expired, the amber dot on the account chip is
+  the only trace. A sign-in still valid whose renewal was refused
+  leaves none. A tracker list
   pull for the Watch Later rail that fails for any other reason is
   quieter still: the rail keeps its saved copy and nothing says so.
 - **No way from a Continue Watching card to the show's page.** A
