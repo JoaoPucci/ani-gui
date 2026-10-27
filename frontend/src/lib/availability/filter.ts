@@ -13,6 +13,7 @@ import {
 	yearFromKitsuRef
 } from '$lib/api';
 import type { KitsuAnimeRef } from '$lib/api';
+import { warmLedger } from './warm-ledger';
 
 /** Whether an `available: false` verdict may hide this card. Only a
  *  FINISHED show missing from the provider is confidently gone; upcoming
@@ -53,9 +54,15 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 
 	// Fire-and-forget warm for any item not in the cache. Skipping
 	// items whose availability is already known keeps the queue
-	// short.
-	const toWarm = items
-		.filter((i) => !(i.id in cached))
+	// short, and so does skipping the ones this session has already
+	// handed in, until a retry is due (see warm-ledger.ts).
+	const warmKey = (id: string) => `${mode}:${id}`;
+	const uncached = items.filter((i) => !(i.id in cached));
+	const due = new Set(
+		warmLedger.take([...new Set(uncached.map((i) => warmKey(i.id)))], Date.now())
+	);
+	const toWarm = uncached
+		.filter((i) => due.has(warmKey(i.id)))
 		.map((i) => ({
 			title: i.canonical_title,
 			mode,
@@ -67,7 +74,8 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 			status: i.status ?? undefined
 		}));
 	if (toWarm.length > 0) {
-		void availabilityWarm(toWarm).catch(() => {});
+		// A warm that never reached the backend is due again at once.
+		void availabilityWarm(toWarm).catch(() => warmLedger.forget([...due]));
 	}
 
 	return filtered;
