@@ -92,6 +92,27 @@ fn a_listing_that_lists_the_row_s_slot_twice_proves_nothing() {
 }
 
 #[test]
+fn a_listing_that_lists_the_stamped_slot_twice_proves_nothing() {
+    let mut listing = recap_after_three();
+    listing.push(row(7, Some("9")));
+    assert_eq!(restamp("6", 0, &stamp(7, "6"), &listing), None);
+}
+
+#[test]
+fn a_row_tagged_with_its_own_slot_is_left_as_it_is() {
+    // Numbered on from 2, past a recap: episode 4 sits in slot 5 and is
+    // tagged "5", which reads as 4 under the offset without a stamp.
+    let listing = vec![
+        row(1, Some("2")),
+        row(2, Some("3")),
+        row(3, Some("3.5")),
+        row(4, Some("4")),
+        row(5, Some("5")),
+    ];
+    assert_eq!(restamp("5", 1, &stamp(2, "3"), &listing), None);
+}
+
+#[test]
 fn a_row_an_earlier_version_tagged_otherwise_keeps_that_tag_beside_it() {
     // A stitched recap an earlier version called "4.5": a position the
     // player kept then is under that number.
