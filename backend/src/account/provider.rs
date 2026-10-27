@@ -189,6 +189,25 @@ pub trait UserListProvider: Send + Sync {
     /// Remove an entry.
     async fn delete_entry(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<()>;
 
+    /// [`Self::list_all`] for a bearer whose user is already known
+    /// (`user_id`): a provider that needs the user to read the list takes
+    /// it from here instead of asking the tracker again.
+    async fn list_all_for(&self, tokens: &Tokens, user_id: &str) -> Result<Vec<ListEntry>> {
+        let _ = user_id;
+        self.list_all(tokens).await
+    }
+
+    /// [`Self::delete_entry`] for a bearer whose user is already known.
+    async fn delete_entry_for(
+        &self,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+        user_id: &str,
+    ) -> Result<()> {
+        let _ = user_id;
+        self.delete_entry(tokens, id).await
+    }
+
     /// The authenticated user's current list entry for `id` (status +
     /// watched count), or `None` when the show isn't on their list yet.
     /// Bearer-scoped single read. Drives the write-back reconcile: keep

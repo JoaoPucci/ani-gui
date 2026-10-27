@@ -295,7 +295,7 @@ async fn list_all_and_cache_from(
     user_id: &str,
     began: u64,
 ) -> Result<Vec<ListEntry>> {
-    let entries = provider.list_all(tokens).await?;
+    let entries = provider.list_all_for(tokens, user_id).await?;
     state
         .account_write_locks
         .epochs
