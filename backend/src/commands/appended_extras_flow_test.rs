@@ -132,7 +132,7 @@ fn seed_kitsu(state: &crate::app::AppState, status: &str) {
             .expect("relations");
     meta_cache_put(
         &state.cache_pool,
-        &format!("kitsu:relations:v1:{KITSU}"),
+        &format!("kitsu:relations:v2:{KITSU}"),
         &serde_json::to_string(&relations).expect("json"),
         day,
     )

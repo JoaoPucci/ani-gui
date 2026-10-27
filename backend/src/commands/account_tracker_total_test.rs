@@ -2,9 +2,17 @@
 //! total: what `push_progress_via` reads, and what it writes, when the
 //! tracker counts a prologue Kitsu does not (Air on AniList: 13 against 12), when
 //! the totals agree, when the tracker's entry is shorter than Kitsu's
-//! show (Ranma ½ on AniList: 18 against 161), and when the total is unknown;
+//! show (Ranma ½'s AniList shape, 18 against 161, served by the MAL
+//! mock only), and when the total is unknown;
 //! and, on both trackers, an episode past Kitsu's finale, a rewatch's
 //! finale and a replay behind the row.
+//!
+//! This is the identity write: the one a show's episode map leaves as
+//! Kitsu numbers it. Where the map files the episodes under other
+//! entries or numbers — Ranma ½'s two AniList entries among them — the
+//! write is `account_mapped`'s, which decides each entry's completion
+//! from the map and does not read the renderer's `completed`; it is
+//! covered in `account_mapped_test.rs`.
 
 use super::*;
 use crate::account::provider::EntryUpdate;
@@ -131,8 +139,10 @@ async fn mal_an_unknown_total_sends_the_episode_as_is() {
 }
 
 // The rows the play page reaches and cannot decide: what reaches each
-// tracker depends on that tracker's total and row, which only this
-// path reads. The renderer's half — which episode, and whether it
+// tracker depends on that tracker's total and row, which only the
+// backend reads: this path for an identity write, `account_mapped`
+// (`account_mapped_test.rs`, `account_mapped_wire_test.rs`) for a
+// mapped one. The renderer's half — which episode, and whether it
 // carries `completed` — is pinned through the real play page in
 // `frontend/tests/acceptance/play-tracker-sync.test.ts`.
 

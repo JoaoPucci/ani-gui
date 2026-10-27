@@ -9,6 +9,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::account::episode_map::TrackerShow;
 use crate::account::pkce::Pkce;
 use crate::account::status::ListStatus;
 use crate::error::Result;
@@ -206,6 +207,27 @@ pub trait UserListProvider: Send + Sync {
     /// count it sends to the tracker's total, and decide the finale's
     /// completed status against it, without a second call.
     async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia>;
+
+    /// The media as the episode map reads it: its total, whether it
+    /// finished, its run, its series sequels and the numbers its own
+    /// episode list carries. One bearer-scoped read, asked only while a
+    /// show's map is being built — never on a write whose map is cached.
+    async fn media_evidence(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<MediaEvidence>;
+}
+
+/// What one tracker entry says about itself, for the episode map.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaEvidence {
+    /// The entry: id, total, finished, run.
+    pub show: TrackerShow,
+    /// Whether the entry is a series rather than a movie or a music
+    /// video, which never continue a show's numbering.
+    pub series: bool,
+    /// The tracker's own ids for the entry's sequels.
+    pub sequels: Vec<ProviderMediaId>,
+    /// The numbers the tracker's episode list carries (`"0"`, `"6.5"`,
+    /// `"7"`), `None` when it lists none.
+    pub listed: Option<Vec<String>>,
 }
 
 /// What the mark-watched write-back reads before it writes: the user's

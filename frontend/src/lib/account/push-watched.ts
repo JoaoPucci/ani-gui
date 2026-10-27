@@ -50,7 +50,10 @@ export interface PushWatchedDeps {
  * differs from the episode (and, as before, for an AniList rewatching row,
  * which AniList closes itself; MyAnimeList's rewatching row, a Watching one
  * there, is completed), so
- * nothing else may send `completed` through `updateProgress`.
+ * nothing else may send `completed` through `updateProgress`. Where the
+ * show's map on a tracker files its episodes under other entries or
+ * numbers, the backend decides each entry's completion from the map —
+ * at that entry's own last episode — and does not read this status.
  */
 export function watchedStatus(
 	episode: number,

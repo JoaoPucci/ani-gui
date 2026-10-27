@@ -1,14 +1,15 @@
 #!/bin/sh
-# Which of rust.yml's jobs a change concerns, as the two outputs its
-# filter job sets: `relevant`, the Rust pipeline, and `picker`, the
-# picker oracle. The filter step is one call,
+# Which of rust.yml's jobs a change concerns, as the three outputs its
+# filter job sets: `relevant`, the Rust pipeline, `picker`, the picker
+# oracle, and `tracker_map`, the episode-map oracle. The filter step is
+# one call,
 #
 #     tools/rust-workflow-filter.sh <event-name> <base-sha> <head-sha>
 #
-# and this prints `relevant=true|false` and `picker=true|false`, one
-# per line, for the step to append to GITHUB_OUTPUT. On any event but
-# a pull request — a push to master — both are true and no diff is
-# read. On a pull request the paths changed between the two commits
+# and this prints `relevant=true|false`, `picker=true|false` and
+# `tracker_map=true|false`, one per line, for the step to append to
+# GITHUB_OUTPUT. On any event but a pull request — a push to master —
+# all three are true and no diff is read. On a pull request the paths changed between the two commits
 # decide; a rename is listed as both its paths, so a file leaving a
 # tree still selects the jobs that read that tree.
 #
@@ -26,7 +27,7 @@ set -eu
 event="${1:?event name}"
 
 if [ "$event" != "pull_request" ]; then
-    printf 'relevant=true\npicker=true\n'
+    printf 'relevant=true\npicker=true\ntracker_map=true\n'
     exit 0
 fi
 
@@ -35,11 +36,11 @@ head="${3:?head sha}"
 changed=$(git diff --name-only --no-renames "$base" "$head")
 
 # The Rust pipeline: the sources, every fixture the tests read, the
-# toolchain pin, the picker golden the fixture test compares against,
+# toolchain pin, the two goldens the fixture tests compare against,
 # the tool that makes the temporary directory the tests run under, the
 # script the coverage job runs, and the workflow itself.
 if printf '%s\n' "$changed" |
-    grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/picker-oracle/fixtures-golden\.json$|tools/hostile-tmpdir\.sh$|tools/rust-lcov\.sh$|\.github/workflows/rust\.yml$)'; then
+    grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/(picker|tracker-map)-oracle/fixtures-golden\.json$|tools/hostile-tmpdir\.sh$|tools/rust-lcov\.sh$|\.github/workflows/rust\.yml$)'; then
     echo 'relevant=true'
 else
     echo 'relevant=false'
@@ -53,4 +54,14 @@ if printf '%s\n' "$changed" |
     echo 'picker=true'
 else
     echo 'picker=false'
+fi
+
+# The episode-map oracle reads the rules and their evidence readers,
+# the recorded tracker cases, its own model and allowlist, the
+# document the model transcribes, and the workflow.
+if printf '%s\n' "$changed" |
+    grep -qE '^(backend/|tests/fixtures/tracker-map/|tests/tracker-map-oracle/|docs/title-resolution\.md$|\.github/workflows/rust\.yml$)'; then
+    echo 'tracker_map=true'
+else
+    echo 'tracker_map=false'
 fi

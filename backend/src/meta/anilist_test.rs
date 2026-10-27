@@ -416,37 +416,38 @@ async fn mal_id_for_media_id_propagates_upstream_5xx() {
     assert!(matches!(err, AniError::Upstream { status: 502 }));
 }
 
-// `media_ids_for_mals` is the batched inverse bridge: the Watch-Later
+// `media_listed_for_mals` is the batched inverse bridge: the Watch-Later
 // rail resolves ALL its Kitsu-unmapped MAL ids in one Page query per
 // 50-chunk instead of one Media query each.
 #[test]
-fn parse_media_ids_by_mal_response_builds_the_idmal_map() {
+fn parse_media_listed_by_mal_response_lists_each_mal_id_s_media() {
     let body = br#"{"data":{"Page":{"media":[
         {"id":207141,"idMal":63403},
         {"id":207142,"idMal":63404},
+        {"id":207140,"idMal":63403},
         {"id":300000,"idMal":null}
     ]}}}"#;
-    let got = parse_media_ids_by_mal_response(body).expect("ok");
+    let got = parse_media_listed_by_mal_response(body).expect("ok");
     assert_eq!(got.len(), 2);
-    assert_eq!(got.get(&63403), Some(&207141));
-    assert_eq!(got.get(&63404), Some(&207142));
+    assert_eq!(got.get(&63403), Some(&vec![207140, 207141]));
+    assert_eq!(got.get(&63404), Some(&vec![207142]));
 }
 
 #[test]
-fn parse_media_ids_by_mal_response_empty_page_is_empty_map() {
+fn parse_media_listed_by_mal_response_empty_page_is_empty_map() {
     let body = br#"{"data":{"Page":{"media":[]}}}"#;
-    let got = parse_media_ids_by_mal_response(body).expect("ok");
+    let got = parse_media_listed_by_mal_response(body).expect("ok");
     assert!(got.is_empty());
 }
 
 #[test]
-fn parse_media_ids_by_mal_response_rejects_non_envelope_payload() {
-    let err = parse_media_ids_by_mal_response(br#"<html>nope</html>"#).unwrap_err();
+fn parse_media_listed_by_mal_response_rejects_non_envelope_payload() {
+    let err = parse_media_listed_by_mal_response(br#"<html>nope</html>"#).unwrap_err();
     assert!(matches!(err, AniError::ParseFailed { .. }));
 }
 
 #[tokio::test]
-async fn media_ids_for_mals_posts_one_query_for_a_small_batch() {
+async fn media_listed_for_mals_posts_one_query_for_a_small_batch() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::body_json(serde_json::json!({
@@ -454,21 +455,21 @@ async fn media_ids_for_mals_posts_one_query_for_a_small_batch() {
             "variables": { "idMals": [63403, 63404] },
         })))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Page":{"media":[{"id":207141,"idMal":63403},{"id":207142,"idMal":63404}]}}}"#,
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":207141,"idMal":63403},{"id":207142,"idMal":63404}]}}}"#,
         ))
         .expect(1)
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
-    let got = media_ids_for_mals(&client, &[63403, 63404], Some(&server.uri()))
+    let got = media_listed_for_mals(&client, &[63403, 63404], Some(&server.uri()))
         .await
         .expect("ok");
-    assert_eq!(got.get(&63403), Some(&207141));
-    assert_eq!(got.get(&63404), Some(&207142));
+    assert_eq!(got.get(&63403), Some(&vec![207141]));
+    assert_eq!(got.get(&63404), Some(&vec![207142]));
 }
 
 #[tokio::test]
-async fn media_ids_for_mals_makes_no_request_for_empty_input() {
+async fn media_listed_for_mals_makes_no_request_for_empty_input() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("{}"))
@@ -476,29 +477,30 @@ async fn media_ids_for_mals_makes_no_request_for_empty_input() {
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
-    let got = media_ids_for_mals(&client, &[], Some(&server.uri()))
+    let got = media_listed_for_mals(&client, &[], Some(&server.uri()))
         .await
         .expect("ok");
     assert!(got.is_empty());
 }
 
 #[tokio::test]
-async fn media_ids_for_mals_chunks_batches_over_the_page_cap() {
+async fn media_listed_for_mals_chunks_batches_over_the_page_cap() {
     // 60 ids must split into two requests (50 + 10) — Page caps
     // perPage at 50 and would silently truncate a single oversized
     // batch.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"data":{"Page":{"media":[]}}}"#),
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#,
+            ),
         )
         .expect(2)
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
     let ids: Vec<u32> = (1..=60).collect();
-    let got = media_ids_for_mals(&client, &ids, Some(&server.uri()))
+    let got = media_listed_for_mals(&client, &ids, Some(&server.uri()))
         .await
         .expect("ok");
     assert!(got.is_empty());
@@ -651,4 +653,129 @@ async fn a_404_without_an_absent_media_stays_an_upstream_failure() {
         .await
         .unwrap_err();
     assert!(matches!(err, AniError::Upstream { status: 404 }));
+}
+
+#[tokio::test]
+async fn media_listed_for_mals_splits_a_batch_whose_page_overflows() {
+    // Several media can record one MAL id, so a batch of MAL ids can
+    // match more media than a page holds. AniList says so with
+    // hasNextPage; the batch splits until every page is whole, rather
+    // than reading the ids the cut page left out as not indexed.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("[1,2]"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[{"id":10,"idMal":1}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("[1]"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":10,"idMal":1},{"id":11,"idMal":1}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("[2]"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":20,"idMal":2}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = media_listed_for_mals(&client, &[1, 2], Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1), Some(&vec![10, 11]));
+    assert_eq!(got.get(&2), Some(&vec![20]));
+}
+
+#[tokio::test]
+async fn one_mal_id_recorded_by_more_media_than_a_page_holds_is_no_answer() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[{"id":10,"idMal":1}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let err = media_listed_for_mals(&client, &[1], Some(&server.uri()))
+        .await
+        .expect_err("a cut page for one id");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let err = media_ids_recording_mal(&client, 1, Some(&server.uri()))
+        .await
+        .expect_err("a cut page for one id");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[test]
+fn a_page_that_does_not_say_whether_it_was_cut_is_no_answer() {
+    // The query asks for `pageInfo { hasNextPage }`. A page that leaves
+    // either out, or gives either as null, does not say whether AniList
+    // cut it, so it is no answer rather than a whole page.
+    for body in [
+        br#"{"data":{"Page":{"media":[]}}}"#.as_slice(),
+        br#"{"data":{"Page":{"pageInfo":null,"media":[]}}}"#,
+        br#"{"data":{"Page":{"pageInfo":{},"media":[]}}}"#,
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":null},"media":[]}}}"#,
+        b"<html>",
+    ] {
+        assert!(
+            matches!(page_has_next(body), Err(AniError::ParseFailed { .. })),
+            "{}",
+            String::from_utf8_lossy(body)
+        );
+    }
+    assert!(
+        !page_has_next(br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[]}}}"#)
+            .expect("ok")
+    );
+    assert!(page_has_next(br#"{"data":{"Page":{"pageInfo":{"hasNextPage":true}}}}"#).expect("ok"));
+}
+
+#[tokio::test]
+async fn a_by_mal_page_that_does_not_say_whether_it_was_cut_is_no_answer() {
+    // Read as whole, a page AniList cut would list the media it held as
+    // every media recording those MAL ids.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"{"data":{"Page":{"media":[{"id":10,"idMal":1}]}}}"#),
+        )
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let err = media_listed_for_mals(&client, &[1], Some(&server.uri()))
+        .await
+        .expect_err("a page without pageInfo");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let err = media_ids_recording_mal(&client, 1, Some(&server.uri()))
+        .await
+        .expect_err("a page without pageInfo");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+#[test]
+fn a_by_mal_page_whose_media_leaves_out_its_mal_id_is_no_answer() {
+    // Every media in a by-MAL page is asked for its idMal. One that
+    // leaves it out would drop from the media recording the MAL id, and
+    // a short owner set would pass for the whole one.
+    let missing = br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":10}]}}}"#;
+    assert!(matches!(
+        parse_media_listed_by_mal_response(missing),
+        Err(AniError::ParseFailed { .. })
+    ));
+    assert!(matches!(
+        parse_media_ids_recording_mal(missing, 1),
+        Err(AniError::ParseFailed { .. })
+    ));
+    let null =
+        br#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":10,"idMal":null}]}}}"#;
+    assert!(parse_media_listed_by_mal_response(null)
+        .expect("an answer")
+        .is_empty());
 }

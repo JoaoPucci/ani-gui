@@ -83,6 +83,14 @@ impl AccountWriteLocks {
         Arc::clone(map.entry((kind, kitsu_id.to_owned())).or_default())
     }
 
+    /// The lock guarding read-then-write on one tracker entry. A mapped
+    /// write reaches an entry from several Kitsu ids, each with its own
+    /// show lock, so the entry's read and write are held under this one.
+    pub(crate) fn for_entry(&self, kind: ProviderKind, entry: ProviderMediaId) -> ShowLock {
+        // A Kitsu id is digits only, so `entry:` keys never meet a show's.
+        self.for_show(kind, &format!("entry:{}", entry.0))
+    }
+
     /// Wait for the lock guarding writes to one `(provider, Kitsu id)`
     /// ([`Self::for_show`]) and hold it until the guard drops.
     pub(crate) async fn hold(
@@ -90,7 +98,21 @@ impl AccountWriteLocks {
         kind: ProviderKind,
         kitsu_id: &str,
     ) -> tokio::sync::OwnedMutexGuard<()> {
-        let lock = self.for_show(kind, kitsu_id);
+        Self::hold_lock(self.for_show(kind, kitsu_id)).await
+    }
+
+    /// Wait for the lock guarding read-then-write on one tracker entry
+    /// ([`Self::for_entry`]) and hold it until the guard drops.
+    pub(crate) async fn hold_entry(
+        &self,
+        kind: ProviderKind,
+        entry: ProviderMediaId,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        Self::hold_lock(self.for_entry(kind, entry)).await
+    }
+
+    /// Take `lock`, saying so to a test holding it when it has to wait.
+    async fn hold_lock(lock: ShowLock) -> tokio::sync::OwnedMutexGuard<()> {
         match Arc::clone(&lock).try_lock_owned() {
             Ok(guard) => guard,
             Err(_) => {
@@ -477,10 +499,11 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     let mut slots: Vec<Option<crate::meta::kitsu::KitsuAnimeRef>> =
         phase1.into_iter().map(|(card, _)| card).collect();
     // Phase 2: Kitsu hasn't MAL-mapped the misses (fresh seasonal
-    // titles) — resolve ALL of them to AniList ids in one batched
-    // Page(idMal_in:) query per 50-chunk (a
-    // per-miss Media(idMal:) call could burn AniList's 30 req/min
-    // budget on a single big rail load), then look each up under
+    // titles) — resolve ALL of them to AniList ids in batched
+    // Page(idMal_in:) queries, one per 50-chunk unless AniList cuts its
+    // page (a per-miss Media(idMal:) call could burn AniList's 30
+    // req/min budget on a single big rail load; only a MAL id several
+    // media record is asked singly), then look each up under
     // Kitsu's anilist/anime mapping. Same gap resolve_native_media_id
     // works around in the write direction; without this the
     // just-written entry never renders in the rail. A failed batch
@@ -779,13 +802,22 @@ async fn push_progress_with_anilist_base(
     // write is about to change. Held across the GET +
     // upsert since providers only upsert (no compare-and-set).
     let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
-    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await? else {
-        return Ok(None);
-    };
+    let native = resolve_native_media_id(state, kind, kitsu_id, anilist_base).await?;
     let Some(provider) = provider_for_kind(state, kind) else {
         return Err(AniError::Metadata);
     };
-    push_progress_via(state, kind, provider.as_ref(), tokens, native, update).await
+    // Read through the show's episode map: an episode the tracker files
+    // under another entry, or under another number, goes there; a show
+    // Kitsu resolves to nothing writes only where the map files it
+    // under an entry a prequel resolves to.
+    let ask = super::tracker_map::MapAsk {
+        state,
+        kind,
+        provider: provider.as_ref(),
+        tokens,
+        anilist_base,
+    };
+    super::account_mapped::push_progress_mapped(&ask, kitsu_id, native, update).await
 }
 
 /// The monotonic write-back with the provider injected, so tests drive
@@ -797,7 +829,7 @@ async fn push_progress_with_anilist_base(
 /// fire syncWatchedToTrackers without awaiting, so two writes for the
 /// same show would otherwise both read the same count and the
 /// later-landing lower one would regress it.
-async fn push_progress_via(
+pub(crate) async fn push_progress_via(
     state: &Arc<AppState>,
     kind: ProviderKind,
     provider: &dyn UserListProvider,
@@ -812,32 +844,61 @@ async fn push_progress_via(
     // progress costs one bearer-scoped GET per write — only when the
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
-    let update = if update.progress_episodes.is_some() {
-        // The same read carries the tracker's own episode total, so the
-        // count is fitted to it — nothing exceeds a shorter entry, and a
-        // finale completes only where the total is unknown or equals the
-        // episode — before the monotonic reconcile, at no extra request.
-        let media = provider.tracked_media(tokens, native).await?;
-        let update = fit_to_tracker_total(update, media.episodes);
-        match reconcile_monotonic(update, media.entry.map(|e| e.as_kept_by(kind))) {
-            Some(reconciled) => reconciled,
-            None => return Ok(None),
-        }
-    } else {
-        update
+    let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
+    if update.progress_episodes.is_none() {
+        return write_through(state, kind, provider, tokens, native, update)
+            .await
+            .map(Some);
+    }
+    let media = provider.tracked_media(tokens, native).await?;
+    push_progress_read(state, kind, provider, tokens, native, update, media).await
+}
+
+/// [`push_progress_via`] with the tracker's media already read: the
+/// count is fitted to the tracker's own total — nothing exceeds a
+/// shorter entry, and a finale completes only where the total is
+/// unknown or equals the episode — then reconciled to stay monotonic,
+/// then written.
+pub(crate) async fn push_progress_read(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+    media: crate::account::provider::TrackedMedia,
+) -> Result<Option<ListEntry>> {
+    let update = fit_to_tracker_total(update, media.episodes);
+    let Some(update) = reconcile_monotonic(update, media.entry.map(|e| e.as_kept_by(kind))) else {
+        return Ok(None);
     };
+    write_through(state, kind, provider, tokens, native, update)
+        .await
+        .map(Some)
+}
+
+/// Write `update` to `native` and the cache through.
+///
+/// The cache is written HERE, under the per-show lock — not in the
+/// route afterwards. Deferring it released the lock first, so a stale
+/// mark-watched write-through could land after an explicit downward
+/// correction and clobber it.
+/// Inside the lock it's serialized with the explicit editor's
+/// force-upsert, so no stale write lingers; the monotonic upsert still
+/// guards two racing mark-watched writes. Best-effort.
+pub(crate) async fn write_through(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+    update: EntryUpdate,
+) -> Result<ListEntry> {
     let entry = provider.update_entry(tokens, native, update).await?;
-    // Write the cache through HERE, under the per-show lock — not in the
-    // route afterwards. Deferring it released the lock first, so a stale
-    // mark-watched write-through could land after an explicit downward
-    // correction and clobber it.
-    // Inside the lock it's serialized with the explicit editor's
-    // force-upsert, so no stale write lingers; the monotonic upsert still
-    // guards two racing mark-watched writes. Best-effort.
     if let Ok(profile) = provider.me(tokens).await {
         let _ = upsert_cached_entry(state, kind, &profile.user_id, &entry);
     }
-    Ok(Some(entry))
+    Ok(entry)
 }
 
 #[cfg(test)]
