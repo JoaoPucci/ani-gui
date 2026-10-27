@@ -988,6 +988,7 @@ pub async fn check_availability(
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let recorder = crate::commands::listing_tags::Recorder(state);
     let mut attempt = ProbeAttempt {
         args,
         mode,
@@ -995,6 +996,7 @@ pub async fn check_availability(
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
         answered_by: None,
+        heard: &recorder,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
     let (available, episode_count, extra_episodes, provider, versions, count_unread) = match probed
@@ -1318,6 +1320,9 @@ struct ProbeAttempt<'r> {
     /// The provider whose miss the walk returned — set by the walk,
     /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
+    /// Where each listing a provider's probe picks is recorded, whatever
+    /// the walk then makes of its answer ([`crate::commands::listing_tags`]).
+    heard: &'r dyn crate::commands::listing_tags::ListingSink,
 }
 
 #[async_trait::async_trait]
@@ -1328,7 +1333,19 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
-        probe_show(provider, self.args, self.mode, self.tail).await
+        let probed = probe_show(provider, self.args, self.mode, self.tail).await;
+        // The pick's listings were at hand, whether the walk takes this
+        // answer or moves on from it as inconclusive.
+        if let Ok((picked, _, _)) = &probed {
+            for (hit, episodes) in picked.copies() {
+                self.heard.heard(
+                    &crate::scraper::provider::ShowKey::new(provider.id(), hit.slug.clone())
+                        .to_string(),
+                    episodes,
+                );
+            }
+        }
+        probed
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {

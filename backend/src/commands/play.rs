@@ -359,12 +359,15 @@ where
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let request = args.native_request(
+    // Every listing the resolve picks is recorded, served or not.
+    let recorder = crate::commands::listing_tags::Recorder(state);
+    let mut request = args.native_request(
         quality,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
     );
+    request.heard = Some(&recorder);
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
     // that accepts connections but stalls every request must not
