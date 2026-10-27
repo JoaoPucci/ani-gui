@@ -46,6 +46,7 @@ const withBinary =
  *  this table to `backend/error-keys.json`, so a key the backend adds
  *  fails there until it has an entry here and a message per locale. */
 const MESSAGE_BY_KEY: Readonly<Record<string, KeyedMessage>> = {
+	'error.account.refresh_rejected': m.backend_error_account_refresh_rejected,
 	'error.account.unsupported_pkce': m.backend_error_account_unsupported_pkce,
 	'error.cache.generic': m.backend_error_cache_generic,
 	'error.config.parse': m.backend_error_config_parse,

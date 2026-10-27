@@ -260,7 +260,10 @@ async fn post_exchange_code(
 /// expired but carries a refresh token — chiefly MAL's ~1h access
 /// token — and re-persists the response via safeStorage, so the
 /// provider stays connected instead of being forced back through
-/// OAuth. Stateless: the renderer supplies the refresh token.
+/// OAuth. Stateless: the renderer supplies the refresh token. A token
+/// the provider refuses answers 401 `error.account.refresh_rejected`; a
+/// provider that did not answer keeps its own error (502, 503, 429), so
+/// the renderer can tell a dead sign-in from an unreachable tracker.
 async fn post_refresh(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,

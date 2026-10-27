@@ -48,10 +48,17 @@ impl MalProvider {
     }
 }
 
-/// What a failed refresh grant means to the caller. For now the token
-/// endpoint's own error, unchanged.
+/// What a failed refresh grant means to the caller. A 400 or 401 from
+/// the token endpoint refuses the refresh token itself (expired,
+/// revoked, or never valid), so it reads as [`AniError::RefreshRejected`]:
+/// asking again is refused again. Everything else, a 5xx, a 429, a
+/// transport failure, says nothing about the token and keeps its own
+/// error.
 pub(in crate::meta) fn refresh_refusal(e: AniError) -> AniError {
-    e
+    match e {
+        AniError::Upstream { status: 400 | 401 } => AniError::RefreshRejected,
+        other => other,
+    }
 }
 
 /// Extract the (scheme, host, port) tuple of a URL string for origin
