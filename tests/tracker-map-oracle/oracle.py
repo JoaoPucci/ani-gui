@@ -46,6 +46,23 @@ def month(date):
     return date[:7]
 
 
+def started_before(later, earlier):
+    """Whether `later` is settled as having started before `earlier`: both
+    real dates or months, a month apart with `later`'s the earlier, or
+    whole days in one month with `later`'s the earlier day. Anything else
+    (a date missing or unreal, a month named alone in the other's month,
+    the same day) settles nothing."""
+    lm, em = month(later), month(earlier)
+    if not lm or not em:
+        return False
+    if lm != em:
+        return lm < em
+    full = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+    if full.fullmatch(later or "") and full.fullmatch(earlier or ""):
+        return later < earlier
+    return False
+
+
 def segment(entry, total, from_, to, lead=0, extras=()):
     return {
         "entry": entry["id"],
@@ -62,7 +79,8 @@ def chain_rule(ev, count, total):
     """One Kitsu entry spans the tracker's chain: the entry and its single
     sequels sum exactly to Kitsu's count, every run inside Kitsu's run
     (each bound by month, two days' slack, or Kitsu's own episode date),
-    no later segment a Kitsu entry's own."""
+    no later segment a Kitsu entry's own, and none started before the one
+    it follows."""
     segs = [segment(ev["entry"], total, 1, total)]
     shows = [ev["entry"]]
     covered = total
@@ -78,6 +96,8 @@ def chain_rule(ev, count, total):
     if covered != count or len(segs) < 2:
         return None
     if any(s["entry"] in ev["claimed"] for s in segs[1:]):
+        return None
+    if any(started_before(b["start"], a["start"]) for a, b in zip(shows, shows[1:])):
         return None
     ks, ke = month(ev["kitsu"]["start"]), month(ev["kitsu"]["end"])
     if not ks or not ke:
@@ -336,7 +356,7 @@ def chain_family(rng):
         total = sum(counts)
         segs = [show(100 + i, counts[i], fins[i], months(2001, 3 * i) + "-02", months(2001, 3 * i + 2) + "-20") for i in range(n)]
         k = kitsu(1, total, "2001-01-01", months(2001, 3 * n) + "-28")
-        tweak = rng.choice(["ok", "ok", "ok", "over", "under", "claimed", "early", "late", "undated", "unknown_hop", "year_only", "extra_hop", "impossible"])
+        tweak = rng.choice(["ok", "ok", "ok", "over", "under", "claimed", "early", "late", "undated", "unknown_hop", "year_only", "extra_hop", "impossible", "aired_first", "aired_first_day", "same_month_partial", "same_day"])
         ev = evidence(k, segs[0], chain=segs[1:])
         if tweak == "over":
             ev["kitsu"]["episodes"] = total + 1
@@ -358,6 +378,20 @@ def chain_family(rng):
             ev["chain"][-1] = dict(ev["chain"][-1], start=ev["chain"][-1]["start"][:4])
         elif tweak == "extra_hop":
             ev["chain"].append(show(999, 6, True, "2030-01-01", "2030-02-01"))
+        elif tweak == "aired_first":
+            # The first hop aired a month before the entry it follows,
+            # both still inside Kitsu's run: no chain.
+            ev["entry"] = dict(ev["entry"], start="2001-02-02")
+            ev["chain"][0] = dict(ev["chain"][0], start="2001-01-05")
+        elif tweak == "aired_first_day":
+            # A day before the entry, in the entry's own month.
+            ev["chain"][0] = dict(ev["chain"][0], start="2001-01-01")
+        elif tweak == "same_month_partial":
+            # The month alone, in the entry's month: the order is not
+            # settled, and the chain is read as it was.
+            ev["chain"][0] = dict(ev["chain"][0], start="2001-01")
+        elif tweak == "same_day":
+            ev["chain"][0] = dict(ev["chain"][0], start=ev["entry"]["start"])
         out.append(("chain-" + tweak, ev))
     return out
 

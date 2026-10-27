@@ -16,6 +16,8 @@ mod dates;
 mod days;
 #[path = "episode_map_extras.rs"]
 mod extras_rule;
+#[path = "episode_map_order.rs"]
+mod order;
 #[path = "episode_map_parts.rs"]
 mod parts_rule;
 #[path = "episode_map_rivals.rs"]
