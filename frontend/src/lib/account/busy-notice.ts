@@ -17,14 +17,14 @@ export function providerName(provider: Provider): string {
 }
 
 /** The notice's words with `seconds` left: the wait — naming the
- *  tracker that refused when it is not the one the save is for — or,
- *  once it is over, that the save is going. */
+ *  tracker that refused, both trackers when it is not the one the save
+ *  is for, and no busy tracker when the refusal named none (Kitsu's 429
+ *  on a map read) — or, once it is over, that the save is going. */
 function busyText(provider: Provider, seconds: number, refusedBy: Provider | null): string {
 	const name = providerName(provider);
 	if (seconds <= 0) return m.account_busy_saving_now({ provider: name });
-	if (refusedBy === null || refusedBy === provider) {
-		return m.account_busy_saving({ provider: name, seconds });
-	}
+	if (refusedBy === null) return m.account_busy_saving_unnamed({ provider: name, seconds });
+	if (refusedBy === provider) return m.account_busy_saving({ provider: name, seconds });
 	return m.account_busy_saving_for({ busy: providerName(refusedBy), provider: name, seconds });
 }
 
