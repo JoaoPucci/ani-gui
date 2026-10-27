@@ -47,6 +47,8 @@ import { saveWhenTrackerAllows } from './busy-save';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
+import { listChanges, type ListChange } from './list-changes';
+import { SupersededError } from './save-when-allowed';
 
 /** The backend holding a write back: 429 with the wait, by shape (the
  *  api module is mocked here). */
@@ -477,5 +479,50 @@ describe('a write dropped mid-change still counts as the newer write', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(await older).toEqual({ written: 0, failed: 0, superseded: true });
 		expect(setEntry).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('the views a settled editor write tells', () => {
+	async function announcedDuring(run: () => Promise<unknown>): Promise<ListChange[]> {
+		const heard: ListChange[] = [];
+		const stop = listChanges.subscribe((c) => heard.push(c));
+		try {
+			await run();
+		} finally {
+			stop();
+		}
+		return heard;
+	}
+
+	it('are told once a save settles, with every tracker it reached', async () => {
+		getEntry.mockResolvedValue(null);
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.mal = { kind: 'connected', account: { access_token: 'tok-m' } };
+		setEntry.mockImplementation(async (...args: unknown[]) => {
+			if (args[0] === 'mal') throw new Error('offline');
+			return { progress_episodes: 0 };
+		});
+		const heard = await announcedDuring(() =>
+			syncSetEntry('kitsu-12', { status: 'planning', statusChanged: true, progress: 0 })
+		);
+		expect(heard).toEqual([
+			{ kitsuId: 'kitsu-12', providers: ['anilist', 'mal'], source: 'editor' }
+		]);
+	});
+
+	it('are told once a removal settles', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		const heard = await announcedDuring(() => syncRemoveEntry('kitsu-12'));
+		expect(heard).toEqual([{ kitsuId: 'kitsu-12', providers: ['anilist'], source: 'editor' }]);
+	});
+
+	it('are told nothing for a save every tracker dropped unsent', async () => {
+		getEntry.mockResolvedValue(null);
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		setEntry.mockRejectedValue(new SupersededError());
+		const heard = await announcedDuring(() =>
+			syncSetEntry('kitsu-12', { status: 'planning', statusChanged: true, progress: 0 })
+		);
+		expect(heard).toEqual([]);
 	});
 });

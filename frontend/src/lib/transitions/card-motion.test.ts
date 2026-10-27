@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { quintOut } from 'svelte/easing';
 
 import { CARD_SCALE, CARD_SHIFT, cardScale, cardShift, STILL } from './card-motion';
@@ -27,5 +27,30 @@ describe('card motion', () => {
 
 	it('holds still for a card the gate does not let move', () => {
 		expect(STILL).toEqual({ duration: 0 });
+	});
+});
+
+describe('card motion under prefers-reduced-motion', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+	const prefersReduced = (matches: boolean) =>
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn((query: string) => ({ matches: matches && query.includes('reduce') }))
+		);
+
+	it('holds every card still when the user asks for less motion', () => {
+		prefersReduced(true);
+		const node = document.createElement('div');
+		expect(cardScale(node).duration).toBe(0);
+		expect(cardShift(node, { from: rect(220), to: rect(0) }).duration).toBe(0);
+	});
+
+	it('moves as usual when the user has not asked', () => {
+		prefersReduced(false);
+		const node = document.createElement('div');
+		expect(cardScale(node).duration).toBe(240);
+		expect(cardShift(node, { from: rect(220), to: rect(0) }).duration).toBe(280);
 	});
 });
