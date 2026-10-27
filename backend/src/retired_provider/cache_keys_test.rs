@@ -1,4 +1,4 @@
-//! The reverse-mapping key reader.
+//! The cache key readers.
 
 use super::*;
 use proptest::prelude::*;

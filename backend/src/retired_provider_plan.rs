@@ -11,15 +11,16 @@
 //!
 //! Such a row is one of two things:
 //!
-//! - **Superseded**, when for every Kitsu entry it is shown as, a row
-//!   of a walked provider shown as the same entry resumes over it, by
+//! - **Superseded**, when for every Kitsu entry it stands for, a row
+//!   of a walked provider that recorded the same entry resumes over it, by
 //!   the rule both Continue Watching and the detail page apply
 //!   ([`crate::commands::history_resume::resumes_over`]). Both surfaces
 //!   already show that row in its place, so the retired row is removed
 //!   and nothing either surface shows changes. A retired row that is
 //!   still the one a show resumes from stays until a watch of the show
 //!   overtakes it.
-//! - **Kept** otherwise: its show has nothing else to resume from. Its
+//! - **Kept** otherwise — still the row its show resumes from, its show
+//!   recorded by no walked row, or shown as nothing. Its
 //!   episode is rewritten in the app's own numbering (the number the
 //!   read boundary already shows for it), so the numbering sidecar
 //!   holds nothing for a provider that is gone.
@@ -37,9 +38,13 @@ pub struct PlanRow {
     pub id: String,
     /// Whether the key names a provider the app walks.
     pub walked: bool,
-    /// The Kitsu entries the row is shown as: the id it recorded, else
-    /// its stored mapping, else its title matches — what Continue
-    /// Watching matches it by. Empty when nothing is known.
+    /// The Kitsu entries the row stands for. For a walked row, the one
+    /// it recorded and Kitsu has not answered gone — the entry both
+    /// Continue Watching and the detail page's resume find it by — and
+    /// nothing else: a guess makes neither surface certain. For a
+    /// retired row, everything anything names for it, so a walked row
+    /// must cover all of them before it goes. Empty when nothing is
+    /// known.
     pub shown_as: Vec<String>,
     /// The moment it was watched: the later of the row's own and the
     /// cache's stamp.

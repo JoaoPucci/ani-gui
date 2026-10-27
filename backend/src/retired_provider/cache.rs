@@ -1,150 +1,42 @@
 //! The cache half of the retired-provider sweep — split from
 //! [`super`] for the per-file complexity bar.
 //!
-//! Each family is read by key, plus the one JSON field a guard reads,
-//! never the whole body, so a cache with nothing to reclaim costs one
-//! indexed scan per family.
+//! Each family is read as a range of the key index, with the one JSON
+//! field a guard reads where one decides, never the whole body, so a
+//! cache with nothing to reclaim costs a few indexed range reads.
 
 use std::collections::HashSet;
 
 use rusqlite::params;
 
 use crate::app::AppState;
-use crate::commands::kitsu::{LEGACY_TITLE_MATCH_SEGMENT, TITLE_MATCH_VERSION};
 use crate::error::{AniError, Result};
-use crate::scraper::provider::ProviderId;
+use crate::history::HistoryEntry;
 
-use super::walks;
-
-/// How many rows the cache holds; 0 when it cannot say.
-pub(super) fn row_count(state: &AppState) -> usize {
-    state
-        .cache_pool
-        .get()
-        .ok()
-        .and_then(|c| {
-            c.query_row("SELECT count(*) FROM meta_cache", [], |r| {
-                r.get::<_, i64>(0)
-            })
-            .ok()
-        })
-        .and_then(|n| usize::try_from(n).ok())
-        .unwrap_or(0)
-}
+use super::cache_families as family;
 
 /// Delete the rows only a retired provider's key or verdict could be
-/// read by. `remaining` holds the history's show keys: a retired key a
-/// kept row still carries keeps its stamp and mapping, which order and
-/// resolve that row.
-pub(super) fn sweep(state: &AppState, remaining: &HashSet<String>) -> Result<()> {
-    let keyed = |id: &str| !walks(state, id) && !remaining.contains(id);
-    let mut doomed = Vec::new();
-    for (key, _) in rows(state, "watched-at:v1:", None)? {
-        if keyed(&key["watched-at:v1:".len()..]) {
-            doomed.push(key);
-        }
-    }
-    for (key, _) in rows(state, "allmanga2kitsu:", None)? {
-        if mapping_key_id(&key).is_some_and(keyed) {
-            doomed.push(key);
-        }
-    }
-    for (key, show) in rows(state, "play:", Some("$.show_id"))? {
-        // A resolution row whose show key names no walked provider, an
-        // empty or absent one included, is never replayed.
-        if !show.as_deref().is_some_and(|id| walks(state, id)) {
-            doomed.push(key);
-        }
-    }
-    for (key, provider) in rows(state, "availability:", Some("$.provider"))? {
-        // A verdict naming no walked provider is never served.
-        if !provider
-            .as_deref()
-            .is_some_and(|p| walked_provider(state, p))
-        {
-            doomed.push(key);
-        }
-    }
-    let titles = format!("title-match:v{TITLE_MATCH_VERSION}:");
-    for (key, _) in rows(state, &titles, None)? {
-        let segment = key[titles.len()..].split(':').next().unwrap_or_default();
-        if segment != LEGACY_TITLE_MATCH_SEGMENT && !walked_label(state, segment) {
-            doomed.push(key);
-        }
-    }
+/// read by, and answer how many went. `remaining` is the history: a
+/// retired key a kept row still carries keeps its stamp, mapping and
+/// title matches, which order and resolve that row.
+pub(super) fn sweep(state: &AppState, remaining: &[HistoryEntry]) -> Result<usize> {
+    let ids: HashSet<&str> = remaining.iter().map(|e| e.id.as_str()).collect();
+    let mut doomed = family::stamps(state, &ids)?;
+    doomed.extend(family::mappings(state, &ids)?);
+    doomed.extend(family::resolutions(state)?);
+    doomed.extend(family::verdicts(state)?);
+    doomed.extend(super::cache_titles::title_matches(state, remaining)?);
     if doomed.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
     let mut conn = state.cache_pool.get().map_err(|_| AniError::Cache)?;
     let tx = conn.transaction().map_err(|_| AniError::Cache)?;
+    let mut deleted = 0;
     for key in &doomed {
-        tx.execute("DELETE FROM meta_cache WHERE key = ?1", params![key])
+        deleted += tx
+            .execute("DELETE FROM meta_cache WHERE key = ?1", params![key])
             .map_err(|_| AniError::Cache)?;
     }
-    tx.commit().map_err(|_| AniError::Cache)
+    tx.commit().map_err(|_| AniError::Cache)?;
+    Ok(deleted)
 }
-
-/// Every row under `prefix`, expired or not, with the text of the JSON
-/// field at `path` when one is asked for: `None` for a body that is not
-/// JSON or has no such field.
-fn rows(
-    state: &AppState,
-    prefix: &str,
-    path: Option<&str>,
-) -> Result<Vec<(String, Option<String>)>> {
-    let conn = state.cache_pool.get().map_err(|_| AniError::Cache)?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT key, CASE WHEN ?2 IS NOT NULL AND json_valid(body) \
-                    THEN json_extract(body, ?2) END \
-             FROM meta_cache WHERE key >= ?1 AND key < ?3",
-        )
-        .map_err(|_| AniError::Cache)?;
-    let found = stmt
-        .query_map(params![prefix, path, past(prefix)], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, Option<String>>(1).ok().flatten(),
-            ))
-        })
-        .map_err(|_| AniError::Cache)?
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(|_| AniError::Cache)?;
-    Ok(found)
-}
-
-/// The first key past every key under `prefix`, which ends in `:`, so
-/// a family is read as a range of the key's index.
-fn past(prefix: &str) -> String {
-    debug_assert!(prefix.ends_with(':'));
-    format!("{};", &prefix[..prefix.len() - 1])
-}
-
-/// The show key a reverse-mapping row is for: under a version
-/// (`allmanga2kitsu:v<N>:<key>`) or the mark a play leaves beside it
-/// (`allmanga2kitsu:played:v1:<key>`).
-fn mapping_key_id(key: &str) -> Option<&str> {
-    let rest = key.strip_prefix("allmanga2kitsu:")?;
-    if let Some(id) = rest.strip_prefix("played:v1:") {
-        return Some(id);
-    }
-    let (version, id) = rest.split_once(':')?;
-    let digits = version.strip_prefix('v')?;
-    (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then_some(id)
-}
-
-/// Whether a verdict's `provider` field names a provider the state
-/// walks, read the way the verdict itself is deserialized.
-fn walked_provider(state: &AppState, provider: &str) -> bool {
-    serde_json::from_value::<ProviderId>(serde_json::Value::String(provider.to_string()))
-        .is_ok_and(|p| state.providers.order().contains(&p))
-}
-
-/// Whether a title match's segment is a walked provider's label.
-fn walked_label(state: &AppState, segment: &str) -> bool {
-    state.providers.order().iter().any(|p| p.label() == segment)
-}
-
-#[cfg(test)]
-#[path = "cache_test.rs"]
-mod tests;
