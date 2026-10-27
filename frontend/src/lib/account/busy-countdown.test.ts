@@ -26,6 +26,23 @@ describe('startCountdown', () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	it('changes the number when the second it names is over, and shows zero only at the deadline', () => {
+		vi.useFakeTimers();
+		const start = Date.now();
+		const shown: [number, number][] = [];
+		startCountdown(start + 1500, {
+			now: () => Date.now(),
+			after: realTimer,
+			show: (s) => shown.push([Date.now() - start, s])
+		});
+		vi.advanceTimersByTime(10_000);
+		expect(shown).toEqual([
+			[0, 2],
+			[500, 1],
+			[1500, 0]
+		]);
+	});
+
 	it('stops when told', () => {
 		vi.useFakeTimers();
 		const shown: number[] = [];
@@ -67,8 +84,16 @@ describe('startCountdown', () => {
 	});
 });
 
+/** The seconds a notice may say with `remaining` ms left: the remainder
+ *  rounded up to the whole second it is in, and zero only once nothing
+ *  is left — the moment the save goes. */
+function honest(seconds: number, remaining: number): boolean {
+	if (remaining <= 0) return seconds === 0;
+	return seconds > 0 && (seconds - 1) * 1000 < remaining && remaining <= seconds * 1000;
+}
+
 describe('the countdown, by property', () => {
-	it('never shows more than the time truly remaining, nor less than zero', () => {
+	it('names the second the remainder is in, and says zero only at the deadline', () => {
 		fc.assert(
 			fc.property(
 				fc.integer({ min: -5000, max: 600_000 }),
@@ -76,9 +101,7 @@ describe('the countdown, by property', () => {
 				(deadline, now) => {
 					const s = secondsLeft(deadline, now);
 					expect(s).toBeGreaterThanOrEqual(0);
-					expect(s * 1000).toBeLessThanOrEqual(Math.max(0, deadline - now));
-					// …and is behind it by less than a second.
-					expect(Math.max(0, deadline - now) - s * 1000).toBeLessThan(1000);
+					expect(honest(s, deadline - now)).toBe(true);
 				}
 			)
 		);
@@ -87,40 +110,69 @@ describe('the countdown, by property', () => {
 	it('holds over any run of ticks, however late each comes', () => {
 		fc.assert(
 			fc.property(
-				fc.integer({ min: 1, max: 120 }),
+				fc.integer({ min: 1, max: 120_000 }),
 				fc.array(fc.integer({ min: 0, max: 5000 }), { maxLength: 40 }),
-				(waitSeconds, lateness) => {
+				(waitMs, lateness) => {
 					let clock = 0;
-					const deadline = waitSeconds * 1000;
 					const shown: { at: number; seconds: number }[] = [];
-					let tick: (() => void) | null = null;
-					startCountdown(deadline, {
+					let pending: { at: number; tick: () => void } | null = null;
+					startCountdown(waitMs, {
 						now: () => clock,
-						after: (_ms, t) => {
-							tick = t;
+						after: (ms, tick) => {
+							pending = { at: clock + ms, tick };
 							return () => {
-								tick = null;
+								pending = null;
 							};
 						},
 						show: (seconds) => shown.push({ at: clock, seconds })
 					});
 					for (const late of lateness) {
-						if (!tick) break;
-						// A one-shot timer: it fires once, and the countdown re-arms it.
-						const fire = tick as () => void;
-						tick = null;
-						clock += 1000 + late;
-						fire();
+						const next = pending as { at: number; tick: () => void } | null;
+						if (!next) break;
+						pending = null;
+						clock = next.at + late;
+						next.tick();
 					}
-					for (const { at, seconds } of shown) {
-						expect(seconds).toBeGreaterThanOrEqual(0);
-						expect(seconds * 1000).toBeLessThanOrEqual(Math.max(0, deadline - at));
-					}
+					for (const { at, seconds } of shown) expect(honest(seconds, waitMs - at)).toBe(true);
 					// Once zero is shown, nothing more is.
 					const zero = shown.findIndex((e) => e.seconds === 0);
 					if (zero !== -1) expect(shown).toHaveLength(zero + 1);
 				}
 			)
+		);
+	});
+
+	it('wakes no later than the second it shows is over, when its timer is on time', () => {
+		fc.assert(
+			fc.property(fc.integer({ min: 1, max: 120_000 }), (waitMs) => {
+				let clock = 0;
+				const shown: { at: number; seconds: number }[] = [];
+				let pending: { at: number; tick: () => void } | null = null;
+				startCountdown(waitMs, {
+					now: () => clock,
+					after: (ms, tick) => {
+						pending = { at: clock + ms, tick };
+						return () => {
+							pending = null;
+						};
+					},
+					show: (seconds) => shown.push({ at: clock, seconds })
+				});
+				for (let guard = 0; guard < 200; guard += 1) {
+					const next = pending as { at: number; tick: () => void } | null;
+					if (!next) break;
+					pending = null;
+					clock = next.at;
+					next.tick();
+				}
+				// Every second from the first number down is shown, and zero
+				// exactly at the deadline.
+				const first = Math.ceil(waitMs / 1000);
+				expect(shown.map((e) => e.seconds)).toEqual(
+					Array.from({ length: first + 1 }, (_, i) => first - i)
+				);
+				expect(shown.at(-1)?.at).toBe(waitMs);
+			})
 		);
 	});
 });
