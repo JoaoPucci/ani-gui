@@ -44,6 +44,10 @@ pub use snapshot::Numbering;
 #[path = "numbering_offset_drift.rs"]
 mod drift;
 
+#[cfg(test)]
+#[path = "numbering_offset_drift_flow_test.rs"]
+mod drift_flow_tests;
+
 #[path = "numbering_offset_former.rs"]
 mod former;
 pub use former::{

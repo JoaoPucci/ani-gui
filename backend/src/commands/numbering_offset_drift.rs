@@ -73,3 +73,7 @@ pub(super) fn put_drift_right(state: &AppState, slug: &str, listing: &[EpisodeRe
         tracing::warn!(slug, error = ?e, "numbering stamp repair failed");
     }
 }
+
+#[cfg(test)]
+#[path = "numbering_offset_drift_test.rs"]
+mod tests;
