@@ -186,9 +186,10 @@ impl AniListProvider {
         // sent before.
         if is_mutation(body) {
             bump_writes(&tokens.access_token);
-            let answer = self.post_graphql_once(tokens, body).await;
-            bump_writes(&tokens.access_token);
-            return answer;
+            // Moved on again when the write is done with — answered, or
+            // dropped by its caller after it went out.
+            let _done = WriteDone(&tokens.access_token);
+            return self.post_graphql_once(tokens, body).await;
         }
         // The same query for the same bearer, sent while one is out and
         // no write has gone between them, waits for that answer
@@ -260,6 +261,15 @@ fn writes_of(token: &str) -> u64 {
         .get(token)
         .copied()
         .unwrap_or(0)
+}
+
+/// Moves a bearer's write count on when dropped.
+struct WriteDone<'a>(&'a str);
+
+impl Drop for WriteDone<'_> {
+    fn drop(&mut self) {
+        bump_writes(self.0);
+    }
 }
 
 fn bump_writes(token: &str) {
