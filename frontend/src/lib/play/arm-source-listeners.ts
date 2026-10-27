@@ -44,6 +44,10 @@ export function armSourceScopedListeners(input: {
 	/** Told when the stream's picture is held back for its resume seek
 	 *  and when it is revealed (`$lib/play/resume-hold`). */
 	onResumeHold?: (holding: boolean) => void;
+	/** Whether the stream is loaded from the start returned here — an
+	 *  hls engine is; an element given a `src` opens at zero whatever
+	 *  the point. */
+	startedAtPoint?: boolean;
 }): SourceStart {
 	const { video, showId, episode, scope, positions, onResumeHold } = input;
 	const row = input.row ?? null;
@@ -60,7 +64,7 @@ export function armSourceScopedListeners(input: {
 	// the stream's first frame is never shown, nor played, before it.
 	// The page's CSS can only hide the picture, and picture-in-picture
 	// and a <video> that is itself fullscreen show the element directly,
-	// so an hls stream is also started at the point (`SourceStart`): no
+	// so an hls.js stream is also started at the point (`SourceStart`): no
 	// fragment before the point's is fetched, so nothing before it can
 	// be shown. A started mark, at zero, has nowhere to seek.
 	const startAt = resumeStartAt(recovered, kept);
@@ -120,10 +124,20 @@ export function armSourceScopedListeners(input: {
 	const onDuration = () => {
 		if (Number.isFinite(video.duration)) resumeKept();
 	};
+	// A forgotten point plays the stream from its start. A stream loaded
+	// from the point is sought there, even while the element still
+	// reads zero: the metadata usually comes before the point's
+	// fragment is in, and the engine, which still holds the point,
+	// would move the playhead back to it once that fragment is
+	// buffered; a seek before then is what makes it start from zero.
+	// The reveal waits for that seek like any other. Any other stream
+	// is already at its start, and is revealed there at once.
+	const startFromTheTop = () => {
+		if (input.startedAtPoint) seekTo(0);
+		else hold?.release();
+	};
 	// Seeks to the kept point unless the known length puts it in the
-	// last 90 seconds, where it is forgotten instead and the stream
-	// sought to its start: an hls stream was started at the point, and
-	// the reveal waits for the seek back like any other. Decided once.
+	// last 90 seconds, where it is forgotten instead. Decided once.
 	const resumeKept = () => {
 		stopWaiting();
 		// A started mark, at zero, opens from the start and is never
@@ -131,7 +145,7 @@ export function armSourceScopedListeners(input: {
 		if (recovered === null && kept !== null && kept > 0) {
 			if (isFinishedAt(kept, video.duration)) {
 				clearPosition(showId, episode, positions);
-				seekTo(0);
+				startFromTheTop();
 			} else seekTo(kept);
 		}
 		opened = true;

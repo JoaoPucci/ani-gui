@@ -1719,7 +1719,9 @@
 			row: fromRow,
 			onResumeHold: (holding) => {
 				resumeHolding = holding;
-			}
+			},
+			// Only hls.js is handed the start, below.
+			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
 		playerError = null;
 		failedStreamError = null;

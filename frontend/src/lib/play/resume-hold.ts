@@ -11,10 +11,11 @@
  * refused, once the frame at the point is in.
  *
  * Hiding is the page's part; picture-in-picture, and a <video> that is
- * itself fullscreen, show the element directly. So an hls stream is
- * also started at the point (`resumeStartAt`): its engine begins
- * loading at the point's fragment, so the frames before that fragment
- * are never fetched, let alone shown. An mp4 stream, played from
+ * itself fullscreen, show the element directly. So an hls stream the
+ * app plays through hls.js is also started at the point
+ * (`resumeStartAt`): the engine begins loading at the point's
+ * fragment, so the frames before that fragment are never fetched, let
+ * alone shown. An mp4 stream, played from
  * `src`, has no start the page can set without racing the element's
  * own; docs/deferred-work.md has why.
  */
@@ -32,9 +33,9 @@ export const SEEK_LANDED_WITHIN_S = 2;
 /** How long each wait of the hold lasts before it reveals anyway:
  *  the wait for a seek to issue — the metadata, or a known length —
  *  and, once it is issued, the wait for it to land and play. Each is
- *  a wait on one fragment, the first one or the one at the point, and
- *  this is how long the engine lets one fragment take to load before
- *  it counts the load as timed out. */
+ *  a wait on one fragment, the first one loaded or the one at the
+ *  point, and this is how long the engine lets one fragment take to
+ *  load before it counts the load as timed out. */
 export const RESUME_HOLD_BOUND_MS = HLS_STALL_LOAD_POLICY.fragLoadPolicy.default.maxLoadTimeMs;
 
 /** Where a stream attaching now resumes: a pending recovery's point,
@@ -52,6 +53,8 @@ export type ResumeHold = {
 	/** Seeks to `seconds`; while the hold is on, it reveals once that
 	 *  seek landed and playback started. */
 	seekTo(seconds: number): void;
+	/** Nothing is to be sought after all: reveal and play from here. */
+	release(): void;
 	/** Ends the hold without starting anything — the source is gone. */
 	end(): void;
 };
@@ -131,6 +134,7 @@ export function holdForResume(input: {
 			}
 			video.currentTime = seconds;
 		},
+		release: reveal,
 		end: finish
 	};
 }
