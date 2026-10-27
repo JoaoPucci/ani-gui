@@ -106,7 +106,7 @@ A provider's resolves stamp its show keys on every store a play writes, and remo
 - **Availability rows** naming no walked provider, or none at all, are never served, and go; the next look at the show reprobes.
 - **Title matches** filed under a segment no walked provider names go, unless a remaining row is read by them: a kept row's sit under the `legacy` segment, or under its provider's label while the app still knows that provider, and a row whose recorded entry Kitsu answered gone is found through the retired segments its title was filed under as well.
 
-The sweep keeps no marker. It finds its work in the data itself, so a launch with nothing retired reads the history and numbering files and a few key ranges of the cache, about a millisecond, and writes nothing, and a history or cache restored from an older copy is swept on the next launch. What it changed is listed on the diagnostics page.
+The sweep keeps no marker. It finds its work in the data itself, so a launch with nothing retired reads the history and numbering files and a few key ranges of the cache, under two milliseconds, and writes nothing, and a history or cache restored from an older copy is swept on the next launch. What it changed is listed on the diagnostics page.
 
 The survey that chose hianime, and the reasoning behind the shape this section describes, are in [`proposals/additional-providers.md`](./proposals/additional-providers.md) — the proposal as it was written before the work, kept for its survey; this section, not the proposal, describes what shipped.
 
