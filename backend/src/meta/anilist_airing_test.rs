@@ -500,3 +500,36 @@ fn a_batch_node_missing_a_field_it_was_asked_for_is_no_answer() {
         1
     );
 }
+
+#[tokio::test]
+async fn a_by_mal_batch_refused_partway_is_a_rate_limit_not_a_partial_answer() {
+    // The cut page's first half answers; AniList refuses the second.
+    // The batch is the rate limit, so the seed writes nothing for it —
+    // not the half it heard back as if the rest had no schedule.
+    let server = wiremock::MockServer::start().await;
+    for (ids, reply) in [
+        (
+            "[1,2]",
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], true)),
+        ),
+        (
+            "[1]",
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(by_mal_page(&[(1, "FINISHED", 10)], false)),
+        ),
+        (
+            "[2]",
+            wiremock::ResponseTemplate::new(429).insert_header("retry-after", "60"),
+        ),
+    ] {
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::body_string_contains(ids))
+            .respond_with(reply)
+            .mount(&server)
+            .await;
+    }
+    let got =
+        airing_status_batch_by_mal(&reqwest::Client::new(), &[1, 2], Some(&server.uri())).await;
+    assert!(matches!(got, Err(AniError::RateLimited { .. })), "{got:?}");
+}
