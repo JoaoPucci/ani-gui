@@ -19,6 +19,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -89,6 +90,7 @@ const offers = (episode: number) =>
  */
 function mountRefusedRow() {
 	const probes: { mode?: string }[] = [];
+	fetches = watchPageFetches();
 	server.use(
 		...homeHandlers({ history: [{ ep_no: String(WATCHED), id: 'allanime-1', title: SHOW }] }, [
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 26)])),
@@ -105,6 +107,12 @@ function mountRefusedRow() {
 	app = mount(HomePage, { target });
 	return probes;
 }
+
+/** What the page asks of the network, recorded as it asks. */
+let fetches: ReturnType<typeof watchPageFetches>;
+/** Availability probes the page has asked, counted at the call — before
+ *  any of the request reaches a handler. */
+const asked = () => fetches.sent.filter((f) => f.path === '/api/availability').length;
 
 /** Comfortably past the breaker cooldown the retry waits out. */
 const PAST_COOLDOWN_MS = 90_000;
@@ -148,12 +156,19 @@ describe('Continue Watching card after a gate-refused probe', () => {
 		// home and immediately navigates on does.
 		unmount(app!);
 		app = null;
-		await vi.advanceTimersByTimeAsync(PAST_COOLDOWN_MS * 4);
+		// Every timer the page armed runs out, however far up the ladder
+		// it sits, and the clock stops with none left: a loop that
+		// outlived the route would have had every rung by then. A probe
+		// is seen as the page asks it, so one still on its way to the
+		// handler counts too.
+		await vi.runAllTimersAsync();
+		expect(vi.getTimerCount(), 'no timer is left to fire later').toBe(0);
 
 		// The loop outlives the first pass by design; without a
 		// teardown it would keep asking the provider about a strip nobody
 		// is looking at.
 		expect(probes).toHaveLength(1);
+		expect(asked(), 'no probe is asked after the route is gone').toBe(1);
 	});
 
 	it('survives a run of refusals and still corrects the card', async () => {

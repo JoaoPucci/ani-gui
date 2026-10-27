@@ -105,6 +105,15 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
     [ "$output" = "$(outputs true false false)" ]
 }
 
+@test "the coverage script selects the Rust pipeline only" {
+    # The coverage job runs tools/rust-lcov.sh, so a change touching
+    # only the script has to run the job that exercises it.
+    head=$(change tools/rust-lcov.sh)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs true false false)" ]
+}
+
 @test "the workflow itself selects everything" {
     head=$(change .github/workflows/rust.yml)
     run filter pull_request "$base" "$head"

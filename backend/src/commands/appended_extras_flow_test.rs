@@ -183,6 +183,34 @@ fn oads() -> Vec<String> {
     vec!["12.1".to_string(), "12.2".to_string()]
 }
 
+/// The flows below read their evidence from the cache a detail page
+/// visit leaves, through the production source and its five-second
+/// budget. They can trust the budget never to run out on them only
+/// because such a read never waits: it is answered the first time it
+/// is polled, before any timer can fire, however slow the machine.
+/// The one that drops AniList's cached answer reads it from an address
+/// that refuses at once; a refusal and a budget run out both read the
+/// listing by the kept reading, so its outcome does not hang on which
+/// comes first.
+#[tokio::test]
+async fn evidence_a_detail_page_left_cached_is_read_without_waiting() {
+    use crate::commands::play_native_appended::TailSource;
+    use futures_util::FutureExt;
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    for status in ["finished", "current"] {
+        seed_kitsu(&state, status);
+        let source =
+            crate::commands::kitsu_tail::KitsuTail::for_entry(&state, Some(KITSU)).expect("entry");
+        let read = source.tail(&noragami_rows(), 12).now_or_never();
+        assert!(
+            matches!(read, Some(Some(_))),
+            "Kitsu {status}: answered on its first poll, from the cache"
+        );
+    }
+}
+
 #[tokio::test]
 async fn availability_caps_noragami_at_twelve_with_its_oads_as_extras() {
     let td = tempfile::tempdir().expect("td");

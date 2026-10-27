@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { mount, tick, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setQuery } from './page-state.svelte';
@@ -85,6 +85,9 @@ const observers: { cb: IntersectionObserverCallback; targets: Element[] }[] = []
  *  from the page as it stands when observed — happy-dom has no layout,
  *  so a scenario says which content makes the grid short. */
 let inReachOnObserve: boolean | (() => boolean) = false;
+/** The page as it stood each time a marker was observed: the grid
+ *  each measurement was taken against. */
+const observations: string[] = [];
 class ControlledObserver {
 	private entry: { cb: IntersectionObserverCallback; targets: Element[] };
 	constructor(cb: IntersectionObserverCallback) {
@@ -93,6 +96,7 @@ class ControlledObserver {
 	}
 	observe(el: Element) {
 		this.entry.targets.push(el);
+		observations.push(target.textContent ?? '');
 		// A real observer reports a target's initial state once it is
 		// observed, measured against the layout it was observed in.
 		// Scenarios that care set `inReachOnObserve`.
@@ -146,6 +150,7 @@ beforeEach(() => {
 	savedObserver = globalThis.IntersectionObserver;
 	globalThis.IntersectionObserver = ControlledObserver as unknown as typeof IntersectionObserver;
 	observers.length = 0;
+	observations.length = 0;
 	inReachOnObserve = false;
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -168,6 +173,21 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 }
 
 const screen = () => target.textContent ?? '';
+
+/** The runner's paging phase, as the folio carries it. A page load
+ *  turns it to `loading-more` in the same step that starts the load,
+ *  before the request leaves. */
+const pagingPhase = () => target.querySelector('.folio')?.getAttribute('data-phase') ?? null;
+
+/** Wait for the marker to be measured, since observation `since`,
+ *  against a grid `shows` describes; then flush the report that
+ *  measurement queues and the effect it sets off. Whatever loads a page
+ *  after a page settles or a filter changes is decided there, so once
+ *  it has run, a load it started is already in the paging phase. */
+async function measuredAfresh(since: number, shows: (page: string) => boolean, what: string) {
+	await until(() => observations.slice(since).some(shows), what);
+	await tick();
+}
 
 /** Focus sits in the page, on something that says nothing itself and
  *  does not contain the live status line: the status line is what
@@ -327,8 +347,11 @@ describe('/search infinite scroll', () => {
 		await until(() => !screen().includes('Dragon Ball Z'), 'the movie filter to apply');
 
 		reachBottom();
-		// Let any effect the report sets off run, and its request leave.
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		// The report is taken in synchronously; the effect it sets off
+		// runs in the next flush, and a load it started would have
+		// turned the phase before its request left.
+		await tick();
+		expect(pagingPhase()).toBe('idle');
 		expect(offsets).toEqual([0]);
 
 		const loadMore = buttonNamed(m.search_paging_load_more());
@@ -514,11 +537,16 @@ describe('/search infinite scroll', () => {
 
 		setQuery('tall');
 		await until(() => asked.includes('tall@0'), 'the tall search to be asked for');
-		// Let the stale report, if any, land before the tall grid does.
-		for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
+		// The short grid's marker leaves while the tall search's first
+		// page loads, and a stopped watch drops whatever it still
+		// receives: once it is gone, its last report has landed or never
+		// will — before the tall grid does.
+		await until(() => target.querySelector('.sentinel') === null, "the short grid's marker to go");
+		const since = observations.length;
 		releaseTall();
 		await until(() => screen().includes('Tall result'), 'the tall grid');
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		await measuredAfresh(since, (p) => p.includes('Tall result'), 'the tall grid to be measured');
+		expect(pagingPhase()).toBe('idle');
 		expect(asked).toEqual(['short@0', 'tall@0']);
 	});
 
@@ -542,9 +570,11 @@ describe('/search infinite scroll', () => {
 		setQuery('dragon ball');
 		app = mount(SearchPage, { target });
 		await until(() => screen().includes('Show 1'), 'the first page');
+		const since = observations.length;
 		reachBottom();
 		await until(() => screen().includes('Show 21'), 'the reached page');
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		await measuredAfresh(since, (p) => p.includes('Show 21'), 'the grown grid to be measured');
+		expect(pagingPhase()).toBe('idle');
 		expect(offsets).toEqual([0, 20]);
 	});
 
@@ -568,7 +598,8 @@ describe('/search infinite scroll', () => {
 		setQuery('dragon ball');
 		app = mount(SearchPage, { target });
 		await until(() => screen().includes('Show 41'), 'the grid to fill to the third page');
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		await measuredAfresh(0, (p) => p.includes('Show 41'), 'the filled grid to be measured');
+		expect(pagingPhase()).toBe('idle');
 		expect(offsets).toEqual([0, 20, 40]);
 	});
 
@@ -600,11 +631,16 @@ describe('/search infinite scroll', () => {
 		movie.click();
 		await until(() => !screen().includes('Show 1'), 'the movie filter to apply');
 		reachBottom();
-		for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
+		// The report is taken in synchronously; the flush after it runs
+		// the effect it sets off, which a filter keeps from loading.
+		await tick();
+		expect(pagingPhase()).toBe('idle');
 
+		const since = observations.length;
 		movie.click();
 		await until(() => screen().includes('Show 1'), 'the filter to come off');
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		await measuredAfresh(since, (p) => p.includes('Show 1'), 'the restored grid to be measured');
+		expect(pagingPhase()).toBe('idle');
 		expect(offsets).toEqual([0]);
 	});
 
@@ -635,14 +671,22 @@ describe('/search infinite scroll', () => {
 		app = mount(SearchPage, { target });
 		await until(() => screen().includes('Show 1'), 'the first page');
 		const movie = buttonNamed(subtypeLabel('movie'))!;
+		const filtering = observations.length;
 		movie.click();
 		await until(() => !screen().includes('Show 1'), 'the movie filter to apply');
-		for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
+		await measuredAfresh(
+			filtering,
+			(p) => !p.includes('Show 1'),
+			'the filtered grid to be measured'
+		);
+		expect(pagingPhase()).toBe('idle');
 		expect(offsets).toEqual([0]);
 		restored = true;
+		const restoring = observations.length;
 		movie.click();
 		await until(() => screen().includes('Show 21'), 'the page the short restored grid asks for');
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		await measuredAfresh(restoring, (p) => p.includes('Show 21'), 'the grown grid to be measured');
+		expect(pagingPhase()).toBe('idle');
 		expect(offsets).toEqual([0, 20]);
 	});
 
