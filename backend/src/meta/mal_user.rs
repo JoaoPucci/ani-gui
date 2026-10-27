@@ -171,11 +171,13 @@ impl UserListProvider for MalProvider {
         id: ProviderMediaId,
         update: EntryUpdate,
     ) -> Result<ListEntry> {
-        // MAL splits `Rewatching` across `status="watching"` +
-        // `is_rewatching=true`; the helper carries both halves.
+        // A rewatch sends MAL no status ([`crate::account::status::ListStatus::to_mal_write`]):
+        // MAL keeps "finished" only in Completed.
         let mut form: Vec<(&str, String)> = Vec::new();
-        if let Some(status) = update.status {
-            let (mal_status, is_rewatching) = status.to_mal();
+        if let Some((mal_status, is_rewatching)) = update
+            .status
+            .and_then(crate::account::status::ListStatus::to_mal_write)
+        {
             form.push(("status", mal_status.to_string()));
             form.push(("is_rewatching", is_rewatching.to_string()));
         }

@@ -815,7 +815,7 @@ async fn push_progress_via(
         // episode — before the monotonic reconcile, at no extra request.
         let media = provider.tracked_media(tokens, native).await?;
         let update = fit_to_tracker_total(update, media.episodes);
-        match reconcile_monotonic(update, media.entry) {
+        match reconcile_monotonic(update, media.entry.map(|e| e.as_kept_by(kind))) {
             Some(reconciled) => reconciled,
             None => return Ok(None),
         }
