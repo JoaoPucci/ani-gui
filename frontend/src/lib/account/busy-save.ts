@@ -47,12 +47,12 @@ function after(ms: number, tick: () => void): () => void {
  *  about, a newer write, or the user — and its timer stops whenever it
  *  leaves. Returns its id. */
 export function noticeBusy(provider: Provider, seconds: number): string {
-	let stop = () => {};
+	let stop: (() => void) | null = null;
 	const id = toastStore.push({
 		kind: 'info',
 		message: busyText(provider, seconds),
 		duration: null,
-		onClose: () => stop()
+		onClose: () => stop?.()
 	});
 	stop = startCountdown(Date.now() + seconds * 1000, {
 		now: () => Date.now(),
