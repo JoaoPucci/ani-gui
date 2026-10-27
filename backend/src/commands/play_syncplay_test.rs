@@ -161,6 +161,7 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
 
@@ -243,6 +244,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
 
@@ -392,6 +394,7 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         },
     );
     crate::history::upsert_and_write(

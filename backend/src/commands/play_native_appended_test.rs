@@ -730,6 +730,7 @@ fn picked(rows: Vec<EpisodeRef>) -> PickedShow {
         episodes: rows,
         stitched: false,
         versions: Vec::new(),
+        unread_past: None,
     }
 }
 

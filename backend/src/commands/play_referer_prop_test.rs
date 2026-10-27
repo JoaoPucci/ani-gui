@@ -39,6 +39,7 @@ proptest::proptest! {
             version: None,
             former_tags: Vec::new(),
             other_copies: Vec::new(),
+            unread_past: None,
         };
         let row = cached_resolution_for(&resolved);
         proptest::prop_assert_eq!(row.upstream_url, master_url);

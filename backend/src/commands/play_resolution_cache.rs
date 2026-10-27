@@ -243,6 +243,13 @@ pub struct CachedResolution {
     /// The version the row plays, when the pick had several.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// Whether the episode the row plays is a row past Kitsu's count
+    /// whose reading could not be read, which a replay's session says
+    /// as the fresh resolve's did
+    /// ([`crate::commands::session::CreateSessionResponse::episode_unverified`]).
+    /// `false` on rows from before the field.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub episode_unverified: bool,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the

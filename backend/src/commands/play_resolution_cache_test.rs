@@ -90,6 +90,7 @@ fn sample_resolution() -> CachedResolution {
         version: None,
         played: None,
         former_episode: None,
+        episode_unverified: false,
     }
 }
 

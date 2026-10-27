@@ -237,6 +237,7 @@ pub(super) async fn stamp_availability_after_native(
             extra_tags,
             versions,
             played,
+            count_unread: false,
         },
     )
     .await;
@@ -554,6 +555,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         kitsu_id: None,
         versions: native.versions.clone(),
         version: native.version,
+        episode_unverified: false,
     }
 }
 
@@ -1075,6 +1077,7 @@ pub(crate) mod tests {
             version: None,
             played: None,
             former_episode: None,
+            episode_unverified: false,
         }
     }
 
@@ -1461,6 +1464,7 @@ pub(crate) mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
     }
@@ -1511,6 +1515,7 @@ pub(crate) mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
     }
@@ -1950,6 +1955,7 @@ pub(crate) mod tests {
                 version: None,
                 played: None,
                 former_episode: None,
+                episode_unverified: false,
             },
         );
         let cfg = external_cfg();

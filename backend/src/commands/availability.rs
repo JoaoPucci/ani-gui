@@ -308,6 +308,10 @@ pub struct ResolveVerdict<'a> {
     /// The version that served, when the pick has several: it carries
     /// the mode, whatever an earlier probe sampled.
     pub played: Option<crate::commands::play_native_versions::VersionKind>,
+    /// Whether the listing ran past Kitsu's count with no reading of
+    /// the rows past it ([`crate::commands::play_native::PickedShow::unread_past`]):
+    /// its cap and extras are no answer about the count.
+    pub count_unread: bool,
 }
 
 impl<'a> ResolveVerdict<'a> {
@@ -326,6 +330,7 @@ impl<'a> ResolveVerdict<'a> {
             extra_tags,
             versions: &[],
             played: None,
+            count_unread: false,
         }
     }
 
@@ -336,6 +341,14 @@ impl<'a> ResolveVerdict<'a> {
         versions: &'a [crate::commands::play_native_versions::VersionInfo],
     ) -> Self {
         self.versions = versions;
+        self
+    }
+
+    /// The verdict whose listing's rows past Kitsu's count were not
+    /// read ([`Self::count_unread`]).
+    #[must_use]
+    pub fn with_count_unread(mut self, count_unread: bool) -> Self {
+        self.count_unread = count_unread;
         self
     }
 
@@ -360,6 +373,7 @@ impl<'a> ResolveVerdict<'a> {
             extra_tags: &[],
             versions: &[],
             played: None,
+            count_unread: false,
         }
     }
 }
