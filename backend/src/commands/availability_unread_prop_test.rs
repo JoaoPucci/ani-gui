@@ -8,7 +8,7 @@
 
 use super::*;
 use crate::commands::play_native_numbering::{extra_episode_tags, kitsu_episode_cap};
-use crate::scraper::provider::EpisodeRef;
+use crate::scraper::provider::{EpisodeRef, ProviderId};
 use proptest::prelude::*;
 
 /// A listing numbered by position, some rows tagged as recaps.
@@ -91,4 +91,37 @@ proptest! {
             prop_assert_eq!(got, (kitsu_episode_cap(&rows), extra_episode_tags(&rows)));
         }
     }
+
+    /// A row stands for an unread count exactly when it is positive,
+    /// counted, exact, and names the provider that served; a row naming
+    /// no provider stands for none.
+    #[test]
+    fn a_count_stands_only_for_its_own_provider(
+        available in any::<bool>(),
+        count in proptest::option::of(any::<u32>()),
+        approximate in any::<bool>(),
+        named in proptest::option::of(provider()),
+        served in proptest::option::of(provider()),
+    ) {
+        let stood = crate::commands::availability::AvailabilityResponse {
+            available,
+            episode_count: count,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: approximate,
+            gate_refused: false,
+            unsettled: None,
+            provider: named,
+            versions: Vec::new(),
+        };
+        let want = available
+            && count.is_some()
+            && !approximate
+            && matches!((named, served), (Some(a), Some(b)) if a == b);
+        prop_assert_eq!(counts_for(&stood, served), want);
+        prop_assert!(!counts_for(&stood, None));
+    }
+}
+
+fn provider() -> BoxedStrategy<ProviderId> {
+    prop_oneof![Just(ProviderId::TestA), Just(ProviderId::TestB)].boxed()
 }
