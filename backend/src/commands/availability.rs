@@ -1120,6 +1120,16 @@ pub async fn check_availability(
         // acting on it are otherwise separated by the airing fetch
         // below, and a refresh can begin and finish inside that gap.
         let row = cache_key(id, mode);
+        // A count no reading reached, beside a counted row that stands,
+        // writes nothing: answered before the row is held, so a
+        // cache-skipping refresh that writes nothing takes the row from
+        // none of the writers that set out before it.
+        if let Some(stood) = count_unread
+            .then(|| super::availability_unread::standing_counted_row(state, &row, provider))
+            .flatten()
+        {
+            return Ok(stood);
+        }
         let Some(_writing) = hold_if_still_ours(
             &state.availability_refreshes,
             &row,
@@ -1161,7 +1171,8 @@ pub async fn check_availability(
             });
         }
         // A count no reading reached does not write over one that
-        // stands: the row, and its count, are the answer.
+        // stands: the row, and its count, are the answer. Asked again
+        // under the lock for a row written since the check above.
         if let Some(stood) = count_unread
             .then(|| super::availability_unread::standing_counted_row(state, &row, provider))
             .flatten()
