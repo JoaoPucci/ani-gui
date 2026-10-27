@@ -306,9 +306,9 @@ class TheModelReadsTheDocs(unittest.TestCase):
             self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", cand, E)])), pick("x"), cand)
         self.assertIsNone(oracle.predict(pool(["Pokémon 2"], E, [("x", "Pokémon", E)])))
         # read past a name only at a word's end or before a glued digit or 第
-        self.assertIsNone(oracle._past_name("Showtime Season 1", "Show 2"))
-        self.assertIsNone(oracle._past_name("Show² Season 1", "Show 2"))
-        self.assertEqual(oracle._past_name("Show2 Part 2", "Show 3"), "2 part 2")
+        self.assertIsNone(oracle.past_stem("Showtime Season 1", "Show 2"))
+        self.assertIsNone(oracle.past_stem("Show² Season 1", "Show 2"))
+        self.assertEqual(oracle.past_stem("Show2 Part 2", "Show"), ("2 part 2", []))
         # a digit glued to a Latin word is the word's: "Show2" is no "Show 2"
         self.assertEqual(oracle.predict(pool(["Show 3"], E, [("x", "Show2", E)])), pick("x"))
         self.assertIsNone(oracle.predict(pool(["ショー３"], E, [("x", "ショー２", E)])))
@@ -352,8 +352,8 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # number in the stem's place, and names no division, so nothing
         # after it names a season before the entry
         self.assertEqual(oracle.predict(pool(["Show 2"], E, [("x", "Show 1é Season 1", E)])), pick("x"))
-        self.assertEqual(oracle._opening("1é season 1"), "")
-        self.assertEqual(oracle._opening("season 1 arc"), "season 1")
+        self.assertEqual(oracle._opening_items("1é season 1"), [])
+        self.assertEqual([o for o, _, _, _ in oracle._opening_items("season 1 arc")], [[1]])
         # an empty name is no name: nothing is read past it
         self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "1st Season", E)])), pick("x"))
         self.assertEqual(oracle.predict(pool(["Season 2"], E, [("x", "Season 1", E)])), pick("x"))
@@ -496,7 +496,9 @@ class TheModelReadsTheDocs(unittest.TestCase):
     def test_a_span_through_the_first_part_reads_as_the_whole(self):
         self.assertEqual(oracle.Reading("Haikyuu!!: To the Top (Part 1+2)").ords, [])
         self.assertTrue(oracle.names(["Haikyuu!!: To the Top"], "Haikyuu!!: To the Top (Part 1+2)"))
-        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [(2, 3)])
+        # a span's ordinals are read in turn, as "Show Part 2 III" reads
+        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [2, 3])
+        self.assertEqual(oracle.Reading("Show Part 2 III").ords, [2, 3])
 
     def test_a_marker_season_below_an_entry_s_bare_number_is_the_season_before(self):
         self.assertFalse(oracle.pickable(["Show 3 Part 2"], "Show Season 2 Part 2"))
@@ -531,7 +533,26 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # the lead, and a first part completes no bare title: both pools are
         # decided by the rules the predicates read
         self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show 2", 6), ("b", "Show 2 Part 2", 6)])))
-        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])))
+        # with no year the bare title is short of the count and nothing
+        # else is read; with the entry's year it is an airing part, and the
+        # rescue takes it alone
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)], year=None)))
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])),
+            {"pick": "a", "count": 6},
+        )
+
+    def test_the_airing_rescue_takes_a_short_part_of_the_entry_s_year(self):
+        # "Airing rescue (confirmed, short of E) | distance, exact title,
+        # part agreement": only a hit whose year is the entry's, and only
+        # when nothing fits
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("x", "Show", 5)])), {"pick": "x", "count": 5})
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("x", "Show", 5)], year=None)))
+        self.assertEqual(
+            oracle.predict(pool(["Show"], E, [("a", "Show Arc", 4), ("b", "Show", 7)])),
+            {"pick": "b", "count": 7},
+        )
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("x", "Show", 5), ("y", "Show", 11)])), {"pick": "y", "count": 11})
 
     def test_a_half_names_its_ordinal_and_is_no_sequel_guard_marker(self):
         self.assertTrue(oracle.admitted(["Show 2nd Half"], "Show Season 2"))

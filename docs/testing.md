@@ -39,6 +39,7 @@ tests/
 │   └── arch/              # stand-in checks the bats harness drives
 ├── picker-oracle/         # the season picker's checks (README inside)
 │   ├── oracle.py          # model of docs/title-resolution.md, and the comparison
+│   ├── fuzz.py            # the differential fuzzer's grammar of titles
 │   ├── cases/             # hand-written pools with the docs' answers
 │   ├── allowlist.json     # accepted disagreements, each with its reason
 │   └── fixtures-golden.json  # every recorded picker fixture's outcome
@@ -113,6 +114,7 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, a script the suites execute, or a workflow | yes |
 | `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json`, `tools/hostile-tmpdir.sh`, `tools/rust-lcov.sh` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
 | `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | not in the ruleset's required list yet |
+| `rust.yml`, job `picker oracle fuzz` | the same changes as `picker oracle agreement`; draws 20000 pools from the run number as its seed and prints the seed | not in the ruleset's required list yet |
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
@@ -126,10 +128,18 @@ must pick as `fixtures-golden.json` records, an ordinary `cargo test`;
 and the picker must agree with `oracle.py`, a model of the decision
 tables in `docs/title-resolution.md`, on every pool the model writes
 out, unless `allowlist.json` carries the disagreement with a reason.
+A differential fuzzer beside it (`oracle.py fuzz`) draws further pools
+from a grammar of the docs' vocabulary, seeded, and holds the picker to
+the model's prediction on each; every shape it has found is pinned in
+`tests/picker-oracle/cases/fuzz-found.json`.
 
 The rule for a reported mispick: it becomes a recorded fixture under
 `tests/fixtures/hianime/picker/` — with a `MANIFEST.json` entry and an
-expectation in the fixture test's table — in the PR that fixes it. The
+expectation in the fixture test's table — in the PR that fixes it. A
+shape the fuzzer finds on a synthetic pool is no reported mispick and
+has no provider response to record: it is pinned as a case in
+`tests/picker-oracle/cases/fuzz-found.json`. Neither replaces the
+other; the oracle's README has the full rule. The
 golden and the allowlist change only in a PR that changes the picker,
 with the reason in the commit body. The model follows the docs: when
 the model and the docs disagree, fix whichever is wrong and say which;

@@ -259,6 +259,61 @@ jobs:
           "$RUNNER_TEMP/cases.json" "$RUNNER_TEMP/out.json"
           --allowlist tests/picker-oracle/allowlist.json
 
+  picker-oracle-fuzz:
+    needs: filter
+    name: picker oracle fuzz
+    # The differential fuzzer under tests/picker-oracle/: pools drawn
+    # from a grammar of the docs' vocabulary (fuzz.py), each with the
+    # pick the model predicts, run through the same driver and compared
+    # by the same `cmp`. The seed is the run number, so every run draws
+    # a new set and a failure is reproduced from the seed it prints:
+    #   python3 -I tests/picker-oracle/oracle.py fuzz SEED 20000 cases.json
+    # The budget is a fraction of the two-minute one the README names
+    # for a local run; the generated pools are not committed, and every
+    # shape a run has found is pinned in cases/fuzz-found.json. The
+    # comparison takes no allowlist: its entries name generated pools by
+    # id, and a disagreement the fuzzer finds is resolved, not accepted.
+    runs-on: ubuntu-latest
+    env:
+      FUZZ_SEED: ${{ github.run_number }}
+      FUZZ_POOLS: 20000
+    steps:
+      - if: needs.filter.outputs.picker != 'true'
+        run: 'echo "Not required: no picker, fixture, oracle or title-resolution changes in this PR"'
+      - if: needs.filter.outputs.picker == 'true'
+        uses: actions/checkout@v4
+      - if: needs.filter.outputs.picker == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.picker == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - if: needs.filter.outputs.picker == 'true'
+        name: Draw the pools
+        run: |
+          echo "fuzz seed $FUZZ_SEED, $FUZZ_POOLS pools"
+          python3 -I tests/picker-oracle/oracle.py fuzz "$FUZZ_SEED" "$FUZZ_POOLS" "$RUNNER_TEMP/fuzz.json"
+      - if: needs.filter.outputs.picker == 'true'
+        name: Run the picker over them
+        working-directory: backend
+        env:
+          PICKER_ORACLE_CASES: ${{ runner.temp }}/fuzz.json
+          PICKER_ORACLE_OUT: ${{ runner.temp }}/fuzz-out.json
+        run: |
+          cargo test --lib -- --ignored --exact commands::play_native_walk::fixture_tests::oracle::run_the_oracle_cases
+          test -s "$PICKER_ORACLE_OUT" || {
+            echo "run_the_oracle_cases wrote no outcomes to $PICKER_ORACLE_OUT"
+            exit 1
+          }
+      - if: needs.filter.outputs.picker == 'true'
+        name: Compare with the model
+        run: |
+          python3 -I tests/picker-oracle/oracle.py cmp "$RUNNER_TEMP/fuzz.json" "$RUNNER_TEMP/fuzz-out.json" || {
+            echo "::error::the picker and the model disagree on fuzz seed $FUZZ_SEED ($FUZZ_POOLS pools)"
+            echo "reproduce at ${{ github.sha }}: python3 -I tests/picker-oracle/oracle.py fuzz $FUZZ_SEED $FUZZ_POOLS cases.json"
+            exit 1
+          }
+
   coverage:
     needs: filter
     name: cargo-llvm-cov + ratchet
