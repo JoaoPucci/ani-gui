@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountStore } from './store.svelte';
 import { refreshAccount } from './refresh-flow';
+import { freshBearerFor, __resetInFlightRefreshes } from './fresh-bearer';
 import { persistAccount, refreshTokens } from './api';
 import type { PersistedAccount } from './types';
 
@@ -666,6 +667,46 @@ describe('a renewal that a hydrate overtakes', () => {
 		expect(accountStore.byProvider.mal).toMatchObject({
 			kind: 'connected',
 			account: { access_token: 'new' }
+		});
+	});
+
+	it('keeps the renewal’s own new bearer when a re-read finds it before the save reports', async () => {
+		// The main process has written the renewed token, but the save
+		// has not answered yet. A re-read now finds the renewal's own
+		// write: the caller must get the renewed bearer, not the old one.
+		__resetInFlightRefreshes();
+		const r = race(() =>
+			Response.json({
+				access_token: 'renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		let releaseWrite: () => void = () => {};
+		const writeHeld = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		r.setToken.mockImplementationOnce(async (_p, written) => {
+			r.setKeychain(written);
+			await writeHeld;
+			return { ok: true };
+		});
+		const soon = payload({
+			access_token: 'old',
+			refresh_token: 'rt',
+			expires_at_epoch_s: Math.floor(Date.now() / 1000) + 30
+		});
+		accountStore.setConnected('mal', soon);
+		const bearer = freshBearerFor('mal');
+		r.release();
+		await vi.waitFor(() => expect(r.setToken).toHaveBeenCalled());
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		releaseWrite();
+		expect(await bearer).toBe('renewed');
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'renewed' }
 		});
 	});
 });
