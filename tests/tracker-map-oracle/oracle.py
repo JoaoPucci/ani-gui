@@ -233,8 +233,11 @@ def listed_number(text):
 def extras_rule(ev, count, total):
     if ev["listed"] is None:
         return None
+    # Distinct numbers, whole part first and no fraction before one, as
+    # the app orders them; the set only counts them.
     extras = sorted(
-        {n for n in map(listed_number, ev["listed"]) if n and (n[0] == 0 or n[1] is not None)}
+        {n for n in map(listed_number, ev["listed"]) if n and (n[0] == 0 or n[1] is not None)},
+        key=lambda e: (e[0], e[1] is not None, e[1] or ""),
     )
     if len(extras) != total - count:
         return None
@@ -298,6 +301,62 @@ def predict(ev):
     if len(found) > 1:
         return identity("conflict")
     return {"shape": found[0][0], "segments": found[0][1]}
+
+
+def whole_day(date):
+    """`date` when it names a real whole day."""
+    return date if month(date) and date and len(date) == 10 else None
+
+
+def special_rule(sp):
+    """A special the tracker has no entry for, among the extras of exactly
+    one related entry: that entry's own map reads the season's extras
+    over the whole season from the entry's first episode, as many as the
+    special has episodes, one after another, none of them the entry's
+    last; no other related entry could be the special; and the special
+    started on a whole real day inside the entry's run, by month. Its
+    episodes are those extras, where the tracker lists them, never
+    completing the entry."""
+    k = sp["special"]["episodes"] or 0
+    start = whole_day(sp["special"]["start"])
+    if not k or not start:
+        return None
+    fits = []
+    for f in sp["related"]:
+        e = f["evidence"]["entry"]
+        if f["contested"]:
+            continue
+        s, a, b = month(start), month(e["start"]), month(e["end"])
+        if not (s and a and b and a <= s <= b):
+            continue
+        m = predict(f["evidence"])
+        if m["shape"] != "extras" or len(m["segments"]) != 1:
+            continue
+        seg = m["segments"][0]
+        after = seg["extras_after"]
+        if seg["entry"] != e["id"] or seg["kitsu_from"] != 1 or seg["lead"] != 0:
+            continue
+        if len(after) != k or any(w != after[0] for w in after):
+            continue
+        if after[0] + k >= seg["entry_total"]:
+            continue
+        fits.append({
+            "entry": seg["entry"],
+            "entry_total": seg["entry_total"],
+            "entry_finished": seg["entry_finished"],
+            "kitsu_from": 1,
+            "kitsu_to": k,
+            "lead": after[0],
+            "extras_after": [],
+        })
+    if len(fits) != 1:
+        return None
+    return {"shape": "special_extras", "segments": fits}
+
+
+def predict_special(sp):
+    """The special's map where nothing else explains it."""
+    return special_rule(sp) or identity("unexplained")
 
 
 def targets(m, count):
@@ -717,6 +776,54 @@ def plain_family(rng):
     return out
 
 
+def special_family(rng):
+    """A special the tracker has no entry for, beside a related season
+    whose entry counts it among its extras: the season's extras rule over
+    an entry listing an Episode 0 or a half episode, a one- or two-episode
+    special dated in the entry's run — and every way that falls short."""
+    out = []
+    for _ in range(400):
+        count = rng.choice([11, 12, 13, 24, 25])
+        k = rng.choice([1, 1, 1, 2])
+        w = rng.choice([0, 0, 0, rng.randint(1, count - 1)])
+        tweak = rng.choice(["ok", "ok", "ok", "ok", "contested", "count_mismatch", "apart", "last_slot", "before_run", "after_run", "partial_date", "undated", "two_fits", "season_conflict", "counts_agree", "unrelated"])
+        if tweak == "last_slot":
+            w = count
+        # The entry's extras, each after Kitsu's episode `w`: an Episode 0,
+        # or "w.5", "w.6" — distinct numbers after the same episode.
+        extras = ["0" if (w == 0 and i == 0) else f"{w}.{i + 5}" for i in range(k)]
+        if tweak == "apart":
+            extras = ["0", f"{count // 2}.5"]
+        listed = [str(n) for n in range(1, count + 1)] + extras
+        n_extras = len(extras)
+        total = count + n_extras
+        entry = show(70, total, rng.random() < 0.85, "2015-01-04", "2015-03-29")
+        season = kitsu(71, count, "2015-01-11", "2015-03-29")
+        ev = evidence(season, entry, listed=listed)
+        if tweak == "season_conflict":
+            # A later Kitsu part the season's map also reads: a conflict.
+            ev["parts"] = [season, kitsu(72, n_extras, "2015-04-05", "2015-04-05")]
+        if tweak == "counts_agree":
+            ev = evidence(season, dict(entry, episodes=count), listed=listed)
+        start = {"before_run": "2014-12-28", "after_run": "2015-04-02", "partial_date": "2015-01", "undated": None}.get(tweak, rng.choice(["2015-01-04", "2015-01-10", "2015-03-29"]))
+        special_count = k + 1 if tweak == "count_mismatch" else k
+        sp = {
+            "special": kitsu(73, special_count, start or "", start or ""),
+            "related": [{"related": season, "evidence": ev, "contested": tweak == "contested"}],
+        }
+        if start is None:
+            sp["special"]["start"] = None
+            sp["special"]["end"] = None
+        if tweak == "two_fits":
+            other = evidence(kitsu(74, count, "2015-01-11", "2015-03-29"), dict(entry, id=75), listed=listed)
+            sp["related"].append({"related": kitsu(74, count), "evidence": other, "contested": False})
+        if tweak == "unrelated":
+            # A related entry whose own entry has no extras at all.
+            sp["related"].insert(0, {"related": kitsu(76, 24), "evidence": evidence(kitsu(76, 24), show(77, 24)), "contested": False})
+        out.append(("special-" + tweak, sp))
+    return out
+
+
 def recorded():
     out = []
     for tracker in ("anilist", "mal"):
@@ -741,9 +848,19 @@ def gen():
         cases.append({"id": cid, "family": family, "evidence": ev})
     for cid, ev in recorded():
         cases.append({"id": cid, "family": "recorded", "evidence": ev})
+    for family, sp in special_family(rng):
+        cid = case_id(family, sp)
+        if cid in seen:
+            continue
+        seen.add(cid)
+        cases.append({"id": cid, "family": family, "special": sp})
     for c in cases:
-        m = predict(c["evidence"])
-        count = min(c["evidence"]["kitsu"]["episodes"] or 0, TARGET_CAP)
+        if "special" in c:
+            m = predict_special(c["special"])
+            count = min(c["special"]["special"]["episodes"] or 0, TARGET_CAP)
+        else:
+            m = predict(c["evidence"])
+            count = min(c["evidence"]["kitsu"]["episodes"] or 0, TARGET_CAP)
         c["expect"] = {"map": m, "targets": targets(m, count)}
     return cases
 

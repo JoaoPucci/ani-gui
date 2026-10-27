@@ -168,6 +168,38 @@ class CaseTable(unittest.TestCase):
         self.assertIsNone(oracle.listed_number("\u0663"))
         self.assertIsNone(oracle.listed_number("3.\u0665"))
 
+class Specials(unittest.TestCase):
+    """The docs' fifth rule, against Unlimited Blade Works' prologue."""
+
+    def ubw(self, special_start="2014-10-05", listed=None, contested=False):
+        season = oracle.kitsu(7882, 12, "2014-10-12", "2014-12-28")
+        entry = oracle.show(19603, 13, True, "2014-10-05", "2014-12-28")
+        ev = oracle.evidence(season, entry, listed=listed or ["0"] + [str(n) for n in range(1, 13)])
+        return {
+            "special": oracle.kitsu(9718, 1, special_start, special_start),
+            "related": [{"related": season, "evidence": ev, "contested": contested}],
+        }
+
+    def test_the_prologue_is_the_entry_s_first_episode_never_its_last(self):
+        m = oracle.predict_special(self.ubw())
+        self.assertEqual(m["shape"], "special_extras")
+        self.assertEqual(oracle.targets(m, 1), [[19603, 1, False, []], None])
+
+    def test_a_half_episode_is_the_episode_after_the_one_it_follows(self):
+        m = oracle.predict_special(self.ubw(listed=[str(n) for n in range(1, 13)] + ["6.5"]))
+        self.assertEqual(oracle.targets(m, 1)[0], [19603, 7, False, []])
+
+    def test_short_of_the_rule_the_special_is_filed_nowhere(self):
+        for sp in (
+            self.ubw(contested=True),
+            self.ubw(special_start="2014-10"),
+            self.ubw(special_start="2014-09-30"),
+            self.ubw(listed=[str(n) for n in range(1, 13)] + ["12.5"]),
+            self.ubw(listed=["0", "6.5"] + [str(n) for n in range(1, 13)]),
+        ):
+            self.assertEqual(oracle.predict_special(sp), oracle.identity("unexplained"))
+
+
 class Generation(unittest.TestCase):
     def test_the_set_is_reproducible_and_ids_unique(self):
         a, b = oracle.gen(), oracle.gen()
@@ -178,14 +210,14 @@ class Generation(unittest.TestCase):
     def test_every_family_is_generated_and_every_shape_predicted(self):
         cases = oracle.gen()
         families = {c["family"].split("-")[0] for c in cases}
-        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull", "split_overfull", "chain_rival"):
+        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull", "split_overfull", "chain_rival", "special"):
             self.assertIn(f, families)
         full = {c["family"] for c in cases}
         for f in ("chain-dated-both", "chain-dated-start_only", "chain-slack-1", "chain-slack-3",
                   "chain-early-dated-both", "chain-start-slack-2", "chain-middle-dated"):
             self.assertIn(f, full)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
-        self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})
+        self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras", "special_extras"})
         self.assertTrue(any(c["family"] == "extras-multi-ok" for c in cases))
 
 

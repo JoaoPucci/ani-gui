@@ -13,7 +13,26 @@ const TARGET_CAP: u32 = 300;
 #[derive(serde::Deserialize)]
 struct Case {
     id: String,
+    #[serde(default)]
+    evidence: Option<Evidence>,
+    #[serde(default)]
+    special: Option<SpecialCase>,
+}
+
+/// A special the tracker has no entry for, as the model writes it: the
+/// special, and each related entry with the evidence its own map is
+/// built from.
+#[derive(serde::Deserialize)]
+struct SpecialCase {
+    special: crate::account::episode_map::KitsuShow,
+    related: Vec<RelatedCase>,
+}
+
+#[derive(serde::Deserialize)]
+struct RelatedCase {
+    related: crate::account::episode_map::KitsuShow,
     evidence: Evidence,
+    contested: bool,
 }
 
 /// Every Kitsu episode's write under `map`, 1 to `count + 1` (one past
@@ -45,6 +64,43 @@ fn outcome(evidence: &Evidence) -> serde_json::Value {
     })
 }
 
+/// The special's map where nothing else explains it: each related
+/// entry's own map built from its evidence, then the special rule.
+fn special_outcome(case: &SpecialCase) -> serde_json::Value {
+    use crate::account::episode_map_special::{
+        special_extras, with_special, RelatedFiling, SpecialEvidence,
+    };
+    let evidence = SpecialEvidence {
+        special: case.special.clone(),
+        related: case
+            .related
+            .iter()
+            .map(|r| RelatedFiling {
+                related: r.related.clone(),
+                entry: r.evidence.entry.clone(),
+                map: map_show(&r.evidence),
+                contested: r.contested,
+            })
+            .collect(),
+    };
+    let map = with_special(
+        EpisodeMap::identity(crate::account::episode_map::Identity::Unexplained),
+        special_extras(&evidence),
+    );
+    serde_json::json!({
+        "map": map,
+        "targets": targets(&map, case.special.episodes.unwrap_or(0)),
+    })
+}
+
+fn case_outcome(case: &Case) -> serde_json::Value {
+    match (&case.evidence, &case.special) {
+        (_, Some(special)) => special_outcome(special),
+        (Some(evidence), None) => outcome(evidence),
+        (None, None) => panic!("case {} carries neither evidence nor a special", case.id),
+    }
+}
+
 /// Maps every case the file `TRACKER_MAP_ORACLE_CASES` holds and writes
 /// each outcome to `TRACKER_MAP_ORACLE_OUT` as `[{"id": …, "got": …}]`.
 #[test]
@@ -60,7 +116,7 @@ fn run_the_tracker_map_oracle_cases() {
     .unwrap_or_else(|e| panic!("parse {input}: {e}"));
     let out: Vec<serde_json::Value> = cases
         .iter()
-        .map(|c| serde_json::json!({"id": c.id, "got": outcome(&c.evidence)}))
+        .map(|c| serde_json::json!({"id": c.id, "got": case_outcome(c)}))
         .collect();
     std::fs::write(&output, serde_json::to_string(&out).expect("serialise"))
         .unwrap_or_else(|e| panic!("write {output}: {e}"));
@@ -75,7 +131,7 @@ fn an_outcome_lists_the_map_and_every_episode_s_write() {
             "chain": [{"id": 9, "episodes": 2, "finished": false, "start": "1989-05-01", "end": "1989-09-25"}]}}"#,
     )
     .expect("parse");
-    let got = outcome(&case.evidence);
+    let got = case_outcome(&case);
     assert_eq!(got["map"]["shape"], "chain");
     assert_eq!(
         got["targets"],
@@ -90,7 +146,7 @@ fn an_outcome_lists_the_map_and_every_episode_s_write() {
         r#"{"id": "y", "evidence": {"kitsu": {"id": "1", "episodes": null}, "entry": {"id": 2, "episodes": 5, "finished": true}}}"#,
     )
     .expect("parse");
-    let got = outcome(&unknown.evidence);
+    let got = case_outcome(&unknown);
     assert_eq!(got["map"]["why"], "count_unknown");
     assert_eq!(got["targets"], serde_json::json!([null]));
 }
