@@ -430,3 +430,28 @@ fn the_cache_count_is_what_the_sweep_deleted() {
 
     assert_eq!(sweep(&state).cache_rows, 1);
 }
+
+#[test]
+fn a_kept_rows_title_match_under_a_retired_segment_stays_while_its_page_reads_it() {
+    // A row whose recorded entry Kitsu answered gone is found by the
+    // detail page through its title matches, the retired segments its
+    // title was filed under included.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[entry("4", "old-show-7", "Old Show", None, Some("11"))],
+    )
+    .unwrap();
+    put(
+        &state,
+        &format!("{}11", crate::commands::kitsu_gone::GONE_PREFIX),
+        "1",
+    );
+    let retired_segment = "title-match:v3:anidb.app:old show:c1";
+    put(&state, retired_segment, "22");
+
+    let _ = sweep(&state);
+
+    assert!(present(&state, retired_segment));
+}
