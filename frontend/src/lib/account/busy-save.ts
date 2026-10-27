@@ -1,7 +1,8 @@
 // The live wiring of `saveWhenAllowed` for a tracker write the user
-// made: the notice that it waits, on the toast stack, naming the tracker
-// by its display name, and a real timer. Split from the pure module so
-// that one stays free of the toast store and the message bundle.
+// made: the ledger of writes per tracker and show that decides what a
+// held write may still send, a real timer, and the busy notice
+// (`busy-notice.ts`) put up and taken down around each wait. Split from
+// the pure module so that one stays free of the toast store.
 
 import type { Provider } from './types';
 import {
@@ -13,56 +14,9 @@ import {
 	type WriteField
 } from './save-when-allowed';
 import { coverFields, fieldsLeft, type Coverage } from './write-fields';
-import { startCountdown } from './busy-countdown';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { followAccount, type ListedAccount } from './held-account';
-import { m } from '$lib/paraglide/messages';
-
-/** A tracker's display name; the provider id for one without a name. */
-export function providerName(provider: Provider): string {
-	if (provider === 'anilist') return m.account_provider_anilist();
-	if (provider === 'mal') return m.account_provider_mal();
-	return provider;
-}
-
-/** The notice's words with `seconds` left: the wait, or once it is over,
- *  that the save is going. */
-function busyText(provider: Provider, seconds: number): string {
-	const name = providerName(provider);
-	return seconds > 0
-		? m.account_busy_saving({ provider: name, seconds })
-		: m.account_busy_saving_now({ provider: name });
-}
-
-/** A real one-shot timer, wrapped in arrows: `setTimeout` called off an
- *  object is an "Illegal invocation" in Chromium. */
-function after(ms: number, tick: () => void): () => void {
-	const handle = setTimeout(() => tick(), ms);
-	return () => clearTimeout(handle);
-}
-
-/** The toast shown while `provider` waits `seconds` to take a write. It
- *  counts the wait down in place, read from one deadline, and then says
- *  the save is going; it stays up until taken down — by the write it is
- *  about, a newer write, or the user — and its timer stops whenever it
- *  leaves. Returns its id. */
-export function noticeBusy(provider: Provider, seconds: number): string {
-	let stop: (() => void) | null = null;
-	const id = toastStore.push({
-		kind: 'info',
-		message: busyText(provider, seconds),
-		duration: null,
-		onClose: () => stop?.()
-	});
-	stop = startCountdown(Date.now() + seconds * 1000, {
-		now: () => Date.now(),
-		after,
-		// The number changes on screen each second without being read out;
-		// the save going is announced.
-		show: (left) => toastStore.update(id, busyText(provider, left), { silent: left > 0 })
-	});
-	return id;
-}
+import { after, noticeBusy } from './busy-notice';
 
 /** Per tracker and show: the count of writes started, the newest write
  *  to cover each field, and the busy notice on screen. A write held
@@ -156,10 +110,4 @@ export function saveWhenTrackerAllows<T>(
 	});
 }
 
-/** The error toast for a progress write that could not be saved. */
-export function reportProgressNotSaved(provider: Provider): void {
-	toastStore.push({
-		kind: 'error',
-		message: m.account_progress_save_failed({ provider: providerName(provider) })
-	});
-}
+export { noticeBusy, providerName, reportProgressNotSaved } from './busy-notice';
