@@ -730,8 +730,8 @@ pub fn reconcile_monotonic(
     // a row that's mid-rewatch would clear AniList's REPEATING, which AniList
     // closes itself at its total. Drop the Completed status so the rewatch
     // state survives; any advancing progress field still flows below. A MAL
-    // row reaches here as MAL lists it (`CurrentEntry::as_kept_by`): MAL has
-    // no rewatch status, so its rewatching row is a Watching one, and the
+    // row reaches here as MAL lists it ([`reconcile_for`]): MAL has no
+    // rewatch status, so its rewatching row is a Watching one, and the
     // finale completes it.
     if update.status == Some(ListStatus::Completed)
         && current.map(|c| c.status) == Some(ListStatus::Rewatching)
@@ -761,6 +761,32 @@ pub fn reconcile_monotonic(
     } else {
         Some(update)
     }
+}
+
+/// [`reconcile_monotonic`] against `row` as `kind` keeps it
+/// ([`CurrentEntry::as_kept_by`]), closing a MAL rewatch the write
+/// completes. MAL has no rewatch status: its rewatch is a Watching row
+/// with `is_rewatching` set, so the reconcile sees a Watching row and a
+/// finished show's finale completes it. Completing it there is finishing
+/// the rewatch, so the entry's count of finished rewatches goes up by
+/// one — from the count `row` was read with, and not at all when the
+/// read did not carry one, so the count is never written lower. AniList
+/// closes its REPEATING row itself and is reconciled as before.
+pub fn reconcile_for(
+    kind: ProviderKind,
+    update: EntryUpdate,
+    row: Option<CurrentEntry>,
+) -> Option<EntryUpdate> {
+    let mut update = reconcile_monotonic(update, row.map(|r| r.as_kept_by(kind)))?;
+    let closes_a_rewatch = kind == ProviderKind::MyAnimeList
+        && update.status == Some(ListStatus::Completed)
+        && row.is_some_and(|r| r.status == ListStatus::Rewatching);
+    if closes_a_rewatch {
+        update.repeat_count = row
+            .and_then(|r| r.times_rewatched)
+            .map(|n| n.saturating_add(1));
+    }
+    Some(update)
 }
 
 /// Push `update` (progress / status / score) to a connected tracker
@@ -869,7 +895,7 @@ pub(crate) async fn push_progress_read(
     media: crate::account::provider::TrackedMedia,
 ) -> Result<Option<ListEntry>> {
     let update = fit_to_tracker_total(update, media.episodes);
-    let Some(update) = reconcile_monotonic(update, media.entry.map(|e| e.as_kept_by(kind))) else {
+    let Some(update) = reconcile_for(kind, update, media.entry) else {
         return Ok(None);
     };
     write_through(state, kind, provider, tokens, native, update)

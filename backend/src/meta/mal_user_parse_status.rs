@@ -45,7 +45,8 @@ pub(in crate::meta) fn parse_list_status_response(body: &[u8], media_id: u32) ->
 }
 
 /// Parse an `/anime/{id}?fields=my_list_status` response down to the
-/// authenticated user's current entry (status + watched count).
+/// authenticated user's current entry (status + watched count, and the
+/// rewatch count where the read asked for it).
 /// `my_list_status` is absent when the show isn't on the user's list →
 /// `None`. An unrecognized status maps to `ListStatus::Watching` so a
 /// malformed enum can't suppress the write-back reconcile. Powers the
@@ -64,6 +65,8 @@ pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<
         num_episodes_watched: Option<u32>,
         #[serde(default)]
         is_rewatching: Option<bool>,
+        #[serde(default)]
+        num_times_rewatched: Option<u32>,
     }
     let wire: Wire = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("mal anime my_list_status: {e}"),
@@ -75,12 +78,13 @@ pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<
             .and_then(|st| ListStatus::from_mal(st, s.is_rewatching.unwrap_or(false)))
             .unwrap_or(ListStatus::Watching),
         progress_episodes: s.num_episodes_watched.unwrap_or(0),
-        times_rewatched: None,
+        times_rewatched: s.num_times_rewatched,
     }))
 }
 
-/// Parse an `/anime/{id}?fields=my_list_status,num_episodes` response:
-/// the user's row as [`parse_my_list_status_entry`] reads it, and the
+/// Parse an `/anime/{id}?fields=my_list_status{num_times_rewatched},num_episodes`
+/// response: the user's row as [`parse_my_list_status_entry`] reads it
+/// (its rewatch count with it, which MAL returns only when asked), and the
 /// anime's episode total, where MAL's `0` (length not announced) is
 /// unknown.
 pub(in crate::meta) fn parse_tracked_media(body: &[u8]) -> Result<TrackedMedia> {

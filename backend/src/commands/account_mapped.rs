@@ -9,7 +9,7 @@ use crate::account::provider::{CurrentEntry, EntryUpdate, ListEntry, ProviderMed
 use crate::account::status::ListStatus;
 use crate::error::Result;
 
-use super::account::{push_progress_read, push_progress_via, reconcile_monotonic, write_through};
+use super::account::{push_progress_read, push_progress_via, reconcile_for, write_through};
 use super::tracker_map::{episode_map_for, episode_map_for_unresolved, MapAsk};
 
 /// Push `update` for Kitsu's `kitsu_id`, which Kitsu's mappings resolve
@@ -77,8 +77,7 @@ pub(crate) async fn push_progress_mapped(
         // The resolved entry is a map's first segment, so a write to it
         // starts no later segment: it is written on the read just made.
         Target::Mapped(write) if write.entry == native.0 && write.earlier.is_empty() => {
-            let row = media.entry.map(|e| e.as_kept_by(ask.kind));
-            write_episode(ask, &write, &update, row).await
+            write_episode(ask, &write, &update, media.entry).await
         }
         Target::Mapped(write) => {
             drop(guard);
@@ -96,28 +95,25 @@ async fn hold_entry(ask: &MapAsk<'_>, entry: u32) -> tokio::sync::OwnedMutexGuar
         .await
 }
 
-/// The user's row on tracker entry `entry`, as the asking tracker keeps
-/// it ([`CurrentEntry::as_kept_by`]): a MAL row being rewatched is the
-/// Watching row MAL lists, so reaching its total puts it back at
-/// Completed.
+/// The user's row on tracker entry `entry`.
 async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
     Ok(ask
         .provider
         .tracked_media(ask.tokens, ProviderMediaId(entry))
         .await?
-        .entry
-        .map(|e| e.as_kept_by(ask.kind)))
+        .entry)
 }
 
 /// Bring an earlier segment's entry to its total — completed where the
 /// tracker has it finished — unless the row is already there, reading
-/// and writing it under its own lock. The monotonic reconcile keeps it
-/// from lowering a row and keeps an AniList rewatch; a MAL one is read
-/// as Watching ([`row_on`]) and so is put back at Completed.
+/// and writing it under its own lock. The reconcile ([`reconcile_for`])
+/// keeps it from lowering a row and keeps an AniList rewatch; a MAL one
+/// is a Watching row there, so it is closed — back at Completed, its
+/// rewatch counted.
 async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()> {
     let _guard = hold_entry(ask, earlier.entry).await;
     let row = row_on(ask, earlier.entry).await?;
-    let done = row.is_some_and(|r| {
+    let done = row.map(|r| r.as_kept_by(ask.kind)).is_some_and(|r| {
         r.progress_episodes >= earlier.total
             && matches!(r.status, ListStatus::Completed | ListStatus::Rewatching)
     });
@@ -129,7 +125,7 @@ async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()
         progress_episodes: Some(earlier.total),
         ..Default::default()
     };
-    if let Some(update) = reconcile_monotonic(update, row) {
+    if let Some(update) = reconcile_for(ask.kind, update, row) {
         write_through(
             ask.state,
             ask.kind,
@@ -187,7 +183,7 @@ async fn write_episode(
         score_0_to_100: update.score_0_to_100,
         repeat_count: None,
     };
-    let Some(ours) = reconcile_monotonic(ours, row) else {
+    let Some(ours) = reconcile_for(ask.kind, ours, row) else {
         return Ok(None);
     };
     write_through(

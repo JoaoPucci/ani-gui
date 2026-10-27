@@ -221,9 +221,12 @@ impl UserListProvider for MalProvider {
 
     async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia> {
         // The same read as `current_entry`, with the anime's own
-        // `num_episodes` asked for beside the user's row.
+        // `num_episodes` asked for beside the user's row, and the row's
+        // `num_times_rewatched`, which MAL returns only when named (the
+        // braces add it to the row's default fields): a finale that
+        // closes a rewatch counts it from there.
         let url = format!(
-            "{}/anime/{}?fields=my_list_status,num_episodes&nsfw=true",
+            "{}/anime/{}?fields=my_list_status{{num_times_rewatched}},num_episodes&nsfw=true",
             self.api_url(),
             id.0
         );
