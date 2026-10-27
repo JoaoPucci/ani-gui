@@ -44,6 +44,7 @@ fn mapped(entry: u32, progress: u32, complete: bool, earlier: &[(u32, u32)]) -> 
                 finished: true,
             })
             .collect(),
+        needs: None,
     })
 }
 
@@ -299,6 +300,7 @@ fn an_unfinished_earlier_segment_is_brought_to_its_total_without_completing() {
                 total: 18,
                 finished: false,
             }],
+            needs: None,
         })
     );
 }

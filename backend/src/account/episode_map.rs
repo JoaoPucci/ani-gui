@@ -190,6 +190,11 @@ pub struct MappedWrite {
     /// The segments before this one, whose entries the write brings to
     /// their totals first.
     pub earlier: Vec<EarlierSegment>,
+    /// The progress the entry must already hold for the write to be
+    /// sent: a special filed among an entry's extras claims no episode
+    /// before its slot the user has not watched. `None` where any
+    /// progress will do.
+    pub needs: Option<u32>,
 }
 
 impl EpisodeMap {
@@ -256,6 +261,7 @@ impl EpisodeMap {
             progress,
             complete,
             earlier,
+            needs: None,
         })
     }
 }
