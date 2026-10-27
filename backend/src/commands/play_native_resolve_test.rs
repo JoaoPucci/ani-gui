@@ -1015,6 +1015,17 @@ impl crate::scraper::provider::Provider for RefererProvider {
     async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
         Ok(None)
     }
+    // The page lists a genre, as the site's show pages do: an undated
+    // pick reads the page of the listing it serves.
+    async fn detail_page(
+        &self,
+        _s: &str,
+    ) -> crate::error::Result<crate::scraper::provider::EntryPage> {
+        Ok(crate::scraper::provider::EntryPage {
+            genres: vec![crate::scraper::table_provider::LISTED_GENRE.to_string()],
+            ..Default::default()
+        })
+    }
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         None
     }
@@ -1108,6 +1119,17 @@ impl crate::scraper::provider::Provider for ListingProvider {
     }
     async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
         Ok(None)
+    }
+    // The page lists a genre, as the site's show pages do: an undated
+    // pick reads the page of the listing it serves.
+    async fn detail_page(
+        &self,
+        _s: &str,
+    ) -> crate::error::Result<crate::scraper::provider::EntryPage> {
+        Ok(crate::scraper::provider::EntryPage {
+            genres: vec![crate::scraper::table_provider::LISTED_GENRE.to_string()],
+            ..Default::default()
+        })
     }
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         None

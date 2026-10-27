@@ -29,7 +29,8 @@ use super::play_native_year::year_filtered;
 
 #[path = "play_native_titled.rs"]
 mod titled;
-pub use titled::pick_candidate_titled;
+pub use super::play_native_genre::pick_candidate_titled;
+pub(crate) use titled::pick_over;
 
 /// How many browse hits the entry's titles admit get an episodes
 /// probe. Beyond this the match was not a match; the request budget
@@ -171,6 +172,12 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   not a clean miss; a listing that spans this entry and
 ///   the next is cut to this entry's episodes (see
 ///   `play_native_wide_listing`).
+/// - No listing its own entry page files under Hentai is picked, nor
+///   one whose page lists no genre, dated or undated: an undated pick
+///   reads the page of each listing it would serve and is made again
+///   without one its page refuses (see `play_native_genre`), and a pool
+///   a listing was left out of for an unread page is never the clean
+///   miss.
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
