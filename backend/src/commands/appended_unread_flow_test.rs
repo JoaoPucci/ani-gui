@@ -245,3 +245,57 @@ async fn a_watch_recorded_while_unread_reads_back_as_the_extra_once_proved() {
         .expect("the row");
     assert_eq!(on_detail.ep_no, "12.1");
 }
+
+/// A refresh that could not read the rows past the count and leaves
+/// the counted row standing has written nothing, so it does not take
+/// the row from a resolve that set out before it: that resolve's
+/// stamp, a proved count and extras, still lands.
+#[tokio::test]
+async fn a_refresh_that_leaves_the_row_standing_takes_it_from_no_one() {
+    use crate::commands::availability::{
+        stamp_after_native, write_cache_full, AvailabilityResponse, ResolveVerdict, RowAtStart,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    write_cache_full(
+        &state,
+        KITSU,
+        "sub",
+        None,
+        &AvailabilityResponse {
+            available: true,
+            episode_count: Some(12),
+            extra_episodes: oads(),
+            episode_count_approximate: false,
+            gate_refused: false,
+            unsettled: None,
+            provider: Some(ProviderId::TestA),
+            versions: Vec::new(),
+        },
+    );
+    let at_start = RowAtStart::read(&state, Some(KITSU), "sub").await;
+    let refresh: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Noragami",
+        "mode": "sub",
+        "episode_count": 12,
+        "kitsu_id": KITSU,
+        "status": "finished",
+        "bypass_cache": true,
+    }))
+    .expect("args");
+    let got = check_availability(&state, &refresh)
+        .await
+        .expect("answered");
+    assert_eq!(got.episode_count, Some(12), "the row that stands answers");
+    let proved = vec!["12.1".to_string()];
+    stamp_after_native(
+        &state,
+        Some(KITSU),
+        "sub",
+        &at_start,
+        ResolveVerdict::served(ProviderId::TestA, Some(12), &proved),
+    )
+    .await;
+    assert_eq!(stamped(&state), (Some(12), proved));
+}
