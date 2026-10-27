@@ -25,6 +25,8 @@
 		type PendingEdit
 	} from '$lib/account/list-entry-pending';
 	import { clampProgress, effectiveProgress, statusOptionsFor } from '$lib/account/list-entry-edit';
+	import { statusOptionsForTrackers } from '$lib/account/rewatch-trackers';
+	import { accountStore } from '$lib/account/store.svelte';
 	import type { EntryView, ListStatus } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -75,7 +77,13 @@
 
 	// While the show is airing, Completed/Rewatching are hidden — unless the
 	// entry is already set to one (keep it visible so we don't downgrade it).
-	const statusChoices = $derived(statusOptionsFor(airing, view.status));
+	const statusChoices = $derived(
+		statusOptionsForTrackers(
+			statusOptionsFor(airing, view.status),
+			accountStore.connected,
+			view.status
+		)
+	);
 
 	function statusLabel(s: ListStatus): string {
 		switch (s) {
