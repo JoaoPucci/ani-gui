@@ -82,7 +82,7 @@ pub(in crate::meta) fn parse_my_list_status_entry(body: &[u8]) -> Result<Option<
     }))
 }
 
-/// Parse an `/anime/{id}?fields=my_list_status{num_times_rewatched},num_episodes`
+/// Parse an `/anime/{id}?fields=my_list_status{…,num_times_rewatched},num_episodes`
 /// response: the user's row as [`parse_my_list_status_entry`] reads it
 /// (its rewatch count with it, which MAL returns only when asked), and the
 /// anime's episode total, where MAL's `0` (length not announced) is
