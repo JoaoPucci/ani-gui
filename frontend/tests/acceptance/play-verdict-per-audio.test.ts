@@ -19,6 +19,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
@@ -72,8 +73,6 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 type DubAnswer = 'failed' | 'unsettled' | 'pending';
 
 interface Seen {
-	subAnswered: boolean;
-	dubAsked: boolean;
 	evictions: number;
 	resolves: number;
 }
@@ -83,7 +82,7 @@ interface Seen {
  * it. The dub question then ends as `dub` says.
  */
 function useHandlers(sub: { available: boolean; episode_count: number | null }, dub: DubAnswer) {
-	const seen: Seen = { subAnswered: false, dubAsked: false, evictions: 0, resolves: 0 };
+	const seen: Seen = { evictions: 0, resolves: 0 };
 	let releaseSettings = () => {};
 	const settingsHeld = new Promise<void>((r) => (releaseSettings = r));
 	server.use(
@@ -100,12 +99,10 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			const body = (await request.json()) as { mode: string };
 			if (body.mode === 'sub') {
-				seen.subAnswered = true;
 				// Settings land once the sub answer has been read.
 				setTimeout(releaseSettings, 50);
 				return HttpResponse.json({ ...sub, extra_episodes: [] });
 			}
-			seen.dubAsked = true;
 			if (dub === 'pending') return new Promise<never>(() => {});
 			if (dub === 'failed') return new HttpResponse(null, { status: 500 });
 			return HttpResponse.json({
@@ -139,17 +136,30 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 	return seen;
 }
 
-/** Mount on episode `episode`'s session, wait for the sub answer and
- *  for the dub question, then fail the stream. */
-async function failStreamAfterAudioChange(seen: Seen, episode: number) {
+/** The page's lookup about the show in `mode`. */
+const isLookup = (mode: string) => (r: PageFetch) =>
+	r.path === '/api/availability' && r.body.mode === mode;
+
+/** Mount on episode `episode`'s session, wait for the page to be done
+ *  with the sub answer and with the dub question as `dub` ends it,
+ *  then fail the stream. */
+async function failStreamAfterAudioChange(episode: number, dub: DubAnswer) {
+	const { sent, read, failed } = watchPageFetches();
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: String(episode), kind: 'mp4' });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
-	await until(() => seen.subAnswered, 'the sub answer');
-	await until(() => seen.dubAsked, 'the dub question');
-	// Whatever the dub question comes back with is read by now.
-	await new Promise((r) => setTimeout(r, 50));
+	// The sub answer is read, or stopped by the move to dub.
+	await until(
+		() => read.some(isLookup('sub')) || failed.some(isLookup('sub')),
+		'the sub answer to be read or stopped'
+	);
+	// The dub question has ended as the case says: its answer read, its
+	// failure taken, or — still out — asked.
+	const ended = { failed, unsettled: read, pending: sent }[dub];
+	await until(() => ended.some(isLookup('dub')), `the dub question to be ${dub}`);
+	// What either set off follows in memory to the page's next write.
+	await afterRead();
 	const video = playerVideo();
 	Object.defineProperty(video, 'error', { value: { code: DECODE }, configurable: true });
 	video.dispatchEvent(new Event('error'));
@@ -181,7 +191,7 @@ describe('play route — a verdict for sub does not gate dub', () => {
 	for (const dub of ['failed', 'unsettled', 'pending'] as const) {
 		it(`a show delisted in sub, with the dub answer ${dub}: Reload stays`, async () => {
 			const seen = useHandlers({ available: false, episode_count: null }, dub);
-			await failStreamAfterAudioChange(seen, 1);
+			await failStreamAfterAudioChange(1, dub);
 			// The strip does not hold the show delisted in dub either.
 			expect(tile(2)?.disabled).toBe(false);
 			await expectReloadWorks(seen);
@@ -190,7 +200,7 @@ describe('play route — a verdict for sub does not gate dub', () => {
 
 	it('an episode past the sub count, with the dub answer failed: Reload stays', async () => {
 		const seen = useHandlers({ available: true, episode_count: 8 }, 'failed');
-		await failStreamAfterAudioChange(seen, 10);
+		await failStreamAfterAudioChange(10, 'failed');
 		await expectReloadWorks(seen);
 	});
 });

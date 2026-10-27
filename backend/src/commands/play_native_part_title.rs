@@ -4,7 +4,7 @@
 //! grammar it reads is the one the title rules read
 //! (`play_native_title_grammar`).
 
-use super::play_native_title_grammar::{normalized, sole_ordinal, untagged_normalized};
+use super::play_native_title_grammar::{half_width, normalized, sole_ordinal, untagged_normalized};
 
 /// Which part of `stem` a title names: 1 for the stem itself, `k` for
 /// the stem followed by a short `k`-th part marker ("2nd Stage",
@@ -16,7 +16,9 @@ pub(crate) fn part_ordinal(stem: &str, title: &str) -> Option<u32> {
     if normalized(title) == normalized(stem) {
         return Some(1);
     }
-    let (stem, title) = (untagged_normalized(stem), untagged_normalized(title));
+    // Digits are read in ASCII whatever width they are written in.
+    let ascii = |t: &str| -> String { untagged_normalized(t).chars().map(half_width).collect() };
+    let (stem, title) = (ascii(stem), ascii(title));
     let rest = title.strip_prefix(&stem)?;
     // "The Showdown" is not a part of "The Show" — but Japanese
     // writes its 第 straight after the title.

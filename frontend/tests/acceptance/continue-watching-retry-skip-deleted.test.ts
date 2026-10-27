@@ -70,12 +70,13 @@ afterEach(() => {
  * Poll under fake timers. `Date.now()` and `setTimeout` are both
  * faked, so the wall-clock version of this would never advance;
  * stepping the clock 10 ms at a time also flushes the microtask queue
- * the loader's promise chain runs on.
+ * the loader's promise chain runs on. `stepMs` is how far each step
+ * moves the clock.
  */
-async function until(predicate: () => boolean, what: string, steps = 400) {
+async function until(predicate: () => boolean, what: string, steps = 400, stepMs = 10) {
 	for (let i = 0; i < steps; i++) {
 		if (predicate()) return;
-		await vi.advanceTimersByTimeAsync(10);
+		await vi.advanceTimersByTimeAsync(stepMs);
 	}
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
@@ -164,7 +165,17 @@ describe('Continue Watching cap retry after a card is deleted', () => {
 		// Everything before this point is setup; only what the retry
 		// does AFTER the row is gone is the claim.
 		probes.length = 0;
-		await vi.advanceTimersByTimeAsync(PAST_COOLDOWN_MS);
+		// The retry takes its rows in turn, one at a time. The kept row
+		// asked about twice after the delete means the queue has gone
+		// round past the deleted row's place in it at least once, so a
+		// retry that still held the row would have asked about it by
+		// then. The steps are long because the ladder's rungs are.
+		await until(
+			() => probes.filter((p) => p === KEPT).length >= 2,
+			'the retry to go round the queue after the delete',
+			(PAST_COOLDOWN_MS * 4) / 1000,
+			1000
+		);
 
 		expect(probes, 'the deleted row must not be asked about again').not.toContain(DROPPED);
 		// The other half of the claim, in the same run: the retry is

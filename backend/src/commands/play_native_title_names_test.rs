@@ -79,3 +79,249 @@ fn a_glued_japanese_division_is_read_past_to_the_subtitle() {
     assert!(entry.names("ショー 第2期 番外編"));
     assert!(!entry.names("ショー第2期"));
 }
+
+const ORDINALS: [(&str, bool); 5] = [
+    ("First", true),
+    ("Second", false),
+    ("Seventh", false),
+    ("2nd", false),
+    ("1st", true),
+];
+
+proptest! {
+    /// An ordinal written before "Half" is one division with it, as the
+    /// reader reads "First Half" and "Second Half": it ends the name
+    /// whatever follows, and leaves nothing past the name. So the entry
+    /// "Show" names "Show First Half", whose division is the whole, and
+    /// for the entry "Show Second Half" the bare "Show" is the entry
+    /// before.
+    #[test]
+    fn an_ordinal_before_half_is_a_division_that_ends_the_name(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        (ordinal, first) in proptest::sample::select(ORDINALS.to_vec()),
+    ) {
+        let title = format!("{name_of} {ordinal} Half");
+        let want: Vec<String> = name_of.split(' ').map(str::to_lowercase).collect();
+        prop_assert_eq!(name(&title), want.clone());
+        prop_assert!(undivided_rest(&title).is_empty(), "{}", title);
+        prop_assert_eq!(name(&format!("{title}: Arc")), want);
+        let bare = [name_of];
+        prop_assert_eq!(EntryTitles::new(&bare).names(&title), first, "{}", title);
+        let titles = [title.as_str()];
+        prop_assert_eq!(EntryTitles::new(&titles).before_entry(name_of), !first, "{}", title);
+    }
+}
+
+/// A word ordinal inside a name ("The Seventh Son") is a word of the
+/// name, not a division the title reads as: the title reads as nothing,
+/// so the entry "The Seventh Son Part 2" has it as the entry before.
+#[test]
+fn a_word_ordinal_inside_the_name_is_no_division_of_the_reading() {
+    assert!(reading("The Seventh Son").is_empty());
+    assert_eq!(reading("The Seventh Son Season 2"), vec![2]);
+    assert_eq!(reading("Show Seventh"), vec![7]);
+    let titles = ["The Seventh Son Part 2"];
+    assert!(EntryTitles::new(&titles).before_entry("The Seventh Son"));
+    let titles = ["The Seventh Son: 第2クール"];
+    assert!(EntryTitles::new(&titles).before_entry("The Seventh Son"));
+}
+
+proptest! {
+    /// What a word holds before a Japanese division glued to it is read
+    /// as a word of its own: "Fourth第十二部" is the season "Fourth" and
+    /// the part 第十二部, as "Fourth・第十二部" is, so the two titles read
+    /// alike and one names the other.
+    #[test]
+    fn a_word_glued_before_a_japanese_division_is_read_as_its_own(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        (ordinal, n) in proptest::sample::select(vec![("Fourth", 4u32), ("2nd", 2), ("III", 3)]),
+    ) {
+        let glued = format!("{name_of} {ordinal}第十二部");
+        let apart = format!("{name_of}: {ordinal}・第十二部");
+        prop_assert_eq!(reading(&glued), vec![n, 12]);
+        prop_assert_eq!(reading(&apart), vec![n, 12]);
+        let titles = [apart.as_str()];
+        prop_assert!(EntryTitles::new(&titles).names(&glued), "{}", glued);
+    }
+}
+
+/// What a candidate names past an entry title's stem is read as the
+/// reader reads it: a word ordinal inside a name names no season
+/// there either, so "Second" with a word after it is no season before
+/// "Spy x Family, 3".
+#[test]
+fn past_the_stem_a_word_ordinal_inside_a_name_names_no_season() {
+    let titles = ["Spy x Family, 3"];
+    assert!(!EntryTitles::new(&titles).another_entry("Spy x Family. Second Half12"));
+    let titles = ["Show: Arc - IX"];
+    assert!(!EntryTitles::new(&titles).another_entry("Show: Arc - Seventh CourSecond Part"));
+    // a division still is one: "Second Half" names a season 2
+    let titles = ["Show 3"];
+    assert!(EntryTitles::new(&titles).another_entry("Show Second Half"));
+}
+
+proptest! {
+    /// A number glued to the end of a Japanese division is read after
+    /// that division, as it is after any Japanese word: "第3部12" is the
+    /// part 3 and a 12, and "第〇期10" names its season 0 — a season
+    /// before an entry's first.
+    #[test]
+    fn a_number_glued_after_a_japanese_division_is_read_after_it(
+        n in 0u32..100,
+        k in 1u32..10,
+    ) {
+        // a division whose ordinal is 1 is the whole, and left out
+        let want: Vec<u32> = [k, n].into_iter().filter(|&x| x != 1).collect();
+        prop_assert_eq!(reading(&format!("Show 第{k}部{n}")), want);
+        let titles = ["Other Show 1st"];
+        let candidate = format!("Other Show 第〇期{n} Recap");
+        prop_assert!(EntryTitles::new(&titles).another_entry(&candidate), "{}", candidate);
+    }
+}
+
+/// A word ordinal past a division with a word after it is a word of
+/// what follows the name, as it would be of the name itself: "Show 2:
+/// Second Arc" carries "Second Arc" past its name, and is not named by
+/// a title carrying "Arc" alone.
+#[test]
+fn a_word_ordinal_past_a_division_is_a_word_of_the_rest() {
+    assert_eq!(undivided_rest("Show 2: Second Arc"), vec!["second", "arc"]);
+    assert_eq!(
+        undivided_rest("Show 2nd Season: Seventh Son"),
+        vec!["seventh", "son"]
+    );
+    let titles = ["Show 2: Second Arc"];
+    assert!(!EntryTitles::new(&titles).names("Show 2 Arc"));
+    assert!(EntryTitles::new(&titles).names("Show 2 - Second Arc"));
+}
+
+/// The divisions a title opens what follows a stem with are read on
+/// past an ordinal's "Half", which is one division with it: "Show First
+/// Half Season 2" names a season 2 past "Show Season 3"'s stem, the
+/// season before it, and "怪獣８号 - First Half 0th" a season 0 past
+/// "怪獣８号".
+#[test]
+fn past_the_stem_a_half_is_read_with_its_ordinal() {
+    let titles = ["Show Season 3"];
+    assert!(EntryTitles::new(&titles).another_entry("Show First Half Season 2"));
+    let titles = ["怪獣８号"];
+    assert!(EntryTitles::new(&titles).another_entry("怪獣８号 - First Half 0th"));
+}
+
+/// Word ordinals written alone, and words that are no division.
+const ALONE: [&str; 4] = ["Second", "Third", "Seventh", "First"];
+const SUBJECTS: [&str; 4] = ["Son", "Coming", "Encounter", "Story"];
+
+proptest! {
+    /// A word ordinal standing alone with a word of the name after it is
+    /// a word of the name, wherever it stands: the name keeps it, the
+    /// title reads as nothing but the divisions it carries besides (a
+    /// first one read as the whole, as [`reading`] reads one), the
+    /// words past a division keep it, and a sibling that adds it past a
+    /// broad listing's season names no later division.
+    #[test]
+    fn a_word_ordinal_inside_a_name_is_a_word_of_it(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        ordinal in proptest::sample::select(ALONE.to_vec()),
+        subject in proptest::sample::select(SUBJECTS.to_vec()),
+        s in 1u32..10,
+    ) {
+        use crate::commands::play_native_title_reading::later_division_markers;
+        let title = format!("The {ordinal} {subject}");
+        let want: Vec<String> = ["the", ordinal, subject].iter().map(|w| w.to_lowercase()).collect();
+        prop_assert_eq!(name(&title), want);
+        prop_assert!(reading(&title).is_empty(), "{}", title);
+        // a first division is read as the whole, as any is
+        let seasoned: Vec<u32> = if s == 1 { vec![] } else { vec![s] };
+        prop_assert_eq!(reading(&format!("{title} Season {s}")), seasoned);
+        let rest = undivided_rest(&format!("{name_of} Season {s}: {ordinal} {subject}"));
+        prop_assert_eq!(rest, vec![ordinal.to_lowercase(), subject.to_lowercase()]);
+        let wide = format!("{name_of} Season {s}");
+        let sibling = format!("{wide} {ordinal} {subject}");
+        prop_assert!(later_division_markers(&sibling, &wide).is_empty(), "{}", sibling);
+    }
+
+    /// A word ordinal standing alone with nothing but divisions after it
+    /// — a "Half" read with its ordinal among them — is a division, and
+    /// ends the name.
+    #[test]
+    fn a_word_ordinal_before_divisions_alone_ends_the_name(
+        name_of in proptest::sample::select(NAMES.to_vec()),
+        ordinal in proptest::sample::select(ALONE.to_vec()),
+        half in proptest::sample::select(ALONE.to_vec()),
+    ) {
+        let title = format!("{name_of} {ordinal} {half} Half");
+        let want: Vec<String> = name_of.split(' ').map(str::to_lowercase).collect();
+        prop_assert_eq!(name(&title), want);
+    }
+}
+
+/// Pieces a title glues together as Japanese writes them: names, a
+/// name ending in a number of its own, divisions and bare numbers.
+const HEADS: [&str; 4] = ["ショー", "推しの子", "ショー100", "Show"];
+const PIECES: [&str; 8] = [
+    "第1期",
+    "第2期",
+    "第3期",
+    "第1部",
+    "第2部",
+    "第十二部",
+    "2",
+    "10",
+];
+
+/// A title: a head and up to three pieces, each glued to what comes
+/// before it or a word apart.
+fn glued_title() -> impl Strategy<Value = String> {
+    (
+        proptest::sample::select(HEADS.to_vec()),
+        proptest::collection::vec(
+            (
+                proptest::sample::select(PIECES.to_vec()),
+                proptest::bool::ANY,
+            ),
+            0..4,
+        ),
+    )
+        .prop_map(|(head, pieces)| {
+            pieces.into_iter().fold(head.to_string(), |t, (p, glued)| {
+                if glued {
+                    format!("{t}{p}")
+                } else {
+                    format!("{t} {p}")
+                }
+            })
+        })
+}
+
+proptest! {
+    /// Every rule that reads a title's words reads it as its words read
+    /// apart, a word apart from each: a Japanese division glued to the
+    /// word before it, a number glued after a Japanese letter or a
+    /// division, as written with spaces between. The entry before,
+    /// whether a title starts with another's name, what follows a broad
+    /// listing's stem and the divisions a sibling names beside it all
+    /// answer for a title and another as they do for the two written
+    /// apart.
+    #[test]
+    fn every_reader_reads_a_glued_title_as_written_apart(
+        title in glued_title(),
+        other in glued_title(),
+    ) {
+        use crate::commands::play_native_title_reading::{
+            is_name_and_first_divisions, later_division_markers, past_stem, read_words,
+            starts_with_name_of,
+        };
+        let apart = |t: &str| read_words(t).join(" ");
+        let (t, o) = (apart(&title), apart(&other));
+        prop_assert_eq!(
+            is_name_and_first_divisions(&other, &title),
+            is_name_and_first_divisions(&o, &t),
+            "{} for {}", other, title
+        );
+        prop_assert_eq!(starts_with_name_of(&title, &other), starts_with_name_of(&t, &o), "{} / {}", title, other);
+        let past = |a: &str, b: &str| past_stem(a, b).map(|(rest, m)| (read_words(&rest), m));
+        prop_assert_eq!(past(&title, &other), past(&t, &o), "{} past {}", title, other);
+        prop_assert_eq!(later_division_markers(&title, &other), later_division_markers(&t, &o), "{} beside {}", title, other);
+    }
+}
