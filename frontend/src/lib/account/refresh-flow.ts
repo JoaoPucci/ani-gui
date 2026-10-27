@@ -26,9 +26,12 @@ export interface RefreshFlowDeps {
 		refresh_token: string | null;
 		expires_at_epoch_s: number;
 	}>;
+	/** Save `payload`. `stillCurrent`, when given, is asked just before
+	 *  the write is sent. */
 	persistAccount(
 		provider: Provider,
-		payload: PersistedAccount
+		payload: PersistedAccount,
+		stillCurrent?: () => boolean
 	): Promise<{ ok: true } | { ok: false; kind: string; detail?: string }>;
 	/** Monotonic per-provider counter, bumped on every account state
 	 *  change (connect / disconnect / expire / error) and synchronously

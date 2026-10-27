@@ -63,8 +63,10 @@ export type PersistAccountResult =
 /** Encrypt + write to safeStorage. Returns the IPC failure kind on error so the page can act on it. */
 export async function persistAccount(
 	provider: Provider,
-	payload: PersistedAccount
+	payload: PersistedAccount,
+	_stillCurrent?: () => boolean
 ): Promise<PersistAccountResult> {
+	void _stillCurrent;
 	const b = bridge();
 	if (!b) return { ok: false, kind: 'no_bridge' };
 	// Serialize with any concurrent clearToken for this provider so a
