@@ -104,7 +104,7 @@ A provider's resolves stamp its show keys on every store a play writes, and remo
 - **Watched-at stamps and reverse mappings** of a retired key go with its row; a kept row keeps its own.
 - **Cached play resolutions** whose show key is retired are never replayed, and go. Before the sweep removes them, a read refuses them first: a URL a departed provider served can answer a liveness check with a redirect to another site, which would read as live.
 - **Availability rows** naming no walked provider, or none at all, are never served, and go; the next look at the show reprobes.
-- **Title matches** filed under a retired provider's segment are never asked for, and go. A kept row's matches sit under the `legacy` segment and stay.
+- **Title matches** filed under a segment no walked provider names go, unless a remaining row is read by them: a kept row's sit under the `legacy` segment, or under its provider's label while the app still knows that provider, and a row whose recorded entry Kitsu answered gone is found through the retired segments its title was filed under as well.
 
 The sweep keeps no marker. It finds its work in the data itself, so a launch with nothing retired reads the history and numbering files and a few key ranges of the cache, about a millisecond, and writes nothing, and a history or cache restored from an older copy is swept on the next launch. What it changed is listed on the diagnostics page.
 
