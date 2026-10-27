@@ -12,8 +12,10 @@
 //! A record lives as long as a cached row may ([`PLAY_RESOLUTION_TTL`])
 //! from the last listing that wrote it, so a row's own resolve leaves a
 //! record that outlives the row. Each record carries when its listing
-//! was heard — at the pick, before the appended-extras rule's reads —
-//! and a listing heard earlier never replaces it ([`put`]).
+//! was heard — the span from the pick's start to the pick, before the
+//! appended-extras rule's reads — and a listing heard earlier never
+//! replaces it; two whose spans overlap keep both listings' tags
+//! ([`next_record`]).
 
 use crate::app::AppState;
 use crate::cache::ttl::PLAY_RESOLUTION_TTL;
@@ -25,7 +27,8 @@ fn key(show_key: &str) -> String {
 /// When a listing was heard. A walk cannot say exactly when the
 /// listing it picked was fetched, only that it was after `start`, when
 /// the walk asked for the show's listings, and by `at`, when it made the
-/// pick. `run` names the process the stamps belong to.
+/// pick. `run` names the process the stamps belong to: they count this
+/// process's hearings, and compare with no other run's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Hearing {
     /// The process whose clock `start` and `at` read.
@@ -44,16 +47,16 @@ impl Begun {
     /// A hearing beginning now.
     #[must_use]
     pub(crate) fn now() -> Self {
-        Self(heard_now())
+        Self(tick())
     }
 
     /// The hearing, its pick made now.
     #[must_use]
     pub(crate) fn picked(self) -> Hearing {
         Hearing {
-            run: 0,
+            run: run(),
             start: self.0,
-            at: heard_now(),
+            at: tick(),
         }
     }
 }
@@ -65,23 +68,68 @@ pub(crate) struct Record {
     pub(crate) tags: Vec<String>,
 }
 
-/// The current moment, for a hearing's stamps: Unix milliseconds.
-pub(crate) fn heard_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+/// This process's clock for hearings: a count that only goes up. One
+/// backend runs per cache directory, so ordering within a run is all a
+/// record needs; a wall clock that jumps would order nothing.
+fn tick() -> u64 {
+    static CLOCK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    CLOCK.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The run this process's hearings belong to: drawn once, at the first
+/// hearing.
+fn run() -> u64 {
+    static RUN: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *RUN.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        // The low bits of the start instant, mixed with the process id:
+        // two runs drawing the same value would need both to match.
+        (nanos as u64) ^ (u64::from(std::process::id()) << 32)
+    })
 }
 
 /// The record to write for `new`, given what the store answered for the
 /// show (`stored`: `Err` when the read failed), or `None` to write
-/// nothing. A record heard no later than `new` is replaced; one heard
-/// later is kept.
+/// nothing:
+/// - a failed read says nothing of what is stored, which may be newer:
+///   nothing is written;
+/// - no record, or one an earlier run wrote — older than any hearing
+///   now — is replaced;
+/// - a record heard wholly before `new` began is replaced, and `new` is
+///   dropped when it was heard wholly before the record began;
+/// - spans that overlap cannot be ordered, so the record keeps the tags
+///   of both, over the span of both: a former number either listing
+///   gives an episode is not named.
 #[must_use]
 pub(crate) fn next_record(stored: Result<Option<Record>, ()>, new: Record) -> Option<Record> {
-    match stored {
-        Ok(Some(old)) if old.heard.at > new.heard.at => None,
-        _ => Some(new),
+    let Ok(stored) = stored else {
+        return None;
+    };
+    let Some(old) = stored.filter(|o| o.heard.run == new.heard.run) else {
+        return Some(new);
+    };
+    if new.heard.start >= old.heard.at {
+        return Some(new);
     }
+    if new.heard.at <= old.heard.start {
+        return None;
+    }
+    let mut tags = old.tags;
+    for t in new.tags {
+        if !tags.contains(&t) {
+            tags.push(t);
+        }
+    }
+    Some(Record {
+        heard: Hearing {
+            run: new.heard.run,
+            start: old.heard.start.min(new.heard.start),
+            at: old.heard.at.max(new.heard.at),
+        },
+        tags,
+    })
 }
 
 /// Every read-then-write of a record is made under this one lock, so a
