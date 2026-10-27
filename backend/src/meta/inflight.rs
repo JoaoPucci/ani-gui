@@ -40,11 +40,18 @@ struct Running<'a, V> {
 }
 
 impl<V> Running<'_, V> {
+    /// Remove the run's own entry, if it is still the one under the key:
+    /// once taken, the key may already hold a newer run's.
     fn take(&self) -> Option<broadcast::Sender<V>> {
-        self.running
-            .lock()
-            .expect("inflight map poisoned")
-            .remove(self.key)
+        let mut running = self.running.lock().expect("inflight map poisoned");
+        let ours = running
+            .get(self.key)
+            .is_some_and(|sender| sender.same_channel(&self.sender));
+        if ours {
+            running.remove(self.key)
+        } else {
+            None
+        }
     }
 }
 

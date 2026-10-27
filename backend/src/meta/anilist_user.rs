@@ -181,19 +181,27 @@ impl AniListProvider {
         body: &serde_json::Value,
     ) -> Result<bytes::Bytes> {
         // A write is sent as the user made it, never folded into another.
+        // It moves the bearer's write count on as it goes and as it is
+        // answered, so no read sent after it shares an answer with one
+        // sent before.
         if is_mutation(body) {
-            return self.post_graphql_once(tokens, body).await;
+            bump_writes(&tokens.access_token);
+            let answer = self.post_graphql_once(tokens, body).await;
+            bump_writes(&tokens.access_token);
+            return answer;
         }
-        // The same query for the same bearer, sent while one is out,
-        // waits for that answer (`crate::meta::inflight`).
+        // The same query for the same bearer, sent while one is out and
+        // no write has gone between them, waits for that answer
+        // (`crate::meta::inflight`).
         let key = format!(
-            "{}\u{0}{}",
+            "{}\u{0}{}\u{0}{}",
             crate::meta::anilist::request_key(
                 crate::meta::anilist_gate::current_class(),
                 self.api_url(),
                 body
             ),
-            tokens.access_token
+            tokens.access_token,
+            writes_of(&tokens.access_token)
         );
         ACCOUNT_IN_FLIGHT
             .run(key, || self.post_graphql_once(tokens, body))
@@ -240,6 +248,34 @@ impl AniListProvider {
 static ACCOUNT_IN_FLIGHT: std::sync::LazyLock<
     crate::meta::inflight::Inflight<Result<bytes::Bytes>>,
 > = std::sync::LazyLock::new(Default::default);
+
+/// How many times each bearer's writes have gone out or been answered.
+static WRITES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, u64>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn writes_of(token: &str) -> u64 {
+    WRITES
+        .lock()
+        .expect("write counts poisoned")
+        .get(token)
+        .copied()
+        .unwrap_or(0)
+}
+
+fn bump_writes(token: &str) {
+    *WRITES
+        .lock()
+        .expect("write counts poisoned")
+        .entry(token.to_owned())
+        .or_default() += 1;
+}
+
+/// AniList's numeric user id, from the id a profile carries.
+fn viewer_id(user: &str) -> Result<i64> {
+    user.parse().map_err(|_| AniError::ParseFailed {
+        detail: format!("anilist viewer id not numeric: {user}"),
+    })
+}
 
 /// Whether `body` is a GraphQL mutation: a write.
 fn is_mutation(body: &serde_json::Value) -> bool {
@@ -330,13 +366,13 @@ impl UserListProvider for AniListProvider {
 
     async fn list_all(&self, tokens: &Tokens) -> Result<Vec<ListEntry>> {
         // AniList's MediaListCollection wants `$userId` as a
-        // non-negotiable filter; we resolve it via `me()` so the
-        // trait stays minimal (one call site doesn't need to pass
-        // the user id through to every list fetch).
+        // non-negotiable filter; with no user known, ask `me()`.
         let me = self.me(tokens).await?;
-        let user_id: i64 = me.user_id.parse().map_err(|_| AniError::ParseFailed {
-            detail: format!("anilist viewer id not numeric: {}", me.user_id),
-        })?;
+        self.list_all_for(tokens, &me.user_id).await
+    }
+
+    async fn list_all_for(&self, tokens: &Tokens, user: &str) -> Result<Vec<ListEntry>> {
+        let user_id = viewer_id(user)?;
 
         let mut out: Vec<ListEntry> = Vec::new();
         let mut chunk: i64 = 1;
@@ -402,9 +438,16 @@ impl UserListProvider for AniListProvider {
         // surfaces immediately as `InvalidToken` instead of after a
         // partial success.
         let me = self.me(tokens).await?;
-        let user_id: i64 = me.user_id.parse().map_err(|_| AniError::ParseFailed {
-            detail: format!("anilist viewer id not numeric: {}", me.user_id),
-        })?;
+        self.delete_entry_for(tokens, id, &me.user_id).await
+    }
+
+    async fn delete_entry_for(
+        &self,
+        tokens: &Tokens,
+        id: ProviderMediaId,
+        user: &str,
+    ) -> Result<()> {
+        let user_id = viewer_id(user)?;
         let lookup_body = serde_json::json!({
             "query": MEDIA_LIST_ROW_ID_GQL,
             "variables": { "mediaId": id.0, "userId": user_id },
