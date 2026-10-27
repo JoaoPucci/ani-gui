@@ -257,6 +257,22 @@ describe('setEntryAcrossTrackers — a rewatch on a tracker without one', () => 
 		expect(out).toEqual({ written: 2, failed: 0 });
 	});
 
+	it('never lowers an AniList Completed row beside a MyAnimeList rewatch when the total is unknown', async () => {
+		const getEntry = vi.fn(
+			async (p: Provider): Promise<EntryView | null> =>
+				p === 'mal' ? { status: 'rewatching', progress: 3 } : { status: 'completed', progress: 12 }
+		);
+		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		const out = await setEntryAcrossTrackers(
+			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
+			'kitsu-1',
+			{ status: 'rewatching', statusChanged: false, progress: 3, total: null }
+		);
+		expect(setEntry).not.toHaveBeenCalledWith('anilist', expect.anything(), expect.anything());
+		expect(setEntry).toHaveBeenCalledWith('mal', 'tok', { kitsu_id: 'kitsu-1', progress: 3 });
+		expect(out).toEqual({ written: 2, failed: 0 });
+	});
+
 	it('still sends a deliberate lower count on a Completed row whose total is unknown', async () => {
 		const getEntry = vi.fn(
 			async (): Promise<EntryView | null> => ({
