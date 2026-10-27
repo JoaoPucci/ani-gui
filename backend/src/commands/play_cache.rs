@@ -307,3 +307,7 @@ pub(crate) fn cached_launch_args(
 #[cfg(test)]
 #[path = "play_cache_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_cache_replay_prop_test.rs"]
+mod replay_prop_tests;

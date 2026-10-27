@@ -6,6 +6,8 @@ use crate::scraper::provider::EpisodeRef;
 
 #[path = "play_native_merge_former.rs"]
 mod former;
+#[cfg(test)]
+pub(crate) use former::carries_tag;
 pub(crate) use former::{
     former_number, former_on_replay, former_tags_of, mark_offset_recaps, names_a_row_now,
 };
