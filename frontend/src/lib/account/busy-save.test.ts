@@ -15,6 +15,17 @@ import { m } from '$lib/paraglide/messages';
 beforeEach(() => {
 	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
 });
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+/** Time passing by `ms` that no timer saw: the monotonic clock jumps on
+ *  while every timer stays where it was, as when a hidden window's
+ *  timers are throttled and wake late. */
+function runClockAhead(ms: number): void {
+	const now = performance.now.bind(performance);
+	vi.spyOn(performance, 'now').mockImplementation(() => now() + ms);
+}
 
 describe('providerName', () => {
 	it('names each tracker by its display name, and an unnamed one by its id', () => {
@@ -56,11 +67,23 @@ describe('noticeBusy', () => {
 	it('reads the deadline, not a count of ticks: a late tick shows the true remainder', async () => {
 		vi.useFakeTimers();
 		const id = noticeBusy('anilist', 10);
-		// The clock runs on four seconds without the timers firing — a page
-		// in the background, a busy main thread — then one tick comes.
-		vi.setSystemTime(Date.now() + 4000);
+		// Time runs on four seconds without the timers firing — a page in
+		// the background, a busy main thread — then one tick comes.
+		runClockAhead(4000);
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(busy(5));
+	});
+
+	it('keeps its count through a wall-clock jump either way', async () => {
+		vi.useFakeTimers();
+		const id = noticeBusy('anilist', 10);
+		vi.setSystemTime(Date.now() + 60_000);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(busy(9));
+		vi.setSystemTime(Date.now() - 120_000);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(toastStore.items.find((t) => t.id === id)?.message).toBe(busy(8));
+		toastStore.dismiss(id);
 	});
 
 	it('stops its timer once the notice leaves the stack, whoever takes it down', async () => {
@@ -445,6 +468,49 @@ describe('a held write dropped while it waits', () => {
 		expect(await pending).toBeInstanceOf(SupersededError);
 		expect(write).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe('a held write and its notice, on one clock', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+	const going = () => m.account_busy_saving_now({ provider: m.account_provider_anilist() });
+
+	it('goes at the first wake-up past its deadline, however late the timers wake, as its notice says', async () => {
+		// A minimised window's timers may wake a minute late each: the wait
+		// is a deadline, not sixty one-second steps that each run late.
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(60))
+			.mockResolvedValue('saved');
+		const pending = saveWhenTrackerAllows('anilist', '70', write);
+		await vi.advanceTimersByTimeAsync(0);
+		runClockAhead(60_000);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(write).toHaveBeenCalledTimes(2);
+		expect(await pending).toBe('saved');
+	});
+
+	it('neither goes nor says it is going when the wall clock jumps past its deadline', async () => {
+		const write = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(refused(60))
+			.mockResolvedValue('saved');
+		const pending = saveWhenTrackerAllows('anilist', '71', write);
+		await vi.advanceTimersByTimeAsync(0);
+		vi.setSystemTime(Date.now() + 120_000);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(write).toHaveBeenCalledTimes(1);
+		expect(busyNotices().map((t) => t.message)).toEqual([
+			m.account_busy_saving({ provider: m.account_provider_anilist(), seconds: 59 })
+		]);
+		await vi.advanceTimersByTimeAsync(59_000);
+		expect(busyNotices().map((t) => t.message)).toEqual([going()]);
+		expect(await pending).toBe('saved');
 	});
 });
 

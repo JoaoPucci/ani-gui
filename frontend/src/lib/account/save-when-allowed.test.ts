@@ -190,6 +190,36 @@ describe('waitWhileWanted', () => {
 		vi.useRealTimers();
 	});
 
+	it('ends at the first look past its deadline, however late its timer wakes', async () => {
+		// A hidden window's timers may each wake a minute late: one late
+		// wake-up past the deadline ends the wait, not one per second asked.
+		let clock = 0;
+		const fired: number[] = [];
+		const timer: { fire: (() => void) | null } = { fire: null };
+		const late = (ms: number, tick: () => void) => {
+			timer.fire = () => {
+				clock += ms + 59_000;
+				fired.push(clock);
+				tick();
+			};
+			return () => (timer.fire = null);
+		};
+		let done = false;
+		void waitWhileWanted(60_000, { after: late, now: () => clock, stillWanted: () => true }).then(
+			() => {
+				done = true;
+			}
+		);
+		while (timer.fire) {
+			const fire = timer.fire;
+			timer.fire = null;
+			fire();
+		}
+		await Promise.resolve();
+		expect(fired).toEqual([60_000]);
+		expect(done).toBe(true);
+	});
+
 	it('waits the whole time while the write is wanted', async () => {
 		vi.useFakeTimers();
 		let done = false;
