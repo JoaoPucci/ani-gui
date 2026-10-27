@@ -105,14 +105,14 @@ impl<P: Provider + ?Sized> Provider for Memo<'_, P> {
     }
 }
 
-/// The failure a probe answered, again, when the memo keeps it: every
-/// answer the pick weighs as the candidate dead — a listing that
-/// answered not-found-shaped, one that died in transport or ran out of
-/// time, one whose body could not be read — is the same dead candidate
-/// to every pick over the pool, so a pick made again neither asks for
-/// it twice nor hears it answer where the first weighed it dead. A
-/// block or a refused admit stops the pick, and anything else is not
-/// kept.
+/// The failure a probe answered, again, when the memo keeps it: the
+/// answers the provider's listing probe gives for a dead candidate — a
+/// listing that answered not-found-shaped, one that died in transport
+/// or ran out of time, one whose body could not be read — are the same
+/// dead candidate to every pick over the pool, so a pick made again
+/// neither asks for it twice nor hears it answer where the first
+/// weighed it dead. A block or a refused admit stops the pick; any
+/// other failure, which the probe does not give, is not kept.
 pub(super) fn replayed(e: &AniError) -> Option<AniError> {
     match e {
         AniError::Upstream { status } if !e.is_provider_block() => {

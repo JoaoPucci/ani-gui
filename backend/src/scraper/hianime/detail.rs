@@ -101,12 +101,14 @@ pub fn parse_detail_genres(html: &str) -> Vec<String> {
 /// entity-decoded and trimmed — "G", "PG-13", "R+", "Rx". Read inside
 /// that stats block alone, which ends where the page's buttons begin,
 /// so a mark on another show's card further down the page is never the
-/// show's. `None` when the heading carries no such mark.
+/// show's. `None` when the heading carries no such mark, and when the
+/// page carries no buttons to end the block: nothing then says where
+/// the show's own stats stop.
 #[must_use]
 pub fn parse_detail_rating(html: &str) -> Option<String> {
     let (_, heading) = html.split_once("<h2 class=\"film-name")?;
     let (_, stats) = heading.split_once("class=\"film-stats\"")?;
-    let stats = stats.split("class=\"film-buttons\"").next()?;
+    let (stats, _) = stats.split_once("class=\"film-buttons\"")?;
     let (_, mark) = stats.split_once("tick-item tick-pg\"")?;
     let text = mark.split_once('>')?.1.split('<').next()?;
     let text = decode_entities(text);

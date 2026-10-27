@@ -1,5 +1,5 @@
 //! The genre gate, case by case: no pick serves a listing its own
-//! entry page files under Hentai, or one whose page lists no genre,
+//! entry page files under Hentai, or one whose page lists no genre and no rating,
 //! dated or undated, counted or countless — and an undated pick pays
 //! for it with the page of each listing it serves and nothing more.
 
@@ -128,7 +128,7 @@ async fn an_undated_pick_never_serves_a_hentai() {
     }
 }
 
-/// A page that lists no genre — a missing page, or one whose markup no
+/// A page that lists no genre and no rating — a missing page, or one whose markup no
 /// longer carries the row — says nothing about whether its listing is a
 /// hentai, and its listing is not taken as safe: the next candidate is
 /// picked where there is one, and a pool left with none is the answered
@@ -340,7 +340,7 @@ async fn a_pick_made_again_stays_within_its_first_head() {
 
 /// A dated pool's hit that could never be picked — refused by the
 /// entry's titles, probed only as evidence — makes no miss the dead end
-/// for its page listing no genre: the refusal by name stands.
+/// for its page listing no genre and no rating: the refusal by name stands.
 #[tokio::test]
 async fn an_unread_page_on_evidence_leaves_the_refusal_by_name() {
     let client = site(&[(1, 12), (2, 12)]).genres(1, &[]);

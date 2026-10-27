@@ -67,7 +67,7 @@ pub(crate) fn genre_of(page: &EntryPage) -> Genre {
 /// its own, so a markup change that loses the year degrades to
 /// year-blind picking. A hit its page files under [`HENTAI`] is
 /// excluded the same way a year off is: no entry the app shows is one.
-/// So is a hit whose page lists no genre at all ([`Genre::Unread`]) —
+/// So is a hit whose page lists no genre and no rating at all ([`Genre::Unread`]) —
 /// a 404ing page reads as one — which nothing says is not one; its slug
 /// joins `unread`, since a pool whose verdict rests on a page that
 /// said nothing is no clean miss (see `play_native_genre`), and a
@@ -119,12 +119,12 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
         // A hentai is never the entry: Kitsu serves the app no adult
         // entry, so a hit its own page files under the genre is out,
         // as a hit from another year is — and so is one whose page
-        // lists no genre, which nothing says is not one.
+        // lists no genre and no rating, which nothing says is not one.
         match genre {
             Genre::Listed => kept.push((h, confirmed)),
             Genre::Hentai => {}
             Genre::Unread => {
-                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre; not taken as safe");
+                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre and no rating; not taken as safe");
                 unread.push(h.slug.clone());
             }
         }
