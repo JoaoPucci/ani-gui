@@ -141,3 +141,49 @@ proptest! {
         prop_assert!(null_outer.f.into_inner().is_none());
     }
 }
+
+/// The same reply read through the `present` field function, as the
+/// readers that keep a plain `Option` field do.
+#[derive(Deserialize)]
+#[serde(bound = "T: serde::de::DeserializeOwned")]
+struct PlainReply<T> {
+    #[serde(deserialize_with = "super::present")]
+    f: Option<T>,
+}
+
+/// What a reply reads as through either form: `None` when it is no
+/// answer, else the field.
+fn through_both<T>(reply: &str) -> (Option<Option<T>>, Option<Option<T>>)
+where
+    T: serde::de::DeserializeOwned,
+{
+    let typed = serde_json::from_str::<Reply<T>>(reply)
+        .ok()
+        .map(|r| r.f.into_inner());
+    let plain = serde_json::from_str::<PlainReply<T>>(reply)
+        .ok()
+        .map(|r| r.f);
+    (typed, plain)
+}
+
+proptest! {
+    /// `present` reads every reply exactly as `Present` does: missing is
+    /// no answer, null is None, a value is itself, a value of another
+    /// kind is no answer.
+    #[test]
+    fn the_present_field_function_reads_as_present_does(
+        field in proptest::option::of(prop_oneof![
+            Just(serde_json::Value::Null),
+            any::<u32>().prop_map(serde_json::Value::from),
+            "\\PC{0,8}".prop_map(serde_json::Value::from),
+            nested().prop_map(|n| serde_json::to_value(n).expect("json")),
+        ]),
+        around in surroundings(),
+    ) {
+        let reply = with_field(around, field);
+        let (typed, plain) = through_both::<u32>(&reply);
+        prop_assert_eq!(typed, plain, "{}", reply);
+        let (typed, plain) = through_both::<Nested>(&reply);
+        prop_assert_eq!(typed, plain, "{}", reply);
+    }
+}
