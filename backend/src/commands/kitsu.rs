@@ -388,8 +388,12 @@ pub(crate) async fn kitsu_episode_page(
 
 /// The entries Kitsu relates an anime to
 /// ([`crate::meta::kitsu::KitsuClient::media_relationships`]), cached
-/// under `kitsu:relations:v1:<id>` for as long as a finished show's
+/// under `kitsu:relations:v2:<id>` for as long as a finished show's
 /// detail row.
+///
+/// v2: the parser refuses a page naming a destination it does not
+/// include. A v1 row may hold such an entry, read then as one of no
+/// format or status.
 ///
 /// # Errors
 /// As the client's, on a miss.
@@ -397,7 +401,7 @@ pub async fn kitsu_relationships(
     state: &AppState,
     anime_id: &str,
 ) -> Result<crate::meta::kitsu::KitsuRelations> {
-    let key = format!("kitsu:relations:v1:{anime_id}");
+    let key = format!("kitsu:relations:v2:{anime_id}");
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(rel) = serde_json::from_str(&body) {
             return Ok(rel);
