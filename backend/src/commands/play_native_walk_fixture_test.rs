@@ -168,6 +168,7 @@ impl Provider for Recorded {
             year: self.detail_year(slug).await?,
             names: self.doc.page_names.get(slug).cloned().unwrap_or_default(),
             genres: self.doc.genres.get(slug).cloned().unwrap_or_else(listed),
+            rating: None,
         })
     }
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {

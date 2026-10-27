@@ -119,8 +119,8 @@ pub struct BrowseHit {
 
 /// What a show's entry page says about it: the premiere year, the
 /// other names it lists for the show — its Japanese title and its
-/// synonyms, as written there — and the genres it files the show
-/// under.
+/// synonyms, as written there — the genres it files the show under,
+/// and the age rating it gives the show.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryPage {
     /// The premiere year the page names, when it names one.
@@ -129,6 +129,9 @@ pub struct EntryPage {
     pub names: Vec<String>,
     /// The genres the page lists, as written, in page order.
     pub genres: Vec<String>,
+    /// The age rating the page's own heading carries ("PG-13", "R+",
+    /// "Rx"), as written, when it carries one.
+    pub rating: Option<String>,
 }
 
 /// One episode row: the id the per-episode endpoints are keyed on

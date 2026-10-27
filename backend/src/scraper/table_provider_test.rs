@@ -535,6 +535,7 @@ impl Provider for TableProvider {
             year: self.detail_year(slug).await?,
             names: Vec::new(),
             genres: Self::by_show(&self.genres, &self.genres_default, slug)?,
+            rating: None,
         })
     }
 

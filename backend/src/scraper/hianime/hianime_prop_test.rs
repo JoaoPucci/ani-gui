@@ -254,6 +254,36 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_detail_year(&page), expected);
     }
 
+    /// The rating is the mark in the stats under the show's own
+    /// heading, trimmed, or none when the stats carry none — whatever
+    /// marks other shows' cards carry further down the page, and
+    /// whatever else the stats hold beside it.
+    #[test]
+    fn detail_rating_is_the_own_heading_s_mark_alone(
+        own in proptest::option::of(prop_oneof![
+            Just("G".to_string()), Just("PG".to_string()), Just("PG-13".to_string()),
+            Just("R".to_string()), Just("R+".to_string()), Just("Rx".to_string()),
+            "[A-Z][A-Za-z0-9+-]{0,5}",
+        ]),
+        pad in "[ \n]{0,3}",
+        quality in proptest::bool::ANY,
+        decoys in proptest::collection::vec(prop_oneof![Just("Rx"), Just("PG-13"), Just("18+")], 0..4),
+    ) {
+        let mark = own
+            .as_ref()
+            .map(|r| format!(r#"<div class="tick-item tick-pg">{pad}{r}{pad}</div>"#))
+            .unwrap_or_default();
+        let quality = if quality { r#"<div class="tick-item tick-quality">HD</div>"# } else { "" };
+        let cards: String = decoys
+            .iter()
+            .map(|d| format!(r#"<div class="flw-item"><div class="tick-item tick-pg">{d}</div><div class="tick-item tick-rate">{d}</div></div>"#))
+            .collect();
+        let page = format!(
+            r#"<h2 class="film-name dynamic-name">Show</h2><div class="film-stats"><div class="tick">{quality}{mark}<span class="item">TV</span></div></div><div class="film-buttons"></div>{cards}"#
+        );
+        proptest::prop_assert_eq!(parse_detail_rating(&page), own);
+    }
+
     /// The genres are the Genres row's links in order, whatever sits
     /// after the row: a later row's links or a genre menu elsewhere on
     /// the page never answer for the show.

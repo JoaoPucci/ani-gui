@@ -33,7 +33,10 @@ pub use ajax::{
     remainder_index, request_of, servers_for, ServerCaps, ServerEmbed, ServerListing,
     CHAIN_REQUESTS,
 };
-pub use detail::{parse_detail_genres, parse_detail_names, parse_detail_year, parse_entry_page};
+pub use detail::{
+    parse_detail_genres, parse_detail_names, parse_detail_rating, parse_detail_year,
+    parse_entry_page,
+};
 pub use embed::{decode_embed, embed_origin, is_not_found_page, EmbedPayload};
 pub use megaplay::{media_id, sources_url};
 pub use megaplay_sources::{lang_of_track, parse_sources};

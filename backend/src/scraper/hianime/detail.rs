@@ -1,6 +1,6 @@
 //! Pure extraction over hianime's entry page — the premiere year the
-//! resolver uses as a hint, and the other names the page gives the
-//! show. Split from the search page's reading so
+//! resolver uses as a hint, the other names the page gives the show,
+//! its genres and its age rating. Split from the search page's reading so
 //! each file stays inside the complexity ratchet's per-file bar.
 
 use crate::scraper::provider::EntryPage;
@@ -96,14 +96,33 @@ pub fn parse_detail_genres(html: &str) -> Vec<String> {
         .collect()
 }
 
+/// The age rating the entry page gives the show: the text of the
+/// rating mark (`tick-pg`) in the stats under the show's own heading,
+/// entity-decoded and trimmed — "G", "PG-13", "R+", "Rx". Read inside
+/// that stats block alone, which ends where the page's buttons begin,
+/// so a mark on another show's card further down the page is never the
+/// show's. `None` when the heading carries no such mark.
+#[must_use]
+pub fn parse_detail_rating(html: &str) -> Option<String> {
+    let (_, heading) = html.split_once("<h2 class=\"film-name")?;
+    let (_, stats) = heading.split_once("class=\"film-stats\"")?;
+    let stats = stats.split("class=\"film-buttons\"").next()?;
+    let (_, mark) = stats.split_once("tick-item tick-pg\"")?;
+    let text = mark.split_once('>')?.1.split('<').next()?;
+    let text = decode_entities(text);
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
 /// The entry page as the picker reads it: [`parse_detail_year`],
-/// [`parse_detail_names`] and [`parse_detail_genres`] over the one
-/// page.
+/// [`parse_detail_names`], [`parse_detail_genres`] and
+/// [`parse_detail_rating`] over the one page.
 #[must_use]
 pub fn parse_entry_page(html: &str) -> EntryPage {
     EntryPage {
         year: parse_detail_year(html),
         names: parse_detail_names(html),
         genres: parse_detail_genres(html),
+        rating: parse_detail_rating(html),
     }
 }

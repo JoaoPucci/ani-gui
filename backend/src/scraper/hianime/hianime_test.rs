@@ -553,13 +553,64 @@ fn the_entry_page_genres_are_its_genre_row_s_links() {
     );
 }
 
-/// The entry page read once: the year, the names and the genres.
+/// The entry page read once: the year, the names, the genres and the
+/// rating.
 #[test]
 fn the_entry_page_is_its_year_names_and_genres() {
     let page = parse_entry_page(ENTRY_PAGE);
     assert_eq!(page.year, Some(2021));
     assert_eq!(page.names.len(), 2);
     assert_eq!(page.genres, vec!["Drama".to_string(), "Sci-Fi".to_string()]);
+    assert_eq!(page.rating, None, "the sample's heading carries no rating");
+    let rated = parse_entry_page(RATED_HEADING);
+    assert_eq!(rated.rating.as_deref(), Some("Rx"));
+}
+
+/// The heading of an entry page as hianime writes one, reduced from a
+/// live page (an adult OVA, 2026-10-28): the show's name, then its stats
+/// — the rating mark, the quality, the counts, the format — then the
+/// page's buttons; further down, another show's card carrying marks of
+/// its own.
+const RATED_HEADING: &str = r#"<div class="anisc-detail">
+    <h2 class="film-name dynamic-name" data-jname="Show"> Show </h2>
+    <div class="film-stats"> <div class="tick">
+        <div class="tick-item tick-pg">Rx</div>
+        <div class="tick-item tick-quality">HD</div>
+        <div class="tick-item tick-sub"><i class="fas fa-closed-captioning mr-1"></i>4</div>
+        <span class="dot"></span> <span class="item">OVA</span>
+        <div class="clearfix"></div> </div> </div>
+    <div class="film-buttons"><a class="btn btn-play">Watch now</a></div>
+</div>
+<div class="flw-item"><div class="tick-item tick-rate">18+</div><div class="tick-item tick-pg">PG-13</div></div>"#;
+
+/// The same heading as a sparse live page writes it (an ONA part,
+/// 2026-10-28): the stats carry the quality, the count and the format,
+/// and no rating mark — and another show's card further down does.
+const UNRATED_HEADING: &str = r#"<div class="anisc-detail">
+    <h2 class="film-name dynamic-name" data-jname="Show Part 3"> Show Part 3 </h2>
+    <div class="film-stats"> <div class="tick">
+        <div class="tick-item tick-quality">HD</div>
+        <div class="tick-item tick-sub"><i class="fas fa-closed-captioning mr-1"></i>12</div>
+        <span class="dot"></span> <span class="item">ONA</span>
+        <div class="clearfix"></div> </div> </div>
+    <div class="film-buttons"><a class="btn btn-play">Watch now</a></div>
+</div>
+<div class="flw-item"><div class="tick-item tick-rate">18+</div><div class="tick-item tick-pg">Rx</div></div>"#;
+
+/// The rating is the mark in the stats under the show's own heading,
+/// and nothing else on the page: another show's card's mark, or its
+/// "18+", is never the show's.
+#[test]
+fn the_entry_page_rating_is_its_own_heading_s_mark() {
+    assert_eq!(parse_detail_rating(RATED_HEADING).as_deref(), Some("Rx"));
+    assert_eq!(parse_detail_rating(UNRATED_HEADING), None);
+    assert_eq!(parse_detail_rating("<div>no heading</div>"), None);
+    let empty = RATED_HEADING.replace(">Rx<", "> <");
+    assert_eq!(
+        parse_detail_rating(&empty),
+        None,
+        "a blank mark is no rating"
+    );
 }
 
 #[test]
