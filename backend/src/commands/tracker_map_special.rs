@@ -29,7 +29,13 @@ pub(super) async fn special_evidence(
         return Ok(None);
     }
     let mut related = Vec::new();
+    let mut asked: Vec<&str> = Vec::new();
     for relation in relations.entries.iter().filter(|r| r.kind == "anime") {
+        // An entry Kitsu relates the special to twice is read once.
+        if asked.contains(&relation.id.as_str()) {
+            continue;
+        }
+        asked.push(&relation.id);
         let Some(native) = resolves(ask, &relation.id).await? else {
             continue;
         };
