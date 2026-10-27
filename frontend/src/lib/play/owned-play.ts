@@ -123,7 +123,9 @@ export function playQuality(config: { quality: string } | null | undefined): str
 /** Record a played episode for the clicked show: stamp Continue
  *  Watching (the click may have reused a prefetch, which stamps
  *  nothing; the backend op is idempotent), and mirror the progress to
- *  the connected trackers unless the match was a guess (`mirror`).
+ *  the connected trackers unless the match was a guess (`mirror`) or
+ *  the episode is one the session could not verify (`unverified`): a
+ *  row past Kitsu's count that may be an extra the provider appended.
  *  Completion is decided against the show's full finite total, and only
  *  for a finished series. Both are best-effort: the returned promise
  *  settles once both have, and never rejects. */
@@ -148,7 +150,7 @@ export function recordPlayed(
 	}
 ): Promise<void> {
 	const writes: Promise<void>[] = [deps.markWatched(input.args)];
-	if (input.mirror) {
+	if (input.mirror && !input.unverified) {
 		writes.push(
 			deps.syncTrackers(
 				input.showId,
