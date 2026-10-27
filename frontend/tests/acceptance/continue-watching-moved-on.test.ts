@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { mount, tick, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
@@ -20,6 +20,24 @@ vi.mock('$app/state', () => ({
 		return page;
 	}
 }));
+// Every Continue click runs through the controller `makeStartResume`
+// builds, and the click's promise settles only once the click has run
+// to its end: navigated, shown its failure, or let go of the card.
+// Recording each click's promise lets a case wait for the click to be
+// over rather than for a fixed time.
+const clicks = vi.hoisted(() => [] as Promise<void>[]);
+vi.mock('$lib/history/start-resume', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/history/start-resume')>();
+	const makeStartResume: typeof real.makeStartResume = (deps) => {
+		const start = real.makeStartResume(deps);
+		return (...args) => {
+			const click = start(...args);
+			clicks.push(click);
+			return click;
+		};
+	};
+	return { ...real, makeStartResume };
+});
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -65,6 +83,7 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	vi.mocked(goto).mockClear();
+	clicks.length = 0;
 	forgetNavigationListeners();
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
@@ -116,6 +135,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+/** The last Continue click has run to its end, and what it rendered
+ *  is flushed. A click that went on to ask for a session it is never
+ *  handed does not end, so this times out rather than passing. */
+async function clickOver() {
+	await until(() => clicks.length > 0, 'a Continue click');
+	let over = false;
+	void Promise.allSettled([clicks[clicks.length - 1]]).then(() => (over = true));
+	await until(() => over, 'the Continue click to run to its end');
+	await tick();
+}
+
 const resumeButton = () =>
 	Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.includes(SHOW)) ?? null;
 
@@ -147,7 +177,7 @@ describe('a Continue click whose session lands after the viewer moved on', () =>
 		unmount(app);
 		app = null;
 		stream.dispatch('done', SESSION);
-		await new Promise((r) => setTimeout(r, 100));
+		await clickOver();
 
 		expect(goto).not.toHaveBeenCalled();
 	});
@@ -158,7 +188,7 @@ describe('a Continue click whose session lands after the viewer moved on', () =>
 
 		startNavigation();
 		stream.dispatch('done', SESSION);
-		await new Promise((r) => setTimeout(r, 100));
+		await clickOver();
 
 		expect(goto).not.toHaveBeenCalled();
 		// Home is still on screen until that navigation lands; the card
@@ -206,7 +236,7 @@ describe('a Continue click the viewer moved on from before its session was asked
 		unmount(app);
 		app = null;
 		release();
-		await new Promise((r) => setTimeout(r, 100));
+		await clickOver();
 
 		expect(FakeEventSource.instances).toEqual([]);
 		expect(window.localStorage.getItem('ani-gui.watch-positions')).toBeNull();
@@ -219,7 +249,7 @@ describe('a Continue click the viewer moved on from before its session was asked
 
 		startNavigation();
 		release();
-		await new Promise((r) => setTimeout(r, 100));
+		await clickOver();
 
 		expect(FakeEventSource.instances).toEqual([]);
 		expect(goto).not.toHaveBeenCalled();
@@ -244,7 +274,7 @@ describe('a Continue click that fails while the viewer moves on', () => {
 
 		startNavigation();
 		release();
-		await new Promise((r) => setTimeout(r, 100));
+		await clickOver();
 
 		expect(target.textContent).not.toContain(m.play_play_failure_episode_unavailable());
 		expect(overlay()).toBeNull();

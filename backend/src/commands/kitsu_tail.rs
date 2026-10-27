@@ -19,6 +19,7 @@ pub const KITSU_PAGE: u32 = 20;
 pub struct KitsuTail<'a> {
     state: &'a AppState,
     kitsu_id: &'a str,
+    budget: Option<std::time::Duration>,
 }
 
 impl<'a> KitsuTail<'a> {
@@ -26,9 +27,25 @@ impl<'a> KitsuTail<'a> {
     /// with no entry behind it.
     #[must_use]
     pub fn for_entry(state: &'a AppState, kitsu_id: Option<&'a str>) -> Option<Self> {
-        kitsu_id
-            .filter(|id| !id.is_empty())
-            .map(|kitsu_id| Self { state, kitsu_id })
+        kitsu_id.filter(|id| !id.is_empty()).map(|kitsu_id| Self {
+            state,
+            kitsu_id,
+            budget: Some(super::play_native_appended::TAIL_BUDGET),
+        })
+    }
+
+    /// The source with no bound on how long its reads may take. A test
+    /// whose outcome is the evidence's, not the budget's, reads through
+    /// it: a machine slow enough to keep a mock server's answers past
+    /// the budget would otherwise end the read and hand the listing to
+    /// the kept reading.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn unbounded(self) -> Self {
+        Self {
+            budget: None,
+            ..self
+        }
     }
 }
 
@@ -62,6 +79,10 @@ const KEPT_FOR: std::time::Duration = crate::cache::ttl::TITLE_MATCH_TTL;
 
 #[async_trait::async_trait]
 impl TailSource for KitsuTail<'_> {
+    fn budget(&self) -> Option<std::time::Duration> {
+        self.budget
+    }
+
     fn remembered(&self) -> Option<Remembered> {
         let body = crate::cache::meta_cache_get(&self.state.cache_pool, &kept_key(self.kitsu_id))
             .ok()??;

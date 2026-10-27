@@ -5,9 +5,9 @@
 //! bar.
 
 use super::play_native_title_grammar::{
-    glued_number, half_width, japanese_trailing, kind_of, marker_of, ordinals_after_marker,
-    small_number, spelled_ordinal, stem, trailing_markers, untagged_normalized, words, Kind,
-    Marker,
+    glued_number, half_width, is_japanese, japanese_trailing, kind_of, marker_of,
+    ordinals_after_marker, small_number, spelled_ordinal, stem, trailing_markers,
+    untagged_normalized, words, Kind, Marker,
 };
 
 #[path = "play_native_title_past.rs"]
@@ -30,6 +30,14 @@ pub(crate) use title_entry_before::*;
 mod title_beside;
 pub(crate) use title_beside::*;
 
+#[path = "play_native_title_alone.rs"]
+mod title_alone;
+pub(crate) use title_alone::*;
+
+#[path = "play_native_title_division.rs"]
+mod title_division;
+pub(crate) use title_division::*;
+
 /// The divisions `sibling` names as its own right after `wide`'s stem
 /// ([`divisions_beside`]), with their kinds: "Attack on Titan Season 3
 /// Part 2" beside "Attack on Titan Season 3" names part 2;
@@ -39,6 +47,14 @@ pub(crate) use title_beside::*;
 /// `sibling` does not start with the stem.
 pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
     divisions_beside(sibling, wide).map_or_else(Vec::new, |(named, _)| named)
+}
+
+/// A title's words as the reader reads them ([`words`]), each word that
+/// holds Japanese divisions glued to its end read as what it holds
+/// before them and each division in turn: "Fourth第十二部" is "fourth"
+/// and "第十二部", "ショー第2期第2部" is "ショー", "第2期" and "第2部".
+pub(crate) fn read_words(title: &str) -> Vec<String> {
+    super::play_native_title_grammar::apart_glued(words(title))
 }
 
 /// Every division `words` name, first word to last: a marker pair, a
@@ -63,67 +79,16 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
             i += 1;
             continue;
         }
-        match division_at(words, i) {
+        match division_at(words, i).filter(|_| !inside_the_name(words, i)) {
             Some((m, taken)) => {
                 out.push(m);
-                i += taken;
+                i += taken + if taken == 1 { half_after(words, i) } else { 0 };
             }
             None if leading => break,
             None => i += 1,
         }
     }
     out
-}
-
-/// The division `words` name starting at `i`, and how many words it
-/// takes: a marker pair, unless the first word is a Roman numeral or a
-/// bare number before a marker carrying its own ordinal ("II Part 2",
-/// "II Part Two") — a suffixed or spelled ordinal pairs with the marker
-/// after it ("3rd Season Second Half"); a Japanese division
-/// (a word of its own or glued to the end of one); or an ordinal
-/// standing alone — spelled, bare, or a number glued to a Japanese
-/// word.
-fn division_at(words: &[String], i: usize) -> Option<(Marker, usize)> {
-    let w = &words[i];
-    let numeral = small_number(w).is_some()
-        || (w.chars().all(|c| "ivx".contains(c)) && spelled_ordinal(w).is_some());
-    let own_marker_follows = numeral
-        && words.get(i + 1).is_some_and(|k| kind_of(k).is_some())
-        && words
-            .get(i + 2)
-            .is_some_and(|o| ordinals_after_marker(o).is_some());
-    if !own_marker_follows {
-        if let Some(m) = words.get(i + 1).and_then(|next| marker_of(w, next)) {
-            return Some((m, 2));
-        }
-    }
-    if let Some((m, _)) = japanese_trailing(w) {
-        return Some((m, 1));
-    }
-    let n = spelled_ordinal(w)
-        .or_else(|| small_number(w))
-        .or_else(|| glued_number(w))?;
-    Some((
-        Marker {
-            kind: Kind::Season,
-            ordinals: vec![n],
-        },
-        1,
-    ))
-}
-
-/// The Japanese divisions a word ends on, in order — every one of
-/// several glued one after another ("ショー第2期第2部" → season 2, part
-/// 2) — and what the word holds before the first ("ショー").
-fn glued_divisions(word: &str) -> Option<(Vec<Marker>, &str)> {
-    let (first, mut head) = japanese_trailing(word)?;
-    let mut out = vec![first];
-    while let Some((m, before)) = japanese_trailing(head) {
-        out.push(m);
-        head = before;
-    }
-    out.reverse();
-    Some((out, head))
 }
 
 /// How a title reads: the ordinals of every division it names
@@ -135,7 +100,7 @@ fn glued_divisions(word: &str) -> Option<(Vec<Marker>, &str)> {
 /// "Show II Part 2: Arc" reads `[2, 2]`. What follows a division is
 /// read too, so "Show 2nd Season Recap" reads `[2]`.
 pub(super) fn reading(title: &str) -> Vec<u32> {
-    divisions(&words(title))
+    divisions(&read_words(title))
         .into_iter()
         .filter(|m| m.ordinals.first() != Some(&1))
         .flat_map(|m| m.ordinals)

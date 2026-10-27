@@ -1078,6 +1078,10 @@ fn a_list_read_while_a_writer_holds_the_guard_waits_for_it() {
     let state = make_state(td.path().join("history"));
     let show = "hianime:stitched-show-4";
     let reader = crate::history::guard::hold(&state.history_path, |held| {
+        // Watched from inside the hold: a wait this case's own hold met
+        // on the way in, the history being held by another case, is not
+        // the reader's.
+        let queue = crate::held::queue(state.history_path.display().to_string());
         held.upsert(HistoryEntry {
             ep_no: "2".into(),
             id: show.into(),
@@ -1089,7 +1093,10 @@ fn a_list_read_while_a_writer_holds_the_guard_waits_for_it() {
         .expect("row");
         let reading = state.clone();
         let reader = std::thread::spawn(move || history_list(&reading).expect("list"));
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        // Behind the hold, not merely not there yet: a reader that has
+        // not reached the history has not read it either, and proves
+        // nothing.
+        queue.joined_blocking(|| reader.is_finished());
         assert!(
             !reader.is_finished(),
             "a reader waits for the writer's hold to end"
