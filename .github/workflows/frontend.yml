@@ -67,6 +67,7 @@ jobs:
         name: pnpm install --frozen-lockfile
         uses: ./.github/actions/pnpm-install
         with:
+          working-directory: .
           args: --frozen-lockfile --filter ani-gui-frontend
 
       # `pnpm run lint` = prettier --check + eslint.
