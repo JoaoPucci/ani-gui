@@ -382,8 +382,11 @@ async fn mal_a_rewatching_row_mid_series_sends_its_progress_alone() {
     );
 }
 
+/// A replay behind a row MAL reads as rewatching writes nothing, as it
+/// does behind any row.
 #[tokio::test]
-async fn mal_the_finale_completes_a_watching_row_when_the_totals_agree() {
-    let server = mal_server(12, 11, &["num_watched_episodes=12", "status=completed"], 1).await;
-    assert!(push_to_mal(&server, finale(12)).await.is_some());
+async fn mal_a_replay_behind_a_rewatching_row_writes_nothing() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":8}"#;
+    let server = mal_server_with_row(12, row, &[], 0).await;
+    assert!(push_to_mal(&server, episode(3)).await.is_none());
 }
