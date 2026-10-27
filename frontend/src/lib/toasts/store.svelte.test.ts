@@ -3,7 +3,8 @@
 // Svelte 5 runes via SvelteKit Vite plugin (vitest.config.ts).
 // happy-dom for the `$state` runtime — see download/store.svelte.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toastStore, TOAST_MAX_STACK } from './store.svelte';
+import fc from 'fast-check';
+import { keepOnPush, toastStore, TOAST_MAX_STACK, type ToastItem } from './store.svelte';
 
 describe('toastStore', () => {
 	beforeEach(() => {
@@ -101,5 +102,57 @@ describe('toastStore', () => {
 		// All TOAST_MAX_STACK + 1 timers fire; the trimmed-out one's
 		// dismiss is a no-op, the surviving three dismiss themselves.
 		expect(toastStore.items).toHaveLength(0);
+	});
+});
+
+function row(id: number, pinned: boolean): ToastItem {
+	return {
+		id: `toast-${id}`,
+		kind: pinned ? 'warning' : 'info',
+		message: `m${id}`,
+		duration: pinned ? null : 4000,
+		actionLabel: null,
+		onAction: null
+	};
+}
+
+describe('keepOnPush', () => {
+	it('keeps a pinned toast that later toasts would have pushed off the stack', () => {
+		// A pinned toast waits for the user to act on it; a burst of
+		// passing toasts must not drop it before they have seen it.
+		const items = [row(1, true), row(2, false), row(3, false)];
+		expect(keepOnPush(items, 3).map((r) => r.id)).toEqual(['toast-1', 'toast-3']);
+	});
+
+	it('keeps every pinned toast, in order, and drops the oldest passing ones first', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.boolean(), { maxLength: 12 }),
+				fc.integer({ min: 2, max: 6 }),
+				(pins, max) => {
+					const items = pins.map((p, i) => row(i, p));
+					const kept = keepOnPush(items, max);
+					const pinned = items.filter((r) => r.duration === null);
+					const keptIds = kept.map((r) => r.id);
+					const inOrder = keptIds.every(
+						(id, i) =>
+							i === 0 ||
+							items.findIndex((r) => r.id === id) > items.findIndex((r) => r.id === keptIds[i - 1])
+					);
+					const allPinned = pinned.every((r) => keptIds.includes(r.id));
+					const room = Math.max(max - 1, pinned.length);
+					const passing = kept.filter((r) => r.duration !== null);
+					const newestPassing = items
+						.filter((r) => r.duration !== null)
+						.slice(-passing.length || items.length + 1);
+					return (
+						inOrder &&
+						allPinned &&
+						kept.length === Math.min(items.length, room) &&
+						passing.every((r, i) => r.id === newestPassing[i]?.id)
+					);
+				}
+			)
+		);
 	});
 });
