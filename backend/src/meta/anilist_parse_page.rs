@@ -3,16 +3,7 @@
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use super::*;
-
-/// A key the query asks for, read as `None` only when it came back
-/// null: with no `serde(default)`, a missing key is a parse error.
-fn present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer)
-}
+use crate::meta::present::present;
 
 /// Whether a `{ data: { Page: { pageInfo: { hasNextPage } } } }`
 /// response says AniList cut the page: more media matched than it holds.

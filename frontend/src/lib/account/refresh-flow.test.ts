@@ -54,7 +54,7 @@ describe('refreshAccount', () => {
 			refresh_token: 'new-rt',
 			expires_at_epoch_s: 999
 		});
-		expect(deps.persistAccount).toHaveBeenCalledWith('mal', expected);
+		expect(deps.persistAccount).toHaveBeenCalledWith('mal', expected, expect.any(Function));
 		if (out.kind === 'refreshed') expect(out.account).toEqual(expected);
 	});
 
@@ -452,5 +452,29 @@ describe('a failed renewal after the account changed', () => {
 			account()
 		);
 		expect(out).toEqual({ kind: 'superseded' });
+	});
+});
+
+describe('the save of a renewal', () => {
+	it('is wanted only while the account has not changed since the renewal began', async () => {
+		let gen = 0;
+		let stillCurrent: (() => boolean) | undefined;
+		await refreshAccount(
+			{
+				refreshTokens: vi
+					.fn()
+					.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 9 }),
+				persistAccount: vi.fn().mockImplementation(async (_p, _a, check?: () => boolean) => {
+					stillCurrent = check;
+					return { ok: true };
+				}),
+				generation: () => gen
+			},
+			'mal',
+			account()
+		);
+		expect(stillCurrent?.()).toBe(true);
+		gen = 1;
+		expect(stillCurrent?.()).toBe(false);
 	});
 });

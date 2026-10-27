@@ -43,15 +43,18 @@ pub(crate) async fn seed_airing_rows_batch(
     let client = &state.meta_http;
     if !by_anilist.is_empty() {
         let ids: Vec<u32> = by_anilist.iter().map(|(_, a)| *a).collect();
-        let fetched =
-            crate::meta::anilist_airing::airing_status_batch(client, &ids, anilist_base).await;
+        let fetched = crate::meta::anilist_gate::in_background(
+            crate::meta::anilist_airing::airing_status_batch(client, &ids, anilist_base),
+        )
+        .await;
         write_batch(state, &by_anilist, fetched);
     }
     if !by_mal.is_empty() {
         let ids: Vec<u32> = by_mal.iter().map(|(_, m)| *m).collect();
-        let fetched =
-            crate::meta::anilist_airing::airing_status_batch_by_mal(client, &ids, anilist_base)
-                .await;
+        let fetched = crate::meta::anilist_gate::in_background(
+            crate::meta::anilist_airing::airing_status_batch_by_mal(client, &ids, anilist_base),
+        )
+        .await;
         write_batch(state, &by_mal, fetched);
     }
 }

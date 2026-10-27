@@ -65,6 +65,7 @@
 			<Toast
 				kind={toast.kind}
 				message={toast.message}
+				announcement={toast.announcement}
 				actionLabel={toast.actionLabel}
 				onAction={toast.onAction}
 				onDismiss={() => toastStore.dismiss(toast.id)}

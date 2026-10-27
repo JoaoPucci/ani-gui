@@ -1,6 +1,7 @@
 //! Wire-shape parsers for the MAL provider. Extracted so the parse
 //! density (struct-per-endpoint definitions, paginator details, the
-//! inline ISO-8601 reader) doesn't pile onto `mal_user.rs`'s CRAP
+//! ISO-8601 reader in `mal_user_parse_time.rs`) doesn't pile onto
+//! `mal_user.rs`'s CRAP
 //! score — the trait-impl file stays focused on network plumbing +
 //! the refresh coalesce, parsers live here and are tested through
 //! the wiremock surface in `mal_user_test.rs`.
@@ -19,9 +20,11 @@ use crate::error::{AniError, Result};
 #[path = "mal_user_parse_status.rs"]
 mod status;
 pub(super) use status::{
-    parse_iso8601_to_epoch, parse_list_status_response, parse_my_list_status_entry,
-    parse_tracked_media,
+    parse_list_status_response, parse_my_list_status_entry, parse_tracked_media,
 };
+#[path = "mal_user_parse_time.rs"]
+mod time;
+pub(super) use time::parse_iso8601_to_epoch;
 
 /// Parse MAL's OAuth token-exchange response into [`Tokens`]. Both
 /// `exchange_code` and `refresh` use this — the wire shape is
@@ -141,8 +144,9 @@ pub(super) fn parse_list_page(body: &[u8]) -> Result<MalListPage> {
         status: String,
         #[serde(default)]
         score: Option<u8>,
-        #[serde(default)]
-        num_episodes_watched: Option<u32>,
+        // Sent on every list status: missing, the row says nothing of
+        // how far the user is.
+        num_episodes_watched: crate::meta::present::Present<u32>,
         #[serde(default)]
         is_rewatching: Option<bool>,
         #[serde(default)]
@@ -180,7 +184,11 @@ pub(super) fn parse_list_page(body: &[u8]) -> Result<MalListPage> {
             media_id: ProviderMediaId(row.node.id),
             mal_id: Some(row.node.id),
             status,
-            progress_episodes: row.list_status.num_episodes_watched.unwrap_or(0),
+            progress_episodes: row
+                .list_status
+                .num_episodes_watched
+                .into_inner()
+                .unwrap_or(0),
             score_0_to_100,
             updated_at_epoch_s,
             title: row.node.title,
