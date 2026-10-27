@@ -1008,6 +1008,10 @@
 	//    loading/disabled flicker; on failure keep the optimistic value (the
 	//    write already toasted) and let the next read reconcile.
 	function readListEntry(quiet: boolean) {
+		// A read still loading — one the page opened with, waiting out a
+		// rate limit — ends only through the read that supersedes it, so a
+		// quiet reconcile that comes meanwhile takes over loud.
+		if (quiet && listEntryLoading) quiet = false;
 		const seq = ++listEntryReadSeq;
 		const kitsuId = id;
 		const connected = accountStore.connected;
@@ -1073,13 +1077,10 @@
 	// A watched episode's progress write for this show that settles while
 	// the page is open — one held back by the tracker can land minutes
 	// after the play — is read again quietly, as the editor reconciles its
-	// own save. `id` is read when the change comes, not tracked. A read
-	// still loading — the page opened during a rate limit, and its read
-	// waits to ask again — is replaced by a loud one, so the control ends
-	// on that read's outcome instead of waiting on the one it superseded.
+	// own save. `id` is read when the change comes, not tracked.
 	$effect(() =>
 		listChanges.subscribe((change) => {
-			if (entryNeedsReread(change, id || null)) readListEntry(!listEntryLoading);
+			if (entryNeedsReread(change, id || null)) readListEntry(true);
 		})
 	);
 
