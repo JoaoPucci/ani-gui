@@ -234,4 +234,85 @@ describe('opening the app with a dead MAL sign-in', () => {
 		// would read as success.
 		expect(signInToasts()).toEqual([UNREACHABLE]);
 	});
+
+	it('renews a sign-in the tracker refused on a read, and says so when the renewal is refused too', async () => {
+		// The keychain's token looks valid by its date, but MAL refuses
+		// it: the read is what finds out, and its 401 starts the renewal.
+		(window as unknown as { aniGui: unknown }).aniGui = {
+			apiBase: API_BASE,
+			account: {
+				getToken: (provider: Provider) =>
+					provider === 'mal'
+						? { ok: true, payload: { ...DEAD_MAL, expires_at_epoch_s: 4_000_000_000 } }
+						: { ok: false, kind: 'not_found' }
+			}
+		};
+		let renewals = 0;
+		server.use(
+			...quietBackend,
+			http.post(`${API_BASE}/api/account/refresh/mal`, () => {
+				renewals += 1;
+				return HttpResponse.json(
+					{ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' },
+					{ status: 401 }
+				);
+			}),
+			...homeHandlers({}, [
+				http.post(`${API_BASE}/api/account/list/mal`, () =>
+					HttpResponse.json(
+						{ kind: 'invalid_token', key: 'error.stream.invalid_token' },
+						{ status: 401 }
+					)
+				),
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () => HttpResponse.json([])),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
+				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+			])
+		);
+		bootLayout();
+		await settle(10);
+		expect(signInToasts(), 'a sign-in valid by its date says nothing on its own').toEqual([]);
+		homeTarget = document.createElement('div');
+		document.body.appendChild(homeTarget);
+		home = mount(HomePage, { target: homeTarget });
+		await settle(80);
+		expect(renewals).toBe(1);
+		expect(accountStore.byProvider.mal.kind).toBe('expired');
+		expect(signInToasts()).toEqual([REFUSED]);
+	});
+
+	it('tells a sign-in about to run out that its renewal was refused', async () => {
+		// Within the two minutes before expiry the home rail renews the
+		// token before reading. MAL refusing that renewal means the
+		// session ends in moments, whatever the read then does.
+		(window as unknown as { aniGui: unknown }).aniGui = {
+			apiBase: API_BASE,
+			account: {
+				getToken: (provider: Provider) =>
+					provider === 'mal'
+						? {
+								ok: true,
+								payload: { ...DEAD_MAL, expires_at_epoch_s: Math.floor(Date.now() / 1000) + 60 }
+							}
+						: { ok: false, kind: 'not_found' }
+			}
+		};
+		server.use(
+			...quietBackend,
+			refusedRefresh,
+			...homeHandlers({}, [
+				http.post(`${API_BASE}/api/account/list/mal`, () => HttpResponse.json([])),
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () => HttpResponse.json([])),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
+				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+			])
+		);
+		bootLayout();
+		homeTarget = document.createElement('div');
+		document.body.appendChild(homeTarget);
+		home = mount(HomePage, { target: homeTarget });
+		await settle(80);
+		expect(accountStore.byProvider.mal.kind).toBe('connected');
+		expect(signInToasts()).toEqual([REFUSED]);
+	});
 });
