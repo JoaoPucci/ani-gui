@@ -992,3 +992,67 @@ async fn a_replay_after_a_failed_play_whose_listing_carries_its_former_number_na
     assert!(resp.cache_hit);
     assert_eq!(resp.former_episode, None);
 }
+
+/// The listing tags recorded for the stitched show.
+fn recorded(state: &AppState) -> Option<Vec<String>> {
+    crate::commands::listing_tags::get(state, &stitched_key())
+}
+
+#[tokio::test]
+async fn a_handoff_that_fails_records_the_listing_it_picked() {
+    // Episode 40 is not listed, so the hand-off fails after the pick;
+    // the listing it had in hand, which tags a recap "2.5", is on record.
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::stitched_shared_former(),
+    ));
+    let asked = crate::history::guard::Asked::now(&state.history_path, None);
+    assert!(
+        crate::commands::play_handoff::resolve_launch_args(&state, &args("40"), asked)
+            .await
+            .is_err()
+    );
+    let tags = recorded(&state).expect("recorded");
+    assert!(tags.iter().any(|t| t == "2.5"), "{tags:?}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_that_fails_records_the_listing_it_picked() {
+    use std::os::unix::fs::PermissionsExt;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::stitched_shared_former(),
+    ));
+    // A download tool to find, so the download walks the provider.
+    let bin = tempfile::tempdir().expect("bin");
+    let tool = bin.path().join("yt-dlp");
+    std::fs::write(&tool, "#!/bin/sh\nexit 0\n").expect("tool");
+    let mut perms = std::fs::metadata(&tool).expect("meta").permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&tool, perms).expect("chmod");
+    let dest = tempfile::tempdir().expect("dest");
+    let download: crate::commands::download::DownloadArgs =
+        serde_json::from_value(serde_json::json!({
+            "title": STITCHED,
+            "episode": "40",
+            "mode": "sub",
+            "episode_count": 12,
+            "year": 2026,
+            "subtype": "ONA",
+            "download_dir": dest.path(),
+        }))
+        .expect("args");
+    assert!(crate::commands::download::download_with_tools(
+        &state,
+        &download,
+        &bin.path().display().to_string(),
+        |_| {},
+    )
+    .await
+    .is_err());
+    let tags = recorded(&state).expect("recorded");
+    assert!(tags.iter().any(|t| t == "2.5"), "{tags:?}");
+}
