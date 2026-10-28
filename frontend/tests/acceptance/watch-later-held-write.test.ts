@@ -34,7 +34,9 @@ vi.mock('$app/navigation', () => ({
 }));
 // The strip motion, spied on: which cards the row moves, and how, is
 // what the gate decided at fire time.
-const { scaled } = vi.hoisted(() => ({ scaled: [] as { id: string; duration: number }[] }));
+const { scaled } = vi.hoisted(() => ({
+	scaled: [] as { id: string; duration: number; easing?: (t: number) => number }[]
+}));
 vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
 	const real = await importOriginal<typeof import('../../src/lib/transitions/card-motion')>();
 	return {
@@ -46,13 +48,15 @@ vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
 			const config = real.cardScale(node, ...args);
 			scaled.push({
 				id: (node as HTMLElement).dataset.animeId ?? '',
-				duration: config.duration ?? 0
+				duration: config.duration ?? 0,
+				easing: config.easing
 			});
 			return config;
 		}
 	};
 });
 
+import { CARD_SCALE } from '../../src/lib/transitions/card-motion';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
@@ -224,7 +228,9 @@ describe('Watch Later on Home, while a held write waits', () => {
 		expect(writes).toBe(2);
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		// The new card grew in with the strip's motion; nothing else did.
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
 	});
 
 	it('lets go of a show whose held removal lands, shrinking it out of the row', async () => {
@@ -239,7 +245,9 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await settle();
 		expect(writes).toBe(2);
 		expect(railTitles()).toEqual([ALREADY.title]);
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
 	});
 
 	it('grows the first card into an empty row, the same way', async () => {
@@ -254,7 +262,9 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await pending;
 		await settle();
 		expect(railTitles()).toEqual([NEW.title]);
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
 	});
 
 	it('shrinks the last card out, leaving the empty row', async () => {
@@ -269,7 +279,9 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await settle();
 		expect(railTitles()).toEqual([]);
 		expect(target.textContent).toContain(m.account_watch_later_empty());
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
 	});
 
 	it('changes nothing when the held add is dropped for another account', async () => {
