@@ -569,3 +569,108 @@ async fn a_save_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_a
         "the disconnected account's row came back"
     );
 }
+
+// The write may spend the tracker's last allowance. No profile request
+// after it may decide whether Home learns about the successful mutation.
+async fn edit_at_the_end_of_the_allowance(removal: bool, profile_refused: bool) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use wiremock::matchers::{method, path};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let kind = ProviderKind::MyAnimeList;
+    let planned = crate::account::provider::ListEntry {
+        provider: kind,
+        media_id: crate::account::provider::ProviderMediaId(21),
+        mal_id: Some(21),
+        status: ListStatus::Planning,
+        progress_episodes: 0,
+        score_0_to_100: None,
+        updated_at_epoch_s: 1,
+        title: "One Piece".into(),
+    };
+    crate::account::cache::write_entries(&state.cache_pool, kind, "4242", &[planned]).unwrap();
+    let mutated = Arc::new(AtomicBool::new(false));
+    let wrote = mutated.clone();
+    wiremock::Mock::given(method(if removal { "DELETE" } else { "PATCH" }))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(move |_: &wiremock::Request| {
+            wrote.store(true, Ordering::SeqCst);
+            if removal {
+                wiremock::ResponseTemplate::new(200)
+            } else {
+                mal_patch_answer()
+            }
+        })
+        .mount(&mal)
+        .await;
+    let wrote = mutated.clone();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(move |_: &wiremock::Request| {
+            if profile_refused || wrote.load(Ordering::SeqCst) {
+                wiremock::ResponseTemplate::new(429).insert_header("retry-after", "1")
+            } else {
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"id":4242,"name":"shiro"}"#)
+            }
+        })
+        .mount(&mal)
+        .await;
+    let provider = mal_provider(&mal.uri());
+    let result = if removal {
+        remove_entry_via(&state, kind, &provider, &test_tokens(), "12")
+            .await
+            .map(|_| ())
+    } else {
+        set_entry_via(
+            &state,
+            kind,
+            &provider,
+            &test_tokens(),
+            "12",
+            EntryUpdate {
+                status: Some(ListStatus::Watching),
+                progress_episodes: Some(3),
+                ..Default::default()
+            },
+        )
+        .await
+        .map(|_| ())
+    };
+    if profile_refused {
+        assert!(
+            result.is_err(),
+            "a refused owner read must be retried before mutating the tracker"
+        );
+        assert!(
+            !mutated.load(Ordering::SeqCst),
+            "the tracker changed without a cache owner"
+        );
+    } else {
+        result.expect("tracker took the mutation");
+        let rows = crate::account::cache::list_entries(&state.cache_pool, kind, "4242").unwrap();
+        assert!(
+            rows.iter().all(|r| r.status != ListStatus::Planning),
+            "Home kept the removed/planning row after a successful write"
+        );
+        assert_eq!(rows.len(), usize::from(!removal));
+    }
+}
+
+#[tokio::test]
+async fn removal_updates_home_before_any_further_profile_request_can_be_refused() {
+    edit_at_the_end_of_the_allowance(true, false).await;
+}
+#[tokio::test]
+async fn save_updates_home_before_any_further_profile_request_can_be_refused() {
+    edit_at_the_end_of_the_allowance(false, false).await;
+}
+#[tokio::test]
+async fn removal_waits_for_a_cache_owner_before_changing_the_tracker() {
+    edit_at_the_end_of_the_allowance(true, true).await;
+}
+#[tokio::test]
+async fn save_waits_for_a_cache_owner_before_changing_the_tracker() {
+    edit_at_the_end_of_the_allowance(false, true).await;
+}
