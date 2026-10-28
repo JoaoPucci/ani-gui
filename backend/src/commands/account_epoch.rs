@@ -45,9 +45,16 @@ impl AccountEpochs {
 
     /// Purge `kind`'s cache with `purge`, starting a new epoch.
     pub(crate) fn purge<T>(&self, kind: ProviderKind, purge: impl FnOnce() -> T) -> T {
+        self.revise(kind, purge)
+    }
+
+    /// Advance a revision and apply its cache change under the same lock.
+    /// A separate instance tracks mutations so a list snapshot started
+    /// before one cannot replace the newer cache contents.
+    pub(crate) fn revise<T>(&self, kind: ProviderKind, change: impl FnOnce() -> T) -> T {
         let mut epochs = self.epochs();
         *epochs.entry(kind).or_insert(0) += 1;
-        purge()
+        change()
     }
 }
 

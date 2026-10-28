@@ -6,6 +6,7 @@
 // from `set-entry.ts` so each file stays inside the CRAP gate's per-file
 // bar.
 
+import { AccountApiError } from './api';
 import type { EntryView, ListEntry, Provider } from './types';
 import type { EditorSave } from './set-entry';
 import type { FanoutResult } from './set-entry-outcome';
@@ -72,8 +73,21 @@ export async function sendRemoval(
 ): Promise<FanoutResult> {
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
 	const current = await deps.getEntry(to.provider, to.bearer, to.kitsuId);
-	if (current === null) return 'neither'; // nothing to remove here
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
-	await deps.removeEntry(to.provider, to.bearer, to.kitsuId);
-	return 'ok';
+	try {
+		await deps.removeEntry(to.provider, to.bearer, to.kitsuId);
+	} catch (error) {
+		// A live-null entry can also be unmappable. Only this endpoint's
+		// empty 404 is neutral; upstream failures carry an error envelope.
+		if (
+			current === null &&
+			error instanceof AccountApiError &&
+			error.status === 404 &&
+			error.detail === ''
+		)
+			return 'neither';
+		throw error;
+	}
+	// The backend's idempotent delete also clears stale local cache.
+	return current === null ? 'neither' : 'ok';
 }

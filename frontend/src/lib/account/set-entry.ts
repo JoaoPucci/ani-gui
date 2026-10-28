@@ -172,8 +172,8 @@ export interface RemoveOutcome {
 
 /**
  * Remove a show from every connected tracker that has it. Reads each
- * provider first: a provider without the row is skipped (its delete would
- * be a no-op and must not count). A present tracker whose delete fails — or
+ * provider first: an absent row still gets an idempotent delete to clear
+ * stale local cache, but does not count toward the removal tally. A present tracker whose delete fails — or
  * any provider we can't confirm clean (read threw, no bearer) — is tallied
  * as `failed`, so the caller keeps the entry visible rather than claiming a
  * clean removal while a tracker still has the row.

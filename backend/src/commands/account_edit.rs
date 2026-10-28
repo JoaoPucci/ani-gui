@@ -126,7 +126,14 @@ async fn set_entry_via(
             .account_write_locks
             .epochs
             .write_if_current(kind, began, || {
-                cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry)
+                state.account_write_locks.cache_revisions.revise(kind, || {
+                    cache_upsert::upsert_entry_force(
+                        &state.cache_pool,
+                        kind,
+                        &profile.user_id,
+                        &entry,
+                    )
+                })
             });
     }
     Ok(Some(entry))
@@ -184,7 +191,9 @@ async fn remove_entry_via(
         .account_write_locks
         .epochs
         .write_if_current(kind, began, || {
-            cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0)
+            state.account_write_locks.cache_revisions.revise(kind, || {
+                cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0)
+            })
         });
     Ok(true)
 }
