@@ -1708,7 +1708,10 @@
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
 		// Armed AFTER the flush, which retires the previous source's.
-		armSourceScopedListeners({
+		// It also says where the stream starts: an hls engine begins
+		// loading at a resume point's fragment, below, so nothing
+		// before that fragment is fetched or shown.
+		const { startAt } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1716,7 +1719,9 @@
 			row: fromRow,
 			onResumeHold: (holding) => {
 				resumeHolding = holding;
-			}
+			},
+			// Only hls.js is handed the start, below.
+			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
 		playerError = null;
 		failedStreamError = null;
@@ -1812,6 +1817,7 @@
 				video: videoEl,
 				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
 				holdsStart: true,
+				startAt,
 				onView: (view) => {
 					qualityView = view;
 					// A stream retiring takes its levels with it; the next

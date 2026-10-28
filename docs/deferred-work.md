@@ -397,6 +397,30 @@ starting it, and delete it when you find it done.
   re-attempt until that lands. PiP as it exists now — the player's
   video, while the player is open — ships and is described in
   `README.md` and `docs/architecture.md`.
+- **An mp4 stream resumed at a point can still show its first frame
+  in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
+  hides the picture with the page's CSS until the resume seek lands,
+  and picture-in-picture and a `<video>` that is itself fullscreen
+  show the element, not the page. An hls stream closes that gap by
+  starting its engine at the fragment that holds the point, so
+  nothing before it is fetched. An mp4 stream is played from `src`,
+  and there Chromium starts the stream at 0 and decodes and shows the
+  frame there unless the seek reaches the media pipeline first. Every way the page can
+  say "start here" becomes that same seek, issued from the main
+  thread when the metadata arrives: `currentTime` set before the
+  metadata, a `#t=` media fragment, and `preload="metadata"` all
+  race. Measured in Electron 33 by noting every frame the element
+  presented (`requestVideoFrameCallback`) across an episode switch
+  in picture-in-picture, with segment latency and a busy main thread:
+  each of the three still showed frame 0 in some switches — in
+  setups where hls never did, and where the hold without any of them
+  showed it every time. The two fixes that do not race are making the
+  proxy serve an mp4 that starts at the point (a backend change that
+  has to ship on Linux and Windows alike, AGENTS.md §15), or playing
+  mp4 sessions through Media Source Extensions with a remuxer, so the
+  page appends only what follows the point. When this entry was
+  written the maintainer's recorded plays were all hls, so the gap
+  reaches only sources the provider serves as mp4.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli
