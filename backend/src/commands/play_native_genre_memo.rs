@@ -11,8 +11,8 @@ use crate::scraper::provider::{
 
 /// A provider that answers each listing and entry page it has served
 /// once from memory: the gate's later picks over the same pool repeat
-/// no request the first one made. A probe that died or answered
-/// not-found is kept as that answer ([`replayed`]); a block is not.
+/// no request the first one made. A probe that answered a dead
+/// candidate is kept as that answer ([`replayed`]); a block is not.
 pub(crate) struct Memo<'a, P: ?Sized> {
     inner: &'a P,
     episodes: Mutex<HashMap<String, std::result::Result<Vec<EpisodeRef>, AniError>>>,
@@ -105,17 +105,24 @@ impl<P: Provider + ?Sized> Provider for Memo<'_, P> {
     }
 }
 
-/// The failure a probe answered, again, when the memo keeps it: a
-/// listing that answered not-found-shaped, or one that died in
-/// transport, is the same dead candidate to every pick over the pool.
-/// A block, a refused admit or anything else is not kept, and is asked
-/// again.
+/// The failure a probe answered, again, when the memo keeps it: the
+/// answers the provider's listing probe gives for a dead candidate — a
+/// listing that answered not-found-shaped, one that died in transport
+/// or ran out of time, one whose body could not be read — are the same
+/// dead candidate to every pick over the pool, so a pick made again
+/// neither asks for it twice nor hears it answer where the first
+/// weighed it dead. A block or a refused admit stops the pick; any
+/// other failure, which the probe does not give, is not kept.
 pub(super) fn replayed(e: &AniError) -> Option<AniError> {
     match e {
         AniError::Upstream { status } if !e.is_provider_block() => {
             Some(AniError::Upstream { status: *status })
         }
         AniError::Network => Some(AniError::Network),
+        AniError::Timeout => Some(AniError::Timeout),
+        AniError::ParseFailed { detail } => Some(AniError::ParseFailed {
+            detail: detail.clone(),
+        }),
         _ => None,
     }
 }

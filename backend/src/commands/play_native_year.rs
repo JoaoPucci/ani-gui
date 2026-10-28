@@ -14,29 +14,45 @@ pub(crate) type PageNames = HashMap<String, Vec<String>>;
 /// The genre an entry page files an adult video under.
 pub(crate) const HENTAI: &str = "Hentai";
 
+/// The age rating an entry page's own heading gives an adult video.
+pub(crate) const ADULT_RATING: &str = "Rx";
+
+/// The age ratings below [`ADULT_RATING`] on the site's scale: a page
+/// whose heading carries one says its listing is no adult video,
+/// whether or not it lists genres.
+pub(crate) const ORDINARY_RATINGS: [&str; 5] = ["G", "PG", "PG-13", "R", "R+"];
+
 /// What an entry page says of whether its listing may be the entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Genre {
-    /// The page lists genres, none of them [`HENTAI`].
+    /// The page lists genres, none of them [`HENTAI`], or lists none
+    /// while its heading carries one of the [`ORDINARY_RATINGS`].
     Listed,
-    /// The page files the listing under [`HENTAI`]: no entry the app
-    /// shows is one.
+    /// The page files the listing under [`HENTAI`], or its heading
+    /// rates it [`ADULT_RATING`]: no entry the app shows is one.
     Hentai,
-    /// The page lists no genre — a missing page reads as one, and so
-    /// does a page whose markup the parser no longer finds the row
-    /// in. Nothing says the listing is not a hentai.
+    /// The page lists no genre and its heading no rating on the site's
+    /// scale — a missing page reads as one, and so does a sparse page
+    /// that carries neither, or one whose markup the parser no longer
+    /// finds them in. Nothing says the listing is not a hentai.
     Unread,
 }
 
-/// The [`Genre`] `page` gives its listing.
+/// The [`Genre`] `page` gives its listing: its genres and its own
+/// heading's rating, case aside on both.
 #[must_use]
 pub(crate) fn genre_of(page: &EntryPage) -> Genre {
-    if page.genres.iter().any(|g| g.eq_ignore_ascii_case(HENTAI)) {
+    let rated = |r: &str| {
+        page.rating
+            .as_deref()
+            .is_some_and(|x| x.eq_ignore_ascii_case(r))
+    };
+    if page.genres.iter().any(|g| g.eq_ignore_ascii_case(HENTAI)) || rated(ADULT_RATING) {
         Genre::Hentai
-    } else if page.genres.is_empty() {
-        Genre::Unread
-    } else {
+    } else if !page.genres.is_empty() || ORDINARY_RATINGS.iter().any(|r| rated(r)) {
         Genre::Listed
+    } else {
+        Genre::Unread
     }
 }
 
@@ -49,14 +65,17 @@ pub(crate) fn genre_of(page: &EntryPage) -> Genre {
 /// vouching for the candidate.
 /// An unknown year (a page without a season link) never excludes on
 /// its own, so a markup change that loses the year degrades to
-/// year-blind picking. A hit its page files under [`HENTAI`] is
-/// excluded the same way a year off is: no entry the app shows is one.
-/// So is a hit whose page lists no genre at all ([`Genre::Unread`]) —
+/// year-blind picking. A hit its page files under [`HENTAI`], or whose
+/// heading rates it [`ADULT_RATING`], is excluded the same way a year
+/// off is: no entry the app shows is one.
+/// So is a hit whose page lists no genre and no rating on the site's scale at all ([`Genre::Unread`]) —
 /// a 404ing page reads as one — which nothing says is not one; its slug
 /// joins `unread`, since a pool whose verdict rests on a page that
 /// said nothing is no clean miss (see `play_native_genre`), and a
-/// markup change that loses the Genres row empties every dated pool
-/// into that dead end rather than taking a listing as safe. A pool whose every
+/// markup change that lost both the Genres row and the rating would
+/// empty every dated pool into that dead end rather than take a listing
+/// as safe; losing the Genres row alone does not, where the heading
+/// still carries an ordinary rating. A pool whose every
 /// candidate carries a known mismatched year, or the genre, contains
 /// the show nowhere — that is a rejection
 /// ([`crate::error::AniError::NoResults`]), so the walk can try the
@@ -101,14 +120,14 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
             None => false,
         };
         // A hentai is never the entry: Kitsu serves the app no adult
-        // entry, so a hit its own page files under the genre is out,
-        // as a hit from another year is — and so is one whose page
-        // lists no genre, which nothing says is not one.
+        // entry, so a hit its own page files under the genre or rates
+        // Rx is out, as a hit from another year is — and so is one whose page
+        // lists no genre and no rating on the site's scale, which nothing says is not one.
         match genre {
             Genre::Listed => kept.push((h, confirmed)),
             Genre::Hentai => {}
             Genre::Unread => {
-                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre; not taken as safe");
+                tracing::warn!(slug = %h.slug, "pick: the entry page lists no genre and no rating on the site's scale; not taken as safe");
                 unread.push(h.slug.clone());
             }
         }

@@ -53,6 +53,11 @@ struct Fixture {
     /// listed none is not listed.
     #[serde(default)]
     genres: BTreeMap<String, Vec<String>>,
+    /// The age rating each entry page read gave the show in its own
+    /// heading, by slug; a page that gave none is not listed, and a
+    /// recording made before ratings were read lists none.
+    #[serde(default)]
+    ratings: BTreeMap<String, String>,
 }
 
 fn fixture_dir() -> std::path::PathBuf {
@@ -168,6 +173,7 @@ impl Provider for Recorded {
             year: self.detail_year(slug).await?,
             names: self.doc.page_names.get(slug).cloned().unwrap_or_default(),
             genres: self.doc.genres.get(slug).cloned().unwrap_or_else(listed),
+            rating: self.doc.ratings.get(slug).cloned(),
         })
     }
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
@@ -3244,9 +3250,12 @@ async fn a_hit_filed_under_hentai_is_never_picked() {
                 site.doc.kitsu.episode_count = None;
             }
             if !hentai {
+                // Another genre in place of Hentai, and no Rx on the
+                // heading: nothing on the page says the listing is adult.
                 site.doc
                     .genres
                     .insert(slug.to_string(), vec![LISTED_GENRE.to_string()]);
+                site.doc.ratings.remove(slug);
             }
             site
         };
@@ -3263,6 +3272,67 @@ async fn a_hit_filed_under_hentai_is_never_picked() {
                     Err(e) => assert!(e.clean_miss, "{case}: {:?}", e.error),
                 }
                 let control = walk_over(vouched_for(false, dated, counted))
+                    .await
+                    .unwrap_or_else(|e| panic!("{case}: the control refused: {e:?}"));
+                assert_eq!(control.hit.slug, slug, "{case}: the control's pick");
+            }
+        }
+    }
+}
+
+/// The same two hentai listings with the Genres row taken off their
+/// pages: each page's own heading still rates the listing Rx, as the live
+/// pages do (recorded 2026-10-28), and the walk takes nothing, dated or
+/// not, counted or countless — the clean miss. With the heading rated
+/// PG-13 in its place, nothing on the page says the listing is adult,
+/// and the same walk takes it: the rating alone decided.
+#[tokio::test]
+async fn a_hit_rated_rx_is_never_picked_without_its_genre_row() {
+    for (id, slug) in [
+        (
+            "40684",
+            "katainaka-ni-totsuidekita-ssia-musume-to-h-shimakuru-ohanashi-2166",
+        ),
+        (
+            "8404",
+            "muttsuri-dosukebe-tsuyu-gibo-shimai-no-honshitsu-minuite-sex-sanmai-2256",
+        ),
+    ] {
+        let site = |rating: &str, dated: bool, counted: bool| {
+            let mut site = Recorded::load(id);
+            assert_eq!(site.doc.ratings[slug], "Rx", "{id}: the recorded rating");
+            let (query, title) = site
+                .doc
+                .searches
+                .iter()
+                .find_map(|(q, hits)| {
+                    let (_, title, _) = hits.iter().find(|(s, _, _)| s == slug)?;
+                    Some((q.clone(), title.clone()))
+                })
+                .unwrap_or_else(|| panic!("{id}: no search answers with {slug}"));
+            let pool = site.doc.searches[&query].clone();
+            site.doc.searches.insert(title.clone(), pool);
+            site.doc.kitsu.alt_titles.push(title);
+            if dated {
+                site.doc.kitsu.year = site.doc.years[slug];
+            }
+            if !counted {
+                site.doc.kitsu.episode_count = None;
+            }
+            site.doc.genres.remove(slug);
+            site.doc
+                .ratings
+                .insert(slug.to_string(), rating.to_string());
+            site
+        };
+        for dated in [true, false] {
+            for counted in [true, false] {
+                let case = format!("{id} dated {dated} counted {counted}");
+                match walk_over(site("Rx", dated, counted)).await {
+                    Ok(p) => panic!("{case}: picked {} ({})", p.hit.slug, p.hit.title),
+                    Err(e) => assert!(e.clean_miss, "{case}: {:?}", e.error),
+                }
+                let control = walk_over(site("PG-13", dated, counted))
                     .await
                     .unwrap_or_else(|e| panic!("{case}: the control refused: {e:?}"));
                 assert_eq!(control.hit.slug, slug, "{case}: the control's pick");

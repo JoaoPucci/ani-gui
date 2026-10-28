@@ -21,7 +21,8 @@
 //! came to take only a hit named for it, v8 when a dated entry with a
 //! count did too and a dated entry's hentai listing stopped being a
 //! pick, v9 when an undated entry's hentai listing did too and no pick
-//! took a listing whose page lists no genre — retires the mappings before it: their marks then name rows
+//! took a listing whose page lists no genre and no ordinary rating —
+//! retires the mappings before it: their marks then name rows
 //! nothing reads, until they expire, and the next play of a show stores
 //! a fresh mapping and mark.
 //!

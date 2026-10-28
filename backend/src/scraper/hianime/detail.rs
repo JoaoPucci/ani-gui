@@ -1,11 +1,15 @@
 //! Pure extraction over hianime's entry page — the premiere year the
-//! resolver uses as a hint, and the other names the page gives the
-//! show. Split from the search page's reading so
+//! resolver uses as a hint, the other names the page gives the show,
+//! its genres and its age rating. Split from the search page's reading so
 //! each file stays inside the complexity ratchet's per-file bar.
 
 use crate::scraper::provider::EntryPage;
 
 use super::markup::decode_entities;
+
+#[path = "detail_rating.rs"]
+mod rating;
+pub use rating::parse_detail_rating;
 
 /// The rest of a row after its label: up to the row's
 /// closing tag or the next row's label, whichever comes first, so
@@ -97,13 +101,14 @@ pub fn parse_detail_genres(html: &str) -> Vec<String> {
 }
 
 /// The entry page as the picker reads it: [`parse_detail_year`],
-/// [`parse_detail_names`] and [`parse_detail_genres`] over the one
-/// page.
+/// [`parse_detail_names`], [`parse_detail_genres`] and
+/// [`parse_detail_rating`] over the one page.
 #[must_use]
 pub fn parse_entry_page(html: &str) -> EntryPage {
     EntryPage {
         year: parse_detail_year(html),
         names: parse_detail_names(html),
         genres: parse_detail_genres(html),
+        rating: parse_detail_rating(html),
     }
 }

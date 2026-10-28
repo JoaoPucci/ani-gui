@@ -135,6 +135,7 @@ pub(crate) struct TableProvider {
     years_default: Answer<Option<u32>>,
     genres: HashMap<Show, Answer<Vec<String>>>,
     genres_default: Answer<Vec<String>>,
+    ratings: HashMap<Show, Answer<Option<String>>>,
     log: Mutex<Vec<(Asked, tokio::time::Instant)>>,
     stamp: Option<tokio::time::Instant>,
     stalls: bool,
@@ -169,6 +170,7 @@ impl TableProvider {
             years_default: Answer::Ok(None),
             genres: HashMap::new(),
             genres_default: Answer::Ok(vec![LISTED_GENRE.to_string()]),
+            ratings: HashMap::new(),
             log: Mutex::new(Vec::new()),
             stamp: None,
             stalls: false,
@@ -374,6 +376,14 @@ impl TableProvider {
         self
     }
 
+    /// The age rating `show`'s detail page gives it; a page carries none
+    /// unless the table says so.
+    pub(crate) fn rating(mut self, show: impl Into<Show>, rating: &str) -> Self {
+        self.ratings
+            .insert(show.into(), Some(rating.to_string()).into());
+        self
+    }
+
     /// What every unlisted show's detail page answers.
     pub(crate) fn years_default(mut self, answer: impl Into<Answer<Option<u32>>>) -> Self {
         self.years_default = answer.into();
@@ -535,6 +545,7 @@ impl Provider for TableProvider {
             year: self.detail_year(slug).await?,
             names: Vec::new(),
             genres: Self::by_show(&self.genres, &self.genres_default, slug)?,
+            rating: Self::by_show(&self.ratings, &Answer::Ok(None), slug)?,
         })
     }
 

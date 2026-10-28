@@ -33,7 +33,10 @@ pub use ajax::{
     remainder_index, request_of, servers_for, ServerCaps, ServerEmbed, ServerListing,
     CHAIN_REQUESTS,
 };
-pub use detail::{parse_detail_genres, parse_detail_names, parse_detail_year, parse_entry_page};
+pub use detail::{
+    parse_detail_genres, parse_detail_names, parse_detail_rating, parse_detail_year,
+    parse_entry_page,
+};
 pub use embed::{decode_embed, embed_origin, is_not_found_page, EmbedPayload};
 pub use megaplay::{media_id, sources_url};
 pub use megaplay_sources::{lang_of_track, parse_sources};
@@ -726,8 +729,9 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     /// The entry page read once: its Aired row's year, the names its
-    /// Japanese and Synonyms rows carry and its genres. A missing page is the
-    /// soft empty page, as a page without the rows is.
+    /// Japanese and Synonyms rows carry, its genres and the age rating
+    /// its own heading gives. A missing page is the soft empty page, as
+    /// a page without the rows is.
     async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
         match self.content(&self.on_origin(&format!("/{slug}"))).await {
             Ok(body) => Ok(parse_entry_page(&body)),
