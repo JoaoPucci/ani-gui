@@ -439,3 +439,136 @@ async fn record_the_page_names() {
             .expect("the recording parses as a fixture");
     }
 }
+
+/// A recording that asks the live site for the entry pages it does not
+/// hold, and answers everything else as recorded.
+struct Filling {
+    recorded: Recorded,
+    live: Recording<HianimeClient<Pages>>,
+}
+
+#[async_trait::async_trait]
+impl Provider for Filling {
+    fn id(&self) -> ProviderId {
+        self.recorded.id()
+    }
+    async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
+        self.recorded.search(query).await
+    }
+    async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
+        self.recorded.episodes(slug).await
+    }
+    async fn has_mode(&self, _: u64, _: &str) -> Result<bool> {
+        unreachable!("the pick walk reads no modes")
+    }
+    async fn master_playlist_url(&self, _: u64, _: &str) -> Result<StreamSource> {
+        unreachable!("the pick walk reads no streams")
+    }
+    async fn playlist(&self, _: &str, _: Option<&str>) -> Result<String> {
+        unreachable!("the pick walk reads no playlists")
+    }
+    async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
+        self.detail_page(slug).await.map(|page| page.year)
+    }
+    async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
+        if self.recorded.doc.years.contains_key(slug) {
+            self.recorded.detail_page(slug).await
+        } else {
+            self.live.detail_page(slug).await
+        }
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+}
+
+/// `text` with `"key": value` written into its map `map`, the map's
+/// lines kept in key order, as the recordings write their maps.
+fn with_line(text: &str, map: &str, key: &str, value: &str) -> String {
+    let head = format!("\n \"{map}\": ");
+    let at = text.find(&head).expect("the recording's map") + head.len();
+    let rest = &text[at..];
+    let end = if rest.starts_with("{}") {
+        2
+    } else {
+        rest.find("\n }").expect("the map's closing brace") + 3
+    };
+    let mut rows: Vec<String> = rest[..end]
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .lines()
+        .map(|l| l.trim_end_matches(',').to_string())
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    rows.push(format!("  {}: {value}", json(&key)));
+    rows.sort();
+    format!(
+        "{}{}{}",
+        &text[..at],
+        braced(&rows.join(",\n")),
+        &rest[end..]
+    )
+}
+
+/// Every recorded fixture given the entry pages its walk reads that the
+/// recording does not hold — the page of the listing an undated entry's
+/// pick would serve, which the walk did not read when the fixture was
+/// recorded. Each fixture's walk runs as the fixture tests run it, under
+/// AniList's year too where the recording notes one; the pages it lacks
+/// are read live, reduced by the client's parsers and written into the
+/// recording's maps, and the rest of the recording is left byte for
+/// byte as it was.
+#[tokio::test]
+#[ignore = "reads the entry pages the recordings lack from the live site; run by hand"]
+async fn record_the_pages_the_walk_reads() {
+    let mut ids: Vec<String> = std::fs::read_dir(fixture_dir())
+        .expect("fixture dir")
+        .filter_map(|e| {
+            let name = e.ok()?.file_name().into_string().ok()?;
+            let id = name.strip_suffix(".json")?;
+            id.chars()
+                .all(|c| c.is_ascii_digit())
+                .then(|| id.to_string())
+        })
+        .collect();
+    ids.sort();
+    for id in ids {
+        let site = Filling {
+            recorded: Recorded::load(&id),
+            live: client(),
+        };
+        let e = &site.recorded.doc.kitsu;
+        let years = [Some(e.year), e.anilist_year.map(Some)];
+        for year in years.into_iter().flatten() {
+            let _ = pick_native_walk(
+                &site,
+                &e.canonical,
+                &e.alt_titles,
+                e.episode_count,
+                year,
+                e.subtype.as_deref(),
+                None,
+            )
+            .await;
+        }
+        let reads = site.live.reads.into_inner().expect("reads");
+        if reads.pages.is_empty() {
+            continue;
+        }
+        let path = fixture_dir().join(format!("{id}.json"));
+        let mut text = std::fs::read_to_string(&path).expect("fixture");
+        for (slug, page) in &reads.pages {
+            eprintln!("{id}: {slug} {page:?}");
+            text = with_line(&text, "years", slug, &json(&page.year));
+            if !page.names.is_empty() {
+                text = with_line(&text, "page_names", slug, &names_row(&page.names));
+            }
+            if !page.genres.is_empty() {
+                text = with_line(&text, "genres", slug, &names_row(&page.genres));
+            }
+        }
+        std::fs::write(&path, text).expect("write fixture");
+        let _: Fixture = serde_json::from_str(&std::fs::read_to_string(&path).expect("reread"))
+            .expect("the recording parses as a fixture");
+    }
+}

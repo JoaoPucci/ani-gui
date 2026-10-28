@@ -562,6 +562,7 @@ fn parse_media_entry_response(body: &[u8]) -> Result<Option<CurrentEntry>> {
                 .and_then(ListStatus::from_anilist)
                 .unwrap_or(ListStatus::Watching),
             progress_episodes: e.progress.into_inner().unwrap_or(0),
+            times_rewatched: None,
         }))
 }
 

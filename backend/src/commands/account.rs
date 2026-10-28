@@ -782,8 +782,9 @@ pub fn build_entry_update(
 ///   - a status-less *advancing* progress write promotes a planning row
 ///     (or a not-yet-on-the-list show) to `Watching` so a Plan-to-Watch
 ///     title leaves Watch Later, but leaves any
-///     other status untouched — preserving `Rewatching`/`Completed`/
-///     `Paused`;
+///     other status untouched — preserving `Rewatching` (AniList's; the
+///     caller hands a MAL rewatching row in as the Watching row MAL lists)/
+///     `Completed`/`Paused`;
 ///   - a non-advancing `Watching` is dropped (it could only downgrade or
 ///     no-op).
 pub fn reconcile_monotonic(
@@ -807,9 +808,12 @@ pub fn reconcile_monotonic(
     }
     // Preserve a rewatching/repeating row at the finale: the fan-out sends
     // Completed when a finished series' last episode is watched, but completing
-    // a row that's mid-rewatch would clear AniList REPEATING / MAL
-    // is_rewatching. Drop the Completed status so the rewatch state survives;
-    // any advancing progress field still flows below.
+    // a row that's mid-rewatch would clear AniList's REPEATING, which AniList
+    // closes itself at its total. Drop the Completed status so the rewatch
+    // state survives; any advancing progress field still flows below. A MAL
+    // row reaches here as MAL lists it ([`reconcile_for`]): MAL has no
+    // rewatch status, so its rewatching row is a Watching one, and the
+    // finale completes it.
     if update.status == Some(ListStatus::Completed)
         && current.map(|c| c.status) == Some(ListStatus::Rewatching)
     {
@@ -829,15 +833,33 @@ pub fn reconcile_monotonic(
             update.status = Some(ListStatus::Watching);
         }
     }
-    let empty = update.status.is_none()
-        && update.progress_episodes.is_none()
-        && update.score_0_to_100.is_none()
-        && update.repeat_count.is_none();
-    if empty {
-        None
-    } else {
-        Some(update)
+    (!update.is_empty()).then_some(update)
+}
+
+/// [`reconcile_monotonic`] against `row` as `kind` keeps it
+/// ([`CurrentEntry::as_kept_by`]), closing a MAL rewatch the write
+/// completes. MAL has no rewatch status: its rewatch is a Watching row
+/// with `is_rewatching` set, so the reconcile sees a Watching row and a
+/// finished show's finale completes it. Completing it there is finishing
+/// the rewatch, so the entry's count of finished rewatches goes up by
+/// one — from the count `row` was read with, and not at all when the
+/// read did not carry one, so the count is never written lower. AniList
+/// closes its REPEATING row itself and is reconciled as before.
+pub fn reconcile_for(
+    kind: ProviderKind,
+    update: EntryUpdate,
+    row: Option<CurrentEntry>,
+) -> Option<EntryUpdate> {
+    let mut update = reconcile_monotonic(update, row.map(|r| r.as_kept_by(kind)))?;
+    let closes_a_rewatch = kind == ProviderKind::MyAnimeList
+        && update.status == Some(ListStatus::Completed)
+        && row.is_some_and(|r| r.status == ListStatus::Rewatching);
+    if closes_a_rewatch {
+        update.repeat_count = row
+            .and_then(|r| r.times_rewatched)
+            .map(|n| n.saturating_add(1));
     }
+    Some(update)
 }
 
 /// Push `update` (progress / status / score) to a connected tracker
@@ -969,9 +991,7 @@ pub(crate) async fn push_progress_from(
     // local cache is empty until the user syncs their list).
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     if update.progress_episodes.is_none() {
-        return write_through(state, kind, provider, tokens, native, update, began)
-            .await
-            .map(Some);
+        return write_through(state, kind, provider, tokens, native, update, began).await;
     }
     let media = provider.tracked_media(tokens, native).await?;
     push_progress_read(state, kind, provider, tokens, native, update, media, began).await
@@ -994,15 +1014,14 @@ pub(crate) async fn push_progress_read(
     began: u64,
 ) -> Result<Option<ListEntry>> {
     let update = fit_to_tracker_total(update, media.episodes);
-    let Some(update) = reconcile_monotonic(update, media.entry) else {
+    let Some(update) = reconcile_for(kind, update, media.entry) else {
         return Ok(None);
     };
-    write_through(state, kind, provider, tokens, native, update, began)
-        .await
-        .map(Some)
+    write_through(state, kind, provider, tokens, native, update, began).await
 }
 
-/// Write `update` to `native` and the cache through.
+/// Write `update` to `native` and the cache through, or nothing when
+/// the update is empty ([`EntryUpdate::is_empty`]) — a no-op, `None`.
 ///
 /// The cache is written HERE, under the per-show lock — not in the
 /// route afterwards. Deferring it released the lock first, so a stale
@@ -1022,7 +1041,10 @@ pub(crate) async fn write_through(
     native: ProviderMediaId,
     update: EntryUpdate,
     began: u64,
-) -> Result<ListEntry> {
+) -> Result<Option<ListEntry>> {
+    if update.is_empty() {
+        return Ok(None);
+    }
     let entry = provider.update_entry(tokens, native, update).await?;
     if let Ok(owner) = state
         .account_write_locks
@@ -1037,7 +1059,7 @@ pub(crate) async fn write_through(
                 upsert_cached_entry(state, kind, &owner, &entry)
             });
     }
-    Ok(entry)
+    Ok(Some(entry))
 }
 
 #[cfg(test)]
@@ -1047,6 +1069,10 @@ mod tests;
 #[cfg(test)]
 #[path = "account_key_test.rs"]
 mod key_tests;
+
+#[cfg(test)]
+#[path = "account_reconcile_for_test.rs"]
+mod reconcile_for_tests;
 
 #[cfg(test)]
 #[path = "account_resolve_test.rs"]
