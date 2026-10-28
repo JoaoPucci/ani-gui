@@ -19,7 +19,7 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 /// error and SSE error event carries (`api::ani_error_payload`) adds
 /// its stable i18n `key` ([`AniError::key`]), so the UI can localize
 /// without parsing the message.
-#[derive(Debug, Error, Serialize)]
+#[derive(Debug, Clone, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
     /// A download tool failed: yt-dlp or ffmpeg exited non-zero, or was

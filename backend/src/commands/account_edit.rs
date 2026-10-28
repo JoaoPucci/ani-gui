@@ -118,12 +118,17 @@ async fn set_entry_via(
     // progress, unlike the monotonic mark-watched write-through) so the
     // rail/editor reflect a downward correction immediately. Best-effort
     // — the authoritative tracker write already succeeded.
-    if let Ok(profile) = provider.me(tokens).await {
+    if let Ok(owner) = state
+        .account_write_locks
+        .owners
+        .owner(kind, provider, tokens)
+        .await
+    {
         let _ = state
             .account_write_locks
             .epochs
             .write_if_current(kind, began, || {
-                cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry)
+                cache_upsert::upsert_entry_force(&state.cache_pool, kind, &owner, &entry)
             });
     }
     Ok(Some(entry))
@@ -168,15 +173,26 @@ async fn remove_entry_via(
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates.
-    if let Err(e) = provider.delete_entry(tokens, native).await {
+    // The bearer's user, when the tracker names it (remembered once it
+    // has): the delete and the cache row's drop both go by it.
+    let owners = &state.account_write_locks.owners;
+    let mut owner = owners.owner(kind, provider, tokens).await.ok();
+    let deleted = match &owner {
+        Some(user) => provider.delete_entry_for(tokens, native, user).await,
+        None => provider.delete_entry(tokens, native).await,
+    };
+    if let Err(e) = deleted {
         match provider.current_entry(tokens, native).await {
             Ok(None) => {}
             _ => return Err(e),
         }
     }
+    if owner.is_none() {
+        owner = owners.owner(kind, provider, tokens).await.ok();
+    }
     // Drop the cache row (best-effort) so the rail stops showing it.
-    if let Ok(profile) = provider.me(tokens).await {
-        let _ = cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0);
+    if let Some(owner) = owner {
+        let _ = cache_upsert::delete_entry_row(&state.cache_pool, kind, &owner, native.0);
     }
     Ok(true)
 }

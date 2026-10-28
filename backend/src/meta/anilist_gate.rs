@@ -67,7 +67,8 @@ pub(crate) async fn in_background<F: Future>(f: F) -> F::Output {
     CLASS.scope(Class::Background, f).await
 }
 
-fn current_class() -> Class {
+/// The class a request sent from here counts as.
+pub(crate) fn current_class() -> Class {
     CLASS.try_with(|c| *c).unwrap_or(Class::Interactive)
 }
 

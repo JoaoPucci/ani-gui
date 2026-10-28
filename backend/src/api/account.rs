@@ -106,8 +106,8 @@ async fn resolve_owner_user_id(
     headers: &HeaderMap,
     fallback: Option<String>,
 ) -> Result<String, AniError> {
-    match account::me(state, kind, tokens).await {
-        Ok(profile) => Ok(profile.user_id),
+    match account::owner(state, kind, tokens).await {
+        Ok(user_id) => Ok(user_id),
         Err(e) if me_failure_allows_renderer_fallback(&e) => {
             state.internal_secret.validate_header(headers)?;
             fallback.ok_or(e)
