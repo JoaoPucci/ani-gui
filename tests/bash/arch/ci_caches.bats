@@ -3,8 +3,9 @@
 # What the cache check refuses, and what it leaves alone.
 #
 # The check reads the workflows and the local composite actions
-# through PyYAML and holds two rules: only master saves an Actions
-# cache, and an apt install goes through the cached install action.
+# through PyYAML and holds three rules: only master saves an Actions
+# cache, an apt install goes through the cached install action, and a
+# call of the cached pnpm install says it runs from the workspace root.
 # These cases plant each shape the rules are meant to refuse, and the
 # shapes they must accept, in a repository built per case and reached
 # through the ARCH_REPO_ROOT seam every check in tests/arch/ takes.
@@ -194,6 +195,46 @@ check() {
         check
         [ "$status" -eq 1 ] || {
             echo "accepted: $uses"
+            return 1
+        }
+    done
+}
+
+@test "a pnpm install from the workspace root, said explicitly, passes" {
+    for uses in ./.github/actions/pnpm-install "'./.github/actions/pnpm-install/'"; do
+        workflow "      - uses: $uses" '        with:' \
+            '          working-directory: .' '          args: --frozen-lockfile'
+        check
+        [ "$status" -eq 0 ] || {
+            echo "refused: $uses"
+            return 1
+        }
+    done
+}
+
+@test "a pnpm install that leaves its directory unsaid, or names another, is caught" {
+    workflow '      - uses: ./.github/actions/pnpm-install' '        with:' \
+        '          args: --frozen-lockfile'
+    check
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"working-directory: ."* ]]
+    for dir in frontend ./ "\${{ github.workspace }}"; do
+        workflow '      - uses: ./.github/actions/pnpm-install' '        with:' \
+            "          working-directory: '$dir'" '          args: --frozen-lockfile'
+        check
+        [ "$status" -eq 1 ] || {
+            echo "accepted: $dir"
+            return 1
+        }
+    done
+    # No `with:` at all, and path spellings GitHub resolves to the same
+    # action, are calls too.
+    for uses in ./.github/actions/pnpm-install ./.github/actions//pnpm-install \
+        ./.github/actions/./pnpm-install ./.github/../.github/actions/pnpm-install; do
+        workflow "      - uses: $uses"
+        check
+        [ "$status" -eq 1 ] || {
+            echo "unchecked: $uses"
             return 1
         }
     done

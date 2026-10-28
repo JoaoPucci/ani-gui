@@ -92,7 +92,7 @@ jobs:
         name: pnpm install (frontend)
         uses: ./.github/actions/pnpm-install
         with:
-          working-directory: frontend
+          working-directory: .
           args: --frozen-lockfile --filter ani-gui-frontend
 
       - if: needs.filter.outputs.relevant == 'true'

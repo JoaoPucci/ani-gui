@@ -188,14 +188,18 @@ complete (the spanning cut), a bare title beside parts of it whose
 counts could together explain the entry's (stitching), a dead listing,
 a one-video entry — are tabled: `gen()` writes their expectations row
 by row from the decision tables, and `cases/doc-table.json` carries
-the table itself — all but three rows, which the driver cannot express
-because it names 2020 on every page, badges every hit TV and lists no
-genre: the dated "Show: Arc" whose hit's page names no year, pinned by
+the table itself — all but five rows, which the driver cannot express
+because it names 2020 on every page, badges every hit TV and lists the
+same genre, never Hentai, on every page: the dated "Show: Arc" whose hit's page names no year, pinned by
 the fixture test `an_entry_with_a_count_takes_only_a_hit_named_for_it`;
 Tsubu★Doll, whose refusal rests on a format badge and is pinned by its
 recording (8404, in `UNDATED_REFUSED`); and Ohanashi de Te Koi given
-its hentai's year and title, whose refusal rests on the hit's genre and
-is pinned by `a_hit_filed_under_hentai_is_never_picked`. `predict()` answers `NOT_MODELLED` for those shapes,
+its hentai's year and title, and again undated with its title alone,
+whose refusals rest on the hit's genre and are pinned by
+`a_hit_filed_under_hentai_is_never_picked`; and the undated "Show: Arc"
+whose listing's page lists no genre, pinned by
+`an_undated_pick_never_takes_an_unread_page_as_safe` and
+`a_refusal_beside_an_unread_page_is_the_answered_dead_end`. `predict()` answers `NOT_MODELLED` for those shapes,
 and the model's tests assert that where both a predicate and a tabled
 row speak, they agree.
 
