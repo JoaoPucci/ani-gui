@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createRailMotionGate, railDelta } from './watch-later-motion';
+import {
+	createRailMotionGate,
+	railDelta,
+	WATCH_LATER_SCALE,
+	WATCH_LATER_SHIFT
+} from './watch-later-motion';
 
 describe('railDelta', () => {
 	it('sees a show join the row, and the cards after it move over', () => {
@@ -87,5 +92,18 @@ describe('createRailMotionGate', () => {
 		expect(gate.arrives('n')).toBe(false);
 		expect(gate.leaves('n')).toBe(false);
 		expect(gate.shifts('n')).toBe(false);
+	});
+});
+
+// A quintOut finishes 97% of its movement halfway through: the visible
+// motion looks like a jump. Keep a readable middle and settle gently.
+describe('Watch Later motion timing', () => {
+	it('keeps a card visible through the middle of its departure', () => {
+		expect(WATCH_LATER_SCALE.duration).toBe(360);
+		expect(WATCH_LATER_SCALE.easing(0.5)).toBeCloseTo(0.5);
+	});
+	it('lets neighbours close the gap at a readable pace', () => {
+		expect(WATCH_LATER_SHIFT.duration).toBe(420);
+		expect(WATCH_LATER_SHIFT.easing(0.5)).toBeCloseTo(0.5);
 	});
 });

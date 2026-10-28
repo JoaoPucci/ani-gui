@@ -39,8 +39,11 @@ vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
 	const real = await importOriginal<typeof import('../../src/lib/transitions/card-motion')>();
 	return {
 		...real,
-		cardScale: (node: Element) => {
-			const config = real.cardScale(node);
+		cardScale: (
+			node: Element,
+			...args: Parameters<typeof real.cardScale> extends [Element, ...infer R] ? R : never
+		) => {
+			const config = real.cardScale(node, ...args);
 			scaled.push({
 				id: (node as HTMLElement).dataset.animeId ?? '',
 				duration: config.duration ?? 0
@@ -187,7 +190,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 		expect(writes).toBe(2);
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		// The new card grew in with the strip's motion; nothing else did.
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
+		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
 	});
 
 	it('lets go of a show whose held removal lands, shrinking it out of the row', async () => {
@@ -202,7 +205,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await settle();
 		expect(writes).toBe(2);
 		expect(railTitles()).toEqual([ALREADY.title]);
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
+		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
 	});
 
 	it('grows the first card into an empty row, the same way', async () => {
@@ -217,7 +220,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await pending;
 		await settle();
 		expect(railTitles()).toEqual([NEW.title]);
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
+		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
 	});
 
 	it('shrinks the last card out, leaving the empty row', async () => {
@@ -232,7 +235,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await settle();
 		expect(railTitles()).toEqual([]);
 		expect(target.textContent).toContain(m.account_watch_later_empty());
-		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 240 }]);
+		expect(scaled).toEqual([{ id: String(NEW.malId), duration: 360 }]);
 	});
 
 	it('changes nothing when the held add is dropped for another account', async () => {
@@ -247,6 +250,19 @@ describe('Watch Later on Home, while a held write waits', () => {
 		expect(writes).toBe(1);
 		expect(railTitles()).toEqual([ALREADY.title]);
 		expect(scaled).toEqual([]);
+	});
+
+	it('reconciles a stale cached row even when the tracker already removed the show', async () => {
+		planned = [ALREADY, NEW];
+		backend();
+		server.use(http.get(`${API_BASE}/api/account/entry/anilist`, () => HttpResponse.json(null)));
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		await syncRemoveEntry(String(NEW.malId));
+		await settle();
+		expect(writes).toBe(2);
+		expect(railTitles()).toEqual([ALREADY.title]);
 	});
 
 	it('reads the new list, without motion, when Home is opened after the write landed', async () => {

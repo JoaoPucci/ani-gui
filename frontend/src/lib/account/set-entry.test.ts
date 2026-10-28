@@ -115,8 +115,8 @@ describe('setEntryAcrossTrackers', () => {
 
 describe('removeEntryAcrossTrackers', () => {
 	it('reports removed for present trackers only; an absent tracker is neither removed nor failed', async () => {
-		// anilist has the row; mal does not. Only anilist is deleted; mal is
-		// skipped (its no-op delete must not count toward success).
+		// AniList has the row; MAL does not. Both reconcile the cache, but
+		// the absent row does not count toward the removal tally.
 		const getEntry = vi.fn(
 			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? present : null)
 		);
@@ -127,7 +127,7 @@ describe('removeEntryAcrossTrackers', () => {
 		);
 		expect(out).toEqual({ removed: 1, failed: 0 });
 		expect(removeEntry).toHaveBeenCalledWith('anilist', 'tok', 'kitsu-12');
-		expect(removeEntry).not.toHaveBeenCalledWith('mal', 'tok', 'kitsu-12');
+		expect(removeEntry).toHaveBeenCalledWith('mal', 'tok', 'kitsu-12');
 	});
 
 	it('a present tracker whose delete fails is reported as failed (partial removal)', async () => {
