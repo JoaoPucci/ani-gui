@@ -113,12 +113,15 @@ async fn set_entry_via(
         return Ok(None);
     };
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
+    // Resolve the cache owner before the mutation: the write may spend
+    // the last allowance, so a profile request afterwards can be refused.
+    let profile = provider.me(tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
     // rail/editor reflect a downward correction immediately. Best-effort
     // — the authoritative tracker write already succeeded.
-    if let Ok(profile) = provider.me(tokens).await {
+    {
         let _ = state
             .account_write_locks
             .epochs
@@ -152,6 +155,7 @@ async fn remove_entry_via(
     tokens: &Tokens,
     kitsu_id: &str,
 ) -> Result<bool> {
+    let began = state.account_write_locks.epochs.current(kind);
     // Per-show lock keyed on the Kitsu id, taken before resolve so the
     // delete serializes with a concurrent mark-watched write / editor read
     // across their whole resolve→write.
@@ -168,6 +172,7 @@ async fn remove_entry_via(
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates.
+    let profile = provider.me(tokens).await?;
     if let Err(e) = provider.delete_entry(tokens, native).await {
         match provider.current_entry(tokens, native).await {
             Ok(None) => {}
@@ -175,9 +180,12 @@ async fn remove_entry_via(
         }
     }
     // Drop the cache row (best-effort) so the rail stops showing it.
-    if let Ok(profile) = provider.me(tokens).await {
-        let _ = cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0);
-    }
+    let _ = state
+        .account_write_locks
+        .epochs
+        .write_if_current(kind, began, || {
+            cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0)
+        });
     Ok(true)
 }
 
