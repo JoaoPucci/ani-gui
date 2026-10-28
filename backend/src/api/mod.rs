@@ -627,7 +627,7 @@ async fn post_availability(
     Json(args): Json<availability_inner::AvailabilityArgs>,
 ) -> Result<Json<availability_inner::AvailabilityResponse>, AniError> {
     Ok(Json(
-        availability_inner::check_availability(&state, &args).await?,
+        crate::commands::availability_flight::check_shared(&state, args).await?,
     ))
 }
 
@@ -641,19 +641,19 @@ async fn post_availability_batch(
     Json(availability_inner::batch_cached(&state, &args))
 }
 
-/// Fire-and-forget cache warmer. Spawns a background task that
-/// walks `items`, runs availability checks for ones not already
-/// cached (with a 500ms throttle), and writes results. Returns 202
-/// immediately so list views never wait for the warm to finish —
-/// the populated cache is read by the next visit's batch call.
+/// Fire-and-forget cache warmer. Hands `items` to the warm queue,
+/// which probes the ones not already cached in the background and
+/// writes the results. Returns 202 immediately so list views never
+/// wait for the warm to finish — the populated cache is read by the
+/// next visit's batch call.
 async fn post_availability_warm(
     State(state): State<Arc<AppState>>,
     Json(args): Json<availability_inner::AvailabilityWarmArgs>,
 ) -> StatusCode {
-    let s = state.clone();
-    tokio::spawn(async move {
-        availability_inner::warm(s, args.items).await;
-    });
+    state
+        .availability_refreshes
+        .warm_queue
+        .push(&state, args.items);
     StatusCode::ACCEPTED
 }
 
