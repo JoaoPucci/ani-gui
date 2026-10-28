@@ -46,6 +46,23 @@ def month(date):
     return date[:7]
 
 
+def started_before(later, earlier):
+    """Whether `later` is settled as having started before `earlier`: both
+    real dates or months, a month apart with `later`'s the earlier, or
+    whole days in one month with `later`'s the earlier day. Anything else
+    (a date missing or unreal, a month named alone in the other's month,
+    the same day) settles nothing."""
+    lm, em = month(later), month(earlier)
+    if not lm or not em:
+        return False
+    if lm != em:
+        return lm < em
+    full = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+    if full.fullmatch(later or "") and full.fullmatch(earlier or ""):
+        return later < earlier
+    return False
+
+
 def segment(entry, total, from_, to, lead=0, extras=()):
     return {
         "entry": entry["id"],
@@ -62,7 +79,8 @@ def chain_rule(ev, count, total):
     """One Kitsu entry spans the tracker's chain: the entry and its single
     sequels sum exactly to Kitsu's count, every run inside Kitsu's run
     (each bound by month, two days' slack, or Kitsu's own episode date),
-    no later segment a Kitsu entry's own."""
+    no later segment a Kitsu entry's own, and none started before the one
+    it follows."""
     segs = [segment(ev["entry"], total, 1, total)]
     shows = [ev["entry"]]
     covered = total
@@ -78,6 +96,8 @@ def chain_rule(ev, count, total):
     if covered != count or len(segs) < 2:
         return None
     if any(s["entry"] in ev["claimed"] for s in segs[1:]):
+        return None
+    if any(started_before(b["start"], a["start"]) for a, b in zip(shows, shows[1:])):
         return None
     ks, ke = month(ev["kitsu"]["start"]), month(ev["kitsu"]["end"])
     if not ks or not ke:
@@ -213,8 +233,11 @@ def listed_number(text):
 def extras_rule(ev, count, total):
     if ev["listed"] is None:
         return None
+    # Distinct numbers, whole part first and no fraction before one, as
+    # the app orders them; the set only counts them.
     extras = sorted(
-        {n for n in map(listed_number, ev["listed"]) if n and (n[0] == 0 or n[1] is not None)}
+        {n for n in map(listed_number, ev["listed"]) if n and (n[0] == 0 or n[1] is not None)},
+        key=lambda e: (e[0], e[1] is not None, e[1] or ""),
     )
     if len(extras) != total - count:
         return None
@@ -223,7 +246,17 @@ def extras_rule(ev, count, total):
     return [segment(ev["entry"], total, 1, count, 0, [w for w, _ in sorted(extras, key=lambda e: (e[0], e[1] or ""))])]
 
 
+def in_airing_order(parts):
+    """Kitsu's parts up to the first that started before the part it
+    follows, which is no later part: the chain ends before it."""
+    for i in range(1, len(parts)):
+        if started_before(parts[i].get("start"), parts[i - 1].get("start")):
+            return parts[:i]
+    return parts
+
+
 def predict(ev):
+    ev = dict(ev, parts=in_airing_order(ev["parts"]))
     count = ev["kitsu"]["episodes"] or 0
     total = ev["entry"]["episodes"] or 0
     if not count or not total:
@@ -268,6 +301,72 @@ def predict(ev):
     if len(found) > 1:
         return identity("conflict")
     return {"shape": found[0][0], "segments": found[0][1]}
+
+
+def whole_day(date):
+    """`date` when it names a real whole day."""
+    return date if month(date) and date and len(date) == 10 else None
+
+
+def special_rule(sp):
+    """A special the tracker has no entry for, among the extras of exactly
+    one related entry: that entry's own map reads the season's extras
+    over the whole season from the entry's first episode, as many as the
+    special has episodes, one after another, none of them the entry's
+    last; no other related entry could be the special; and the special
+    started on a whole real day inside the entry's run, by month, on the
+    side of the season's start its slot is on. Its episodes are those
+    extras, where the tracker lists them, never completing the entry."""
+    k = sp["special"]["episodes"] or 0
+    start = whole_day(sp["special"]["start"])
+    if not k or not start:
+        return None
+    fits = []
+    for f in sp["related"]:
+        e = f["evidence"]["entry"]
+        if f["contested"]:
+            continue
+        s, a, b = month(start), month(e["start"]), month(e["end"])
+        if not (s and a and b and a <= s <= b):
+            continue
+        m = predict(f["evidence"])
+        if m["shape"] != "extras" or len(m["segments"]) != 1:
+            continue
+        seg = m["segments"][0]
+        after = seg["extras_after"]
+        if seg["entry"] != e["id"] or seg["kitsu_from"] != 1 or seg["lead"] != 0:
+            continue
+        if len(after) != k or any(w != after[0] for w in after):
+            continue
+        if after[0] + k >= seg["entry_total"]:
+            continue
+        # A prologue's slot is taken only within two days of the season's
+        # start; a recap's only once the season, as the dates settle it,
+        # started first.
+        season_start = f["related"].get("start")
+        if after[0] == 0 and not slack(season_start, start):
+            continue
+        if after[0] > 0 and not started_before(season_start, start):
+            continue
+        fit = {
+            "entry": seg["entry"],
+            "entry_total": seg["entry_total"],
+            "entry_finished": seg["entry_finished"],
+            "kitsu_from": 1,
+            "kitsu_to": k,
+            "lead": after[0],
+            "extras_after": [],
+        }
+        if fit not in fits:
+            fits.append(fit)
+    if len(fits) != 1:
+        return None
+    return {"shape": "special_extras", "segments": fits}
+
+
+def predict_special(sp):
+    """The special's map where nothing else explains it."""
+    return special_rule(sp) or identity("unexplained")
 
 
 def targets(m, count):
@@ -336,7 +435,7 @@ def chain_family(rng):
         total = sum(counts)
         segs = [show(100 + i, counts[i], fins[i], months(2001, 3 * i) + "-02", months(2001, 3 * i + 2) + "-20") for i in range(n)]
         k = kitsu(1, total, "2001-01-01", months(2001, 3 * n) + "-28")
-        tweak = rng.choice(["ok", "ok", "ok", "over", "under", "claimed", "early", "late", "undated", "unknown_hop", "year_only", "extra_hop", "impossible"])
+        tweak = rng.choice(["ok", "ok", "ok", "over", "under", "claimed", "early", "late", "undated", "unknown_hop", "year_only", "extra_hop", "impossible", "aired_first", "aired_first_day", "same_month_partial", "same_day"])
         ev = evidence(k, segs[0], chain=segs[1:])
         if tweak == "over":
             ev["kitsu"]["episodes"] = total + 1
@@ -358,6 +457,20 @@ def chain_family(rng):
             ev["chain"][-1] = dict(ev["chain"][-1], start=ev["chain"][-1]["start"][:4])
         elif tweak == "extra_hop":
             ev["chain"].append(show(999, 6, True, "2030-01-01", "2030-02-01"))
+        elif tweak == "aired_first":
+            # The first hop aired a month before the entry it follows,
+            # both still inside Kitsu's run: no chain.
+            ev["entry"] = dict(ev["entry"], start="2001-02-02")
+            ev["chain"][0] = dict(ev["chain"][0], start="2001-01-05")
+        elif tweak == "aired_first_day":
+            # A day before the entry, in the entry's own month.
+            ev["chain"][0] = dict(ev["chain"][0], start="2001-01-01")
+        elif tweak == "same_month_partial":
+            # The month alone, in the entry's month: the order is not
+            # settled, and the chain is read as it was.
+            ev["chain"][0] = dict(ev["chain"][0], start="2001-01")
+        elif tweak == "same_day":
+            ev["chain"][0] = dict(ev["chain"][0], start=ev["entry"]["start"])
         out.append(("chain-" + tweak, ev))
     return out
 
@@ -398,8 +511,16 @@ def split_family(rng):
         parts = [kitsu(20 + i, counts[i], months(2018, 3 * i) + "-01", "") for i in range(n)]
         ours = rng.randrange(n)
         total = sum(counts)
-        tweak = rng.choice(["ok", "ok", "ok", "past_sum", "short", "unknown_part", "alone", "own_differs"])
-        if tweak == "past_sum":
+        tweak = rng.choice(["ok", "ok", "ok", "past_sum", "short", "unknown_part", "alone", "own_differs", "aired_first", "same_month_partial", "same_day"])
+        if tweak == "aired_first":
+            # The last part aired a month before the part it follows: no
+            # later part, so the chain ends before it.
+            parts[-1] = dict(parts[-1], start=months(2018, 3 * (n - 2) - 1) + "-15")
+        elif tweak == "same_month_partial":
+            parts[-1] = dict(parts[-1], start=parts[-2]["start"][:7])
+        elif tweak == "same_day":
+            parts[-1] = dict(parts[-1], start=parts[-2]["start"])
+        elif tweak == "past_sum":
             parts.append(kitsu(50, 12, "2030-01-01", ""))
             if rng.random() < 0.5:
                 ours = len(parts) - 1
@@ -665,6 +786,65 @@ def plain_family(rng):
     return out
 
 
+def special_family(rng):
+    """A special the tracker has no entry for, beside a related season
+    whose entry counts it among its extras: the season's extras rule over
+    an entry listing an Episode 0 or a half episode, a one- or two-episode
+    special dated in the entry's run — and every way that falls short."""
+    out = []
+    for _ in range(400):
+        count = rng.choice([11, 12, 13, 24, 25])
+        k = rng.choice([1, 1, 1, 2])
+        w = rng.choice([0, 0, 0, rng.randint(1, count - 1)])
+        tweak = rng.choice(["ok", "ok", "ok", "ok", "contested", "count_mismatch", "apart", "last_slot", "before_run", "after_run", "partial_date", "undated", "two_fits", "season_conflict", "counts_agree", "unrelated", "prologue_late", "recap_early", "twice"])
+        if tweak == "last_slot":
+            w = count
+        elif tweak == "prologue_late":
+            w = 0
+        elif tweak == "recap_early":
+            w = max(w, 1)
+        # The entry's extras, each after Kitsu's episode `w`: an Episode 0,
+        # or "w.5", "w.6" — distinct numbers after the same episode.
+        extras = ["0" if (w == 0 and i == 0) else f"{w}.{i + 5}" for i in range(k)]
+        if tweak == "apart":
+            extras = ["0", f"{count // 2}.5"]
+        listed = [str(n) for n in range(1, count + 1)] + extras
+        n_extras = len(extras)
+        total = count + n_extras
+        entry = show(70, total, rng.random() < 0.85, "2015-01-04", "2015-03-29")
+        season = kitsu(71, count, "2015-01-11", "2015-03-29")
+        ev = evidence(season, entry, listed=listed)
+        if tweak == "season_conflict":
+            # A later Kitsu part the season's map also reads: a conflict.
+            ev["parts"] = [season, kitsu(72, n_extras, "2015-04-05", "2015-04-05")]
+        if tweak == "counts_agree":
+            ev = evidence(season, dict(entry, episodes=count), listed=listed)
+        # A prologue starts by the season's start (2015-01-11, two days'
+        # slack); a recap after it.
+        fitting = rng.choice(["2015-01-04", "2015-01-10", "2015-01-13"]) if w == 0 else rng.choice(["2015-01-12", "2015-02-20", "2015-03-29"])
+        start = {"before_run": "2014-12-28", "after_run": "2015-04-02", "partial_date": "2015-01", "undated": None,
+                 "prologue_late": "2015-01-14", "recap_early": "2015-01-10"}.get(tweak, fitting)
+        special_count = k + 1 if tweak == "count_mismatch" else k
+        sp = {
+            "special": kitsu(73, special_count, start or "", start or ""),
+            "related": [{"related": season, "evidence": ev, "contested": tweak == "contested"}],
+        }
+        if start is None:
+            sp["special"]["start"] = None
+            sp["special"]["end"] = None
+        if tweak == "two_fits":
+            other = evidence(kitsu(74, count, "2015-01-11", "2015-03-29"), dict(entry, id=75), listed=listed)
+            sp["related"].append({"related": kitsu(74, count, "2015-01-11", "2015-03-29"), "evidence": other, "contested": False})
+        if tweak == "twice":
+            # Kitsu relating the special to the season twice, in two roles.
+            sp["related"].append(dict(sp["related"][0]))
+        if tweak == "unrelated":
+            # A related entry whose own entry has no extras at all.
+            sp["related"].insert(0, {"related": kitsu(76, 24), "evidence": evidence(kitsu(76, 24), show(77, 24)), "contested": False})
+        out.append(("special-" + tweak, sp))
+    return out
+
+
 def recorded():
     out = []
     for tracker in ("anilist", "mal"):
@@ -689,9 +869,19 @@ def gen():
         cases.append({"id": cid, "family": family, "evidence": ev})
     for cid, ev in recorded():
         cases.append({"id": cid, "family": "recorded", "evidence": ev})
+    for family, sp in special_family(rng):
+        cid = case_id(family, sp)
+        if cid in seen:
+            continue
+        seen.add(cid)
+        cases.append({"id": cid, "family": family, "special": sp})
     for c in cases:
-        m = predict(c["evidence"])
-        count = min(c["evidence"]["kitsu"]["episodes"] or 0, TARGET_CAP)
+        if "special" in c:
+            m = predict_special(c["special"])
+            count = min(c["special"]["special"]["episodes"] or 0, TARGET_CAP)
+        else:
+            m = predict(c["evidence"])
+            count = min(c["evidence"]["kitsu"]["episodes"] or 0, TARGET_CAP)
         c["expect"] = {"map": m, "targets": targets(m, count)}
     return cases
 

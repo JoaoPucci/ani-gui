@@ -272,7 +272,29 @@ pub(crate) fn exact_chain_model(ev: &Evidence, count: u32, total: u32) -> Option
             to: after,
         });
     }
+    // A hop that aired before the link it follows is no later part.
+    if links
+        .windows(2)
+        .any(|w| aired_first(w[1].show.start.as_deref(), w[0].show.start.as_deref()))
+    {
+        return None;
+    }
     Some(links)
+}
+
+/// Whether `later` is settled as having started before `earlier`: both
+/// read, by the model's own byte layout, as a real date or month; a
+/// different month, compared as `(year, month)`; or the same month, both
+/// with a day, compared by day. Anything else settles nothing.
+pub(crate) fn aired_first(later: Option<&str>, earlier: Option<&str>) -> bool {
+    let (Some((ly, lm, ld)), Some((ey, em, ed))) = (later.and_then(read), earlier.and_then(read))
+    else {
+        return false;
+    };
+    if (ly, lm) != (ey, em) {
+        return (ly, lm) < (ey, em);
+    }
+    matches!((ld, ed), (Some(l), Some(e)) if l < e)
 }
 
 /// The segment a link files.

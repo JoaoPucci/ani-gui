@@ -213,6 +213,41 @@ fn a_chain_outside_kitsu_s_run_explains_nothing() {
     assert_eq!(map_show(&early), identity(Identity::Unexplained));
 }
 
+/// A tracker's sequel that aired before the entry it follows started
+/// is no later part of the show, whatever its relation says: both runs
+/// lying inside Kitsu's does not place them in the chain's order.
+/// Order is read only where the dates settle it — a month apart, or
+/// whole days apart within one month — so a sequel dated by month alone
+/// in its entry's month is read as it was.
+#[test]
+fn a_sequel_that_aired_before_its_entry_started_is_no_chain() {
+    let ev = |entry_start: &str, sequel_start: &str| Evidence {
+        kitsu: kitsu("1", Some(12), "2010-01-05", "2010-12-20"),
+        entry: show(10, Some(6), true, entry_start, "2010-08-10"),
+        chain: vec![show(11, Some(6), true, sequel_start, "2010-09-20")],
+        ..Default::default()
+    };
+    assert_eq!(
+        map_show(&ev("2010-07-01", "2010-01-10")),
+        identity(Identity::Unexplained),
+        "months apart"
+    );
+    assert_eq!(
+        map_show(&ev("2010-07-20", "2010-07-03")),
+        identity(Identity::Unexplained),
+        "days apart in one month"
+    );
+    assert_eq!(
+        map_show(&ev("2010-07-01", "2010-08-01")).shape,
+        Shape::Chain
+    );
+    assert_eq!(map_show(&ev("2010-07", "2010-07")).shape, Shape::Chain);
+    assert_eq!(
+        map_show(&ev("2010-07-03", "2010-07-03")).shape,
+        Shape::Chain
+    );
+}
+
 #[test]
 fn the_run_is_compared_by_month_so_a_day_s_disagreement_does_not_refuse_a_chain() {
     let mut ev = ranma();
@@ -793,9 +828,22 @@ fn two_rules_filing_the_episodes_the_same_way_are_one_explanation() {
     let map = map_show(&ev);
     assert_eq!(map.shape, Shape::SharedEntry);
     assert_eq!(map.target(1), mapped(51_535, 2, true, &[]));
-    // Filing them differently is still a conflict.
+    // Filing them differently is still a conflict, where the dates do
+    // not settle which aired first.
     ev.parts.reverse();
+    for part in &mut ev.parts {
+        part.start = Some("2023-03".into());
+    }
     assert_eq!(map_show(&ev), identity(Identity::Conflict));
+    // Chained the other way round with the dates Kitsu gives them, the
+    // later special aired first: it is no later part, and the chain ends
+    // before it, so only the shared set files the entry.
+    let mut dated = final_chapters("47132");
+    dated.parts = vec![
+        kitsu("47132", Some(1), "2023-11-04", "2023-11-04"),
+        kitsu("46038", Some(1), "2023-03-03", "2023-03-03"),
+    ];
+    assert_eq!(map_show(&dated), map);
 }
 
 #[test]
@@ -820,6 +868,46 @@ fn a_later_part_is_not_filed_where_its_first_part_s_map_would_conflict() {
     let mut plain = ev.clone();
     plain.listed = listed(&["1", "2", "3"]);
     assert_eq!(map_show(&plain).target(1), mapped(173_335, 13, true, &[]));
+}
+
+/// Kamitsubaki as Kitsu dates it: the one-episode special Kitsu files
+/// as the TV series' sequel, "Witchling - Zenpen", aired on 2025-07-03,
+/// six days before the series began on 2025-07-09. A part that aired
+/// before the part it follows is no later part of the entry, whatever
+/// its relation says: the parts end before it, and the series' own
+/// count with AniList's listed Episode 0 explains the entry alone. The
+/// special is no part either, so nothing files it. Where the dates do
+/// not settle the order — the same day, or a month named alone in the
+/// other's month — the parts are read as Kitsu chains them, and the two
+/// readings still conflict.
+#[test]
+fn a_later_part_that_aired_before_the_part_it_follows_is_no_later_part() {
+    let ev = |ours: &str, ours_count: u32, special_start: &str| Evidence {
+        kitsu: kitsu(ours, Some(ours_count), "", ""),
+        entry: show(173_335, Some(13), true, "2025-07-03", "2025-09-25"),
+        listed: listed(&["0", "1", "2", "3", "4"]),
+        sharing: vec![kitsu("49900", Some(12), "2025-07-09", "2025-09-25")],
+        parts: vec![
+            kitsu("49900", Some(12), "2025-07-09", "2025-09-25"),
+            kitsu("50027", Some(1), special_start, special_start),
+        ],
+        ..Default::default()
+    };
+    let series = map_show(&ev("49900", 12, "2025-07-03"));
+    assert_eq!(series.shape, Shape::Extras, "{series:?}");
+    assert_eq!(series.target(1), mapped(173_335, 2, false, &[]));
+    assert_eq!(series.target(12), mapped(173_335, 13, true, &[]));
+    assert_eq!(
+        map_show(&ev("50027", 1, "2025-07-03")),
+        identity(Identity::Unexplained)
+    );
+    for unsettled in ["2025-07-09", "2025-07"] {
+        assert_eq!(
+            map_show(&ev("49900", 12, unsettled)),
+            identity(Identity::Conflict),
+            "{unsettled}"
+        );
+    }
 }
 
 #[test]

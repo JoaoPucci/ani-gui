@@ -448,6 +448,40 @@ async fn a_later_part_with_no_entry_of_its_own_writes_its_prequel_s_entry() {
     assert_eq!(tracker.writes()[1], (153_406, Some(Completed), Some(26)));
 }
 
+/// A show Kitsu resolves to nothing, filed at the first episode of an
+/// entry: an entry the user has finished, or is past that episode on,
+/// or is rewatching beyond it, is sent nothing, so no rewatch is ever
+/// started; an entry not on the list is added at that episode.
+#[tokio::test]
+async fn a_mapped_write_below_an_entry_s_progress_starts_no_rewatch() {
+    let state = state();
+    seed(
+        &state,
+        "9718",
+        &EpisodeMap {
+            shape: Shape::SpecialExtras,
+            segments: vec![segment(19_603, 13, 1, 1, 0, &[])],
+        },
+    );
+    for row in [(Completed, 13), (Watching, 5), (Rewatching, 3)] {
+        let tracker = Tracker::with(&[(19_603, 13)], &[(19_603, row.0, row.1)]);
+        assert!(
+            push(&state, &tracker, "9718", None, watched(1))
+                .await
+                .is_none(),
+            "{row:?}"
+        );
+        assert!(
+            tracker.writes().is_empty(),
+            "{row:?}: {:?}",
+            tracker.writes()
+        );
+    }
+    let tracker = Tracker::with(&[(19_603, 13)], &[]);
+    push(&state, &tracker, "9718", None, finale(1)).await;
+    assert_eq!(tracker.writes(), [(19_603, Some(Watching), Some(1))]);
+}
+
 #[tokio::test]
 async fn a_show_that_resolves_to_nothing_and_maps_to_nothing_writes_nothing() {
     let state = state();

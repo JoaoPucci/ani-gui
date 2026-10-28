@@ -5,6 +5,7 @@
 use std::collections::BTreeSet;
 
 use super::dates::{inside_kitsu_run, unplaced_bounds};
+use super::order::started_before;
 use crate::account::episode_map::{Evidence, Segment, TrackerShow};
 
 /// A segment filing Kitsu's `from..=to` under the whole of `show`.
@@ -22,8 +23,8 @@ fn whole_entry(show: &TrackerShow, total: u32, from: u32, to: u32) -> Segment {
 
 /// The chain rule: `entry` and its sequels, in the order the tracker
 /// chains them, sum exactly to Kitsu's count, every segment's run lies
-/// inside Kitsu's run ([`inside_kitsu_run`]), and no segment past the first is a
-/// Kitsu entry's own. Each segment then takes the Kitsu episodes it
+/// inside Kitsu's run ([`inside_kitsu_run`]), no segment past the first
+/// is a Kitsu entry's own, and none aired before the one it follows. Each segment then takes the Kitsu episodes it
 /// counts, in order.
 pub(super) fn chain(
     evidence: &Evidence,
@@ -39,8 +40,9 @@ pub(super) fn chain(
 }
 
 /// The chain's segments with the entry each files, when the counts sum
-/// exactly to Kitsu's over at least one hop and no segment past the
-/// first is a Kitsu entry's own — the chain rule short of its dates.
+/// exactly to Kitsu's over at least one hop, no segment past the first
+/// is a Kitsu entry's own, and none started before the one it follows
+/// ([`started_before`]) — the chain rule short of its run's dates.
 fn exact_chain(
     evidence: &Evidence,
     kitsu_count: u32,
@@ -71,6 +73,13 @@ fn exact_chain(
     if segments[1..]
         .iter()
         .any(|s| evidence.claimed.contains(&s.entry))
+    {
+        return None;
+    }
+    // A sequel that aired before the entry it follows is no later part.
+    if shows
+        .windows(2)
+        .any(|w| started_before(w[1].start.as_deref(), w[0].start.as_deref()))
     {
         return None;
     }

@@ -234,14 +234,14 @@ async fn ranma_on_anilist_is_a_chain_built_once_and_kept_for_the_long_window() {
         [(210, 1, 18), (149_939, 19, 161)]
     );
     let key = map_key(ProviderKind::AniList, "186", Some((210, Some(18))));
-    assert_eq!(key, "tracker-map:v2:anilist:k186:e210:t18");
+    assert_eq!(key, "tracker-map:v3:anilist:k186:e210:t18");
     assert_eq!(
         map_key(ProviderKind::MyAnimeList, "49244", None),
-        "tracker-map:v2:mal:k49244:unresolved"
+        "tracker-map:v3:mal:k49244:unresolved"
     );
     assert_eq!(
         map_key(ProviderKind::MyAnimeList, "7", Some((70, None))),
-        "tracker-map:v2:mal:k7:e70:t"
+        "tracker-map:v3:mal:k7:e70:t"
     );
     assert_eq!(ttl_of(&state, &key), TRACKER_MAP_TTL.as_secs());
 
@@ -1482,7 +1482,7 @@ async fn a_relation_is_single_only_on_a_whole_page_with_one_of_its_role() {
         let included: Vec<String> = sequels
             .iter()
             .map(|id| {
-                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"subtype":null,"status":null,"episodeCount":12}}}}"#)
+                format!(r#"{{"id":"{id}","type":"anime","attributes":{{"subtype":null,"status":null,"episodeCount":12,"startDate":null}}}}"#)
             })
             .collect();
         format!(
@@ -1796,9 +1796,27 @@ fn a_map_built_before_the_chain_rule_read_kitsu_s_episode_dates_is_never_served(
     let before = "tracker-map:v1:anilist:k1633:e1816:t52";
     assert_ne!(ours, before);
     assert_eq!(
-        ours.replacen("tracker-map:v2:", "tracker-map:v1:", 1),
+        ours.replacen("tracker-map:v3:", "tracker-map:v1:", 1),
         before
     );
+}
+
+/// Maps kept under v2 were built while Kitsu's parts were read in the
+/// order Kitsu relates them, whatever their dates, and while a special
+/// the tracker has no entry for was filed nowhere. Monster Strike's
+/// Episode 0, which aired before the series Kitsu chains it after, was
+/// filed as AniList's 64th episode, completing the entry, and kept for
+/// the long window; UBW's prologue on AniList was kept as writing
+/// nothing. Nothing in a kept map says which rules built it, so the key
+/// moved past v2.
+#[test]
+fn a_map_built_before_parts_were_read_in_airing_order_is_never_served() {
+    for key in [
+        map_key(ProviderKind::AniList, "41499", Some((104_188, Some(64)))),
+        map_key(ProviderKind::AniList, "9718", None),
+    ] {
+        assert!(!key.starts_with("tracker-map:v2:"), "{key}");
+    }
 }
 
 /// A Kitsu `media-relationships` body with several related anime, each
@@ -2306,3 +2324,6 @@ async fn an_anilist_refusal_of_a_mal_entry_s_ownership_check_names_anilist() {
         "{err:?}"
     );
 }
+
+#[path = "tracker_map_specials_test.rs"]
+mod specials;

@@ -28,7 +28,7 @@ pub(super) fn days(date: Option<&str>) -> Option<i64> {
 pub(super) const DAYS_OF_SLACK: i64 = 2;
 
 /// Whether `later` is no more than [`DAYS_OF_SLACK`] after `earlier`.
-pub(super) fn within_slack(earlier: Option<&str>, later: Option<&str>) -> bool {
+pub(crate) fn within_slack(earlier: Option<&str>, later: Option<&str>) -> bool {
     matches!((days(earlier), days(later)), (Some(a), Some(b)) if b - a <= DAYS_OF_SLACK)
 }
 

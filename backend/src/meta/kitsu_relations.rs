@@ -23,6 +23,9 @@ pub struct KitsuRelation {
     pub status: Option<String>,
     /// Its episode count, for an anime.
     pub episode_count: Option<u32>,
+    /// The day it started airing, as Kitsu gives it, for an anime.
+    #[serde(default)]
+    pub start: Option<String>,
 }
 
 /// The entries Kitsu relates an anime to, and whether the page read
@@ -103,14 +106,17 @@ struct NodeAttributes {
     // `Some(None)` when it carries null.
     #[serde(default, deserialize_with = "carried")]
     episode_count: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "carried")]
+    start_date: Option<Option<String>>,
 }
 
 /// A field read as carried or not: `Some` with its value (null being
 /// `None`) when the node has it. With `serde(default)`, a node without
 /// it is `None`.
-fn carried<'de, D>(deserializer: D) -> std::result::Result<Option<Option<u32>>, D::Error>
+fn carried<'de, D, T>(deserializer: D) -> std::result::Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
 {
     present(deserializer).map(Some)
 }
@@ -158,11 +164,25 @@ pub fn parse_relationships_response(body: &[u8]) -> Result<KitsuRelations> {
             }
             (_, count) => count.flatten(),
         };
+        // And for the day it started, which orders Kitsu's parts: one that
+        // leaves it out cannot say when the related entry aired.
+        let start = match (dst.kind.as_str(), node.attributes.start_date.clone()) {
+            ("anime", None) => {
+                return Err(AniError::ParseFailed {
+                    detail: format!(
+                        "kitsu relationships parse: anime {} without its start",
+                        dst.id
+                    ),
+                })
+            }
+            (_, start) => start.flatten(),
+        };
         entries.push(KitsuRelation {
             role: edge.attributes.role,
             subtype: node.attributes.subtype.clone(),
             status: node.attributes.status.clone(),
             episode_count,
+            start,
             kind: dst.kind,
             id: dst.id,
         });
@@ -189,7 +209,10 @@ impl KitsuClient {
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
                 ("include", "destination".to_string()),
-                ("fields[anime]", "subtype,status,episodeCount".to_string()),
+                (
+                    "fields[anime]",
+                    "subtype,status,episodeCount,startDate".to_string(),
+                ),
                 ("fields[manga]", "subtype,status".to_string()),
                 ("page[limit]", RELATIONS_PAGE_LIMIT.to_string()),
             ])

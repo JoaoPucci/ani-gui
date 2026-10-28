@@ -942,6 +942,42 @@ async fn relations_an_earlier_build_kept_are_asked_again() {
     assert!(!read.entries.is_empty(), "asked Kitsu, not the v1 row");
 }
 
+/// Kitsu relations an earlier build kept under `kitsu:relations:v2`
+/// carry no destination's start date, and nothing in a kept row says
+/// whether one was asked for: read now, every part would be undated,
+/// and a part that aired before the one it follows would be read as a
+/// later part for the row's whole week. The key moved past v2.
+#[tokio::test]
+async fn relations_kept_without_their_start_dates_are_asked_again() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/7881/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_bytes(fixture("kitsu-relations-7881.json")),
+        )
+        .expect(1)
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let undated = crate::meta::kitsu::KitsuRelations {
+        entries: Vec::new(),
+        complete: true,
+    };
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:relations:v2:7881",
+        &serde_json::to_string(&undated).expect("json"),
+        60,
+    )
+    .expect("seed");
+    let read = crate::commands::kitsu::kitsu_relationships(&state, "7881")
+        .await
+        .expect("read");
+    assert!(!read.entries.is_empty(), "asked Kitsu, not the v2 row");
+}
+
 /// AniList not answering — refusing this client, or down — is no
 /// evidence: the reading stays open, and no airing row is written for
 /// the next read to take as AniList's answer.
