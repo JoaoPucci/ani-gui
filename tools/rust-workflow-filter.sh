@@ -38,9 +38,10 @@ changed=$(git diff --name-only --no-renames "$base" "$head")
 # The Rust pipeline: the sources, every fixture the tests read, the
 # toolchain pin, the two goldens the fixture tests compare against,
 # the tool that makes the temporary directory the tests run under, the
-# script the coverage job runs, and the workflow itself.
+# script the coverage job runs, the workflow itself, and the cached
+# apt install the test and coverage jobs call.
 if printf '%s\n' "$changed" |
-    grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/(picker|tracker-map)-oracle/fixtures-golden\.json$|tools/hostile-tmpdir\.sh$|tools/rust-lcov\.sh$|\.github/workflows/rust\.yml$)'; then
+    grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/(picker|tracker-map)-oracle/fixtures-golden\.json$|tools/hostile-tmpdir\.sh$|tools/rust-lcov\.sh$|\.github/workflows/rust\.yml$|\.github/actions/apt-install/)'; then
     echo 'relevant=true'
 else
     echo 'relevant=false'

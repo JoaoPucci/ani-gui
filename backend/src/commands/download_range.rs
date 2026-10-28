@@ -159,6 +159,7 @@ where
             &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
                 .to_string(),
             episodes,
+            picked.unread_past,
         );
     }
     // The range's first stream is a positive availability fact

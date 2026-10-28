@@ -753,6 +753,108 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "the bats job runs when a composite action changes" {
+    # apt_sources.sh and ci_caches.sh read the local composite actions
+    # under .github/actions/ as well as the workflows, and the bats
+    # job installs through one, so the directory is a subject too.
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
+    [ -n "$pattern" ]
+    for action in apt-install pnpm-install; do
+        run grep -qE "^($pattern)" <<<".github/actions/$action/action.yml"
+        [ "$status" -eq 0 ]
+    done
+}
+
+# The local composite actions a workflow's steps call, one name per
+# line, as a function so a fixture spelling runs through exactly the
+# derivation the live workflows do. Read through PyYAML, so a step is
+# a step however it is spelled (AGENTS.md §2: what YAML means is a
+# parser's question, not a pattern's); without the parser this fails
+# rather than pairing nothing.
+local_actions_used() {
+    _actions_py=$(resolution_python) || {
+        printf 'action pairing unavailable: no python3 with PyYAML\n' >&2
+        return 1
+    }
+    "$_actions_py" -I - "$1" <<'PYUSES'
+import sys
+
+import yaml
+
+PREFIX = "./.github/actions/"
+names = set()
+with open(sys.argv[1], encoding="utf-8") as handle:
+    for doc in yaml.safe_load_all(handle):
+        jobs = doc.get("jobs") if isinstance(doc, dict) else None
+        for job in (jobs or {}).values() if isinstance(jobs, dict) else ():
+            steps = job.get("steps") if isinstance(job, dict) else None
+            for step in steps if isinstance(steps, list) else ():
+                uses = step.get("uses") if isinstance(step, dict) else None
+                if isinstance(uses, str) and uses.startswith(PREFIX):
+                    names.add(uses[len(PREFIX):].split("/", 1)[0].split("@", 1)[0])
+for name in sorted(names):
+    print(name)
+PYUSES
+}
+
+@test "a composite action is found however the step spells its uses" {
+    # A quoted value, a flow-style step and a step whose `uses` is not
+    # its first key all call the action; the derivation that pairs
+    # actions with filters has to see every one, or a filter missing
+    # an action passes because the action was never paired.
+    wf="$BATS_TEST_TMPDIR/spellings.yml"
+    printf '%s\n' 'on: pull_request' 'jobs:' '  j:' '    runs-on: ubuntu-latest' \
+        '    steps:' \
+        '      - uses: "./.github/actions/apt-install"' \
+        "      - { name: x, uses: './.github/actions/pnpm-install' }" \
+        '      - name: y' '        uses: ./.github/actions/third' \
+        "      - run: 'echo uses: ./.github/actions/not-a-step'" >"$wf"
+    run local_actions_used "$wf"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(printf '%s\n' apt-install pnpm-install third)" ]
+}
+
+@test "a composite action selects every filtered job that uses it" {
+    # A job that skips its steps when nothing it reads changed has to
+    # count the composite actions it calls as read, or a broken action
+    # lands certified by the no-op successes of the jobs that use it.
+    # The pairs come from the workflows themselves. The action side is
+    # parsed: every step whose `uses` names ./.github/actions/<name>,
+    # read by local_actions_used. The filter side is relevance_pattern's
+    # syntactic read of the one governing `grep -qE ... <<<"$changed"`
+    # line. A workflow with no such line either has no filter
+    # (arch.yml, mutation.yml) or decides in a script (rust.yml, whose
+    # tools/rust-workflow-filter.sh rust_workflow_filter.bats runs over
+    # the same change); one with more than one is refused, not skipped.
+    #
+    # Not followed: a composite action that calls another local action
+    # (only the outer one is paired) and a job-level reusable workflow.
+    # Neither exists here today.
+    pairs=0
+    for wf in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
+        [ -f "$wf" ] || continue
+        governing=$(grep -F 'if grep -qE' "$wf" | grep -cF '<<<"$changed"' || true)
+        [ "$governing" -eq 0 ] && continue
+        pattern=$(relevance_pattern "$wf") || {
+            echo "$(basename "$wf") has $governing governing relevance lines"
+            return 1
+        }
+        [ -n "$pattern" ]
+        actions=$(local_actions_used "$wf")
+        for action in $actions; do
+            pairs=$((pairs + 1))
+            grep -qE "^($pattern)" <<<".github/actions/$action/action.yml" || {
+                echo "$(basename "$wf") does not select on .github/actions/$action/"
+                return 1
+            }
+        done
+    done
+    # The derivation has to find every use it exists for: bash.yml's
+    # apt install, crap.yml's and e2e.yml's two each, frontend.yml's
+    # pnpm install. A lost pair is a red run, not a quieter green one.
+    [ "$pairs" -ge 6 ]
+}
+
 # Whether a workflow sets up the upstream remote, as a function so a
 # gutted spelling runs through exactly the check the live file does.
 @test "a check pointed at a missing file exits nonzero" {

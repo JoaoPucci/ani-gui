@@ -214,3 +214,39 @@ async fn a_handoff_puts_the_other_copys_stamp_right() {
         Some((1, "12.5".to_string()))
     );
 }
+
+#[tokio::test]
+async fn a_probe_puts_a_drifted_row_of_either_copy_right() {
+    // Each copy's history row from before the marker holds slot 3, the
+    // entry's episode 2 ("14" under the offset of 12), and a warm of
+    // episode 1 moved each copy's stamp to slot 2: each read as 3.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for slug in [PLAIN, UNCUT] {
+        let row = crate::history::parse(&format!("3\t{}\t{TITLE}\n", key(slug)))
+            .pop()
+            .expect("a row");
+        crate::history::upsert_and_write(&state.history_path, row).expect("write");
+        crate::commands::numbering_offset::put_display(&state, &key(slug), 12, 2, "13");
+    }
+    let args = crate::commands::availability::AvailabilityArgs {
+        title: TITLE.into(),
+        mode: "sub".into(),
+        alt_titles: Vec::new(),
+        episode_count: Some(2),
+        year: Some(2026),
+        subtype: None,
+        kitsu_id: Some("88".into()),
+        status: Some("finished".into()),
+        background: false,
+        bypass_cache: false,
+    };
+    crate::commands::availability::check_availability(&state, &args)
+        .await
+        .expect("answered");
+    let rows = crate::commands::history::history_list(&state).expect("read");
+    for slug in [PLAIN, UNCUT] {
+        let row = rows.iter().find(|e| e.id == key(slug)).expect("the row");
+        assert_eq!(row.ep_no, "2", "{slug}");
+    }
+}
