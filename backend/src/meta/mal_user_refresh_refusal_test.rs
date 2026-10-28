@@ -42,8 +42,8 @@ proptest::proptest! {
     /// A rate limit, whatever wait it advertises, stays a rate limit.
     #[test]
     fn a_rate_limit_is_not_a_refusal(wait in proptest::option::of(0u64..100_000)) {
-        let out = refresh_refusal(AniError::RateLimited { retry_after_secs: wait });
-        let kept = matches!(out, AniError::RateLimited { retry_after_secs } if retry_after_secs == wait);
+        let out = refresh_refusal(AniError::RateLimited { retry_after_secs: wait, refused_by: None });
+        let kept = matches!(out, AniError::RateLimited { retry_after_secs, .. } if retry_after_secs == wait);
         proptest::prop_assert!(kept, "{:?}", out);
     }
 }

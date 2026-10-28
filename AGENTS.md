@@ -174,6 +174,8 @@ Once a milestone affects the UI surface, treat the work as v1-quality, not as a 
 
 Set the assignee on every PR (`gh pr create --assignee @me`). Add a label from the repo's existing set (`bug`, `enhancement`, `documentation`, …) when one obviously fits the change; skip the label otherwise — don't invent new ones without asking.
 
+A PR description is read by someone deciding whether to merge it and by someone testing it by hand, and both read it before the diff. So it opens with what that reader needs, in plain words and without function, field or module names: the behaviour as the user sees it today (for a bug, how to reproduce it in the app; for a feature, what is missing), what changes with the PR, and how to check it by hand — including anything the tests could not settle. Those steps are claims under §16: say which were run and which were not. Give each of these the weight the change calls for, not a fixed template: a one-line fix can say all of it in a short paragraph, and a change with no user-visible behaviour (tests, CI, refactors) says so in a sentence and describes what it changes for a contributor instead, naming the check or workflow where that is the plainest way to say it. The technical detail — the mechanism, the code it touches, the tests — follows, under plain headings, and only as much of it as a reviewer needs.
+
 ## 11. System-modifying actions require explicit approval
 
 This rule holds in **all modes**, including auto mode. Pause and surface a request — never silently execute — for any action that:
@@ -252,6 +254,19 @@ What is never acceptable is the fifth outcome: replying that the fix
 is out of scope or too costly and leaving nothing behind. That reads
 as a considered engineering judgement while being, in effect, a
 refusal — and the work is lost, because nothing records it.
+
+A note in the PR's own description or commit message is the same
+failure in a quieter form. "Not covered", "left open", "not done
+here" or "predates this change", written beside a defect the change
+knows about — one it introduced, uncovered, or was told of in
+review — records the gap where it will be read once, as context,
+and then merged past. That defect leaves the change by one of the
+four outcomes above, and the note links whichever carries it: the
+PR, the deferred-work entry, or the question put to the maintainer.
+A reviewer reading such a note with no link beside it treats it as a
+finding, not as a disclosure that settles it. Saying which checks
+were not run, as §10 asks, or describing behaviour that is
+intended, is not such a note.
 
 The same rule applies to your own estimates. Before invoking cost,
 check the cheap path actually is closed: existing conventions in the

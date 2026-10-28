@@ -11,6 +11,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountStore } from './store.svelte';
+import { refreshAccount } from './refresh-flow';
+import { freshBearerFor, __resetInFlightRefreshes } from './fresh-bearer';
+import { persistAccount, refreshTokens } from './api';
 import type { PersistedAccount } from './types';
 
 function payload(overrides: Partial<PersistedAccount> = {}): PersistedAccount {
@@ -456,5 +459,254 @@ describe('accountStore.refreshExpired and a refused renewal', () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
+	});
+});
+
+describe('a renewal that a hydrate overtakes', () => {
+	// The account page re-reads the keychain while a renewal is out. If
+	// the re-read finds a different sign-in, the renewal's outcome is
+	// the old one's and must be credited to nothing.
+	function race(answer: () => Response) {
+		let keychain: PersistedAccount = payload({
+			access_token: 'old',
+			refresh_token: 'rt',
+			expires_at_epoch_s: 1
+		});
+		const setToken = vi.fn<(p: string, a: PersistedAccount) => Promise<{ ok: boolean }>>(
+			async () => ({ ok: true })
+		);
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: {
+				apiBase: 'http://127.0.0.1:1',
+				account: {
+					getToken: (p: string) =>
+						p === 'mal' ? { ok: true, payload: keychain } : { ok: false, kind: 'not_found' },
+					setToken
+				}
+			}
+		};
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const fetch = vi.fn(async () => {
+			await held;
+			return answer();
+		});
+		vi.stubGlobal('fetch', fetch);
+		return {
+			setKeychain: (a: PersistedAccount) => {
+				keychain = a;
+			},
+			release,
+			fetch,
+			setToken
+		};
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
+
+	const fresh = payload({ access_token: 'new', refresh_token: 'rt-new' });
+
+	it('does not pin the old renewal’s refusal on the sign-in the re-read found', async () => {
+		const r = race(
+			() =>
+				new Response(
+					JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' }),
+					{ status: 401 }
+				)
+		);
+		accountStore.setExpired(
+			'mal',
+			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: 1 })
+		);
+		const renewal = accountStore.refreshExpired();
+		await Promise.resolve();
+		r.setKeychain(fresh);
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		r.release();
+		await renewal;
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'new' }
+		});
+		expect(accountStore.renewalFailure.mal).toBeNull();
+	});
+
+	it('does not overwrite the sign-in the re-read found with the old one renewed', async () => {
+		const r = race(() =>
+			Response.json({
+				access_token: 'old-renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		accountStore.setExpired(
+			'mal',
+			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: 1 })
+		);
+		const renewal = accountStore.refreshExpired();
+		await Promise.resolve();
+		r.setKeychain(fresh);
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		r.release();
+		await renewal;
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'new' }
+		});
+		expect(r.setToken).not.toHaveBeenCalled();
+	});
+
+	it('still credits a renewal the re-read did not overtake', async () => {
+		const r = race(() =>
+			Response.json({
+				access_token: 'old-renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		accountStore.setExpired(
+			'mal',
+			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: 1 })
+		);
+		const renewal = accountStore.refreshExpired();
+		await Promise.resolve();
+		// The keychain still holds the same sign-in: the re-read changes nothing.
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		r.release();
+		await renewal;
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'old-renewed' }
+		});
+	});
+
+	it('still credits a renewal when the re-read finds only that the same sign-in’s date passed', async () => {
+		const r = race(() =>
+			Response.json({
+				access_token: 'renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		const soon = payload({
+			access_token: 'old',
+			refresh_token: 'rt',
+			expires_at_epoch_s: 1_999_999_999
+		});
+		accountStore.setConnected('mal', soon);
+		const renewal = refreshAccount(
+			{
+				refreshTokens,
+				persistAccount,
+				generation: (p) => accountStore.accountGeneration[p]
+			},
+			'mal',
+			soon
+		);
+		await Promise.resolve();
+		r.setKeychain({ ...soon, expires_at_epoch_s: 1 });
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		expect(accountStore.byProvider.mal.kind).toBe('expired');
+		r.release();
+		expect((await renewal).kind).toBe('refreshed');
+	});
+
+	it('does not write the old renewal over the sign-in a re-read found while its save waited', async () => {
+		// The exchange has answered, and the save is queued behind an
+		// earlier write for the provider. The re-read lands while it
+		// waits: the save must not reach the keychain.
+		const r = race(() =>
+			Response.json({
+				access_token: 'old-renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		let releaseWrite: () => void = () => {};
+		const writeHeld = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		r.setToken.mockImplementationOnce(async () => {
+			await writeHeld;
+			return { ok: true };
+		});
+		const earlier = persistAccount('mal', payload({ access_token: 'earlier' }));
+		accountStore.setExpired(
+			'mal',
+			payload({ access_token: 'old', refresh_token: 'rt', expires_at_epoch_s: 1 })
+		);
+		const renewal = accountStore.refreshExpired();
+		let settled = false;
+		void renewal.then(() => {
+			settled = true;
+		});
+		r.release();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		r.setKeychain(fresh);
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// Still waiting means its save is in the queue behind the earlier
+		// write: the re-read landed where this case says, not before the
+		// exchange answered (where the renewal would already be over).
+		expect(settled, 'the renewal is waiting to save').toBe(false);
+		releaseWrite();
+		await earlier;
+		await renewal;
+		const written = r.setToken.mock.calls.map((c) => c[1].access_token);
+		expect(written).toEqual(['earlier']);
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'new' }
+		});
+	});
+
+	it('keeps the renewal’s own new bearer when a re-read finds it before the save reports', async () => {
+		// The main process has written the renewed token, but the save
+		// has not answered yet. A re-read now finds the renewal's own
+		// write: the caller must get the renewed bearer, not the old one.
+		__resetInFlightRefreshes();
+		const r = race(() =>
+			Response.json({
+				access_token: 'renewed',
+				refresh_token: 'rt2',
+				expires_at_epoch_s: 1_999_999_999
+			})
+		);
+		let releaseWrite: () => void = () => {};
+		const writeHeld = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		r.setToken.mockImplementationOnce(async (_p, written) => {
+			r.setKeychain(written);
+			await writeHeld;
+			return { ok: true };
+		});
+		const soon = payload({
+			access_token: 'old',
+			refresh_token: 'rt',
+			expires_at_epoch_s: Math.floor(Date.now() / 1000) + 30
+		});
+		accountStore.setConnected('mal', soon);
+		const bearer = freshBearerFor('mal');
+		r.release();
+		await vi.waitFor(() => expect(r.setToken).toHaveBeenCalled());
+		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
+		accountStore.hydrate();
+		releaseWrite();
+		expect(await bearer).toBe('renewed');
+		expect(accountStore.byProvider.mal).toMatchObject({
+			kind: 'connected',
+			account: { access_token: 'renewed' }
+		});
 	});
 });

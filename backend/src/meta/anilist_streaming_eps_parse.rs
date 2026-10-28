@@ -26,7 +26,7 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
     #[derive(Deserialize)]
     struct Data {
         #[serde(rename = "Media")]
-        media: Option<Media>,
+        media: crate::meta::present::Present<Media>,
     }
     #[derive(Deserialize)]
     struct Media {
@@ -34,8 +34,8 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
         episodes: Option<u32>,
         #[serde(default)]
         status: Option<String>,
-        #[serde(default, rename = "streamingEpisodes")]
-        streaming_episodes: Option<Vec<StreamingEpisode>>,
+        #[serde(rename = "streamingEpisodes")]
+        streaming_episodes: crate::meta::present::Present<Vec<StreamingEpisode>>,
     }
     #[derive(Deserialize)]
     struct StreamingEpisode {
@@ -45,7 +45,7 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist streamingEpisodes response: {e}"),
     })?;
-    let Some(media) = parsed.data.media else {
+    let Some(media) = parsed.data.media.into_inner() else {
         return Ok(StreamingListing::default());
     };
     let mut listing = StreamingListing {
@@ -53,7 +53,7 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
         finished: media.status.as_deref() == Some("FINISHED"),
         entries: BTreeMap::new(),
     };
-    for e in media.streaming_episodes.unwrap_or_default() {
+    for e in media.streaming_episodes.into_inner().unwrap_or_default() {
         let Some(title) = e.title else { continue };
         let Some((num, rest)) = split_episode_title(&title) else {
             continue;

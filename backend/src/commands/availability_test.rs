@@ -124,6 +124,7 @@ fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
     // the same budget.
     let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
         retry_after_secs: Some(9),
+        refused_by: None,
     });
     assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(9));
 }
@@ -132,6 +133,7 @@ fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
 fn warm_backoff_defaults_conservatively_when_the_hint_is_missing() {
     let outcome: Result<AvailabilityResponse> = Err(crate::error::AniError::RateLimited {
         retry_after_secs: None,
+        refused_by: None,
     });
     assert_eq!(warm_backoff(&outcome), std::time::Duration::from_secs(10));
 }
@@ -160,7 +162,7 @@ proptest::proptest! {
     #[test]
     fn warm_backoff_honours_every_advertised_wait(n in 0u64..=100_000u64) {
         let outcome: Result<AvailabilityResponse> =
-            Err(crate::error::AniError::RateLimited { retry_after_secs: Some(n) });
+            Err(crate::error::AniError::RateLimited { retry_after_secs: Some(n), refused_by: None });
         let want = std::time::Duration::from_secs(n.max(1));
         proptest::prop_assert_eq!(warm_backoff(&outcome), want);
     }
@@ -1767,7 +1769,8 @@ const KITSU_MAPPING_BODY: &str = r#"{
 
 const ANILIST_UNRELEASED_BODY: &str = r#"{"data":{"Media":{
     "status":"NOT_YET_RELEASED","episodes":12,
-    "nextAiringEpisode":{"episode":1,"airingAt":1784215800}
+    "nextAiringEpisode":{"episode":1,"airingAt":1784215800},
+    "airingSchedule":null
 }}}"#;
 
 // The premiere-aware negative TTL only
@@ -2133,8 +2136,23 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v24:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v24:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v25:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v25:kid-1:dub");
+}
+
+/// A verdict stamped before an undated pick read the genre of the
+/// listing it serves is not served: a positive row for such an entry
+/// can be a hentai listed under one of the entry's own names, and a
+/// clean miss can rest on a page that listed no genre, which is no
+/// answer that its listing was not the entry. Nothing in a row says
+/// which page it was stamped from.
+#[test]
+fn a_verdict_stamped_before_an_undated_pick_read_its_genre_is_not_read() {
+    let current = cache_key("8404", "sub");
+    assert!(
+        !current.starts_with("availability:v24:"),
+        "the key must have moved past v24: {current}"
+    );
 }
 
 /// A verdict stamped from a listing whose rows past Kitsu's count no

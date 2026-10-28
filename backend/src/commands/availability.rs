@@ -770,6 +770,14 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v25: an undated entry's pick reads the entry page of each listing
+    //      it would serve and never takes one filed under Hentai, nor
+    //      one whose page lists no genre; a dated entry's year filter
+    //      drops the latter too, and a pool a listing was dropped from
+    //      for an unread page is never the clean miss. A v24 positive
+    //      for an undated entry can be a hentai listed under one of its
+    //      names, and a v24 absence can rest on an unread page; nothing
+    //      in a row says which pages stamped it, so re-keying re-probes.
     // v24: a listing whose rows past Kitsu's count no reading reached
     //      gives no count, and does not write over one that stands. A
     //      v23 row may hold such a listing's whole count as its cap,
@@ -916,7 +924,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v24:{kitsu_id}:{m}")
+    format!("availability:v25:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -1025,6 +1033,7 @@ pub async fn check_availability(
                     &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
                         .to_string(),
                     episodes,
+                    p.unread_past,
                 );
             }
             if present {
@@ -1491,8 +1500,10 @@ async fn seed_airing_for_negative_with_base(
     }
     // Errors degrade to the schedule-less fallback TTL — same outcome
     // as before the seed existed.
-    let _ =
-        crate::commands::airing::airing_get_with_anilist_base(state, kitsu_id, anilist_base).await;
+    let _ = crate::meta::anilist_gate::in_background(
+        crate::commands::airing::airing_get_with_anilist_base(state, kitsu_id, anilist_base),
+    )
+    .await;
 }
 
 /// Best-effort read of the show's next scheduled airing from the
@@ -1665,6 +1676,12 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// same list reads the now-populated cache and filters known-
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
+    // Nobody waits on a warm: every AniList request it makes is a
+    // background fill.
+    crate::meta::anilist_gate::in_background(warm_items(state, items)).await;
+}
+
+async fn warm_items(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
     use tokio::time::sleep;
     let seed_ids = schedule_seed_ids(&state, &items);
     crate::commands::airing::seed_airing_rows_batch(&state, &seed_ids, None).await;
@@ -1688,7 +1705,10 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
         args.background = true;
         let outcome = check_availability(&state, &args).await;
         let backoff = warm_backoff(&outcome);
-        if let Err(crate::error::AniError::RateLimited { retry_after_secs }) = &outcome {
+        if let Err(crate::error::AniError::RateLimited {
+            retry_after_secs, ..
+        }) = &outcome
+        {
             tracing::info!(
                 retry_after_secs = ?retry_after_secs,
                 wait = ?backoff,
@@ -1750,9 +1770,9 @@ fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
 /// re-probes it.
 fn warm_backoff(outcome: &Result<AvailabilityResponse>) -> std::time::Duration {
     match outcome {
-        Err(crate::error::AniError::RateLimited { retry_after_secs }) => {
-            std::time::Duration::from_secs(retry_after_secs.unwrap_or(10).max(1))
-        }
+        Err(crate::error::AniError::RateLimited {
+            retry_after_secs, ..
+        }) => std::time::Duration::from_secs(retry_after_secs.unwrap_or(10).max(1)),
         _ => std::time::Duration::from_millis(500),
     }
 }

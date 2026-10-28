@@ -179,12 +179,14 @@ fn edge() -> BoxedStrategy<Value> {
         .boxed()
 }
 
-/// A fuzzy date object, null, or absent.
+/// A fuzzy date object, null, or absent; an object may leave a part
+/// out.
 fn date_object() -> BoxedStrategy<Option<Value>> {
     prop_oneof![
         Just(None),
         Just(Some(Value::Null)),
         fuzzy_parts().prop_map(|(y, m, d)| Some(json!({ "year": y, "month": m, "day": d }))),
+        fuzzy_parts().prop_map(|(y, _, d)| Some(json!({ "year": y, "day": d }))),
     ]
     .boxed()
 }
@@ -203,6 +205,7 @@ fn streaming() -> BoxedStrategy<Option<Value>> {
         Just(Some(json!([]))),
         prop::collection::vec(title.prop_map(|t| json!({ "title": t })), 1..5)
             .prop_map(|v| Some(Value::Array(v))),
+        Just(Some(json!([{}]))),
     ]
     .boxed()
 }
@@ -295,10 +298,28 @@ fn relations_answer(media: &Value) -> bool {
     })
 }
 
+/// Whether a generated envelope carries every field the query asks
+/// for beside the relations: both dates, each date's parts, the
+/// streaming episodes and each one's title. Null is an answer; a key
+/// left out is none.
+fn asked_fields_answer(media: &Value) -> bool {
+    let date = |key: &str| match media.get(key) {
+        None => false,
+        Some(Value::Null) => true,
+        Some(d) => ["year", "month", "day"].iter().all(|p| d.get(*p).is_some()),
+    };
+    let streaming = match media.get("streamingEpisodes") {
+        None => false,
+        Some(Value::Array(eps)) => eps.iter().all(|e| e.get("title").is_some()),
+        Some(_) => true,
+    };
+    date("startDate") && date("endDate") && streaming
+}
+
 /// The evidence a generated envelope is specified to read as, `None`
 /// where it is no answer.
 fn model(media: &Value) -> Option<MediaEvidence> {
-    if !relations_answer(media) {
+    if !relations_answer(media) || !asked_fields_answer(media) {
         return None;
     }
     let text = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
@@ -360,13 +381,15 @@ proptest! {
     /// is none while a listed one keeps every number its titles carry.
     /// An envelope whose relations leave out a key the query asks for,
     /// give `relations` or `edges` as null, or a sequel's node as null,
-    /// is no answer: its sequels are unknown, never none.
+    /// is no answer: its sequels are unknown, never none. So is one that
+    /// leaves out a date, a date's part, the streaming episodes or an
+    /// episode's title.
     #[test]
     fn an_envelope_reads_as_its_fields(media in media()) {
         let body = serde_json::to_vec(&json!({ "data": { "Media": media } })).expect("serialise");
         let parsed = parse_media_evidence_response(&body);
         let Some(want) = model(&media) else {
-            prop_assert!(parsed.is_err(), "relations that do not say read as an answer");
+            prop_assert!(parsed.is_err(), "an envelope missing what it was asked read as an answer");
             return Ok(());
         };
         let got = parsed.expect("an envelope");

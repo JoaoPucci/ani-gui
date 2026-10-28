@@ -11,8 +11,6 @@
 //! Each one is logged at WARN with the provider, the host and the
 //! wait, so the next report of a disabled list button is traceable.
 
-use std::time::Duration;
-
 use crate::error::AniError;
 
 /// The seconds a `Retry-After` header asks for, when it is the
@@ -33,27 +31,6 @@ pub(crate) fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u
     )
 }
 
-/// How long a bounded retry may sleep for an advertised wait, or
-/// `None` when it should not retry at all. No wait advertised sleeps
-/// `default`; an advertised wait up to `cap` is honoured as is; one
-/// past the cap is not retried — a retry before the window ends is a
-/// request spent to be told the same thing, and the caller surfaces
-/// the rate limit with its wait at once.
-#[must_use]
-pub(crate) fn retry_wait_within(
-    advertised: Option<u64>,
-    cap: Duration,
-    default: Duration,
-) -> Option<Duration> {
-    match advertised {
-        None => Some(default),
-        Some(secs) => {
-            let wait = Duration::from_secs(secs);
-            (wait <= cap).then_some(wait)
-        }
-    }
-}
-
 /// The error a 429 from `provider` becomes, logged here so every
 /// transport reports the same way.
 pub(crate) fn rate_limited(provider: &'static str, resp: &reqwest::Response) -> AniError {
@@ -64,7 +41,10 @@ pub(crate) fn rate_limited(provider: &'static str, resp: &reqwest::Response) -> 
         retry_after = ?retry_after_secs,
         "tracker answered 429"
     );
-    AniError::RateLimited { retry_after_secs }
+    AniError::RateLimited {
+        retry_after_secs,
+        refused_by: Some(provider),
+    }
 }
 
 #[cfg(test)]

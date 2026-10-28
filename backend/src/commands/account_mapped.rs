@@ -9,7 +9,7 @@ use crate::account::provider::{CurrentEntry, EntryUpdate, ListEntry, ProviderMed
 use crate::account::status::ListStatus;
 use crate::error::Result;
 
-use super::account::{push_progress_read, push_progress_via, reconcile_monotonic, write_through};
+use super::account::{push_progress_from, push_progress_read, reconcile_for, write_through};
 use super::tracker_map::{episode_map_for, episode_map_for_unresolved, MapAsk};
 
 /// Push `update` for Kitsu's `kitsu_id`, which Kitsu's mappings resolve
@@ -22,22 +22,38 @@ use super::tracker_map::{episode_map_for, episode_map_for_unresolved, MapAsk};
 /// fitted to the resolved entry's total; where one does it goes to that
 /// segment's entry ([`write_mapped`]). A show Kitsu resolves to nothing
 /// writes only where the map files it under another entry.
+#[cfg(test)]
 pub(crate) async fn push_progress_mapped(
     ask: &MapAsk<'_>,
     kitsu_id: &str,
     native: Option<ProviderMediaId>,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
+    let began = ask.state.account_write_locks.epochs.current(ask.kind);
+    push_progress_mapped_at(ask, kitsu_id, native, update, began).await
+}
+
+/// The mapped write-back for a request that arrived in connection
+/// epoch `began`: each entry's write-through lands only if no
+/// disconnect purged the cache since.
+pub(crate) async fn push_progress_mapped_at(
+    ask: &MapAsk<'_>,
+    kitsu_id: &str,
+    native: Option<ProviderMediaId>,
+    update: EntryUpdate,
+    began: u64,
+) -> Result<Option<ListEntry>> {
     let Some(episode) = update.progress_episodes else {
         return match native {
             Some(native) => {
-                push_progress_via(
+                push_progress_from(
                     ask.state,
                     ask.kind,
                     ask.provider,
                     ask.tokens,
                     native,
                     update,
+                    began,
                 )
                 .await
             }
@@ -49,7 +65,7 @@ pub(crate) async fn push_progress_mapped(
             .await?
             .target(episode)
         {
-            Target::Mapped(write) => write_mapped(ask, &write, &update).await,
+            Target::Mapped(write) => write_mapped(ask, &write, &update, began).await,
             Target::Identity => Ok(None),
         };
     };
@@ -71,17 +87,18 @@ pub(crate) async fn push_progress_mapped(
                 native,
                 update,
                 media,
+                began,
             )
             .await
         }
         // The resolved entry is a map's first segment, so a write to it
         // starts no later segment: it is written on the read just made.
         Target::Mapped(write) if write.entry == native.0 && write.earlier.is_empty() => {
-            write_episode(ask, &write, &update, media.entry).await
+            write_episode(ask, &write, &update, media.entry, began).await
         }
         Target::Mapped(write) => {
             drop(guard);
-            write_mapped(ask, &write, &update).await
+            write_mapped(ask, &write, &update, began).await
         }
     }
 }
@@ -106,16 +123,14 @@ async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
 
 /// Bring an earlier segment's entry to its total — completed where the
 /// tracker has it finished — unless the row is already there, reading
-/// and writing it under its own lock. The monotonic reconcile keeps it
-/// from lowering a row and keeps a rewatch.
-async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()> {
+/// and writing it under its own lock. The reconcile ([`reconcile_for`])
+/// keeps it from lowering a row and keeps an AniList rewatch; a MAL one
+/// is a Watching row there, so it is closed — back at Completed, its
+/// rewatch counted.
+async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment, began: u64) -> Result<()> {
     let _guard = hold_entry(ask, earlier.entry).await;
     let row = row_on(ask, earlier.entry).await?;
-    let done = row.is_some_and(|r| {
-        r.progress_episodes >= earlier.total
-            && matches!(r.status, ListStatus::Completed | ListStatus::Rewatching)
-    });
-    if done {
+    if row.is_some_and(|r| r.stands_at(ask.kind, earlier.total)) {
         return Ok(());
     }
     let update = EntryUpdate {
@@ -123,7 +138,7 @@ async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()
         progress_episodes: Some(earlier.total),
         ..Default::default()
     };
-    if let Some(update) = reconcile_monotonic(update, row) {
+    if let Some(update) = reconcile_for(ask.kind, update, row) {
         write_through(
             ask.state,
             ask.kind,
@@ -131,6 +146,7 @@ async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment) -> Result<()
             ask.tokens,
             ProviderMediaId(earlier.entry),
             update,
+            began,
         )
         .await?;
     }
@@ -147,6 +163,7 @@ async fn write_mapped(
     ask: &MapAsk<'_>,
     write: &MappedWrite,
     update: &EntryUpdate,
+    began: u64,
 ) -> Result<Option<ListEntry>> {
     let mut guard = hold_entry(ask, write.entry).await;
     let mut row = row_on(ask, write.entry).await?;
@@ -154,12 +171,12 @@ async fn write_mapped(
     if starts_segment && !write.earlier.is_empty() {
         drop(guard);
         for earlier in &write.earlier {
-            bring_to_total(ask, earlier).await?;
+            bring_to_total(ask, earlier, began).await?;
         }
         guard = hold_entry(ask, write.entry).await;
         row = row_on(ask, write.entry).await?;
     }
-    let written = write_episode(ask, write, update, row).await;
+    let written = write_episode(ask, write, update, row, began).await;
     drop(guard);
     written
 }
@@ -174,6 +191,7 @@ async fn write_episode(
     write: &MappedWrite,
     update: &EntryUpdate,
     row: Option<CurrentEntry>,
+    began: u64,
 ) -> Result<Option<ListEntry>> {
     let ours = EntryUpdate {
         status: write.complete.then_some(ListStatus::Completed),
@@ -181,7 +199,7 @@ async fn write_episode(
         score_0_to_100: update.score_0_to_100,
         repeat_count: None,
     };
-    let Some(ours) = reconcile_monotonic(ours, row) else {
+    let Some(ours) = reconcile_for(ask.kind, ours, row) else {
         return Ok(None);
     };
     write_through(
@@ -191,9 +209,9 @@ async fn write_episode(
         ask.tokens,
         ProviderMediaId(write.entry),
         ours,
+        began,
     )
     .await
-    .map(Some)
 }
 
 #[cfg(test)]

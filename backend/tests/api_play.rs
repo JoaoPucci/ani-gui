@@ -107,6 +107,14 @@ async fn stub_hianime_serving(master_path: &str) -> wiremock::MockServer {
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
         .mount(&server)
         .await;
+    // The show's entry page: an undated pick reads the genres of the
+    // listing it serves, and takes none whose page lists no genre.
+    let entry = r#"<div class="item item-list"><span class="item-head">Genres:</span><a href="/genres/drama" title="Drama">Drama</a></div>"#;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/test-show-1"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(entry))
+        .mount(&server)
+        .await;
     let eps: Vec<String> = (1..=12)
         .map(|n| {
             format!(
@@ -181,15 +189,16 @@ async fn play_endpoint_resolves_natively_and_returns_session() {
     result.expect("play assertion succeeded");
 
     // The whole resolution was served by the stub: the search, the
-    // episode list, the server list and the embed page were each hit,
-    // which is what says the session came from the native walk rather
-    // than anywhere else.
+    // show's entry page, the episode list, the server list and the
+    // embed page were each hit, which is what says the session came
+    // from the native walk rather than anywhere else.
     let requests = hianime
         .received_requests()
         .await
         .expect("stub recorded its requests");
     for needle in [
         "/search",
+        "/test-show-1",
         "/api/theme/episode/list/1",
         "/api/theme/episode/servers",
         "/stream/mal/1/1/sub",

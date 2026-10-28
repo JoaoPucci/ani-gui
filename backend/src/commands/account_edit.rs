@@ -73,8 +73,9 @@ async fn get_entry_via(
 /// the user's deliberate value is written verbatim, so they can correct
 /// an over-count downward or move status anywhere.
 ///
-/// `Ok(None)` when the show can't be mapped to the provider (a non-error
-/// "nothing to write").
+/// `Ok(None)` when the show can't be mapped to the provider, or when the
+/// edit carries nothing ([`EntryUpdate::is_empty`]) — a non-error
+/// "nothing to write".
 pub async fn set_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -96,6 +97,14 @@ async fn set_entry_via(
     kitsu_id: &str,
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
+    // An edit with nothing in it is a no-op: no request, `None`.
+    if update.is_empty() {
+        return Ok(None);
+    }
+    // The connection the save arrived in, before its first wait: a
+    // disconnect while it is out purges the cache, and its write-through
+    // must not undo that.
+    let began = state.account_write_locks.epochs.current(kind);
     // Per-show lock keyed on the Kitsu id, taken before resolve so an
     // explicit edit and a concurrent mark-watched write serialize across
     // their whole resolve→write.
@@ -110,7 +119,12 @@ async fn set_entry_via(
     // rail/editor reflect a downward correction immediately. Best-effort
     // — the authoritative tracker write already succeeded.
     if let Ok(profile) = provider.me(tokens).await {
-        let _ = cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry);
+        let _ = state
+            .account_write_locks
+            .epochs
+            .write_if_current(kind, began, || {
+                cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry)
+            });
     }
     Ok(Some(entry))
 }

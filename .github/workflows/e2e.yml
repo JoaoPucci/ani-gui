@@ -38,7 +38,7 @@ jobs:
           # See tools/rust-workflow-filter.sh for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|frontend/|electron/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/e2e\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|frontend/|electron/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/e2e\.yml$|\.github/actions/(apt|pnpm)-install/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -67,6 +67,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
           shared-key: e2e
 
@@ -76,8 +77,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-          cache-dependency-path: pnpm-lock.yaml
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Linux deps for Electron + Xvfb
@@ -85,20 +84,22 @@ jobs:
         # bundle even in headless Xvfb mode. `xvfb-run` is the wrapper
         # we invoke playwright through. The list mirrors what the
         # AppImage runtime expects on a clean runner.
-        run: |
-          # Distro sources only: see tests/arch/apt_sources.sh.
-          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
-          sudo apt-get install -y \
-            musl-tools \
-            xvfb \
-            libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
-            libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 \
-            libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            musl-tools
+            xvfb
+            libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64
+            libcups2t64 libdrm2 libxkbcommon0 libxcomposite1
+            libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0
             libcairo2 libasound2t64
 
       - if: needs.filter.outputs.relevant == 'true'
         name: pnpm install (workspace)
-        run: pnpm install --frozen-lockfile
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Electron build and launch helpers (node --test)

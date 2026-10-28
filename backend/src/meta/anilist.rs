@@ -134,11 +134,6 @@ pub(crate) const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
 /// a full fingerprint — an app-style identifier passes through.
 const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 
-/// The longest a public request sleeps before its one retry, and the
-/// wait it assumes when a 429 carries no `Retry-After`.
-const PUBLIC_RETRY_CAP: std::time::Duration = std::time::Duration::from_secs(3);
-const PUBLIC_RETRY_DEFAULT: std::time::Duration = std::time::Duration::from_secs(1);
-
 /// Shared POST to AniList's public GraphQL endpoint. The public
 /// fetchers (`trending`, the banner lookups, the id lookups) only
 /// differ in query body + parser, so the request build + status
@@ -162,26 +157,11 @@ pub(crate) async fn post_graphql_public(
             .json(body)
             .send()
     };
-    let mut resp = send().await.map_err(|_| AniError::Network)?;
     // AniList rate-limits aggressively (the public API runs degraded
     // at 30 req/min) and the app's own fan-out — trending, episode
     // thumbs, airing lookups, availability seeds — can burst past it
-    // right after launch. One bounded retry absorbs a burst whose
-    // advertised wait is short. A wait past the cap is not retried: a
-    // retry before the window ends is a request spent to be told the
-    // same thing, so the rate limit surfaces at once with its wait
-    // for the caller to honour (`graphql_body`).
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        let advertised = crate::meta::rate_limit::retry_after_secs(resp.headers());
-        if let Some(wait) = crate::meta::rate_limit::retry_wait_within(
-            advertised,
-            PUBLIC_RETRY_CAP,
-            PUBLIC_RETRY_DEFAULT,
-        ) {
-            tokio::time::sleep(wait).await;
-            resp = send().await.map_err(|_| AniError::Network)?;
-        }
-    }
+    // right after launch. The gate owns what is done about that.
+    let resp = crate::meta::anilist_gate::send(url, send).await?;
     crate::meta::anilist_media::graphql_body(resp).await
 }
 
@@ -307,7 +287,7 @@ const MEDIA_IDS_BY_MALS_GQL: &str = "query MediaIdsByMals($idMals: [Int]) { \
 /// caps `perPage` at 50, so larger chunks would truncate even with one
 /// media per id. Several media can record one MAL id, so a full chunk
 /// can still overflow; the page says so, and the chunk is split.
-pub const MAL_BATCH_PAGE_SIZE: usize = 50;
+pub const MAL_BATCH_PAGE_SIZE: usize = super::anilist_pages::PAGE_CAP;
 
 /// Every AniList media each of `mal_ids` is recorded by, chunked at
 /// [`MAL_BATCH_PAGE_SIZE`] per request: several media can record one
@@ -323,27 +303,27 @@ pub async fn media_listed_for_mals(
     mal_ids: &[u32],
     base_override: Option<&str>,
 ) -> Result<std::collections::HashMap<u32, Vec<u32>>> {
+    use super::anilist_pages::{whole_pages, Page};
     let url = base_override.unwrap_or(ANILIST_API);
-    let mut listed = std::collections::HashMap::new();
-    let mut chunks: Vec<&[u32]> = mal_ids.chunks(MAL_BATCH_PAGE_SIZE).rev().collect();
-    while let Some(chunk) = chunks.pop() {
-        let body = serde_json::json!({
-            "query": MEDIA_IDS_BY_MALS_GQL,
-            "variables": { "idMals": chunk },
-        });
-        let bytes = post_graphql_public(client, url, &body).await?;
-        if page_has_next(&bytes)? {
-            let (first, rest) = chunk.split_at(chunk.len() / 2);
-            if first.is_empty() {
-                return Err(overflowing(chunk));
+    let pages = whole_pages(
+        mal_ids,
+        |chunk| async move {
+            let body = serde_json::json!({
+                "query": MEDIA_IDS_BY_MALS_GQL,
+                "variables": { "idMals": chunk },
+            });
+            let bytes = post_graphql_public(client, url, &body).await?;
+            if page_has_next(&bytes)? {
+                return Ok(Page::Cut);
             }
-            chunks.push(rest);
-            chunks.push(first);
-            continue;
-        }
-        listed.extend(parse_media_listed_by_mal_response(&bytes)?);
-    }
-    Ok(listed)
+            Ok(Page::Whole(parse_media_listed_by_mal_response(&bytes)?))
+        },
+        // More media record one MAL id than a page holds: no answer
+        // the app can read whole.
+        |one| Err(overflowing(&[one])),
+    )
+    .await?;
+    Ok(pages.into_iter().flatten().collect())
 }
 
 /// Every AniList media that records `mal_id` as its MAL id, in AniList

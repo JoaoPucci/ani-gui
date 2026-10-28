@@ -7,6 +7,7 @@
 
 pub mod account;
 pub mod account_edit;
+pub(crate) mod account_epoch;
 mod account_mapped;
 pub mod airing;
 mod anilist_banner_memo;
@@ -80,6 +81,7 @@ mod play_native_dated_name;
 mod play_native_dead_listings;
 pub mod play_native_episode;
 pub mod play_native_format;
+mod play_native_genre;
 mod play_native_kanji_number;
 mod play_native_merge;
 pub mod play_native_numbering;
@@ -129,3 +131,7 @@ pub use session::{
 #[cfg(test)]
 #[path = "kitsu_id_compare_test.rs"]
 mod kitsu_id_compare_test;
+
+#[cfg(test)]
+#[path = "anilist_unanswered_test.rs"]
+mod anilist_unanswered_test;
