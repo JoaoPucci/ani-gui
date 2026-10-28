@@ -161,6 +161,7 @@ afterEach(() => {
 	app = null;
 	target.remove();
 	accountStore.setDisconnected('anilist');
+	accountStore.setDisconnected('mal');
 });
 
 async function settle(steps = 40) {
@@ -176,6 +177,39 @@ const save = () =>
 	syncSetEntry(String(NEW.malId), { status: 'planning', statusChanged: true, progress: 0 });
 
 describe('Watch Later on Home, while a held write waits', () => {
+	it.each([true, false])(
+		'removes cleanly with both accounts connected when MAL maps the show: %s',
+		async (malMaps) => {
+			planned = [ALREADY, NEW];
+			backend();
+			let malHasRow = malMaps;
+			accountStore.setConnected('mal', as('mal-user'));
+			server.use(
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
+					HttpResponse.json(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
+				),
+				http.get(`${API_BASE}/api/account/entry/mal`, () =>
+					HttpResponse.json(malHasRow ? { status: 'planning', progress: 0 } : null)
+				),
+				http.delete(`${API_BASE}/api/account/entry/mal`, () => {
+					malHasRow = false;
+					return new HttpResponse(null, { status: malMaps ? 204 : 404 });
+				})
+			);
+			const pending = syncRemoveEntry(String(NEW.malId));
+			app = mount(HomePage, { target });
+			await settle();
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+			expect(await pending).toEqual({ removed: malMaps ? 2 : 1, failed: 0 });
+			await settle();
+			expect(railTitles()).toEqual([ALREADY.title]);
+			await unmount(app);
+			app = mount(HomePage, { target });
+			await settle();
+			expect(railTitles()).toEqual([ALREADY.title]);
+		}
+	);
+
 	it('takes in a show whose held add lands, growing it into the row as Continue Watching moves', async () => {
 		planned = [ALREADY];
 		backend();

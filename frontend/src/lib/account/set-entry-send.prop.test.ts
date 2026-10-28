@@ -96,7 +96,7 @@ describe('sendRemoval, by property', () => {
 					expect(outcome).toBe(row === null ? 'neither' : 'ok');
 					expect(reads).toBe(1);
 				}
-				expect(removed).toBe(outcome === 'ok' ? 1 : 0);
+				expect(removed).toBe(outcome === 'ok' || outcome === 'neither' ? 1 : 0);
 			})
 		);
 	});
@@ -180,14 +180,12 @@ describe('the re-check after the read, by property', () => {
 				if (before.length < 2) {
 					expect(outcome).toBeInstanceOf(SupersededError);
 					expect(reads).toBe(0);
-				} else if (row === null) {
-					expect(outcome).toBe('neither');
 				} else if (after.length < 2) {
 					expect(outcome).toBeInstanceOf(SupersededError);
 				} else {
-					expect(outcome).toBe('ok');
+					expect(outcome).toBe(row === null ? 'neither' : 'ok');
 				}
-				expect(removed).toBe(outcome === 'ok' ? 1 : 0);
+				expect(removed).toBe(outcome === 'ok' || outcome === 'neither' ? 1 : 0);
 			})
 		);
 	});
