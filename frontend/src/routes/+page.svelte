@@ -41,15 +41,13 @@
 	const watchLaterMotion = createRailMotionGate();
 	const cellId = (node: Element) => (node as HTMLElement).dataset.animeId ?? '';
 	function wlIn(node: Element) {
-		return watchLaterMotion.arrives(cellId(node)) ? cardScale(node, WATCH_LATER_SCALE) : STILL;
+		return watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL;
 	}
 	function wlOut(node: Element) {
-		return watchLaterMotion.leaves(cellId(node)) ? cardScale(node, WATCH_LATER_SCALE) : STILL;
+		return watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL;
 	}
 	function wlFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
-		return watchLaterMotion.shifts(cellId(node))
-			? cardShift(node, animation, WATCH_LATER_SHIFT)
-			: STILL;
+		return watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL;
 	}
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -83,12 +81,7 @@
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { listChanges, railNeedsReread } from '$lib/account/list-changes';
-	import {
-		createRailMotionGate,
-		railDelta,
-		WATCH_LATER_SCALE,
-		WATCH_LATER_SHIFT
-	} from '$lib/account/watch-later-motion';
+	import { createRailMotionGate, railDelta } from '$lib/account/watch-later-motion';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import {
 		isWatchLaterStale,

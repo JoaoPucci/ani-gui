@@ -32,20 +32,14 @@ function reducedMotion(): boolean {
 }
 
 /** The scale transition of a card leaving or arriving. */
-export function cardScale(
-	node: Element,
-	timing: Pick<TransitionConfig, 'duration' | 'easing'> = {}
-): TransitionConfig {
-	const config = { ...CARD_SCALE, ...timing };
-	return scale(node, reducedMotion() ? { ...config, duration: 0 } : config);
+export function cardScale(node: Element): TransitionConfig {
+	return scale(node, reducedMotion() ? { ...CARD_SCALE, duration: 0 } : CARD_SCALE);
 }
 
 /** The slide of a card whose place in the strip changed. */
 export function cardShift(
 	node: Element,
-	animation: { from: DOMRect; to: DOMRect },
-	timing: Pick<AnimationConfig, 'duration' | 'easing'> = {}
+	animation: { from: DOMRect; to: DOMRect }
 ): AnimationConfig {
-	const config = { ...CARD_SHIFT, ...timing };
-	return flip(node, animation, reducedMotion() ? { ...config, duration: 0 } : config);
+	return flip(node, animation, reducedMotion() ? { ...CARD_SHIFT, duration: 0 } : CARD_SHIFT);
 }

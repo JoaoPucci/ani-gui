@@ -5,12 +5,6 @@
 // (`$lib/history/animation-gate`): only what a settled write changed
 // moves; a row that fills or re-sorts on load does not.
 
-import { cubicInOut } from 'svelte/easing';
-
-// Hold enough of the movement in the middle to make the change legible.
-export const WATCH_LATER_SCALE = { duration: 360, easing: cubicInOut } as const;
-export const WATCH_LATER_SHIFT = { duration: 420, easing: cubicInOut } as const;
-
 import { createAnimationGate, type AnimationGateDeps } from '$lib/history/animation-gate';
 
 /** What changed between two renders of the row, by card id. */
