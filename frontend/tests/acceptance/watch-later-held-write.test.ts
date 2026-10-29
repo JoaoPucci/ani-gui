@@ -188,6 +188,36 @@ const save = () =>
 	syncSetEntry(String(NEW.malId), { status: 'planning', statusChanged: true, progress: 0 });
 
 describe('Watch Later on Home, while a held write waits', () => {
+	it('rereads an earlier mapped entry when a newer failing editor save supersedes the progress retry', async () => {
+		planned = [ALREADY, NEW];
+		backend();
+		let attempts = 0;
+		server.use(
+			http.post(`${API_BASE}/api/account/update/anilist`, () => {
+				attempts += 1;
+				planned = planned.filter((p) => p.malId !== NEW.malId);
+				return refusal();
+			}),
+			http.post(`${API_BASE}/api/account/set/anilist`, () =>
+				HttpResponse.json({ kind: 'network' }, { status: 500 })
+			)
+		);
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		const progress = syncWatchedToTrackers('99', 19);
+		await settle();
+		expect(attempts).toBe(1);
+		expect(
+			await syncSetEntry('99', { status: 'paused', statusChanged: true, progress: 0 })
+		).toEqual({ written: 0, failed: 1 });
+		await progress;
+		await settle();
+		expect(attempts).toBe(1);
+		expect(railTitles()).toEqual([ALREADY.title]);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+
 	it.each([true, false])(
 		'follows a failed mapped progress write when an earlier segment changed: %s',
 		async (earlierChanged) => {

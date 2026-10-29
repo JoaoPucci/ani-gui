@@ -308,6 +308,34 @@ describe('a progress write whose episode map could not be read', () => {
 });
 
 describe('the views a settled progress write tells', () => {
+	it('are told when same-account supersession drops a retry after an attempted progress write', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1));
+		const heard: ListChange[] = [];
+		const stop = listChanges.subscribe((c) => heard.push(c));
+		try {
+			const write = syncWatchedToTrackers('kitsu-75', 19);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(updateProgress).toHaveBeenCalledTimes(1);
+			// A newer editor write covers the old progress, but fails.
+			await expect(
+				saveWhenTrackerAllows('anilist', 'kitsu-75', async () => {
+					throw new Error('offline');
+				})
+			).rejects.toThrow('offline');
+			await vi.advanceTimersByTimeAsync(1000);
+			await write;
+			expect(updateProgress).toHaveBeenCalledTimes(1);
+			expect(heard).toEqual([
+				{ kitsuId: 'kitsu-75', providers: ['anilist'], landed: [], source: 'progress' }
+			]);
+			expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+		} finally {
+			stop();
+		}
+	});
+
 	/** The changes announced while `run` goes. */
 	async function announcedDuring(run: () => Promise<unknown>): Promise<ListChange[]> {
 		const heard: ListChange[] = [];
