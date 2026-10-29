@@ -53,10 +53,11 @@ export function changeOf(
 /** Whether a view showing the lists of `shown` reads them again for
  *  `change`. */
 export function railNeedsReread(change: ListChange, shown: readonly Provider[]): boolean {
-	// The row shows the backend's cached list, which only a write the
-	// tracker took changes (its write-through); a failed one left it as
-	// it was.
-	return change.landed.some((p) => shown.includes(p));
+	// A mapped progress write can cache completed earlier entries before
+	// failing on its target. Its final failure does not mean the cached
+	// list stayed unchanged. Editor writes affect one entry per tracker.
+	const affected = change.source === 'progress' ? change.providers : change.landed;
+	return affected.some((p) => shown.includes(p));
 }
 
 /** Whether a detail page showing `kitsuId`'s entry reads it again for
