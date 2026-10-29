@@ -59,6 +59,11 @@ vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
 import { CARD_SCALE } from '../../src/lib/transitions/card-motion';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	invalidateWatchLater,
+	markRefreshed,
+	readLastRefreshed
+} from '../../src/lib/account/watch-later-refresh';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
@@ -166,6 +171,7 @@ afterEach(() => {
 	target.remove();
 	accountStore.setDisconnected('anilist');
 	accountStore.setDisconnected('mal');
+	invalidateWatchLater('anilist');
 });
 
 async function settle(steps = 40) {
@@ -181,6 +187,50 @@ const save = () =>
 	syncSetEntry(String(NEW.malId), { status: 'planning', statusChanged: true, progress: 0 });
 
 describe('Watch Later on Home, while a held write waits', () => {
+	it.each([500, 429])(
+		'does not mark a rejected refresh fresh (HTTP %s), and can refresh again',
+		async (status) => {
+			planned = [ALREADY];
+			backend();
+			const refreshedBefore = Date.now() - 1000;
+			markRefreshed('anilist', refreshedBefore);
+			let refuse = true;
+			let pulls = 0;
+			server.use(
+				http.post(`${API_BASE}/api/account/list/anilist`, () => {
+					pulls += 1;
+					if (refuse)
+						return HttpResponse.json(
+							status === 429
+								? { kind: 'rate_limited', retry_after_secs: 1, refused_by: 'anilist' }
+								: { kind: 'cache', key: 'error.cache' },
+							{ status }
+						);
+					planned = [ALREADY, NEW];
+					return HttpResponse.json(planned.map(listEntry));
+				})
+			);
+			app = mount(HomePage, { target });
+			await settle();
+			expect(pulls).toBe(0);
+			const refresh = target.querySelector<HTMLButtonElement>(
+				`button[aria-label="${m.account_watch_later_refresh()}"]`
+			);
+			expect(refresh).not.toBeNull();
+			refresh!.click();
+			await settle();
+			expect(pulls).toBe(1);
+			expect(readLastRefreshed('anilist')).toBe(refreshedBefore);
+			expect(railTitles()).toEqual([ALREADY.title]);
+			refuse = false;
+			refresh!.click();
+			await settle();
+			expect(pulls).toBe(2);
+			expect(readLastRefreshed('anilist')).toBeGreaterThan(refreshedBefore);
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		}
+	);
+
 	it.each([true, false])(
 		'removes cleanly with both accounts connected when MAL maps the show: %s',
 		async (malMaps) => {
