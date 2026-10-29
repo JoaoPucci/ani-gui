@@ -26,6 +26,17 @@ describe('writeEnd', () => {
 });
 
 describe('changeOf', () => {
+	it('names a superseded progress retry only when an earlier request was attempted', () => {
+		expect(changeOf('99', 'progress', { anilist: 'dropped' }, ['anilist'])).toEqual({
+			kitsuId: '99',
+			providers: ['anilist'],
+			landed: [],
+			source: 'progress'
+		});
+		expect(changeOf('99', 'progress', { anilist: 'dropped' })).toBeNull();
+		expect(changeOf('99', 'editor', { anilist: 'dropped' }, ['anilist'])).toBeNull();
+	});
+
 	it('names the trackers whose write landed or failed, in tracker order', () => {
 		expect(changeOf('12', 'editor', { mal: 'failed', anilist: 'landed' })).toEqual({
 			kitsuId: '12',

@@ -19,24 +19,32 @@ const ends = fc.record(
 ) as fc.Arbitrary<Partial<Record<Provider, WriteEnd>>>;
 
 describe('changeOf, by property', () => {
-	it('names exactly the trackers whose write was sent, once each, in tracker order', () => {
+	it('names landed and failed trackers, plus attempted progress retries that were dropped', () => {
 		fc.assert(
-			fc.property(ends, fc.constantFrom('editor', 'progress' as const), (byTracker, source) => {
-				const sent = PROVIDERS.filter(
-					(p) => byTracker[p] === 'landed' || byTracker[p] === 'failed'
-				);
-				const change = changeOf('7', source, byTracker);
-				if (sent.length === 0) {
-					expect(change).toBeNull();
-				} else {
-					expect(change).toEqual({
-						kitsuId: '7',
-						providers: sent,
-						landed: PROVIDERS.filter((p) => byTracker[p] === 'landed'),
-						source
-					});
+			fc.property(
+				ends,
+				fc.constantFrom('editor', 'progress' as const),
+				fc.subarray(PROVIDERS),
+				(byTracker, source, attempted) => {
+					const sent = PROVIDERS.filter(
+						(p) =>
+							byTracker[p] === 'landed' ||
+							byTracker[p] === 'failed' ||
+							(source === 'progress' && byTracker[p] === 'dropped' && attempted.includes(p))
+					);
+					const change = changeOf('7', source, byTracker, attempted);
+					if (sent.length === 0) {
+						expect(change).toBeNull();
+					} else {
+						expect(change).toEqual({
+							kitsuId: '7',
+							providers: sent,
+							landed: PROVIDERS.filter((p) => byTracker[p] === 'landed'),
+							source
+						});
+					}
 				}
-			})
+			)
 		);
 	});
 });

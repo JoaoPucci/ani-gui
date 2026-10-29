@@ -13,8 +13,8 @@ import { SupersededError } from './save-when-allowed';
 const TRACKERS: readonly Provider[] = ['anilist', 'mal', 'inhouse'];
 
 /** How one tracker's write of a show ended: taken, refused or failed
- *  for good, or dropped unsent — a newer write took every field, or the
- *  account it was made for left. */
+ *  for good, or its retry dropped — a newer write took every field, or
+ *  the account it was made for left. Earlier attempts may have gone out. */
 export type WriteEnd = 'landed' | 'failed' | 'dropped';
 
 /** Which surface made the write. */
@@ -22,7 +22,8 @@ export type WriteSource = 'editor' | 'progress';
 
 /** A write of `kitsuId` that settled on `providers`: the trackers it
  *  was sent to, whose list it may have changed — `landed` those that
- *  took it, the rest refused it or failed after it went out. */
+ *  took it, the rest failed or had a progress retry superseded after
+ *  an earlier attempt for the same account. */
 export interface ListChange {
 	kitsuId: string;
 	providers: Provider[];
@@ -37,15 +38,23 @@ export function writeEnd(settled: PromiseSettledResult<unknown>): WriteEnd {
 }
 
 /** The change a write of `kitsuId` made across trackers, from how each
- *  ended; `null` when none of them can have changed a list. */
+ *  ended; `null` when none of them can have changed a list. `attempted`
+ *  names progress endpoints invoked for accounts the caller still follows. */
 export function changeOf(
 	kitsuId: string,
 	source: WriteSource,
-	ends: Partial<Record<Provider, WriteEnd>>
+	ends: Partial<Record<Provider, WriteEnd>>,
+	attempted: readonly Provider[] = []
 ): ListChange | null {
-	// A dropped write sent nothing; a failed one went out, and a view
-	// that reads the tracker live reads it again.
-	const providers = TRACKERS.filter((p) => ends[p] === 'landed' || ends[p] === 'failed');
+	// A progress retry can be dropped after a previous attempt cached
+	// earlier mapped entries. Callers name only attempts for accounts
+	// they still follow; never-attempted drops remain silent.
+	const providers = TRACKERS.filter(
+		(p) =>
+			ends[p] === 'landed' ||
+			ends[p] === 'failed' ||
+			(source === 'progress' && ends[p] === 'dropped' && attempted.includes(p))
+	);
 	const landed = TRACKERS.filter((p) => ends[p] === 'landed');
 	return providers.length === 0 ? null : { kitsuId, providers, landed, source };
 }
@@ -115,9 +124,10 @@ export function announceEnds(
 	channel: ListChanges,
 	kitsuId: string,
 	source: WriteSource,
-	ends: Partial<Record<Provider, WriteEnd>>
+	ends: Partial<Record<Provider, WriteEnd>>,
+	attempted: readonly Provider[] = []
 ): void {
-	const change = changeOf(kitsuId, source, ends);
+	const change = changeOf(kitsuId, source, ends, attempted);
 	if (change) channel.announce(change);
 }
 
