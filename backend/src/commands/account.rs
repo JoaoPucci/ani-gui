@@ -272,7 +272,10 @@ pub(crate) async fn list_all_and_cache_via(
 
 /// The list read and its write-through for a request that arrived in connection
 /// epoch and cache revision `began`: neither a disconnect nor a mutation
-/// since the fetch began may be undone by this older snapshot.
+/// since the fetch began may be undone by this older snapshot. A mutation
+/// conflict retries once; further contention is a refresh failure, so callers
+/// cannot mark an uncached snapshot fresh. The connection epoch never changes
+/// across the retry: a disconnected request must not refill the cache.
 async fn list_all_and_cache_from(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -281,21 +284,40 @@ async fn list_all_and_cache_from(
     user_id: &str,
     began: (u64, u64),
 ) -> Result<Vec<ListEntry>> {
-    let entries = provider.list_all(tokens).await?;
-    state
-        .account_write_locks
-        .epochs
-        .write_if_current(kind, began.0, || {
-            state
-                .account_write_locks
-                .cache_revisions
-                .write_if_current(kind, began.1, || {
-                    write_through_cache(&state.cache_pool, kind, user_id, &entries)
-                })
-                .transpose()
-        })
-        .transpose()?;
-    Ok(entries)
+    let mut revision = began.1;
+    // Full tracker pulls can be expensive or rate-limited. Do not keep
+    // fetching indefinitely while the user is making more edits.
+    for _ in 0..2 {
+        let entries = provider.list_all(tokens).await?;
+        let saved = state
+            .account_write_locks
+            .epochs
+            .write_if_current(kind, began.0, || {
+                state
+                    .account_write_locks
+                    .cache_revisions
+                    .write_if_current(kind, revision, || {
+                        write_through_cache(&state.cache_pool, kind, user_id, &entries)
+                    })
+            });
+        match saved {
+            // The account disconnected: keep the existing read contract,
+            // but neither cache this answer nor fetch again for that account.
+            None => return Ok(entries),
+            Some(Some(result)) => {
+                result?;
+                return Ok(entries);
+            }
+            Some(None) => {
+                revision = state.account_write_locks.cache_revisions.current(kind);
+            }
+        }
+    }
+    tracing::warn!(
+        provider = kind.slug(),
+        "list refresh conflicted with mutations twice; snapshot not cached"
+    );
+    Err(AniError::Cache)
 }
 
 /// Read the cached list. Used by the home Watch Later rail to
