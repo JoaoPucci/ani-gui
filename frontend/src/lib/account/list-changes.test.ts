@@ -61,12 +61,33 @@ const change = (
 });
 
 describe('railNeedsReread', () => {
+	it.each(['anilist', 'mal'] as const)(
+		'rereads %s after failed progress because earlier mapped segments can already be cached',
+		(provider) => {
+			expect(
+				railNeedsReread({ kitsuId: '99', providers: [provider], landed: [], source: 'progress' }, [
+					provider
+				])
+			).toBe(true);
+		}
+	);
+	it('does not reread for failed progress on an unshown tracker or for an empty change', () => {
+		expect(
+			railNeedsReread({ kitsuId: '99', providers: ['mal'], landed: [], source: 'progress' }, [
+				'anilist'
+			])
+		).toBe(false);
+		expect(
+			railNeedsReread({ kitsuId: '99', providers: [], landed: [], source: 'progress' }, ['anilist'])
+		).toBe(false);
+	});
+
 	it('is wanted when the change touched a tracker the row shows', () => {
 		expect(railNeedsReread(change(['anilist']), ['anilist', 'mal'])).toBe(true);
 		expect(railNeedsReread(change(['mal'], 'progress'), ['mal'])).toBe(true);
 	});
 
-	it('is not wanted when every write the row would show failed: a failed write leaves the cached list as it was', () => {
+	it('is not wanted when every editor write the row would show failed', () => {
 		expect(
 			railNeedsReread({ kitsuId: '12', providers: ['anilist'], landed: [], source: 'editor' }, [
 				'anilist'

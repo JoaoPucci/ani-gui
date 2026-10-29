@@ -65,6 +65,7 @@ import {
 	readLastRefreshed
 } from '../../src/lib/account/watch-later-refresh';
 import { accountStore } from '../../src/lib/account/store.svelte';
+import { syncWatchedToTrackers } from '../../src/lib/account/push-watched';
 import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import type { ListEntry } from '../../src/lib/account/types';
@@ -187,6 +188,39 @@ const save = () =>
 	syncSetEntry(String(NEW.malId), { status: 'planning', statusChanged: true, progress: 0 });
 
 describe('Watch Later on Home, while a held write waits', () => {
+	it.each([true, false])(
+		'follows a failed mapped progress write when an earlier segment changed: %s',
+		async (earlierChanged) => {
+			planned = [ALREADY, NEW];
+			backend();
+			let attempts = 0;
+			server.use(
+				http.post(`${API_BASE}/api/account/update/anilist`, () => {
+					attempts += 1;
+					// The backend completed an earlier mapped entry (NEW), then
+					// failed on the target entry of a different Kitsu show (99).
+					if (earlierChanged) planned = planned.filter((p) => p.malId !== NEW.malId);
+					return HttpResponse.json({ kind: 'network' }, { status: 500 });
+				})
+			);
+			app = mount(HomePage, { target });
+			await settle();
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+			await syncWatchedToTrackers('99', 1);
+			await settle();
+			expect(attempts).toBe(1);
+			expect(toastStore.items.map((t) => t.message)).toContain(
+				m.account_progress_save_failed({ provider: 'AniList' })
+			);
+			expect(railTitles()).toEqual(earlierChanged ? [ALREADY.title] : [NEW.title, ALREADY.title]);
+			expect(scaled).toEqual(
+				earlierChanged
+					? [{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }]
+					: []
+			);
+		}
+	);
+
 	it.each([500, 429])(
 		'does not mark a rejected refresh fresh (HTTP %s), and can refresh again',
 		async (status) => {

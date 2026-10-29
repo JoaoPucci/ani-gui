@@ -42,19 +42,19 @@ describe('changeOf, by property', () => {
 });
 
 describe('railNeedsReread, by property', () => {
-	it('is wanted exactly when a tracker the row shows took the write', () => {
+	it('rereads shown trackers for all progress outcomes, and landed editor writes', () => {
 		fc.assert(
 			fc.property(
 				fc.subarray(PROVIDERS, { minLength: 1 }),
 				fc.subarray(PROVIDERS),
 				fc.subarray(PROVIDERS),
-				(sent, tookIt, shown) => {
+				fc.constantFrom('editor', 'progress' as const),
+				(sent, tookIt, shown, source) => {
 					const landed = sent.filter((p) => tookIt.includes(p));
-					const wanted = railNeedsReread(
-						{ kitsuId: '7', providers: sent, landed, source: 'editor' },
-						shown
+					const wanted = railNeedsReread({ kitsuId: '7', providers: sent, landed, source }, shown);
+					expect(wanted).toBe(
+						(source === 'progress' ? sent : landed).some((p) => shown.includes(p))
 					);
-					expect(wanted).toBe(landed.some((p) => shown.includes(p)));
 				}
 			)
 		);
