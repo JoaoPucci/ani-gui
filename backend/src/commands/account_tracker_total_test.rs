@@ -49,6 +49,7 @@ async fn mal_server_with_row(
     writes: u64,
 ) -> wiremock::MockServer {
     let server = wiremock::MockServer::start().await;
+    mount_cache_owner(&server).await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
         .and(query_param(
@@ -257,6 +258,7 @@ async fn mal_a_replay_behind_the_row_writes_nothing() {
 /// every save.
 async fn anilist_server(episodes: &str, entry: &str) -> wiremock::MockServer {
     let server = wiremock::MockServer::start().await;
+    mount_cache_owner(&server).await;
     wiremock::Mock::given(method("POST"))
         .and(body_string_contains("mediaListEntry"))
         .and(body_string_contains("episodes"))
@@ -449,6 +451,7 @@ async fn mal_a_replay_behind_a_rewatching_row_writes_nothing() {
 #[tokio::test]
 async fn an_empty_write_back_sends_no_request() {
     let server = wiremock::MockServer::start().await;
+    mount_cache_owner(&server).await;
     wiremock::Mock::given(method("PATCH"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
             r#"{"status":"watching","num_episodes_watched":0,"is_rewatching":false}"#,
@@ -479,6 +482,7 @@ async fn an_empty_write_back_sends_no_request() {
 #[tokio::test]
 async fn mal_a_rewatch_close_held_by_a_rate_limit_closes_once_on_its_retry() {
     let server = wiremock::MockServer::start().await;
+    mount_cache_owner(&server).await;
     let rewatching = r#"{"id":21,"num_episodes":12,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":11,"num_times_rewatched":2}}"#;
     let closed = r#"{"id":21,"num_episodes":12,"my_list_status":{"status":"completed","is_rewatching":false,"num_episodes_watched":12,"num_times_rewatched":3}}"#;
     // The row reads as the rewatch until a write lands, then as closed.
@@ -553,4 +557,21 @@ async fn mal_a_rewatch_close_held_by_a_rate_limit_closes_once_on_its_retry() {
         "the closed row's replay counts nothing: {}",
         bodies[2]
     );
+}
+
+// A real mutation resolves its cache owner before writing. These suites
+// exercise the episode/status payload, so answer that prerequisite too.
+async fn mount_cache_owner(server: &wiremock::MockServer) {
+    use wiremock::matchers::{body_string_contains, method, path};
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"tester"}"#),
+        )
+        .mount(server)
+        .await;
+    wiremock::Mock::given(method("POST")).and(body_string_contains("Viewer"))
+        .respond_with(wiremock::ResponseTemplate::new(200)
+            .set_body_string(r#"{"data":{"Viewer":{"id":4242,"name":"tester","avatar":{"large":null},"statistics":{"anime":{"count":1,"meanScore":0}}}}}"#))
+        .mount(server).await;
 }

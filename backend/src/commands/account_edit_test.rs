@@ -336,6 +336,7 @@ async fn remove_entry_via_propagates_a_delete_error_when_the_entry_is_still_pres
     wiremock::Mock::given(method("DELETE"))
         .and(path("/anime/21/my_list_status"))
         .respond_with(wiremock::ResponseTemplate::new(500))
+        .expect(1)
         .mount(&mal)
         .await;
     // Live read shows it's STILL on the list → the failure is real.
@@ -345,8 +346,10 @@ async fn remove_entry_via_propagates_a_delete_error_when_the_entry_is_still_pres
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
             r#"{"id":21,"my_list_status":{"status":"watching","num_episodes_watched":3}}"#,
         ))
+        .expect(1)
         .mount(&mal)
         .await;
+    mount_mal_me(&mal).await;
     let state = state_with_kitsu(&kitsu.uri());
     let provider = mal_provider(&mal.uri());
     let res = remove_entry_via(
@@ -357,7 +360,13 @@ async fn remove_entry_via_propagates_a_delete_error_when_the_entry_is_still_pres
         "12",
     )
     .await;
-    assert!(res.is_err(), "a real delete failure must propagate");
+    assert!(
+        matches!(
+            res,
+            Err(crate::error::AniError::Upstream { status: 500, .. })
+        ),
+        "the original delete failure must propagate: {res:?}"
+    );
 }
 
 #[tokio::test]
@@ -568,4 +577,269 @@ async fn a_save_waiting_on_its_show_lock_through_a_disconnect_does_not_put_the_a
         0,
         "the disconnected account's row came back"
     );
+}
+
+// The write may spend the tracker's last allowance. No profile request
+// after it may decide whether Home learns about the successful mutation.
+async fn edit_at_the_end_of_the_allowance(removal: bool, profile_refused: bool, progress: bool) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use wiremock::matchers::{method, path};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let kind = ProviderKind::MyAnimeList;
+    let planned = crate::account::provider::ListEntry {
+        provider: kind,
+        media_id: crate::account::provider::ProviderMediaId(21),
+        mal_id: Some(21),
+        status: ListStatus::Planning,
+        progress_episodes: 0,
+        score_0_to_100: None,
+        updated_at_epoch_s: 1,
+        title: "One Piece".into(),
+    };
+    crate::account::cache::write_entries(&state.cache_pool, kind, "4242", &[planned]).unwrap();
+    let mutated = Arc::new(AtomicBool::new(false));
+    let wrote = mutated.clone();
+    wiremock::Mock::given(method(if removal { "DELETE" } else { "PATCH" }))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(move |_: &wiremock::Request| {
+            wrote.store(true, Ordering::SeqCst);
+            if removal {
+                wiremock::ResponseTemplate::new(200)
+            } else {
+                mal_patch_answer()
+            }
+        })
+        .mount(&mal)
+        .await;
+    let wrote = mutated.clone();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(move |_: &wiremock::Request| {
+            if profile_refused || wrote.load(Ordering::SeqCst) {
+                wiremock::ResponseTemplate::new(429).insert_header("retry-after", "1")
+            } else {
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(r#"{"id":4242,"name":"shiro"}"#)
+            }
+        })
+        .mount(&mal)
+        .await;
+    let provider = mal_provider(&mal.uri());
+    let result = if progress {
+        crate::commands::account::write_through(
+            &state,
+            kind,
+            &provider,
+            &test_tokens(),
+            crate::account::provider::ProviderMediaId(21),
+            EntryUpdate {
+                status: Some(ListStatus::Watching),
+                progress_episodes: Some(3),
+                ..Default::default()
+            },
+            state.account_write_locks.epochs.current(kind),
+        )
+        .await
+        .map(|_| ())
+    } else if removal {
+        remove_entry_via(&state, kind, &provider, &test_tokens(), "12")
+            .await
+            .map(|_| ())
+    } else {
+        set_entry_via(
+            &state,
+            kind,
+            &provider,
+            &test_tokens(),
+            "12",
+            EntryUpdate {
+                status: Some(ListStatus::Watching),
+                progress_episodes: Some(3),
+                ..Default::default()
+            },
+        )
+        .await
+        .map(|_| ())
+    };
+    if profile_refused {
+        assert!(
+            result.is_err(),
+            "a refused owner read must be retried before mutating the tracker"
+        );
+        assert!(
+            !mutated.load(Ordering::SeqCst),
+            "the tracker changed without a cache owner"
+        );
+    } else {
+        result.expect("tracker took the mutation");
+        let rows = crate::account::cache::list_entries(&state.cache_pool, kind, "4242").unwrap();
+        assert!(
+            rows.iter().all(|r| r.status != ListStatus::Planning),
+            "Home kept the removed/planning row after a successful write"
+        );
+        assert_eq!(rows.len(), usize::from(!removal));
+    }
+}
+
+#[tokio::test]
+async fn removal_updates_home_before_any_further_profile_request_can_be_refused() {
+    edit_at_the_end_of_the_allowance(true, false, false).await;
+}
+#[tokio::test]
+async fn save_updates_home_before_any_further_profile_request_can_be_refused() {
+    edit_at_the_end_of_the_allowance(false, false, false).await;
+}
+#[tokio::test]
+async fn removal_waits_for_a_cache_owner_before_changing_the_tracker() {
+    edit_at_the_end_of_the_allowance(true, true, false).await;
+}
+#[tokio::test]
+async fn save_waits_for_a_cache_owner_before_changing_the_tracker() {
+    edit_at_the_end_of_the_allowance(false, true, false).await;
+}
+
+#[tokio::test]
+async fn progress_updates_home_before_any_further_profile_request_can_be_refused() {
+    edit_at_the_end_of_the_allowance(false, false, true).await;
+}
+#[tokio::test]
+async fn progress_waits_for_a_cache_owner_before_changing_the_tracker() {
+    edit_at_the_end_of_the_allowance(false, true, true).await;
+}
+
+async fn stale_list_cannot_replace_an_edit(removal: bool) {
+    use wiremock::matchers::{method, path};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    let list_server = wiremock::MockServer::start().await;
+    // The retry must see the tracker after the mutation, including a
+    // separate show planned on the website during this refresh.
+    let unrelated = r#"{"node":{"id":22,"title":"Website addition"},"list_status":{"status":"plan_to_watch","num_episodes_watched":0,"score":0,"updated_at":"2024-01-02T00:00:00+00:00"}}"#;
+    let updated = r#"{"node":{"id":21,"title":"One Piece"},"list_status":{"status":"watching","num_episodes_watched":3,"score":0,"updated_at":"2024-01-02T00:00:00+00:00"}}"#;
+    let retry_body = if removal {
+        format!(r#"{{"data":[{unrelated}],"paging":{{}}}}"#)
+    } else {
+        format!(r#"{{"data":[{updated},{unrelated}],"paging":{{}}}}"#)
+    };
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me/animelist"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(retry_body))
+        .with_priority(2)
+        .expect(1)
+        .mount(&list_server)
+        .await;
+    let (hold, gate) = crate::held::gate();
+    wiremock::Mock::given(method("GET")).and(path("/users/@me/animelist"))
+        .respond_with(crate::held::Held::new(hold, wiremock::ResponseTemplate::new(200)
+            .set_body_string(r#"{"data":[{"node":{"id":21,"title":"One Piece"},"list_status":{"status":"plan_to_watch","num_episodes_watched":0,"score":0,"updated_at":"2024-01-01T00:00:00+00:00"}}],"paging":{}}"#)))
+        .with_priority(1).up_to_n_times(1).expect(1).mount(&list_server).await;
+    mount_mal_patch(&mal, None).await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let kind = ProviderKind::MyAnimeList;
+    let tokens = test_tokens();
+    let list_provider = mal_provider(&list_server.uri());
+    let read = crate::commands::account::list_all_and_cache_via(
+        &state,
+        kind,
+        &list_provider,
+        &tokens,
+        "4242",
+    );
+    let edit = async {
+        tokio::time::timeout(std::time::Duration::from_secs(5), gate.asked())
+            .await
+            .expect("the first list request reached its hold");
+        if removal {
+            remove_entry_via(&state, kind, &provider, &tokens, "12")
+                .await
+                .unwrap();
+        } else {
+            set_entry_via(
+                &state,
+                kind,
+                &provider,
+                &tokens,
+                "12",
+                EntryUpdate {
+                    status: Some(ListStatus::Watching),
+                    progress_episodes: Some(3),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        }
+        gate.release();
+    };
+    let (read, ()) = tokio::join!(read, edit);
+    let read = read.expect("the refresh retries after the concurrent edit");
+    assert!(
+        read.iter().any(|row| row.media_id.0 == 22),
+        "the refresh lost the unrelated website addition"
+    );
+    let rows = crate::account::cache::list_entries(&state.cache_pool, kind, "4242").unwrap();
+    assert_eq!(
+        rows.len(),
+        1 + usize::from(!removal),
+        "the refresh must preserve the edit and cache the unrelated website addition"
+    );
+    assert!(
+        rows.iter().any(|row| row.media_id.0 == 22),
+        "website addition missing from cache"
+    );
+    assert!(
+        rows.iter()
+            .filter(|row| row.media_id.0 == 21)
+            .all(|row| row.status == ListStatus::Watching && row.progress_episodes == 3),
+        "old snapshot undid the save"
+    );
+}
+#[tokio::test]
+async fn a_list_refresh_started_before_removal_cannot_resurrect_the_removed_show() {
+    stale_list_cannot_replace_an_edit(true).await;
+}
+#[tokio::test]
+async fn a_list_refresh_started_before_save_cannot_undo_the_saved_status() {
+    stale_list_cannot_replace_an_edit(false).await;
+}
+
+#[tokio::test]
+async fn a_refresh_that_keeps_conflicting_fails_instead_of_reporting_a_fresh_snapshot() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    let state = state_with_kitsu("http://unused-kitsu");
+    let kind = ProviderKind::MyAnimeList;
+    let changing = state.clone();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me/animelist"))
+        .respond_with(move |_: &wiremock::Request| {
+            // A local mutation lands during each full-list fetch.
+            changing
+                .account_write_locks
+                .cache_revisions
+                .revise(kind, || ());
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":[],"paging":{}}"#)
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+    let provider = mal_provider(&server.uri());
+    let result = crate::commands::account::list_all_and_cache_via(
+        &state,
+        kind,
+        &provider,
+        &test_tokens(),
+        "4242",
+    )
+    .await;
+    assert!(matches!(result, Err(crate::error::AniError::Cache)),
+        "an uncommitted refresh must fail so Home does not advance its freshness timestamp: {result:?}");
 }

@@ -10,9 +10,8 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { fade, scale } from 'svelte/transition';
-	import { flip } from 'svelte/animate';
-	import { quintOut } from 'svelte/easing';
+	import { fade } from 'svelte/transition';
+	import { cardScale, cardShift, STILL } from '$lib/transitions/card-motion';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
@@ -29,13 +28,26 @@
 	const deleteAnimationGate = createAnimationGate();
 	function cwOutScale(node: Element) {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return { duration: 0 };
-		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
+		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return STILL;
+		return cardScale(node);
 	}
 	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return { duration: 0 };
-		return flip(node, animation, { duration: 280, easing: quintOut });
+		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return STILL;
+		return cardShift(node, animation);
+	}
+	// The Watch Later row moves its cards the same way, for the ones a
+	// settled tracker write added or removed — and only those.
+	const watchLaterMotion = createRailMotionGate();
+	const cellId = (node: Element) => (node as HTMLElement).dataset.animeId ?? '';
+	function wlIn(node: Element) {
+		return watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL;
+	}
+	function wlOut(node: Element) {
+		return watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL;
+	}
+	function wlFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+		return watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL;
 	}
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -68,6 +80,8 @@
 	import { isBearerRefused } from '$lib/account/renewal-failure';
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { listChanges, railNeedsReread } from '$lib/account/list-changes';
+	import { createRailMotionGate, railDelta } from '$lib/account/watch-later-motion';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import {
 		isWatchLaterStale,
@@ -615,14 +629,23 @@
 	}
 
 	// Re-read the cached snapshot and re-render the rail. Shared by the
-	// initial load path and post-refresh.
-	async function reloadWatchLaterRail() {
+	// initial load path, post-refresh, and a settled tracker write — the
+	// one caller that moves the cards it changed (`moved`).
+	async function reloadWatchLaterRail(moved = false) {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const seq = ++watchLaterLoadSeq;
 		try {
 			const refs = await loadWatchLater(buildWatchLaterDeps());
 			const filtered = await filterAvailable(refs, filterMode);
 			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+			if (moved && watchLater) {
+				watchLaterMotion.open(
+					railDelta(
+						watchLater.map((a) => a.id),
+						filtered.map((a) => a.id)
+					)
+				);
+			}
 			watchLater = filtered;
 			watchLaterFailed = false;
 		} catch (e) {
@@ -635,6 +658,16 @@
 			watchLaterFailed = true;
 		}
 	}
+
+	// A tracker write that settled while the row is on screen — one held
+	// back by the tracker lands long after the user left the editor — is
+	// read again here, as the editor reads its own entry again.
+	$effect(() =>
+		listChanges.subscribe((change) => {
+			const shown = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
+			if (railNeedsReread(change, shown)) void reloadWatchLaterRail(true);
+		})
+	);
 
 	// Re-pull each connected provider's list from the tracker (picking up
 	// entries added on the provider's website), then re-render. Drives
@@ -1298,15 +1331,27 @@
 	</button>
 {/snippet}
 
-{#if watchLater && watchLater.length > 0}
+{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
+	     empty — the empty row with its header and refresh, so newly-added
+	     tracker titles can be pulled in before the TTL. One strip for both,
+	     so the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card. -->
 	<Strip
 		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_caption()}
+		caption={watchLater.length > 0
+			? m.account_watch_later_caption()
+			: m.account_watch_later_empty()}
 		headerTrailing={watchLaterRefresh}
 	>
 		{#each watchLater as anime (anime.id)}
-			<PosterCard {anime} />
+			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+				<PosterCard {anime} />
+			</div>
 		{/each}
+		{#if watchLater.length === 0}
+			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{/if}
 	</Strip>
 {:else if accountStore.hasAny && watchLaterFailed}
 	<!-- Connected but the last load failed (bridge/availability down). Show
@@ -1320,17 +1365,6 @@
 		<p class="watch-later-empty">
 			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
 		</p>
-	</Strip>
-{:else if accountStore.hasAny && watchLater !== null}
-	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
-	     surface the header + refresh so newly-added tracker titles can be
-	     pulled in before the TTL. -->
-	<Strip
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_empty()}
-		headerTrailing={watchLaterRefresh}
-	>
-		<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
 	</Strip>
 {/if}
 
@@ -1772,6 +1806,9 @@
 	   own --accent variable so the chip inherits the same hue. */
 	.resume-cell {
 		position: relative;
+		display: block;
+	}
+	.watch-later-cell {
 		display: block;
 	}
 	/* X chip — top-right of the rounded poster, fades in with the

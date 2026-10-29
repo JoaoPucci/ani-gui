@@ -65,6 +65,9 @@ pub struct AccountWriteLocks {
     inner: Arc<ShowLockMap>,
     /// Which connection of each tracker a cache write belongs to.
     pub(crate) epochs: super::account_epoch::AccountEpochs,
+    /// Cache mutations since a full-list fetch began. Separate from
+    /// connection epochs so concurrent writes to other shows still land.
+    pub(crate) cache_revisions: super::account_epoch::AccountEpochs,
 }
 
 impl AccountWriteLocks {
@@ -242,7 +245,10 @@ pub(crate) async fn list_for_bearer_via(
     tokens: &Tokens,
 ) -> Result<Vec<ListEntry>> {
     // The connection the request arrived in, before its first wait.
-    let began = state.account_write_locks.epochs.current(kind);
+    let began = (
+        state.account_write_locks.epochs.current(kind),
+        state.account_write_locks.cache_revisions.current(kind),
+    );
     let profile = provider.me(tokens).await?;
     list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
 }
@@ -257,30 +263,61 @@ pub(crate) async fn list_all_and_cache_via(
     tokens: &Tokens,
     user_id: &str,
 ) -> Result<Vec<ListEntry>> {
-    let began = state.account_write_locks.epochs.current(kind);
+    let began = (
+        state.account_write_locks.epochs.current(kind),
+        state.account_write_locks.cache_revisions.current(kind),
+    );
     list_all_and_cache_from(state, kind, provider, tokens, user_id, began).await
 }
 
 /// The list read and its write-through for a request that arrived in connection
-/// epoch `began`: a disconnect since purged the cache, and the answer
-/// must not fill it again for that account.
+/// epoch and cache revision `began`: neither a disconnect nor a mutation
+/// since the fetch began may be undone by this older snapshot. A mutation
+/// conflict retries once; further contention is a refresh failure, so callers
+/// cannot mark an uncached snapshot fresh. The connection epoch never changes
+/// across the retry: a disconnected request must not refill the cache.
 async fn list_all_and_cache_from(
     state: &Arc<AppState>,
     kind: ProviderKind,
     provider: &dyn UserListProvider,
     tokens: &Tokens,
     user_id: &str,
-    began: u64,
+    began: (u64, u64),
 ) -> Result<Vec<ListEntry>> {
-    let entries = provider.list_all(tokens).await?;
-    state
-        .account_write_locks
-        .epochs
-        .write_if_current(kind, began, || {
-            write_through_cache(&state.cache_pool, kind, user_id, &entries)
-        })
-        .transpose()?;
-    Ok(entries)
+    let mut revision = began.1;
+    // Full tracker pulls can be expensive or rate-limited. Do not keep
+    // fetching indefinitely while the user is making more edits.
+    for _ in 0..2 {
+        let entries = provider.list_all(tokens).await?;
+        let saved = state
+            .account_write_locks
+            .epochs
+            .write_if_current(kind, began.0, || {
+                state
+                    .account_write_locks
+                    .cache_revisions
+                    .write_if_current(kind, revision, || {
+                        write_through_cache(&state.cache_pool, kind, user_id, &entries)
+                    })
+            });
+        match saved {
+            // The account disconnected: keep the existing read contract,
+            // but neither cache this answer nor fetch again for that account.
+            None => return Ok(entries),
+            Some(Some(result)) => {
+                result?;
+                return Ok(entries);
+            }
+            Some(None) => {
+                revision = state.account_write_locks.cache_revisions.current(kind);
+            }
+        }
+    }
+    tracing::warn!(
+        provider = kind.slug(),
+        "list refresh conflicted with mutations twice; snapshot not cached"
+    );
+    Err(AniError::Cache)
 }
 
 /// Read the cached list. Used by the home Watch Later rail to
@@ -1020,13 +1057,16 @@ pub(crate) async fn write_through(
     if update.is_empty() {
         return Ok(None);
     }
+    let profile = provider.me(tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
-    if let Ok(profile) = provider.me(tokens).await {
+    {
         let _ = state
             .account_write_locks
             .epochs
             .write_if_current(kind, began, || {
-                upsert_cached_entry(state, kind, &profile.user_id, &entry)
+                state.account_write_locks.cache_revisions.revise(kind, || {
+                    upsert_cached_entry(state, kind, &profile.user_id, &entry)
+                })
             });
     }
     Ok(Some(entry))

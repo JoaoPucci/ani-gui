@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { AccountApiError } from './api';
 import { sendRemoval, sendSave } from './set-entry-send';
 import { SupersededError } from './save-when-allowed';
 
@@ -54,4 +55,46 @@ describe('a held removal a newer write overtakes while its read is out', () => {
 		expect(getEntry).toHaveBeenCalledTimes(1);
 		expect(removeEntry).not.toHaveBeenCalled();
 	});
+});
+
+describe('reconciling an absent tracker entry', () => {
+	it('treats the endpoint unmappable response as neutral for a live-absent row', async () => {
+		const removeEntry = vi.fn(async () => {
+			throw new AccountApiError(404, '');
+		});
+		await expect(
+			sendRemoval(
+				{ getEntry: async () => null, removeEntry },
+				{
+					provider: 'mal',
+					bearer: 't',
+					kitsuId: '12',
+					held: { left: () => ['status', 'progress'] }
+				}
+			)
+		).resolves.toBe('neither');
+		expect(removeEntry).toHaveBeenCalledTimes(1);
+	});
+	it.each([null, { status: 'planning' as const, progress: 0 }])(
+		'keeps an upstream 404 failure for row %j',
+		async (row) => {
+			const error = new AccountApiError(404, '{"kind":"upstream","status":404}');
+			await expect(
+				sendRemoval(
+					{
+						getEntry: async () => row,
+						removeEntry: async () => {
+							throw error;
+						}
+					},
+					{
+						provider: 'mal',
+						bearer: 't',
+						kitsuId: '12',
+						held: { left: () => ['status', 'progress'] }
+					}
+				)
+			).rejects.toBe(error);
+		}
+	);
 });

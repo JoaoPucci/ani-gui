@@ -50,6 +50,7 @@ import { recordPlayed } from '$lib/play/owned-play';
 import { toastStore } from '$lib/toasts/store.svelte';
 import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
+import { listChanges, type ListChange } from './list-changes';
 
 /** AniList holding a write back: 429 with the wait and the tracker
  *  that refused, by shape (the api module is mocked here). */
@@ -303,5 +304,111 @@ describe('a progress write whose episode map could not be read', () => {
 		await write;
 		expect(updateProgress).toHaveBeenCalledTimes(2);
 		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+});
+
+describe('the views a settled progress write tells', () => {
+	it('are told when same-account supersession drops a retry after an attempted progress write', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1));
+		const heard: ListChange[] = [];
+		const stop = listChanges.subscribe((c) => heard.push(c));
+		try {
+			const write = syncWatchedToTrackers('kitsu-75', 19);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(updateProgress).toHaveBeenCalledTimes(1);
+			// A newer editor write covers the old progress, but fails.
+			await expect(
+				saveWhenTrackerAllows('anilist', 'kitsu-75', async () => {
+					throw new Error('offline');
+				})
+			).rejects.toThrow('offline');
+			await vi.advanceTimersByTimeAsync(1000);
+			await write;
+			expect(updateProgress).toHaveBeenCalledTimes(1);
+			expect(heard).toEqual([
+				{ kitsuId: 'kitsu-75', providers: ['anilist'], landed: [], source: 'progress' }
+			]);
+			expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+		} finally {
+			stop();
+		}
+	});
+
+	/** The changes announced while `run` goes. */
+	async function announcedDuring(run: () => Promise<unknown>): Promise<ListChange[]> {
+		const heard: ListChange[] = [];
+		const stop = listChanges.subscribe((c) => heard.push(c));
+		try {
+			await run();
+		} finally {
+			stop();
+		}
+		return heard;
+	}
+	afterEach(() => {
+		vi.useRealTimers();
+		accountStore.accountGeneration.anilist = 0;
+	});
+
+	it('are told once, after the fan-out, which trackers the write reached', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
+		byProvider.mal = { kind: 'connected', account: { access_token: 'tok-m' } };
+		updateProgress.mockImplementation(async (...args: unknown[]) => {
+			if (args[0] === 'mal') throw new Error('offline');
+			return null;
+		});
+		expect(await announcedDuring(() => syncWatchedToTrackers('kitsu-12', 7))).toEqual([
+			{
+				kitsuId: 'kitsu-12',
+				providers: ['anilist', 'mal'],
+				landed: ['anilist'],
+				source: 'progress'
+			}
+		]);
+	});
+
+	it('are told once a held write lands, after its wait', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(2)).mockResolvedValue(null);
+		const heard: ListChange[] = [];
+		const stop = listChanges.subscribe((c) => heard.push(c));
+		const write = syncWatchedToTrackers('kitsu-52', 6);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(heard).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1000);
+		await write;
+		stop();
+		expect(heard).toEqual([
+			{ kitsuId: 'kitsu-52', providers: ['anilist'], landed: ['anilist'], source: 'progress' }
+		]);
+	});
+
+	it('are told nothing when the held write was dropped for an account change', async () => {
+		vi.useFakeTimers();
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		updateProgress.mockRejectedValueOnce(refused(1)).mockResolvedValue(null);
+		const heard: ListChange[] = [];
+		const stop = listChanges.subscribe((c) => heard.push(c));
+		const write = syncWatchedToTrackers('kitsu-53', 6);
+		await vi.advanceTimersByTimeAsync(0);
+		accountStore.accountGeneration.anilist += 1;
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-b', user_id: 'u-b' } };
+		await vi.advanceTimersByTimeAsync(1000);
+		await write;
+		stop();
+		expect(heard).toEqual([]);
+	});
+
+	it('are told nothing when no write went out', async () => {
+		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a', user_id: 'u-a' } };
+		const heard = await announcedDuring(() => {
+			const write = syncWatchedToTrackers('kitsu-74', 6);
+			byProvider.anilist = { kind: 'disconnected' };
+			return write;
+		});
+		expect(heard).toEqual([]);
 	});
 });

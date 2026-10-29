@@ -1,0 +1,437 @@
+// Acceptance: the Watch Later row on Home follows a held tracker write.
+//
+// The user adds a show to Plan to Watch — or removes one — while
+// AniList's allowance is spent, so the save is held with a countdown.
+// They go Home before it lands. When it lands, the row on screen has to
+// show the list as it now is: the show joins the row, or leaves it, in
+// place, without a reload — moving the way a card leaves the Continue
+// Watching strip. A write dropped before it went out changes nothing,
+// and a row mounted after the write landed simply reads the new list.
+//
+// The write goes through the editor's own save path (`syncSetEntry`,
+// `syncRemoveEntry`); the row is the real home route over a fake
+// backend whose cached list changes when the write lands, as the
+// backend's write-through changes it.
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { mount, unmount } from 'svelte';
+
+import { API_BASE, server } from './setup';
+import { page } from './page-state.svelte';
+import { homeHandlers, kitsuRef, type KitsuRefFixture } from './home-handlers';
+
+vi.mock('$app/state', () => ({
+	get page() {
+		return page;
+	}
+}));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(async () => {}),
+	invalidateAll: vi.fn(async () => {}),
+	beforeNavigate: vi.fn(),
+	afterNavigate: vi.fn()
+}));
+// The strip motion, spied on: which cards the row moves, and how, is
+// what the gate decided at fire time.
+const { scaled } = vi.hoisted(() => ({
+	scaled: [] as { id: string; duration: number; easing?: (t: number) => number }[]
+}));
+vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
+	const real = await importOriginal<typeof import('../../src/lib/transitions/card-motion')>();
+	return {
+		...real,
+		cardScale: (
+			node: Element,
+			...args: Parameters<typeof real.cardScale> extends [Element, ...infer R] ? R : never
+		) => {
+			const config = real.cardScale(node, ...args);
+			scaled.push({
+				id: (node as HTMLElement).dataset.animeId ?? '',
+				duration: config.duration ?? 0,
+				easing: config.easing
+			});
+			return config;
+		}
+	};
+});
+
+import { CARD_SCALE } from '../../src/lib/transitions/card-motion';
+import HomePage from '../../src/routes/+page.svelte';
+import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	invalidateWatchLater,
+	markRefreshed,
+	readLastRefreshed
+} from '../../src/lib/account/watch-later-refresh';
+import { accountStore } from '../../src/lib/account/store.svelte';
+import { syncWatchedToTrackers } from '../../src/lib/account/push-watched';
+import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
+import { toastStore } from '../../src/lib/toasts/store.svelte';
+import type { ListEntry } from '../../src/lib/account/types';
+import { m } from '../../src/lib/paraglide/messages';
+
+const ALREADY = { malId: 11, title: 'Already Planned', updated: 1_700_000_000 };
+const NEW = { malId: 12, title: 'Just Planned', updated: 1_700_000_500 };
+
+let target: HTMLElement;
+let app: ReturnType<typeof mount> | null = null;
+/** What the backend's cached Plan-to-Watch holds right now. */
+let planned: (typeof ALREADY)[] = [];
+let writes = 0;
+
+const as = (user_id: string) => ({
+	access_token: `bearer-${user_id}`,
+	refresh_token: null,
+	expires_at_epoch_s: 4_000_000_000,
+	user_id,
+	username: 'tester',
+	avatar_url: null
+});
+
+function listEntry(p: typeof ALREADY): ListEntry {
+	return {
+		provider: 'anilist',
+		media_id: p.malId,
+		mal_id: p.malId,
+		status: 'planning',
+		progress_episodes: 0,
+		score_0_to_100: null,
+		updated_at_epoch_s: p.updated,
+		title: p.title
+	};
+}
+
+const refusal = () =>
+	HttpResponse.json(
+		{
+			kind: 'rate_limited',
+			key: 'error.network.rate_limited',
+			retry_after_secs: 1,
+			refused_by: 'anilist'
+		},
+		{ status: 429 }
+	);
+
+/** The home route's requests, a cached list that is `planned`, and a
+ *  tracker that holds the first write back for a second and takes the
+ *  next, changing the cached list as the backend's write-through does. */
+function backend() {
+	server.use(
+		...homeHandlers({}, [
+			http.get(`${API_BASE}/api/account/list/anilist/cached`, () =>
+				HttpResponse.json(planned.map(listEntry))
+			),
+			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, async ({ request }) => {
+				const { mal_ids } = (await request.json()) as { mal_ids: number[] };
+				const all = [ALREADY, NEW];
+				return HttpResponse.json(
+					mal_ids
+						.map((id) => all.find((p) => p.malId === id))
+						.filter((p): p is typeof ALREADY => p !== undefined)
+						.map((p) => kitsuRef(String(p.malId), p.title, 12) as KitsuRefFixture)
+				);
+			}),
+			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} })),
+			http.get(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
+				const id = Number(new URL(request.url).searchParams.get('kitsu_id'));
+				return HttpResponse.json(
+					planned.some((p) => p.malId === id) ? { status: 'planning', progress: 0 } : null
+				);
+			}),
+			http.post(`${API_BASE}/api/account/set/anilist`, () => {
+				writes += 1;
+				if (writes === 1) return refusal();
+				planned = [...planned.filter((p) => p.malId !== NEW.malId), NEW];
+				return HttpResponse.json(listEntry(NEW));
+			}),
+			http.delete(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
+				writes += 1;
+				if (writes === 1) return refusal();
+				const id = Number(new URL(request.url).searchParams.get('kitsu_id'));
+				planned = planned.filter((p) => p.malId !== id);
+				return new HttpResponse(null, { status: 204 });
+			})
+		])
+	);
+}
+
+beforeEach(() => {
+	__resetApiBaseForTests(API_BASE);
+	accountStore.setConnected('anilist', as('user-1'));
+	target = document.createElement('div');
+	document.body.appendChild(target);
+	scaled.length = 0;
+	writes = 0;
+	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+});
+
+afterEach(() => {
+	if (app) unmount(app);
+	app = null;
+	target.remove();
+	accountStore.setDisconnected('anilist');
+	accountStore.setDisconnected('mal');
+	invalidateWatchLater('anilist');
+});
+
+async function settle(steps = 40) {
+	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
+}
+
+const railTitles = () =>
+	Array.from(
+		target.querySelectorAll(`[aria-label="${m.account_watch_later_title()}"] .card-title`)
+	).map((el) => el.textContent?.trim() ?? '');
+
+const save = () =>
+	syncSetEntry(String(NEW.malId), { status: 'planning', statusChanged: true, progress: 0 });
+
+describe('Watch Later on Home, while a held write waits', () => {
+	it('rereads an earlier mapped entry when a newer failing editor save supersedes the progress retry', async () => {
+		planned = [ALREADY, NEW];
+		backend();
+		let attempts = 0;
+		server.use(
+			http.post(`${API_BASE}/api/account/update/anilist`, () => {
+				attempts += 1;
+				planned = planned.filter((p) => p.malId !== NEW.malId);
+				return refusal();
+			}),
+			http.post(`${API_BASE}/api/account/set/anilist`, () =>
+				HttpResponse.json({ kind: 'network' }, { status: 500 })
+			)
+		);
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		const progress = syncWatchedToTrackers('99', 19);
+		await settle();
+		expect(attempts).toBe(1);
+		expect(
+			await syncSetEntry('99', { status: 'paused', statusChanged: true, progress: 0 })
+		).toEqual({ written: 0, failed: 1 });
+		await progress;
+		await settle();
+		expect(attempts).toBe(1);
+		expect(railTitles()).toEqual([ALREADY.title]);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
+	});
+
+	it.each([true, false])(
+		'follows a failed mapped progress write when an earlier segment changed: %s',
+		async (earlierChanged) => {
+			planned = [ALREADY, NEW];
+			backend();
+			let attempts = 0;
+			server.use(
+				http.post(`${API_BASE}/api/account/update/anilist`, () => {
+					attempts += 1;
+					// The backend completed an earlier mapped entry (NEW), then
+					// failed on the target entry of a different Kitsu show (99).
+					if (earlierChanged) planned = planned.filter((p) => p.malId !== NEW.malId);
+					return HttpResponse.json({ kind: 'network' }, { status: 500 });
+				})
+			);
+			app = mount(HomePage, { target });
+			await settle();
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+			await syncWatchedToTrackers('99', 1);
+			await settle();
+			expect(attempts).toBe(1);
+			expect(toastStore.items.map((t) => t.message)).toContain(
+				m.account_progress_save_failed({ provider: 'AniList' })
+			);
+			expect(railTitles()).toEqual(earlierChanged ? [ALREADY.title] : [NEW.title, ALREADY.title]);
+			expect(scaled).toEqual(
+				earlierChanged
+					? [{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }]
+					: []
+			);
+		}
+	);
+
+	it.each([500, 429])(
+		'does not mark a rejected refresh fresh (HTTP %s), and can refresh again',
+		async (status) => {
+			planned = [ALREADY];
+			backend();
+			const refreshedBefore = Date.now() - 1000;
+			markRefreshed('anilist', refreshedBefore);
+			let refuse = true;
+			let pulls = 0;
+			server.use(
+				http.post(`${API_BASE}/api/account/list/anilist`, () => {
+					pulls += 1;
+					if (refuse)
+						return HttpResponse.json(
+							status === 429
+								? { kind: 'rate_limited', retry_after_secs: 1, refused_by: 'anilist' }
+								: { kind: 'cache', key: 'error.cache' },
+							{ status }
+						);
+					planned = [ALREADY, NEW];
+					return HttpResponse.json(planned.map(listEntry));
+				})
+			);
+			app = mount(HomePage, { target });
+			await settle();
+			expect(pulls).toBe(0);
+			const refresh = target.querySelector<HTMLButtonElement>(
+				`button[aria-label="${m.account_watch_later_refresh()}"]`
+			);
+			expect(refresh).not.toBeNull();
+			refresh!.click();
+			await settle();
+			expect(pulls).toBe(1);
+			expect(readLastRefreshed('anilist')).toBe(refreshedBefore);
+			expect(railTitles()).toEqual([ALREADY.title]);
+			refuse = false;
+			refresh!.click();
+			await settle();
+			expect(pulls).toBe(2);
+			expect(readLastRefreshed('anilist')).toBeGreaterThan(refreshedBefore);
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		}
+	);
+
+	it.each([true, false])(
+		'removes cleanly with both accounts connected when MAL maps the show: %s',
+		async (malMaps) => {
+			planned = [ALREADY, NEW];
+			backend();
+			let malHasRow = malMaps;
+			accountStore.setConnected('mal', as('mal-user'));
+			server.use(
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
+					HttpResponse.json(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
+				),
+				http.get(`${API_BASE}/api/account/entry/mal`, () =>
+					HttpResponse.json(malHasRow ? { status: 'planning', progress: 0 } : null)
+				),
+				http.delete(`${API_BASE}/api/account/entry/mal`, () => {
+					malHasRow = false;
+					return new HttpResponse(null, { status: malMaps ? 204 : 404 });
+				})
+			);
+			const pending = syncRemoveEntry(String(NEW.malId));
+			app = mount(HomePage, { target });
+			await settle();
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+			expect(await pending).toEqual({ removed: malMaps ? 2 : 1, failed: 0 });
+			await settle();
+			expect(railTitles()).toEqual([ALREADY.title]);
+			await unmount(app);
+			app = mount(HomePage, { target });
+			await settle();
+			expect(railTitles()).toEqual([ALREADY.title]);
+		}
+	);
+
+	it('takes in a show whose held add lands, growing it into the row as Continue Watching moves', async () => {
+		planned = [ALREADY];
+		backend();
+		const pending = save();
+		// The user goes Home while the add waits out AniList's pause.
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([ALREADY.title]);
+
+		await pending;
+		await settle();
+		expect(writes).toBe(2);
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		// The new card grew in with the strip's motion; nothing else did.
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
+	});
+
+	it('lets go of a show whose held removal lands, shrinking it out of the row', async () => {
+		planned = [ALREADY, NEW];
+		backend();
+		const pending = syncRemoveEntry(String(NEW.malId));
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+
+		await pending;
+		await settle();
+		expect(writes).toBe(2);
+		expect(railTitles()).toEqual([ALREADY.title]);
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
+	});
+
+	it('grows the first card into an empty row, the same way', async () => {
+		planned = [];
+		backend();
+		const pending = save();
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([]);
+		expect(target.textContent).toContain(m.account_watch_later_empty());
+
+		await pending;
+		await settle();
+		expect(railTitles()).toEqual([NEW.title]);
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
+	});
+
+	it('shrinks the last card out, leaving the empty row', async () => {
+		planned = [NEW];
+		backend();
+		const pending = syncRemoveEntry(String(NEW.malId));
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title]);
+
+		await pending;
+		await settle();
+		expect(railTitles()).toEqual([]);
+		expect(target.textContent).toContain(m.account_watch_later_empty());
+		expect(scaled).toEqual([
+			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
+		]);
+	});
+
+	it('changes nothing when the held add is dropped for another account', async () => {
+		planned = [ALREADY];
+		backend();
+		const pending = save();
+		app = mount(HomePage, { target });
+		await settle();
+		accountStore.setConnected('anilist', as('user-2'));
+		await pending;
+		await settle();
+		expect(writes).toBe(1);
+		expect(railTitles()).toEqual([ALREADY.title]);
+		expect(scaled).toEqual([]);
+	});
+
+	it('reconciles a stale cached row even when the tracker already removed the show', async () => {
+		planned = [ALREADY, NEW];
+		backend();
+		server.use(http.get(`${API_BASE}/api/account/entry/anilist`, () => HttpResponse.json(null)));
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		await syncRemoveEntry(String(NEW.malId));
+		await settle();
+		expect(writes).toBe(2);
+		expect(railTitles()).toEqual([ALREADY.title]);
+	});
+
+	it('reads the new list, without motion, when Home is opened after the write landed', async () => {
+		planned = [ALREADY];
+		backend();
+		await save();
+		app = mount(HomePage, { target });
+		await settle();
+		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+		expect(scaled).toEqual([]);
+	});
+});

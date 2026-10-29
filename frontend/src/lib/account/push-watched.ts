@@ -8,8 +8,9 @@ import { updateProgress } from './api';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { announceEnds, listChanges, recordEnd, type WriteEnd } from './list-changes';
 import { reportProgressNotSaved, saveWhenTrackerAllows } from './busy-save';
-import { listAccounts } from './held-account';
+import { accountStanding, listAccounts } from './held-account';
 import { keepWrite, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 
 export interface PushWatchedDeps {
@@ -144,17 +145,26 @@ export async function syncWatchedToTrackers(
 	const connected = accountStore.connected;
 	// The account each tracker is listed under, read before any await.
 	const listed = listAccounts(connected);
+	const ends: Partial<Record<Provider, WriteEnd>> = {};
+	const attempted = new Set<Provider>();
 	await pushWatchedToTrackers(
 		{
 			connected,
 			// Refresh a near-expiry token before the write so a long-open
 			// session doesn't push progress with a stale bearer.
 			bearerFor: (provider) => freshBearerFor(provider),
-			updateProgress,
+			updateProgress: (provider, bearer, body) => {
+				attempted.add(provider);
+				return updateProgress(provider, bearer, body);
+			},
 			// A write AniList holds back waits with a notice and goes again;
 			// one that still cannot be saved is said, not dropped.
 			runWrite: (provider, id, attempt, fields) =>
-				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider]),
+				recordEnd(
+					ends,
+					provider,
+					saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				),
 			reportFailure: reportProgressNotSaved
 		},
 		kitsuId,
@@ -168,4 +178,12 @@ export async function syncWatchedToTrackers(
 	// refresh or remount) rather than serving a stale, just-watched title
 	// out of the freshness TTL.
 	for (const provider of connected) invalidateWatchLater(provider);
+	// A Home row on screen reads its list again now, rather than on the
+	// next load, and so does the show's page if it is open.
+	// Superseding a retry does not undo earlier mapped-entry writes.
+	// Include those attempted-but-superseded writes only for the same account.
+	const stillOurs = [...attempted].filter(
+		(provider) => accountStanding(provider, listed[provider]) === 'same'
+	);
+	announceEnds(listChanges, kitsuId, 'progress', ends, stillOurs);
 }

@@ -114,6 +114,7 @@ async fn anilist_ranma_s_nineteenth_episode_completes_210_then_starts_nettou_hen
         },
     );
     let server = MockServer::start().await;
+    mount_cache_owner(&server).await;
     Mock::given(method("POST"))
         .and(body_string_contains("query Tracked"))
         .and(body_string_contains("\"mediaId\":210"))
@@ -198,6 +199,7 @@ async fn mal_the_final_chapters_second_special_sends_two_completed() {
         },
     );
     let server = MockServer::start().await;
+    mount_cache_owner(&server).await;
     Mock::given(method("GET"))
         .and(path("/anime/51535"))
         .respond_with(ResponseTemplate::new(200).set_body_string(
@@ -258,6 +260,7 @@ async fn mal_the_final_chapters_first_special_sends_one_and_no_status() {
         },
     );
     let server = MockServer::start().await;
+    mount_cache_owner(&server).await;
     Mock::given(method("GET"))
         .and(path("/anime/51535"))
         .respond_with(
@@ -410,6 +413,7 @@ async fn mal_the_resolved_entry_s_mapped_finale_closes_its_rewatch() {
         },
     );
     let server = MockServer::start().await;
+    mount_cache_owner(&server).await;
     mal_get(
         &server,
         51_535,
@@ -433,6 +437,7 @@ async fn mal_an_earlier_entry_rewatched_to_its_total_is_closed() {
     let state = state();
     mal_ranma(&state);
     let server = MockServer::start().await;
+    mount_cache_owner(&server).await;
     mal_get(
         &server,
         210,
@@ -458,6 +463,7 @@ async fn mal_a_later_entry_s_finale_closes_its_rewatch() {
     let state = state();
     mal_ranma(&state);
     let server = MockServer::start().await;
+    mount_cache_owner(&server).await;
     mal_get(
         &server,
         210,
@@ -481,4 +487,21 @@ async fn mal_a_later_entry_s_finale_closes_its_rewatch() {
     assert_eq!(later.len(), 1, "{later:?}");
     assert!(later[0].contains("num_watched_episodes=143"), "{later:?}");
     assert!(closes_the_rewatch(&later[0], 1), "{later:?}");
+}
+
+// A real mutation resolves its cache owner before writing. These suites
+// exercise the episode/status payload, so answer that prerequisite too.
+async fn mount_cache_owner(server: &wiremock::MockServer) {
+    use wiremock::matchers::{body_string_contains, method, path};
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"tester"}"#),
+        )
+        .mount(server)
+        .await;
+    wiremock::Mock::given(method("POST")).and(body_string_contains("Viewer"))
+        .respond_with(wiremock::ResponseTemplate::new(200)
+            .set_body_string(r#"{"data":{"Viewer":{"id":4242,"name":"tester","avatar":{"large":null},"statistics":{"anime":{"count":1,"meanScore":0}}}}}"#))
+        .mount(server).await;
 }

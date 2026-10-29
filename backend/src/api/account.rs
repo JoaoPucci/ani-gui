@@ -215,10 +215,9 @@ async fn get_entry(
 /// Map `remove_entry`'s result to a status: 204 when a tracker entry was
 /// actually removed (or was already gone — idempotent), 404 when no
 /// connected provider maps this show so nothing could be removed. The 404
-/// matters for the renderer's multi-tracker fan-out: it counts any
-/// resolved DELETE as a successful removal, so an unmappable provider must
-/// reject rather than mask a real provider's failed delete (mirrors the
-/// set path replying `null` for an unmappable show).
+/// identifies an unmappable show separately from a successful deletion.
+/// The renderer treats this empty 404 as neutral only after a live read
+/// found no entry; a present entry's failed delete remains a failure.
 fn remove_entry_status(removed: bool) -> StatusCode {
     if removed {
         StatusCode::NO_CONTENT
