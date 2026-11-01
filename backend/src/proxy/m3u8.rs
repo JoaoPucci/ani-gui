@@ -18,11 +18,13 @@
 //!   manifest.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
-//! - `build_proxy_uri` (private) — leave a URI that is not a network one
-//!   (an inline `data:` key or init segment, a key a player resolves by
-//!   its own scheme) as written, and otherwise resolve a relative URI
-//!   against a base,
-//!   then build a proxy URL with HMAC token, marked `k=pl` when a master
+//! - `build_proxy_uri` (private) — leave media that is not a network
+//!   URI (an inline `data:` key or init segment, a key a player
+//!   resolves by its own scheme) as written, and otherwise build a
+//!   proxy URL for the resolved URI with HMAC token; `playlist_uri`
+//!   (private) does the same for a playlist a master names, except
+//!   that one which is not a network URI — an inline `data:` playlist —
+//!   drops its entry ([`super::m3u8_reach`]). The URL is marked `k=pl` when a master
 //!   names it as a playlist — with its kind of stream and the key the
 //!   session keeps the master's variables under — and `k=md` when it
 //!   names media — a master's session key or session data, anything a
@@ -47,6 +49,7 @@ use url::Url;
 
 use crate::error::{AniError, Result};
 use crate::proxy::host_budget_demand::Stream;
+use crate::proxy::m3u8_reach::{reach, Reach};
 use crate::proxy::token::{sign_marked, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
@@ -189,29 +192,36 @@ pub fn rewrite_master_naming(
     })?;
     let mut out = parsed;
 
-    for v in &mut out.variants {
-        let resolved = resolve(master_url, &v.uri)?;
-        v.uri = build_proxy_uri(
-            &resolved,
-            origin,
-            session,
-            secret,
-            Kind::Playlist(Stream::Main, vars),
-        );
-    }
-    for a in &mut out.alternatives {
-        let stream = alternative_stream(&a.media_type);
-        if let Some(uri) = a.uri.as_mut() {
-            let resolved = resolve(master_url, uri)?;
-            *uri = build_proxy_uri(
-                &resolved,
-                origin,
-                session,
-                secret,
-                Kind::Playlist(stream, vars),
-            );
+    let playlist = |uri: &str, stream: Stream| -> Result<Option<String>> {
+        let resolved = resolve(master_url, uri)?;
+        let kind = Kind::Playlist(stream, vars);
+        Ok(playlist_uri(&resolved, origin, session, secret, kind))
+    };
+    // A playlist entry the proxy cannot carry is dropped whole.
+    let mut variants = Vec::with_capacity(out.variants.len());
+    for mut v in std::mem::take(&mut out.variants) {
+        if let Some(uri) = playlist(&v.uri, Stream::Main)? {
+            v.uri = uri;
+            variants.push(v);
         }
     }
+    out.variants = variants;
+    let mut alternatives = Vec::with_capacity(out.alternatives.len());
+    for mut a in std::mem::take(&mut out.alternatives) {
+        let stream = alternative_stream(&a.media_type);
+        match a
+            .uri
+            .as_deref()
+            .map(|uri| playlist(uri, stream))
+            .transpose()?
+        {
+            Some(None) => continue,
+            Some(uri) => a.uri = uri,
+            None => {}
+        }
+        alternatives.push(a);
+    }
+    out.alternatives = alternatives;
     for key in &mut out.session_key {
         if let Some(uri) = key.0.uri.as_mut() {
             let resolved = resolve(master_url, uri)?;
@@ -385,12 +395,11 @@ fn resolve(base: &Url, uri: &str) -> Result<Url> {
     })
 }
 
-/// If the URI already points at our proxy origin, leave it alone
-/// (idempotent rewrite); a URI that is not a network URI — anything but
-/// `http` and `https`, such as an inline `data:` key or init segment, or
-/// a key a player resolves by a scheme of its own — is no fetch for the
-/// proxy and is left as written. Otherwise build a fresh proxy URL with
-/// token.
+/// The URI the rewritten manifest names for the media at `upstream`
+/// ([`super::m3u8_reach`]): a URI already on the proxy, or one that is
+/// no network fetch — an inline `data:` key or init segment, a key a
+/// player resolves by a scheme of its own — is kept as written; a
+/// network URI becomes a fresh proxy URL with its token.
 fn build_proxy_uri(
     upstream: &Url,
     origin: &ProxyOrigin,
@@ -399,12 +408,28 @@ fn build_proxy_uri(
     kind: Kind<'_>,
 ) -> String {
     let upstream_str = upstream.as_str();
-    if upstream_str.starts_with(&origin.base) || !matches!(upstream.scheme(), "http" | "https") {
-        return upstream_str.to_string();
+    if reach(upstream, origin, false) == Reach::AsWritten {
+        return upstream_str.to_owned();
     }
     let marks = marks(kind);
     let tok = sign_marked(secret, session, upstream_str, &marks);
     origin.marked_url(session, upstream_str, &tok, &marks)
+}
+
+/// The URI the rewritten manifest names for the playlist at
+/// `upstream`, as [`build_proxy_uri`] writes it, or `None` when the
+/// entry is dropped: a playlist that is no network fetch — an inline
+/// `data:` playlist — would be loaded and parsed by the player, which
+/// would fetch what it names past the proxy.
+fn playlist_uri(
+    upstream: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    kind: Kind<'_>,
+) -> Option<String> {
+    (reach(upstream, origin, true) != Reach::Dropped)
+        .then(|| build_proxy_uri(upstream, origin, session, secret, kind))
 }
 
 #[cfg(test)]
