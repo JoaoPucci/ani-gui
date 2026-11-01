@@ -60,6 +60,7 @@ async fn resolve(
             version,
             stamps_beside: None,
             tail: None,
+            heard: None,
         },
         &mut |_| {},
     )
@@ -316,6 +317,7 @@ async fn resolve_in(
             version,
             stamps_beside: None,
             tail: None,
+            heard: None,
         },
         &mut |_| {},
     )
