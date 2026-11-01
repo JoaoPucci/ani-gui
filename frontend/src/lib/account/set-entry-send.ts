@@ -69,7 +69,7 @@ export async function sendRemoval(
 		removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
 		/** Clear `kitsuId`'s cached row for `provider` locally, asking the
 		 *  tracker nothing. */
-		forgetCached: (provider: Provider, kitsuId: string) => Promise<void>;
+		forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
 	},
 	to: SendTo
 ): Promise<FanoutResult> {
@@ -81,7 +81,7 @@ export async function sendRemoval(
 		// stale cached row is cleared locally. The tracker being clean
 		// already, a failed clear does not fail the removal; the list's
 		// next refresh replaces the row.
-		await deps.forgetCached(to.provider, to.kitsuId).catch(() => undefined);
+		await deps.forgetCached?.(to.provider, to.kitsuId).catch(() => undefined);
 		return 'neither';
 	}
 	await deps.removeEntry(to.provider, to.bearer, to.kitsuId);

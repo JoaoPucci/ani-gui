@@ -4,7 +4,8 @@
 // orchestrates the calls (mirrors push-watched.ts).
 
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
-import { forgetCachedEntry, getEntry, removeEntry, setEntry } from './entry-api';
+import { getEntry, removeEntry, setEntry } from './entry-api';
+import { forgetCachedUnder } from './forget-cached';
 import { failureResult, outcomeFlags, tallyFanout, type FanoutResult } from './set-entry-outcome';
 import { ALL_FIELDS, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 import { sendRemoval, sendSave } from './set-entry-send';
@@ -188,14 +189,13 @@ export async function removeEntryAcrossTrackers(
 ): Promise<RemoveOutcome> {
 	if (!kitsuId || deps.connected.length === 0) return { removed: 0, failed: 0 };
 	const runWrite = deps.runWrite ?? runOnce;
-	const send = { ...deps, forgetCached: deps.forgetCached ?? (async () => undefined) };
 	const results = await Promise.all(
 		deps.connected.map(async (provider): Promise<FanoutResult> => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
 				return await runWrite(provider, kitsuId, async (held) =>
-					sendRemoval(send, {
+					sendRemoval(deps, {
 						provider,
 						bearer: await bearerNow(deps, provider, bearer),
 						kitsuId,
@@ -257,10 +257,7 @@ export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 			getEntry,
 			removeEntry,
 			// Under the user the removal was made for, read before any await.
-			forgetCached: (provider, id) => {
-				const user = listed[provider]?.user;
-				return user ? forgetCachedEntry(provider, id, user) : Promise.resolve();
-			},
+			forgetCached: forgetCachedUnder(listed),
 			runWrite: (provider, id, attempt, fields) =>
 				recordEnd(
 					ends,
