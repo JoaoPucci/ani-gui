@@ -38,7 +38,7 @@
 	"watch_later_updated_now": "Actualizado hace un momento",
 	"watch_later_not_updated": "Aún sin actualizar",
 	"watch_later_empty": "Nada planeado aún",
-	"watch_later_empty_hint": "¿Agregaste un título en tu rastreador? Actualiza para traerlo.",
+	"watch_later_empty_hint": "¿Agregaste un título en tu rastreador? Recarga para traerlo.",
 	"watch_later_failed": "No se pudo cargar tu lista",
 	"watch_later_failed_hint": "No pudimos cargar tu lista de Planeados. {reason}",
 	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
