@@ -28,7 +28,7 @@ import {
 } from './credits';
 import { isValidEthAddress } from './eth';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 /** A fetcher's `DEPS`, imported: an entry's dep, version and URL are
@@ -47,7 +47,9 @@ const SCRIPTS = path.resolve(
 	'../../../../electron/scripts'
 );
 async function fetcherDeps(file: string): Promise<FetcherDep[]> {
-	const mod = await import(/* @vite-ignore */ path.join(SCRIPTS, file));
+	// As a file URL: a bare `C:\…` path is not an import specifier on
+	// Windows.
+	const mod = await import(/* @vite-ignore */ pathToFileURL(path.join(SCRIPTS, file)).href);
 	return mod.DEPS as FetcherDep[];
 }
 const FETCHED = {
@@ -155,6 +157,16 @@ describe('credits — bundled tools', () => {
 		expect(offer).toBeTruthy();
 		expect(README, 'README links the build page').toContain(offer!.buildUrl);
 		expect(README, 'README links the FFmpeg source tag').toContain(offer!.sourceUrl);
+		// The prose names the version too, and a bump that rewrites the
+		// links but not the sentence would leave the README naming a
+		// build the installer no longer carries.
+		const named = [
+			...README.matchAll(/ffmpeg[ -](\d+\.\d+(?:\.\d+)?)|\[(\d+\.\d+(?:\.\d+)?) essentials/gi)
+		];
+		expect(named.length, 'README names the bundled version').toBeGreaterThan(0);
+		for (const m of named) {
+			expect(m[1] ?? m[2], `README: "${m[0]}"`).toBe(offer!.version);
+		}
 	});
 
 	it('noteIds are unique (and thus typesafe against the page-side switch)', () => {

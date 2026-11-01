@@ -187,7 +187,16 @@ fi
 #    licences of what these binaries bundle require their notice to
 #    travel with every copy, and GPL object code needs its licence
 #    beside it. Read with node: DEPS by import, package.json by its
-#    JSON parser. Not checked: that a file's text is the right licence.
+#    JSON parser.
+#
+#    The filter is held to a constraint rather than evaluated: it may
+#    be absent (everything is copied), or a name or list of names with
+#    no `!` exclusion, and each licence file must be named in it
+#    literally. A glob that would in fact match therefore fails here,
+#    loudly; an exclusion is refused outright, since judging what it
+#    removes would mean re-implementing electron-builder's matcher,
+#    which the arch job has no node_modules to load. Not checked: that
+#    a file's text is the right licence.
 if ! node --input-type=module -e '
 const [fetcher, pkg, root] = process.argv.slice(2);
 const { DEPS } = await import(fetcher);
@@ -196,12 +205,14 @@ const extra = ((JSON.parse(readFileSync(pkg, "utf8")).build || {}).linux || {}).
 const entry = extra.find((e) => typeof e === "object" && e.from === "build-resources/licenses" && e.to === "licenses");
 const bad = [];
 if (!entry) bad.push("no extraResources entry copies build-resources/licenses to licenses");
+const filter = entry && entry.filter !== undefined ? [].concat(entry.filter) : null;
+if (filter && filter.some((f) => typeof f !== "string" || f.startsWith("!"))) bad.push("the licenses filter has an exclusion or a non-string entry");
 for (const dep of new Set(DEPS.map((d) => d.dep))) {
     const file = dep + ".txt";
-    let size = 0;
-    try { size = statSync(root + "/electron/build-resources/licenses/" + file).size; } catch {}
-    if (size === 0) bad.push(file + " is missing or empty");
-    if (entry && Array.isArray(entry.filter) && !entry.filter.includes(file)) bad.push(file + " is not in the filter");
+    let ok = false;
+    try { const st = statSync(root + "/electron/build-resources/licenses/" + file); ok = st.isFile() && st.size > 0; } catch {}
+    if (!ok) bad.push(file + " is missing, empty, or not a file");
+    if (filter && !filter.includes(file)) bad.push(file + " is not named in the filter");
 }
 if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
 ' inventory "$REPO_ROOT/electron/scripts/fetch-linux-deps.mjs" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
