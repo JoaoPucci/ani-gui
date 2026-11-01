@@ -50,6 +50,10 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/account/entry/:provider",
             get(get_entry).delete(delete_entry),
         )
+        .route(
+            "/api/account/entry/:provider/cached",
+            delete(delete_cached_entry),
+        )
         .route("/api/account/list/:provider", post(post_list))
         .route("/api/account/list/:provider/cached", get(get_cached_list))
         .route(
@@ -69,7 +73,8 @@ pub fn router() -> Router<Arc<AppState>> {
 mod account_wire;
 use account_wire::{
     AuthUrlRequest, AuthUrlResponse, DisconnectFallbackQuery, EntryQuery, EntryView,
-    ExchangeCodeRequest, RefreshRequest, SetEntryRequest, TokensResponse, UpdateProgressRequest,
+    ExchangeCodeRequest, ForgetCachedQuery, RefreshRequest, SetEntryRequest, TokensResponse,
+    UpdateProgressRequest,
 };
 
 /// When the disconnect-path `me()` call fails, decide whether to fall
@@ -215,9 +220,12 @@ async fn get_entry(
 /// Map `remove_entry`'s result to a status: 204 when a tracker entry was
 /// actually removed (or was already gone — idempotent), 404 when no
 /// connected provider maps this show so nothing could be removed. The 404
-/// identifies an unmappable show separately from a successful deletion.
-/// The renderer treats this empty 404 as neutral only after a live read
-/// found no entry; a present entry's failed delete remains a failure.
+/// matters for the renderer's multi-tracker fan-out: it counts any
+/// resolved DELETE as a successful removal, so an unmappable provider must
+/// reject rather than mask a real provider's failed delete (mirrors the
+/// set path replying `null` for an unmappable show). The renderer sends a
+/// DELETE only where its live read found the entry; an absent one is
+/// cleared from the cache through [`delete_cached_entry`] instead.
 fn remove_entry_status(removed: bool) -> StatusCode {
     if removed {
         StatusCode::NO_CONTENT
@@ -241,6 +249,25 @@ async fn delete_entry(
     let kitsu_id = crate::kitsu_id::require(&q.kitsu_id)?;
     let removed = account_edit::remove_entry(&state, kind, &tokens, kitsu_id).await?;
     Ok(remove_entry_status(removed))
+}
+
+/// Clear one show's cached row for one user, asking the tracker nothing:
+/// the renderer's removal calls it for a tracker whose live read found
+/// no entry, so a stale row leaves the cache without a DELETE the
+/// tracker would spend allowance on. No bearer, so it cannot ask the
+/// tracker; the renderer-only internal secret keeps other origins out.
+/// 204 whether or not a row was there, or the show maps at all.
+async fn delete_cached_entry(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<ForgetCachedQuery>,
+) -> Result<StatusCode, AniError> {
+    state.internal_secret.validate_header(&headers)?;
+    let kind = parse_provider(&provider)?;
+    let kitsu_id = crate::kitsu_id::require(&q.kitsu_id)?;
+    account_edit::forget_cached_entry(&state, kind, kitsu_id, &q.user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn post_exchange_code(

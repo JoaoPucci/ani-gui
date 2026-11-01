@@ -183,6 +183,28 @@ async fn remove_entry_via(
     Ok(true)
 }
 
+/// Clear `kitsu_id`'s cached row from `user_id`'s list, asking the
+/// tracker nothing: the removal's live read found the show absent there,
+/// so only the local copy is stale. Marked written, so a refresh already
+/// out cannot put the row back; nothing for an account disconnected
+/// since, or for a show no tracker id maps.
+pub async fn forget_cached_entry(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    kitsu_id: &str,
+    user_id: &str,
+) -> Result<()> {
+    let began = state.account_write_locks.epochs.current(kind);
+    let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
+    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
+        return Ok(());
+    };
+    super::account_owner::cache_row(state, kind, began, native.0, Some(user_id), |owner| {
+        cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, native.0)
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "account_edit_test.rs"]
 mod tests;

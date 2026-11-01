@@ -4,7 +4,7 @@
 // orchestrates the calls (mirrors push-watched.ts).
 
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
-import { getEntry, removeEntry, setEntry } from './entry-api';
+import { forgetCachedEntry, getEntry, removeEntry, setEntry } from './entry-api';
 import { failureResult, outcomeFlags, tallyFanout, type FanoutResult } from './set-entry-outcome';
 import { ALL_FIELDS, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 import { sendRemoval, sendSave } from './set-entry-send';
@@ -70,7 +70,7 @@ export interface RemoveEntryDeps {
 	getEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<EntryView | null>;
 	removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
 	/** Clear `kitsuId`'s cached row for `provider` locally, asking the
-	 *  tracker nothing. */
+	 *  tracker nothing; with none given, nothing is cleared. */
 	forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
 	/** How each provider's removal is run; {@link runOnce} when omitted. */
 	runWrite?: RunWrite;
@@ -175,8 +175,9 @@ export interface RemoveOutcome {
 
 /**
  * Remove a show from every connected tracker that has it. Reads each
- * provider first: an absent row still gets an idempotent delete to clear
- * stale local cache, but does not count toward the removal tally. A present tracker whose delete fails — or
+ * provider first: one without the row is sent nothing, its stale cached
+ * row (if any) is cleared locally, and it counts toward neither tally. A
+ * present tracker whose delete fails — or
  * any provider we can't confirm clean (read threw, no bearer) — is tallied
  * as `failed`, so the caller keeps the entry visible rather than claiming a
  * clean removal while a tracker still has the row.
@@ -187,13 +188,14 @@ export async function removeEntryAcrossTrackers(
 ): Promise<RemoveOutcome> {
 	if (!kitsuId || deps.connected.length === 0) return { removed: 0, failed: 0 };
 	const runWrite = deps.runWrite ?? runOnce;
+	const send = { ...deps, forgetCached: deps.forgetCached ?? (async () => undefined) };
 	const results = await Promise.all(
 		deps.connected.map(async (provider): Promise<FanoutResult> => {
 			const bearer = await deps.bearerFor(provider);
 			if (!bearer) return 'failed'; // connected but unreachable — can't confirm clean
 			try {
 				return await runWrite(provider, kitsuId, async (held) =>
-					sendRemoval(deps, {
+					sendRemoval(send, {
 						provider,
 						bearer: await bearerNow(deps, provider, bearer),
 						kitsuId,
@@ -254,6 +256,11 @@ export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 			bearerFor: (provider) => freshBearerFor(provider),
 			getEntry,
 			removeEntry,
+			// Under the user the removal was made for, read before any await.
+			forgetCached: (provider, id) => {
+				const user = listed[provider]?.user;
+				return user ? forgetCachedEntry(provider, id, user) : Promise.resolve();
+			},
 			runWrite: (provider, id, attempt, fields) =>
 				recordEnd(
 					ends,

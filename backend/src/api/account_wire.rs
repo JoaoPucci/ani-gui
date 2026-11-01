@@ -153,6 +153,16 @@ pub struct EntryQuery {
     pub kitsu_id: String,
 }
 
+/// Query string for clearing one show's cached row locally
+/// (`DELETE /entry/:provider/cached?kitsu_id=…&user_id=…`).
+#[derive(Debug, Deserialize)]
+pub struct ForgetCachedQuery {
+    /// Kitsu id of the show whose cached row is cleared.
+    pub kitsu_id: String,
+    /// The user whose cached list the row is cleared from.
+    pub user_id: String,
+}
+
 /// The live current list entry for one show, returned by
 /// `GET /entry/:provider`. `null` (the route returns `Option`) means the
 /// show isn't on the user's list or isn't mapped to the provider.

@@ -6,7 +6,6 @@
 // from `set-entry.ts` so each file stays inside the CRAP gate's per-file
 // bar.
 
-import { AccountApiError } from './api';
 import type { EntryView, ListEntry, Provider } from './types';
 import type { EditorSave } from './set-entry';
 import type { FanoutResult } from './set-entry-outcome';
@@ -70,27 +69,21 @@ export async function sendRemoval(
 		removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
 		/** Clear `kitsuId`'s cached row for `provider` locally, asking the
 		 *  tracker nothing. */
-		forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
+		forgetCached: (provider: Provider, kitsuId: string) => Promise<void>;
 	},
 	to: SendTo
 ): Promise<FanoutResult> {
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
 	const current = await deps.getEntry(to.provider, to.bearer, to.kitsuId);
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
-	try {
-		await deps.removeEntry(to.provider, to.bearer, to.kitsuId);
-	} catch (error) {
-		// A live-null entry can also be unmappable. Only this endpoint's
-		// empty 404 is neutral; upstream failures carry an error envelope.
-		if (
-			current === null &&
-			error instanceof AccountApiError &&
-			error.status === 404 &&
-			error.detail === ''
-		)
-			return 'neither';
-		throw error;
+	if (current === null) {
+		// Nothing on the tracker to remove, so nothing is sent to it: a
+		// stale cached row is cleared locally. The tracker being clean
+		// already, a failed clear does not fail the removal; the list's
+		// next refresh replaces the row.
+		await deps.forgetCached(to.provider, to.kitsuId).catch(() => undefined);
+		return 'neither';
 	}
-	// The backend's idempotent delete also clears stale local cache.
-	return current === null ? 'neither' : 'ok';
+	await deps.removeEntry(to.provider, to.bearer, to.kitsuId);
+	return 'ok';
 }
