@@ -8,11 +8,15 @@
 //! Watching shows it as that entry and the detail page's resume lookup
 //! finds it by it, so it can take a retired row's place on both. A
 //! guess — a mapping, a title match — makes neither surface certain.
-//! A retired row stands for every entry anything names for it: its
-//! recorded id, its mapping, every title match stored for its title
-//! under any version or segment the detail page reads it by.
-//! More entries there only mean more a walked row must cover before
-//! the retired row goes.
+//! A retired row that recorded an entry Kitsu still serves stands for
+//! that entry alone: both surfaces read such a row by the id it
+//! recorded, whatever a guess stored for it before (a row the user
+//! linked to its show keeps the title match and mapping of the wrong
+//! guess it replaced). Any other retired row stands for every entry
+//! anything names for it: its recorded id, its mapping, every title
+//! match stored for its title under any version or segment the detail
+//! page reads it by. More entries there only mean more a walked row
+//! must cover before the retired row goes.
 
 use crate::app::AppState;
 use crate::commands::kitsu::allmanga_kitsu_get;
@@ -30,8 +34,13 @@ pub(super) fn walked(state: &AppState, entry: &HistoryEntry) -> Result<Vec<Strin
     Ok(vec![id.to_string()])
 }
 
-/// Every entry anything names for a retired row.
+/// The entry a retired row recorded while Kitsu serves it, else every
+/// entry anything names for it.
 pub(super) fn retired(state: &AppState, entry: &HistoryEntry) -> Result<Vec<String>> {
+    let served = walked(state, entry)?;
+    if !served.is_empty() {
+        return Ok(served);
+    }
     let mut ids: Vec<String> = entry
         .kitsu_id
         .as_deref()

@@ -331,6 +331,42 @@ fn a_walked_row_known_by_a_guess_supersedes_nothing() {
 }
 
 #[test]
+fn a_retired_row_whose_recorded_entry_kitsu_serves_is_that_entry_alone() {
+    // A user linked the retired row to its show, so it records 262; the
+    // title match and mapping a guess stored for it before still name
+    // 999. Both surfaces read the row by the id it recorded while Kitsu
+    // serves that id, so the walked row recording 262 is all it takes.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    write_atomic(
+        &state.history_path,
+        &[
+            entry("7", "old-show-505", "Old Show", None, Some("262")),
+            entry(
+                "8",
+                "test-a:old-show-9",
+                "Old Show",
+                Some(1_793_125_986_100),
+                Some("262"),
+            ),
+        ],
+    )
+    .unwrap();
+    put(&state, &title_match_key(None, "Old Show"), "999");
+    put(&state, "allmanga2kitsu:v8:old-show-505", "999");
+
+    let report = sweep(&state);
+
+    assert_eq!(report.superseded, ["Old Show"]);
+    let ids: Vec<String> = read_all(&state.history_path)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.id)
+        .collect();
+    assert_eq!(ids, ["test-a:old-show-9"]);
+}
+
+#[test]
 fn a_walked_row_whose_recorded_entry_is_gone_supersedes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let state = state_in(dir.path());
