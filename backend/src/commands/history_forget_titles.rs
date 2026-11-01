@@ -118,16 +118,12 @@ pub(crate) fn forget_title_matches_naming(
     Ok(())
 }
 
-/// The Kitsu ids the title-match rows of the row `id` titled `title`
-/// name, every version and cour, left in place.
-///
-/// # Errors
-/// Cache failures propagate.
 /// The Kitsu ids the row's title matches name under the current
 /// version's key alone — the ones Continue Watching reads now. A match
 /// an earlier version stored is a pick that version made, which Home
-/// no longer reads, so nothing that names the row's show reads it
-/// either.
+/// no longer reads, so the detail page's resume lookup does not read
+/// it either; a removal still does, to find every id the show was
+/// known by.
 ///
 /// # Errors
 /// Cache failures propagate.
@@ -148,6 +144,11 @@ pub(crate) fn current_title_match_ids(
     Ok(found)
 }
 
+/// The Kitsu ids the title-match rows of the row `id` titled `title`
+/// name, every version and cour, left in place.
+///
+/// # Errors
+/// Cache failures propagate.
 pub(crate) fn title_match_ids(state: &AppState, id: &str, title: &str) -> Result<Vec<String>> {
     Ok(own_matches(state, id, title)?
         .into_iter()
