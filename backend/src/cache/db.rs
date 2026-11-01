@@ -98,6 +98,34 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
     Ok(pool)
 }
 
+/// [`open_pool`] for the app's launch: once the cache is open, and
+/// still under the migration lock, delete the rows no reader of this
+/// build asks for ([`crate::cache::reclaim`]) and report them. A
+/// reclaim SQLite refuses is logged and leaves every row: the cache
+/// still opens.
+///
+/// # Errors
+/// As [`open_pool`].
+pub fn open_pool_reclaiming(
+    path: &Path,
+) -> Result<(SqlitePool, crate::cache::reclaim::ReclaimReport)> {
+    let manager = SqliteConnectionManager::file(path);
+    let pool = builder()
+        .max_size(4)
+        .build(manager)
+        .map_err(|_| AniError::Cache)?;
+    let mut conn = pool.get().map_err(|_| AniError::Cache)?;
+    let _turn = migration_lock(path)?;
+    run_migrations(&mut conn)?;
+    crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
+    let report = crate::cache::reclaim::reclaim(&mut conn, &crate::cache::families::live())
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = ?e, "cache reclaim refused; every row stays");
+            crate::cache::reclaim::ReclaimReport::default()
+        });
+    Ok((pool, report))
+}
+
 /// The cross-process lock a cache's migrations run under, held until
 /// the returned file is dropped — and released by the OS if the
 /// process dies holding it.
@@ -476,7 +504,7 @@ pub fn title_match_put(
 
 // --- helpers -------------------------------------------------------------
 
-fn now_secs() -> i64 {
+pub(super) fn now_secs() -> i64 {
     i64::try_from(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

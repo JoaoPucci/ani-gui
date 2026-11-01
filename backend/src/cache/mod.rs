@@ -18,6 +18,7 @@ pub mod families;
 mod played_marks;
 #[cfg(test)]
 pub mod put_observer;
+pub mod reclaim;
 pub mod schema;
 pub mod ttl;
 
@@ -25,5 +26,5 @@ pub use db::{
     meta_cache_clear, meta_cache_delete, meta_cache_delete_prefix, meta_cache_entries_prefix,
     meta_cache_fetched_at, meta_cache_get, meta_cache_list_prefix, meta_cache_put,
     meta_cache_rebody, meta_cache_row, meta_cache_shorten, open_in_memory, open_pool,
-    title_match_get, title_match_put, SqlitePool, TitleMatch,
+    open_pool_reclaiming, title_match_get, title_match_put, SqlitePool, TitleMatch,
 };
