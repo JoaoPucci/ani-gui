@@ -24,6 +24,20 @@ setup() {
     cd "$work" || return
 }
 
+# Wait, ten seconds at most, until every named file exists: a command
+# touches one once it is running, so a case signals the tool only after
+# what it means to interrupt is under way, not after a guessed delay.
+until_exists() {
+    n=0
+    for file in "$@"; do
+        until [ -e "$file" ]; do
+            n=$((n + 1))
+            [ "$n" -le 100 ] || return 1
+            sleep 0.1
+        done
+    done
+}
+
 @test "commands that all succeed succeed, their output in the order given" {
     run sh "$TOOL" 'sleep 1; echo first' 'echo second'
     [ "$status" -eq 0 ]
@@ -108,9 +122,9 @@ setup() {
 @test "stopped by a signal, it prints what each command wrote so far and fails" {
     # A cancelled or timed-out CI step ends this way: what the commands
     # had written is the only trace of where they stood.
-    sh "$TOOL" 'echo started; sleep 30' 'echo also-started; sleep 30' >out 2>&1 &
+    sh "$TOOL" 'echo started; touch one; sleep 30' 'echo also-started; touch two; sleep 30' >out 2>&1 &
     tool=$!
-    sleep 1
+    until_exists one two
     kill -TERM "$tool"
     status=0
     wait "$tool" || status=$?
@@ -120,9 +134,9 @@ setup() {
 }
 
 @test "stopped by a signal, a command that had already ended shows its own status" {
-    sh "$TOOL" 'sleep 30' 'echo done; exit 4' >out 2>&1 &
+    sh "$TOOL" 'touch one; sleep 30' 'echo done; touch two; exit 4' >out 2>&1 &
     tool=$!
-    sleep 1
+    until_exists one two
     start=$SECONDS
     kill -TERM "$tool"
     status=0
@@ -137,7 +151,7 @@ setup() {
 @test "stopped by a signal, it stops what its commands started as well" {
     sh "$TOOL" 'sleep 30 & echo "$!" >grandchild; wait' >out 2>&1 &
     tool=$!
-    sleep 1
+    until_exists grandchild
     start=$SECONDS
     kill -TERM "$tool"
     wait "$tool" || true
@@ -152,11 +166,11 @@ setup() {
     # without job control starts with SIGINT ignored, and a shell
     # cannot trap a signal it was started ignoring.
     (
-        sleep 1
+        until_exists toolpid one
         kill -INT "$(cat toolpid)"
     ) &
     start=$SECONDS
-    run sh -c 'echo "$$" >toolpid; exec sh "$1" "echo started; sleep 30"' sh "$TOOL"
+    run sh -c 'echo "$$" >toolpid; exec sh "$1" "echo started; touch one; sleep 30"' sh "$TOOL"
     [ $((SECONDS - start)) -lt 10 ]
     [ "$status" -eq 130 ]
     printf '%s\n' "$output" | grep -qx 'started'
@@ -164,23 +178,57 @@ setup() {
 }
 
 @test "signalled while still starting its commands, it stops at once and reports" {
-    # Six hundred commands take the runner a while to start; the signal
-    # lands among them, so some have not started when it comes.
+    # The signal comes as soon as the runner has started its first
+    # command, which it records in its working directory under TMPDIR;
+    # starting six hundred takes it far longer, so the last has not
+    # started when the signal comes.
     set --
     i=0
     while [ "$i" -lt 600 ]; do
         i=$((i + 1))
         set -- "$@" 'sleep 30'
     done
-    sh "$TOOL" "$@" >out 2>&1 &
+    mkdir tmp
+    TMPDIR="$work/tmp" sh "$TOOL" "$@" >out 2>&1 &
     tool=$!
-    sleep 0.02
+    n=0
+    until [ -n "$(find tmp -name 1.runner 2>/dev/null)" ]; do
+        n=$((n + 1))
+        [ "$n" -le 1000 ]
+        sleep 0.01
+    done
     start=$SECONDS
     kill -TERM "$tool"
     status=0
     wait "$tool" || status=$?
     [ $((SECONDS - start)) -lt 15 ]
     [ "$status" -eq 143 ]
-    grep -qx '=== \[1\] stopped by SIGTERM' out
     grep -qx '=== \[600\] not started: SIGTERM came first' out
+    # Every command was stopped or never started; none ran to its end.
+    run grep -c '^=== \[[0-9]*\] exited' out
+    [ "$output" -eq 0 ]
+}
+
+@test "a signal before a command leads its own process group still stops it" {
+    # A setsid that is slow to start holds the command in the tool's
+    # own process group when the signal comes, where signalling the
+    # command's group reaches nothing.
+    real=$(command -v setsid)
+    mkdir shim
+    printf '#!/bin/sh\ntouch "%s/in-setsid"\nsleep 3\nexec "%s" "$@"\n' "$work" "$real" >shim/setsid
+    chmod +x shim/setsid
+    PATH="$work/shim:$PATH" sh "$TOOL" 'echo "$$" >cmdpid; sleep 30' >out 2>&1 &
+    tool=$!
+    until_exists in-setsid
+    start=$SECONDS
+    kill -TERM "$tool"
+    status=0
+    wait "$tool" || status=$?
+    [ $((SECONDS - start)) -lt 3 ]
+    [ "$status" -eq 143 ]
+    grep -qx '=== \[1\] stopped by SIGTERM' out
+    sleep 0.5
+    if [ -s cmdpid ]; then
+        run ! kill -0 "$(cat cmdpid)"
+    fi
 }
