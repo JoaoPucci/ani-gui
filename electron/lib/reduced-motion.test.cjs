@@ -227,6 +227,37 @@ test("a reader that answers after the deadline is not acted on", { timeout: 5000
   assert.deepEqual(appended, []);
 });
 
+test("an appendSwitch that throws is no answer, not a failed launch", async () => {
+  const { exec } = fakeExec(PORTAL_REDUCE);
+  const result = await applyReducedMotion({
+    platform: "linux",
+    exec,
+    appendSwitch: () => {
+      throw new Error("switch refused");
+    },
+    timeoutMs: 200,
+  });
+  assert.equal(result, false);
+});
+
+test("readers run without DISPLAY, so a missing session bus is not autolaunched", async () => {
+  const { exec, calls } = fakeExec({});
+  await applyReducedMotion({
+    platform: "linux",
+    exec,
+    appendSwitch: () => {},
+    timeoutMs: 200,
+    env: { DISPLAY: ":0", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1/bus", PATH: "/usr/bin" },
+  });
+  assert.equal(calls.length, 3);
+  for (const call of calls) {
+    assert.deepEqual(call.options.env, {
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1/bus",
+      PATH: "/usr/bin",
+    });
+  }
+});
+
 test("garbage from every reader is no answer", async () => {
   for (const garbage of ["", "hello", "v u 2\n", "v s \"reduce\"\n", "(<uint32 1>,) and more"]) {
     const { result, appended } = await apply({
@@ -335,6 +366,15 @@ test("execText resolves a command's stdout", async () => {
     timeoutMs: 5000,
   });
   assert.equal(out, "v u 1");
+});
+
+test("execText runs the command in the environment it is given", async () => {
+  const out = await execText(
+    process.execPath,
+    ["-e", "process.stdout.write(String(process.env.ANI_GUI_PROBE) + ':' + String(process.env.DISPLAY))"],
+    { timeoutMs: 5000, env: { ANI_GUI_PROBE: "seen" } },
+  );
+  assert.equal(out, "seen:undefined");
 });
 
 test("execText rejects a command that exits non-zero", async () => {
