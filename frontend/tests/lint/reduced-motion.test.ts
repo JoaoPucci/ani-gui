@@ -458,3 +458,34 @@ describe('reduced motion: script', () => {
 		30_000
 	);
 });
+
+// An indeterminate progress bar is a short chunk the animation sweeps
+// along its track. With the animation taken off, the chunk sits at the
+// track's start and reads as determinate progress stuck part-way. Each
+// one therefore names, under reduced motion, a still full-width bar.
+// This is a syntactic constraint over the bars that exist: the listed
+// selector must appear in a reduced-motion block of its file and set
+// `inline-size: 100%` there. A new indeterminate bar has to be added to
+// the list; nothing here finds one by itself.
+describe('reduced motion: indeterminate progress bars', () => {
+	const bars: [string, string][] = [
+		['lib/components/SearchProgress.svelte', '.search-progress-bar'],
+		['routes/play/[id]/+page.svelte', '.player-spinner-sweep'],
+		['lib/components/DownloadBar.svelte', '.dl-bar-progress span'],
+		['lib/components/DownloadDock.svelte', '.dl-row-bar-indet span']
+	];
+
+	it.each(bars)('%s holds %s still at full width', (file, selector) => {
+		const path = join(SRC, file);
+		const style = componentStyle(asts.get(path)!);
+		expect(style, `${file} has no <style>`).not.toBeNull();
+		const widths: string[] = [];
+		postcss.parse(style!.css).walkRules((rule) => {
+			if (!rule.selectors.map((sel) => sel.trim()).includes(selector)) return;
+			rule.walkDecls('inline-size', (decl) => {
+				if (insideReduceBlock(decl)) widths.push(decl.value.trim());
+			});
+		});
+		expect(widths).toEqual(['100%']);
+	});
+});
