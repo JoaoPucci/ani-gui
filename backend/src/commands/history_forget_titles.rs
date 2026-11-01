@@ -4,7 +4,10 @@
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_entries_prefix};
-use crate::commands::kitsu::{title_match_prefix, TITLE_MATCH_VERSION};
+use crate::commands::kitsu::{
+    title_match_prefix, title_match_prefix_at, FIRST_SEGMENTED_TITLE_MATCH_VERSION,
+    TITLE_MATCH_VERSION,
+};
 use crate::commands::title_match_store::retired_title_match_prefixes;
 use crate::error::Result;
 use crate::history::HistoryEntry;
@@ -65,9 +68,14 @@ fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
     let mut prefixes = Vec::new();
     for searched in [title, without_episode_tail(title)] {
         prefixes.push(title_match_prefix(provider, searched));
+        // The versions since the provider segment, each as it wrote it,
+        // and the ones before it, which keyed the title alone.
+        for version in FIRST_SEGMENTED_TITLE_MATCH_VERSION..TITLE_MATCH_VERSION {
+            prefixes.push(title_match_prefix_at(version, provider, searched));
+        }
         let normalized = searched.trim().to_lowercase();
         prefixes.extend(retired_title_match_prefixes(provider, &normalized));
-        for version in 1..TITLE_MATCH_VERSION {
+        for version in 1..FIRST_SEGMENTED_TITLE_MATCH_VERSION {
             prefixes.push(format!("title-match:v{version}:{normalized}:c"));
         }
     }

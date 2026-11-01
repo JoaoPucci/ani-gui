@@ -238,8 +238,10 @@ export function resolveHistoryEntry(
  *  the wrong choice for Stone Ocean Part 2 / Part 3 etc. — it lands
  *  back on Part 1.
  *
- *  Picker walks four checks in priority order, falling through to
+ *  Picker walks five checks in priority order, falling through to
  *  the next when the previous yields no candidate:
+ *    0. The hit the row names: one from the row's year, then one
+ *       titled as the row (`rankedPick` in ./pick-rank.ts).
  *    1. Exact slug match against a slug derived from searchTitle.
  *       Kitsu URLs are mechanical (e.g.
  *       `jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2`); when

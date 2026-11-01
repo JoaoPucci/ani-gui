@@ -40,10 +40,17 @@ pub fn slug_words(slug: &str) -> Option<&str> {
 /// The release year a show key names among its slug's words — the
 /// `2000` of `hianime:jojos-bizarre-adventure-2000-5182` — when one
 /// stands there.
+///
+/// A year is a word of four digits from 1960 to 2039: the numeric id
+/// after the words is never one, and neither is a number outside the
+/// years shows were made in ("blade-runner-2049", "mob-psycho-100").
 #[must_use]
 pub fn key_year(id: &str) -> Option<u32> {
-    let _ = id;
-    None
+    slug_words(&ShowKey::parse(id).slug)?
+        .split('-')
+        .filter(|w| w.len() == 4 && w.bytes().all(|b| b.is_ascii_digit()))
+        .filter_map(|w| w.parse::<u32>().ok())
+        .find(|y| (1960..2040).contains(y))
 }
 
 /// A show id that says whose id it is. Every store stamped by a

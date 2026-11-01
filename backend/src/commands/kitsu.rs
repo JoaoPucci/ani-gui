@@ -331,7 +331,18 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
+/// - v4: the pick takes the hit from the row's year, then the hit
+///   titled as the row, before the hit whose slug the title spells. A
+///   v3 row can hold a pick this one would not make — Black Clover's
+///   one-episode special for the TV series, the 2012 JoJo for the
+///   2000 OVA — so v3 rows are not read and the next load picks again;
+///   removing the show still takes them.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 4;
+
+/// The first version whose keys name the provider segment
+/// ([`title_match_prefix`]); the versions before it keyed the title
+/// alone.
+pub(crate) const FIRST_SEGMENTED_TITLE_MATCH_VERSION: u32 = 3;
 
 fn title_match_key(
     provider: Option<crate::scraper::provider::ProviderId>,
@@ -349,9 +360,19 @@ pub(crate) fn title_match_prefix(
     provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
 ) -> String {
+    title_match_prefix_at(TITLE_MATCH_VERSION, provider, title)
+}
+
+/// [`title_match_prefix`] as `version` wrote it — a version from
+/// [`FIRST_SEGMENTED_TITLE_MATCH_VERSION`] on.
+pub(crate) fn title_match_prefix_at(
+    version: u32,
+    provider: Option<crate::scraper::provider::ProviderId>,
+    title: &str,
+) -> String {
     let normalized = title.trim().to_lowercase();
     let segment = provider.map_or(LEGACY_TITLE_MATCH_SEGMENT, |p| p.label());
-    format!("title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c")
+    format!("title-match:v{version}:{segment}:{normalized}:c")
 }
 
 /// The provider segment of a title match for a history row whose key

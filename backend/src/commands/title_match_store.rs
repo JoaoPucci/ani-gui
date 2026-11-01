@@ -58,8 +58,11 @@ pub(crate) fn retired_title_match_prefixes(
     if provider.is_some() {
         return Vec::new();
     }
-    RETIRED_TITLE_MATCH_SEGMENTS
-        .iter()
-        .map(|segment| format!("title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c"))
+    (crate::commands::kitsu::FIRST_SEGMENTED_TITLE_MATCH_VERSION..=TITLE_MATCH_VERSION)
+        .flat_map(|version| {
+            RETIRED_TITLE_MATCH_SEGMENTS
+                .iter()
+                .map(move |segment| format!("title-match:v{version}:{segment}:{normalized}:c"))
+        })
         .collect()
 }
