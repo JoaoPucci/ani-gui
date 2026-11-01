@@ -731,7 +731,9 @@ test("fullscreen and copying still work, and other permissions are denied", asyn
     await page.getByRole("link", { name: /about/i }).first().click();
     await expect(page).toHaveURL(/\/about\/?$/);
     await page.getByRole("button", { name: /copy ethereum address/i }).click();
-    await expect(page.getByText(/address copied/i)).toBeVisible();
+    // The toast renders its message twice: once on screen, once for
+    // screen readers.
+    await expect(page.getByText(/address copied/i).first()).toBeVisible();
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(/^0x[0-9a-fA-F]{40}$/);
   } finally {
     await app.close();
