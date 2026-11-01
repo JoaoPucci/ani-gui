@@ -245,6 +245,31 @@ pub fn rewrite_master_naming(
     })
 }
 
+/// Rewrite what the session's URL served: a master, or — from a source
+/// with a single quality — the media playlist of the main stream
+/// itself. Which one it is goes by its tags, the way a player reads it:
+/// m3u8-rs parses a media playlist as a master without failing, a
+/// master with no variants, so a failed master parse cannot tell them
+/// apart.
+///
+/// # Errors
+/// As [`rewrite_master`] for a master and [`rewrite_media`] for a media
+/// playlist.
+pub fn rewrite_served(
+    body: &[u8],
+    url: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    vars: &str,
+) -> Result<String> {
+    if m3u8_rs::is_master_playlist(body) {
+        rewrite_master_naming(body, url, origin, session, secret, vars)
+    } else {
+        rewrite_media(body, url, origin, session, secret)
+    }
+}
+
 /// The kind of stream an `EXT-X-MEDIA` rendition carries. An alternate
 /// video rendition replaces the main stream rather than adding to it.
 fn alternative_stream(media_type: &m3u8_rs::AlternativeMediaType) -> Stream {

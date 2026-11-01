@@ -174,28 +174,17 @@ async fn handle_master(
         .sessions
         .keep_master_variables(session, master_variables(&body, &served_from))
         .unwrap_or_default();
-    let rewritten = match rewrite_master_naming(
+    // A source with a single quality may answer with the media
+    // playlist itself rather than a master.
+    let Ok(rewritten) = m3u8::rewrite_served(
         &body,
         &served_from,
         &state.origin,
         session,
         &state.secret,
         &vars,
-    ) {
-        Ok(s) => s,
-        Err(_) => {
-            // Try as a media playlist before giving up — some upstreams
-            // return media directly when there's only one variant.
-            match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        StatusCode::BAD_GATEWAY,
-                        "upstream manifest unparseable",
-                    );
-                }
-            }
-        }
+    ) else {
+        return error_response(StatusCode::BAD_GATEWAY, "upstream manifest unparseable");
     };
 
     let mut headers = HeaderMap::new();
