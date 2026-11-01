@@ -522,8 +522,10 @@
 		ccMenuOpen = false;
 		if (!videoEl) return;
 		applyCaptionPick(videoEl.textTracks, target);
+		// Under the show's id, unless the session was opened from a
+		// guessed match, which records nothing under the guess.
 		const choice = captionChoiceOf(videoEl.textTracks, target);
-		if (choice !== undefined) rememberCaption(id, choice);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
 	}
 
 	function setVolume(v: number) {

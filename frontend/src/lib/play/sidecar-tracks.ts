@@ -14,6 +14,7 @@
  * exercised by the acceptance test on the mounted page.
  */
 
+import { applyCaptionPick } from './caption-pick';
 import { startingTrack } from './caption-start';
 
 /** One listed track, as the proxy answers it. */
@@ -95,9 +96,22 @@ export function attachSidecarTracks(
 		video.appendChild(el);
 		return el;
 	});
+	applyStart(video, start === null ? null : elements[start]);
 	return () => {
 		for (const el of elements) el.remove();
 	};
+}
+
+/**
+ * The start applied to the video's tracks, not left to the `default`
+ * attribute alone: the browser honours the attribute only while no
+ * subtitle track shows, and a track the stream's playlist carries may
+ * already be showing. Every subtitle track is turned off — disabled,
+ * so none is fetched — and the start's track, if any, turned on.
+ */
+function applyStart(video: HTMLVideoElement, start: HTMLTrackElement | null): void {
+	applyCaptionPick(video.textTracks, 'off');
+	if (start) start.track.mode = 'showing';
 }
 
 /**
