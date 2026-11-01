@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultTrailFor, goesBack, withSearchOrigin } from './breadcrumb';
+import { defaultTrailFor, goesBack, searchOrigin, withSearchOrigin } from './breadcrumb';
 import fc from 'fast-check';
 import { m } from '$lib/paraglide/messages';
 
@@ -104,5 +104,14 @@ describe('goesBack', () => {
 		expect(goesBack('/search?q=a', '/search?q=a')).toBe(true);
 		expect(goesBack('/', '/search?q=a')).toBe(false);
 		expect(goesBack('/search?q=a', null)).toBe(false);
+	});
+});
+
+describe('searchOrigin', () => {
+	it('answers a search the reader ran, and nothing else', () => {
+		expect(searchOrigin('/search?q=frieren')).toBe('/search?q=frieren');
+		for (const origin of [null, '', '/', '/search', '/search?q=%20', '/anime/1?q=a']) {
+			expect(searchOrigin(origin)).toBeNull();
+		}
 	});
 });
