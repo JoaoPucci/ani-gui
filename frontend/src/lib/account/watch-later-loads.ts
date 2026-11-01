@@ -15,7 +15,8 @@ export interface RailLoads {
 	 *  now. Never for a load a newer one superseded; for the latest, when
 	 *  any load since the last check ran asked for one — a reread that
 	 *  supersedes the opening load, or follows one that failed, runs the
-	 *  check that load owed. Once per check asked for. */
+	 *  check that load owed. A check whose loads all fail stays owed
+	 *  until the next load lands. Once per check asked for. */
 	landed(ticket: LoadTicket): boolean;
 }
 
