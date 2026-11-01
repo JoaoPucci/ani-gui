@@ -265,14 +265,14 @@ fn a_stamp_this_run_s_own_repair_moved_meanwhile_is_ordered_not_left() {
     std::fs::write(&store, format!("{SLUG}\t0\t13\t12.75\n")).expect("the earlier repair");
     TAKEN.lock().expect("taken").insert(
         (history, SLUG.to_string()),
-        Taken {
-            heard: earlier,
-            base: Stamps {
+        Taken::one(
+            earlier,
+            Stamps {
                 display: Some((13, "24.5".into())),
                 former: None,
             },
-            left: moved,
-        },
+            moved,
+        ),
     );
     fs4::FileExt::unlock(&foreign).expect("let the store go");
     late.join().expect("the later repair");

@@ -51,6 +51,14 @@ struct Taken {
     left: Stamps,
 }
 
+#[cfg(test)]
+impl Taken {
+    /// One repair heard as `heard`, from `base`, that left `left`.
+    fn one(heard: Hearing, base: Stamps, left: Stamps) -> Self {
+        Self { heard, base, left }
+    }
+}
+
 /// The repairs taken this run, by history file and show key. Read and
 /// written inside the store's locks, as a repair decides.
 static TAKEN: Mutex<BTreeMap<(PathBuf, String), Taken>> = Mutex::new(BTreeMap::new());
