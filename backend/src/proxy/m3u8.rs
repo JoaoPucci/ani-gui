@@ -411,6 +411,9 @@ fn build_proxy_uri(
 #[path = "m3u8_define_test.rs"]
 mod define_tests;
 #[cfg(test)]
+#[path = "m3u8_escape_test.rs"]
+mod escape_tests;
+#[cfg(test)]
 #[path = "m3u8_uri_test.rs"]
 mod uri_tests;
 
