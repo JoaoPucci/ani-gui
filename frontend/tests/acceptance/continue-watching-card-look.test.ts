@@ -168,6 +168,9 @@ describe('Continue Watching card artwork', () => {
 		expect(look()).toBe('pending');
 		expect(resumeButton()).toBeNull();
 		expect(target.textContent).not.toContain('CO');
+		// The name lands with the artwork, not ahead of it: the row's
+		// own title is not always the one the card settles on.
+		expect(cell()?.querySelector('.resume-show')?.textContent?.trim()).toBe('');
 		search.release([show('1', 'Cowboy Bebop')]);
 		await until(() => resumeButton() !== null, 'the card to become clickable');
 	});
@@ -276,6 +279,33 @@ describe('Continue Watching card artwork', () => {
 		looks.stop();
 		expect(looks.seen).toEqual(['image']);
 		expect(imageSource()).toBe(THUMB);
+	});
+
+	it('names the show as the card will, before the match lands, on a return to Home', async () => {
+		// The history row carries the provider's title; the card names
+		// the show by its Kitsu title once matched.
+		const row = { ep_no: '3', id: 'allanime-9', title: 'Kauboi Bibappu', kitsu_id: '1' };
+		const detail = (answer?: Promise<ReturnType<typeof show>>) =>
+			http.get(`${API_BASE}/api/kitsu/anime/1`, async () =>
+				HttpResponse.json(await (answer ?? show('1', 'Cowboy Bebop')))
+			);
+		// The row's episode page answers as in the scenarios above.
+		const [, episodes] = rowHandlers();
+		server.use(...homeHandlers({ history: [row] }, [detail(), episodes]));
+		app = mount(HomePage, { target });
+		await until(() => look(row.id) === 'image', 'the first visit to settle');
+		expect(cell(row.id)?.textContent).toContain('Cowboy Bebop');
+		unmount(app);
+		app = null;
+
+		const held_ = held<ReturnType<typeof show>>();
+		server.use(...homeHandlers({ history: [row] }, [detail(held_.answer)]));
+		app = mount(HomePage, { target });
+		await until(() => cell(row.id) !== null, 'the card');
+		expect(cell(row.id)?.querySelector('.resume-show')?.textContent).toBe('Cowboy Bebop');
+		expect(cell(row.id)?.textContent).not.toContain('Kauboi Bibappu');
+		held_.release(show('1', 'Cowboy Bebop'));
+		await until(() => resumeButton(row.id) !== null, 'the card to become clickable');
 	});
 
 	it('leaves the other cards loading normally when one is deleted mid-load', async () => {

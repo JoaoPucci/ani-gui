@@ -44,6 +44,8 @@ export interface SettledLook {
 
 /** The text a card carries beside its artwork. */
 export interface CardText {
+	/** The show's name as the card gives it. */
+	show: string;
 	/** The number on the artwork; null for a single-video show. */
 	tag: number | null;
 	/** The episode's own title, when Kitsu has one. */
@@ -76,10 +78,13 @@ export function posterSource(match: KitsuAnimeRef | null | undefined): string | 
 export function cardText(
 	episode: KitsuEpisode | null | undefined,
 	singleVideo: boolean,
-	episodeNumber: number
+	episodeNumber: number,
+	show = ''
 ): CardText {
+	void show;
 	const title = episode?.canonical_title ?? null;
 	return {
+		show: '',
 		tag: singleVideo ? null : episodeNumber,
 		title,
 		episodeLabel: title === null && !singleVideo ? episodeNumber : null

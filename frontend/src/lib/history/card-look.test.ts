@@ -39,7 +39,7 @@ function ep(thumb: string | null, title: string | null = 'An Episode'): KitsuEpi
 	};
 }
 
-const text: CardText = { tag: 4, title: 'An Episode', episodeLabel: null };
+const text: CardText = { show: 'Show 1', tag: 4, title: 'An Episode', episodeLabel: null };
 
 function inputs(over: Partial<LookInputs> = {}): LookInputs {
 	return { match: undefined, episode: undefined, capReached: false, text: null, ...over };
@@ -117,19 +117,35 @@ describe('posterSource', () => {
 });
 
 describe('cardText', () => {
-	it('carries the episode title and the number on the artwork', () => {
-		expect(cardText(ep(null, 'Title'), false, 5)).toEqual({
+	it("carries the show's name, the episode title and the number on the artwork", () => {
+		expect(cardText(ep(null, 'Title'), false, 5, 'Bebop')).toEqual({
+			show: 'Bebop',
 			tag: 5,
 			title: 'Title',
 			episodeLabel: null
 		});
 	});
 	it('falls back to an "Episode N" line when the episode has no title', () => {
-		expect(cardText(ep(null, null), false, 5)).toEqual({ tag: 5, title: null, episodeLabel: 5 });
-		expect(cardText(undefined, false, 5)).toEqual({ tag: 5, title: null, episodeLabel: 5 });
+		expect(cardText(ep(null, null), false, 5, 'Bebop')).toEqual({
+			show: 'Bebop',
+			tag: 5,
+			title: null,
+			episodeLabel: 5
+		});
+		expect(cardText(undefined, false, 5, 'Bebop')).toEqual({
+			show: 'Bebop',
+			tag: 5,
+			title: null,
+			episodeLabel: 5
+		});
 	});
 	it('gives a single-video show no number and no episode line', () => {
-		expect(cardText(null, true, 1)).toEqual({ tag: null, title: null, episodeLabel: null });
+		expect(cardText(null, true, 1, 'Bebop')).toEqual({
+			show: 'Bebop',
+			tag: null,
+			title: null,
+			episodeLabel: null
+		});
 	});
 });
 
@@ -193,7 +209,7 @@ describe('createLookBook', () => {
 			'a|1',
 			inputs({ match: ref('1'), episode: null, text })
 		);
-		const live: CardText = { tag: 4, title: null, episodeLabel: 4 };
+		const live: CardText = { show: 'Show 1', tag: 4, title: null, episodeLabel: 4 };
 		const drawn = createLookBook(proxy, remembered).look(
 			'a',
 			'a|1',
