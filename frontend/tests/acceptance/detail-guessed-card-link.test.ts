@@ -272,6 +272,12 @@ async function linkToTheRightShow() {
 		() => (target.textContent ?? '').includes(m.detail_link_confirm_heading({ title: TITLE })),
 		'the confirmation'
 	);
+	// The card hides another row of the same guess, which moves with it.
+	await until(
+		() => (target.textContent ?? '').includes(m.detail_link_confirm_rows()),
+		'the note that the hidden row moves too'
+	);
+	await until(() => !button(m.detail_link_confirm_button())!.disabled, 'the Link button');
 	button(m.detail_link_confirm_button())!.click();
 	await until(() => linkCalls.length === 1, 'the link');
 }

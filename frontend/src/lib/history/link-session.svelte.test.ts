@@ -299,7 +299,7 @@ describe('LinkSession', () => {
 		expect(f.refreshed).toBe(0);
 	});
 
-	it('leaves the card’s rows to the confirmation when the history cannot be read on opening', async () => {
+	it('takes the card’s row alone when the history cannot be read on opening', async () => {
 		const link = vi.fn(fake().deps.link);
 		const f = fake({ link });
 		const s = new LinkSession(f.deps);
@@ -307,11 +307,66 @@ describe('LinkSession', () => {
 		const history = f.deps.history;
 		f.deps.history = async () => Promise.reject(new Error('down'));
 		await s.start();
-		await new Promise((r) => setTimeout(r, 0));
-		expect(s.group).toBeNull();
+		await vi.waitFor(() => expect(s.group).toEqual([CARD.id]));
 		f.deps.history = history;
 		s.choose(s.candidates![0]);
 		await s.confirm();
 		expect(link).toHaveBeenCalledWith([CARD.id], GUESS);
+	});
+
+	it('keeps the latest opening’s rows, whatever lands last', async () => {
+		const HIDDEN: HistoryEntry = {
+			id: 'gintama-season-4-77',
+			title: 'Gintama Season 4',
+			ep_no: '1'
+		};
+		const f = fake();
+		f.rows = [CARD, HIDDEN];
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		// The first opening's read of the history is slow, and by the time
+		// it lands it no longer holds the hidden row.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const history = f.deps.history;
+		let slowNext = true;
+		f.deps.history = async () => {
+			if (slowNext) {
+				slowNext = false;
+				await held;
+				return [CARD];
+			}
+			return history();
+		};
+		const firstOpen = s.start();
+		s.cancel();
+		await s.start();
+		await vi.waitFor(() => expect(s.group).toEqual([CARD.id, HIDDEN.id]));
+		release();
+		await firstOpen;
+		await new Promise((r) => setTimeout(r, 0));
+		expect(s.group).toEqual([CARD.id, HIDDEN.id]);
+	});
+
+	it('leaves the user where they went while the undo was out', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const unlink = fake().deps.unlink;
+		const f = fake();
+		f.deps.unlink = async (k, rows) => {
+			await held;
+			return unlink(k, rows);
+		};
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
+		await s.confirm();
+		f.notices[0].onAction!();
+		f.path = '/';
+		release();
+		await vi.waitFor(() => expect(f.notices.length).toBe(2));
+		expect(f.pages).toEqual([[RIGHT.id, null]]);
 	});
 });
