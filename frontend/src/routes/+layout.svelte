@@ -5,11 +5,11 @@
   - Persistent narrow left rail with home / search / continue / settings
     / diagnostics. Active item gets a 2px accent rule and bone-100 type;
     everything else is hairlined and quiet.
-  - Sticky glassy topbar across all routes: BackButton on the left
-    (auto-hides when there's no history to go back to), persistent
+  - Sticky glassy topbar across all routes: the breadcrumb on the left
+    (hidden when there's no in-app page to go back to), persistent
     search input on the right. Pressing Enter routes to /search?q=…
     so the field works from any page. Removes per-route topbars whose
-    BackButtons jumped around between pages.
+    back buttons jumped around between pages.
   - Wires the favicon via <svelte:head>.
   - Same chrome (rail + topbar) applies everywhere, including /play, so
     navigation is consistent (the player page used to be full-bleed,
@@ -1137,7 +1137,7 @@
 	     negative margin so the bar reaches the rail's right edge on
 	     the left and the window's right edge on the right —
 	     otherwise it floats with empty bands of background on both
-	     sides. Internal `--space-8` padding keeps the BackButton and
+	     sides. Internal `--space-8` padding keeps the breadcrumb and
 	     search from hugging the new edges. */
 	.topbar {
 		position: sticky;
@@ -1182,7 +1182,7 @@
 
 	/* Persistent search input. Pill-rounded to match /search; capped
 	   so it doesn't dominate on widescreen, and pushed toward the
-	   trailing edge so the BackButton stays anchored at the leading
+	   trailing edge so the breadcrumb stays anchored at the leading
 	   edge regardless of the input's width. */
 	.topbar-search {
 		position: relative; /* dropdown anchors absolute to this */
