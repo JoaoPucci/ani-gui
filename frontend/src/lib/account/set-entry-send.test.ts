@@ -29,7 +29,7 @@ describe('a held write with nothing left', () => {
 		const removeEntry = vi.fn(async () => undefined);
 		await expect(
 			sendRemoval(
-				{ getEntry, removeEntry },
+				{ getEntry, removeEntry, forgetCached: async () => undefined },
 				{ provider: 'mal', bearer: 'old', kitsuId: '12', held: nothingLeft }
 			)
 		).rejects.toBeInstanceOf(SupersededError);
@@ -48,7 +48,7 @@ describe('a held removal a newer write overtakes while its read is out', () => {
 		const removeEntry = vi.fn(async () => undefined);
 		await expect(
 			sendRemoval(
-				{ getEntry, removeEntry },
+				{ getEntry, removeEntry, forgetCached: async () => undefined },
 				{ provider: 'anilist', bearer: 't', kitsuId: '12', held: { left: () => left } }
 			)
 		).rejects.toBeInstanceOf(SupersededError);
@@ -58,43 +58,50 @@ describe('a held removal a newer write overtakes while its read is out', () => {
 });
 
 describe('reconciling an absent tracker entry', () => {
-	it('treats the endpoint unmappable response as neutral for a live-absent row', async () => {
-		const removeEntry = vi.fn(async () => {
-			throw new AccountApiError(404, '');
+	const to = {
+		provider: 'mal' as const,
+		bearer: 't',
+		kitsuId: '12',
+		held: { left: () => ['status', 'progress'] as const }
+	};
+
+	it('clears the stale cached row locally and sends the tracker nothing', async () => {
+		const removeEntry = vi.fn(async () => undefined);
+		const forgetCached = vi.fn(async () => undefined);
+		await expect(
+			sendRemoval({ getEntry: async () => null, removeEntry, forgetCached }, to)
+		).resolves.toBe('neither');
+		expect(removeEntry).not.toHaveBeenCalled();
+		expect(forgetCached).toHaveBeenCalledWith('mal', '12');
+	});
+
+	it('is not failed by a local clear that fails: the tracker is already clean', async () => {
+		const forgetCached = vi.fn(async () => {
+			throw new AccountApiError(500, '');
 		});
 		await expect(
 			sendRemoval(
-				{ getEntry: async () => null, removeEntry },
-				{
-					provider: 'mal',
-					bearer: 't',
-					kitsuId: '12',
-					held: { left: () => ['status', 'progress'] }
-				}
+				{ getEntry: async () => null, removeEntry: async () => undefined, forgetCached },
+				to
 			)
 		).resolves.toBe('neither');
-		expect(removeEntry).toHaveBeenCalledTimes(1);
 	});
-	it.each([null, { status: 'planning' as const, progress: 0 }])(
-		'keeps an upstream 404 failure for row %j',
-		async (row) => {
-			const error = new AccountApiError(404, '{"kind":"upstream","status":404}');
-			await expect(
-				sendRemoval(
-					{
-						getEntry: async () => row,
-						removeEntry: async () => {
-							throw error;
-						}
+
+	it('keeps a present row whose delete fails failed, and clears nothing locally', async () => {
+		const error = new AccountApiError(404, '{"kind":"upstream","status":404}');
+		const forgetCached = vi.fn(async () => undefined);
+		await expect(
+			sendRemoval(
+				{
+					getEntry: async () => ({ status: 'planning' as const, progress: 0 }),
+					removeEntry: async () => {
+						throw error;
 					},
-					{
-						provider: 'mal',
-						bearer: 't',
-						kitsuId: '12',
-						held: { left: () => ['status', 'progress'] }
-					}
-				)
-			).rejects.toBe(error);
-		}
-	);
+					forgetCached
+				},
+				to
+			)
+		).rejects.toBe(error);
+		expect(forgetCached).not.toHaveBeenCalled();
+	});
 });

@@ -79,6 +79,8 @@ let app: ReturnType<typeof mount> | null = null;
 /** What the backend's cached Plan-to-Watch holds right now. */
 let planned: (typeof ALREADY)[] = [];
 let writes = 0;
+/** Each stale cached row cleared locally: provider, show and user. */
+let forgotten: string[] = [];
 
 const as = (user_id: string) => ({
 	access_token: `bearer-${user_id}`,
@@ -145,6 +147,15 @@ function backend() {
 				planned = [...planned.filter((p) => p.malId !== NEW.malId), NEW];
 				return HttpResponse.json(listEntry(NEW));
 			}),
+			// The cached row of a show the tracker no longer has, cleared
+			// locally: the cached list loses it, the tracker hears nothing.
+			http.delete(`${API_BASE}/api/account/entry/anilist/cached`, ({ request }) => {
+				const url = new URL(request.url);
+				const id = Number(url.searchParams.get('kitsu_id'));
+				forgotten.push(`anilist:${id}:${url.searchParams.get('user_id')}`);
+				planned = planned.filter((p) => p.malId !== id);
+				return new HttpResponse(null, { status: 204 });
+			}),
 			http.delete(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
 				writes += 1;
 				if (writes === 1) return refusal();
@@ -163,6 +174,7 @@ beforeEach(() => {
 	document.body.appendChild(target);
 	scaled.length = 0;
 	writes = 0;
+	forgotten = [];
 	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
 });
 
@@ -311,8 +323,12 @@ describe('Watch Later on Home, while a held write waits', () => {
 				),
 				http.delete(`${API_BASE}/api/account/entry/mal`, () => {
 					malHasRow = false;
-					return new HttpResponse(null, { status: malMaps ? 204 : 404 });
-				})
+					return new HttpResponse(null, { status: 204 });
+				}),
+				http.delete(
+					`${API_BASE}/api/account/entry/mal/cached`,
+					() => new HttpResponse(null, { status: 204 })
+				)
 			);
 			const pending = syncRemoveEntry(String(NEW.malId));
 			app = mount(HomePage, { target });
@@ -412,17 +428,47 @@ describe('Watch Later on Home, while a held write waits', () => {
 		expect(scaled).toEqual([]);
 	});
 
-	it('reconciles a stale cached row even when the tracker already removed the show', async () => {
+	it('clears a stale cached row locally when the tracker already removed the show', async () => {
 		planned = [ALREADY, NEW];
 		backend();
 		server.use(http.get(`${API_BASE}/api/account/entry/anilist`, () => HttpResponse.json(null)));
 		app = mount(HomePage, { target });
 		await settle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
-		await syncRemoveEntry(String(NEW.malId));
+		expect(await syncRemoveEntry(String(NEW.malId))).toEqual({ removed: 0, failed: 0 });
 		await settle();
-		expect(writes).toBe(2);
+		// No delete went to the tracker for a row it does not have.
+		expect(writes).toBe(0);
+		expect(forgotten).toEqual([`anilist:${NEW.malId}:user-1`]);
 		expect(railTitles()).toEqual([ALREADY.title]);
+	});
+
+	it('removes cleanly while a tracker that never had the show is busy, without asking it to delete', async () => {
+		planned = [ALREADY, NEW];
+		backend();
+		accountStore.setConnected('mal', as('mal-user'));
+		let malHasRow = true;
+		server.use(
+			http.get(`${API_BASE}/api/account/entry/anilist`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
+				HttpResponse.json(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
+			),
+			http.get(`${API_BASE}/api/account/entry/mal`, () =>
+				HttpResponse.json(malHasRow ? { status: 'planning', progress: 0 } : null)
+			),
+			http.delete(`${API_BASE}/api/account/entry/mal`, () => {
+				malHasRow = false;
+				return new HttpResponse(null, { status: 204 });
+			}),
+			// AniList refuses anything it is asked to delete.
+			http.delete(`${API_BASE}/api/account/entry/anilist`, () => {
+				writes += 1;
+				return refusal();
+			})
+		);
+		expect(await syncRemoveEntry(String(NEW.malId))).toEqual({ removed: 1, failed: 0 });
+		expect(writes).toBe(0);
+		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
 	});
 
 	it('reads the new list, without motion, when Home is opened after the write landed', async () => {
