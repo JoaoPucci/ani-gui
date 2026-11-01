@@ -553,18 +553,22 @@ test("every IPC channel refuses a sender that is not the app's document", async 
       const settle = <T,>(p: Promise<T>) =>
         Promise.race([p, new Promise((r) => setTimeout(() => r("no answer"), 2_000))]);
 
+      // ipcMain keeps each invoke handler as registered, keyed by
+      // channel; Electron calls it with the event and turns a return
+      // into the reply and a throw into the rejection.
       const invoke = (ipcMain as unknown as {
-        _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => Promise<void>>;
+        _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => unknown>;
       })._invokeHandlers;
       const handled: Record<string, string> = {};
       for (const [channel, fn] of invoke) {
         const event = forged();
         const answer = await settle(
-          new Promise<string>((resolve) => {
-            event._reply = (v: unknown) => resolve(`replied ${JSON.stringify(v)}`);
-            event._throw = (err: unknown) => resolve(`threw ${String((err as Error)?.message ?? err)}`);
-            void fn(event);
-          }),
+          Promise.resolve()
+            .then(() => fn(event))
+            .then(
+              (v) => `replied ${JSON.stringify(v)}`,
+              (err) => `threw ${String((err as Error)?.message ?? err)}`,
+            ),
         );
         handled[channel] = String(answer);
       }
