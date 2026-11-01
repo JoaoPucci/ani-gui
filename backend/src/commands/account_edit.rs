@@ -70,13 +70,18 @@ async fn get_entry_via(
 /// The live read of `native`'s entry, with the show's locks held by the
 /// caller.
 pub(crate) async fn read_entry_at(
-    _state: &Arc<AppState>,
-    _kind: ProviderKind,
+    state: &Arc<AppState>,
+    kind: ProviderKind,
     provider: &dyn UserListProvider,
     tokens: &Tokens,
     native: ProviderMediaId,
 ) -> Result<Option<CurrentEntry>> {
-    provider.current_entry(tokens, native).await
+    // Noted, so a removal's local clear acts only on what this read found.
+    let revisions = &state.account_write_locks.cache_revisions;
+    let read = revisions.start_read(kind);
+    let entry = provider.current_entry(tokens, native).await?;
+    revisions.note_read(kind, native.0, read, entry.is_none());
+    Ok(entry)
 }
 
 /// Write an *explicit* user edit (status and/or progress) to a tracker
@@ -197,9 +202,11 @@ async fn remove_entry_via(
 
 /// Clear `kitsu_id`'s cached row from `user_id`'s list, asking the
 /// tracker nothing: the removal's live read found the show absent there,
-/// so only the local copy is stale. Marked written, so a refresh already
-/// out cannot put the row back; nothing for an account disconnected
-/// since, or for a show no tracker id maps.
+/// so only the local copy is stale. Only on that read's evidence, and only
+/// while no write or cached refresh has answered for the row since; the
+/// cleared row is marked as of the read, so a refresh that started before
+/// it cannot put the row back. Nothing for an account disconnected since,
+/// or for a show no tracker id maps.
 pub async fn forget_cached_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -216,7 +223,9 @@ pub async fn forget_cached_entry(
 }
 
 /// Clear `media`'s cached row from `user_id`'s list, for a request that
-/// arrived in connection epoch `began`.
+/// arrived in connection epoch `began` — only on the evidence of the last
+/// live read of the row finding it absent, and only while nothing has
+/// answered for the row since (`account_revisions`).
 pub(crate) fn clear_cached_row(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -224,8 +233,13 @@ pub(crate) fn clear_cached_row(
     media: u32,
     user_id: &str,
 ) {
-    super::account_owner::cache_row(state, kind, began, media, Some(user_id), |owner| {
-        cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, media)
+    let locks = &state.account_write_locks;
+    let _ = locks.epochs.write_if_current(kind, began, || {
+        locks
+            .cache_revisions
+            .clear_if_still_absent(kind, media, || {
+                cache_upsert::delete_entry_row(&state.cache_pool, kind, user_id, media)
+            })
     });
 }
 
