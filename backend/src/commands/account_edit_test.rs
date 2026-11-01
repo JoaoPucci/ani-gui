@@ -714,27 +714,22 @@ async fn stale_list_cannot_replace_an_edit(removal: bool) {
     let kitsu = mappable_kitsu().await;
     let mal = wiremock::MockServer::start().await;
     let list_server = wiremock::MockServer::start().await;
-    // The retry must see the tracker after the mutation, including a
-    // separate show planned on the website during this refresh.
+    // The list read goes out before the edit and answers after it: the
+    // edited show as it stood before, beside a show planned on the
+    // website meanwhile. The read is sent once, however the edit lands.
     let unrelated = r#"{"node":{"id":22,"title":"Website addition"},"list_status":{"status":"plan_to_watch","num_episodes_watched":0,"score":0,"updated_at":"2024-01-02T00:00:00+00:00"}}"#;
-    let updated = r#"{"node":{"id":21,"title":"One Piece"},"list_status":{"status":"watching","num_episodes_watched":3,"score":0,"updated_at":"2024-01-02T00:00:00+00:00"}}"#;
-    let retry_body = if removal {
-        format!(r#"{{"data":[{unrelated}],"paging":{{}}}}"#)
-    } else {
-        format!(r#"{{"data":[{updated},{unrelated}],"paging":{{}}}}"#)
-    };
+    let stale = r#"{"node":{"id":21,"title":"One Piece"},"list_status":{"status":"plan_to_watch","num_episodes_watched":0,"score":0,"updated_at":"2024-01-01T00:00:00+00:00"}}"#;
+    let (hold, gate) = crate::held::gate();
     wiremock::Mock::given(method("GET"))
         .and(path("/users/@me/animelist"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(retry_body))
-        .with_priority(2)
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(format!(r#"{{"data":[{stale},{unrelated}],"paging":{{}}}}"#)),
+        ))
         .expect(1)
         .mount(&list_server)
         .await;
-    let (hold, gate) = crate::held::gate();
-    wiremock::Mock::given(method("GET")).and(path("/users/@me/animelist"))
-        .respond_with(crate::held::Held::new(hold, wiremock::ResponseTemplate::new(200)
-            .set_body_string(r#"{"data":[{"node":{"id":21,"title":"One Piece"},"list_status":{"status":"plan_to_watch","num_episodes_watched":0,"score":0,"updated_at":"2024-01-01T00:00:00+00:00"}}],"paging":{}}"#)))
-        .with_priority(1).up_to_n_times(1).expect(1).mount(&list_server).await;
     mount_mal_patch(&mal, None).await;
     wiremock::Mock::given(method("DELETE"))
         .and(path("/anime/21/my_list_status"))
@@ -780,7 +775,7 @@ async fn stale_list_cannot_replace_an_edit(removal: bool) {
         gate.release();
     };
     let (read, ()) = tokio::join!(read, edit);
-    let read = read.expect("the refresh retries after the concurrent edit");
+    let read = read.expect("the refresh caches what the edit did not touch");
     assert!(
         read.iter().any(|row| row.media_id.0 == 22),
         "the refresh lost the unrelated website addition"
@@ -809,39 +804,6 @@ async fn a_list_refresh_started_before_removal_cannot_resurrect_the_removed_show
 #[tokio::test]
 async fn a_list_refresh_started_before_save_cannot_undo_the_saved_status() {
     stale_list_cannot_replace_an_edit(false).await;
-}
-
-#[tokio::test]
-async fn a_refresh_that_keeps_conflicting_fails_instead_of_reporting_a_fresh_snapshot() {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    let state = state_with_kitsu("http://unused-kitsu");
-    let kind = ProviderKind::MyAnimeList;
-    let changing = state.clone();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/users/@me/animelist"))
-        .respond_with(move |_: &wiremock::Request| {
-            // A local mutation lands during each full-list fetch.
-            changing
-                .account_write_locks
-                .cache_revisions
-                .revise(kind, || ());
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":[],"paging":{}}"#)
-        })
-        .expect(2)
-        .mount(&server)
-        .await;
-    let provider = mal_provider(&server.uri());
-    let result = crate::commands::account::list_all_and_cache_via(
-        &state,
-        kind,
-        &provider,
-        &test_tokens(),
-        "4242",
-    )
-    .await;
-    assert!(matches!(result, Err(crate::error::AniError::Cache)),
-        "an uncommitted refresh must fail so Home does not advance its freshness timestamp: {result:?}");
 }
 
 // Staleness cases that pair a full-list refresh with a write: their own

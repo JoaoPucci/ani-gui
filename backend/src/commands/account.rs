@@ -1087,3 +1087,7 @@ mod reconcile_for_tests;
 #[cfg(test)]
 #[path = "account_resolve_test.rs"]
 mod resolve_tests;
+
+#[cfg(test)]
+#[path = "account_interleave_prop_test.rs"]
+mod interleave_prop_tests;
