@@ -417,3 +417,135 @@ proptest::proptest! {
         proptest::prop_assert!(!Platform::Linux.carries(&name));
     }
 }
+
+/// Ten pre-releases: a full page that, with pre-releases excluded,
+/// holds nothing to offer.
+fn ten_prereleases() -> Vec<serde_json::Value> {
+    (11..21)
+        .rev()
+        .map(|minor| {
+            let version = format!("0.{minor}.0");
+            release_json(&version, true, &every_package(&version))
+        })
+        .collect()
+}
+
+/// Mounts `/releases/latest` answering with `release`, expected to be
+/// asked `times` times.
+async fn latest_serving(server: &MockServer, release: serde_json::Value, times: u64) {
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{REPO_PATH}/releases/latest")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(release))
+        .expect(times)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_full_release_older_than_the_page_is_still_found() {
+    let server = serving(&ten_prereleases()).await;
+    latest_serving(
+        &server,
+        release_json("0.10.0", false, &every_package("0.10.0")),
+        2,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    for platform in [Platform::Windows, Platform::Linux] {
+        let release =
+            fetch_latest_release(&client, false, Some(platform), Some(&server.uri())).await;
+        assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.10.0"));
+    }
+}
+
+#[tokio::test]
+async fn an_older_full_release_without_this_platforms_package_is_not_offered() {
+    let server = serving(&ten_prereleases()).await;
+    latest_serving(
+        &server,
+        release_json("0.10.0", false, &linux_packages("0.10.0")),
+        1,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let release =
+        fetch_latest_release(&client, false, Some(Platform::Windows), Some(&server.uri())).await;
+    assert!(release.is_none());
+}
+
+#[tokio::test]
+async fn an_older_draft_or_pre_release_from_the_fallback_is_not_offered() {
+    let mut draft = release_json("0.10.0", false, &every_package("0.10.0"));
+    draft["draft"] = serde_json::Value::Bool(true);
+    for stale in [
+        draft,
+        release_json("0.10.0", true, &every_package("0.10.0")),
+    ] {
+        let server = serving(&ten_prereleases()).await;
+        latest_serving(&server, stale, 1).await;
+        let client = reqwest::Client::new();
+        let release =
+            fetch_latest_release(&client, false, Some(Platform::Linux), Some(&server.uri())).await;
+        assert!(release.is_none());
+    }
+}
+
+#[tokio::test]
+async fn an_offer_on_the_page_asks_for_nothing_more() {
+    let server = serving(&[release_json("0.21.0", false, &every_package("0.21.0"))]).await;
+    latest_serving(
+        &server,
+        release_json("0.10.0", false, &every_package("0.10.0")),
+        0,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    for include in [true, false] {
+        let release =
+            fetch_latest_release(&client, include, Some(Platform::Linux), Some(&server.uri()))
+                .await;
+        assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.21.0"));
+    }
+}
+
+#[tokio::test]
+async fn a_page_that_fails_to_load_asks_for_nothing_more() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{REPO_PATH}/releases")))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    latest_serving(
+        &server,
+        release_json("0.10.0", false, &every_package("0.10.0")),
+        0,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let release =
+        fetch_latest_release(&client, false, Some(Platform::Linux), Some(&server.uri())).await;
+    assert!(release.is_none());
+}
+
+#[tokio::test]
+async fn an_older_full_release_is_found_when_no_pre_release_on_the_page_installs_here() {
+    let page: Vec<_> = (11..21)
+        .rev()
+        .map(|minor| {
+            let version = format!("0.{minor}.0");
+            release_json(&version, true, &linux_packages(&version))
+        })
+        .collect();
+    let server = serving(&page).await;
+    latest_serving(
+        &server,
+        release_json("0.10.0", false, &every_package("0.10.0")),
+        1,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let release =
+        fetch_latest_release(&client, true, Some(Platform::Windows), Some(&server.uri())).await;
+    assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.10.0"));
+}
