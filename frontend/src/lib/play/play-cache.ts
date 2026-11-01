@@ -38,8 +38,10 @@ export function makeKey(
 	episode: number,
 	mode: string,
 	quality: string,
-	version?: VersionKind
+	version?: VersionKind,
+	guessRow?: string
 ): CacheKey {
+	void guessRow;
 	return `${showId}|${episode}|${mode}|${quality}|${version ?? ''}` as CacheKey;
 }
 

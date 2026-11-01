@@ -54,6 +54,18 @@ describe('makeKey', () => {
 		);
 	});
 
+	it("keeps a guessed card's session apart from every other caller's", () => {
+		// A guessed card's play asks whether it landed on that card's own
+		// listing; a session another caller fired never answered that, and
+		// another card's session answered it for that card.
+		const plain = makeKey('show-1', 1, 'sub', 'best');
+		const guessed = makeKey('show-1', 1, 'sub', 'best', undefined, 'hianime:show-1');
+		expect(guessed).not.toBe(plain);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, 'hianime:other-2')).not.toBe(guessed);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, 'hianime:show-1')).toBe(guessed);
+		expect(makeKey('show-1', 1, 'sub', 'best', 'standard', 'hianime:show-1')).not.toBe(guessed);
+	});
+
 	it("still lets clearForShow release every version's entries", async () => {
 		const signals: AbortSignal[] = [];
 		const hold = (_emit: unknown, signal: AbortSignal) => {

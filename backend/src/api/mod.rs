@@ -833,6 +833,10 @@ async fn post_play_cache_evict(
 mod kitsu_map_tests;
 
 #[cfg(test)]
+#[path = "mark_watched_guess_test.rs"]
+mod mark_watched_guess_tests;
+
+#[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]
 mod kitsu_id_boundary_test;
 
