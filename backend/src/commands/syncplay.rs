@@ -142,11 +142,15 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
         .chain(player_opts.iter().cloned())
         .collect();
     let flags = tracks.iter().map(|u| format!("{sub_flag}{u}")).collect();
-    player_opts.extend(crate::commands::command_line::flags_within_budget(
-        &args.binary,
-        &fixed,
-        flags,
-    ));
+    let mut kept = crate::commands::command_line::flags_within_budget(&args.binary, &fixed, flags);
+    // Syncplay starts the player with them, beside the referer flag: a
+    // player that is a batch file runs them through `cmd.exe`, whose
+    // line is far shorter.
+    let player = args.player_binary.trim();
+    if !player.is_empty() {
+        kept = crate::commands::command_line::flags_within_budget(player, &player_opts, kept);
+    }
+    player_opts.extend(kept);
     if !player_opts.is_empty() {
         argv.push("--".to_string());
         argv.extend(player_opts);

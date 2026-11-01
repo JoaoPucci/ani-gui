@@ -8,10 +8,11 @@
 //! user most likely wants them until the next one would not fit, and
 //! the rest are left behind. The budget is the same on every
 //! platform, so a hand-off carries the same tracks whichever one it
-//! runs on. Through Syncplay the flags are Syncplay's to forward; it
-//! starts the player with them and a few flags of its own, which the
-//! worst-case count — real track URLs need no escaping — leaves room
-//! for.
+//! runs on. Through Syncplay the flags are fitted to Syncplay's line
+//! and to the player's it starts with them, whichever is shorter — a
+//! batch-file player's, through `cmd.exe`; the few flags of its own
+//! Syncplay adds there the worst-case count leaves room for, real
+//! track URLs needing no escaping.
 
 /// The longest command line `CreateProcessW` accepts, in UTF-16
 /// units, less the terminating null.
@@ -22,9 +23,13 @@ pub const COMMAND_LINE_LIMIT: usize = 32_766;
 pub const BATCH_COMMAND_LINE_LIMIT: usize = 8_191;
 
 /// Whether `program` is a batch file, which Rust's std runs through
-/// `cmd.exe` and quotes by `cmd.exe`'s rules.
+/// `cmd.exe` and quotes by `cmd.exe`'s rules: by its extension once
+/// Windows resolves the path, which strips trailing dots and spaces.
 fn is_batch(program: &str) -> bool {
-    let lower = program.trim().to_ascii_lowercase();
+    let lower = program
+        .trim()
+        .trim_end_matches(['.', ' '])
+        .to_ascii_lowercase();
     lower.ends_with(".bat") || lower.ends_with(".cmd")
 }
 
@@ -59,10 +64,11 @@ pub fn worst_case_len(program: &str, arg: &str) -> usize {
     per_byte * arg.len() + 3
 }
 
-/// The room the program itself takes on its line.
+/// The room the program itself takes on its line. A batch file's path
+/// is quoted there, not escaped.
 fn program_len(program: &str) -> usize {
     if is_batch(program) {
-        BATCH_PREFIX + 8 * program.len().max(BATCH_PATH_FLOOR) + 3
+        BATCH_PREFIX + program.len().max(BATCH_PATH_FLOOR) + 3
     } else {
         worst_case_len(program, program)
     }
