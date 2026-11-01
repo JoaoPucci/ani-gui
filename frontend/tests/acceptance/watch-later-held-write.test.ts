@@ -263,6 +263,43 @@ describe('Watch Later on Home, while a held write waits', () => {
 		}
 	);
 
+	it('still checks freshness when a settled write rereads the row before Home first loaded', async () => {
+		planned = [ALREADY];
+		backend();
+		// The snapshot was never pulled from the tracker: it is past due.
+		invalidateWatchLater('anilist');
+		let pulls = 0;
+		// Home's opening loads wait on the bridge until the write settled.
+		let holding = true;
+		const held: (() => void)[] = [];
+		server.use(
+			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, async ({ request }) => {
+				if (holding) await new Promise<void>((resolve) => held.push(resolve));
+				const { mal_ids } = (await request.json()) as { mal_ids: number[] };
+				return HttpResponse.json(
+					[ALREADY, NEW]
+						.filter((p) => mal_ids.includes(p.malId))
+						.map((p) => kitsuRef(String(p.malId), p.title, 12) as KitsuRefFixture)
+				);
+			}),
+			http.post(`${API_BASE}/api/account/list/anilist`, () => {
+				pulls += 1;
+				return HttpResponse.json(planned.map(listEntry));
+			})
+		);
+		app = mount(HomePage, { target });
+		await settle();
+		expect(held.length).toBeGreaterThan(0);
+		// A held write settles; the row reads its list again, and that read
+		// lands before the opening load does.
+		holding = false;
+		await save();
+		await settle();
+		for (const release of held) release();
+		await settle();
+		expect(pulls).toBe(1);
+	});
+
 	it('leaves the list due for a re-read when a write settles while a refresh is out', async () => {
 		planned = [ALREADY];
 		backend();
