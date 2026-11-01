@@ -1,5 +1,19 @@
 /**
  * Which changes to the video's captions are the viewer's own picks.
+ *
+ * The captions change three ways: the app sets them — the session's
+ * start ({@link import('./sidecar-tracks')}) and a pick in the app's
+ * own captions menu ({@link import('./caption-pick')}); the browser
+ * sets them by itself while the tracks are being attached; and the
+ * viewer sets them through the browser's own captions menu, which
+ * shows when the app's custom controls are turned off. Only the last
+ * is a pick the app has not seen, and the show's memory
+ * ({@link import('./caption-choice')}) should take it.
+ *
+ * The app notes what it set, per video ({@link expectCaptions}); a
+ * change the video's TextTrackList reports is the viewer's when the
+ * app had set the captions and they now differ. Before the start is
+ * set, and while a session's tracks are removed, nothing is.
  */
 
 /** Which subtitle track shows: its index in the TextTrackList, or off. */
@@ -19,26 +33,33 @@ export interface WatchableTrackList {
 
 /** The subtitle or captions track showing, or off. */
 export function showingCaption(list: WatchableTrackList): CaptionState {
-	void list; // not read yet
+	for (let i = 0; i < list.length; i++) {
+		const t = list[i];
+		if ((t.kind === 'subtitles' || t.kind === 'captions') && t.mode === 'showing') return i;
+	}
 	return 'off';
 }
 
-/** The viewer's pick a change shows, or `null`. */
+/** The viewer's pick a change shows, or `null`: none before the app
+ *  has set the captions (`expected` null), and none where they are as
+ *  the app set them. */
 export function viewerPick(expected: CaptionState | null, now: CaptionState): CaptionState | null {
-	void expected;
-	void now;
-	return null;
+	return expected === null || now === expected ? null : now;
 }
 
-/** Note what the app set the video's captions to. */
+const expected = new WeakMap<object, CaptionState | null>();
+
+/** Note what the app set the video's captions to — or `null` while it
+ *  is not in charge of them (tracks being attached or removed). */
 export function expectCaptions(video: object, state: CaptionState | null): void {
-	void video;
-	void state;
+	expected.set(video, state);
 }
 
-/** The viewer's pick the video's captions now show, if they show one. */
+/** The viewer's pick the video's captions now show, if they show one;
+ *  it becomes what the app expects from then on. */
 export function noteCaptionChange(video: object, list: WatchableTrackList): CaptionState | null {
-	void video;
-	void list;
-	return null;
+	const now = showingCaption(list);
+	const pick = viewerPick(expected.get(video) ?? null, now);
+	if (pick !== null) expected.set(video, now);
+	return pick;
 }

@@ -76,6 +76,7 @@
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
+	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
@@ -505,6 +506,16 @@
 		ccMenuOpen = !ccMenuOpen;
 	}
 
+	/** A captions pick the browser's own menu made — with the custom
+	 *  controls off — remembered for the show as the app's own menu's
+	 *  are ($lib/play/caption-watch). */
+	function rememberViewerPick(video: HTMLVideoElement) {
+		const pick = noteCaptionChange(video, video.textTracks);
+		if (pick === null) return;
+		const choice = captionChoiceOf(video.textTracks, pick);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+	}
+
 	/** The UI locale, which the subtitle track a session starts on
 	 *  follows; empty when Paraglide has none resolved. */
 	function uiLocale(): string {
@@ -522,6 +533,7 @@
 		ccMenuOpen = false;
 		if (!videoEl) return;
 		applyCaptionPick(videoEl.textTracks, target);
+		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
 		// Under the show's id, unless the session was opened from a
 		// guessed match, which records nothing under the guess.
 		const choice = captionChoiceOf(videoEl.textTracks, target);
@@ -1655,6 +1667,7 @@
 		// thrash availableTracks' derivation chain.
 		const onTextTracksMutate = () => {
 			textTracksTick++;
+			rememberViewerPick(v);
 		};
 		v.textTracks.addEventListener('addtrack', onTextTracksMutate);
 		v.textTracks.addEventListener('removetrack', onTextTracksMutate);

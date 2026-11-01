@@ -16,6 +16,7 @@
 
 import { applyCaptionPick } from './caption-pick';
 import { startingTrack } from './caption-start';
+import { expectCaptions, showingCaption } from './caption-watch';
 
 /** One listed track, as the proxy answers it. */
 export interface SidecarTrack {
@@ -98,6 +99,8 @@ export function attachSidecarTracks(
 	});
 	applyStart(video, start === null ? null : elements[start]);
 	return () => {
+		// The tracks going are no pick of the viewer's.
+		expectCaptions(video, null);
 		for (const el of elements) el.remove();
 	};
 }
@@ -112,6 +115,9 @@ export function attachSidecarTracks(
 function applyStart(video: HTMLVideoElement, start: HTMLTrackElement | null): void {
 	applyCaptionPick(video.textTracks, 'off');
 	if (start) start.track.mode = 'showing';
+	// What the app set, so the browser's own captions menu can be told
+	// from it ($lib/play/caption-watch).
+	expectCaptions(video, showingCaption(video.textTracks));
 }
 
 /**

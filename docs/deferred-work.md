@@ -418,6 +418,19 @@ starting it, and delete it when you find it done.
   settings; and external players and Syncplay receive the tracks as
   files and style them themselves, so this is the embedded player
   only.
+- **One set of player controls.** The player has two: the app's own,
+  and Chromium's native ones, which Settings swaps in when "Custom
+  player controls" (`use_custom_player_controls`, on by default) is
+  turned off. Every player feature has to work through
+  both, so it is built twice. The per-show subtitle memory is the
+  latest case: a pick in the app's captions menu is recorded as it
+  is made, while a pick in the browser's menu has to be inferred from
+  the video's text-track changes.
+
+  Investigate choosing one. Before deciding, measure what the native
+  path still offers that the custom one does not — the setting's own
+  hint names picture-in-picture and the native captions menu — and
+  decide from that.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
