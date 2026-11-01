@@ -56,6 +56,8 @@ const {
   openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
+const { appDocumentFrom } = require("./lib/app-document.cjs");
+const { guardWindow } = require("./lib/window-guard.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -127,6 +129,8 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+// The one document the window may hold (lib/app-document.cjs).
+const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -399,47 +403,22 @@ async function createWindow(backend) {
       // baseLocale strategies instead of seeding garbage.
       // The backend's lanes go the same way (lib/window-args.cjs).
       additionalArguments: windowArguments(backend, readConfigLocale()),
+      // Electron's default, stated: a file or link dropped on the window
+      // must not become a navigation. The navigation guard below refuses
+      // one anyway; this keeps the drop from being attempted.
+      navigateOnDragDrop: false,
     },
   });
 
-  // New-window requests come from three places:
-  //   1. `window.open(...)` or `<a target="_blank">` to an external
-  //      site (e.g. settings help links, ffmpeg.org from the error
-  //      overlay) — route through shell.openExternal so the user's
-  //      default browser opens it.
-  //   2. Middle-click / ctrl-click / shift-click on any in-app
-  //      `<a href="/route">` — Chromium would normally open a new
-  //      tab. Electron has no tabs and our renderer is a single-
-  //      window app, so allowing this either leaks the dev URL to
-  //      the system browser (dev) or spawns a preload-less, broken
-  //      BrowserWindow (packaged). Deny.
-  //   3. Anything we don't recognise — deny, never spawn windows
-  //      we didn't ask for.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    let target;
-    try {
-      target = new URL(url);
-    } catch {
-      return { action: "deny" };
-    }
-    if (target.protocol === "http:" || target.protocol === "https:") {
-      const currentUrl = win.webContents.getURL();
-      let currentOrigin = null;
-      try {
-        currentOrigin = new URL(currentUrl).origin;
-      } catch {
-        currentOrigin = null;
-      }
-      // Same-origin http(s) is the dev server hosting our own
-      // routes (http://localhost:5173/...). Treat it as internal —
-      // a middle-click on a SvelteKit `<a href="/route">` link
-      // shouldn't bounce the URL into the user's system browser.
-      if (currentOrigin && target.origin === currentOrigin) {
-        return { action: "deny" };
-      }
-      shell.openExternal(url);
-    }
-    return { action: "deny" };
+  // The window holds the app's own document and nothing else: every
+  // document it loads gets the preload bridge. Navigations, redirects,
+  // subframes, webviews and new windows all pass through one verdict
+  // (lib/window-guard.cjs, lib/app-document.cjs); web links go to the
+  // system browser.
+  guardWindow(win.webContents, {
+    app: APP_DOCUMENT,
+    openExternal: (url) => shell.openExternal(url),
+    logError: console.error,
   });
 
   // Renderer-side diagnostics surface in the main process log so we
