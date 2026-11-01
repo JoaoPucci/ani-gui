@@ -93,6 +93,7 @@
 	import {
 		nextAgeChange,
 		statusLabel,
+		statusPhrases,
 		watchLaterStatus,
 		type StatusCopy
 	} from '$lib/account/watch-later-status';
@@ -691,7 +692,9 @@
 		const deps = buildWatchLaterDeps();
 		const providers = Object.keys(deps.credentials) as Provider[];
 		if (providers.length === 0) return;
+		wlHeld = wlStatusText;
 		refreshingWatchLater = true;
+		wlAnnounce = m.account_watch_later_refreshing();
 		try {
 			await Promise.all(
 				providers.map(async (p) => {
@@ -719,6 +722,8 @@
 			refreshingWatchLater = false;
 			wlNow = Date.now();
 			wlStamped += 1;
+			wlHeld = null;
+			wlAnnounce = wlStatusText ?? '';
 		}
 	}
 
@@ -742,6 +747,14 @@
 		return watchLaterStatus(providers.map(readLastRefreshed), refreshingWatchLater);
 	});
 	const wlStatusText = $derived(statusLabel(wlStatus, wlNow, getLocale(), wlCopy));
+	// The label the line had when a refresh started, held (hidden) for
+	// its width until the refresh settles; see statusPhrases.
+	let wlHeld = $state<string | null>(null);
+	const wlPhrases = $derived(statusPhrases(wlStatus, wlNow, getLocale(), wlCopy, wlHeld));
+	// What a refresh says to assistive technology: written when one
+	// starts and when it settles, and at no other time — the line itself
+	// ticks every minute and would chatter as a live region.
+	let wlAnnounce = $state('');
 	$effect(() => {
 		const s = wlStatus;
 		if (s?.kind !== 'updated') return;
@@ -1347,7 +1360,17 @@
        - watchLater.length === 0 → no provider connected, or every
          connected provider's Plan-to-Watch is empty / un-bridged. -->
 {#snippet watchLaterMeta()}
-	<span>{wlStatusText}</span>
+	<!-- The current phrasing, and through a refresh the one it replaced,
+	     stacked in one cell; only the current one is seen or read. -->
+	<span class="wl-status">
+		{#each wlPhrases as phrase (phrase.text)}
+			<span
+				class="wl-phrase"
+				data-shown={phrase.shown ? '' : undefined}
+				aria-hidden={phrase.shown ? undefined : 'true'}>{phrase.text}</span
+			>
+		{/each}
+	</span>
 {/snippet}
 
 {#snippet watchLaterActions()}
@@ -1391,7 +1414,6 @@
 		surface={rowSurface}
 		eyebrow={m.account_watch_later_title()}
 		caption={m.account_watch_later_failed()}
-		headerMeta={wlStatusText ? watchLaterMeta : undefined}
 		headerActions={watchLaterActions}
 	>
 		<p class="watch-later-empty">
@@ -1399,6 +1421,9 @@
 		</p>
 	</Strip>
 {/if}
+
+<!-- The Watch Later refresh's announcement; see wlAnnounce. -->
+<p class="wl-announce" role="status">{wlAnnounce}</p>
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
@@ -1914,6 +1939,32 @@
 		justify-content: flex-end;
 		padding-inline: var(--space-8);
 		margin-block-end: var(--space-4);
+	}
+
+	/* The Watch Later status: its phrasings stacked in one grid cell, a
+	   hidden one holding the width through a refresh; digits of one
+	   width, so the minute tick does not nudge the line either. */
+	.wl-status {
+		display: inline-grid;
+		font-variant-numeric: tabular-nums;
+	}
+	.wl-phrase {
+		grid-area: 1 / 1;
+		white-space: nowrap;
+	}
+	.wl-phrase:not([data-shown]) {
+		visibility: hidden;
+	}
+	.wl-announce {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	/* Empty-state note shown in the Watch Later rail when a provider is

@@ -10,8 +10,11 @@
 
   `tone="quiet"` is for an action that removes something: it rests in
   the caption's colour so it never outshouts the row, and warms to the
-  destructive accent on hover. `busy` disables the action and turns its
-  icon; the page says what is happening in the row's status line.
+  destructive accent on hover. `busy` makes the action unavailable and
+  turns its icon; the page says what is happening in the row's status
+  line. Unavailable is aria-disabled, not `disabled`: a disabled button
+  drops keyboard focus to the page in Chromium, so a keyboard user who
+  pressed it would start again from the top.
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
@@ -36,8 +39,10 @@
 	class="row-action"
 	class:quiet={tone === 'quiet'}
 	class:busy
-	disabled={busy}
-	{onclick}
+	aria-disabled={busy ? 'true' : undefined}
+	onclick={() => {
+		if (!busy) onclick();
+	}}
 >
 	{#if icon}<Icon name={icon} size={14} />{/if}
 	<span>{label}</span>
@@ -71,7 +76,7 @@
 			border-color var(--dur-fast) var(--ease-out-soft),
 			color var(--dur-fast) var(--ease-out-soft);
 	}
-	.row-action:hover:not(:disabled) {
+	.row-action:hover:not([aria-disabled='true']) {
 		background: var(--bone-100);
 		border-color: var(--bone-100);
 		color: var(--ink-000);
@@ -80,12 +85,12 @@
 		border-color: color-mix(in oklab, var(--bone-100) 22%, transparent);
 		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
 	}
-	.row-action.quiet:hover:not(:disabled) {
+	.row-action.quiet:hover:not([aria-disabled='true']) {
 		background: color-mix(in oklab, var(--accent-oxblood) 18%, transparent);
 		border-color: var(--accent-oxblood);
 		color: var(--bone-100);
 	}
-	.row-action:disabled {
+	.row-action[aria-disabled='true'] {
 		cursor: default;
 		opacity: 0.7;
 	}

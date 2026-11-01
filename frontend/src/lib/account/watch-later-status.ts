@@ -114,10 +114,9 @@ export function statusPhrases(
 	copy: StatusCopy,
 	held: string | null = null
 ): StatusPhrase[] {
-	void status;
-	void now;
-	void locale;
-	void copy;
-	void held;
-	throw new Error('not implemented');
+	const current = statusLabel(status, now, locale, copy);
+	if (current === null) return [];
+	const phrases = [{ text: current, shown: true }];
+	if (held !== null && held !== current) phrases.push({ text: held, shown: false });
+	return phrases;
 }
