@@ -96,6 +96,10 @@ async function render(report: Report) {
 }
 
 describe('diagnostics — the retired-provider notice', () => {
+	// The English heading, to tell a page stuck in English from one
+	// that rendered the locale asked for.
+	const enHeading = m.diagnostics_section_retired_sweep();
+
 	for (const locale of locales) {
 		it(`names what a launch removed and rewrote, in plain words (${locale})`, async () => {
 			setLocale(locale, { reload: false });
@@ -107,6 +111,7 @@ describe('diagnostics — the retired-provider notice', () => {
 			});
 
 			expect(text).toContain(m.diagnostics_section_retired_sweep());
+			if (locale !== 'en') expect(text).not.toContain(enHeading);
 			expect(text).toContain(m.diagnostics_retired_sweep_superseded());
 			expect(text).toContain('Naruto Shippuden');
 			expect(text).toContain(m.diagnostics_retired_sweep_renumbered());
@@ -116,7 +121,7 @@ describe('diagnostics — the retired-provider notice', () => {
 		});
 	}
 
-	it('renders each locale in its own words', async () => {
+	it('the catalogue has a heading of its own per locale', () => {
 		const headings = new Set<string>();
 		for (const locale of locales) {
 			setLocale(locale, { reload: false });
