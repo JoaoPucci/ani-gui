@@ -29,8 +29,9 @@ export const MAX_SAVED_HITS = 400;
 export interface SearchCheckpoint {
 	/** The audio the availability filter judged the results for. */
 	mode: 'sub' | 'dub';
-	/** When the search's first page was fetched: the age of its oldest
-	 *  availability verdict. Absent from a checkpoint that cannot tell. */
+	/** When the search's first page was fetched, so no result shown is
+	 *  older to this page than that. Absent from a checkpoint that cannot
+	 *  tell, which is never reused. */
 	fetchedAt?: number;
 	/** The results shown, in order. */
 	hits: KitsuAnimeRef[];
@@ -64,6 +65,8 @@ export interface SearchSnapshot {
 	q: string;
 	order: SearchOrder;
 	subtypes: string[];
+	/** When the reader left the page. Not how fresh the results are:
+	 *  that is `results.fetchedAt`, which `canReuse` reads. */
 	capturedAt: number;
 	/** Pages the search had loaded. */
 	pages: number;

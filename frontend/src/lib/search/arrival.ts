@@ -51,7 +51,8 @@ export function restoredView(saved: SearchSnapshot): SearchView {
  * snapshot SvelteKit restored for the entry (if any), the navigation's
  * type, and the query the address names. A back or forward press, or
  * a reload, onto a saved search the address names restores it; a
- * press that cannot restore follows the address. Any other navigation
+ * press that cannot restore, or a reload with a saved search the
+ * address does not name, follows the address. Any other navigation
  * was already followed as the address changed.
  */
 export function arrive(saved: SearchSnapshot | null, type: string, q: string): Arrival {
