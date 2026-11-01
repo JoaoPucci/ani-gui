@@ -51,7 +51,7 @@ pub(super) struct Row {
     pub(super) offset: u32,
     pub(super) display: Option<(u32, String)>,
     /// The (slot, tag) the display stamp named its row by before a
-    /// repair put it right ([`super::retag_display`]); it describes
+    /// repair put it right (`numbering_offset_repair.rs`); it describes
     /// the stamp's row only while the stamp names the same slot.
     pub(super) former: Option<(u32, String)>,
 }
@@ -87,6 +87,18 @@ pub(super) fn remove_rows(state: &AppState, forget: impl Fn(&Row) -> bool) -> st
 /// Read the store, apply `change`, and write it back atomically, under
 /// the process mutex and the cross-process file lock.
 pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
+    rewrite_if(state, |rows| {
+        change(rows);
+        true
+    })
+}
+
+/// [`rewrite`], writing the store back only when `change` says it
+/// changed a row.
+pub(super) fn rewrite_if(
+    state: &AppState,
+    change: impl FnOnce(&mut Vec<Row>) -> bool,
+) -> std::io::Result<()> {
     let path = store_path(&state.history_path);
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
@@ -126,7 +138,9 @@ pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> s
             Err(e) => return Err(e),
         };
         let mut rows = parse(&body);
-        change(&mut rows);
+        if !change(&mut rows) {
+            return Ok(());
+        }
         // Atomic like the history writer: a concurrent reader sees
         // the full pre- or post-state, never a half-written file.
         let tmp = path.with_extension("new");

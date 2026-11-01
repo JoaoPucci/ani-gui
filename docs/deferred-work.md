@@ -257,7 +257,8 @@ starting it, and delete it when you find it done.
 
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
-  slot (`numbering_offset_drift.rs`) can run beside a build from before
+  slot (the rule in `numbering_offset_drift.rs`, the repair in
+  `numbering_offset_repair.rs`) can run beside a build from before
   history rows recorded the app's own number, on the same files. Of
   those builds, 0.15.1 and older can: 0.16.0 takes the single-instance
   lock this one does. Such a build writes a play's stamp, then its

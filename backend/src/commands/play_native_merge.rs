@@ -8,7 +8,6 @@ use crate::scraper::provider::EpisodeRef;
 mod former;
 pub(crate) use former::{
     carries_tag, former_number, former_on_replay, former_tags_of, mark_offset_recaps,
-    names_a_row_now,
 };
 
 /// A fractional tag moved `shift` episodes later: "1.5" by 2 is "3.5".
