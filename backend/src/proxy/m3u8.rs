@@ -476,6 +476,12 @@ mod define_tests;
 #[path = "m3u8_escape_test.rs"]
 mod escape_tests;
 #[cfg(test)]
+#[path = "m3u8_player_test.rs"]
+mod player_tests;
+#[cfg(test)]
+#[path = "m3u8_player_view.rs"]
+mod player_view;
+#[cfg(test)]
 #[path = "m3u8_uri_test.rs"]
 mod uri_tests;
 
