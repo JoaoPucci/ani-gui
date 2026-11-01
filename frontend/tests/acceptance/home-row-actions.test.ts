@@ -339,6 +339,41 @@ for (const style of ['inline', 'band'] as const) {
 			expect(header(WL()).querySelector('.strip-meta')).toBeNull();
 		});
 
+		it('keeps focus on Refresh when a refresh brings a failed row back', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			let failing = true;
+			server.use(
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
+					failing
+						? HttpResponse.json(
+								{ key: 'error.network.upstream', kind: 'upstream' },
+								{ status: 502 }
+							)
+						: HttpResponse.json([planned(params.provider as Provider)])
+				)
+			);
+			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
+			app = mount(HomePage, { target });
+			await until(
+				() => (header(WL())?.textContent ?? '').includes(m.account_watch_later_failed()),
+				'the failed row'
+			);
+			// The failed row and the loaded one are the same row: the
+			// action the keyboard pressed is still there when it loads.
+			const refresh = action(WL(), REFRESH())!;
+			refresh.focus();
+			failing = false;
+			refresh.click();
+			await until(
+				() => (header(WL())?.textContent ?? '').includes(m.account_watch_later_caption()),
+				'the loaded row'
+			);
+			expect(action(WL(), REFRESH())).toBe(refresh);
+			expect(document.activeElement).toBe(refresh);
+		});
+
 		it('is not yet updated when a tracker has never been pulled and the pull fails', async () => {
 			connect('anilist');
 			serve(() => new HttpResponse(null, { status: 500 }));
