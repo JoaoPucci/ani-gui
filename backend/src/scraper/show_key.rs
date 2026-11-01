@@ -37,6 +37,15 @@ pub fn slug_words(slug: &str) -> Option<&str> {
     Some(words)
 }
 
+/// The release year a show key names among its slug's words — the
+/// `2000` of `hianime:jojos-bizarre-adventure-2000-5182` — when one
+/// stands there.
+#[must_use]
+pub fn key_year(id: &str) -> Option<u32> {
+    let _ = id;
+    None
+}
+
 /// A show id that says whose id it is. Every store stamped by a
 /// resolve — history rows, the numbering sidecar, the watched-at
 /// stamps, the reverse mapping, the cache row — keys on this key's
@@ -99,3 +108,7 @@ impl std::fmt::Display for ShowKey {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "show_key_test.rs"]
+mod tests;

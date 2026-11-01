@@ -44,6 +44,7 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
+import { rankedPick, rowYear } from './pick-rank';
 
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
@@ -102,6 +103,8 @@ export interface ResumeTarget {
 	 *  and matches nothing. Null for rows written before history
 	 *  recorded it, which keep the matching fallback. */
 	recordedKitsuId: string | null;
+	/** The release year the row names (`rowYear`), or null. */
+	year: number | null;
 }
 
 /** Matches a `Part N` / `Cour N` / `Season N` token at the *end* of
@@ -224,7 +227,8 @@ export function resolveHistoryEntry(
 		kitsuEpisode,
 		mappingNote,
 		allmangaShowId: entry.id,
-		recordedKitsuId: entry.kitsu_id ?? null
+		recordedKitsuId: entry.kitsu_id ?? null,
+		year: rowYear(searchTitle, entry.key_year)
 	};
 }
 
@@ -633,6 +637,12 @@ export function pickKitsuMatch(
 	if (candidates.length === 0) {
 		return null;
 	}
+
+	// The hit the row's year or own title names comes before Kitsu's
+	// slug: the provider titles Black Clover's TV series "Black Clover",
+	// and Kitsu files that slug under its one-episode special.
+	const named = rankedPick(candidates, preliminary.searchTitle, preliminary.year);
+	if (named) return named;
 
 	const wantSlug = deriveSlug(preliminary.searchTitle);
 	if (wantSlug.length >= 4) {

@@ -233,6 +233,10 @@ export interface HistoryEntry {
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
+	/** The release year the row's show key names among its slug's words
+	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
+	 *  the backend; absent when it names none. */
+	key_year?: number;
 }
 
 /** Input to `cmd_create_session`. */

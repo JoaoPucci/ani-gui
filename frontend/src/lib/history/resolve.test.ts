@@ -173,6 +173,98 @@ describe('resolveHistoryEntry — episode-number quirks', () => {
 	});
 });
 
+describe('pickKitsuMatch — the hit the row names', () => {
+	// Recorded Kitsu answers for the user's lines (search "black clover",
+	// "jojo's bizarre adventure"), the fields the pick reads.
+	const ref = (
+		id: string,
+		canonical_title: string,
+		slug: string,
+		subtype: string,
+		start_date: string,
+		episode_count: number,
+		titles: Record<string, string>
+	): KitsuAnimeRef => ({
+		...stubKitsu(id),
+		canonical_title,
+		slug,
+		subtype,
+		start_date,
+		episode_count,
+		status: 'finished',
+		titles
+	});
+	const blackCloverTv = ref('13209', 'Black Clover', 'black-clover-tv', 'TV', '2017-10-03', 170, {
+		en: 'Black Clover',
+		en_jp: 'Black Clover'
+	});
+	const blackCloverSpecial = ref(
+		'12625',
+		'Black Clover: Jump Festa 2016 Special',
+		'black-clover',
+		'special',
+		'2016-11-27',
+		1,
+		{ en_jp: 'Black Clover: Jump Festa 2016 Special' }
+	);
+	const jojoTv = ref(
+		'7158',
+		'JoJo no Kimyou na Bouken (TV)',
+		'jojo-s-bizarre-adventure-2012',
+		'TV',
+		'2012-10-06',
+		26,
+		{
+			en_us: "JoJo's Bizarre Adventure",
+			en: "JoJo's Bizarre Adventure (2012)",
+			en_jp: 'JoJo no Kimyou na Bouken (TV)'
+		}
+	);
+	const jojo2000 = ref(
+		'7730',
+		'JoJo no Kimyou na Bouken: Adventure',
+		'jojo-s-bizarre-adventure-2000',
+		'OVA',
+		'2000-05-25',
+		7,
+		{
+			en_jp: 'JoJo no Kimyou na Bouken: Adventure',
+			en: "JoJo's Bizarre Adventure (2000)"
+		}
+	);
+
+	it('takes the TV series titled as the row over the special whose slug its title makes', () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:black-clover-949', ep_no: '1', title: 'Black Clover' },
+			null
+		);
+		expect(pickKitsuMatch([blackCloverTv, blackCloverSpecial], r)?.id).toBe('13209');
+	});
+
+	it("takes the entry from the year the row's key names", () => {
+		const r = resolveHistoryEntry(
+			{
+				id: 'hianime:jojos-bizarre-adventure-2000-5182',
+				ep_no: '1',
+				title: "JoJo's Bizarre Adventure",
+				key_year: 2000
+			},
+			null
+		);
+		expect(r.year).toBe(2000);
+		expect(pickKitsuMatch([jojoTv, jojo2000], r)?.id).toBe('7730');
+	});
+
+	it('leaves the pick as it was when the row names neither', () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:x-1', ep_no: '1', title: 'Black Clover Recap' },
+			null
+		);
+		expect(r.year).toBeNull();
+		expect(pickKitsuMatch([blackCloverTv, blackCloverSpecial], r)?.id).toBe('13209');
+	});
+});
+
 describe('pickKitsuMatch', () => {
 	const titledHit = (id: string, canonical_title: string): KitsuAnimeRef => ({
 		...stubKitsu(id),

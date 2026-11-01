@@ -173,10 +173,31 @@ async fn get_proxy_base_url(State(state): State<Arc<AppState>>) -> Result<Json<S
     Ok(Json(proxy_url::proxy_base_url(&state)?))
 }
 
+/// A history row as Continue Watching reads it: the row, and the
+/// release year its show key names among its slug's words
+/// ([`crate::scraper::provider::key_year`]) — the renderer does not
+/// read slugs, and the year is what tells apart listings a provider
+/// titles alike ("JoJo's Bizarre Adventure", three times over).
+#[derive(serde::Serialize)]
+struct HistoryRow {
+    #[serde(flatten)]
+    entry: HistoryEntry,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_year: Option<u32>,
+}
+
 async fn get_history(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<HistoryEntry>>, AniError> {
-    Ok(Json(h_inner::history_list(&state)?))
+) -> Result<Json<Vec<HistoryRow>>, AniError> {
+    Ok(Json(
+        h_inner::history_list(&state)?
+            .into_iter()
+            .map(|entry| HistoryRow {
+                key_year: crate::scraper::provider::key_year(&entry.id),
+                entry,
+            })
+            .collect(),
+    ))
 }
 
 async fn delete_history(State(state): State<Arc<AppState>>) -> Result<StatusCode, AniError> {
@@ -831,6 +852,10 @@ async fn post_play_cache_evict(
 #[cfg(test)]
 #[path = "kitsu_map_test.rs"]
 mod kitsu_map_tests;
+
+#[cfg(test)]
+#[path = "history_key_year_test.rs"]
+mod history_key_year_tests;
 
 #[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]

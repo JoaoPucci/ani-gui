@@ -1191,6 +1191,10 @@ mod detail_ttl_tests;
 mod title_match_tests;
 
 #[cfg(test)]
+#[path = "kitsu_title_match_version_test.rs"]
+mod title_match_version_tests;
+
+#[cfg(test)]
 #[path = "kitsu_show_key_test.rs"]
 mod show_key_tests;
 
