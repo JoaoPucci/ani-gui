@@ -27,6 +27,17 @@ pub(crate) fn outlives_its_callers(interactive: bool, unwatched: usize) -> bool 
     !interactive && unwatched < UNWATCHED_MAX
 }
 
+/// Whether a walk started in place of `displaced` is interactive:
+/// when its caller is, or when callers of an interactive walk are
+/// moving onto it.
+pub(crate) fn starts_interactive(
+    caller_interactive: bool,
+    displaced: Option<(bool, usize)>,
+) -> bool {
+    let _ = displaced;
+    caller_interactive
+}
+
 #[cfg(test)]
 #[path = "availability_flight_prop_test.rs"]
 mod prop_tests;

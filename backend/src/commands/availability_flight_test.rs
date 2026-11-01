@@ -420,3 +420,39 @@ async fn a_lookup_after_a_refresh_wrote_the_row_does_not_take_an_older_walk() {
         "the older walk ended where it was; the fresh one ran whole"
     );
 }
+
+#[tokio::test]
+async fn a_background_lookup_after_a_refresh_starts_the_one_walk_the_page_moves_onto() {
+    // The page's interactive walk set off before a refresh wrote the
+    // row, and a background lookup comes next. The walk it starts in
+    // the page's walk's place is the one the page moves onto: started
+    // interactive, it is not displaced a second time when the page's
+    // caller rejoins.
+    let (hold, gate) = crate::held::gate();
+    let table = carrying(Some(hold));
+    let td = tempfile::tempdir().expect("td");
+    let state = state_with(&td, &table);
+    let flights = state.availability_refreshes.flights.clone();
+
+    let page = spawn_lookup(&state, lookup("700", false));
+    gate.asked().await;
+    let first = flights
+        .walk_id(&row("700"))
+        .expect("the page's walk is out");
+    state.availability_refreshes.bump(&row("700"));
+    let probe = spawn_lookup(&state, lookup("700", true));
+    crate::held::until("both callers wait on one interactive walk", || {
+        flights.interactive(&row("700")) == Some(true) && flights.waiting(&row("700")) == Some(2)
+    })
+    .await;
+    assert_eq!(
+        flights.walk_id(&row("700")),
+        Some(first + 1),
+        "one walk replaced the page's, not two"
+    );
+    flights.assert_consistent();
+    gate.release();
+    page.await.expect("joins").expect("answers");
+    probe.await.expect("joins").expect("answers");
+    assert_eq!(flights.live(), 0);
+}

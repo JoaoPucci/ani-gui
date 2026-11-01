@@ -262,7 +262,7 @@ impl Drop for Waiting {
 
 #[path = "availability_flight_rule.rs"]
 mod rule;
-pub(crate) use rule::{joins, outlives_its_callers, shared_row};
+pub(crate) use rule::{joins, outlives_its_callers, shared_row, starts_interactive};
 
 #[path = "availability_flight_walk.rs"]
 mod walk;

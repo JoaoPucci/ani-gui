@@ -60,4 +60,16 @@ proptest! {
             !interactive && unwatched < UNWATCHED_MAX
         );
     }
+
+    #[test]
+    fn a_walk_is_interactive_when_its_caller_or_the_callers_moving_onto_it_are(
+        caller_interactive: bool,
+        displaced in proptest::option::of((any::<bool>(), 0usize..4)),
+    ) {
+        let movers_interactive = displaced.is_some_and(|(i, waiters)| i && waiters > 0);
+        prop_assert_eq!(
+            starts_interactive(caller_interactive, displaced),
+            caller_interactive || movers_interactive
+        );
+    }
 }
