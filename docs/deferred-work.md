@@ -353,12 +353,10 @@ starting it, and delete it when you find it done.
   On GNOME 50.1 with Electron 33, the accessibility preference was
   `reduce` while the older global animation switch remained enabled;
   Electron still reported `prefers-reduced-motion: no-preference`.
-  The rail animations honor the media query, but cannot honor a
-  preference the runtime does not expose. The maintainer chose to keep
-  that standard handling in #309 and leave runtime compatibility for
-  follow-up. Native Windows/macOS preference detection also has not
-  been manually verified; the automated tests cover the renderer's
-  response to the media query, not those OS integrations.
+  The rail animations honor that media query, so on such a system they
+  still play. What Electron reported matched the older switch, not the
+  new preference. The preference could be read another way and handed
+  to the renderer, or a later Electron may expose it to the query.
 
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
