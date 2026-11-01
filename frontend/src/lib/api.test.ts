@@ -19,6 +19,8 @@ import {
 	historyByKitsu,
 	historyClear,
 	historyDelete,
+	historyLink,
+	historyUnlink,
 	historyList,
 	historyNumber,
 	imageCacheClear,
@@ -1935,5 +1937,34 @@ describe('downloadStream', () => {
 		es.dispatch('done', 'not-json');
 		await expect(promise).rejects.toBeDefined();
 		expect(es.closed).toBe(true);
+	});
+});
+
+describe('historyLink and historyUnlink', () => {
+	it('posts the rows and the id, and reads back what was written', async () => {
+		const outcome = {
+			kitsu_id: '13209',
+			linked: [{ row: 'hianime:black-clover-949', previous: null, ep_no: '1', watched_at: 5 }]
+		};
+		const fetchMock = mockFetchOnce(outcome);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(await historyLink(['hianime:black-clover-949'], '13209')).toEqual(outcome);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual({
+			rows: ['hianime:black-clover-949'],
+			kitsu_id: '13209'
+		});
+	});
+
+	it('posts the rows as the link left them to undo it', async () => {
+		const fetchMock = mockFetchOnce({ restored: ['a'], kept: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const rows = [{ row: 'a', previous: null, ep_no: '1', watched_at: null }];
+		expect(await historyUnlink('13209', rows)).toEqual({ restored: ['a'], kept: [] });
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/unlink`);
+		expect(JSON.parse(String(init?.body))).toEqual({ kitsu_id: '13209', rows });
 	});
 });
