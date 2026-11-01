@@ -151,6 +151,20 @@ pub const UNKNOWN_LANGUAGE: &str = "und";
 /// quietly lose their language. The file is named without its query,
 /// where a CDN puts its signature.
 pub(super) fn warn_unread_languages(subtitles: &[SubtitleTrack]) {
+    if let Some((count, tracks)) = unread_languages(subtitles) {
+        tracing::warn!(
+            count,
+            tracks = %tracks,
+            "megaplay sources: subtitle language not recognised from file name or label"
+        );
+    }
+}
+
+/// What [`warn_unread_languages`] reports for a listing: how many
+/// tracks it could not read and each one's file, without its query,
+/// with its label — or `None` when it read them all.
+#[must_use]
+pub fn unread_languages(subtitles: &[SubtitleTrack]) -> Option<(usize, String)> {
     let unread: Vec<String> = subtitles
         .iter()
         .filter(|t| t.lang == UNKNOWN_LANGUAGE)
@@ -159,13 +173,7 @@ pub(super) fn warn_unread_languages(subtitles: &[SubtitleTrack]) {
             format!("{file} ({:?})", t.label)
         })
         .collect();
-    if !unread.is_empty() {
-        tracing::warn!(
-            count = unread.len(),
-            tracks = %unread.join(", "),
-            "megaplay sources: subtitle language not recognised from file name or label"
-        );
-    }
+    (!unread.is_empty()).then(|| (unread.len(), unread.join(", ")))
 }
 
 /// Whether a listed track is a subtitle track, by the kind the
