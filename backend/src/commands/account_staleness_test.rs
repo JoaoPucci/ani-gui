@@ -253,3 +253,156 @@ async fn progress_goes_out_when_the_owner_lookup_fails_and_is_cached_once_it_ans
 async fn progress_goes_out_when_the_owner_lookup_keeps_failing_and_drops_the_stale_row() {
     owner_lookup_fails(Write::Progress, true).await;
 }
+
+/// What happens between a removal's live read of MAL 21 and its local
+/// clear of the cached row.
+#[derive(Clone, Copy, Debug)]
+enum Between {
+    /// Nothing: the read found the show absent and the clear goes.
+    Nothing,
+    /// The clear comes with no live read behind it.
+    NoRead,
+    /// A watched episode's progress write puts the show on the list.
+    ProgressWrite,
+    /// A full-list refresh, started after the read, is cached.
+    Refresh,
+    /// A later live read finds the show on the list.
+    PresentRead,
+}
+
+/// MAL 21 cached at Plan to Watch for user 4242; the removal's live read
+/// finds it absent (but with `Between::NoRead`), `between` happens, and
+/// the local clear runs. The clear may only remove the row while no
+/// newer answer about it has reached the cache.
+async fn clear_after(between: Between) -> Option<(ListStatus, u32)> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let kind = ProviderKind::MyAnimeList;
+    let planned = crate::account::provider::ListEntry {
+        provider: kind,
+        media_id: ProviderMediaId(21),
+        mal_id: Some(21),
+        status: ListStatus::Planning,
+        progress_episodes: 0,
+        score_0_to_100: None,
+        updated_at_epoch_s: 1,
+        title: "One Piece".into(),
+    };
+    crate::account::cache::write_entries(&state.cache_pool, kind, "4242", &[planned]).unwrap();
+    let listed = Arc::new(AtomicBool::new(false));
+    let on_list = listed.clone();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        .respond_with(move |_: &wiremock::Request| {
+            wiremock::ResponseTemplate::new(200).set_body_string(
+                if on_list.load(Ordering::SeqCst) {
+                    r#"{"id":21,"my_list_status":{"status":"watching","num_episodes_watched":3}}"#
+                } else {
+                    r#"{"id":21}"#
+                },
+            )
+        })
+        .mount(&mal)
+        .await;
+    mount_mal_patch(&mal, None).await;
+    let provider = mal_provider(&mal.uri());
+    let tokens = test_tokens();
+    if !matches!(between, Between::NoRead) {
+        let read = super::get_entry_via(&state, kind, &provider, &tokens, "12")
+            .await
+            .expect("the live read answers");
+        assert!(read.is_none(), "the removal's read finds the show absent");
+    }
+    match between {
+        Between::Nothing | Between::NoRead => {}
+        Between::ProgressWrite => {
+            crate::commands::account::write_through(
+                &state,
+                kind,
+                &provider,
+                &tokens,
+                ProviderMediaId(21),
+                EntryUpdate {
+                    status: Some(ListStatus::Watching),
+                    progress_episodes: Some(3),
+                    ..Default::default()
+                },
+                state.account_write_locks.epochs.current(kind),
+            )
+            .await
+            .expect("the progress write lands");
+        }
+        Between::Refresh => {
+            let list = wiremock::MockServer::start().await;
+            wiremock::Mock::given(method("GET"))
+                .and(path("/users/@me/animelist"))
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200).set_body_string(page(&[WATCHING_21])),
+                )
+                .mount(&list)
+                .await;
+            crate::commands::account::list_all_and_cache_via(
+                &state,
+                kind,
+                &mal_provider(&list.uri()),
+                &tokens,
+                "4242",
+            )
+            .await
+            .expect("the refresh lands");
+        }
+        Between::PresentRead => {
+            listed.store(true, Ordering::SeqCst);
+            let read = super::get_entry_via(&state, kind, &provider, &tokens, "12")
+                .await
+                .expect("the live read answers");
+            assert!(read.is_some(), "the later read finds the show listed");
+        }
+    }
+    super::super::forget_cached_entry(&state, kind, "12", "4242")
+        .await
+        .expect("the clear answers");
+    crate::account::cache::list_entries(&state.cache_pool, kind, "4242")
+        .unwrap()
+        .iter()
+        .find(|r| r.media_id.0 == 21)
+        .map(|r| (r.status, r.progress_episodes))
+}
+
+#[tokio::test]
+async fn a_clear_after_an_absent_read_removes_the_stale_row() {
+    assert_eq!(clear_after(Between::Nothing).await, None);
+}
+#[tokio::test]
+async fn a_clear_with_no_absent_read_behind_it_removes_nothing() {
+    assert_eq!(
+        clear_after(Between::NoRead).await,
+        Some((ListStatus::Planning, 0))
+    );
+}
+#[tokio::test]
+async fn a_clear_keeps_the_row_a_write_cached_after_the_read() {
+    assert_eq!(
+        clear_after(Between::ProgressWrite).await,
+        Some((ListStatus::Watching, 3))
+    );
+}
+#[tokio::test]
+async fn a_clear_keeps_the_row_a_refresh_cached_after_the_read() {
+    assert_eq!(
+        clear_after(Between::Refresh).await,
+        Some((ListStatus::Watching, 3))
+    );
+}
+#[tokio::test]
+async fn a_clear_goes_by_the_latest_read_not_an_earlier_absent_one() {
+    assert_eq!(
+        clear_after(Between::PresentRead).await,
+        Some((ListStatus::Planning, 0))
+    );
+}

@@ -10,6 +10,11 @@
 //! changes that refresh read for the other rows. And a refresh reads the
 //! list once, however many writes land while it is out.
 //!
+//! A removal's live read and its local clear of the cached row run too.
+//! A live read is an answer the app keeps only through the clear that
+//! follows it: a read that found the row absent, when the clear for it
+//! runs, counts as an answer of absence at the read's time.
+//!
 //! The model sends a refresh's list read the moment the refresh starts.
 //! In the app the read goes after the owner lookup, and a paginated list
 //! is read page by page, so a write can land after the refresh started
@@ -133,9 +138,18 @@ impl UserListProvider for Tracker {
     async fn current_entry(
         &self,
         _tokens: &Tokens,
-        _id: ProviderMediaId,
+        id: ProviderMediaId,
     ) -> Result<Option<CurrentEntry>> {
-        Err(AniError::Metadata)
+        Ok(self
+            .rows
+            .lock()
+            .expect("rows")
+            .get(&id.0)
+            .map(|&status| CurrentEntry {
+                status,
+                progress_episodes: 0,
+                times_rewatched: None,
+            }))
     }
     async fn tracked_media(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<TrackedMedia> {
         Err(AniError::Metadata)
@@ -162,6 +176,10 @@ enum Step {
     /// The waiting list read at this index (modulo those waiting) is
     /// answered.
     Answer(usize),
+    /// A removal reads the row live from the tracker.
+    Read(usize),
+    /// A removal clears the row from the cache, by its last live read.
+    Clear(usize),
 }
 
 fn step() -> impl Strategy<Value = Step> {
@@ -171,6 +189,8 @@ fn step() -> impl Strategy<Value = Step> {
         (0..ROWS.len(), proptest::option::of(0..STATUSES.len()))
             .prop_map(|(r, s)| Step::Website(r, s)),
         any::<usize>().prop_map(Step::Answer),
+        (0..ROWS.len()).prop_map(Step::Read),
+        (0..ROWS.len()).prop_map(Step::Clear),
     ]
 }
 
@@ -228,6 +248,10 @@ async fn run(steps: Vec<Step>) -> Outcome {
     });
     // Each write's answer: when it was sent, which row, what it said.
     let mut written: Vec<(u64, u32, ListStatus)> = Vec::new();
+    // Each row's last live read: when, and what it found.
+    let mut last_read: HashMap<u32, (u64, Option<ListStatus>)> = HashMap::new();
+    // Absences the app acted on: a clear after a read that found none.
+    let mut cleared: Vec<(u64, u32)> = Vec::new();
     let mut running = 0usize;
     let mut refreshes = 0usize;
     // Answer a waiting read and wait for what that leads to: another
@@ -302,6 +326,34 @@ async fn run(steps: Vec<Step>) -> Outcome {
                 };
             }
             Step::Answer(at) => answer(&tracker, &mut heard, &mut running, at).await,
+            Step::Read(r) => {
+                let id = ROWS[r];
+                let at = clock.fetch_add(1, Ordering::SeqCst);
+                let found = crate::commands::account_edit::read_entry_at(
+                    &state,
+                    KIND,
+                    tracker.as_ref(),
+                    &tokens(),
+                    ProviderMediaId(id),
+                )
+                .await
+                .expect("the read answers")
+                .map(|e| e.status);
+                last_read.insert(id, (at, found));
+            }
+            Step::Clear(r) => {
+                let id = ROWS[r];
+                crate::commands::account_edit::clear_cached_row(
+                    &state,
+                    KIND,
+                    state.account_write_locks.epochs.current(KIND),
+                    id,
+                    USER,
+                );
+                if let Some(&(at, None)) = last_read.get(&id) {
+                    cleared.push((at, id));
+                }
+            }
         }
     }
     while running > 0 {
@@ -317,6 +369,9 @@ async fn run(steps: Vec<Step>) -> Outcome {
     };
     for &(at, id, status) in &written {
         hear(id, at, Some(status));
+    }
+    for &(at, id) in &cleared {
+        hear(id, at, None);
     }
     let reads = tracker.reads.lock().expect("reads").clone();
     for (at, snapshot) in &reads {
