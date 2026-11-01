@@ -33,6 +33,8 @@ export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
 	 *  is then not recorded, and the session is opened as a guess. */
 	guess?: boolean;
+	/** The clicked card's history row, named only on a guess's play. */
+	row?: string;
 	match: KitsuAnimeRef;
 	title: string;
 	episode: number;

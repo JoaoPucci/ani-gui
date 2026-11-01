@@ -293,6 +293,10 @@ export interface CreateSessionResponse {
 	versions?: VersionInfo[];
 	/** The version that played, when there are several. */
 	version?: VersionKind;
+	/** Whether a play that named a guessed card's row (`guess_row`)
+	 *  landed on that row's own listing. Absent (false) otherwise and
+	 *  from older backends. */
+	own_listing?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -612,6 +616,10 @@ export interface PlayArgs {
 	 *  resolution cache on it, so a stamp or an eviction names the
 	 *  version its play named. */
 	version?: VersionKind;
+	/** The history row a Continue card whose show was only a guess
+	 *  opened the play from. The session answers whether the play
+	 *  landed on that row's own listing (`own_listing`). */
+	guess_row?: string;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs

@@ -26,6 +26,20 @@ export function recordableId(id: string, fromGuess: boolean): string | undefined
 	return fromGuess || !id ? undefined : id;
 }
 
+/** Whether a session's play may record its Kitsu id and write the
+ *  trackers. */
+export function guessBinds(guess: boolean, session: { own_listing?: boolean }): boolean {
+	void session;
+	return !guess;
+}
+
+/** The history row a session's plays name as the guessed card's. */
+export function guessRow(guess: boolean, row: string | null): string | undefined {
+	void guess;
+	void row;
+	return undefined;
+}
+
 /** `query` (a `?…` play query) carrying the guess flag when `guess`. */
 export function withGuess(query: string, guess: boolean): string {
 	if (!guess) return query;

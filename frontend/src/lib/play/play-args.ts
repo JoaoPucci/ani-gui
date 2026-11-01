@@ -28,6 +28,9 @@ export interface PlayArgsInput {
 	/** The version remembered for the show (`storedChoice` in
 	 *  `$lib/versions/version-choice.ts`); omitted when none is. */
 	version?: VersionKind;
+	/** The history row a guessed Continue card opened the play from
+	 *  (`guessRow` in `./play-origin`). */
+	guessRow?: string;
 }
 
 export function buildPlayArgs(input: PlayArgsInput): PlayArgs {

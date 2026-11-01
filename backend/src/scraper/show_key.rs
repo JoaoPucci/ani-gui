@@ -37,6 +37,16 @@ pub fn slug_words(slug: &str) -> Option<&str> {
     Some(words)
 }
 
+/// Whether a play that landed on `played` played the listing the
+/// history row `row` names — the test a play asked from a guessed
+/// Continue card passes before the card's guess may become the row's
+/// Kitsu id.
+#[must_use]
+pub fn same_listing(row: &str, played: &str) -> bool {
+    let _ = (row, played);
+    false
+}
+
 /// A show id that says whose id it is. Every store stamped by a
 /// resolve — history rows, the numbering sidecar, the watched-at
 /// stamps, the reverse mapping, the cache row — keys on this key's
@@ -99,3 +109,7 @@ impl std::fmt::Display for ShowKey {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "show_key_test.rs"]
+mod tests;

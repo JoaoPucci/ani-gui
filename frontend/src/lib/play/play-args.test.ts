@@ -39,6 +39,12 @@ describe('buildPlayArgs', () => {
 		});
 	});
 
+	it("names the guessed card's row when a guess asks, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
+		expect(buildPlayArgs({ ...base, guessRow: 'hianime:show-1' }).guess_row).toBe('hianime:show-1');
+		expect('guess_row' in buildPlayArgs(base)).toBe(false);
+	});
+
 	it('marks a warm as a prefetch, and only a warm', () => {
 		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
 		expect(buildPlayArgs({ ...base, prefetch: true }).prefetch).toBe(true);
