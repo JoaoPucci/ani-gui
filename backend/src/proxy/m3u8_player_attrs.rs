@@ -26,3 +26,20 @@ pub(super) fn attribute_list(mut rest: &str) -> Vec<(String, String)> {
     }
     out
 }
+
+/// What hls.js's media-playlist regex reads as a segment URI from the
+/// rest of an `#EXTINF:` line: `#EXTINF:\s*(\d*(?:\.\d+)?)` takes the
+/// number, and only a comma after it starts a title; anything else
+/// after it is matched next, as a URI.
+pub(super) fn extinf_tail(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("#EXTINF:")?.trim_start();
+    let digits = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+    let after = match digits.strip_prefix('.') {
+        Some(frac) if frac.starts_with(|c: char| c.is_ascii_digit()) => {
+            frac.trim_start_matches(|c: char| c.is_ascii_digit())
+        }
+        _ => digits,
+    };
+    let uri = after.trim_start_matches(' ');
+    (!after.starts_with(',') && !uri.trim().is_empty()).then_some(uri)
+}

@@ -7,7 +7,7 @@
 
 use url::Url;
 
-use super::player_attrs::attribute_list;
+use super::player_attrs::{attribute_list, extinf_tail};
 
 /// The proxy every test origin is on.
 pub(super) const PROXY: &str = "http://127.0.0.1:42337";
@@ -31,6 +31,12 @@ pub(super) fn player_uris(out: &str) -> Vec<Named> {
             found.push(Named {
                 line: line.to_owned(),
                 uri: trimmed.to_owned(),
+            });
+        }
+        if let Some(uri) = extinf_tail(line) {
+            found.push(Named {
+                line: line.to_owned(),
+                uri: uri.to_owned(),
             });
         }
         // hls.js's master regexes are not anchored to a line's start:

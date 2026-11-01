@@ -159,6 +159,30 @@ fn a_tag_inside_a_uri_line_names_nothing_upstream() {
     }
 }
 
+/// hls.js takes an `#EXTINF:` line's number, and reads whatever
+/// follows it other than a comma as the segment's URI — on the same
+/// line. Such a line reaches the rewrite only inside a quoted value that
+/// spans lines, or as what is left of a line whose title is stripped.
+#[test]
+fn an_extinf_line_carries_no_uri_of_its_own() {
+    for line in [
+        "#EXTINF:4https://evil.example/x.ts",
+        "#EXTINF:4 https://evil.example/x.ts",
+        "#EXTINF:4.5//evil.example/x.ts",
+    ] {
+        assert_contained(&format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:4\n\
+             #EXT-X-DATERANGE:ID=\"d\n{line}\n#\",START-DATE=\"2026-01-01T00:00:00Z\"\n\
+             #EXTINF:4.0,\nseg0.ts\n#EXT-X-ENDLIST\n"
+        ));
+        assert_contained(&format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:4\n\
+             #EXT-X-DATERANGE:ID=\"d\n{line},X-URI=https://evil.example/y\n#\",START-DATE=\"2026-01-01T00:00:00Z\"\n\
+             #EXTINF:4.0,\nseg0.ts\n#EXT-X-ENDLIST\n"
+        ));
+    }
+}
+
 /// The route tells master from media by what the rewrite parses —
 /// after a variable a query parameter defines has been substituted —
 /// so a playlist the player reads as media is rewritten as media.
@@ -202,7 +226,7 @@ fn any_line() -> impl proptest::strategy::Strategy<Value = String> {
     )
         .prop_map(|(tag, name, gap, value, quote, sep)| {
             let value = match quote {
-                Some(brk) => format!("\"x{brk}#EXTINF:4,{brk}{value}{brk}#\""),
+                Some(brk) => format!("\"x{brk}#EXTINF:4{value}{brk}#EXTINF:4,{brk}{value}{brk}#\""),
                 None => value,
             };
             format!("#{tag}{name}{gap}={value}{sep}")
