@@ -3,7 +3,8 @@
 //! Bound to `127.0.0.1:0` (kernel-assigned port) at app startup. Routes:
 //!
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
-//! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
+//! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master,
+//!   or the media playlist a single-quality source serves in its place.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables key>]]`
 //!   — fetch + rewrite + return a rendition playlist when the master
 //!   marked it `k=pl` (with its kind of stream, `s=`, and the key the
