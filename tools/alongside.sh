@@ -23,9 +23,10 @@
 # when the step execs it, it stops every command still running together
 # with whatever that command started, prints what each had written so
 # far, and exits 130 or 143; a further signal meanwhile is ignored, and
-# a command not yet started when the first came is never started. Each command runs in a session of its own (setsid, from
-# util-linux) so that it leads a process group the stop can signal
-# whole; this is a Linux tool.
+# a command not yet started when the first came is never started. Each
+# command runs in a session of its own (setsid, from util-linux) so
+# that it leads a process group the stop can signal whole; this is a
+# Linux tool.
 #
 # rust.yml's picker oracle jobs run the model's own tests, the pool
 # generator and the picker's build through it, so the three share the
@@ -103,45 +104,47 @@ stop() {
         # A runner that looked before the flag was set starts its
         # command and records its process id a moment later.
         if [ -f "$logs/$n.alive" ] && [ ! -f "$logs/$n.status" ]; then
-            settled "$n" pid
+            settled "$n"
             if [ -s "$logs/$n.pid" ]; then
                 : >"$logs/$n.stopped"
                 pid=$(cat "$logs/$n.pid")
-                kill -s TERM -- "-$pid" 2>/dev/null || true
+                halt "$pid"
             fi
         fi
     done
-    n=0
-    for command in "$@"; do
-        n=$((n + 1))
-        if [ -f "$logs/$n.runner" ]; then
-            pid=$(cat "$logs/$n.runner")
-            wait "$pid" || true
-        elif [ -f "$logs/$n.alive" ]; then
-            # Started a moment before the signal, its runner's id was
-            # not yet recorded; it records how it ends instead.
-            settled "$n" status
-        fi
-    done
+    # Every runner is a child of this shell, recorded or not: each has
+    # declined, or recorded how its command ended, once this returns.
+    wait || true
     report "$@"
     exit "$code"
 }
 
-# settled N pid|status: wait, for five seconds at most, until command
-# N's runner has recorded its command's process id (pid) or its exit
-# status (status), or has declined to start it.
+# settled N: wait, for five seconds at most, until command N's
+# runner has recorded its command's process id or exit status, or has
+# declined to start it.
 settled() {
     tries=0
     while [ "$tries" -lt 50 ]; do
-        if [ -f "$logs/$1.declined" ] || [ -f "$logs/$1.status" ]; then
-            return 0
-        fi
-        if [ "$2" = pid ] && [ -s "$logs/$1.pid" ]; then
+        if [ -f "$logs/$1.declined" ] || [ -f "$logs/$1.status" ] || [ -s "$logs/$1.pid" ]; then
             return 0
         fi
         tries=$((tries + 1))
         sleep 0.1
     done
+}
+
+# halt PID: stop the command whose process is PID, and what it started.
+# The command leads a process group of its own once setsid has run;
+# until then that group does not exist, and PID is setsid itself, still
+# in this shell's group, which is signalled alone so the command never
+# starts. setsid may run between the two attempts, so the group is
+# tried once more after.
+halt() {
+    if kill -s TERM -- "-$1" 2>/dev/null; then
+        return 0
+    fi
+    kill -s TERM "$1" 2>/dev/null || true
+    kill -s TERM -- "-$1" 2>/dev/null || true
 }
 
 trap 'stop INT 130 "$@"' INT
