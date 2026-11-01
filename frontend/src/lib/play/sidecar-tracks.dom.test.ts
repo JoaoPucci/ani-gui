@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectCaptions, noteCaptionChange } from './caption-watch';
 import {
 	armSidecarTracks,
 	attachSidecarTracks,
@@ -117,6 +118,23 @@ describe('armSidecarTracks', () => {
 		cleanup();
 		await settle();
 		expect(v.querySelectorAll('track').length).toBe(0);
+	});
+
+	// The session going is no pick of the viewer's, whether or not it
+	// had sidecar tracks: whatever its teardown does to the captions —
+	// a playlist's own track switched off — is not remembered.
+	it('stops taking caption changes for picks when the session goes, tracks or none', async () => {
+		globalThis.fetch = vi.fn(async () => new Response(JSON.stringify([]))) as typeof fetch;
+		const v = video();
+		expectCaptions(v, 0);
+		const cleanup = armSidecarTracks(v, 'http://127.0.0.1:31337', 'session-1');
+		await settle();
+		cleanup();
+		const list = [
+			{ kind: 'subtitles', mode: 'disabled' },
+			{ kind: 'subtitles', mode: 'showing' }
+		];
+		expect(noteCaptionChange(v, list)).toBeNull();
 	});
 
 	it('attaches nothing for an empty listing', async () => {

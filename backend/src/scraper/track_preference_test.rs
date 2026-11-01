@@ -189,6 +189,35 @@ fn the_shows_remembered_language_leads_the_locale() {
 /// Within a language, the exact region comes before a track that only
 /// shares the script, and a track's script is read from its region —
 /// as the built-in player starts.
+/// A tag that names neither region nor script is read in its
+/// language's usual script, as the built-in player reads it: a bare
+/// `zh` is Simplified, so a Simplified pick takes it over `zh-TW`, and
+/// a bare `zh` pick takes `zh-Hans` over `zh-Hant`.
+#[test]
+fn a_bare_tag_reads_in_its_languages_usual_script() {
+    let first = |tracks: &[SubtitleTrack], remembered| -> String {
+        preferred_first(
+            tracks,
+            Wanted {
+                remembered: Some(remembered),
+                locale: "",
+            },
+        )[0]
+        .label
+        .clone()
+    };
+    let taiwan_then_bare = vec![
+        track("zh-TW", "Chinese (Taiwan)", false, 0),
+        track("zh", "Chinese", false, 1),
+    ];
+    assert_eq!(first(&taiwan_then_bare, "zh-Hans"), "Chinese");
+    let scripts = vec![
+        track("zh-Hant", "Chinese (Traditional)", false, 0),
+        track("zh-Hans", "Chinese (Simplified)", false, 1),
+    ];
+    assert_eq!(first(&scripts, "zh"), "Chinese (Simplified)");
+}
+
 #[test]
 fn within_a_language_the_region_then_the_script() {
     let tracks = vec![

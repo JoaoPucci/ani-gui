@@ -283,6 +283,19 @@ fn launch_args_lead_with_the_track_the_built_in_player_starts_on() {
             "https://cdn.example/x/subs/en.vtt".to_string(),
         ]
     );
+    // Nothing in the user's language and no default: the built-in
+    // player starts with none, so the external one starts with its
+    // subtitles off too.
+    let mut no_start = native.clone();
+    no_start.subtitles = vec![track("ar", false), track("es", false)];
+    let pt = crate::config::Config {
+        locale: "pt-BR".into(),
+        ..crate::config::Config::default()
+    };
+    let launch = super::play_handoff::launch_args_for(no_start.clone(), &args_for(), &pt);
+    assert!(launch.subtitles_off, "no track to start on");
+    let launch = super::play_handoff::launch_args_for(no_start, &args_for(), &cfg);
+    assert!(!launch.subtitles_off, "the user's language is there");
     // Off remembered: the same order, the player's subtitles off.
     let mut off = args_for();
     off.caption = Some("off".into());

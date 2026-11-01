@@ -82,14 +82,14 @@ const LISTING = (session: string) => [
 			}
 ];
 
-function handlers() {
+function handlers(customControls = false) {
 	server.use(
 		http.get(`${API_BASE}/api/kitsu/anime/${OTHER_SHOW}`, () =>
 			HttpResponse.json(kitsuRef(OTHER_SHOW, 'Another Show', 12))
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${OTHER_SHOW}`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), use_custom_player_controls: false })
+			HttpResponse.json({ ...appConfig(), use_custom_player_controls: customControls })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json(kitsuRef(KITSU_ID, 'The Show', 12))
@@ -259,6 +259,19 @@ describe("a pick in the browser's own captions menu", () => {
 		const video = await mountAt('session-1', '1');
 		expect(showing(video)).toBe('Português');
 		video.textTracks.dispatchEvent(new Event('change'));
+		await new Promise((r) => setTimeout(r, 50));
+		expect(storedCaption(KITSU_ID)).toBeUndefined();
+	});
+});
+
+// With the app's own controls on there is no browser menu to pick in:
+// a caption change the app did not make — hls.js switching a
+// playlist's own track — is not taken for the viewer's pick.
+describe("with the app's own controls on", () => {
+	it('takes no caption change it did not make for a pick', async () => {
+		handlers(true);
+		const video = await mountAt('session-1', '1');
+		nativePick(video, 'Español');
 		await new Promise((r) => setTimeout(r, 50));
 		expect(storedCaption(KITSU_ID)).toBeUndefined();
 	});
