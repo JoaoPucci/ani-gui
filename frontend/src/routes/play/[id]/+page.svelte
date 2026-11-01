@@ -508,7 +508,8 @@
 	}
 
 	/** Pick a subtitle track by its index in the TextTrackList, or
-	 *  'off' for none — the rule is $lib/play/caption-pick's. */
+	 *  'off' for none. Only the track shown is loaded; the rule is
+	 *  $lib/play/caption-pick's. */
 	function pickCcTrack(target: CaptionTarget) {
 		ccMenuOpen = false;
 		if (!videoEl) return;
