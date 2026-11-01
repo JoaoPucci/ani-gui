@@ -127,7 +127,12 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { refreshedRows } from '$lib/history/row-number';
 	import { latestReads } from '$lib/history/latest-call';
-	import { EPISODE_WAIT_CAP_MS, cardText, visibleImage } from '$lib/history/card-look';
+	import {
+		EPISODE_WAIT_CAP_MS,
+		cardText,
+		offeredEpisode,
+		visibleImage
+	} from '$lib/history/card-look';
 	import {
 		createLookBook,
 		lookKey,
@@ -1157,12 +1162,13 @@
 			{@const card = lookBook.look(entry.id, lookKey(entry), {
 				match,
 				episode: ep,
+				offered: match ? nextEpisode : null,
 				capReached: capReached[entry.id] === true,
 				text:
 					match === undefined
 						? null
 						: cardText(
-								ep,
+								offeredEpisode(ep, match ? nextEpisode : null),
 								singleVideo,
 								resumable ? nextEpisode : target.displayEpisode,
 								target.displayTitle
@@ -2196,7 +2202,8 @@
 	     band of light crossing it. The band waits a beat before its
 	     first pass, so a card whose artwork is a moment away just reads
 	     as an empty tile and never flickers into motion. The one sweep
-	     on the page, by request; the poster rows and the search page
+	     on the page, kept to this strip, whose cards wait on two answers
+	     and can sit a moment longer; the poster rows and the search page
 	     keep the opacity pulse. */
 	.look-skeleton {
 		position: absolute;

@@ -1,9 +1,11 @@
 // The page's record of which look each Continue card settled on, and
-// the session's memory of the looks the cards' details settled on.
+// the session's memory of the looks the cards settled on without the
+// episode wait.
 // The decision itself is ./card-look; this keeps its first answer.
 
 import {
 	decideLook,
+	offeredEpisode,
 	type CardText,
 	type LookInputs,
 	type ProxyUrl,
@@ -20,9 +22,10 @@ export interface RememberedCard {
 export interface CardLookState {
 	/** null while the card is a skeleton. */
 	look: SettledLook | null;
-	/** Live text, or the remembered text while the row is unmatched. */
+	/** Live text, or the remembered text until the live details catch up. */
 	text: CardText | null;
-	/** The look was known when the card first drew, so nothing fades in. */
+	/** The look and text were known when the card first drew, so they
+	 *  draw at once; an image the browser has yet to load still fades in. */
 	instant: boolean;
 }
 
@@ -34,18 +37,27 @@ export function lookKey(entry: { id: string; ep_no: string }): string {
 	return `${entry.id}|${entry.ep_no}`;
 }
 
-/** A remembered look the live match contradicts is no longer this card's. */
-function contradicted(pin: { look: SettledLook }, match: LookInputs['match']): boolean {
-	return match !== undefined && (match?.id ?? null) !== pin.look.matchId;
+/** A look decided for another show or another episode is no longer this card's. */
+function contradicted(pin: { look: SettledLook }, inputs: LookInputs): boolean {
+	const { match } = inputs;
+	if (match === undefined) return false;
+	if ((match?.id ?? null) !== pin.look.matchId) return true;
+	return match !== null && inputs.offered !== pin.look.episode;
+}
+
+/** Whether the live details for the offered episode are in. */
+function detailsIn(inputs: LookInputs): boolean {
+	return inputs.match === null || offeredEpisode(inputs.episode, inputs.offered) !== undefined;
 }
 
 /**
  * The page's record of which look each card settled on. `look` is
  * called as the card renders; the first settled answer for a card is
- * kept, so the card never changes artwork afterwards. The one
- * exception is a look remembered from an earlier visit that the live
- * match contradicts: that look belongs to a show the row no longer
- * resolves to, and the card resolves afresh.
+ * kept, so the card does not change artwork while it offers the same
+ * show and episode. A look decided for another show or another
+ * episode — remembered from an earlier visit, or pinned before the
+ * card's offered episode moved — no longer describes the card, and
+ * the card resolves afresh.
  */
 export function createLookBook(proxy: ProxyUrl, remembered: Map<string, RememberedCard>) {
 	const pins = new Map<string, { look: SettledLook; text: CardText | null; instant: boolean }>();
@@ -54,7 +66,7 @@ export function createLookBook(proxy: ProxyUrl, remembered: Map<string, Remember
 	// this page as a skeleton is this visit's answer, and it fades in.
 	const seen = new Set<string>();
 
-	function pinFor(entryId: string, key: string, match: LookInputs['match']) {
+	function pinFor(entryId: string, key: string, inputs: LookInputs) {
 		let pin = pins.get(entryId);
 		const known = seen.has(entryId) ? undefined : remembered.get(key);
 		seen.add(entryId);
@@ -62,7 +74,7 @@ export function createLookBook(proxy: ProxyUrl, remembered: Map<string, Remember
 			pin = { ...known, instant: true };
 			pins.set(entryId, pin);
 		}
-		if (pin?.instant && contradicted(pin, match)) {
+		if (pin && contradicted(pin, inputs)) {
 			pins.delete(entryId);
 			remembered.delete(key);
 			return undefined;
@@ -72,12 +84,18 @@ export function createLookBook(proxy: ProxyUrl, remembered: Map<string, Remember
 
 	return {
 		look(entryId: string, key: string, inputs: LookInputs): CardLookState {
-			const pin = pinFor(entryId, key, inputs.match);
+			const pin = pinFor(entryId, key, inputs);
 			// The final look the details settle on, cap or no cap, is
 			// what the next visit should draw.
 			const truth = decideLook({ ...inputs, capReached: false }, proxy);
 			if (truth) remembered.set(key, { look: truth, text: inputs.text });
-			if (pin) return { look: pin.look, text: inputs.text ?? pin.text, instant: pin.instant };
+			if (pin) {
+				// A card drawn from memory keeps the text it was drawn with
+				// until the live details catch up, so the line does not
+				// step back to "Episode N" in between.
+				const text = pin.instant && !detailsIn(inputs) ? pin.text : (inputs.text ?? pin.text);
+				return { look: pin.look, text, instant: pin.instant };
+			}
 			const look = decideLook(inputs, proxy);
 			if (look) pins.set(entryId, { look, text: null, instant: false });
 			return { look, text: inputs.text, instant: false };

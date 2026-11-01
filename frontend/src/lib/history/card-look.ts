@@ -11,10 +11,11 @@
 //   - episode details settled      → thumbnail, else poster, else placeholder
 //   - episode details still out at the cap → poster, else placeholder
 //
-// The first look a card settles on is pinned for the life of the page,
-// so a thumbnail that lands after the cap does not swap it. What the
-// details would have settled on is remembered for the session, so the
-// next visit to Home draws the card in its final look at once.
+// The first look a card settles on is pinned for as long as the card
+// offers the same show and episode, so a thumbnail that lands after the
+// cap does not swap it. The look the card settles on without the cap
+// (its episode details, or no match) is remembered for the session, so
+// the next visit to Home draws the card in its final look at once.
 
 import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
@@ -40,8 +41,8 @@ export interface SettledLook {
 	image: CardImage | null;
 	/** The match the look was decided against; null when the row has none. */
 	matchId: string | null;
-	/** The episode the card offered when the look was decided. Stub: not recorded yet. */
-	episode?: number | null;
+	/** The episode the card offered when the look was decided; null unmatched. */
+	episode: number | null;
 }
 
 /** The text a card carries beside its artwork. */
@@ -59,10 +60,11 @@ export interface CardText {
 export interface LookInputs {
 	/** undefined while the row is being matched; null when it failed. */
 	match: KitsuAnimeRef | null | undefined;
-	/** undefined until the episode lookup settles. */
+	/** undefined until the episode lookup settles. Details for an
+	 *  episode other than `offered` count as not settled yet. */
 	episode: KitsuEpisode | null | undefined;
-	/** The episode the card offers. Stub: not read yet. */
-	offered?: number | null;
+	/** The episode the card offers (what its click plays); null unmatched. */
+	offered: number | null;
 	/** Whether the episode wait has run out for this card. */
 	capReached: boolean;
 	/** The card's text from live data; null while the row is unmatched. */
@@ -78,14 +80,20 @@ export function posterSource(match: KitsuAnimeRef | null | undefined): string | 
 	return p?.medium ?? p?.large ?? p?.small ?? p?.original ?? null;
 }
 
-/** The episode details as far as they describe the offered episode.
- *  Stub: any details pass, as the page treats them today. */
+/**
+ * The episode details as far as they describe the episode the card
+ * offers. The row's details are fetched for one episode at a time and
+ * re-fetched when the offered episode moves (a refined cap, a row read
+ * again), so the page can briefly hold the previous episode's: those
+ * are not this card's, and count as not arrived. A null answer (no
+ * details found) stands, as does anything when no episode is offered.
+ */
 export function offeredEpisode(
 	episode: KitsuEpisode | null | undefined,
 	offered: number | null
 ): KitsuEpisode | null | undefined {
-	void offered;
-	return episode;
+	if (!episode || offered === null) return episode;
+	return episode.number === offered || episode.relative_number === offered ? episode : undefined;
 }
 
 /** The text a card shows: the show's name and the episode line. */
@@ -104,9 +112,13 @@ export function cardText(
 	};
 }
 
-function posterLook(match: KitsuAnimeRef, proxy: ProxyUrl): SettledLook {
+function posterLook(match: KitsuAnimeRef, offered: number | null, proxy: ProxyUrl): SettledLook {
 	const poster = proxy(posterSource(match));
-	return { image: poster ? { src: poster, fallback: null } : null, matchId: match.id };
+	return {
+		image: poster ? { src: poster, fallback: null } : null,
+		matchId: match.id,
+		episode: offered
+	};
 }
 
 /**
@@ -114,16 +126,21 @@ function posterLook(match: KitsuAnimeRef, proxy: ProxyUrl): SettledLook {
  * still a skeleton. Pure: pinning the first answer is the book's job.
  */
 export function decideLook(inputs: LookInputs, proxy: ProxyUrl): SettledLook | null {
-	const { match, episode } = inputs;
+	const { match, offered } = inputs;
 	if (match === undefined) return null;
-	if (match === null) return { image: null, matchId: null };
+	if (match === null) return { image: null, matchId: null, episode: null };
+	const episode = offeredEpisode(inputs.episode, offered);
 	if (episode !== undefined) {
 		const thumb = proxy(episode?.thumbnail?.original ?? null);
-		const poster = posterLook(match, proxy);
+		const poster = posterLook(match, offered, proxy);
 		if (!thumb) return poster;
-		return { image: { src: thumb, fallback: poster.image?.src ?? null }, matchId: match.id };
+		return {
+			image: { src: thumb, fallback: poster.image?.src ?? null },
+			matchId: match.id,
+			episode: offered
+		};
 	}
-	return inputs.capReached ? posterLook(match, proxy) : null;
+	return inputs.capReached ? posterLook(match, offered, proxy) : null;
 }
 
 /**
