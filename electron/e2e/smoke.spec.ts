@@ -194,6 +194,23 @@ test("app launches, hero renders, no unexpected console errors", async () => {
   }
 });
 
+test("a test launch is muted", async () => {
+  // A headless launch still opens the host's audio device, and test
+  // runs have played sound on the desktop of whoever ran them. Every
+  // spec launches through the shared helper (tests/arch/e2e_launch.sh
+  // keeps it that way); this asks the running app whether the helper
+  // put the switch on its command line.
+  const { app } = await launchAppWithStubs();
+  try {
+    const muted = await app.evaluate(({ app: electronApp }) =>
+      electronApp.commandLine.hasSwitch("mute-audio"),
+    );
+    expect(muted).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test("clicking a poster card navigates to a detail route", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
