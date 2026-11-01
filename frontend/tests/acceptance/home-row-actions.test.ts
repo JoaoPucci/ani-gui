@@ -390,6 +390,25 @@ for (const style of ['inline', 'band'] as const) {
 			await until(() => status().includes(short(13, 'minute')), 'the age to move on');
 		});
 
+		it('gives focus back to Clear history when the confirm is cancelled', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			await mountHome(style);
+			const clear = action(CW(), CLEAR())!;
+			clear.focus();
+			clear.click();
+			await until(() => target.querySelector('[role="dialog"]') !== null, 'the confirm dialog');
+			expect(document.activeElement).not.toBe(clear);
+			const cancel = Array.from(target.querySelectorAll('[role="dialog"] button')).find(
+				(b) => b.textContent?.trim() === m.confirm_button_cancel()
+			) as HTMLButtonElement;
+			cancel.click();
+			await until(() => target.querySelector('[role="dialog"]') === null, 'the dialog to close');
+			await until(() => document.activeElement === clear, 'focus to come back to Clear history');
+			expect(historyCleared).toBe(0);
+		});
+
 		it('clears history after the confirm, from the row’s own action', async () => {
 			connect('anilist');
 			markRefreshed('anilist', Date.now() - 12 * MIN);
