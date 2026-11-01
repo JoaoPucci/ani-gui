@@ -235,3 +235,7 @@ fn legacy_row_ep(state: &AppState, slug: &str) -> Option<String> {
         .find(|e| e.id == slug && !e.own_number)
         .map(|e| e.ep_no)
 }
+
+#[cfg(test)]
+#[path = "numbering_offset_repair_test.rs"]
+mod tests;
