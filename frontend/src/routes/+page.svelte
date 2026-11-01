@@ -82,6 +82,7 @@
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
 	import { listChanges, railNeedsReread } from '$lib/account/list-changes';
 	import { createRailMotionGate, railDelta } from '$lib/account/watch-later-motion';
+	import { createRailLoads } from '$lib/account/watch-later-loads';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import {
 		isWatchLaterStale,
@@ -175,11 +176,11 @@
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
-	// Monotonic load token. Every rail load (mount effect + refresh)
-	// captures the next value and only writes its result if still the
-	// latest — so a slow initial load can't clobber a newer refresh, and
-	// vice versa.
-	let watchLaterLoadSeq = 0;
+	// Which rail load is the latest (`$lib/account/watch-later-loads`).
+	// Every load (mount effect + refresh) takes a ticket and only writes
+	// its result if still the latest — so a slow initial load can't
+	// clobber a newer refresh, and vice versa.
+	const watchLaterLoads = createRailLoads();
 	// Watch Later refresh: in-flight guard for the manual button, and a
 	// one-shot latch so the TTL auto-refresh fires at most once per mount
 	// (the rail effect re-runs on account/mode changes).
@@ -556,14 +557,14 @@
 	$effect(() => {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const deps = buildWatchLaterDeps();
-		const seq = ++watchLaterLoadSeq;
+		const ticket = watchLaterLoads.start(true);
 		void loadWatchLater(deps)
 			.then((refs) => filterAvailable(refs, filterMode))
 			.then((refs) => {
-				if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
 				watchLaterFailed = false;
-				maybeAutoRefreshWatchLater(deps);
+				if (watchLaterLoads.landed(ticket)) maybeAutoRefreshWatchLater(deps);
 			})
 			.catch((e: unknown) => {
 				// Loader's per-provider try/catch already swallowed
@@ -571,7 +572,7 @@
 				// provider failed (or the bridge died). Flag the failure
 				// (distinct from a genuinely empty list) so the rail shows
 				// a retry affordance rather than "nothing planned".
-				if (seq !== watchLaterLoadSeq) return;
+				if (!watchLaterLoads.current(ticket)) return;
 				watchLaterError = e;
 				watchLaterFailed = true;
 			});
@@ -634,11 +635,12 @@
 	// one caller that moves the cards it changed (`moved`).
 	async function reloadWatchLaterRail(moved = false) {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const seq = ++watchLaterLoadSeq;
+		const ticket = watchLaterLoads.start(false);
+		const deps = buildWatchLaterDeps();
 		try {
-			const refs = await loadWatchLater(buildWatchLaterDeps());
+			const refs = await loadWatchLater(deps);
 			const filtered = await filterAvailable(refs, filterMode);
-			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+			if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 			if (moved && watchLater) {
 				watchLaterMotion.open(
 					railDelta(
@@ -649,12 +651,13 @@
 			}
 			watchLater = filtered;
 			watchLaterFailed = false;
+			if (watchLaterLoads.landed(ticket)) maybeAutoRefreshWatchLater(deps);
 		} catch (e) {
 			// Refresh-path reload failed (bridge / availability). Flag it
 			// rather than blanking the rail or leaking an unhandled
 			// rejection: a populated rail keeps showing its cards (the
 			// length>0 branch wins), an empty one shows the retry state.
-			if (seq !== watchLaterLoadSeq) return;
+			if (!watchLaterLoads.current(ticket)) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
 		}
