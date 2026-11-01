@@ -30,9 +30,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-/** Tools the packages provide without a fetcher staging them. */
-const NOT_FETCHED = new Set(['ffmpeg']);
-
 /**
  * The `dep` names both platform fetchers declare.
  *
@@ -114,20 +111,7 @@ describe('credits — bundled tools', () => {
 			expect(credited.has(dep), `${dep} is staged by a fetcher but not credited`).toBe(true);
 		}
 		for (const name of credited) {
-			if (NOT_FETCHED.has(name)) continue;
 			expect(staged.has(name), `${name} is credited but no fetcher stages it`).toBe(true);
-		}
-	});
-
-	it('names the entries that are bundled without being fetched', () => {
-		// ffmpeg is the one tool the packages provide by another route:
-		// an apt `Recommends:` on the .deb and an install-time download
-		// in the NSIS script, because ~80 MB is too much to stage. The
-		// exemption above is declared here so it stays a decision
-		// rather than a hole in the parity check.
-		const names = BUNDLED_TOOLS.map((t) => t.name);
-		for (const name of NOT_FETCHED) {
-			expect(names, `${name} is exempted from the parity check but not credited`).toContain(name);
 		}
 	});
 
