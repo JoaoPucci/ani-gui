@@ -24,4 +24,18 @@ impl AvailabilityFlights {
     pub(crate) fn interactive(&self, key: &str) -> Option<bool> {
         self.table().flights.get(key).map(|f| f.interactive)
     }
+
+    /// Which walk is out for `key`, if one is: walks are numbered in
+    /// the order they start.
+    pub(crate) fn walk_id(&self, key: &str) -> Option<u64> {
+        self.table().flights.get(key).map(|f| f.id)
+    }
+
+    /// The AniList class the walk out for `key` runs in, once it has
+    /// started.
+    pub(crate) fn class_of(&self, key: &str) -> Option<crate::meta::anilist_gate::Class> {
+        let table = self.table();
+        let id = table.flights.get(key)?.id;
+        table.classes.get(&id).copied()
+    }
 }

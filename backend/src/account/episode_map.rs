@@ -138,6 +138,9 @@ pub enum Shape {
     SplitParts,
     /// The tracker's entry counts episodes Kitsu does not list.
     Extras,
+    /// A special the tracker has no entry for is among the extras a
+    /// related entry's own map reads.
+    SpecialExtras,
 }
 
 /// A show's filing on one tracker: its shape and, unless identity, the
@@ -187,6 +190,11 @@ pub struct MappedWrite {
     /// The segments before this one, whose entries the write brings to
     /// their totals first.
     pub earlier: Vec<EarlierSegment>,
+    /// The progress the entry must already hold for the write to be
+    /// sent: a special filed among an entry's extras claims no episode
+    /// before its slot the user has not watched. `None` where any
+    /// progress will do.
+    pub needs: Option<u32>,
 }
 
 impl EpisodeMap {
@@ -253,6 +261,9 @@ impl EpisodeMap {
             progress,
             complete,
             earlier,
+            // A special filed among an entry's extras claims no episode
+            // before its slot the user has not watched.
+            needs: (self.shape == Shape::SpecialExtras && seg.lead > 0).then_some(seg.lead),
         })
     }
 }

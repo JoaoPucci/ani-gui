@@ -26,14 +26,36 @@ pub(super) fn kitsu_show_of(anime: &KitsuAnimeRef) -> KitsuShow {
     }
 }
 
-/// A related Kitsu anime as the map reads it.
-fn kitsu_show_of_relation(relation: &KitsuRelation) -> KitsuShow {
+/// A related Kitsu anime as the map reads it: its count and the day it
+/// started, which orders it among Kitsu's parts.
+pub(super) fn kitsu_show_of_relation(relation: &KitsuRelation) -> KitsuShow {
     KitsuShow {
         id: relation.id.clone(),
         episodes: relation.episode_count,
-        start: None,
+        start: relation.start.clone(),
         end: None,
     }
+}
+
+/// A related season as the special rule reads it. Where its map reads
+/// extras the special could take (`holds_slot`), the season as its own
+/// Kitsu entry has it, end included, since an epilogue's slot is dated
+/// by the season's last episode; its start is the relation's where the
+/// entry gives none. Elsewhere the relation's own fields, which say all
+/// the rule reads of a season holding no slot, at no read.
+pub(super) async fn related_season(
+    ask: &MapAsk<'_>,
+    relation: &KitsuRelation,
+    holds_slot: bool,
+) -> Result<KitsuShow> {
+    if !holds_slot {
+        return Ok(kitsu_show_of_relation(relation));
+    }
+    let season = kitsu_show(ask, &relation.id).await?;
+    Ok(KitsuShow {
+        start: season.start.or_else(|| relation.start.clone()),
+        ..season
+    })
 }
 
 /// The one anime Kitsu relates `kitsu_id` to in `role`, or `None` when
