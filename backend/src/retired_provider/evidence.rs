@@ -43,7 +43,8 @@ pub(super) fn retired(state: &AppState, entry: &HistoryEntry) -> Result<Vec<Stri
     // Every title match stored for the row's title, the ones Continue
     // Watching reads and the ones the detail page reads for a row whose
     // recorded entry is gone alike: every version and cour, expired
-    // ones and retired segments included.
+    // ones and retired segments included — of what the launch's cache
+    // reclaim, which runs first, has left.
     ids.extend(crate::commands::history_forget_titles::title_match_ids(
         state,
         &entry.id,

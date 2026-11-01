@@ -30,14 +30,25 @@
 //!   (`history_forget_titles::title_match_ids`).
 //!
 //! Those two readers also read the versions before the current one, by
-//! prefix. Their rows are not declared: the reclaim deletes them at
-//! launch, so the readers find them only before the first launch of a
-//! build that declares the registry. What that costs is small and heals
-//! by use: a removal finds fewer ids for a show known only by an old
-//! mapping or match, so skip times and stream addresses under those ids
-//! wait out their own lifetimes, which the reclaim then ends; and a row
-//! whose recorded entry is gone, matched only under an old version, is
-//! matched again under the current one by the home page's next load.
+//! prefix. Their rows are not declared: the reclaim deletes them at the
+//! first launch after each version bump, so the readers find them only
+//! until then. What that costs:
+//!
+//! - a removal finds fewer Kitsu ids for a show known only by an old
+//!   mapping or match. Skip times and stream addresses under those ids
+//!   wait out their own lifetimes, which the reclaim then ends; a note
+//!   that Kitsu answered such an id gone stays for its year; and the
+//!   numbering of a key a page of the show resolved under another key
+//!   stays, as a rowless key's does, until the history is cleared;
+//! - a row whose recorded entry Kitsu answered gone, matched only under
+//!   an old version, is matched again only if the home page's next load
+//!   matches it under the current rules; one it cannot match stays
+//!   unmatched, and the detail page no longer resumes it under the old
+//!   match. (On the measured install no history row's recorded entry
+//!   was marked gone, so no row was in that case.)
+//!
+//! The retired-provider sweep runs after the reclaim, so its evidence
+//! is what the reclaim leaves: what the surfaces can still read.
 
 /// One key family: the prefix its keys start with, or the one key it
 /// is when it is a single row.
