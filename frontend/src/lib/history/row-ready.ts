@@ -21,8 +21,8 @@ export interface ContinueRowReadyDeps {
 	/** Aborted when the page leaves: a refill that lands after it is
 	 *  not fetched ($lib/refill/refill). */
 	signal?: AbortSignal;
-	/** Put a refilled still on the episode the card shows, in place.
-	 *  Not called yet: a refill replaces the card's episode. */
+	/** Put a refilled still on the episode the card shows, in place —
+	 *  the card keeps its episode, and only its image changes. */
 	fillThumbnail?: (
 		entryId: string,
 		episodeId: string,
@@ -137,7 +137,8 @@ export function makeContinueRowReadyHandler(
 		// request has replaced it.
 		const onRefill = (eps: KitsuEpisode[]) => {
 			if (shown.get(entryId) !== target || inFlight.has(entryId)) return;
-			deps.setEpisode(entryId, pick(eps));
+			const ep = pick(eps);
+			if (ep?.thumbnail?.original) deps.fillThumbnail?.(entryId, ep.id, ep.thumbnail);
 		};
 		void deps
 			.fetchKitsuEpisodes(match.id, kitsuPage, { onRefill, signal: deps.signal })

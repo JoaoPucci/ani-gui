@@ -690,7 +690,7 @@
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
-				rawWindowed = refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
 			}
 		});
 		kitsuPageCache.set(p, eps);
@@ -1757,15 +1757,19 @@
 				/>
 			{/if}
 			{#if hero.url}
-				<img
-					class="hero-img"
-					src={hero.url}
-					alt=""
-					style:transform={heroTransform(scrollY, hero.isCover)}
-					style:--ratio={heroRatios[heroId]}
-					onload={(e) => onHeroLoad(heroId, e)}
-					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
-				/>
+				<!-- Keyed: a banner that arrives later — held back, then
+				     refilled — enters as the first one did. -->
+				{#key hero.url}
+					<img
+						class="hero-img"
+						src={hero.url}
+						alt=""
+						style:transform={heroTransform(scrollY, hero.isCover)}
+						style:--ratio={heroRatios[heroId]}
+						onload={(e) => onHeroLoad(heroId, e)}
+						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
+					/>
+				{/key}
 			{/if}
 			<div class="hero-scrim" aria-hidden="true"></div>
 			{#if !hero.isCover}
@@ -2245,7 +2249,13 @@
 										>
 											<span class="ep-thumb">
 												{#if thumb}
-													<img src={thumb} alt="" loading="lazy" decoding="async" />
+													<img
+														class="img-arrive"
+														src={thumb}
+														alt=""
+														loading="lazy"
+														decoding="async"
+													/>
 												{:else if air.unaired}
 													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
 														{unairedLabel(air.airsAt)}

@@ -79,9 +79,16 @@ export async function refetchOnRefill<T>(
 	opts.apply(data);
 }
 
-/** Fetch a read once more for a page whose refill landed. Each page
- *  fetches on its own for now. */
+/** The refetches out now, by read and tickets. */
+const refetching = new Map<string, Promise<unknown>>();
+
+/** Fetch a read once more for the pages whose refill landed: every page
+ *  refetching the same read for the same refill at once shares one
+ *  request. Nothing is kept once it is answered. */
 export function shareRefetch<T>(key: string, start: () => Promise<T>): Promise<T> {
-	void key;
-	return start();
+	const out = refetching.get(key);
+	if (out) return out as Promise<T>;
+	const run = start().finally(() => refetching.delete(key));
+	refetching.set(key, run);
+	return run;
 }

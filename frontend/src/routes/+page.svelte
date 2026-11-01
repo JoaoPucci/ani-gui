@@ -225,6 +225,12 @@
 		setEpisode: (id, ep) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
 		},
+		// A held-back still landing: onto the card's own episode, in
+		// place, so the card keeps everything but its image.
+		fillThumbnail: (id, episodeId, thumbnail) => {
+			const ep = historyEpisodes[id];
+			if (ep && ep.id === episodeId && !ep.thumbnail?.original) ep.thumbnail = { ...thumbnail };
+		},
 		leftPartWay
 	});
 
@@ -1111,7 +1117,11 @@
 					>
 						<span class="resume-poster">
 							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
+								<!-- Keyed: an image that arrives later — a held-back
+								     still — fades in like a first one. -->
+								{#key image}
+									<img class="img-arrive" src={image} alt="" loading="lazy" decoding="async" />
+								{/key}
 							{:else}
 								<span class="resume-poster-placeholder" aria-hidden="true">
 									{target.displayTitle.slice(0, 2).toUpperCase()}
@@ -1182,7 +1192,11 @@
 					>
 						<span class="resume-poster">
 							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
+								<!-- Keyed: an image that arrives later — a held-back
+								     still — fades in like a first one. -->
+								{#key image}
+									<img class="img-arrive" src={image} alt="" loading="lazy" decoding="async" />
+								{/key}
 							{:else}
 								<span class="resume-poster-placeholder" aria-hidden="true">
 									{target.displayTitle.slice(0, 2).toUpperCase()}

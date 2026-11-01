@@ -34,6 +34,7 @@ import {
 	RefillWaiter,
 	parseRefills,
 	refetchOnRefill,
+	shareRefetch,
 	type RefillEnded,
 	type Served
 } from '$lib/refill/refill';
@@ -237,7 +238,10 @@ async function getJsonRefilled<T>(
 	if (apply) {
 		void refetchOnRefill(served, {
 			waiter: refillWaiter,
-			refetch: () => getJson<T>(refetchPath),
+			// Every read of this page waiting on the same refill fetches
+			// it once between them.
+			refetch: () =>
+				shareRefetch(`${refetchPath}#${served.refills.join(',')}`, () => getJson<T>(refetchPath)),
 			apply,
 			signal: opts.signal
 		});

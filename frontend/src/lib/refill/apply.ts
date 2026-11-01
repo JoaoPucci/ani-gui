@@ -6,27 +6,29 @@
 import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
 /**
- * Put a refilled episode page in `cache` and into the episodes shown.
- * Returns what to show: `shown` with each episode the refill carries
- * replaced by its refilled self. The refill replaces the cached page
- * only when that page is the same show's — it holds one of the refill's
- * episodes; a page the cache no longer holds, or holds for another show
- * the page moved on to, is left as it is, and so is `shown`.
+ * Fill in the stills a refilled episode page brings — on the cached page
+ * and on the episodes shown — in place: each episode keeps its object,
+ * and only a still it lacked is set, so Kitsu's own stays and nothing
+ * else on the page changes or re-renders. Only when the cached page is
+ * the same show's (it holds one of the refill's episodes); a page the
+ * cache no longer holds, or holds for another show the page moved on
+ * to, is left as it is, and so is `shown`.
  */
 export function refillEpisodes(
 	cache: Map<number, KitsuEpisode[]>,
 	page: number,
 	filled: KitsuEpisode[],
 	shown: KitsuEpisode[] | null
-): KitsuEpisode[] | null {
+): void {
 	const cached = cache.get(page);
-	const ids = new Set(filled.map((ep) => ep.id));
-	if (!cached?.some((ep) => ids.has(ep.id))) return shown;
-	cache.set(page, filled);
-	if (shown === null) return null;
-	const byId = new Map(filled.map((ep) => [ep.id, ep]));
-	if (!shown.some((ep) => byId.has(ep.id))) return shown;
-	return shown.map((ep) => byId.get(ep.id) ?? ep);
+	const stills = new Map(
+		filled.filter((ep) => ep.thumbnail?.original).map((ep) => [ep.id, ep.thumbnail])
+	);
+	if (!cached?.some((ep) => filled.some((f) => f.id === ep.id))) return;
+	for (const ep of [...cached, ...(shown ?? [])]) {
+		const still = stills.get(ep.id);
+		if (still && !ep.thumbnail?.original) ep.thumbnail = { ...still };
+	}
 }
 
 /** The images a refilled detail brings: its cover and AniList banner. */

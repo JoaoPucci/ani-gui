@@ -1436,7 +1436,7 @@
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
-				rawWindowed = refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
 			}
 		});
 		kitsuPageCache.set(p, eps);
@@ -3871,7 +3871,7 @@
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
-											<img src={epThumb} alt="" loading="lazy" />
+											<img class="img-arrive" src={epThumb} alt="" loading="lazy" />
 										{:else if air.unaired}
 											<span class="ep-card-thumb-placeholder ep-card-airs" aria-hidden="true">
 												{unairedLabel(air.airsAt)}
