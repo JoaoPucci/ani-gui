@@ -263,3 +263,73 @@ proptest! {
         }
     }
 }
+
+fn tag() -> impl Strategy<Value = String> {
+    prop::sample::select(vec!["12.5", "24.5", "13", "1.5", "2.50"]).prop_map(str::to_string)
+}
+
+/// The stamps after repairs heard as given, each from a listing that
+/// carries `carrier`, written in the order given through [`settled`].
+fn settled_in_turn(base: &Stamps, repairs: &[(Hearing, &Stamps, &Carrier)]) -> Stamps {
+    let mut taken = BTreeMap::new();
+    let key = (PathBuf::from("history"), "show".to_string());
+    let mut current = base.clone();
+    for (heard, ours, carrier) in repairs {
+        current = settled(
+            &mut taken,
+            key.clone(),
+            &current,
+            Some(*heard),
+            carrier,
+            |_| (*ours).clone(),
+        );
+    }
+    current
+}
+
+proptest! {
+    #[test]
+    fn a_listing_s_carrier_carries_what_its_rows_tag(
+        rows in prop::collection::vec(prop::option::of(tag()), 0..5),
+        former in tag(),
+    ) {
+        let carrier = Carrier::Tags(rows.iter().flatten().cloned().collect());
+        let by_rows = rows.iter().flatten().any(|t| crate::commands::play_native_episode::tag_matches(t, &former));
+        prop_assert_eq!(carrier.carries(&former), by_rows);
+    }
+
+    #[test]
+    fn a_resolve_s_carrier_carries_what_its_extra_tags_carry_in_the_entry_s_numbering(
+        extra in prop::collection::vec(tag(), 0..4),
+        offset in 0u32..13,
+        former in tag(),
+    ) {
+        let carrier = Carrier::Entry { extra: extra.clone(), offset };
+        let own = crate::commands::numbering_offset::kitsu_ep_no(&former, offset);
+        prop_assert_eq!(
+            carrier.carries(&former),
+            crate::commands::play_native_merge::carries_tag(&extra, &own)
+        );
+    }
+
+    #[test]
+    fn repairs_and_listings_that_carry_a_tag_end_the_same_in_any_order(
+        base in shown(), a in shown(), b in shown(), c in shown(),
+        ha in hearing(), hb in hearing(), hc in hearing(),
+        ca in prop::collection::vec(tag(), 0..2),
+        cb in prop::collection::vec(tag(), 0..2),
+        cc in prop::collection::vec(tag(), 0..2),
+    ) {
+        let one_run = |h: Hearing| Hearing { run: 1, ..h };
+        let (ca, cb, cc) = (Carrier::Tags(ca), Carrier::Tags(cb), Carrier::Tags(cc));
+        let all = [(one_run(ha), &a, &ca), (one_run(hb), &b, &cb), (one_run(hc), &c, &cc)];
+        let first = settled_in_turn(&base, &all);
+        for order in [[0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            prop_assert_eq!(&settled_in_turn(&base, &order.map(|i| all[i])), &first);
+        }
+        // No listing's carried tag is kept as the former tag.
+        if let Some((_, f)) = &first.former {
+            prop_assert!(![&ca, &cb, &cc].iter().any(|c| c.carries(f)));
+        }
+    }
+}
