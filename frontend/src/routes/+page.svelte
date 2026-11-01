@@ -88,7 +88,8 @@
 		isWatchLaterStale,
 		readLastRefreshed,
 		refreshStamp,
-		markRefreshedSince
+		markRefreshedSince,
+		onWatchLaterInvalidated
 	} from '$lib/account/watch-later-refresh';
 	import {
 		nextAgeChange,
@@ -730,11 +731,14 @@
 	// The Watch Later rail's freshness line — see
 	// $lib/account/watch-later-status. The last-pulled times live in
 	// local storage, which nothing reactive watches, so `wlStamped`
-	// moves whenever a pull may have recorded one and the times are read
-	// again; `wlNow` moves when the age on screen next changes, and not
-	// otherwise.
+	// moves whenever a pull may have recorded one, or a write cleared
+	// one, and the times are read again; `wlNow` moves when the age on
+	// screen next changes, and not otherwise.
 	let wlStamped = $state(0);
 	let wlNow = $state(Date.now());
+	// A write clears a tracker's stamp whatever became of it, including
+	// writes that land nowhere and so never read the rail again.
+	$effect(() => onWatchLaterInvalidated(() => (wlStamped += 1)));
 	const wlCopy: StatusCopy = {
 		refreshing: () => m.account_watch_later_refreshing(),
 		never: () => m.account_watch_later_not_updated(),
