@@ -171,10 +171,10 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 				emptyStreak: 0,
 				probes
 			};
-			// A run superseded while its config loaded still fetches,
-			// but as a search that is not current, so nothing of it
-			// reaches the page.
-			if (current()) search = s;
+			// A run superseded while its config loaded sends nothing:
+			// the run that replaced it owns the page now.
+			if (!current()) return;
+			search = s;
 			await fetchPage(s);
 		} catch (e) {
 			if (current()) deps.onError(e);
