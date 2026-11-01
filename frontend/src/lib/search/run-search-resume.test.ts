@@ -3,7 +3,7 @@
 // saved search back — as it was when that is still trustworthy, or by
 // asking Kitsu again up to the card the reader left at the top.
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Config, KitsuAnimeRef, KitsuSearchPage } from '$lib/api';
 
 const apiMock = vi.hoisted(() => ({
@@ -54,6 +54,9 @@ async function drain(): Promise<void> {
 /** The runner's clock: searches start at the time the saved one was
  *  left, unless a scenario moves it. */
 let clock = 1_000_000;
+beforeEach(() => {
+	clock = 1_000_000;
+});
 
 function harness(overrides: Partial<SearchRunnerDeps> = {}) {
 	const results: KitsuAnimeRef[][] = [];
