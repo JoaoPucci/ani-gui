@@ -24,7 +24,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
+| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, bundled in the Windows installer, system PATH on AppImage). |
 | **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched — resuming where you left it, or from its start if you left in its first 15 seconds — unless you finished it (its last 90 seconds, or to its end), when it goes on to the next episode. It also goes on when the app has no record of that episode: points are kept for the 200 most recently played episodes, in local storage that can be unavailable. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
@@ -57,7 +57,7 @@ Platform support tiers:
 
 NSIS installer (`.exe`). Run it; it installs per-user by default and creates Start menu and desktop shortcuts.
 
-The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so the download feature works out of the box; the impersonating transport and yt-dlp are bundled directly. The ffmpeg fetch runs even when you already have ffmpeg installed via a per-user package manager (scoop, winget user-scope) — the installer's elevated context doesn't see per-user PATH entries, and the bundled copy is what the app uses at runtime in either case.
+The installer carries everything the app runs — the impersonating transport, yt-dlp, and ffmpeg — so it needs no network while it installs, and an update replaces them with the rest of the app. The bundled copies are the ones the app uses, even when you have your own ffmpeg or yt-dlp on `PATH`.
 
 </details>
 
