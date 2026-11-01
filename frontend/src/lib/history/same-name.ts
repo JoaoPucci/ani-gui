@@ -34,8 +34,65 @@ export function entryNames(ref: KitsuAnimeRef): string[] {
  *  ("Season 2", "2nd Season", "Second Season", "Part 2", "Cour 2"). A
  *  title with no words names nothing. */
 export function namesTheEntry(providerTitle: string, entryTitles: readonly string[]): boolean {
-	// Red stub: the comparison lands with its green commit.
-	void providerTitle;
-	void entryTitles;
-	return false;
+	const wanted = words(providerTitle);
+	if (wanted.length === 0) return false;
+	const wantedKey = wanted.join(' ');
+	const wantedCour = splitCour(wanted);
+	return entryTitles.some((t) => {
+		const have = words(t);
+		if (have.join(' ') === wantedKey) return true;
+		if (!wantedCour) return false;
+		const haveCour = splitCour(have);
+		return (
+			haveCour !== null && haveCour.name === wantedCour.name && haveCour.cour === wantedCour.cour
+		);
+	});
+}
+
+const COUR_KEYWORDS = new Set(['season', 'part', 'cour']);
+
+/** The ten spelled ordinals the cour parsers read. */
+const ORDINAL_WORDS = [
+	'first',
+	'second',
+	'third',
+	'fourth',
+	'fifth',
+	'sixth',
+	'seventh',
+	'eighth',
+	'ninth',
+	'tenth'
+];
+
+/** The title's words: lowercased, split on everything that is not a
+ *  letter or a digit. */
+function words(title: string): string[] {
+	return title
+		.toLowerCase()
+		.split(/[^\p{Alphabetic}\p{N}]+/u)
+		.filter((w) => w.length > 0);
+}
+
+/** The name before a trailing cour suffix, and the cour it names —
+ *  `[.., season|part|cour, N]`, `[.., Nst|Nnd|Nrd|Nth, keyword]` or
+ *  `[.., second, keyword]`. Null without a suffix, or when nothing
+ *  precedes it. */
+function splitCour(ws: string[]): { name: string; cour: number } | null {
+	if (ws.length < 3) return null;
+	const [a, b] = ws.slice(-2);
+	let cour: number | null = null;
+	if (COUR_KEYWORDS.has(a)) cour = /^\d+$/.test(b) ? Number(b) : null;
+	else if (COUR_KEYWORDS.has(b)) cour = ordinal(a);
+	if (cour === null) return null;
+	return { name: ws.slice(0, -2).join(' '), cour };
+}
+
+/** A cour written as an ordinal: a number with its suffix, or one of
+ *  the spelled ordinals. */
+function ordinal(word: string): number | null {
+	const spelled = ORDINAL_WORDS.indexOf(word);
+	if (spelled >= 0) return spelled + 1;
+	const m = /^(\d+)(st|nd|rd|th)$/.exec(word);
+	return m ? Number(m[1]) : null;
 }
