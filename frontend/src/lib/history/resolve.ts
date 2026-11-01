@@ -44,7 +44,7 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
-import { rankedPick, rowYear } from './pick-rank';
+import { namedCandidates, rowYear } from './pick-rank';
 
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
@@ -240,8 +240,9 @@ export function resolveHistoryEntry(
  *
  *  Picker walks five checks in priority order, falling through to
  *  the next when the previous yields no candidate:
- *    0. The hit the row names: one from the row's year, then one
- *       titled as the row (`rankedPick` in ./pick-rank.ts).
+ *    0. The hits the row names: the ones from the row's year, then
+ *       those titled as the row (`namedCandidates` in ./pick-rank.ts);
+ *       the checks below choose among what it leaves.
  *    1. Exact slug match against a slug derived from searchTitle.
  *       Kitsu URLs are mechanical (e.g.
  *       `jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2`); when
@@ -635,16 +636,18 @@ export function pickKitsuMatch(
 	// When nothing survives, surface null so resolveKitsuMatch falls through
 	// to the enrichment step (which resolves from the show id, not the title)
 	// instead of the picker landing on a wrong match.
-	const candidates = hits.filter((h) => isCandidateForRow(preliminary, h));
+	// The hits the row's year or own title names come before Kitsu's
+	// slug: the provider titles Black Clover's TV series "Black Clover",
+	// and Kitsu files that slug under its one-episode special. The
+	// rules below choose among what is left.
+	const candidates = namedCandidates(
+		hits.filter((h) => isCandidateForRow(preliminary, h)),
+		preliminary.searchTitle,
+		preliminary.year
+	);
 	if (candidates.length === 0) {
 		return null;
 	}
-
-	// The hit the row's year or own title names comes before Kitsu's
-	// slug: the provider titles Black Clover's TV series "Black Clover",
-	// and Kitsu files that slug under its one-episode special.
-	const named = rankedPick(candidates, preliminary.searchTitle, preliminary.year);
-	if (named) return named;
 
 	const wantSlug = deriveSlug(preliminary.searchTitle);
 	if (wantSlug.length >= 4) {

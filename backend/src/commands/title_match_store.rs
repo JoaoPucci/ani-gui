@@ -4,7 +4,7 @@
 
 use crate::app::AppState;
 use crate::commands::history_title_tail::without_episode_tail;
-use crate::commands::kitsu::{title_match_put, RETIRED_TITLE_MATCH_SEGMENTS, TITLE_MATCH_VERSION};
+use crate::commands::kitsu::{title_match_put, RETIRED_TITLE_MATCH_SEGMENTS};
 use crate::error::Result;
 use crate::history::HistoryEntry;
 use crate::scraper::provider::{ProviderId, ShowKey};
@@ -47,6 +47,10 @@ fn searches(entry: &HistoryEntry, provider: Option<ProviderId>, title: &str) -> 
             .any(|searched| searched.trim().to_lowercase() == wanted)
 }
 
+/// The last version that wrote under a retired segment: the segment
+/// left with its provider before the version after it.
+const LAST_RETIRED_SEGMENT_VERSION: u32 = 3;
+
 /// The key prefixes a bare row's title matches for `normalized` may
 /// also sit under: the segments retired with the provider whose rows
 /// were bare ([`RETIRED_TITLE_MATCH_SEGMENTS`]), every cour to follow.
@@ -58,7 +62,7 @@ pub(crate) fn retired_title_match_prefixes(
     if provider.is_some() {
         return Vec::new();
     }
-    (crate::commands::kitsu::FIRST_SEGMENTED_TITLE_MATCH_VERSION..=TITLE_MATCH_VERSION)
+    (crate::commands::kitsu::FIRST_SEGMENTED_TITLE_MATCH_VERSION..=LAST_RETIRED_SEGMENT_VERSION)
         .flat_map(|version| {
             RETIRED_TITLE_MATCH_SEGMENTS
                 .iter()

@@ -123,6 +123,31 @@ pub(crate) fn forget_title_matches_naming(
 ///
 /// # Errors
 /// Cache failures propagate.
+/// The Kitsu ids the row's title matches name under the current
+/// version's key alone — the ones Continue Watching reads now. A match
+/// an earlier version stored is a pick that version made, which Home
+/// no longer reads, so nothing that names the row's show reads it
+/// either.
+///
+/// # Errors
+/// Cache failures propagate.
+pub(crate) fn current_title_match_ids(
+    state: &AppState,
+    id: &str,
+    title: &str,
+) -> Result<Vec<String>> {
+    let provider = ShowKey::parse(id).provider;
+    let mut found = Vec::new();
+    for searched in [title, without_episode_tail(title)] {
+        found.extend(
+            cour_entries(state, &title_match_prefix(provider, searched))?
+                .into_iter()
+                .map(|(_, body)| body),
+        );
+    }
+    Ok(found)
+}
+
 pub(crate) fn title_match_ids(state: &AppState, id: &str, title: &str) -> Result<Vec<String>> {
     Ok(own_matches(state, id, title)?
         .into_iter()
