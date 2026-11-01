@@ -75,7 +75,8 @@ export interface LoaderAnimation {
  * Holds at most one player, in the box the overlay last showed. The
  * runtime loads lazily, so the overlay can be hidden, or shown again
  * in a new box, while a load is on its way: a player that arrives for
- * a box no longer shown is torn down. One load is in flight per box.
+ * a box no longer shown, or once a player is already kept, is torn
+ * down. Showing the box whose load is on its way starts no second one.
  * A load that fails leaves the overlay without its animation, which is
  * decoration; the overlay still covers the page and shows its caption.
  */
