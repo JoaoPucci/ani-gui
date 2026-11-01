@@ -294,8 +294,13 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		void fetchMore(search);
 	};
 
-	/** Declared ahead of its rules. */
-	const stop = () => {};
+	const stop = () => {
+		generation++;
+		previousProbes?.end();
+		previousProbes = null;
+		search = null;
+		deps.onBusy(false);
+	};
 
 	return { run, loadMore, checkpoint, resume, stop };
 }

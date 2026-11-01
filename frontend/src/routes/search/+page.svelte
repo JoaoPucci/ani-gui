@@ -208,7 +208,24 @@
 	});
 
 	function follow(q: string) {
-		if (followAddress(q, submitted) === 'search') void runSearch(q);
+		const step = followAddress(q, submitted);
+		if (step === 'search') void runSearch(q);
+		else if (step === 'clear') startOver();
+	}
+
+	/** The page as it opens with nothing asked: no search, Kitsu's
+	 *  ranking, no type filter. */
+	function startOver() {
+		searchRunner.stop();
+		submitted = '';
+		results = null;
+		error = null;
+		phase = { kind: 'loading' };
+		reach = UNMEASURED;
+		sortKey = 'relevance';
+		activeSubtypes.clear();
+		anchor = null;
+		restoredIds = new Set();
 	}
 
 	// Going back to the search page restores what the reader left: the
