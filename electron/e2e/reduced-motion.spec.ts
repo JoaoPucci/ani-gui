@@ -20,7 +20,8 @@
  * from its own frame loop, and the hero parallax, which is a transform
  * set from script on scroll. The acceptance tier covers both
  * (frontend/tests/acceptance/reduced-motion-*.test.ts): the loader
- * through its stub, the parallax on a show's page by scrolling it.
+ * through its stub, the parallax on Home and a show's page by scrolling
+ * them.
  *
  * One scenario runs the same delete with motion on and requires that
  * something does move, so the check cannot pass by looking at a page

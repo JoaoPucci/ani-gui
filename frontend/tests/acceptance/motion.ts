@@ -5,7 +5,9 @@
 // asserts on those in a real Chromium. What this tier can see is the
 // motion script starts: Svelte's transitions and FLIP, which run
 // through `element.animate()`; scrolls asked to glide; and the
-// loader's Lottie (see `stubs/lottie-web.ts`).
+// loader's Lottie (see `stubs/lottie-web.ts`). Motion a page writes
+// into an inline style, the hero parallax, a scenario reads off the
+// element after `scrollWindowTo()`.
 //
 // A Svelte transition with no duration and no delay starts no
 // animation at all. One with either starts a zero-length placeholder
@@ -100,4 +102,33 @@ export async function setReducedMotion(reduced: boolean): Promise<void> {
 		: 'no-preference';
 	window.dispatchEvent(new Event('resize'));
 	await new Promise((r) => setTimeout(r, 0));
+}
+
+let ownScrollY: PropertyDescriptor | undefined;
+let scrollOverridden = false;
+
+/**
+ * Scrolls the window to `y` as far as the page can tell: happy-dom
+ * lays nothing out and keeps `scrollY` at 0, so this gives `window` a
+ * `scrollY` of `y`, sends the `scroll` a real scroll would, and
+ * resolves once the page has re-rendered. `restoreWindowScroll()` puts
+ * happy-dom's own `scrollY` back.
+ */
+export async function scrollWindowTo(y: number): Promise<void> {
+	if (!scrollOverridden) {
+		ownScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+		scrollOverridden = true;
+	}
+	Object.defineProperty(window, 'scrollY', { configurable: true, value: y });
+	window.dispatchEvent(new Event('scroll'));
+	await new Promise((r) => setTimeout(r, 20));
+}
+
+/** Undoes `scrollWindowTo`; does nothing if it was not called. */
+export function restoreWindowScroll(): void {
+	if (!scrollOverridden) return;
+	if (ownScrollY) Object.defineProperty(window, 'scrollY', ownScrollY);
+	else delete (window as unknown as { scrollY?: number }).scrollY;
+	ownScrollY = undefined;
+	scrollOverridden = false;
 }

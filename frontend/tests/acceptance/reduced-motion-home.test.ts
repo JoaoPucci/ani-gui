@@ -3,8 +3,9 @@
 // nothing.
 //
 // The user asks the system for reduced motion and opens the app.
-// The hero's rotation, a card deleted from the Continue Watching row
-// and the rails' scroll arrows must all stand still. (The rows start
+// The hero's rotation, its banner as the page scrolls, a card deleted
+// from the Continue Watching row and the rails' scroll arrows must all
+// stand still. (The rows start
 // no motion on load in either mode, so landing is not a scenario here;
 // the e2e samples it with real CSS. Watch Later's own motion has its
 // pair in watch-later-held-write.test.ts.) This tier sees the motion
@@ -18,7 +19,13 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
-import { recordMotion, setReducedMotion, type Motion } from './motion';
+import {
+	recordMotion,
+	restoreWindowScroll,
+	scrollWindowTo,
+	setReducedMotion,
+	type Motion
+} from './motion';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -38,7 +45,11 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 
 const TRENDING = [
-	kitsuRef('1', 'First Feature', 12),
+	// A poster, so the hero has an image to drift.
+	{
+		...kitsuRef('1', 'First Feature', 12),
+		poster_image: { large: 'https://media.kitsu.app/anime/1/poster_image/large.jpg' }
+	},
 	kitsuRef('2', 'Second Feature', 12),
 	kitsuRef('3', 'Third Feature', 12)
 ];
@@ -110,6 +121,7 @@ afterEach(async () => {
 	app = null;
 	target.remove();
 	motion.stop();
+	restoreWindowScroll();
 	// After the page is gone, so no mounted page answers the change.
 	await setReducedMotion(false);
 	restoreLayout();
@@ -199,6 +211,19 @@ describe.each([
 			}
 		}
 	);
+
+	it('scrolls past the hero banner', async () => {
+		mountHome();
+		await until(() => target.querySelector('section.hero img.hero-img') !== null, 'the banner');
+		const banner = () => target.querySelector<HTMLElement>('section.hero img.hero-img')!;
+		expect(banner().style.transform).toContain('translate3d(0, 0px, 0)');
+
+		await scrollWindowTo(200);
+		// A quarter of the scroll with motion on; still under reduced motion.
+		expect(banner().style.transform).toContain(
+			reduced ? 'translate3d(0, 0px, 0)' : 'translate3d(0, 50px, 0)'
+		);
+	});
 
 	it('removes a deleted Continue Watching card', async () => {
 		const deleted: string[] = [];

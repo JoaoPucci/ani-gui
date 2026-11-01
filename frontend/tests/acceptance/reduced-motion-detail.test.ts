@@ -1,10 +1,10 @@
 // Acceptance: under reduced motion, nothing on a show's page moves.
 //
 // With motion on, the same steps do move, so the scenarios cannot pass
-// by watching nothing. A jump to an episode lands on it instead of
-// gliding, and the loader that covers the page while
-// a play starts holds still. The CSS half is asserted in a real
-// Chromium by the Electron e2e; see ./motion.ts.
+// by watching nothing. The banner holds its place as the page scrolls,
+// a jump to an episode lands on it instead of gliding, and the loader
+// that covers the page while a play starts holds still. The CSS half is
+// asserted in a real Chromium by the Electron e2e; see ./motion.ts.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -13,7 +13,13 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
-import { recordMotion, setReducedMotion, type Motion } from './motion';
+import {
+	recordMotion,
+	restoreWindowScroll,
+	scrollWindowTo,
+	setReducedMotion,
+	type Motion
+} from './motion';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -72,6 +78,7 @@ afterEach(async () => {
 	delete g.EventSource;
 	target.remove();
 	motion.stop();
+	restoreWindowScroll();
 	// After the page is gone, so no mounted page answers the change.
 	await setReducedMotion(false);
 });
@@ -139,23 +146,17 @@ describe.each([
 ] as const)("a show's page %s", (_mode, reduced) => {
 	beforeEach(() => setReducedMotion(reduced));
 
-	it('keeps the banner in place as the page scrolls', async () => {
+	it('scrolls past the banner', async () => {
 		mountShow();
 		await until(() => target.querySelector('section.hero img.hero-img') !== null, 'the banner');
 		const banner = () => target.querySelector<HTMLElement>('section.hero img.hero-img')!;
 		expect(banner().style.transform).toContain('translate3d(0, 0px, 0)');
 
-		Object.defineProperty(window, 'scrollY', { configurable: true, value: 400 });
-		try {
-			window.dispatchEvent(new Event('scroll'));
-			await new Promise((r) => setTimeout(r, 20));
-			// A quarter of the scroll, capped at 80px, with motion on.
-			expect(banner().style.transform).toContain(
-				reduced ? 'translate3d(0, 0px, 0)' : 'translate3d(0, 80px, 0)'
-			);
-		} finally {
-			Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
-		}
+		await scrollWindowTo(200);
+		// A quarter of the scroll with motion on; still under reduced motion.
+		expect(banner().style.transform).toContain(
+			reduced ? 'translate3d(0, 0px, 0)' : 'translate3d(0, 50px, 0)'
+		);
 	});
 
 	it('scrolls to a jumped-to episode', async () => {
