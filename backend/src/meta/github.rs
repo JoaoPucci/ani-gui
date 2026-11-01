@@ -43,8 +43,11 @@ impl Platform {
     /// Whether a release asset named `asset_name` installs on this
     /// platform.
     pub fn carries(self, asset_name: &str) -> bool {
-        let _ = asset_name;
-        false
+        let suffixes: &[&str] = match self {
+            Self::Windows => &["-x64-setup.exe"],
+            Self::Linux => &["-x86_64.AppImage", "-amd64.deb"],
+        };
+        suffixes.iter().any(|s| asset_name.ends_with(s))
     }
 }
 
