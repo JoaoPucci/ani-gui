@@ -193,9 +193,12 @@ fn any_line() -> impl proptest::strategy::Strategy<Value = String> {
 }
 
 proptest::proptest! {
-    /// Whatever hostile lines a master or a media playlist carries,
-    /// nothing the player reads from the rewrite is fetched past the
-    /// proxy.
+    /// For hostile lines of the shapes `any_line` generates — tags that
+    /// name a URI under a spaced or bare name, values upstream,
+    /// protocol-relative, variable or inline, lines ended by any
+    /// JavaScript terminator, quoted values that carry lines of their
+    /// own — in a master or a media playlist, nothing the player reads
+    /// from the rewrite is fetched past the proxy.
     #[test]
     fn nothing_the_player_reads_escapes_the_proxy(
         lines in proptest::collection::vec(any_line(), 1..4),

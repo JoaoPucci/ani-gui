@@ -8,9 +8,10 @@
 //! parser does not know that names a URI is dropped, and so is a
 //! playlist entry that is not a network URI (see below). The player
 //! reads the result with hls.js rather than m3u8-rs, so the rewrite
-//! then reads its own output the way hls.js does and drops any line
-//! through which hls.js would still fetch something off the proxy
-//! ([`super::m3u8_guard`]). That way:
+//! then reads its own output the way hls.js does — lines ended at
+//! `\r`, `\n`, U+2028 and U+2029, attribute names trimmed — and drops
+//! any line through which hls.js would still fetch something off the
+//! proxy ([`super::m3u8_guard`]). That way:
 //!
 //! - Browser fetches see only `127.0.0.1:<port>` URLs (no CORS pain).
 //! - The upstream `Referer:` requirement is enforced server-side per
