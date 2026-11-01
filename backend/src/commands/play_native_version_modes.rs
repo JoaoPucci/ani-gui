@@ -54,7 +54,7 @@ pub(crate) async fn resolve_in_any_version<P: Provider + ?Sized>(
     stamps_beside: Option<&std::path::Path>,
     mode: &str,
     quality: &str,
-    locale: &str,
+    wanted: crate::scraper::track_preference::Wanted<'_>,
 ) -> (
     PickedShow,
     std::result::Result<ResolvedEpisode, NativeError>,
@@ -66,7 +66,7 @@ pub(crate) async fn resolve_in_any_version<P: Provider + ?Sized>(
         stamps_beside,
         mode,
         quality,
-        locale,
+        wanted,
     )
     .await;
     let mut playing = picked;
@@ -75,7 +75,7 @@ pub(crate) async fn resolve_in_any_version<P: Provider + ?Sized>(
             Err(ne) if dead_end(ne) => {}
             _ => break,
         }
-        tried = resolve_stamped(client, &next, episode, stamps_beside, mode, quality, locale).await;
+        tried = resolve_stamped(client, &next, episode, stamps_beside, mode, quality, wanted).await;
         playing = next;
     }
     (playing, tried)
@@ -90,7 +90,7 @@ async fn resolve_stamped<P: Provider + ?Sized>(
     stamps_beside: Option<&std::path::Path>,
     mode: &str,
     quality: &str,
-    locale: &str,
+    wanted: crate::scraper::track_preference::Wanted<'_>,
 ) -> std::result::Result<ResolvedEpisode, NativeError> {
     let stamp = stamps_beside.and_then(|history| {
         crate::commands::numbering_offset::stamp_beside(
@@ -106,7 +106,7 @@ async fn resolve_stamped<P: Provider + ?Sized>(
         stamp.as_ref(),
         mode,
         quality,
-        locale,
+        wanted,
     )
     .await
 }

@@ -298,7 +298,7 @@ mod default_first_props {
         /// there is one — comes first.
         #[test]
         fn the_urls_are_a_permutation_led_by_a_default(tracks in tracks()) {
-            let urls = subtitle_urls_preferred(&tracks, "en");
+            let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale("en"));
             let mut expected: Vec<String> = tracks.iter().map(|t| t.url.clone()).collect();
             let mut got = urls.clone();
             expected.sort();
@@ -319,9 +319,9 @@ mod default_first_props {
             tracks in tracks(),
             locale in "(en|pt-BR|es-419|ru|[a-z]{2})",
         ) {
-            let urls = subtitle_urls_preferred(&tracks, &locale);
+            let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale(&locale));
             let expected: Vec<String> =
-                crate::scraper::track_preference::preference_order(&tracks, &locale)
+                crate::scraper::track_preference::preference_order(&tracks, crate::scraper::track_preference::Wanted::locale(&locale))
                     .into_iter()
                     .map(|i| tracks[i].url.clone())
                     .collect();

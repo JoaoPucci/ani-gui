@@ -11,6 +11,7 @@ fn args(kind: ExternalPlayerKind, template: Option<&str>, tracks: &[&str]) -> La
         player_kind: kind,
         custom_args_template: template.map(str::to_string),
         subtitle_urls: tracks.iter().map(|t| (*t).to_string()).collect(),
+        subtitles_off: false,
     }
 }
 

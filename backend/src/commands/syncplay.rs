@@ -81,6 +81,10 @@ pub struct SyncplayLaunchArgs {
     /// beside them covers those fetches too.
     #[serde(default)]
     pub subtitle_urls: Vec<String>,
+    /// Whether the show's remembered captions choice is Off: the
+    /// wrapped player starts with its subtitles off.
+    #[serde(default)]
+    pub subtitles_off: bool,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.

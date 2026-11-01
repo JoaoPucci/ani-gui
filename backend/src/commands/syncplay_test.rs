@@ -8,6 +8,7 @@ fn args(stream: &str, binary: &str) -> SyncplayLaunchArgs {
         player_kind: ExternalPlayerKind::Mpv,
         player_binary: String::new(),
         subtitle_urls: Vec::new(),
+        subtitles_off: false,
     }
 }
 
@@ -306,6 +307,7 @@ fn with_tracks(kind: ExternalPlayerKind, referer: Option<&str>) -> SyncplayLaunc
             "https://cdn.example/x/subs/en.vtt".into(),
             "https://cdn.example/x/subs/es.vtt".into(),
         ],
+        subtitles_off: false,
     }
 }
 

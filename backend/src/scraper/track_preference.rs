@@ -13,6 +13,28 @@
 
 use crate::scraper::provider::SubtitleTrack;
 
+/// What the viewer wants of a listing: the choice remembered for the
+/// show — a BCP 47 tag; `off` is a choice about showing, not about
+/// order, and is left out — and the UI locale.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Wanted<'a> {
+    /// The language last picked on the show, if one was.
+    pub remembered: Option<&'a str>,
+    /// The UI locale (a BCP 47 tag, the app's setting).
+    pub locale: &'a str,
+}
+
+impl<'a> Wanted<'a> {
+    /// The UI locale alone, nothing remembered.
+    #[must_use]
+    pub fn locale(locale: &'a str) -> Self {
+        Self {
+            remembered: None,
+            locale,
+        }
+    }
+}
+
 #[path = "track_preference_tag.rs"]
 mod tag;
 use tag::{implied_script, parse_tag, Tag};
@@ -61,8 +83,8 @@ fn rank(track: &SubtitleTrack, user: Option<&Tag>) -> u8 {
 /// The listing's indices, most wanted first, for a user in `locale`
 /// (a BCP 47 tag, the app's own setting).
 #[must_use]
-pub fn preference_order(tracks: &[SubtitleTrack], locale: &str) -> Vec<usize> {
-    let user = parse_tag(locale);
+pub fn preference_order(tracks: &[SubtitleTrack], wanted: Wanted<'_>) -> Vec<usize> {
+    let user = parse_tag(wanted.locale);
     let mut order: Vec<usize> = (0..tracks.len()).collect();
     order.sort_by_key(|&i| (rank(&tracks[i], user.as_ref()), i));
     order
@@ -70,8 +92,11 @@ pub fn preference_order(tracks: &[SubtitleTrack], locale: &str) -> Vec<usize> {
 
 /// The tracks in [`preference_order`].
 #[must_use]
-pub fn preferred_first<'a>(tracks: &'a [SubtitleTrack], locale: &str) -> Vec<&'a SubtitleTrack> {
-    preference_order(tracks, locale)
+pub fn preferred_first<'a>(
+    tracks: &'a [SubtitleTrack],
+    wanted: Wanted<'_>,
+) -> Vec<&'a SubtitleTrack> {
+    preference_order(tracks, wanted)
         .into_iter()
         .map(|i| &tracks[i])
         .collect()
@@ -85,14 +110,14 @@ pub fn preferred_first<'a>(tracks: &'a [SubtitleTrack], locale: &str) -> Vec<&'a
 pub fn most_wanted_within(
     tracks: Vec<SubtitleTrack>,
     cap: usize,
-    locale: &str,
+    wanted: Wanted<'_>,
 ) -> (Vec<SubtitleTrack>, usize) {
     if tracks.len() <= cap {
         return (tracks, 0);
     }
     let dropped = tracks.len() - cap;
     let mut keep = vec![false; tracks.len()];
-    for i in preference_order(&tracks, locale).into_iter().take(cap) {
+    for i in preference_order(&tracks, wanted).into_iter().take(cap) {
         keep[i] = true;
     }
     let kept = tracks

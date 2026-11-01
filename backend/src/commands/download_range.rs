@@ -80,7 +80,7 @@ impl Attempt for RangeStartAttempt<'_> {
             None,
             &self.args.mode,
             self.quality,
-            self.locale,
+            crate::scraper::track_preference::Wanted::locale(self.locale),
         )
         .await;
         Ok((picked, served, first?))
@@ -221,7 +221,7 @@ where
                     None,
                     &args.mode,
                     quality,
-                    &locale,
+                    crate::scraper::track_preference::Wanted::locale(&locale),
                 )
                 .await
             }

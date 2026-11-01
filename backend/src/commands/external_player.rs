@@ -66,6 +66,10 @@ pub struct LaunchArgs {
     /// itself; the referer flag it already gets covers those fetches.
     #[serde(default)]
     pub subtitle_urls: Vec<String>,
+    /// Whether the show's remembered captions choice is Off: the player
+    /// starts with its subtitles off.
+    #[serde(default)]
+    pub subtitles_off: bool,
 }
 
 /// Build the argv that would be passed to `Command::new(player).args(...)`.

@@ -612,6 +612,11 @@ export interface PlayArgs {
 	 *  resolution cache on it, so a stamp or an eviction names the
 	 *  version its play named. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show
+	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
+	 *  backend orders the subtitle tracks it hands an external player,
+	 *  and cuts a listing past its cap, by it. Absent when none is. */
+	caption?: string;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs

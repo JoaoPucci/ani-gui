@@ -2154,7 +2154,8 @@
 			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
-			version
+			version,
+			caption: storedCaption(owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2530,7 +2531,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				// Body text is shaped by describeExternalLaunchFailure so
@@ -2598,7 +2600,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))

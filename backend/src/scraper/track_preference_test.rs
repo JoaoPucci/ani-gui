@@ -4,7 +4,7 @@
 //! other language, then tracks whose language is unknown — ties in
 //! the listing's order.
 
-use super::{most_wanted_within, preference_order, preferred_first};
+use super::{most_wanted_within, preference_order, preferred_first, Wanted};
 use crate::scraper::provider::SubtitleTrack;
 use proptest::prelude::*;
 
@@ -62,7 +62,7 @@ fn steel_ball_run() -> Vec<SubtitleTrack> {
 }
 
 fn labels_first(tracks: &[SubtitleTrack], locale: &str, n: usize) -> Vec<String> {
-    preferred_first(tracks, locale)
+    preferred_first(tracks, Wanted::locale(locale))
         .into_iter()
         .take(n)
         .map(|t| t.label.clone())
@@ -193,7 +193,7 @@ fn a_track_whose_lang_is_a_three_letter_code_is_read_by_it() {
 /// stays in the listing's order.
 #[test]
 fn a_cut_keeps_the_most_wanted_in_listing_order() {
-    let (kept, dropped) = most_wanted_within(steel_ball_run(), 4, "pt-BR");
+    let (kept, dropped) = most_wanted_within(steel_ball_run(), 4, Wanted::locale("pt-BR"));
     let labels: Vec<&str> = kept.iter().map(|t| t.label.as_str()).collect();
     assert_eq!(
         labels,
@@ -257,7 +257,7 @@ proptest! {
     /// nothing twice.
     #[test]
     fn the_order_is_a_permutation(tracks in listing(), locale in locale()) {
-        let mut order = preference_order(&tracks, &locale);
+        let mut order = preference_order(&tracks, Wanted::locale(&locale));
         order.sort_unstable();
         prop_assert_eq!(order, (0..tracks.len()).collect::<Vec<_>>());
     }
@@ -271,7 +271,7 @@ proptest! {
         tracks in listing(),
         locale in locale(),
     ) {
-        let order = preference_order(&tracks, &locale);
+        let order = preference_order(&tracks, Wanted::locale(&locale));
         let defaults = tracks.iter().filter(|t| t.default).count();
         prop_assert!(order[..defaults].iter().all(|&i| tracks[i].default));
         prop_assert!(order[..defaults].windows(2).all(|w| w[0] < w[1]));
@@ -298,8 +298,8 @@ proptest! {
         locale in locale(),
         cap in 0usize..45,
     ) {
-        let order = preference_order(&tracks, &locale);
-        let (kept, dropped) = most_wanted_within(tracks.clone(), cap, &locale);
+        let order = preference_order(&tracks, Wanted::locale(&locale));
+        let (kept, dropped) = most_wanted_within(tracks.clone(), cap, Wanted::locale(&locale));
         prop_assert_eq!(kept.len(), tracks.len().min(cap));
         prop_assert_eq!(kept.len() + dropped, tracks.len());
         let mut wanted: Vec<usize> = order.into_iter().take(cap).collect();
