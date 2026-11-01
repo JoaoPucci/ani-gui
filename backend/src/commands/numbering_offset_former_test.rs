@@ -147,3 +147,26 @@ mod kept_former_props {
         }
     }
 }
+
+#[test]
+fn a_former_tag_a_later_listing_carries_is_dropped_under_a_continuation_offset() {
+    // The stamp is kept under an offset of 12; the former tag "24.5" is
+    // the listing's own tag, and a listing at hand tagging a row "24.5"
+    // drops it whatever the offset.
+    let state = state();
+    crate::commands::numbering_offset::put_display(&state, SHOW, 12, 13, "24.5");
+    retag_display(&state, SHOW, &[(13, "24.5".into(), "12.5".into())], &|_| {
+        false
+    });
+    assert_eq!(former_stamp(&state, SHOW), Some((13, "24.5".to_string())));
+    let ep = |n: u32, tag: &str| crate::scraper::provider::EpisodeRef {
+        id: u64::from(n),
+        number: n,
+        number2: Some(tag.to_string()),
+        former_tag: None,
+        title: None,
+    };
+    retag_from_listing(&state, SHOW, &[ep(13, "12.5"), ep(26, "24.5")], None);
+    assert_eq!(former_stamp(&state, SHOW), None);
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+}
