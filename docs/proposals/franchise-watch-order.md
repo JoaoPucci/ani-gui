@@ -1,6 +1,7 @@
 # Proposal: watch order — what comes before, what comes next, and the franchise around a show
 
-**Status**: proposed as the main feature of the 0.19.0 release. Nothing
+**Status**: proposed as the main feature of the 0.19.0 release, with
+the maintainer's open questions decided (section 5). Nothing
 below is built. The research was done on 2026-11-01; the live samples
 it quotes describe the catalogues on that day and will drift.
 
@@ -407,8 +408,10 @@ No toggle on the strip.
   "Coming January 2027", not playable.
 - An entry the provider does not carry: the strip shows it anyway, as
   the catalogue does; the show page it opens runs the existing
-  availability check. A cached negative verdict, where one exists, can
-  dim the card without any new request.
+  availability check. The strip does not dim entries from cached
+  verdicts either, for the same reason the finale card does not (see
+  option b): the order is shown as it is, and the show page says what
+  is unavailable.
 - No relations, or Kitsu unreachable: the strip is absent.
 
 **Trackers.** None. The strip reads; every play it leads to is an
@@ -428,33 +431,55 @@ first.**
 - *In the player*: when the last episode of an entry reaches its
   ending credits (the point the existing "Skip Ending" button already
   knows from skip data, else the final seconds), the button becomes
-  an end card — the sequel's banner, its title, "Up next · Episode 1".
-  With auto-play on, the card counts down and plays it; the countdown
-  can be cancelled.
+  an end card — the sequel's banner, its title, its year and format,
+  under "Up next". The card waits for a click. It does not count down
+  or play the sequel by itself, whatever the auto-play setting:
+  auto-play stays within one entry, as it does today.
 - *On Continue Watching*: once the finale has been played through,
   the card stops offering the finale again and shows the sequel —
-  its art, its title, "EP 1". When the sequel has its own history row
-  (you started it), the finished entry's card gives way to it, so the
-  strip does not show both.
+  its art, its title, "Up next".
+- *What a click does*, on either card: it opens the sequel's show
+  page, where Play starts episode 1. It does not start playback
+  directly, because nothing has asked the provider about the sequel
+  (below), and the show page is where the app already answers that
+  question. When the sequel has its own history row (you started
+  it), the finished entry's card gives way to the sequel's ordinary
+  Continue card, so the strip does not show both.
 
-**Rules** [proposal]. Advance only when all hold: the entry is
-finished airing; the episode played is its last; exactly one sequel
-remains after dropping recaps; that sequel is a TV, ONA or OVA
-continuation or a film the databases link as the sequel; and it has
-aired. Otherwise the end card shows the choices (or nothing) and
-Continue keeps today's behaviour.
+**Rules** [proposal]. The end card appears only on the last episode
+of an entry that has finished airing. What it shows depends on the
+sequels left after dropping recaps:
+
+- exactly one, a TV, ONA or OVA continuation or a film, that has
+  aired: that entry, as "Up next";
+- exactly one that has not aired: that entry with its date
+  ("Coming January 2027"), as information only;
+- several: all of them, as the choices;
+- none, or only entries of another kind (a special, a music video):
+  no card.
+
+Continue moves to the sequel in the first case only; in every other
+case it keeps today's behaviour.
 
 **Edge cases.** Story-order links run backwards in time — the 2000
 *JoJo* OVA's one sequel is the 1993 OVA: still offered, since it is
 what the databases call next, with "aired 1993" on the card.
-Branching runs never advance: *Fate/Zero 2nd Season* has four
-sequels, so its finale shows the choices. A film
+Continue never moves on a branching run: *Fate/Zero 2nd Season* has
+four sequels, so its finale card shows the choices. A film
 inside a run is offered when the databases link it as the sequel,
-and not otherwise. A sequel the provider does not carry fails on
-click the way any unavailable show does today; an option worth the
-maintainer's decision is to check the one sequel's availability while
-the finale plays, as the player already warms the next episode in the
-background — one check, only at a finale, only for one show.
+and not otherwise.
+
+**A sequel the provider does not carry** [decided]. The card names the
+next entry the relations give, whether or not the provider carries it,
+and nothing asks the provider about it at a finale — no new request,
+and no cached verdict either, so the card never differs by what
+happens to be cached. Offering "the next one that is available"
+instead would raise a question the viewer should not have to answer —
+whether the app is skipping something — and hide the real order. A
+click opens the sequel's own show page, which runs the existing
+availability check and says when the show is unavailable (in the
+chosen audio, or at all); its watch-order strip then shows what comes
+after it, so the viewer can carry on from there.
 
 **Trackers.** No new writes. The finale's play writes the finished
 entry's progress as now; the sequel's first play writes the sequel's
@@ -548,28 +573,30 @@ support.
 
 1. **Watch order strip** (option a), with the `chain` walk — the
    strip's position number and its "You're on …" line both need the
-   whole main run, not just the neighbours — and that line. Read-only, no provider requests, no
-   change to Continue or trackers. On its own it answers "what
-   comes before and after" and most of the JoJo request.
+   whole main run, not just the neighbours — and that line.
+   Read-only, no provider requests, no change to Continue or
+   trackers. On its own it answers "what comes before and after"
+   and most of the JoJo request.
 2. **Up next at a finale** (option b): the player end card first, then
    Continue moving to the sequel and the finished entry's card giving
-   way. Decide first whether to check the sequel's availability during
-   the finale.
-3. **Franchise page** (option c), reusing phase 1's walk and adding
-   the side stories, films, recaps and other versions around it; the
-   strip gains its trailing link to the page here.
+   way. The card waits for a click, and no provider is asked about the
+   sequel.
+3. **Franchise page** (option c), in 0.19.0, reusing phase 1's walk
+   and adding the side stories, films, recaps and other versions
+   around it; the strip gains its trailing link to the page here.
 4. **One card per franchise** (option d): not planned. Revisit after
    phase 2 ships, if hunting for the current part is still a
    complaint.
 
-**Decisions for the maintainer.**
+**Decided by the maintainer.**
 
-- Whether phase 2 may make one availability check for the single
-  sequel while a finale plays (otherwise a sequel the provider lacks
-  is found out on click).
-- Whether auto-play may cross into another entry at all, or only
-  shows the card.
-- Whether the franchise page belongs in 0.19.0 or follows it.
+- **No provider check at a finale.** "Up next" names the next entry
+  the relations give, carried or not; the sequel's own show page
+  reports when the provider lacks it, and its strip shows what
+  follows.
+- **No auto-play across entries.** The finale shows the "Up next"
+  card and waits; auto-play stays within one entry.
+- **The franchise page (phase 3) is part of 0.19.0.**
 
 ## Live requests made for this proposal
 
