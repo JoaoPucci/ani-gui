@@ -88,6 +88,16 @@ fn builder() -> r2d2::Builder<SqliteConnectionManager> {
 /// - [`AniError::Cache`] when the pool can't be built, the lock can't
 ///   be taken, or migrations fail.
 pub fn open_pool(path: &Path) -> Result<SqlitePool> {
+    open_then(path, |_| ()).map(|(pool, ())| pool)
+}
+
+/// Open the pool, run the migrations and the played-marks pass under
+/// the migration lock, then `then` on the same connection, still under
+/// it.
+fn open_then<T>(
+    path: &Path,
+    then: impl FnOnce(&mut rusqlite::Connection) -> T,
+) -> Result<(SqlitePool, T)> {
     let manager = SqliteConnectionManager::file(path);
     let pool = builder()
         .max_size(4)
@@ -97,7 +107,9 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
     let _turn = migration_lock(path)?;
     run_migrations(&mut conn)?;
     crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
-    Ok(pool)
+    let out = then(&mut conn);
+    drop(conn);
+    Ok((pool, out))
 }
 
 /// [`open_pool`] for the app's launch: once the cache is open, and
@@ -111,21 +123,12 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
 pub fn open_pool_reclaiming(
     path: &Path,
 ) -> Result<(SqlitePool, crate::cache::reclaim::ReclaimReport)> {
-    let manager = SqliteConnectionManager::file(path);
-    let pool = builder()
-        .max_size(4)
-        .build(manager)
-        .map_err(|_| AniError::Cache)?;
-    let mut conn = pool.get().map_err(|_| AniError::Cache)?;
-    let _turn = migration_lock(path)?;
-    run_migrations(&mut conn)?;
-    crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
-    let report = crate::cache::reclaim::reclaim(&mut conn, &crate::cache::families::live())
-        .unwrap_or_else(|e| {
+    open_then(path, |conn| {
+        crate::cache::reclaim::reclaim(conn, &crate::cache::families::live()).unwrap_or_else(|e| {
             tracing::warn!(error = ?e, "cache reclaim refused; every row stays");
             crate::cache::reclaim::ReclaimReport::default()
-        });
-    Ok((pool, report))
+        })
+    })
 }
 
 /// The cross-process lock a cache's migrations run under, held until

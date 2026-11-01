@@ -48,7 +48,10 @@ pub(super) fn past(prefix: &str) -> String {
 /// (`allmanga2kitsu:played:v1:<key>`).
 pub(super) fn mapping_key_id(key: &str) -> Option<&str> {
     let rest = key.strip_prefix("allmanga2kitsu:")?;
-    if let Some(id) = rest.strip_prefix("played:v1:") {
+    let played = crate::cache::families::MAPPING_PLAYED
+        .strip_prefix("allmanga2kitsu:")
+        .unwrap_or(crate::cache::families::MAPPING_PLAYED);
+    if let Some(id) = rest.strip_prefix(played) {
         return Some(id);
     }
     let (version, id) = rest.split_once(':')?;
