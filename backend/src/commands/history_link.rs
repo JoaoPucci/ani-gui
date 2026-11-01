@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::error::Result;
 use crate::history::guard::{Epoch, Held};
-use crate::history::HistoryEntry;
+use crate::history::{same_kitsu_id, HistoryEntry};
 
 /// A request to link rows to a show.
 #[derive(Debug, Clone, Deserialize)]
@@ -90,15 +90,33 @@ pub struct UnlinkOutcome {
 /// hold is not linked.
 #[must_use]
 pub fn plan_link(entries: &[HistoryEntry], rows: &[String]) -> Vec<LinkedRow> {
-    let _ = (entries, rows);
-    Vec::new()
+    let mut planned: Vec<LinkedRow> = Vec::new();
+    for row in rows {
+        if planned.iter().any(|p| &p.row == row) {
+            continue;
+        }
+        if let Some(entry) = entries.iter().find(|e| &e.id == row) {
+            planned.push(LinkedRow {
+                row: row.clone(),
+                previous: entry.kitsu_id.clone(),
+                ep_no: entry.ep_no.clone(),
+                watched_at: entry.watched_at,
+            });
+        }
+    }
+    planned
 }
 
 /// Whether `entry` still reads as the link of `kitsu_id` left it.
 #[must_use]
 pub fn left_as_linked(entry: &HistoryEntry, kitsu_id: &str, linked: &LinkedRow) -> bool {
-    let _ = (entry, kitsu_id, linked);
-    false
+    entry.id == linked.row
+        && entry.ep_no == linked.ep_no
+        && entry.watched_at == linked.watched_at
+        && entry
+            .kitsu_id
+            .as_deref()
+            .is_some_and(|id| same_kitsu_id(id, kitsu_id))
 }
 
 /// The rows of `entries` an undo gives back their earlier id: each
@@ -109,8 +127,16 @@ pub fn plan_unlink<'a>(
     kitsu_id: &str,
     rows: &'a [LinkedRow],
 ) -> Vec<&'a LinkedRow> {
-    let _ = (entries, kitsu_id, rows);
-    Vec::new()
+    let mut planned: Vec<&LinkedRow> = Vec::new();
+    for linked in rows {
+        if planned.iter().any(|p| p.row == linked.row) {
+            continue;
+        }
+        if entries.iter().any(|e| left_as_linked(e, kitsu_id, linked)) {
+            planned.push(linked);
+        }
+    }
+    planned
 }
 
 /// Link `args.rows` to `args.kitsu_id`.
@@ -122,6 +148,7 @@ pub fn plan_unlink<'a>(
 pub async fn link(state: &AppState, args: &LinkArgs) -> Result<LinkOutcome> {
     let kitsu_id = crate::kitsu_id::require(&args.kitsu_id)?;
     let begun = crate::history::guard::epoch(&state.history_path);
+    crate::commands::kitsu::kitsu_anime_detail_page(state, kitsu_id).await?;
     crate::history::guard::hold(&state.history_path, |held| {
         link_held(state, held, &args.rows, kitsu_id, begun)
     })
@@ -134,11 +161,25 @@ fn link_held(
     kitsu_id: &str,
     begun: Epoch,
 ) -> Result<LinkOutcome> {
-    let _ = (state, held, rows, begun);
+    let mut linked = plan_link(&held.rows()?, rows);
+    linked.retain(|l| !held.show_removed_since(begun, &l.row));
+    for l in &linked {
+        held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
+        drop_other_mapping(state, &l.row, kitsu_id)?;
+    }
     Ok(LinkOutcome {
         kitsu_id: kitsu_id.to_string(),
-        linked: Vec::new(),
+        linked,
     })
+}
+
+/// Drop the row's stored mapping when it names another show.
+fn drop_other_mapping(state: &AppState, row: &str, kitsu_id: &str) -> Result<()> {
+    let mapped = crate::commands::kitsu::allmanga_kitsu_get(state, row)?;
+    if mapped.is_some_and(|m| !same_kitsu_id(&m, kitsu_id)) {
+        crate::commands::kitsu::allmanga_kitsu_delete(state, row)?;
+    }
+    Ok(())
 }
 
 /// Undo a link: every named row that still reads as the link left it
@@ -147,12 +188,28 @@ fn link_held(
 /// # Errors
 /// History I/O errors.
 pub fn unlink(state: &AppState, args: &UnlinkArgs) -> Result<UnlinkOutcome> {
-    let _ = state;
-    Ok(UnlinkOutcome {
-        restored: Vec::new(),
-        kept: args.rows.iter().map(|r| r.row.clone()).collect(),
+    crate::history::guard::hold(&state.history_path, |held| {
+        let entries = held.rows()?;
+        let restored: Vec<LinkedRow> = plan_unlink(&entries, &args.kitsu_id, &args.rows)
+            .into_iter()
+            .cloned()
+            .collect();
+        for l in &restored {
+            held.set_kitsu_id(&l.row, l.previous.clone())?;
+        }
+        let kept = args
+            .rows
+            .iter()
+            .filter(|r| !restored.iter().any(|l| l.row == r.row))
+            .map(|r| r.row.clone())
+            .collect();
+        Ok(UnlinkOutcome {
+            restored: restored.into_iter().map(|l| l.row).collect(),
+            kept,
+        })
     })
 }
+
 #[cfg(test)]
 #[path = "history_link_test.rs"]
 mod tests;
