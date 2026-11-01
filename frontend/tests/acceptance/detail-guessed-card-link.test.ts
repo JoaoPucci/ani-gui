@@ -67,7 +67,8 @@ const GUESS = '12625';
 const GUESS_TITLE = 'Black Clover Special';
 /** The show the card really is. */
 const RIGHT = '13209';
-/** The card's row, and an older row of the same title it hides. */
+/** The card's row, and a row of the same title it hides: both have
+ *  no watch moment, so the card is the one further along. */
 const CARD = 'hianime:black-clover-949';
 const HIDDEN = 'black-clover-77';
 
@@ -93,7 +94,7 @@ beforeEach(() => {
 	window.localStorage.clear();
 	for (const t of toastStore.items) toastStore.dismiss(t.id);
 	rows = [
-		{ ep_no: '1', id: CARD, title: TITLE },
+		{ ep_no: '5', id: CARD, title: TITLE },
 		{ ep_no: '3', id: HIDDEN, title: TITLE }
 	];
 	linkCalls = [];
@@ -232,6 +233,8 @@ describe('the show page a guessed Continue card opened', () => {
 		await openShowPage(GUESS, { guessed: CARD });
 		await settle();
 		expect(hasNote()).toBe(false);
+		// The room held for the line goes once nothing is offered.
+		expect(target.querySelector('.guess-note')).toBeNull();
 	});
 
 	it('plays as it always does with the line there', async () => {

@@ -43,6 +43,7 @@ const PLAYED: HistoryEntry = {
 };
 const OTHER: HistoryEntry = { id: 'hianime:gintama-1237', title: 'Gintama', ep_no: '175' };
 const GUESS = '12625';
+const TITLE_GONE = 'Black Clover';
 
 /** Every row guessed as the special, Gintama as itself. */
 function deps(over: Partial<LinkDeps> = {}): LinkDeps {
@@ -89,6 +90,32 @@ describe('linkOffer', () => {
 	it('offers nothing when the history cannot be read', async () => {
 		const failing = deps({ history: async () => Promise.reject(new Error('down')) });
 		expect(await linkOffer(failing, CARD.id, GUESS)).toBeNull();
+	});
+});
+
+describe('a row whose recorded show Kitsu no longer serves', () => {
+	// Continue Watching matches such a row as one with no id, by a
+	// guess, and its card opens a guessed session.
+	const GONE: HistoryEntry = {
+		id: 'hianime:black-clover-1',
+		title: TITLE_GONE,
+		ep_no: '2',
+		kitsu_id: '404'
+	};
+	const fallback = (over: Partial<LinkDeps> = {}) =>
+		deps({
+			history: async () => [CARD, GONE],
+			resolve: async () => ({ match: ref(GUESS), trusted: false }),
+			...over
+		});
+
+	it('is offered like any guessed row', async () => {
+		expect((await linkOffer(fallback(), GONE.id, GUESS))?.entry).toEqual(GONE);
+	});
+
+	it('is linked with the card it hides behind', async () => {
+		const offer = (await linkOffer(fallback(), CARD.id, GUESS))!;
+		expect(await guessedGroup(fallback(), offer)).toEqual([CARD.id, GONE.id]);
 	});
 });
 
@@ -147,11 +174,37 @@ describe('guessedGroup', () => {
 		const flaky = deps({
 			resolve: async (e) => {
 				if (e.id === HIDDEN.id) throw new Error('down');
+				if (e.kitsu_id) return { match: ref(e.kitsu_id), trusted: true };
 				return { match: ref(GUESS), trusted: false };
 			}
 		});
 		const offer = { entry: CARD, current: ref(GUESS) };
 		expect(await guessedGroup(flaky, offer)).toEqual([CARD.id, OTHER.id]);
+	});
+});
+
+describe('guessedGroup, over a long history', () => {
+	it('asks for the rows’ matches side by side', async () => {
+		let inFlight = 0;
+		let most = 0;
+		const many: HistoryEntry[] = Array.from({ length: 6 }, (_, i) => ({
+			id: `row-${i}`,
+			title: 'Black Clover',
+			ep_no: '1'
+		}));
+		const slow = deps({
+			history: async () => [CARD, ...many],
+			resolve: async () => {
+				inFlight++;
+				most = Math.max(most, inFlight);
+				await new Promise((r) => setTimeout(r, 5));
+				inFlight--;
+				return { match: ref(GUESS), trusted: false };
+			}
+		});
+		const offer = { entry: CARD, current: ref(GUESS) };
+		expect(await guessedGroup(slow, offer)).toEqual([CARD.id, ...many.map((r) => r.id)]);
+		expect(most).toBeGreaterThan(1);
 	});
 });
 

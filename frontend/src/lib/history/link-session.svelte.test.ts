@@ -36,6 +36,8 @@ const RIGHT = ref('9969', { canonical_title: 'Gintama', episode_count: 51 });
 
 interface Fake {
 	deps: LinkSessionDeps;
+	/** The path the app is on. */
+	path: string;
 	notices: LinkNotice[];
 	pages: [string, string | null][];
 	refreshed: number;
@@ -44,6 +46,7 @@ interface Fake {
 
 function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 	const f = { notices: [], pages: [], refreshed: 0, rows: [CARD] } as unknown as Fake;
+	f.path = `/anime/${GUESS}`;
 	f.deps = {
 		history: async () => f.rows,
 		resolve: async (e) =>
@@ -65,9 +68,12 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 			return { restored: rows.map((r) => r.row), kept: [] };
 		},
 		notify: (n) => f.notices.push(n),
-		showPage: (id, row) => f.pages.push([id, row]),
+		showPage: (id, row) => {
+			f.pages.push([id, row]);
+			f.path = `/anime/${id}`;
+		},
+		here: () => f.path,
 		refresh: () => f.refreshed++,
-		here: () => `/anime/${GUESS}`,
 		...over
 	};
 	return f;
@@ -165,7 +171,8 @@ describe('LinkSession', () => {
 		s.choose(s.candidates![0]);
 		await s.confirm();
 		expect(f.refreshed).toBe(1);
-		expect(f.pages).toEqual([]);
+		// Opened again without the card's row, so the line's room goes.
+		expect(f.pages).toEqual([[GUESS, null]]);
 	});
 
 	it('says when an undo met a row played since', async () => {
@@ -220,6 +227,75 @@ describe('LinkSession', () => {
 		f.notices[0].onAction!();
 		await vi.waitFor(() => expect(f.notices.length).toBe(2));
 		expect(f.notices[1]).toEqual({ kind: 'error', message: m.detail_link_failed() });
-		expect(f.pages).toEqual([]);
+		// Only the confirmation's reopening of the page, none for the undo.
+		expect(f.pages).toEqual([[GUESS, null]]);
+	});
+
+	it('settles an arrival with no offer, so the page can let the line go', async () => {
+		const f = fake();
+		f.rows = [{ ...CARD, kitsu_id: GUESS }];
+		const s = new LinkSession(f.deps);
+		const arriving = s.arrive(CARD.id, GUESS);
+		expect(s.settled).toBe(false);
+		await arriving;
+		expect(s.settled).toBe(true);
+		expect(s.offer).toBeNull();
+	});
+
+	it('works out the card’s rows when the picker opens, and links those', async () => {
+		const HIDDEN: HistoryEntry = {
+			id: 'gintama-season-4-77',
+			title: 'Gintama Season 4',
+			ep_no: '1'
+		};
+		const link = vi.fn(fake().deps.link);
+		const f = fake({ link });
+		f.rows = [CARD, HIDDEN];
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await vi.waitFor(() => expect(s.group).toEqual([CARD.id, HIDDEN.id]));
+		s.choose(s.candidates![0]);
+		await s.confirm();
+		expect(link).toHaveBeenCalledWith([CARD.id, HIDDEN.id], GUESS);
+	});
+
+	it('keeps the latest search’s answer, whatever lands last', async () => {
+		const gates: Record<string, () => void> = {};
+		const f = fake({
+			search: (q) =>
+				new Promise((resolve) => {
+					gates[q] = () => resolve([ref(q === 'second' ? '2' : q === 'first' ? '1' : GUESS)]);
+				})
+		});
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		const opening = s.start();
+		const first = s.search('first');
+		const second = s.search('second');
+		gates['second']();
+		await second;
+		gates['first']();
+		await first;
+		gates['Gintama Season 4']();
+		gates['gintama season 4']?.();
+		await opening;
+		expect(s.candidates?.map((c) => c.ref.id)).toEqual(['2']);
+	});
+
+	it('leaves the user where they are when the undo comes after they moved on', async () => {
+		const f = fake();
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
+		await s.confirm();
+		f.path = '/';
+		f.notices[0].onAction!();
+		await vi.waitFor(() => expect(f.notices.length).toBe(2));
+		expect(f.notices[1].message).toBe(m.detail_link_undone_toast());
+		expect(f.pages).toEqual([[RIGHT.id, null]]);
+		expect(f.refreshed).toBe(0);
 	});
 });

@@ -31,6 +31,8 @@ vi.mock('$app/navigation', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { breadcrumb } from '../../src/lib/breadcrumb';
+import { get } from 'svelte/store';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import type { Provider } from '../../src/lib/account/types';
@@ -200,7 +202,11 @@ async function showLink(query: Record<string, string>): Promise<string> {
 		'the now-playing link'
 	);
 	await new Promise((r) => setTimeout(r, 200));
-	return target.querySelector('a.np-link')!.getAttribute('href') ?? '';
+	const link = target.querySelector('a.np-link')!.getAttribute('href') ?? '';
+	// The breadcrumb's show segment, and the up-chevron that reads it,
+	// go to the same place.
+	expect(get(breadcrumb)[1]?.href).toBe(link);
+	return link;
 }
 
 describe('play route — the link up to the show page', () => {
