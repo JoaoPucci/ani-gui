@@ -1342,10 +1342,11 @@ pub(crate) mod tests {
         assert!(!live, "a track that does not answer in time is a dead row");
         // The deadline the check applies must be the one it is given. A
         // second check, its track held on a server of its own, runs on a
-        // clock paused once that track is held
-        // ([`crate::held::paused_once`]), so it returns at the deadline it
-        // applies. Its outcome is not read: the paused clock may end the
-        // healthy requests too.
+        // clock that stands still until that track is held
+        // ([`crate::held::frozen_until`]), so the deadline cannot run out
+        // before the check has asked for it, however slow the machine,
+        // and it returns at the deadline it applies. Its outcome is not
+        // read: the paused clock may end the healthy requests too.
         let stalling_again = wiremock::MockServer::start().await;
         let (hold_again, stalled_again) = crate::held::gate();
         wiremock::Mock::given(wiremock::matchers::method("GET"))
@@ -1357,7 +1358,7 @@ pub(crate) mod tests {
             .mount(&stalling_again)
             .await;
         let again = row(&stalling_again);
-        let _ = crate::held::paused_once(
+        let _ = crate::held::frozen_until(
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 crate::commands::play_cache::cached_row_is_live_within(&state, &again, deadline),

@@ -476,6 +476,83 @@ async fn a_range_downloads_pick_stops_at_the_resolution_deadline() {
     );
 }
 
+/// Returns once the file at `path` holds something, watched off the
+/// runtime: a timer would not fire while the clock stands still
+/// ([`crate::held::frozen_until`]). A spawn `busy` sees retried meanwhile
+/// has the clock moved on far enough for its retry's sleep to end.
+/// Bounded, so a tool that never gets there fails its test's assertions
+/// by name.
+#[cfg(unix)]
+async fn written(mut path: std::path::PathBuf, mut busy: crate::held::Queue) {
+    enum Seen {
+        Written,
+        Busy,
+        Never,
+    }
+    loop {
+        let watch = tokio::task::spawn_blocking(move || {
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let seen = loop {
+                if std::fs::read_to_string(&path).is_ok_and(|body| !body.trim().is_empty()) {
+                    break Seen::Written;
+                }
+                if busy.has_joined() {
+                    break Seen::Busy;
+                }
+                if std::time::Instant::now() >= until {
+                    break Seen::Never;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            };
+            (seen, path, busy)
+        });
+        let (seen, p, b) = watch.await.expect("the watch ends");
+        match seen {
+            Seen::Written | Seen::Never => return,
+            Seen::Busy => {
+                (path, busy) = (p, b.again());
+                // Two ticks past the sleep: tokio rounds a timer up to the
+                // next millisecond, and the clock may sit between two.
+                tokio::time::advance(std::time::Duration::from_millis(12)).await;
+            }
+        }
+    }
+}
+
+/// A retry the watch sees on a clock that stands still gets past its
+/// sleep: the watch moves the clock on far enough.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_busy_retry_the_watch_sees_gets_past_its_sleep() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mark = dir.path().join("mark");
+    let busy = crate::held::queue(mark.display().to_string());
+    tokio::time::pause();
+    // The clock stands still while a blocking task runs, as in
+    // `frozen_until`.
+    let (hold_still, still) = std::sync::mpsc::channel::<()>();
+    let standing = tokio::task::spawn_blocking(move || {
+        let _ = still.recv_timeout(std::time::Duration::from_secs(30));
+    });
+    let retry = {
+        let mark = mark.clone();
+        tokio::spawn(async move {
+            crate::held::queued(&mark.display().to_string());
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            std::fs::write(&mark, "retried").expect("mark");
+        })
+    };
+    written(mark.clone(), busy).await;
+    drop(hold_still);
+    standing.await.expect("the clock's hold ends");
+    retry.await.expect("the retry");
+    tokio::time::resume();
+    assert!(
+        mark.exists(),
+        "the retry got past its sleep while the watch waited"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
@@ -499,7 +576,19 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // process that would write it is gone.
     let started = dest.path().join("ffmpeg-started");
     let finished = dest.path().join("ffmpeg-finished");
-    stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
+    // yt-dlp runs until the test lets it fail, having moved the clock on
+    // by the second it is taken to burn.
+    let ytdlp_started = dest.path().join("yt-dlp-started");
+    let ytdlp_fails = dest.path().join("yt-dlp-fails");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo $$ > {started}\nwhile [ ! -e {fails} ]; do sleep 0.01; done\nexit 1",
+            started = crate::stub_file::sh_quote(&ytdlp_started),
+            fails = crate::stub_file::sh_quote(&ytdlp_fails)
+        ),
+    );
     stage_tool(
         bin.path(),
         "ffmpeg",
@@ -509,22 +598,33 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
             finished = crate::stub_file::sh_quote(&finished)
         ),
     );
-    // The timings leave a slow runner room to reach the fallback. Once
-    // it has started, the clock is paused ([`crate::held::paused_once`]),
+    // The clock stands still from the call until the fallback has
+    // started ([`crate::held::frozen_until`]), but for the second yt-dlp
+    // is taken to burn, which the test moves it on by: however slow the
+    // machine, the chain reaches the fallback with two seconds of its
+    // deadline left. From then on the clock moves only to the next timer,
     // so the deadline ends the chain at the moment it applies, which must
-    // be the one it is given, from the call on. That moment is read off
-    // the chain's last speed report, which it gives as the run ends,
-    // before it takes the tool's tree down: the teardown's own polling
-    // moves a paused clock on by however long the kill takes.
+    // be the one it is given, from the call on — a deadline per tool
+    // would end it a second later. That moment is read off the chain's
+    // last speed report, which it gives as the run ends, before it takes
+    // the tool's tree down: the teardown's own polling moves a paused
+    // clock on by however long the kill takes.
     let deadline = std::time::Duration::from_secs(3);
-    let called = tokio::time::Instant::now();
     let mut reported: Vec<tokio::time::Instant> = Vec::new();
+    // A spawn refused as busy — another test's fork still holding a
+    // freshly staged stub — is retried after a short sleep, a timer that
+    // would not fire while the clock stands still. The retry says so
+    // ([`crate::held::queued`]), and the watch moves the clock on past
+    // the sleep.
+    let busy = |tool: &str| crate::held::queue(bin.path().join(tool).display().to_string());
+    let (ytdlp_busy, ffmpeg_busy) = (busy("yt-dlp"), busy("ffmpeg"));
     let fallback_started = async {
-        while std::fs::read_to_string(&started).map_or(true, |pid| pid.trim().is_empty()) {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
+        written(ytdlp_started.clone(), ytdlp_busy).await;
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+        std::fs::write(&ytdlp_fails, "").expect("let yt-dlp fail");
+        written(started.clone(), ffmpeg_busy).await;
     };
-    let got = crate::held::paused_once(
+    let got = crate::held::frozen_until(
         tokio::time::timeout(
             // Only a guard against hanging the suite.
             std::time::Duration::from_secs(30),
@@ -549,19 +649,19 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
         fallback_started,
     )
     .await;
-    let paused_at = got.paused_at();
+    let (fallback_at, called) = (got.reached_at(), got.started());
     let got = got.out.expect("the chain returned");
     let ended = *reported
         .last()
         .expect("the fallback's run reported its end")
         - called;
     assert!(
-        // The slack covers the real time between the call and the chain
-        // setting its deadline, before the pause, and the timer's ticks;
-        // a deadline that grew by more fails.
-        ended <= deadline.max(paused_at) + std::time::Duration::from_millis(100),
+        // The slack covers the timer's ticks and a busy spawn's
+        // retries: the clock stood still from the call, so a deadline
+        // that grew, or one each tool set afresh, ends the chain past it.
+        ended <= deadline + std::time::Duration::from_millis(100),
         "the chain ended {ended:?} after the call on tokio's clock, past its {deadline:?} \
-         deadline (clock paused at {paused_at:?})"
+         deadline (the fallback started at {fallback_at:?})"
     );
     assert!(
         started.exists(),
@@ -3153,13 +3253,15 @@ async fn tracks_that_stall_past_the_sidecar_deadline_are_skipped_and_the_phase_r
     };
     let tracks = vec![track("en", "/subs/en.vtt"), track("es", "/subs/es.vtt")];
     // The tracks are held until after the phase, so its deadline is all
-    // that ends it; a call that waited on them would never return. Once
-    // a track is held the clock is paused ([`crate::held::paused_once`]),
-    // so the phase returns at the deadline it applies, which must be the
-    // one it is given.
+    // that ends it; a call that waited on them would never return. The
+    // clock stands still until a track is held
+    // ([`crate::held::frozen_until`]), so the deadline cannot run out
+    // before the phase has asked for its tracks, however slow the
+    // machine, and the phase returns at the deadline it applies, which
+    // must be the one it is given.
     let deadline = std::time::Duration::from_millis(300);
     let client = reqwest::Client::new();
-    let written = crate::held::paused_once(
+    let written = crate::held::frozen_until(
         tokio::time::timeout(
             // Only a guard against hanging the suite.
             std::time::Duration::from_secs(10),
@@ -3220,21 +3322,33 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
         track("es", &stalling, "/subs/es.vtt"),
     ];
     // The late track is held until after the phase, so its deadline is
-    // all that ends it. Once it is held and the quick track has been
-    // staged, the clock is paused ([`crate::held::paused_once`]), so the
-    // phase returns at the deadline it applies, which must be the one it
-    // is given.
-    // Room for the quick track on a loaded machine; the late one never
-    // answers inside it, however long it is.
+    // all that ends it. The clock stands still until it is held and the
+    // quick track has been staged ([`crate::held::frozen_until`]), so the
+    // deadline cannot run out before the quick track lands, however slow
+    // the machine, and the phase returns at the deadline it applies,
+    // which must be the one it is given. The late one never answers
+    // inside it, however long it is.
     let deadline = std::time::Duration::from_secs(2);
     let client = reqwest::Client::new();
+    let dir = dest.path().to_path_buf();
     let staged = async {
         stalled.asked().await;
-        while std::fs::read_dir(dest.path()).map_or(true, |mut d| d.next().is_none()) {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
+        // Watched off the runtime: a timer would not fire while the
+        // clock stands still.
+        tokio::task::spawn_blocking(move || {
+            // Bounded, so a track that never lands fails the assertion
+            // below by name rather than holding the clock for ever.
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_none())
+                && std::time::Instant::now() < until
+            {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        })
+        .await
+        .expect("the watch on the quick track ends");
     };
-    let written = crate::held::paused_once(
+    let written = crate::held::frozen_until(
         tokio::time::timeout(
             // Only a guard against hanging the suite.
             std::time::Duration::from_secs(10),
