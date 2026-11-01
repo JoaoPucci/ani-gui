@@ -11,8 +11,19 @@ import {
 	spotlightEpisode,
 	type SpotlightHost
 } from './episode-spotlight';
-import { behaviorFor } from '$lib/motion/scroll';
 import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
+
+type HappyDomWindow = { happyDOM: { settings: { device: { prefersReducedMotion: string } } } };
+
+/** Sets the system preference as the user would; the app's reading
+ *  follows it on the next `resize`. */
+async function setSystemReducedMotion(reduced: boolean) {
+	(window as unknown as HappyDomWindow).happyDOM.settings.device.prefersReducedMotion = reduced
+		? 'reduce'
+		: 'no-preference';
+	window.dispatchEvent(new Event('resize'));
+	await new Promise((r) => setTimeout(r, 0));
+}
 
 /** A host whose frame and timer run only when the test says so. */
 function fakeHost(tile: Element | null) {
@@ -167,25 +178,44 @@ describe('browserSpotlightHost', () => {
 		vi.restoreAllMocks();
 	});
 
-	it("finds a tile in the document and scrolls it to the centre the preference's way", () => {
+	it('finds a tile in the document', () => {
 		document.body.innerHTML = '<ul><li data-ep-num="4"></li></ul>';
 		const host = browserSpotlightHost();
-		const tile = host.findTile(4)!;
-		expect(tile.getAttribute('data-ep-num')).toBe('4');
+		expect(host.findTile(4)?.getAttribute('data-ep-num')).toBe('4');
 		expect(host.findTile(5)).toBeNull();
-
-		const scrollIntoView = vi.fn();
-		tile.scrollIntoView = scrollIntoView;
-		host.scrollTo(tile);
-		expect(scrollIntoView).toHaveBeenCalledWith({
-			behavior: behaviorFor(reducedMotion.current),
-			block: 'center'
-		});
 	});
 
-	it('schedules and cancels through the window, called unbound as it is', () => {
+	it.each([
+		['glides with motion on', false, 'smooth'],
+		['jumps under reduced motion', true, 'auto']
+	] as const)('scrolls the tile to the centre: %s', async (_name, reduced, behavior) => {
+		await setSystemReducedMotion(reduced);
+		try {
+			expect(reducedMotion.current).toBe(reduced);
+			const tile = document.createElement('li');
+			const scrollIntoView = vi.fn();
+			tile.scrollIntoView = scrollIntoView;
+			browserSpotlightHost().scrollTo(tile);
+			expect(scrollIntoView).toHaveBeenCalledWith({ behavior, block: 'center' });
+		} finally {
+			await setSystemReducedMotion(false);
+		}
+	});
+
+	it('schedules and cancels through the window, never with the host as `this`', () => {
+		// Chromium throws "Illegal invocation" when a web global runs with
+		// another object as `this`; happy-dom does not, so the receiver is
+		// checked directly. A bare call has none, which is fine.
+		const onWindow = (spy: { mock: { contexts: unknown[] } }) =>
+			spy.mock.contexts.every((ctx) => ctx === window || ctx === undefined);
 		vi.useFakeTimers();
 		try {
+			const spies = [
+				vi.spyOn(window, 'setTimeout'),
+				vi.spyOn(window, 'clearTimeout'),
+				vi.spyOn(window, 'requestAnimationFrame'),
+				vi.spyOn(window, 'cancelAnimationFrame')
+			];
 			const host = browserSpotlightHost();
 			const ran = vi.fn();
 			const id = host.setTimer(ran, 10);
@@ -199,6 +229,11 @@ describe('browserSpotlightHost', () => {
 			host.nextFrame(frame);
 			vi.advanceTimersByTime(50);
 			expect(frame).toHaveBeenCalledTimes(1);
+
+			for (const spy of spies) {
+				expect(spy).toHaveBeenCalled();
+				expect(onWindow(spy)).toBe(true);
+			}
 		} finally {
 			vi.useRealTimers();
 		}

@@ -225,23 +225,30 @@ describe('loaderAnimation', () => {
 				const anim = loaderAnimation(d.load);
 				const boxes = [box(), box()];
 				let shown: Element | null = null;
+				// A load that failed after the box was last shown may have
+				// been that box's, which leaves it without an animation.
+				let failedSinceShown = false;
 				for (const o of ops) {
 					if (o.kind === 'show') {
 						shown = boxes[o.which];
+						failedSinceShown = false;
 						anim.show(shown);
 					} else if (o.kind === 'hide') {
 						shown = null;
 						anim.hide();
-					} else await d.settleNext(o.ok);
+					} else {
+						if (!o.ok && d.pending.length) failedSinceShown = true;
+						await d.settleNext(o.ok);
+					}
 					expect(d.live().length).toBeLessThanOrEqual(1);
 				}
 				while (d.pending.length) await d.settleNext(true);
 				const live = d.live();
 				if (shown === null) expect(live).toEqual([]);
-				else {
+				else if (failedSinceShown) {
 					expect(live.length).toBeLessThanOrEqual(1);
 					if (live.length) expect(live[0].container).toBe(shown);
-				}
+				} else expect(live.map((p) => p.container)).toEqual([shown]);
 				anim.hide();
 				expect(d.live()).toEqual([]);
 			}),

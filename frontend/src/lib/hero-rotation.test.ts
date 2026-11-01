@@ -118,9 +118,14 @@ describe('startHeroRotation', () => {
 		);
 	});
 
-	it('uses the window interval, called unbound', () => {
+	it('uses the window interval, never with the host as `this`', () => {
+		// Chromium throws "Illegal invocation" when a web global runs with
+		// another object as `this`; happy-dom does not, so the receiver is
+		// checked directly.
 		vi.useFakeTimers();
 		try {
+			const every = vi.spyOn(window, 'setInterval');
+			const cancel = vi.spyOn(window, 'clearInterval');
 			const advance = vi.fn();
 			const stop = startHeroRotation(running, advance);
 			vi.advanceTimersByTime(HERO_ROTATE_MS * 2 + 10);
@@ -128,7 +133,10 @@ describe('startHeroRotation', () => {
 			stop();
 			vi.advanceTimersByTime(HERO_ROTATE_MS * 2);
 			expect(advance).toHaveBeenCalledTimes(2);
+			expect(every.mock.contexts).toEqual([window]);
+			expect(cancel.mock.contexts).toEqual([window]);
 		} finally {
+			vi.restoreAllMocks();
 			vi.useRealTimers();
 		}
 	});
