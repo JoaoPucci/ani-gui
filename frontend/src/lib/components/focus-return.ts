@@ -22,5 +22,15 @@ export interface FocusReturn {
 }
 
 export function createFocusReturn(): FocusReturn {
-	throw new Error('not implemented');
+	let saved: Focusable | null = null;
+	return {
+		save(active) {
+			saved = active;
+		},
+		restore() {
+			const el = saved;
+			saved = null;
+			if (el?.isConnected) el.focus();
+		}
+	};
 }
