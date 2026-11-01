@@ -12,7 +12,7 @@
       item with progress / status / per-row actions.
 -->
 <script lang="ts">
-	import { slide } from 'svelte/transition';
+	import { slide } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';

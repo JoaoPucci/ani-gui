@@ -10,8 +10,10 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { fade } from 'svelte/transition';
+	import { fade, reducible } from '$lib/motion/transitions';
 	import { cardScale, cardShift, STILL } from '$lib/motion/card-motion';
+	import { heroParallaxTransform } from '$lib/motion/parallax';
+	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
@@ -26,29 +28,29 @@
 	// animates ids the user explicitly deleted; cwFlip animates the
 	// survivors that physically shift to close the gap.
 	const deleteAnimationGate = createAnimationGate();
-	function cwOutScale(node: Element) {
+	const cwOutScale = reducible((node: Element) => {
 		const id = (node as HTMLElement).dataset.entryId;
 		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return STILL;
 		return cardScale(node);
-	}
-	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+	});
+	const cwFlip = reducible((node: Element, animation: { from: DOMRect; to: DOMRect }) => {
 		const id = (node as HTMLElement).dataset.entryId;
 		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return STILL;
 		return cardShift(node, animation);
-	}
+	});
 	// The Watch Later row moves its cards the same way, for the ones a
 	// settled tracker write added or removed — and only those.
 	const watchLaterMotion = createRailMotionGate();
 	const cellId = (node: Element) => (node as HTMLElement).dataset.animeId ?? '';
-	function wlIn(node: Element) {
-		return watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL;
-	}
-	function wlOut(node: Element) {
-		return watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL;
-	}
-	function wlFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
-		return watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL;
-	}
+	const wlIn = reducible((node: Element) =>
+		watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL
+	);
+	const wlOut = reducible((node: Element) =>
+		watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL
+	);
+	const wlFlip = reducible((node: Element, animation: { from: DOMRect; to: DOMRect }) =>
+		watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL
+	);
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
@@ -579,17 +581,15 @@
 	});
 
 	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
-	// this effect is the runtime adapter (matchMedia probe + interval
-	// management).
+	// this effect is the runtime adapter (motion preference + interval
+	// management). The preference is reactive: switching reduced motion
+	// on while Home is open stops the rotation, and off starts it.
 	$effect(() => {
-		const reduced =
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 		if (
 			!shouldRunHeroRotation({
 				rotationLength: heroRotation.length,
 				paused: heroPaused,
-				prefersReducedMotion: !!reduced
+				prefersReducedMotion: reducedMotion.current
 			})
 		) {
 			return;
@@ -877,18 +877,10 @@
 		return trimmed.length > 280 ? trimmed.slice(0, 277) + '…' : trimmed;
 	}
 
+	// The parallax holds still under reduced motion; reading the
+	// preference here makes the transform follow a change to it.
 	function heroTransform(y: number, isCover: boolean): string {
-		// Honor prefers-reduced-motion: when the user opts out of motion,
-		// the hero stays still even on scroll.
-		if (
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-		) {
-			return `translate3d(0, 0, 0) scale(${isCover ? 1.02 : 1.15})`;
-		}
-		const offset = Math.min(y * 0.25, 80);
-		const scale = isCover ? 1.02 : 1.15;
-		return `translate3d(0, ${offset}px, 0) scale(${scale})`;
+		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
@@ -1798,13 +1790,6 @@
 			opacity: 0.55;
 		}
 	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero-skel-img,
-		.skel-poster,
-		.line-skel {
-			animation: none;
-		}
-	}
 
 	/* — Continue Watching cards. The poster gives identity, the EP tag
 	     is the editorial overlay, the title + Resume CTA close the card. */
@@ -1932,11 +1917,6 @@
 	@keyframes rail-refresh-spin {
 		to {
 			transform: rotate(360deg);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.rail-refresh.is-refreshing :global(svg) {
-			animation: none;
 		}
 	}
 	.continue-menu-btn:hover,
@@ -2199,10 +2179,5 @@
 
 	.resume-card-loading .resume-poster-placeholder {
 		animation: pulse 1.6s var(--ease-in-out) infinite;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.resume-card-loading .resume-poster-placeholder {
-			animation: none;
-		}
 	}
 </style>

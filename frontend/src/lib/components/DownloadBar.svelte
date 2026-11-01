@@ -18,7 +18,7 @@
   hits Escape — no item is touched.
 -->
 <script lang="ts">
-	import { fly } from 'svelte/transition';
+	import { fly } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { formatDownloadBarLabel } from '$lib/download/bar-label';

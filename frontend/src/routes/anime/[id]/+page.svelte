@@ -86,6 +86,9 @@
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
+	import { scrollBehavior } from '$lib/motion/scroll';
+	import { heroParallaxTransform } from '$lib/motion/parallax';
+	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { settle, settleOut } from '$lib/motion/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
@@ -808,7 +811,7 @@
 		const rafId = requestAnimationFrame(() => {
 			const el = document.querySelector(`[data-ep-num="${target}"]`);
 			if (!el) return; // not rendered yet; effect re-runs when episodes changes
-			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
 			timerId = window.setTimeout(() => {
 				if (highlightEp === target) highlightEp = null;
 			}, 3200);
@@ -1413,18 +1416,10 @@
 		if (s === 'upcoming') return m.detail_status_upcoming();
 		return s;
 	}
+	// The parallax holds still under reduced motion; reading the
+	// preference here makes the transform follow a change to it.
 	function heroTransform(y: number, isCover: boolean): string {
-		// Honor prefers-reduced-motion: when set, the hero doesn't translate
-		// on scroll. Scale (which doesn't move) is kept for visual polish.
-		if (
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-		) {
-			return `translate3d(0, 0, 0) scale(${isCover ? 1.02 : 1.15})`;
-		}
-		const offset = Math.min(y * 0.25, 80);
-		const scale = isCover ? 1.02 : 1.15;
-		return `translate3d(0, ${offset}px, 0) scale(${scale})`;
+		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
 	async function setMode(mode: 'sub' | 'dub') {
@@ -2397,9 +2392,8 @@
 		   on `.content` below. */
 		padding-block-end: var(--space-8);
 		/* Page-enter animation — a soft fade + lift so navigating into a
-		   detail page doesn't feel like a hard cut. The reduced-motion
-		   token already zeroes --dur-slow so this is inert when the user
-		   opts out. */
+		   detail page doesn't feel like a hard cut. Under reduced motion
+		   tokens.css takes it off. */
 		animation: detail-page-enter var(--dur-slow) var(--ease-out-soft) both;
 	}
 
@@ -3170,9 +3164,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ep-grid li.ep-highlight .ep-tile {
-			animation: none;
-		}
 		.ep-grid:has(li.ep-highlight) li:not(.ep-highlight) .ep-tile {
 			opacity: 1;
 		}
@@ -3314,11 +3305,6 @@
 	.ep-foot-skel {
 		block-size: 4rem;
 		background: var(--ink-050);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.ep-thumb-skel {
-			animation: none;
-		}
 	}
 
 	/* Caption beneath the grid — sentence chrome (body sans, normal case)
@@ -3586,13 +3572,6 @@
 		}
 		50% {
 			opacity: 0.55;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero-skeleton-img,
-		.poster-skeleton,
-		.line {
-			animation: none;
 		}
 	}
 
