@@ -1,6 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { namesTheEntry } from './same-name';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { KitsuAnimeRef } from '$lib/api';
+import { entryNames, namesTheEntry } from './same-name';
+
+interface Vector {
+	case: string;
+	title: string;
+	names: string[];
+	names_entry: boolean;
+}
+
+const vectors: Vector[] = JSON.parse(
+	readFileSync(
+		path.resolve(
+			path.dirname(fileURLToPath(import.meta.url)),
+			'../../../../tests/fixtures/same-name/vectors.json'
+		),
+		'utf8'
+	)
+);
+
+describe('namesTheEntry shared vectors', () => {
+	it.each(vectors.map((v) => [v.case, v] as const))('%s', (_name, v) => {
+		expect(namesTheEntry(v.title, v.names)).toBe(v.names_entry);
+	});
+
+	it('runs every shared vector', () => {
+		expect(vectors.length).toBeGreaterThanOrEqual(29);
+	});
+});
+
+describe('entryNames', () => {
+	it('skips a canonical title a stale cached shape lacks', () => {
+		const ref = {
+			canonical_title: null,
+			titles: { en: 'Gintama Season 2' },
+			abbreviated_titles: undefined
+		} as unknown as KitsuAnimeRef;
+		expect(entryNames(ref)).toEqual(['Gintama Season 2']);
+		expect(namesTheEntry('Gintama Season 2', entryNames(ref))).toBe(true);
+	});
+});
 
 describe('namesTheEntry', () => {
 	it('names an entry that carries the title', () => {

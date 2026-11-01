@@ -339,3 +339,14 @@ fn a_hit_of_another_cour_is_still_passed_over() {
         &kitsu("8671")
     ));
 }
+
+/// A legacy cache row's title carries "(<N> episodes)" after the
+/// show's name; the cour is read with it stripped, and so is the name.
+#[test]
+fn a_legacy_episode_count_tail_does_not_hide_the_name() {
+    assert!(!refuses("Gintama Season 2 (51 episodes)", "5971"));
+    assert!(refuses(
+        "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2 (12 episodes)",
+        "44294"
+    ));
+}

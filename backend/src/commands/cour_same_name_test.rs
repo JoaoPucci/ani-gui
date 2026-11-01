@@ -158,3 +158,28 @@ mod props {
         }
     }
 }
+
+#[derive(serde::Deserialize)]
+struct Vector {
+    case: String,
+    title: String,
+    names: Vec<String>,
+    names_entry: bool,
+}
+
+/// The vectors the frontend's port runs too: the two sides answer
+/// the same for the same title and names.
+#[test]
+fn every_shared_vector_reads_the_same_as_on_the_frontend() {
+    let vectors: Vec<Vector> = serde_json::from_slice(include_bytes!(
+        "../../../tests/fixtures/same-name/vectors.json"
+    ))
+    .expect("vectors");
+    assert!(vectors.len() >= 29, "the shared vectors are all there");
+    let wrong: Vec<&str> = vectors
+        .iter()
+        .filter(|v| names_the_entry(&v.title, v.names.iter().map(String::as_str)) != v.names_entry)
+        .map(|v| v.case.as_str())
+        .collect();
+    assert!(wrong.is_empty(), "vectors read otherwise: {wrong:?}");
+}
