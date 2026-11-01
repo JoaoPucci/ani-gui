@@ -64,6 +64,14 @@ describe('stillWhenReduced', () => {
 			delay: 0
 		});
 	});
+	it('hands a deferred transition what Svelte passes it', () => {
+		const deferred = vi.fn((options?: { direction?: 'in' | 'out' | 'both' }) => ({
+			duration: options ? 300 : 0
+		}));
+		const still = stillWhenReduced(deferred, true) as (options: { direction: 'out' }) => unknown;
+		still({ direction: 'out' });
+		expect(deferred).toHaveBeenCalledWith({ direction: 'out' });
+	});
 });
 
 describe('reducible', () => {
