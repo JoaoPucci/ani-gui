@@ -959,6 +959,9 @@ app.whenReady().then(() => {
   // (see lib/reduced-motion.cjs). The read runs beside the backend's
   // start and settles within its own short budget; the first window
   // waits for it, because a window takes the preference it opens with.
+  // Appending after ready is not the Ozone case above: Chromium reads
+  // this switch each time a window's preferences are computed, not once
+  // at process start.
   const reducedMotion = applyReducedMotion({
     platform: process.platform,
     exec: execText,
