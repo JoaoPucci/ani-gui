@@ -37,8 +37,9 @@ fn default_include_prereleases() -> bool {
 /// platform this binary was built for (see `meta::github`).
 ///
 /// Returns 200 + JSON `ReleaseInfo` when a release is found, or
-/// 204 No Content for every soft failure (offline, rate-limited,
-/// repo has no releases yet, malformed payload). The frontend
+/// 204 No Content when none is (no release qualifies, or the app
+/// was built for a platform it does not package) and for every
+/// soft failure (offline, rate-limited, malformed payload). The frontend
 /// branches on the body's presence — no error path to plumb.
 pub(super) async fn get_update_check(
     State(state): State<Arc<AppState>>,
