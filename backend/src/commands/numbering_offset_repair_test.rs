@@ -154,3 +154,60 @@ proptest! {
         prop_assert_eq!(a.against(Some(b)), Order::Later);
     }
 }
+
+/// The stamps after repairs heard as given, written in the order given,
+/// each making `ours` of whatever stamps it starts from, through
+/// [`decided`] and its record of repairs taken.
+fn decided_in_turn(base: &Stamps, repairs: &[(Hearing, &Stamps)]) -> Stamps {
+    let mut taken = BTreeMap::new();
+    let key = (PathBuf::from("history"), "show".to_string());
+    let mut current = base.clone();
+    for (heard, ours) in repairs {
+        if let Some(next) = decided(
+            &mut taken,
+            key.clone(),
+            current.clone(),
+            Some(*heard),
+            |_| (*ours).clone(),
+        ) {
+            current = next;
+        }
+    }
+    current
+}
+
+/// Stamps with a display stamp: what a show a repair reaches has, and
+/// what a repair leaves it.
+fn shown() -> impl Strategy<Value = Stamps> {
+    stamps().prop_filter("a display stamp", |s| s.display.is_some())
+}
+
+proptest! {
+    #[test]
+    fn two_repairs_one_heard_after_the_other_end_the_same_whichever_writes_first(
+        base in shown(), a in shown(), z in shown(),
+    ) {
+        let (earlier, later) = (
+            Hearing { run: 1, start: 0, at: 1 },
+            Hearing { run: 1, start: 2, at: 3 },
+        );
+        let one = decided_in_turn(&base, &[(earlier, &a), (later, &z)]);
+        let other = decided_in_turn(&base, &[(later, &z), (earlier, &a)]);
+        prop_assert_eq!(&one, &other);
+        // The later listing's, unless it repairs nothing.
+        let want = if z != base { &z } else if a != base { &a } else { &base };
+        prop_assert_eq!(&one, want);
+    }
+
+    #[test]
+    fn repairs_heard_together_end_the_same_in_any_order(
+        base in shown(), a in shown(), b in shown(), c in shown(),
+    ) {
+        let heard = [0, 1, 2].map(|n| Hearing { run: 1, start: n, at: n + 10 });
+        let all = [(heard[0], &a), (heard[1], &b), (heard[2], &c)];
+        let first = decided_in_turn(&base, &all);
+        for order in [[0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            prop_assert_eq!(&decided_in_turn(&base, &order.map(|i| all[i])), &first);
+        }
+    }
+}
