@@ -169,6 +169,10 @@ impl UserListProvider for Tracker {
     }
 }
 
+/// Per row, the latest-sent live read whose answer has arrived: when it
+/// was sent, and what it found.
+type LastReads = HashMap<u32, (u64, Option<ListStatus>)>;
+
 /// One step of a run.
 #[derive(Debug, Clone)]
 enum Step {
@@ -259,7 +263,7 @@ async fn run(steps: Vec<Step>) -> Outcome {
     let mut written: Vec<(u64, u32, ListStatus)> = Vec::new();
     // Each row's latest-sent live read whose answer has arrived: when it
     // was sent, and what it found.
-    let last_read: Arc<Mutex<HashMap<u32, (u64, Option<ListStatus>)>>> = Arc::default();
+    let last_read: Arc<Mutex<LastReads>> = Arc::default();
     // Absences the app acted on: a clear after a read that found none.
     let mut cleared: Vec<(u64, u32)> = Vec::new();
     let mut running = 0usize;
