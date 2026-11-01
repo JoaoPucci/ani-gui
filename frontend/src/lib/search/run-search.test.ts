@@ -149,6 +149,11 @@ describe('createSearchRunner (generation guard)', () => {
 		const runner = createSearchRunner(h.deps);
 
 		const run1 = runner.run('a');
+		// Run 1's settings load answers and its search goes out before
+		// run 2 replaces it: a run replaced while its settings load
+		// sends no search at all (below), so there would be nothing to
+		// reject.
+		await drain();
 		const run2 = runner.run('b');
 		firstSearch.reject(new Error('kitsu down'));
 		await run1;
@@ -156,6 +161,26 @@ describe('createSearchRunner (generation guard)', () => {
 
 		expect(h.errors).toEqual([]);
 		expect(h.results).toEqual([[ref('ok')]]);
+	});
+
+	it('a run superseded while its settings load sends no search', async () => {
+		// The search page starts a run for the address it opens on, and
+		// a back press then brings the page's saved results back in its
+		// place before the settings have answered. The replaced run must
+		// not go on to ask Kitsu for a page nobody will see.
+		const settings = defer<Config | null>();
+		const searchPage = vi.fn().mockResolvedValue(lastPage([ref('b')]));
+		const h = makeHarness({ getConfig: vi.fn().mockReturnValue(settings.promise), searchPage });
+		const runner = createSearchRunner(h.deps);
+
+		const run1 = runner.run('a');
+		const run2 = runner.run('b');
+		settings.resolve(null);
+		await run1;
+		await run2;
+
+		expect(searchPage.mock.calls.map((c) => c[0])).toEqual(['b']);
+		expect(h.results).toEqual([[ref('b')]]);
 	});
 
 	it('caches config only after a successful load, reused across runs', async () => {
