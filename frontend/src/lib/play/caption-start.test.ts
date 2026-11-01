@@ -66,6 +66,14 @@ describe('startingTrack — region, then script, then language', () => {
 	});
 });
 
+describe('startingTrack — what is not a tag', () => {
+	it('reads a malformed track tag or locale as no language', () => {
+		expect(startingTrack([t('not a tag!'), t('en', true)], 'pt_BR')).toBe(1);
+		expect(startingTrack([t('pt-BR'), t('en', true)], 'Portuguese (Brazil)')).toBe(1);
+		expect(startingTrack([t(''), t('und')], 'x')).toBeNull();
+	});
+});
+
 describe("startingTrack — the show's remembered choice", () => {
 	it('starts on the remembered language over the locale and the default', () => {
 		expect(startingTrack(listing, 'pt-BR', 'es-419')).toBe(6);

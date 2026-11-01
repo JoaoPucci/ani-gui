@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
 	captionChoiceOf,
+	defaultStorage,
 	MAX_CAPTION_CHOICES,
 	rememberCaption,
 	storedCaption,
@@ -102,5 +104,24 @@ describe('captionChoiceOf', () => {
 		expect(captionChoiceOf(list, 4)).toBeUndefined();
 		expect(captionChoiceOf(list, 0)).toBeUndefined();
 		expect(captionChoiceOf(list, 9)).toBeUndefined();
+	});
+});
+
+describe('the default store', () => {
+	it("is the renderer's local storage, and none where reading it throws", () => {
+		expect(defaultStorage()).toBe(globalThis.localStorage);
+		const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			get() {
+				throw new Error('denied');
+			}
+		});
+		try {
+			expect(defaultStorage()).toBeNull();
+			expect(storedCaption('42')).toBeUndefined();
+		} finally {
+			if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+		}
 	});
 });
