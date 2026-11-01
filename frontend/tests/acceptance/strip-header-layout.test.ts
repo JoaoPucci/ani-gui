@@ -111,3 +111,33 @@ describe('a banded row’s wrapped actions', () => {
 		).toContain('margin-inline-start: 0;');
 	});
 });
+
+describe('the band', () => {
+	// An inset, rounded, lighter panel per row is the stacked-card look
+	// the design rules keep out. A band is a change of ground across the
+	// full width of the rows' column: no radius, no inset, the gutter
+	// unchanged so cards line up with a plain row's.
+	it('runs the full width of the column, square, with the row’s own gutter', () => {
+		const band = rule(".strip[data-surface='band']");
+		expect(band).not.toContain('border-radius');
+		expect(band).not.toContain('margin-inline');
+		expect(band).not.toContain('--strip-pad-inner');
+	});
+});
+
+describe('a header line in a right-to-left locale', () => {
+	it('fades its edges toward the side the row continues on', () => {
+		expect(rule('.strip-fade-start:dir(rtl)')).toContain('to left');
+		expect(rule('.strip-fade-end:dir(rtl)')).toContain('to right');
+	});
+});
+
+describe('the status’s voice', () => {
+	it('is the caption’s, taken from the eyebrow classes rather than copied', () => {
+		expect(SOURCE).toContain('class="eyebrow eyebrow-value strip-meta"');
+		const meta = rule('.strip-meta');
+		for (const copied of ['font-size', 'letter-spacing', 'text-transform', 'font-family']) {
+			expect(meta, copied).not.toContain(copied);
+		}
+	});
+});
