@@ -103,14 +103,19 @@ describe('statusPhrases, by property', () => {
 		fc.constant({ kind: 'never' as const }),
 		stamp.map((at) => ({ kind: 'updated' as const, at }))
 	);
-	it('shows exactly the label, once, among distinct phrasings', () => {
+	const held = fc.option(fc.constantFrom('Updated 12 min. ago', 'Not updated yet', 'Refreshing…'), {
+		nil: null
+	});
+	it('shows exactly the label, once, and holds at most the one phrasing it was given', () => {
 		fc.assert(
-			fc.property(status, fc.constantFrom('en', 'es-419', 'pt-BR', 'ru'), (s, locale) => {
-				const phrases = statusPhrases(s, NOW, locale, copy);
-				const shown = phrases.filter((p) => p.shown);
-				expect(shown.map((p) => p.text)).toEqual([statusLabel(s, NOW, locale, copy)]);
-				const texts = phrases.map((p) => p.text);
-				expect(new Set(texts).size).toBe(texts.length);
+			fc.property(status, fc.constantFrom('en', 'es-419', 'pt-BR', 'ru'), held, (s, locale, h) => {
+				const phrases = statusPhrases(s, NOW, locale, copy, h);
+				expect(phrases.filter((p) => p.shown).map((p) => p.text)).toEqual([
+					statusLabel(s, NOW, locale, copy)
+				]);
+				const hidden = phrases.filter((p) => !p.shown).map((p) => p.text);
+				expect(hidden.length).toBeLessThanOrEqual(1);
+				if (hidden.length === 1) expect(hidden[0]).toBe(h);
 			})
 		);
 	});

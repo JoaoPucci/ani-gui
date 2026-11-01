@@ -283,22 +283,41 @@ for (const style of ['inline', 'band'] as const) {
 			expect(Date.now() - readLastRefreshed('anilist')!).toBeLessThan(MIN);
 		});
 
-		it('keeps one width whatever the status says, so the action beside it holds still', async () => {
+		it('is exactly as wide as its words at rest, and holds that width through a refresh', async () => {
 			connect('anilist');
 			markRefreshed('anilist', Date.now() - 12 * MIN);
-			serve(ok);
+			let release: () => void = () => {};
+			const held = new Promise<void>((r) => (release = r));
+			serve(async (p) => {
+				await held;
+				return ok(p);
+			});
 			await mountHome(style);
-			const meta = header(WL()).querySelector('.strip-meta')!;
-			const hidden = Array.from(
-				meta.querySelectorAll('[aria-hidden="true"]:not(.strip-meta-sep)')
-			).map((e) => e.textContent?.trim());
-			// Every other phrasing is there, unseen and unread, holding the
-			// line at its widest.
-			expect(hidden).toContain(m.account_watch_later_refreshing());
-			expect(hidden).toContain(m.account_watch_later_not_updated());
-			expect(meta.querySelectorAll('[data-shown]')).toHaveLength(1);
+			const hiddenPhrases = () =>
+				Array.from(
+					header(WL()).querySelectorAll('.strip-meta [aria-hidden="true"]:not(.strip-meta-sep)')
+				).map((e) => e.textContent?.trim());
+			const before = status();
+			// At rest nothing but the words: the gap to Refresh is the
+			// header's one gap.
+			expect(hiddenPhrases()).toEqual([]);
 			// Nothing is announced on load; only a refresh speaks.
 			expect(announced()).toBe('');
+
+			action(WL(), REFRESH())!.click();
+			await until(
+				() => status().includes(m.account_watch_later_refreshing()),
+				'the refreshing state'
+			);
+			// The words it had hold the line's width, unseen and unread.
+			expect(hiddenPhrases()).toEqual([before]);
+
+			release();
+			await until(
+				() => status().includes(m.account_watch_later_updated_now()),
+				'the just-updated state'
+			);
+			expect(hiddenPhrases()).toEqual([]);
 		});
 
 		it('vouches for nothing beside a failed load', async () => {

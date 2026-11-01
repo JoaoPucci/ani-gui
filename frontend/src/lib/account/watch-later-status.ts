@@ -99,23 +99,25 @@ export interface StatusPhrase {
 }
 
 /**
- * Every phrasing the status line can take, the current one marked
- * shown. The page stacks them in one cell with the others hidden, so
- * the line is as wide as its widest phrasing whatever it says, and the
- * action after it does not move each time the status changes. The
- * widest "updated" phrasing is stood in for by 59 minutes: hours and
- * days read no longer in any of the shipped locales. `null` (no tracker
- * connected) has no phrasings.
+ * The phrasings the status line stacks in one cell: the current label,
+ * shown, and — while a refresh runs — the label it had before, hidden.
+ * At rest the line is exactly as wide as its words, so every gap on the
+ * header's line is the same; during a refresh the held label keeps the
+ * line at its old width, so the Refresh action the user just pressed
+ * does not slide out from under the pointer or the focus ring. `null`
+ * (no tracker connected) has no phrasings.
  */
 export function statusPhrases(
 	status: WatchLaterStatus | null,
 	now: number,
 	locale: string,
-	copy: StatusCopy
+	copy: StatusCopy,
+	held: string | null = null
 ): StatusPhrase[] {
 	void status;
 	void now;
 	void locale;
 	void copy;
+	void held;
 	throw new Error('not implemented');
 }

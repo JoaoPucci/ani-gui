@@ -134,24 +134,28 @@ describe('statusLabel', () => {
 });
 
 describe('statusPhrases', () => {
+	const at12 = { kind: 'updated' as const, at: NOW - 12 * MIN };
 	it('has none for no status', () => {
-		expect(statusPhrases(null, NOW, 'en', copy)).toEqual([]);
+		expect(statusPhrases(null, NOW, 'en', copy, null)).toEqual([]);
 	});
 
-	it('shows the current label and holds every other phrasing, once each', () => {
-		const phrases = statusPhrases({ kind: 'updated', at: NOW - 12 * MIN }, NOW, 'en', copy);
-		const shown = phrases.filter((p) => p.shown).map((p) => p.text);
-		expect(shown).toEqual([statusLabel({ kind: 'updated', at: NOW - 12 * MIN }, NOW, 'en', copy)]);
-		const texts = phrases.map((p) => p.text);
-		expect(texts).toContain('Refreshing…');
-		expect(texts).toContain('Not updated yet');
-		expect(texts).toContain('Updated just now');
-		expect(texts.some((t) => t.includes('59'))).toBe(true);
-		expect(new Set(texts).size).toBe(texts.length);
+	it('is just the label at rest, so the line is exactly as wide as its words', () => {
+		expect(statusPhrases(at12, NOW, 'en', copy, null)).toEqual([
+			{ text: statusLabel(at12, NOW, 'en', copy)!, shown: true }
+		]);
 	});
 
-	it('shows the refreshing phrasing while a pull runs', () => {
-		const phrases = statusPhrases({ kind: 'refreshing' }, NOW, 'en', copy);
-		expect(phrases.filter((p) => p.shown).map((p) => p.text)).toEqual(['Refreshing…']);
+	it('holds the label it had before a refresh, hidden, while the refresh runs', () => {
+		const before = statusLabel(at12, NOW, 'en', copy)!;
+		expect(statusPhrases({ kind: 'refreshing' }, NOW, 'en', copy, before)).toEqual([
+			{ text: 'Refreshing…', shown: true },
+			{ text: before, shown: false }
+		]);
+	});
+
+	it('holds nothing twice', () => {
+		expect(statusPhrases({ kind: 'refreshing' }, NOW, 'en', copy, 'Refreshing…')).toEqual([
+			{ text: 'Refreshing…', shown: true }
+		]);
 	});
 });
