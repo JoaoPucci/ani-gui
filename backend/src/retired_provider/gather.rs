@@ -42,9 +42,11 @@ pub(super) fn gather(state: &AppState) -> Result<Work> {
     })
 }
 
-/// How many of the `before` retired numbering rows are gone now; none
-/// when the store cannot be read to tell.
-fn numbering_gone(state: &AppState, before: usize) -> usize {
+/// How many of the `before` retired numbering rows are gone now. When
+/// the store cannot be read to tell, the `forgotten` rows the sweep's
+/// own removal is known to have taken: all of them were in the store
+/// the sweep read.
+fn numbering_gone(state: &AppState, before: usize, forgotten: usize) -> usize {
     #[cfg(test)]
     let read = if FAIL_COUNT_READ.with(|f| f.replace(false)) {
         Err(std::io::Error::other("unreadable for the case"))
@@ -57,7 +59,7 @@ fn numbering_gone(state: &AppState, before: usize) -> usize {
         Ok(store) => before.saturating_sub(numbering::retired(state, &store)),
         Err(e) => {
             tracing::warn!(error = %e, "retired-provider sweep: numbering count unread");
-            0
+            forgotten
         }
     }
 }
@@ -74,19 +76,21 @@ pub(super) fn apply(state: &AppState, work: Work) -> RetiredSweepReport {
             Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: a row stays"),
         }
     }
+    let mut forgotten = 0;
     match renumber::renumber(state, &work.plan.renumber) {
         Ok(titles) => {
             report.renumbered = titles;
-            if let Err(e) = numbering::forget(state, &work.numbering) {
-                tracing::warn!(error = ?e, "retired-provider sweep: numbering stays");
+            match numbering::forget(state, &work.numbering) {
+                Ok(()) => forgotten = work.numbering.len(),
+                Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: numbering stays"),
             }
         }
         Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: rows not renumbered"),
     }
-    // Counted across the whole sweep, whatever its writes did: a
-    // removed row took its own numbering with it, and a write that
-    // failed took nothing.
-    report.numbering_rows = numbering_gone(state, work.retired_numbering);
+    // Counted from the sidecar as it stands once every write has run:
+    // a removed row took its own numbering with it, and a removal that
+    // failed part way is counted for what it took before failing.
+    report.numbering_rows = numbering_gone(state, work.retired_numbering, forgotten);
     match cache::delete(state, &work.cache) {
         Ok(n) => report.cache_rows = n,
         Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: cache stays"),
