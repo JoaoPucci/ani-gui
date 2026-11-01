@@ -175,13 +175,17 @@ describe('namedCandidates — properties', () => {
 	});
 
 	it('keeps only candidates the title names, marks aside, when none is exact', () => {
+		// The row's title is a candidate's own words with its mark taken
+		// off, so it names that candidate but for the mark.
 		fc.assert(
-			fc.property(fc.array(candidate, { minLength: 1, maxLength: 6 }), title, (cs, t) => {
+			fc.property(fc.array(candidate, { minLength: 1, maxLength: 6 }), fc.nat(), (cs, n) => {
+				const t = fold(cs[n % cs.length].canonical_title);
 				const exact = cs.some((h) => titlesOf(h).some((x) => x.toLowerCase() === t));
-				const folded = cs.some((h) => titlesOf(h).some((x) => fold(x) === fold(t)));
-				fc.pre(!exact && folded);
-				for (const g of namedCandidates(cs, t, null)) {
-					expect(titlesOf(g).some((x) => fold(x) === fold(t))).toBe(true);
+				fc.pre(!exact);
+				const got = namedCandidates(cs, t, null);
+				expect(got.length).toBeGreaterThan(0);
+				for (const g of got) {
+					expect(titlesOf(g).some((x) => fold(x) === t)).toBe(true);
 				}
 			})
 		);
