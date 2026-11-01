@@ -184,6 +184,11 @@
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
 	let watchLaterFailed = $state(false);
+	// The row shows its failed state when the last load failed and there
+	// are no cards to keep showing (a populated rail keeps its cards).
+	const wlFailedRow = $derived(
+		accountStore.hasAny && watchLaterFailed && !(watchLater && watchLater.length > 0)
+	);
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
@@ -1386,43 +1391,43 @@
 	/>
 {/snippet}
 
-{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+{#if wlFailedRow || (watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed)))}
 	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
 	     empty — the empty row with its header and refresh, so newly-added
-	     tracker titles can be pulled in before the TTL. One strip for both,
-	     so the first card a settled write adds grows into the row and the
-	     last one it removes shrinks out of it, like any other card. -->
+	     tracker titles can be pulled in before the TTL; or, connected but
+	     the last load failed (bridge/availability down), a retry
+	     affordance rather than a false "nothing planned" — an empty list
+	     and a failed fetch are different states. One strip for all three:
+	     the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card, and a
+	     refresh that moves the row between failed and loaded leaves the
+	     Refresh the keyboard pressed where it was. A failed row vouches
+	     for no freshness, so it carries no status. -->
 	<Strip
 		surface={rowSurface}
 		eyebrow={m.account_watch_later_title()}
-		caption={watchLater.length > 0
-			? m.account_watch_later_caption()
-			: m.account_watch_later_empty()}
-		headerMeta={wlStatusText ? watchLaterMeta : undefined}
+		caption={wlFailedRow
+			? m.account_watch_later_failed()
+			: watchLater && watchLater.length > 0
+				? m.account_watch_later_caption()
+				: m.account_watch_later_empty()}
+		headerMeta={!wlFailedRow && wlStatusText ? watchLaterMeta : undefined}
 		headerActions={watchLaterActions}
 	>
-		{#each watchLater as anime (anime.id)}
-			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
-				<PosterCard {anime} />
-			</div>
-		{/each}
-		{#if watchLater.length === 0}
-			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{#if wlFailedRow}
+			<p class="watch-later-empty">
+				{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
+			</p>
+		{:else if watchLater}
+			{#each watchLater as anime (anime.id)}
+				<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+					<PosterCard {anime} />
+				</div>
+			{/each}
+			{#if watchLater.length === 0}
+				<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+			{/if}
 		{/if}
-	</Strip>
-{:else if accountStore.hasAny && watchLaterFailed}
-	<!-- Connected but the last load failed (bridge/availability down). Show
-	     a retry affordance rather than a false "nothing planned" — an empty
-	     list and a failed fetch are different states. -->
-	<Strip
-		surface={rowSurface}
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_failed()}
-		headerActions={watchLaterActions}
-	>
-		<p class="watch-later-empty">
-			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
-		</p>
 	</Strip>
 {/if}
 
