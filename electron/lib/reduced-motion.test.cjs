@@ -44,6 +44,41 @@ function fakeExec(outcomes) {
   return { exec, calls };
 }
 
+/**
+ * A clock the test drives: `now` moves only when `advance` is called,
+ * which fires the timers it passes. No test here reads the wall clock,
+ * so the budget arithmetic comes out the same on any machine.
+ */
+function fakeClock() {
+  let t = 1_000_000;
+  let nextId = 1;
+  const timers = new Map();
+  return {
+    now: () => t,
+    setTimeout: (fn, ms) => {
+      const id = nextId++;
+      timers.set(id, { at: t + ms, fn });
+      return id;
+    },
+    clearTimeout: (id) => {
+      timers.delete(id);
+    },
+    advance(ms) {
+      t += ms;
+      for (const [id, timer] of [...timers]) {
+        if (timer.at <= t) {
+          timers.delete(id);
+          timer.fn();
+        }
+      }
+    },
+    pending: () => timers.size,
+  };
+}
+
+/** Let every queued promise reaction run. */
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
 async function apply(outcomes, { platform = "linux", timeoutMs = 200 } = {}) {
   const { exec, calls } = fakeExec(outcomes);
   const appended = [];
@@ -52,6 +87,7 @@ async function apply(outcomes, { platform = "linux", timeoutMs = 200 } = {}) {
     exec,
     appendSwitch: (name) => appended.push(name),
     timeoutMs,
+    clock: fakeClock(),
   });
   return { result, appended, calls };
 }
@@ -146,84 +182,106 @@ test("when every reader fails, nothing is forced", async () => {
   );
 });
 
-test("a reader that never returns costs no more than the timeout", { timeout: 5000 }, async () => {
-  const started = Date.now();
-  const { result, appended } = await apply(
-    { busctl: HANG, gdbus: HANG, gsettings: HANG },
-    { timeoutMs: 50 },
-  );
-  const elapsed = Date.now() - started;
-  assert.equal(result, false);
+test("a reader that never returns costs the budget and no more", async () => {
+  const clock = fakeClock();
+  const { exec } = fakeExec({ busctl: HANG, gdbus: HANG, gsettings: HANG });
+  const appended = [];
+  let settled = false;
+  const read = applyReducedMotion({
+    platform: "linux",
+    exec,
+    appendSwitch: (name) => appended.push(name),
+    timeoutMs: 50,
+    clock,
+  }).then((result) => {
+    settled = true;
+    return result;
+  });
+  clock.advance(49);
+  await flush();
+  assert.equal(settled, false, "settled before the budget was spent");
+  clock.advance(1);
+  assert.equal(await read, false);
   assert.deepEqual(appended, []);
-  assert.ok(elapsed < 500, `took ${elapsed} ms against a 50 ms budget`);
 });
 
 test("each reader is handed what is left of the budget as its own timeout", async () => {
+  const clock = fakeClock();
   const calls = [];
   const exec = (cmd, _args, options) => {
-    calls.push({ cmd, options });
-    // The first reader spends a measurable slice of the budget.
-    return new Promise((_resolve, reject) => {
-      setTimeout(() => reject(new Error("failed")), cmd === "busctl" ? 80 : 0);
-    });
+    calls.push({ cmd, timeoutMs: options.timeoutMs });
+    // busctl spends 80 ms of the budget before it fails.
+    if (cmd === "busctl") clock.advance(80);
+    return Promise.reject(new Error("failed"));
   };
   await applyReducedMotion({
     platform: "linux",
     exec,
     appendSwitch: () => {},
     timeoutMs: 300,
+    clock,
   });
-  assert.equal(calls[0].options.timeoutMs, 300);
-  assert.ok(calls[1].options.timeoutMs > 0);
-  assert.ok(
-    calls[1].options.timeoutMs <= 300 - 70,
-    `gdbus got ${calls[1].options.timeoutMs} ms after busctl spent ~80`,
-  );
+  assert.deepEqual(calls, [
+    { cmd: "busctl", timeoutMs: 300 },
+    { cmd: "gdbus", timeoutMs: 220 },
+    { cmd: "gsettings", timeoutMs: 220 },
+  ]);
 });
 
-test("no reader is started once the budget is spent", { timeout: 5000 }, async () => {
+test("no reader is started once the budget is spent", async () => {
+  const clock = fakeClock();
   const calls = [];
   const exec = (cmd) => {
     calls.push(cmd);
-    // busctl fails just after the deadline: what follows must not run.
-    return new Promise((_resolve, reject) => {
-      setTimeout(() => reject(new Error("failed")), 60);
-    });
+    // busctl runs the budget out to the millisecond, then fails: what
+    // follows would be handed a timeout of zero, which execFile reads
+    // as none, so it must not start at all.
+    clock.advance(300);
+    return Promise.reject(new Error("failed"));
   };
   const result = await applyReducedMotion({
     platform: "linux",
     exec,
     appendSwitch: () => {},
-    timeoutMs: 30,
+    timeoutMs: 300,
+    clock,
   });
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await flush();
   assert.equal(result, false);
   assert.deepEqual(calls, ["busctl"]);
 });
 
 test("a read that answers early leaves no timer behind", async () => {
-  const timers = () =>
-    process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
-  const before = timers();
-  await apply(PORTAL_REDUCE, { timeoutMs: 10_000 });
-  assert.equal(timers(), before);
+  const clock = fakeClock();
+  const { exec } = fakeExec(PORTAL_REDUCE);
+  await applyReducedMotion({
+    platform: "linux",
+    exec,
+    appendSwitch: () => {},
+    timeoutMs: 10_000,
+    clock,
+  });
+  assert.equal(clock.pending(), 0);
 });
 
-test("a reader that answers after the deadline is not acted on", { timeout: 5000 }, async () => {
+test("a reader that answers after the deadline is not acted on", async () => {
+  const clock = fakeClock();
   const appended = [];
   let release;
   const late = new Promise((resolve) => {
     release = resolve;
   });
-  const result = await applyReducedMotion({
+  const read = applyReducedMotion({
     platform: "linux",
     exec: () => late,
     appendSwitch: (name) => appended.push(name),
     timeoutMs: 20,
+    clock,
   });
+  clock.advance(20);
+  assert.equal(await read, false);
   release("v u 1\n");
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(result, false);
+  await flush();
   assert.deepEqual(appended, []);
 });
 
@@ -236,6 +294,7 @@ test("an appendSwitch that throws is no answer, not a failed launch", async () =
       throw new Error("switch refused");
     },
     timeoutMs: 200,
+    clock: fakeClock(),
   });
   assert.equal(result, false);
 });
@@ -248,6 +307,7 @@ test("readers run without DISPLAY, so a missing session bus is not autolaunched"
     appendSwitch: () => {},
     timeoutMs: 200,
     env: { DISPLAY: ":0", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1/bus", PATH: "/usr/bin" },
+    clock: fakeClock(),
   });
   assert.equal(calls.length, 3);
   for (const call of calls) {
@@ -291,11 +351,16 @@ test("off Linux nothing is read and nothing is forced", async () => {
 test("readReducedMotion reports the answer it acted on", async () => {
   const { exec } = fakeExec({ busctl: "v u 0\n" });
   assert.equal(
-    await readReducedMotion({ platform: "linux", exec, timeoutMs: 100 }),
+    await readReducedMotion({ platform: "linux", exec, timeoutMs: 100, clock: fakeClock() }),
     "no-preference",
   );
   assert.equal(
-    await readReducedMotion({ platform: "linux", exec: fakeExec({}).exec, timeoutMs: 100 }),
+    await readReducedMotion({
+      platform: "linux",
+      exec: fakeExec({}).exec,
+      timeoutMs: 100,
+      clock: fakeClock(),
+    }),
     null,
   );
 });
@@ -387,10 +452,12 @@ test("execText rejects a missing command", async () => {
   await assert.rejects(execText("ani-gui-no-such-command", [], { timeoutMs: 5000 }));
 });
 
+// A real child and a real timer: what is under test is that execFile's
+// kill fires at all. A kill that never comes hangs here, and the test's
+// own timeout turns that hang into a failure that names it.
 test("execText kills a command that outlives its timeout", { timeout: 5000 }, async () => {
-  const started = Date.now();
   await assert.rejects(
     execText(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { timeoutMs: 100 }),
+    (err) => err.killed === true && err.signal === "SIGKILL",
   );
-  assert.ok(Date.now() - started < 3000);
 });
