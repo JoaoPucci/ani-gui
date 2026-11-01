@@ -14,12 +14,15 @@
 //! the rows written since the later one started are kept either way —
 //! and is not cached at all.
 //!
-//! A live read of one entry takes a revision as well. When it finds the
-//! entry absent, a removal can clear the stale cached row on that
-//! evidence — but only while no newer answer reached the cache: no write
-//! marked the row and no refresh started after the read was cached. The
-//! cleared row is marked as of the read, so a refresh that started
-//! before the read cannot put it back, and one started after it can.
+//! A live read of one entry takes a revision as well, when it is sent.
+//! When it finds the entry absent, a removal can clear the stale cached
+//! row on that evidence — but only while no answer asked after it has
+//! reached the cache: no write marked the row since the read was sent,
+//! no refresh started after it was cached, and no read sent after it
+//! found the entry listed. Everything is ordered by when it was asked,
+//! not when it arrived, since answers arrive in any order. The cleared
+//! row is marked as of the read, so a refresh that started before the
+//! read cannot put it back, and one started after it can.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -34,9 +37,10 @@ struct Revisions {
     rows: HashMap<(ProviderKind, u32), u64>,
     /// The start of the latest refresh cached, per provider.
     cached_from: HashMap<ProviderKind, u64>,
-    /// Rows whose last live read found them absent: the revision that
-    /// read started at.
-    absent: HashMap<(ProviderKind, u32), u64>,
+    /// Each row's latest-sent live read that has answered: the revision
+    /// it started at, and whether it found the row absent (and has not
+    /// been used for a clear yet).
+    reads: HashMap<(ProviderKind, u32), (u64, bool)>,
 }
 
 impl Revisions {
@@ -82,20 +86,24 @@ impl CacheRevisions {
         self.lock().next(kind)
     }
 
-    /// What the live read of `media` that started at `read` found.
+    /// What the live read of `media` that started at `read` found. A read
+    /// sent before one already noted says nothing newer, and is dropped.
     pub(crate) fn note_read(&self, kind: ProviderKind, media: u32, read: u64, absent: bool) {
         let mut revisions = self.lock();
-        if absent {
-            revisions.absent.insert((kind, media), read);
-        } else {
-            revisions.absent.remove(&(kind, media));
+        let noted = revisions
+            .reads
+            .entry((kind, media))
+            .or_insert((read, absent));
+        if noted.0 <= read {
+            *noted = (read, absent);
         }
     }
 
-    /// Clear `media`'s cached row with `clear` on the evidence of its last
-    /// live read, if that read found it absent and no write or cached
-    /// refresh has answered for the row since. `None` — nothing cleared —
-    /// otherwise. The evidence is used up either way.
+    /// Clear `media`'s cached row with `clear` on the evidence of its
+    /// latest-sent live read, if that read found it absent and nothing
+    /// asked after it has answered for the row: no write since, and no
+    /// refresh started after it and cached. `None` — nothing cleared —
+    /// otherwise. Evidence clears once.
     pub(crate) fn clear_if_still_absent<T>(
         &self,
         kind: ProviderKind,
@@ -103,16 +111,16 @@ impl CacheRevisions {
         clear: impl FnOnce() -> T,
     ) -> Option<T> {
         let mut revisions = self.lock();
-        let read = revisions.absent.remove(&(kind, media))?;
-        // A refresh started after the read and cached since has withdrawn
-        // the evidence already (`cache_refresh`); a write since marks the row.
-        if revisions
+        let &(read, absent) = revisions.reads.get(&(kind, media))?;
+        let refreshed = revisions.cached_from.get(&kind).is_some_and(|&c| c > read);
+        let written = revisions
             .rows
             .get(&(kind, media))
-            .is_some_and(|&rev| rev > read)
-        {
+            .is_some_and(|&rev| rev > read);
+        if !absent || refreshed || written {
             return None;
         }
+        revisions.reads.insert((kind, media), (read, false));
         revisions.rows.insert((kind, media), read);
         Some(clear())
     }
@@ -158,8 +166,8 @@ impl CacheRevisions {
             // A read before this refresh can no longer justify a clear:
             // the refresh's answer for the row is newer.
             revisions
-                .absent
-                .retain(|(k, _), read| *k != kind || *read > since);
+                .reads
+                .retain(|(k, _), (read, _)| *k != kind || *read > since);
         }
         Some(written)
     }
