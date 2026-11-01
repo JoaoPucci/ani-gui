@@ -448,6 +448,93 @@ async fn a_later_part_with_no_entry_of_its_own_writes_its_prequel_s_entry() {
     assert_eq!(tracker.writes()[1], (153_406, Some(Completed), Some(26)));
 }
 
+/// A show Kitsu resolves to nothing, filed at the first episode of an
+/// entry: an entry the user has finished, or is past that episode on,
+/// or is rewatching beyond it, is sent nothing, so no rewatch is ever
+/// started; an entry not on the list is added at that episode.
+#[tokio::test]
+async fn a_mapped_write_below_an_entry_s_progress_starts_no_rewatch() {
+    let state = state();
+    seed(
+        &state,
+        "9718",
+        &EpisodeMap {
+            shape: Shape::SpecialExtras,
+            segments: vec![segment(19_603, 13, 1, 1, 0, &[])],
+        },
+    );
+    for row in [(Completed, 13), (Watching, 5), (Rewatching, 3)] {
+        let tracker = Tracker::with(&[(19_603, 13)], &[(19_603, row.0, row.1)]);
+        assert!(
+            push(&state, &tracker, "9718", None, watched(1))
+                .await
+                .is_none(),
+            "{row:?}"
+        );
+        assert!(
+            tracker.writes().is_empty(),
+            "{row:?}: {:?}",
+            tracker.writes()
+        );
+    }
+    let tracker = Tracker::with(&[(19_603, 13)], &[]);
+    push(&state, &tracker, "9718", None, finale(1)).await;
+    assert_eq!(tracker.writes(), [(19_603, Some(Watching), Some(1))]);
+}
+
+/// A special filed at a slot after the season's episodes is written only
+/// where the entry already holds the episodes before its slot: an
+/// epilogue filed as the entry's last completes the entry from the
+/// season's finale, and is sent nothing before it, so it never marks
+/// unwatched episodes watched. A recap's slot is the same.
+#[tokio::test]
+async fn a_special_after_the_season_s_episodes_needs_them_watched() {
+    let state = state();
+    seed(
+        &state,
+        "9719",
+        &EpisodeMap {
+            shape: Shape::SpecialExtras,
+            segments: vec![segment(19_603, 13, 1, 1, 12, &[])],
+        },
+    );
+    let tracker = Tracker::with(&[(19_603, 13)], &[(19_603, Watching, 12)]);
+    push(&state, &tracker, "9719", None, finale(1)).await;
+    assert_eq!(tracker.writes(), [(19_603, Some(Completed), Some(13))]);
+    for row in [Some((Watching, 5)), None] {
+        let rows: Vec<(u32, ListStatus, u32)> =
+            row.map(|(s, p)| vec![(19_603, s, p)]).unwrap_or_default();
+        let tracker = Tracker::with(&[(19_603, 13)], &rows);
+        assert!(
+            push(&state, &tracker, "9719", None, finale(1))
+                .await
+                .is_none(),
+            "{row:?}"
+        );
+        assert!(
+            tracker.writes().is_empty(),
+            "{row:?}: {:?}",
+            tracker.writes()
+        );
+    }
+    seed(
+        &state,
+        "9720",
+        &EpisodeMap {
+            shape: Shape::SpecialExtras,
+            segments: vec![segment(19_603, 13, 1, 1, 6, &[])],
+        },
+    );
+    let tracker = Tracker::with(&[(19_603, 13)], &[(19_603, Watching, 6)]);
+    push(&state, &tracker, "9720", None, watched(1)).await;
+    assert_eq!(tracker.writes(), [(19_603, None, Some(7))]);
+    let tracker = Tracker::with(&[(19_603, 13)], &[(19_603, Watching, 3)]);
+    assert!(push(&state, &tracker, "9720", None, watched(1))
+        .await
+        .is_none());
+    assert!(tracker.writes().is_empty());
+}
+
 #[tokio::test]
 async fn a_show_that_resolves_to_nothing_and_maps_to_nothing_writes_nothing() {
     let state = state();
