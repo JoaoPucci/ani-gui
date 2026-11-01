@@ -69,6 +69,9 @@ export interface RemoveEntryDeps {
 	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
 	getEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<EntryView | null>;
 	removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
+	/** Clear `kitsuId`'s cached row for `provider` locally, asking the
+	 *  tracker nothing. */
+	forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
 	/** How each provider's removal is run; {@link runOnce} when omitted. */
 	runWrite?: RunWrite;
 }

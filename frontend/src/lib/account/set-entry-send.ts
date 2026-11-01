@@ -68,6 +68,9 @@ export async function sendSave(
 export async function sendRemoval(
 	deps: ReadDeps & {
 		removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
+		/** Clear `kitsuId`'s cached row for `provider` locally, asking the
+		 *  tracker nothing. */
+		forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
 	},
 	to: SendTo
 ): Promise<FanoutResult> {
