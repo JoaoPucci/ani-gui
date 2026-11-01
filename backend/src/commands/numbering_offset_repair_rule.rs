@@ -3,7 +3,7 @@
 //! for the per-file complexity bar.
 
 use super::super::numbering_offset_store::Row;
-use crate::commands::listing_tags::Order;
+use crate::commands::listing_tags::{Hearing, Order};
 use crate::scraper::provider::EpisodeRef;
 
 /// A show's numbering stamps: the display stamp, and the (slot, tag) a
@@ -74,7 +74,9 @@ pub(super) fn repaired(
 /// its hearing stands against the last one this run took (`order`),
 /// the stamps now (`current`), the stamps before this run's first
 /// repair (`base`), and what the repair's listing makes of those
-/// (`ours`, [`repaired`] from `base`).
+/// (`ours`, [`repaired`] from `base`). Two repairs at a time; the
+/// repairs decide through [`standing`], which orders them all.
+#[cfg(test)]
 #[must_use]
 pub(super) fn settle(
     order: Order,
@@ -102,4 +104,46 @@ pub(super) fn settle(
         Order::Overlapping => base.clone(),
     };
     (next != *current).then_some(next)
+}
+
+/// The repairs this run took of one show, each its listing's hearing
+/// and what the listing made of the stamps from before them.
+pub(super) type Repairs = Vec<(Hearing, Stamps)>;
+
+/// The repairs of `repairs` no other one was heard wholly after: the
+/// ones that still have a say.
+pub(super) fn outstanding(repairs: &[(Hearing, Stamps)]) -> Repairs {
+    repairs
+        .iter()
+        .filter(|(heard, _)| {
+            !repairs
+                .iter()
+                .any(|(other, _)| heard.against(Some(*other)) == Order::Earlier)
+        })
+        .cloned()
+        .collect()
+}
+
+/// The stamps `repairs` leave, from `base`, the stamps before them: the
+/// ones the repairs no other was heard after ([`outstanding`]) agree on.
+/// Those cannot be ordered among themselves, so a former tag only some
+/// of them name is not named, as another's listing may give it to a row
+/// of its own, and where they put the display stamp in different places
+/// it stays as it was. The order the repairs were taken in plays no part.
+#[must_use]
+pub(super) fn standing(base: &Stamps, repairs: &[(Hearing, Stamps)]) -> Stamps {
+    let last = outstanding(repairs);
+    let Some((_, first)) = last.first() else {
+        return base.clone();
+    };
+    if last.iter().any(|(_, s)| s.display != first.display) {
+        return base.clone();
+    }
+    Stamps {
+        display: first.display.clone(),
+        former: first
+            .former
+            .clone()
+            .filter(|_| last.iter().all(|(_, s)| s.former == first.former)),
+    }
 }

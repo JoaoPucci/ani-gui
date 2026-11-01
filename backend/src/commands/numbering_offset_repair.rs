@@ -6,21 +6,21 @@
 //! and the one that heard its listing first can finish, and repair,
 //! last. Each repair carries its listing's hearing
 //! ([`crate::commands::listing_tags::Hearing`]), and the stamps end as
-//! the listing heard last repairs them:
-//! - a repair heard wholly before the last one this run took writes
-//!   nothing;
-//! - one heard wholly after it repairs the stamps as they stood before
-//!   this run's first repair, so what an earlier listing decided — a
-//!   former tag it found free, a slot it moved the stamp to — does not
-//!   outlive a later listing that decides otherwise;
-//! - a listing that repairs nothing takes no part in the order, and
-//!   leaves the stamps to the listings that do, heard before or after;
-//! - two whose hearings overlap cannot be ordered, so the order they
-//!   write in changes nothing: a former tag only one of them names is
-//!   not named, as the other's listing may give it to a row of its own,
-//!   and two that put the display stamp in different places leave it as
-//!   it was before this run's repairs, whatever else is heard alongside
-//!   them.
+//! the listings heard last repair them, whatever order the repairs
+//! write in:
+//! - every repair is made from the stamps as they stood before this
+//!   run's first repair, so what an earlier listing decided — a former
+//!   tag it found free, a slot it moved the stamp to — does not outlive
+//!   a listing heard after it that decides otherwise;
+//! - a repair whose listing was heard wholly before another's has no
+//!   say once that one is taken, and writes nothing after it;
+//! - a listing that repairs nothing takes no part, and leaves the stamps
+//!   to the listings that do, heard before or after;
+//! - the repairs left, heard alongside one another, cannot be ordered:
+//!   a former tag only some of them name is not named, as another's
+//!   listing may give it to a row of its own, and where they put the
+//!   display stamp in different places it stays as it was before this
+//!   run's repairs.
 //!
 //! What a repair started from is kept for this run alone. A hearing
 //! counts this process's walks, and a stamp an earlier run repaired is
@@ -33,21 +33,26 @@ use std::sync::{Mutex, PoisonError};
 
 use super::numbering_offset_store::{parse, read_store, rewrite_if, Row};
 use super::AppState;
-use crate::commands::listing_tags::{Hearing, Order};
+use crate::commands::listing_tags::Hearing;
 
 #[path = "numbering_offset_repair_rule.rs"]
 mod rule;
+#[cfg(test)]
+use crate::commands::listing_tags::Order;
+#[cfg(test)]
+use rule::settle;
 pub(super) use rule::Listing;
-use rule::{repaired, settle, Stamps};
+use rule::{outstanding, repaired, standing, Repairs, Stamps};
 
-/// The repair a show's stamps last took this run: when its listing was
-/// heard (spanning every overlapping one), the stamps from before the
-/// run's first repair, and the stamps it left. Stamps that are no longer
-/// the ones it left were written by something else since — a removal,
-/// another instance — and a repair starts over from them.
+/// The repairs a show's stamps took this run: the stamps from before
+/// the run's first repair, each repair that still has a say, with its
+/// hearing and what its listing made of those stamps ([`standing`]),
+/// and the stamps they left. Stamps that are no longer the ones they
+/// left were written by something else since — a removal, another
+/// instance — and a repair starts over from them.
 struct Taken {
-    heard: Hearing,
     base: Stamps,
+    repairs: Repairs,
     left: Stamps,
 }
 
@@ -55,7 +60,11 @@ struct Taken {
 impl Taken {
     /// One repair heard as `heard`, from `base`, that left `left`.
     fn one(heard: Hearing, base: Stamps, left: Stamps) -> Self {
-        Self { heard, base, left }
+        Self {
+            base,
+            repairs: vec![(heard, left.clone())],
+            left,
+        }
     }
 }
 
@@ -129,13 +138,11 @@ fn decided(
     ours: impl FnOnce(&Stamps) -> Stamps,
 ) -> Option<Stamps> {
     current.display.as_ref()?;
-    let prior = heard
-        .and_then(|_| taken.get(&key))
-        .filter(|t| t.left == current);
-    let order = heard.map_or(Order::Later, |h| h.against(prior.map(|t| t.heard)));
-    if order == Order::Earlier {
-        return None;
-    }
+    let Some(heard) = heard else {
+        let ours = ours(&current);
+        return (ours != current).then_some(ours);
+    };
+    let prior = taken.get(&key).filter(|t| t.left == current);
     let base = prior.map_or_else(|| current.clone(), |t| t.base.clone());
     let ours = ours(&base);
     // A listing that repairs nothing takes no part in the order: the
@@ -143,16 +150,19 @@ fn decided(
     if ours == base {
         return None;
     }
-    let next = settle(order, &current, &base, ours);
-    if let Some(h) = heard {
-        let heard = match prior {
-            Some(t) if order == Order::Overlapping => h.spanning(t.heard),
-            _ => h,
-        };
-        let left = next.clone().unwrap_or_else(|| current.clone());
-        taken.insert(key, Taken { heard, base, left });
-    }
-    next
+    let mut repairs = prior.map_or_else(Vec::new, |t| t.repairs.clone());
+    repairs.push((heard, ours));
+    let repairs = outstanding(&repairs);
+    let next = standing(&base, &repairs);
+    taken.insert(
+        key,
+        Taken {
+            base,
+            repairs,
+            left: next.clone(),
+        },
+    );
+    (next != current).then_some(next)
 }
 
 /// What the show's history row from before rows recorded the app's own
