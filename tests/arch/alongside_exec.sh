@@ -14,9 +14,13 @@
 #
 # What this file asserts is a syntactic constraint, per the AGENTS.md
 # rule on how these checks may read source. Leading whitespace aside,
-# every line of a workflow that names tools/alongside.sh either is a
-# comment or begins `exec sh tools/alongside.sh `, and at least one
-# line runs it, so the check cannot pass by having nothing to look at.
+# every line of a workflow (.yml or .yaml) or a composite action that
+# names tools/alongside.sh either is a comment or begins
+# `exec sh tools/alongside.sh `, and at least one line runs it, so the
+# check cannot pass by having nothing to look at. A one-line
+# `run: exec sh tools/alongside.sh ...` is reported too: the check
+# reads lines, not YAML, so the steps write the call on a line of its
+# own.
 #
 # Deliberately not covered, and said so: whether the exec'd line is the
 # last command of its step (a command after it would never run), and
@@ -37,7 +41,14 @@ if [ ! -f tools/alongside.sh ]; then
     failed=1
 fi
 
-for workflow in .github/workflows/*.yml; do
+# Workflows in either spelling, and the composite actions, whose steps
+# run their `run:` lines the same way. A pattern that matches nothing
+# stays as written, which is not a file.
+for workflow in .github/workflows/*.yml .github/workflows/*.yaml \
+    .github/actions/*/action.yml .github/actions/*/action.yaml; do
+    if [ ! -f "$workflow" ]; then
+        continue
+    fi
     lines=$(grep -n 'tools/alongside\.sh' "$workflow" || true)
     if [ -z "$lines" ]; then
         continue
