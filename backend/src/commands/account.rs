@@ -236,13 +236,15 @@ pub async fn owner(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -
         .await
 }
 
-/// The bearer's own list: its owner from `me()` — the only identity the
-/// backend trusts — then its full list (all statuses), written through
-/// the cache under that owner. Returns the freshly-fetched entries.
+/// The bearer's own list: its owner as the tracker names it for the
+/// bearer ([`owner`]: asked once per bearer, then remembered) — the only
+/// identity the backend trusts — then its full list (all statuses),
+/// written through the cache under that owner. Returns the
+/// freshly-fetched entries.
 ///
 /// # Errors
 /// [`AniError::Metadata`] for a kind with no provider; otherwise those
-/// of `me()` and the list read.
+/// of the owner lookup and the list read.
 pub async fn list_for_bearer(
     state: &Arc<AppState>,
     kind: ProviderKind,

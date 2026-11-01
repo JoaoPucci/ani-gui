@@ -99,8 +99,9 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
 }
 
 /// Resolve the cache-owner user_id for an endpoint that operates on
-/// per-user cache rows. Tries the bearer-derived `me()` identity
-/// first (the only one upstream can vouch for), and on offline /
+/// per-user cache rows. Tries the bearer-derived identity first (the
+/// only one upstream can vouch for; asked of the tracker once per
+/// bearer, then remembered — `account::owner`), and on offline /
 /// 401 / 5xx falls back to the renderer-supplied id gated by the
 /// internal secret. Used by both the cached-read path and the
 /// disconnect-delete path so a single helper enforces the security gate.
@@ -321,9 +322,9 @@ async fn post_list(
     // the request body and used it as the cache-write owner. A
     // cross-origin page with its own valid bearer could choose any
     // other user_id and poison that target's local cache. Like the
-    // cached read/delete paths, derive the owner from the bearer by
-    // calling `me()` upstream — the bearer is the only identity
-    // input the backend trusts.
+    // cached read/delete paths, derive the owner from the bearer — as
+    // the tracker names it, asked once per bearer and then remembered
+    // — the bearer is the only identity input the backend trusts.
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
