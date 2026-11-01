@@ -29,6 +29,7 @@
 pub mod host_budget;
 pub mod host_budget_demand;
 pub mod m3u8;
+mod m3u8_attrs;
 pub mod m3u8_define;
 mod m3u8_guard;
 mod m3u8_lines;

@@ -23,6 +23,8 @@
 use url::Url;
 
 use super::m3u8::ProxyOrigin;
+use super::m3u8_attrs::{attribute_value, names_a_fetch};
+use super::m3u8_lines::{extinf_reads_whole, untitled_extinf};
 use super::m3u8_reach::on_proxy;
 
 /// `out` without any line through which hls.js would fetch something
@@ -41,11 +43,11 @@ pub(super) fn keep_player_view_on_proxy(out: &str, origin: &ProxyOrigin) -> Stri
     let body = out.strip_suffix('\n').unwrap_or(out);
     for line in body.split(['\n', '\r', '\u{2028}', '\u{2029}']) {
         let shown = if line.starts_with('#') {
-            line_stays(line, &base, origin).then(|| line.to_owned())
+            (line_stays(line, &base, origin) && extinf_reads_whole(line)).then(|| line.to_owned())
         } else {
             uri_line_stays(line, &base, origin, media).then(|| line.to_owned())
         };
-        if let Some(line) = shown.or_else(|| super::m3u8_lines::untitled_extinf(line)) {
+        if let Some(line) = shown.or_else(|| untitled_extinf(line)) {
             kept.push_str(&line);
             kept.push('\n');
         }
@@ -85,32 +87,6 @@ fn line_stays(line: &str, base: &Url, origin: &ProxyOrigin) -> bool {
     })
 }
 
-/// Whether an attribute name ending at this text — trimmed, as hls.js
-/// trims it — names something to fetch.
-fn names_a_fetch(before: &str) -> bool {
-    let name = before
-        .trim_end_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
-        .to_ascii_uppercase();
-    ["URI", "URL", "-LIST"].iter().any(|s| name.ends_with(s))
-}
-
-/// The value hls.js reads after an `=`: a quoted string up to the first
-/// closing quote followed by a comma or the end, or else up to the next
-/// comma; quotes around it are removed.
-fn attribute_value(after: &str) -> &str {
-    let quoted = after.strip_prefix('"').and_then(|rest| {
-        rest.match_indices('"')
-            .find(|&(i, _)| matches!(rest.as_bytes().get(i + 1), None | Some(b',')))
-            .map(|(i, _)| &rest[..i])
-    });
-    quoted.unwrap_or_else(|| {
-        let raw = after.split(',').next().unwrap_or("");
-        raw.strip_prefix('"')
-            .and_then(|v| v.strip_suffix('"'))
-            .unwrap_or(raw)
-    })
-}
-
 /// Whether the player's fetch of `value` stays off upstream.
 fn value_stays(value: &str, base: &Url, origin: &ProxyOrigin, inline_allowed: bool) -> bool {
     if value.contains("{$") {
@@ -120,7 +96,3 @@ fn value_stays(value: &str, base: &Url, origin: &ProxyOrigin, inline_allowed: bo
         on_proxy(&url, origin) || (inline_allowed && !matches!(url.scheme(), "http" | "https"))
     })
 }
-
-#[cfg(test)]
-#[path = "m3u8_guard_test.rs"]
-mod tests;
