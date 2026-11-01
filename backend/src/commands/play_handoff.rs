@@ -49,6 +49,7 @@ pub async fn resolve_launch_args(
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let request = args.native_request(
         quality,
+        &cfg.locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -120,21 +121,21 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: subtitle_urls_default_first(&native.subtitles),
+        subtitle_urls: subtitle_urls_preferred(&native.subtitles, &cfg.locale),
     }
 }
 
-/// The tracks' URLs with the provider's default first: a player that
-/// takes one subtitle file takes the first listed. The provider's
-/// order stands among the rest, and among several defaults.
+/// The tracks' URLs most wanted first
+/// ([`crate::scraper::track_preference::preference_order`]): a player
+/// that takes one subtitle file takes the first listed, and a command
+/// line that cannot carry them all keeps the first ones.
 #[must_use]
-pub fn subtitle_urls_default_first(
+pub fn subtitle_urls_preferred(
     tracks: &[crate::scraper::provider::SubtitleTrack],
+    locale: &str,
 ) -> Vec<String> {
-    let (defaults, rest): (Vec<_>, Vec<_>) = tracks.iter().partition(|t| t.default);
-    defaults
+    crate::scraper::track_preference::preferred_first(tracks, locale)
         .into_iter()
-        .chain(rest)
         .map(|t| t.url.clone())
         .collect()
 }

@@ -32,6 +32,7 @@ async fn run(
             episode,
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: expected,
             year: None,
             subtype: None,
@@ -183,6 +184,7 @@ async fn a_detail_refusal_stops_the_alias_walk() {
             episode: "2",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(3),
             year: Some(2026),
             subtype: None,
@@ -280,6 +282,7 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
             episode: "2",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(3),
             year: None,
             subtype: None,
@@ -324,6 +327,7 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
             episode: "2",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(3),
             year: None,
             subtype: None,
@@ -381,6 +385,7 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
             episode: "2",
             mode: "dub",
             quality: "best",
+            locale: "en",
             expected_count: Some(3),
             year: None,
             subtype: None,
@@ -509,6 +514,7 @@ async fn run_chain(fate: &TableProvider) -> std::result::Result<NativeResolved, 
             episode: "2",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(2),
             year: None,
             subtype: None,
@@ -549,6 +555,7 @@ async fn the_transient_verdict_carries_the_failing_attempts_instant() {
             episode: "1",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(2),
             year: None,
             subtype: None,
@@ -611,6 +618,7 @@ async fn a_transport_dead_pick_leaves_a_transient_verdict() {
             episode: "1",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(2),
             year: None,
             subtype: None,
@@ -930,6 +938,7 @@ async fn a_stalled_provider_cannot_outlive_the_resolve_deadline() {
             episode: "1",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: None,
             year: None,
             subtype: None,
@@ -1039,6 +1048,7 @@ async fn a_resolved_play_carries_the_sources_referer() {
         episode: "1",
         mode: "sub",
         quality: "best",
+        locale: "en",
         expected_count: Some(1),
         year: None,
         subtype: None,
@@ -1152,6 +1162,7 @@ fn listing_request() -> NativeResolveRequest<'static> {
         episode: "1",
         mode: "sub",
         quality: "best",
+        locale: "en",
         expected_count: Some(1),
         year: None,
         subtype: None,
@@ -1228,6 +1239,7 @@ async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
         episode: "1",
         mode: "sub",
         quality: "best",
+        locale: "en",
         expected_count: Some(1),
         year: None,
         subtype: None,
@@ -1323,7 +1335,7 @@ async fn the_episode_step_answers_the_episodes_verdict_directly() {
     let provider = NoStreamProvider;
     let picked = one_episode_show();
     let unlisted = crate::commands::play_native_episode::resolve_episode(
-        &provider, &picked, "9", "sub", "best",
+        &provider, &picked, "9", "sub", "best", "en",
     )
     .await
     .expect_err("no ninth episode");
@@ -1334,7 +1346,7 @@ async fn the_episode_step_answers_the_episodes_verdict_directly() {
     );
     assert!(!unlisted.clean_miss);
     let no_stream = crate::commands::play_native_episode::resolve_episode(
-        &provider, &picked, "1", "sub", "best",
+        &provider, &picked, "1", "sub", "best", "en",
     )
     .await
     .expect_err("no stream for the first");

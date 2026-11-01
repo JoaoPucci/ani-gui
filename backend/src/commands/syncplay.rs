@@ -133,7 +133,20 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     } else {
         &args.subtitle_urls[..args.subtitle_urls.len().min(1)]
     };
-    player_opts.extend(tracks.iter().map(|u| format!("{sub_flag}{u}")));
+    // Fitted to the command line beside everything else on it: the
+    // arguments so far, the separator and the referer flag.
+    let fixed: Vec<String> = argv
+        .iter()
+        .cloned()
+        .chain(std::iter::once("--".to_string()))
+        .chain(player_opts.iter().cloned())
+        .collect();
+    let flags = tracks.iter().map(|u| format!("{sub_flag}{u}")).collect();
+    player_opts.extend(crate::commands::command_line::flags_within_budget(
+        &args.binary,
+        &fixed,
+        flags,
+    ));
     if !player_opts.is_empty() {
         argv.push("--".to_string());
         argv.extend(player_opts);

@@ -142,6 +142,10 @@ pub struct NativeResolveRequest<'a> {
     /// `best` keeps the adaptive master; anything else selects a
     /// variant from it, falling back to the master on a miss.
     pub quality: &'a str,
+    /// The user's locale (a BCP 47 tag, the app's setting), which
+    /// decides which subtitle tracks a listing past the cap keeps
+    /// ([`tracks_within_cap`]).
+    pub locale: &'a str,
     /// Kitsu's episode count, when known.
     pub expected_count: Option<u32>,
     /// The year the show premiered per Kitsu, when known. The
@@ -281,6 +285,7 @@ where
                             req.stamps_beside,
                             req.mode,
                             req.quality,
+                            req.locale,
                         )
                         .await;
                         let (versions, version) =
@@ -451,26 +456,17 @@ where
 /// through the same step — shares the bound instead of each
 /// guarding its own.
 #[must_use]
-pub(crate) fn tracks_within_cap(mut tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
+pub(crate) fn tracks_within_cap(tracks: Vec<SubtitleTrack>, locale: &str) -> Vec<SubtitleTrack> {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
-    if tracks.len() <= SUBTITLE_TRACK_CAP {
-        return tracks;
+    let (kept, dropped) =
+        crate::scraper::track_preference::most_wanted_within(tracks, SUBTITLE_TRACK_CAP, locale);
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            "resolve: subtitle listing longer than the track cap, the rest dropped"
+        );
     }
-    let dropped = tracks.len() - SUBTITLE_TRACK_CAP;
-    tracing::warn!(
-        dropped,
-        "resolve: subtitle listing longer than the track cap, the rest dropped"
-    );
-    if let Some(default_at) = tracks.iter().position(|t| t.default) {
-        if default_at >= SUBTITLE_TRACK_CAP {
-            let default = tracks.swap_remove(default_at);
-            tracks.truncate(SUBTITLE_TRACK_CAP - 1);
-            tracks.push(default);
-            return tracks;
-        }
-    }
-    tracks.truncate(SUBTITLE_TRACK_CAP);
-    tracks
+    kept
 }
 
 #[cfg(test)]

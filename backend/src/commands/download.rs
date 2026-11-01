@@ -95,6 +95,7 @@ impl DownloadArgs {
     pub fn native_request<'a>(
         &'a self,
         quality: &'a str,
+        locale: &'a str,
         stamps_beside: Option<&'a std::path::Path>,
         tail: Option<&'a dyn super::play_native_appended::TailSource>,
     ) -> NativeResolveRequest<'a> {
@@ -104,6 +105,7 @@ impl DownloadArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
+            locale,
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
@@ -235,8 +237,12 @@ where
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let locale = crate::config::read_config(&state.config_path)
+        .unwrap_or_default()
+        .locale;
     let request = args.native_request(
         quality,
+        &locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),

@@ -137,6 +137,7 @@ impl PlayArgs {
     pub fn native_request<'a>(
         &'a self,
         quality: &'a str,
+        locale: &'a str,
         stamps_beside: Option<&'a std::path::Path>,
         tail: Option<&'a dyn super::play_native_appended::TailSource>,
     ) -> NativeResolveRequest<'a> {
@@ -146,6 +147,7 @@ impl PlayArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
+            locale,
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
@@ -302,9 +304,8 @@ where
     // settings flip applies without a restart. Off means rows are
     // neither read nor written; existing rows are left to age out so
     // opting back in loses nothing still inside the TTL.
-    let cache_resolutions = crate::config::read_config(&state.config_path)
-        .unwrap_or_default()
-        .cache_resolutions;
+    let cfg = crate::config::read_config(&state.config_path).unwrap_or_default();
+    let cache_resolutions = cfg.cache_resolutions;
 
     // Long-term cache check. A successful prior resolution under the
     // same (title, mode, quality, episode) tuple is replayable for up
@@ -360,6 +361,7 @@ where
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let request = args.native_request(
         quality,
+        &cfg.locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),

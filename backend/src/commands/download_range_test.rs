@@ -83,6 +83,7 @@ async fn a_range_starts_from_the_version_it_names() {
             args: &args,
             first: 1,
             quality: "best",
+            locale: "en",
             answered_by: None,
             tail: None,
         };
@@ -136,6 +137,7 @@ async fn a_range_in_a_mode_only_the_plain_copy_carries_starts_from_it() {
         args: &args,
         first: 1,
         quality: "best",
+        locale: "en",
         answered_by: None,
         tail: None,
     };

@@ -256,7 +256,7 @@ fn launch_args_lead_with_the_providers_default_track() {
 }
 
 mod default_first_props {
-    use super::super::play_handoff::subtitle_urls_default_first;
+    use super::super::play_handoff::subtitle_urls_preferred;
     use crate::scraper::provider::SubtitleTrack;
     use proptest::prelude::*;
 
@@ -282,7 +282,7 @@ mod default_first_props {
         /// there is one — comes first.
         #[test]
         fn the_urls_are_a_permutation_led_by_a_default(tracks in tracks()) {
-            let urls = subtitle_urls_default_first(&tracks);
+            let urls = subtitle_urls_preferred(&tracks, "en");
             let mut expected: Vec<String> = tracks.iter().map(|t| t.url.clone()).collect();
             let mut got = urls.clone();
             expected.sort();
@@ -298,7 +298,7 @@ mod default_first_props {
         /// Relative order among the rest is the provider's.
         #[test]
         fn the_non_default_order_is_the_providers(tracks in tracks()) {
-            let urls = subtitle_urls_default_first(&tracks);
+            let urls = subtitle_urls_preferred(&tracks, "en");
             let rest: Vec<&String> = tracks.iter().filter(|t| !t.default).map(|t| &t.url).collect();
             let kept: Vec<&String> = urls.iter().filter(|u| rest.contains(u)).collect();
             prop_assert_eq!(kept, rest);

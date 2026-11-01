@@ -292,7 +292,7 @@ pub(crate) fn cached_launch_args(
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: super::play_handoff::subtitle_urls_default_first(&cached.subtitles),
+        subtitle_urls: super::play_handoff::subtitle_urls_preferred(&cached.subtitles, &cfg.locale),
     }
 }
 

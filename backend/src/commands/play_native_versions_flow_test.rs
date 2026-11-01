@@ -54,6 +54,7 @@ async fn resolve(
             episode: "2",
             mode: "sub",
             quality: "best",
+            locale: "en",
             expected_count: Some(3),
             year: Some(YEAR),
             subtype: Some("TV"),
@@ -122,7 +123,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
     .expect("play args");
     assert_eq!(play.version, Some(VersionKind::Standard));
     assert_eq!(
-        play.native_request("best", None, None).version,
+        play.native_request("best", "en", None, None).version,
         Some(VersionKind::Standard)
     );
     let download: crate::commands::download::DownloadArgs =
@@ -131,7 +132,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
         }))
         .expect("download args");
     assert_eq!(
-        download.native_request("best", None, None).version,
+        download.native_request("best", "en", None, None).version,
         Some(VersionKind::Uncensored)
     );
 }
@@ -310,6 +311,7 @@ async fn resolve_in(
             episode: "2",
             mode,
             quality: "best",
+            locale: "en",
             expected_count: Some(3),
             year: Some(YEAR),
             subtype: Some("TV"),

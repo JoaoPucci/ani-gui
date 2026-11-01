@@ -21,7 +21,25 @@ pub(super) fn build_argv_with_template(
         argv.push(format!("{referrer_flag}{r}"));
     }
     match sub_flag {
-        SubFlag::Each(flag) => argv.extend(args.subtitle_urls.iter().map(|u| format!("{flag}{u}"))),
+        SubFlag::Each(flag) => {
+            // Fitted to the command line beside everything else on it,
+            // the stream URL that follows included.
+            let fixed: Vec<String> = argv
+                .iter()
+                .cloned()
+                .chain(std::iter::once(args.stream_url.clone()))
+                .collect();
+            let flags = args
+                .subtitle_urls
+                .iter()
+                .map(|u| format!("{flag}{u}"))
+                .collect();
+            argv.extend(crate::commands::command_line::flags_within_budget(
+                &args.player_command,
+                &fixed,
+                flags,
+            ));
+        }
         SubFlag::First(flag) => {
             argv.extend(args.subtitle_urls.first().map(|u| format!("{flag}{u}")))
         }
