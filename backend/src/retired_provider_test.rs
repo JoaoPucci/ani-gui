@@ -455,3 +455,89 @@ fn a_kept_rows_title_match_under_a_retired_segment_stays_while_its_page_reads_it
 
     assert!(present(&state, retired_segment));
 }
+
+/// Every store's bytes as they are, to tell a sweep that wrote nothing.
+fn snapshot(state: &AppState, dir: &Path) -> (Vec<u8>, String, Vec<(String, String)>) {
+    let rows = state
+        .cache_pool
+        .get()
+        .ok()
+        .and_then(|c| {
+            let mut stmt = c
+                .prepare("SELECT key, body FROM meta_cache ORDER BY key")
+                .ok()?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .ok()?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .ok()?;
+            Some(rows)
+        })
+        .unwrap_or_default();
+    (
+        std::fs::read(&state.history_path).unwrap_or_default(),
+        offsets(dir),
+        rows,
+    )
+}
+
+#[test]
+fn an_unreadable_numbering_sidecar_stops_the_whole_sweep() {
+    // Read as empty, the sidecar would have the kept row's slot 21
+    // written as its own number instead of the episode 8 it shows.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    seed_history(&state, dir.path());
+    put(
+        &state,
+        "availability:v24:1:sub",
+        r#"{"available":true,"provider":"hianime"}"#,
+    );
+    let sidecar = dir.path().join("ani-gui-offsets");
+    let held = dir.path().join("offsets-held");
+    std::fs::rename(&sidecar, &held).unwrap();
+    std::fs::create_dir(&sidecar).unwrap();
+    let before = snapshot(&state, dir.path());
+
+    let report = sweep(&state);
+
+    assert_eq!(report, RetiredSweepReport::default());
+    assert_eq!(snapshot(&state, dir.path()), before);
+}
+
+#[test]
+fn an_unreadable_history_stops_the_whole_sweep() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    std::fs::create_dir(&state.history_path).unwrap();
+    std::fs::write(dir.path().join("ani-gui-offsets"), "frieren-1663\t0\n").unwrap();
+    put(
+        &state,
+        "availability:v24:1:sub",
+        r#"{"available":true,"provider":"hianime"}"#,
+    );
+    put(&state, "watched-at:v1:hianime:gone-1", "1");
+    let before = snapshot(&state, dir.path());
+
+    assert_eq!(sweep(&state), RetiredSweepReport::default());
+    assert_eq!(snapshot(&state, dir.path()), before);
+}
+
+#[test]
+fn an_unreadable_cache_stops_the_whole_sweep() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    seed_history(&state, dir.path());
+    state
+        .cache_pool
+        .get()
+        .unwrap()
+        .execute("ALTER TABLE meta_cache RENAME TO meta_cache_held", [])
+        .unwrap();
+    let history = std::fs::read(&state.history_path).unwrap();
+    let store = offsets(dir.path());
+
+    assert_eq!(sweep(&state), RetiredSweepReport::default());
+    assert_eq!(std::fs::read(&state.history_path).unwrap(), history);
+    assert_eq!(offsets(dir.path()), store);
+}
