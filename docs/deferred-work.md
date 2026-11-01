@@ -347,6 +347,20 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
+- **A removal's local clear can drop a row a write cached just before
+  it.** Where a removal's live read finds a tracker without the show,
+  the renderer clears that tracker's cached row through
+  `DELETE /api/account/entry/:provider/cached` instead of sending the
+  tracker a delete. Between the read and the clear, a progress write or
+  a save of the same show can add the entry and cache its row; the
+  clear then deletes that row, and the show is missing from the cached
+  list until the next refresh. The window is a request's length, and
+  before the local clear existed the same timing sent the tracker a
+  real delete. Closing it needs the clear to know what the cache held
+  when the read was made — the read handing back the row's revision,
+  say, and the clear skipping a row marked since — rather than another
+  lock: the show's lock is already taken and released around each.
+
 ## Interface
 
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**

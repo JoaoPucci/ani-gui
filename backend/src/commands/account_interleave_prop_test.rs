@@ -9,6 +9,14 @@
 //! changed, and a write landing during a refresh may not cost the
 //! changes that refresh read for the other rows. And a refresh reads the
 //! list once, however many writes land while it is out.
+//!
+//! The model sends a refresh's list read the moment the refresh starts.
+//! In the app the read goes after the owner lookup, and a paginated list
+//! is read page by page, so a write can land after the refresh started
+//! but before the page carrying its row was read. The refresh then keeps
+//! the write's answer for that row even if the page saw a later website
+//! change to it: the cached row can be one answer behind, never ahead of
+//! the write, until the next refresh replaces it.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

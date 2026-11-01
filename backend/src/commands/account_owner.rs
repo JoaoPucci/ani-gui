@@ -7,8 +7,10 @@
 //! on the lookup holds the write — it goes again once the tracker
 //! allows. Any other failure does not stop the write; the lookup is
 //! asked once more after it, and with still no answer the row is
-//! dropped from every user's cached list rather than left as it was,
-//! for the next list refresh to fill in.
+//! dropped from every user's cached list rather than left as it was.
+//! A list refresh started after the write fills it in again; every write
+//! leaves Home's list due for one (`watch-later-refresh.ts`), and a
+//! refresh already out when the write settled does not clear that.
 
 use std::sync::Arc;
 
