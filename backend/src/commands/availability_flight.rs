@@ -104,7 +104,8 @@ struct Table {
     /// Live background walks nobody is waiting on.
     unwatched: usize,
     /// The AniList class each walk runs in, by walk, as the walk
-    /// itself reads it.
+    /// itself reads it at its first poll: a walk aborted before then
+    /// has none.
     #[cfg(test)]
     classes: HashMap<u64, crate::meta::anilist_gate::Class>,
 }
