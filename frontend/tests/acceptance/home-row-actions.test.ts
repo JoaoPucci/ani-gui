@@ -374,6 +374,44 @@ for (const style of ['inline', 'band'] as const) {
 			);
 		});
 
+		it('stops vouching for the rail when a tracker write lands nowhere', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			await mountHome(style);
+			expect(status()).toContain(short(12, 'minute'));
+			// The write path invalidates every connected tracker's last pull
+			// whatever the write's outcome, so a write that landed on no
+			// tracker still leaves the snapshot due a pull. Nothing re-reads
+			// the rail for it, but the line must not go on vouching for it.
+			invalidateWatchLater('anilist');
+			listChanges.announce({
+				kitsuId: String(PLANNED.malId),
+				providers: ['anilist'],
+				landed: [],
+				source: 'editor'
+			});
+			await until(
+				() => status().includes(m.account_watch_later_not_updated()),
+				'the line to stop vouching for the rail'
+			);
+		});
+
+		it('stops vouching for the rail when a write invalidates it and announces nothing', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			await mountHome(style);
+			expect(status()).toContain(short(12, 'minute'));
+			// An editor write whose every retry was dropped still runs the
+			// write path's invalidation, but announces no list change.
+			invalidateWatchLater('anilist');
+			await until(
+				() => status().includes(m.account_watch_later_not_updated()),
+				'the line to stop vouching for the rail'
+			);
+		});
+
 		it('ticks: the age moves on without a reload', async () => {
 			// The clock is faked from before the mount, so the timer the
 			// page sets for the next change is a fake one this case can
