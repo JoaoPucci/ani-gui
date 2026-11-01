@@ -71,15 +71,20 @@ pub(super) fn repair(state: &AppState, slug: &str, listing: &Listing<'_>, heard:
         return;
     };
     let decide = |rows: &mut Vec<Row>| {
-        // A stamp that is not the one the unlocked read found is left as
-        // it is. A build from before the marker, running beside this one
-        // on the same files, stamps a play before it writes the play's
-        // row, outside these locks; a stamp that moved meanwhile may
-        // have that row on its way, and the next listing at hand repairs
-        // a stamp that has none.
+        let mut taken = TAKEN.lock().unwrap_or_else(PoisonError::into_inner);
+        let key = (state.history_path.clone(), slug.to_string());
+        // A stamp that is not the one the unlocked read found, nor the
+        // one this run's last repair left, is left as it is. A build from
+        // before the marker, running beside this one on the same files,
+        // stamps a play before it writes the play's row, outside these
+        // locks; a stamp that moved meanwhile may have that row on its
+        // way, and the next listing at hand repairs a stamp that has
+        // none. A stamp another repair here moved is the order's to
+        // decide.
+        let ours_last = |r: &Row| taken.get(&key).is_some_and(|t| t.left == Stamps::of(r));
         let Some(row) = rows
             .iter_mut()
-            .find(|r| r.slug == slug && r.display.as_ref() == Some(&found))
+            .find(|r| r.slug == slug && (r.display.as_ref() == Some(&found) || ours_last(r)))
         else {
             return false;
         };
@@ -87,8 +92,6 @@ pub(super) fn repair(state: &AppState, slug: &str, listing: &Listing<'_>, heard:
         // without the history guard so a repair inside
         // `stamp_numbering`'s hold cannot deadlock.
         let row_ep = listing.rows.and_then(|_| legacy_row_ep(state, slug));
-        let mut taken = TAKEN.lock().unwrap_or_else(PoisonError::into_inner);
-        let key = (state.history_path.clone(), slug.to_string());
         let offset = row.offset;
         let ours = |base: &Stamps| repaired(base, offset, row_ep.as_deref(), listing);
         let Some(next) = decided(&mut taken, key, Stamps::of(row), heard, ours) else {
