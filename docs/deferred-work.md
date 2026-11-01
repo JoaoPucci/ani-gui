@@ -1096,13 +1096,36 @@ Three things are worth knowing before starting:
   The format also defines `latest-pre` and `latest-all`, and upstream
   AppImageUpdate reads them from the releases list, but it takes the
   newest release and fails when that one has no matching AppImage, so
-  a release without a Linux package would stall updates until the
-  next one.
+  a release without an AppImage would stall updates until the next
+  one that has one.
 - The `.zsync` file comes from `zsyncmake`, which the release build
   does not provision: nothing in the packaging scripts fetches it, the
   way the repack fetches the runtime. Requiring it to be installed on
   the machine that builds is a system change (`AGENTS.md` §11), so the
   alternative is for the build to fetch a copy into the repository too.
+
+## What the in-app updater leaves out
+
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md) plans a
+first version that downloads updates in the app and installs them for
+the AppImage and the Windows installer. It leaves out, on purpose:
+
+- **A silent Windows install.** The first version starts the
+  installer with its own window, which explains itself, asks for UAC
+  when the install is per-machine, and reports its own failures. A
+  silent install trades all three away, so it waits until the window
+  has been used across a few releases.
+- **An apt repository for the `.deb`.** The way `.deb` users expect
+  updates, but a project of its own: a signing key, hosting that can
+  serve packages over 100 MiB (GitHub Pages cannot), and a one-time
+  root setup on the user's side. The app only offers to download the
+  `.deb` meanwhile.
+- **Authenticode signing of the Windows installer.** The updater's own
+  signature check does not need it; browser downloads would benefit.
+  The cheap services want either an individual developer in the
+  United States or Canada (Azure Artifact Signing) or a verifiable CI
+  build (SignPath Foundation), so it waits for release CI or a change
+  in those terms.
 
 ## Housekeeping
 

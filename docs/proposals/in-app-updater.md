@@ -1,7 +1,9 @@
 # Proposal: an in-app updater
 
 **Status**: research for the 0.20.0 release, alongside the
-[notification center](notification-center.md). Nothing below is built.
+[notification center](notification-center.md) proposal, which is
+reviewed separately; links to it resolve once it is merged. Nothing
+below is built.
 The library and platform facts were checked on 2026-11-02 against the
 pages and source files cited next to them, and will drift; the
 library versions named are the ones current on that day.
@@ -79,7 +81,8 @@ place for its updates is the system's package manager.
   and none is inferred: electron-builder falls back to a GitHub
   provider when it finds repository information — a `repository`
   field, a CI variable, or `.git/config` in the project directory —
-  and `electron/` offers none. So it writes no update metadata and
+  and `electron/` offers none. (A `GH_TOKEN` or `GITHUB_TOKEN` in the
+  build environment also triggers it.) So it writes no update metadata and
   puts no `app-update.yml` in the package. [source: electron-builder
   25.1.8, `src/publish/PublishManager.ts`,
   `src/util/repositoryInfo.ts`] [code: a built
@@ -115,8 +118,9 @@ means putting a newer file in its place. Three ways exist.
   `AppImage/type2-runtime`, `src/runtime/runtime.c`, `setenv("APPIMAGE",
   …)`]
 - It downloads the new AppImage, preferring a *differential* download:
-  it reads a block map embedded at the end of the running file and of
-  the new one (the last four bytes give the map's size), and fetches
+  it reads a block map embedded at the end of the running file (its
+  last four bytes give the map's size) and at the end of the new one
+  (whose size the metadata file gives as `blockMapSize`), and fetches
   only the changed ranges. If that fails it falls back to the whole
   file. [source: `out/differentialDownloader/FileWithEmbeddedBlockMapDifferentialDownloader.js`]
 - It installs by `unlink`ing the running file and `mv`ing the new one
@@ -134,10 +138,9 @@ hash differs and whose tail carries no block map. [code] [source]
 Both would have to be rebuilt by the repack: hash and size rewritten
 in `latest-linux.yml`, a block map regenerated and appended.
 [inference] That is doable, but it puts electron-builder's internal
-file formats inside a script this repository maintains, and the
-format is changing: the next major version moves to a binary block
-map. [source: <https://www.electron.build/docs/features/auto-update>,
-"electronUpdaterCompatibility"]
+file formats — the embedded block map and the metadata file — inside
+a script this repository maintains, and keeps them in step with every
+electron-builder upgrade. [inference]
 
 **AppImageUpdate and zsync.** The AppImage format's own mechanism: an
 update-information string embedded in the runtime's `.upd_info` ELF
@@ -183,6 +186,17 @@ number, which is cosmetic. Relaunch runs the path in `APPIMAGE`
 again — not Electron's own `execPath`, which points inside the old
 mount. [inference]
 
+`APPIMAGE` alone does not prove the app is an AppImage: child
+processes inherit it, so a `.deb` install or an unpacked build started
+from a launcher or terminal that is itself an AppImage sees *that*
+program's path, and an updater trusting the variable would rename
+ani-gui over someone else's file. The check has to be positive: the
+type2 runtime also sets `APPDIR` to its mount point [source:
+`runtime.c`, `setenv("APPDIR", …)`], and Electron's `execPath` must
+lie under that mount, and the file at `APPIMAGE` must be the image
+mounted there. [proposal] electron-updater trusts the variable alone.
+[source: `AppImageUpdater.js`, `isUpdaterActive`]
+
 **Where it cannot work.** All three routes write to the AppImage's
 directory. When the user cannot — the file sits in `/opt` or another
 root-owned place, on a read-only mount, or in a sandbox — the update
@@ -214,12 +228,13 @@ A `.deb` install lives in `/opt/ani-gui`, owned by root, with a
 root, every time.
 
 **Download and run `dpkg` through `pkexec`.** This is what
-electron-updater's `.deb` updater does: it finds `gksudo`, `kdesudo`,
-`pkexec` or `beesu`, else `sudo`, and runs `dpkg -i` on the
-downloaded file through it; if that fails it runs `apt-get install -f
--y`. When only `apt` is found, it runs `apt install -y
---allow-unauthenticated --allow-downgrades
---allow-change-held-packages <file>`. [source: electron-updater
+electron-updater's `.deb` updater does: it takes the first of
+`gksudo`, `kdesudo`, `pkexec` or `beesu` that is installed, else
+`sudo`, and through it runs `/bin/bash -c` with `dpkg -i` on the
+downloaded file; if that fails it runs `apt-get install -f -y`. (A
+fallback to `apt install -y --allow-unauthenticated
+--allow-downgrades --allow-change-held-packages <file>` exists for a
+system without `dpkg`, which an apt system never is.) [source: electron-updater
 6.8.11, `out/DebUpdater.js`, `out/LinuxUpdater.js`] The electron-builder
 docs list `.deb` among the auto-updatable targets and note that it
 "always elevate[s]". [source:
@@ -228,11 +243,12 @@ docs list `.deb` among the auto-updatable targets and note that it
 Against `AGENTS.md` §11 — whose spirit is that a change to the system
 is surfaced and approved, never silent — the polkit prompt *is* an
 approval, but of something the user cannot read: a root shell running
-a command line the app built, plus a dependency fix-up with `-y`.
-Those flags tell apt to skip its own authentication checks and to
-install over a held package, which is the opposite of what a user who
-held the package asked for. A desktop with no polkit agent falls
-through to a bare `sudo` with no terminal. [inference]
+a command line the app built, followed, if `dpkg` fails, by `apt-get
+install -f -y`, which may install or *remove* other packages to settle
+dependencies without asking. A desktop with `pkexec` installed but no
+polkit agent running gets `pkexec --disable-internal-agent`, which
+fails. [source: `out/LinuxUpdater.js`, `determineSudoCommand`,
+`sudoWithArgs`] [inference: what `-f -y` may remove]
 
 **Download and hand it to the system installer.** The app downloads
 the `.deb` to the Downloads folder and opens it with the desktop's
@@ -272,7 +288,7 @@ the hard part:
 - Hosted services: Cloudsmith hosts open-source projects free (at
   least 50 GB stored and 200 GB delivered) with attribution [source:
   <https://docs.cloudsmith.com/resources/open-source-hosting-policy>];
-  packagecloud's free plan is 2 GB stored and 10 GB a month delivered,
+  packagecloud's free plan is 2 GB stored and 10 GB of bandwidth,
   too small for 124 MB packages [source:
   <https://packagecloud.io/pricing>].
 
@@ -313,13 +329,26 @@ assisted installer"] So both kinds of install exist in the wild.
   directory page has no elevation hook, so the installer runs without
   the rights to write there. [source: same templates] How that fails
   is [unverified]. An update of such an install would run into the
-  same wall, so the app does a write test in the install directory
-  first and falls back to "Open releases page".
+  same wall.
+
+The app has to know which kind it is before it offers anything. The
+installer records the install under the current user's registry hive
+or the machine's, depending on the mode (`InstallLocation` under its
+uninstall key) [source: electron-builder 25.1.8,
+`templates/nsis/include/installer.nsh`, `registryAddInstallInfo`
+writes to `SHELL_CONTEXT`], so: a machine-wide entry means a
+per-machine install, which updates with a UAC prompt; a per-user entry
+means a per-user install, which gets a write test in its directory
+and, if that fails, falls back to "Open releases page". [proposal]
+Electron has no registry API, so this is a `reg query` from the main
+process or a read from the backend. [inference]
 
 **How electron-updater installs on Windows.** It runs the downloaded
 installer with `--updated`, adding `/S` for a silent install and
-`--force-run` to start the app afterwards; on quit it installs
-silently without relaunching (`autoInstallOnAppQuit`, default on).
+`--force-run` to start the app afterwards. `quitAndInstall` shows the
+installer's window unless asked for silence (`isSilent` defaults to
+false); the install it makes on quit (`autoInstallOnAppQuit`, default
+on) is silent and does not relaunch.
 Downloads are kept under `%LOCALAPPDATA%\ani-gui-updater\pending\`.
 [source: electron-updater 6.3.9 (the line paired with
 electron-builder 25.1.8), `src/NsisUpdater.ts`, `src/BaseUpdater.ts`,
@@ -345,13 +374,19 @@ code: `electron/build-resources/installer.nsh`] The same happens today
 when a user runs a newer installer by hand. An updater makes it
 frequent and invisible: each update is the installer's 105 MB plus
 ffmpeg's 80 MB, and an update made offline after the download ends
-with no ffmpeg. electron-builder offers `${isUpdated}` (true when the
-installer runs with `--updated`) to tell an update from a fresh
-install [source: <https://www.electron.build/docs/nsis>], but the old
-copy is gone by then, so the fix is to keep ffmpeg somewhere the
-update does not wipe — the app's data folder rather than
-`resources\bin` — which also means the backend looks there.
-[proposal]
+with no ffmpeg. electron-builder offers `${isUpdated}` to tell an
+update from a fresh install [source:
+<https://www.electron.build/docs/nsis>], which is set when the
+installer runs with `--updated` [source: electron-builder 25.1.8,
+`src/targets/nsis/nsisScriptGenerator.ts`], but the old copy is gone
+by the time `customInstall` runs. The fix has to keep the old copy
+through the update: set it aside before the old directory is removed
+and put it back under `${isUpdated}`, or keep it outside the install
+directory. The app's per-user data folder does not fit the second: a
+per-machine install serves several users, and an installer elevated
+with another account resolves that folder to the administrator's
+profile. Either way the uninstall step's cleanup of ffmpeg moves with
+it. [proposal; which hook runs early enough is unverified]
 
 **SmartScreen.** See section 4: an installer the app downloads and
 starts itself is not expected to meet the "Windows protected your PC"
@@ -369,8 +404,9 @@ the Windows machine and must reach the release before it is published
    installer they already know, which keeps their choice of per-user
    or per-machine and their directory, asks for UAC itself when it
    needs to, and offers to start the app at the end. [proposal]
-2. **Silent install** (`/S --updated --force-run`), which is what
-   electron-updater does: no installer window, but a UAC prompt that
+2. **Silent install** (`/S --updated --force-run`), which is
+   electron-updater's install on quit and an option of its
+   `quitAndInstall`: no installer window, but a UAC prompt that
    arrives with no window to explain it on per-machine installs, and a
    failure that has nowhere to show. [inference]
 
@@ -382,7 +418,7 @@ been used across a few releases.
 
 ### electron-updater
 
-electron-builder's companion library: the current release is 6.8.11
+electron-builder's companion library: npm's `latest` tag is 6.8.11
 (electron-builder 26.18.0); 7.0 is in alpha with electron-builder 27.
 [source: npm registry, `npm view electron-updater dist-tags` and
 `electron-builder dist-tags`] The repository uses electron-builder
@@ -441,7 +477,7 @@ metadata file. [source: `AppUpdater.d.ts`, `AppUpdater.js`]
 "Currently, only macOS and Windows are supported", with "no built-in
 support for auto-updater on Linux"; on Windows it drives
 Squirrel.Windows installers, made with electron-winstaller or Forge's
-Squirrel maker. [source:
+Squirrel maker, and MSIX packages through a separate updater. [source:
 <https://www.electronjs.org/docs/latest/api/auto-updater>] The app
 builds an NSIS installer, which Squirrel cannot update, and
 electron-builder states "Squirrel.Windows is not supported" for its
@@ -466,12 +502,17 @@ platform (from 0.18.0), and already owns outbound HTTP. [code] It
 would add:
 
 1. **Pick the asset** for the running *package*, not just the
-   platform: the AppImage when `APPIMAGE` is set, the `-x64-setup.exe`
-   on Windows, and nothing for a `.deb` install (section 2).
-   [proposal]
-2. **Download** it into an update folder under the app's cache
-   directory (for an AppImage, into a temporary file beside it, to
-   keep the final rename atomic), streaming progress to the renderer the way
+   platform: the AppImage only when the app is positively running
+   from one (section 2), the `-x64-setup.exe` on Windows, and nothing
+   for anything else — a `.deb` install, recognised by its own marker
+   such as the `/opt/ani-gui` path, or an unpacked or development
+   build. [proposal]
+   Before anything downloads, the backend also checks the install can
+   be updated: the write test beside the AppImage, the install mode
+   and write test on Windows (section 2). [proposal]
+2. **Download** it — the Windows installer into an update folder under
+   the app's cache directory, the AppImage into a temporary file beside
+   the running one, to keep the final rename atomic — streaming progress to the renderer the way
    downloads already stream theirs, resumable by HTTP range if the
    connection drops. [proposal]
 3. **Verify** it before anything uses it (section 4).
@@ -497,7 +538,7 @@ layers (`wiremock`, `proptest`). [proposal]
 |---|---|---|---|---|
 | AppImage | Yes, but the repack breaks its hash and block map | No | No | Yes |
 | `.deb` | Yes, through `pkexec`/`sudo` `dpkg -i` | No | No | Not proposed |
-| Windows NSIS | Yes | No (Squirrel only) | No (Squirrel only) | Yes, by running the installer |
+| Windows NSIS | Yes | No (Squirrel or MSIX) | No (Squirrel only) | Yes, by running the installer |
 | All-pre-release repository | Only with `allowPrerelease`, newest feed entry wins | — | No | Yes; same rule as the notifier |
 | Picks a release that carries this package | No | — | — | Yes |
 | New release assets | `latest*.yml`, block maps | — | — | One signature per package |
@@ -552,8 +593,16 @@ The docs say the pre-release flag can still be changed on an immutable
 release, which suggests pre-releases are covered. [inference] 0.17.0
 reports `immutable: false`. [release] It stops a published release
 being *changed*; it does not stop someone with the same access from
-publishing a *new* one. Assets have to be attached while the release
-is a draft, which is how releases are made already.
+publishing a *new* one.
+
+It is not free. Every asset has to be attached while the release is
+still a draft, and nothing can be added or replaced after publishing:
+a forgotten package or signature means a new release. [source: the
+"preventing changes" page above] Releases since 0.14.0 have had every
+asset in place before publishing; earlier ones did not — 0.13.0's
+installer arrived nine hours after it was published, and the Windows
+installers of 0.9.1 to 0.12.0 were added on 2026-09-01, weeks later.
+[release: asset `created_at` against `published_at`]
 
 GitHub's **artifact attestations** prove which workflow built a file;
 they are made by GitHub Actions, and nothing here builds in Actions.
@@ -570,7 +619,11 @@ asset's file name and version, and the app checks them, so an old
 signed release cannot be passed off as a new one. [proposal] The
 notification-center proposal leans towards minisign for its remote
 notices as well [source: `notification-center.md`, section 3], so one
-key and one verifier (the `minisign-verify` crate) would serve both.
+verifier (the `minisign-verify` crate) would serve both. They should
+not share a *key*: notices would be signed often, and every signing
+would handle the key that can replace the app. Two keys, the release
+key used once per release, keep a slip with the frequent one from
+reaching the installer. [proposal]
 The private key lives on the maintainer's machine, never on GitHub;
 signing can be a repository script on Node's own Ed25519 and BLAKE2b,
 so nothing is installed system-wide. [tried: Node 24's `crypto` signs
@@ -615,14 +668,15 @@ signed (section 1). What that means today and with an updater:
   6.8.11, `src/NsisUpdater.ts`] Its next major version, in alpha,
   rejects the update instead unless verification is switched off at
   build time. [source: electron-builder `master`,
-  `packages/electron-updater/src/NsisUpdater.ts`, commits #10416 and
-  #10380]
+  `packages/electron-updater/src/NsisUpdater.ts`; pull requests
+  <https://github.com/electron-userland/electron-builder/pull/10416>
+  and <https://github.com/electron-userland/electron-builder/pull/10380>]
 
 Getting a signature:
 
 | Option | Cost | Fit |
 |---|---|---|
-| Azure Artifact Signing (was Trusted Signing) | From $9.99 a month | Individual developers must be in the United States or Canada; needs a paid Azure subscription. [source: <https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart>, <https://learn.microsoft.com/en-us/azure/artifact-signing/faq>] |
+| Azure Artifact Signing (was Trusted Signing) | From $9.99 a month [source: the SmartScreen reputation page above] | Individual developers must be in the United States or Canada; needs a paid Azure subscription. [source: <https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart>, <https://learn.microsoft.com/en-us/azure/artifact-signing/faq>] |
 | SignPath Foundation | Free for open source | Binaries "must be built from source code in a verifiable way" — in practice CI, which this project does not have — and the certificate names SignPath Foundation as publisher. [source: <https://signpath.org/terms>] |
 | OV certificate from a CA | Paid yearly [unverified: prices not checked] | Since June 2023 the key must live in hardware (a token or HSM). [source: <https://cabforum.org/working-groups/code-signing/requirements/>] |
 | EV certificate | More | No longer skips SmartScreen's reputation check. [source: SmartScreen reputation page above] |
@@ -651,20 +705,21 @@ The rules, then the screens. All of them are [proposal].
 - **Install on quit is the default, restart now is offered.** On quit
   the app installs and does not start again; on "Restart to update"
   it installs and starts again. On Windows, "installs" means the
-  installer's window opens as the app closes (section 2), and the
-  "ready" line says so. Quitting with an update ready says so
-  in one line in the close guard that already exists for running
-  downloads, rather than a new dialog. [code: `electron/main.js`,
-  `maybePromptOnClose`]
+  installer's window opens as the app closes (section 2). The dialog's
+  "ready" line is the notice; quitting adds no prompt of its own. The
+  close guard, which asks only while episodes are downloading [code:
+  `electron/main.js`, `maybePromptOnClose`], is left as it is, and an
+  update download still running at quit is simply resumed next time.
 - **No automatic download unless asked.** A setting "Download updates
   automatically", off by default, lets a user who wants it skip the
   first click. The check itself stays as it is today.
 - **Failure leaves the old version untouched.** Download failures keep
   the partial file for a range-resume on the next try; a file that
   fails verification is deleted and never offered again in that
-  session; a failed install (Windows installer exits non-zero, rename
-  refused) reports the reason and offers "Open releases page", which
-  is always there as the way out.
+  session; a refused rename reports the reason and offers "Open releases page",
+  which is always there as the way out. On Windows the app has quit by
+  the time the installer runs, so the installer reports its own
+  failures, as it does today.
 - **Rollback is reinstalling the previous version.** No updater here
   keeps the old version around. The release notes of a bad release
   say which version to go back to, and the releases page has it.
@@ -674,9 +729,9 @@ The rules, then the screens. All of them are [proposal].
   loses the network pauses, shows "Waiting for the network", and
   resumes from where it stopped.
 - **Opt-out:** "Install updates from inside the app" in Settings, on
-  by default. Off, the dialog behaves as it does today. Turning off
-  the *check* is a separate, older question: there is no switch for
-  it today, and the notification center is the place to add one.
+  by default. Off, the dialog behaves as it does today. And "Check for
+  updates at launch", also on by default: there is no switch for the
+  check today, and an updater is a good moment to add one.
 
 ### Where it shows
 
@@ -775,8 +830,9 @@ Failure:
 │                [ Close ] [ Open releases page ]  │
 ```
 
-Every string goes through Paraglide in all shipped locales, and the
-reasons come from the backend as stable keys (`error.update.*`), as
+Every string the renderer shows goes through Paraglide in all shipped
+locales (nothing here adds a main-process dialog), and the reasons
+come from the backend as stable keys (`error.update.*`), as
 every other error does. [code: `docs/architecture.md`, error keys]
 Motion follows the existing dialog (`fly` in, `fade` backdrop), and
 the progress bar does not animate under reduced motion.
@@ -785,7 +841,9 @@ the progress bar does not animate under reduced motion.
 
 Today a release is: build on Linux, build on Windows, create a
 pre-release with `gh release create --prerelease`, upload three files
-by hand. [code: `AGENTS.md` §13, `docs/development.md`] What each
+by hand. [code: `AGENTS.md` §13, `docs/development.md`] Since 0.14.0
+the files have been uploaded to a draft that is published once all
+three are there, though neither document says so. [release] What each
 route adds:
 
 **Hand-rolled with signatures (recommended):**
@@ -851,7 +909,7 @@ The app has no telemetry, and an updater does not change that, but it
 does add requests, so `docs/PRIVACY.md` would say what they reveal.
 [code: `docs/PRIVACY.md`, "Update check"]
 
-- **The check** is unchanged: one request to GitHub's API at launch,
+- **The check** is unchanged: a request to GitHub's API at launch,
   revealing to GitHub the user's IP address, the time, and a
   `User-Agent: ani-gui` header. No account, no installation id, no
   version number is sent. [code: `backend/src/meta/github.rs`]
@@ -859,9 +917,10 @@ does add requests, so `docs/PRIVACY.md` would say what they reveal.
   plus which package was fetched — that is, roughly which platform
   the user runs and that they chose to update. A resumed download is
   several requests for the same file.
-- **Nothing is sent that a browser visiting the releases page would
-  not send.** The difference from today is who sends it: the app,
-  after the user clicks Update, instead of the browser.
+- **Nothing is learned that a browser fetching the same file would
+  not reveal**, apart from the `User-Agent: ani-gui` that says the
+  request came from the app. The difference from today is who sends
+  it: the app, after the user clicks Update, instead of the browser.
 - **What electron-updater would add**, if chosen: a persistent
   per-install identifier. It creates a random UUID for staged
   rollouts, stores it in the app's data folder as `.updaterId`, and
@@ -908,8 +967,8 @@ does add requests, so `docs/PRIVACY.md` would say what they reveal.
   bare tags included), break on the AppImage repack, need new
   metadata files on every release from both build machines, and send
   a per-install id on every check. Its strengths — differential
-  downloads and a silent NSIS path — matter less than one source of
-  truth and a privacy policy that stays true.
+  downloads and years of NSIS edge cases handled — matter less than
+  one source of truth and a privacy policy that stays true.
 - **Integrity: minisign signatures** checked against keys built into
   the app, plus GitHub's SHA-256 digest, plus immutable releases.
 
@@ -924,58 +983,74 @@ a day or less, **M** a few days, **L** a week or more.
 0. **Mockups in the real app** of the dialog states in section 5,
    reviewed by the maintainer before anything is built, together with
    the notification center's, since the update notice lands there. S.
-1. **Release signing**, before any app code: a key pair, a repository
-   script that writes minisign signatures with Node's own crypto, the
-   release steps in `docs/development.md` (draft until signed), and
-   immutable releases turned on. It ships with the release *before*
-   the updater, so the updater's first release has signed packages to
-   find. S–M.
+1. **Release signing**: a key pair, a repository script that writes
+   minisign signatures with Node's own crypto, the release steps in
+   `docs/development.md` (draft until signed), and immutable releases
+   turned on. The first release that *needs* signatures is the one
+   after the updater ships — the first an updater install can take —
+   so signing must be in place by then; doing it first, and signing
+   the updater's own release too, rehearses the steps before anything
+   depends on them. S–M.
 2. **Which package, and is it updatable**: the backend works out the
-   package kind (AppImage when `APPIMAGE` is set, the installer on
-   Windows, `.deb` otherwise on Linux) and returns the asset, its
-   signature, its digest, or the reason this install cannot update
-   (a `.deb`, an unwritable folder, a missing signature) as a stable
-   key. Builds on the 0.18.0 notifier change; `wiremock` tests and a
-   `proptest` for the pure selection. S.
-3. **Download and verify** in the backend: a staging folder, progress
+   package kind with the positive checks of sections 2 and 3 (an
+   AppImage only when `APPIMAGE`, `APPDIR` and the running executable
+   agree; the installer on Windows; a `.deb` by its own marker;
+   anything else not updatable) and runs the pre-flight checks — the
+   write test beside the AppImage, the install mode and write test on
+   Windows. It returns the asset, its signature and digest, or the
+   reason this install cannot update (a `.deb`, an unwritable folder,
+   a missing signature, an unrecognised install) as a stable key.
+   Builds on the 0.18.0 notifier change; `wiremock` tests and a
+   `proptest` for the pure selection. M.
+3. **Download and verify** in the backend: the staging places of
+   section 3 (the update folder, or the temporary file beside the
+   AppImage), progress
    streamed to the renderer, resume by range after a dropped
    connection, a pause while playback is live, cancel, then the
    digest and the signature (with its trusted comment's file name and
    version) checked before the file is offered. M.
 4. **Install, on both platforms at once** (`AGENTS.md` §15): the
-   Electron main process accepts only a verified file from the
-   staging folder; on Linux it does the write test, the rename and the
-   relaunch through `APPIMAGE`; on Windows it quits and starts the
-   installer. The close guard gains its "update ready" line. Tests in
+   Electron main process accepts only a file the backend reports as
+   staged and verified; on Linux it renames it over the AppImage and
+   relaunches through `APPIMAGE`; on Windows it quits and starts the
+   installer. Both happen on "Restart to update" or on a normal quit.
+   Tests in
    `electron/lib/*.test.cjs`, an acceptance test for the flow, and a
    manual check on a Windows machine, since no CI builds the
    installer. M–L.
 5. **The dialog and settings**: the states in section 5, the badge's
-   ring, "Install updates from inside the app" and "Download updates
-   automatically", every string in all shipped locales, `vitest` for
+   ring, "Install updates from inside the app", "Download updates
+   automatically" and "Check for updates at launch" (with its line in
+   `docs/PRIVACY.md`), every string in all shipped locales, `vitest` for
    the state machine extracted from the component, and an acceptance
    test. M.
-6. **ffmpeg survives a Windows update**: move the ffmpeg the installer
-   fetches out of the folder an update replaces, and teach the backend
-   to look there. Lands with or before phase 4. S–M.
+6. **ffmpeg survives a Windows update**: keep the ffmpeg the
+   installer fetched through an update (section 2, for per-user and
+   per-machine installs alike), with the uninstall step's cleanup to
+   match. Lands with or before phase 4. S–M.
 7. **`.deb`: "Download .deb"**, saving to Downloads and revealing it.
    S.
 
 Not planned for 0.20.0: a silent Windows install; update information
-and `.zsync` for third-party AppImage tools (the deferred-work entry
-"Update information in the AppImage" stays, with this proposal's
-findings); an apt repository; Authenticode signing.
+and `.zsync` for third-party AppImage tools; an apt repository;
+Authenticode signing. Each has an entry in `docs/deferred-work.md`
+("Update information in the AppImage", which stays, with this
+proposal's findings, and "What the in-app updater leaves out").
 
 **Open questions for the maintainer**, each with a recommended answer:
 
 1. **Hand-rolled, or electron-updater?** Recommended: hand-rolled, for
    the reasons above.
-2. **One signing key for updates and remote notices?** Recommended:
-   yes — one list of minisign keys in the app, the private key on the
-   maintainer's Linux machine only, and the Windows build signed there
-   after upload.
-3. **Turn on immutable releases now?** Recommended: yes; it costs
-   nothing and only affects releases published after it is on.
+2. **One signing key for updates and remote notices, or two?**
+   Recommended: two, with one verifier (section 4) — the release key
+   kept on the maintainer's Linux machine only and used once per
+   release, the Windows build signed there after upload.
+3. **Turn on immutable releases now?** Recommended: yes. It applies
+   only to releases published after it is on, and it fits how releases
+   have been made since 0.14.0 (every asset on the draft before
+   publishing); the cost is that a forgotten file then needs a new
+   release, and that installers can no longer be added to old
+   releases, as happened for 0.9.1 to 0.12.0.
 4. **When an AppImage is replaced, keep its path or rename it to the
    new version's file name?** Recommended: keep the path, so launcher
    entries and integrations keep working; the old version number in
@@ -997,14 +1072,15 @@ findings); an apt repository; Authenticode signing.
    maintainer's location was not checked]. Revisit if releases move to
    CI, which would also open SignPath and artifact attestations.
 10. **A switch to turn the update check off?** There is none today.
-    Recommended: add it with the notification center, which is where
-    the check's notice lives.
+    Recommended: add it in phase 5, on by default, and say so in
+    `docs/PRIVACY.md`.
 
 ## Related work
 
 - [A notification center](notification-center.md), proposed for the
   same release: "Update available" is one of its notices, and its
-  remote notices would share this proposal's signing key.
+  signed remote notices would share this proposal's verifier, under a
+  key of their own.
 - The 0.18.0 notifier change, which offers only releases that carry a
   package for the running platform. Phase 2 builds on it.
 - `docs/deferred-work.md`, "Update information in the AppImage": the
