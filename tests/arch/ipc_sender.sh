@@ -11,21 +11,31 @@
 # way to skip it is to call ipcMain directly — and that is what this
 # looks for.
 #
-# Specifically: outside `electron/lib/ipc-guard.cjs`, no main-process
-# source under `electron/` (`*.js`, `*.cjs`, `*.mjs`, tests and
-# `node_modules` excluded) contains `ipcMain.` followed by a method
-# that registers a listener — `handle`, `handleOnce`, `on`, `once`,
-# `addListener`, `prependListener`, `prependOnceListener`.
+# Specifically, outside `electron/lib/ipc-guard.cjs`, no main-process
+# source under `electron/` (`*.js`, `*.cjs`, `*.mjs`; tests,
+# `node_modules` and `dist` excluded) contains:
+#
+#   - `ipcMain.` followed by a method that registers a listener —
+#     `handle`, `handleOnce`, `on`, `once`, `addListener`,
+#     `prependListener`, `prependOnceListener`;
+#   - `.ipc.` followed by one of those methods — the per-contents and
+#     per-frame IPC objects (`webContents.ipc`, `webFrameMain.ipc`),
+#     which Electron consults before ipcMain;
+#   - the name of the `ipc-message` or `ipc-message-sync` event, which
+#     a webContents emits for every message it receives.
 #
 # A syntactic constraint, per AGENTS.md §2: the text is there or it is
 # not. What it does NOT establish, and cannot without a JavaScript
 # parser: a registration reached through an alias (`const m = ipcMain;
 # m.on(…)`), a computed member (`ipcMain["on"]`), a destructured method,
-# or the electron module required under another name. A green run says
-# no file registers through the spelled-out member, not that no file
-# registers at all. The e2e case "every IPC channel refuses a sender
-# that is not the app's document" covers the runtime side: it walks
-# every channel the running app registered and expects each to refuse.
+# the electron module required under another name, or a member access
+# split across lines (`ipcMain` on one line, `.handle(` on the next) —
+# grep reads a line at a time. A green run says no file registers
+# through the spelled-out forms above, not that no file registers at
+# all. At runtime, the e2e case "every IPC channel refuses a sender
+# that is not the app's document" calls every ipcMain handler on an
+# `ani-gui:` channel; it does not see the per-contents or per-frame
+# objects.
 
 set -eu
 
@@ -44,7 +54,8 @@ if [ ! -f "$WRAPPER" ]; then
     exit 1
 fi
 
-pattern='ipcMain[[:space:]]*\.[[:space:]]*(handle|handleOnce|on|once|addListener|prependListener|prependOnceListener)[[:space:]]*\('
+methods='(handle|handleOnce|on|once|addListener|prependListener|prependOnceListener)'
+pattern="(ipcMain|\\.ipc)[[:space:]]*\\.[[:space:]]*${methods}[[:space:]]*\\(|ipc-message"
 
 hits=$(find electron -path electron/node_modules -prune -o -path electron/dist -prune -o \
     -type f \( -name '*.js' -o -name '*.cjs' -o -name '*.mjs' \) \
@@ -56,9 +67,9 @@ hits=$(find electron -path electron/node_modules -prune -o -path electron/dist -
     done)
 
 if [ -n "$hits" ]; then
-    printf 'arch/ipc_sender FAIL: IPC handlers registered on ipcMain directly, bypassing the sender check in %s:\n' "$WRAPPER" >&2
+    printf 'arch/ipc_sender FAIL: IPC handlers registered directly, bypassing the sender check in %s:\n' "$WRAPPER" >&2
     printf '%s\n' "$hits" >&2
     exit 1
 fi
 
-printf 'arch/ipc_sender: every ipcMain registration goes through %s\n' "$WRAPPER"
+printf 'arch/ipc_sender: no spelled-out IPC registration outside %s\n' "$WRAPPER"

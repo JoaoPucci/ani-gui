@@ -358,6 +358,8 @@ async function navigationsAsked(app: ElectronApplication): Promise<string[]> {
   return app.evaluate(() => (globalThis as unknown as { __navigations: string[] }).__navigations);
 }
 
+let navigationWitnesses = 0;
+
 /** Ask the page to navigate itself. Swallows the error a committed navigation causes. */
 async function pageNavigatesTo(page: import("@playwright/test").Page, url: string) {
   await page
@@ -446,15 +448,18 @@ test("a file or link dropped on the window does not replace the app", async () =
       await expect
         .poll(() => page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers))
         .toBeGreaterThan(before);
-      // Electron's navigateOnDragDrop: false makes Chromium refuse the
-      // drop itself, so no navigation is ever asked for — there is no
-      // later event to wait on. The drop has been handled by the time
-      // dispatchDragEvent returns; what is checked here is that it
-      // asked for nothing and left the page where it was.
-      expect(await navigationsAsked(app)).toEqual([]);
+      // A drop that became a navigation would be one the page asks its
+      // browser for, like any other. Ask for one more after it — to a
+      // place the guard refuses — and wait for that one to arrive: a
+      // navigation from the same frame asked for earlier arrives
+      // first, so by then the drop's would have been recorded too.
+      const witness = `app://elsewhere/after-drop-${navigationWitnesses++}`;
+      await pageNavigatesTo(page, witness);
+      await expect.poll(() => navigationsAsked(app)).toContain(witness);
+      expect((await navigationsAsked(app)).filter((u) => !u.startsWith("app://elsewhere/after-drop-"))).toEqual([]);
       expect(page.url()).toBe(home);
     }
-    await expect(page.getByText("dropped page")).toHaveCount(0);
+    expect(await page.evaluate(() => document.body.innerText.includes("dropped page"))).toBe(false);
   } finally {
     await app.close();
   }
