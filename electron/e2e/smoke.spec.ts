@@ -336,39 +336,71 @@ async function openedExternally(app: ElectronApplication): Promise<string[]> {
   return app.evaluate(() => (globalThis as unknown as { __opened: string[] }).__opened);
 }
 
-/** Ask the page to navigate itself; the context may die if it succeeds. */
+/**
+ * Record, in the main process, every navigation the window is asked to
+ * make. The listener is added after the app's own guard, so by the time
+ * a URL is recorded the guard has already ruled on it: the record is
+ * the positive witness a refusal can be asserted after (docs/testing.md,
+ * "Asserting that something did not happen").
+ */
+async function recordNavigations(app: ElectronApplication) {
+  await app.evaluate(({ BrowserWindow }) => {
+    const g = globalThis as unknown as { __navigations: string[] };
+    g.__navigations = [];
+    const win = BrowserWindow.getAllWindows()[0];
+    win.webContents.on("will-navigate", (event: { url?: string }, url: string) => {
+      g.__navigations.push(event.url ?? url);
+    });
+  });
+}
+
+async function navigationsAsked(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as unknown as { __navigations: string[] }).__navigations);
+}
+
+/** Ask the page to navigate itself. Swallows the error a committed navigation causes. */
 async function pageNavigatesTo(page: import("@playwright/test").Page, url: string) {
   await page
     .evaluate((u) => {
       window.location.href = u;
     }, url)
     .catch(() => {});
-  // A refused navigation leaves no event to wait for; give an allowed
-  // one the time it would take to commit.
-  await page.waitForTimeout(1_000);
 }
 
 test("a navigation off the app's document is refused and the app stays", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
     await waitForHome(page);
+    await recordNavigations(app);
+    const consoleLines: string[] = [];
+    page.on("console", (msg) => consoleLines.push(msg.text()));
     const home = page.url();
-    for (const url of [
-      `file://${droppedPage()}`,
-      "data:text/html,<h1>data page</h1>",
-      // Another host on the app's scheme: the protocol handler serves
-      // the bundle whatever the host, so this would load the app under
-      // a document the bridge was never meant for.
-      "app://elsewhere/",
-      // about:blank is not here. Chromium commits it without the
-      // navigation hooks Electron's will-navigate hangs off, so no
-      // main-process guard sees it; it takes the origin of the document
-      // that asked for it, which is the app's own, and calls from it
-      // across the bridge are refused by the IPC sender check.
-    ]) {
-      await pageNavigatesTo(page, url);
-      expect(page.url(), `navigated to ${url}`).toBe(home);
-    }
+
+    // Chromium itself refuses a page's navigation to a local file or a
+    // top-level data: document, before any main-process hook is asked;
+    // the line it logs is the witness that it ruled.
+    const file = `file://${droppedPage()}`;
+    await pageNavigatesTo(page, file);
+    await expect.poll(() => consoleLines.some((l) => l.includes("Not allowed to load local resource"))).toBe(true);
+    expect(page.url(), `navigated to ${file}`).toBe(home);
+
+    await pageNavigatesTo(page, "data:text/html,<h1>data page</h1>");
+    await expect.poll(() => consoleLines.some((l) => /Not allowed to navigate top frame to data URL/.test(l))).toBe(true);
+    expect(page.url(), "navigated to a data: page").toBe(home);
+
+    // Another host on the app's scheme reaches the guard: the protocol
+    // handler serves the bundle whatever the host, so this would load
+    // the app under a document the bridge was never meant for.
+    //
+    // about:blank is not here. Chromium commits it without the
+    // navigation hooks Electron's will-navigate hangs off, so no
+    // main-process guard sees it; it takes the origin of the document
+    // that asked for it, which is the app's own, and calls from it
+    // across the bridge are refused by the IPC sender check.
+    await pageNavigatesTo(page, "app://elsewhere/");
+    await expect.poll(() => navigationsAsked(app)).toContain("app://elsewhere/");
+    expect(page.url(), "navigated to app://elsewhere/").toBe(home);
+
     // Read the live document rather than through a locator: Playwright
     // counts a refused navigation as one still in flight, and a locator
     // would wait on it until it timed out.
@@ -384,8 +416,17 @@ test("a file or link dropped on the window does not replace the app", async () =
   const { app, page } = await launchAppWithStubs();
   try {
     await waitForHome(page);
+    await recordNavigations(app);
     const home = page.url();
     const file = droppedPage();
+    // Witness that each drag reached the page at all.
+    await page.evaluate(() => {
+      const g = window as unknown as { __dragovers: number };
+      g.__dragovers = 0;
+      window.addEventListener("dragover", () => {
+        g.__dragovers += 1;
+      });
+    });
     const cdp = await page.context().newCDPSession(page);
     for (const data of [
       {
@@ -398,13 +439,21 @@ test("a file or link dropped on the window does not replace the app", async () =
         dragOperationsMask: 1 | 2 | 16,
       },
     ]) {
+      const before = await page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers);
       for (const type of ["dragEnter", "dragOver", "drop"] as const) {
         await cdp.send("Input.dispatchDragEvent", { type, x: 400, y: 300, data });
       }
-      await page.waitForTimeout(1_500);
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers))
+        .toBeGreaterThan(before);
+      // Electron's navigateOnDragDrop: false makes Chromium refuse the
+      // drop itself, so no navigation is ever asked for — there is no
+      // later event to wait on. The drop has been handled by the time
+      // dispatchDragEvent returns; what is checked here is that it
+      // asked for nothing and left the page where it was.
+      expect(await navigationsAsked(app)).toEqual([]);
       expect(page.url()).toBe(home);
     }
-    await expect(page.getByText(/top rated/i).first()).toBeVisible();
     await expect(page.getByText("dropped page")).toHaveCount(0);
   } finally {
     await app.close();
@@ -449,6 +498,8 @@ test("a web link opens in the system browser and the window stays", async () => 
     await page.locator("#e2e-external").click();
     // And a navigation of the window itself to a web page.
     await pageNavigatesTo(page, "https://example.com/same-window");
+    // The open is the witness: the guard hands the URL out in the same
+    // step that refuses the navigation.
     await expect
       .poll(() => openedExternally(app))
       .toEqual(["https://example.com/new-window", "https://example.com/same-window"]);
