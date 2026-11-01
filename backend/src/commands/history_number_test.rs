@@ -239,3 +239,85 @@ fn an_own_numbered_row_on_a_repaired_stamps_episode_names_the_former_number() {
         })
     );
 }
+
+/// A listing of the stitched show with a real episode "2.5" after
+/// episode 2 — a row the listing the repair read did not carry.
+fn listing_with_a_real_two_point_five() -> Vec<crate::scraper::provider::EpisodeRef> {
+    let ep = |n: u32, tag: Option<&str>| crate::scraper::provider::EpisodeRef {
+        id: u64::from(n),
+        number: n,
+        number2: tag.map(str::to_string),
+        former_tag: None,
+        title: None,
+    };
+    vec![
+        ep(1, None),
+        ep(2, Some("1.5")),
+        ep(3, Some("2")),
+        ep(4, Some("2.5")),
+        ep(5, Some("3")),
+    ]
+}
+
+fn own_row(state: &AppState, ep_no: &str) {
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: ep_no.into(),
+            id: SHOW.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        },
+    )
+    .expect("row");
+}
+
+#[test]
+fn a_former_number_a_later_listing_gives_a_real_episode_is_not_named() {
+    // The recap went by "2.5" before the repair put it right to "1.5".
+    // A probe since fetched a listing with a real episode "2.5", and the
+    // viewer has a position kept for it. Named as the recap's former
+    // number, "2.5" would have that position moved under "1.5", or
+    // dropped where "1.5" has one of its own.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    own_row(&state, "1.5");
+    crate::commands::numbering_offset::retag_from_listing(
+        &state,
+        SHOW,
+        &listing_with_a_real_two_point_five(),
+        None,
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: None,
+        })
+    );
+}
+
+#[test]
+fn a_legacy_row_s_former_number_a_later_listing_gives_a_real_episode_is_not_named() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    crate::commands::numbering_offset::retag_from_listing(
+        &state,
+        SHOW,
+        &listing_with_a_real_two_point_five(),
+        None,
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: None,
+        })
+    );
+}

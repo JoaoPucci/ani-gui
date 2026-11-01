@@ -90,3 +90,25 @@ fn a_repair_keeps_no_former_tag_a_row_carries_now() {
     assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
     assert_eq!(former_stamp(&state, SHOW), None);
 }
+
+#[test]
+fn a_former_tag_a_later_listing_carries_is_dropped() {
+    // The repair kept "24.5" because no row carried it then. A listing
+    // at hand since tags a row "24.5": a position or a file under it may
+    // be that row's, so the stamp names no former tag from now on. The
+    // stamp itself stays.
+    let state = state();
+    repaired(&state);
+    retag_display(&state, SHOW, &[], &|f| f == "24.5");
+    assert_eq!(former_stamp(&state, SHOW), None);
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+}
+
+#[test]
+fn a_former_tag_a_later_listing_leaves_free_is_kept() {
+    let state = state();
+    repaired(&state);
+    retag_display(&state, SHOW, &[], &|f| f == "14.5");
+    assert_eq!(former_stamp(&state, SHOW), Some((13, "24.5".to_string())));
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+}
