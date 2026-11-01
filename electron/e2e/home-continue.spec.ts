@@ -20,13 +20,7 @@
  * kitsu-anime-detail it points to is enough to drive a deterministic
  * match. Live `kitsuSearch` is stubbed for the orphan case only.
  */
-import {
-	_electron as electron,
-	expect,
-	test,
-	type ElectronApplication,
-	type Page
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
@@ -43,9 +37,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-
-const electronDir = path.resolve(__dirname, '..');
-const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
+import { launchPackagedApp, packagedBinary } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -119,11 +111,7 @@ async function launchAppWithContinueStubsOnce(
 		ANI_GUI_UNATTENDED: '1'
 	};
 
-	const app = await electron.launch({
-		executablePath: packagedBinary,
-		args: ['--no-sandbox'],
-		env: cleanEnv
-	});
+	const app = await launchPackagedApp(cleanEnv);
 	onLaunch(app);
 	const context = app.context();
 	const page = await app.firstWindow();
