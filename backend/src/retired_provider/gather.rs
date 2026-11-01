@@ -42,6 +42,18 @@ pub(super) fn gather(state: &AppState) -> Result<Work> {
     })
 }
 
+/// How many of the `before` retired numbering rows are gone now; none
+/// when the store cannot be read to tell.
+fn numbering_gone(state: &AppState, before: usize) -> usize {
+    match Numbering::try_read(&state.history_path) {
+        Ok(store) => before.saturating_sub(numbering::retired(state, &store)),
+        Err(e) => {
+            tracing::warn!(error = %e, "retired-provider sweep: numbering count unread");
+            0
+        }
+    }
+}
+
 /// Write what `work` decided. A write that fails is logged; the
 /// numbering a renumbering made unneeded is dropped only once the
 /// renumbering is written.
@@ -57,18 +69,16 @@ pub(super) fn apply(state: &AppState, work: Work) -> RetiredSweepReport {
     match renumber::renumber(state, &work.plan.renumber) {
         Ok(titles) => {
             report.renumbered = titles;
-            match numbering::forget(state, &work.numbering) {
-                // Counted across the whole sweep: a removed row took
-                // its own numbering with it.
-                Ok(()) => {
-                    let now = numbering::retired(state, &Numbering::read(&state.history_path));
-                    report.numbering_rows = work.retired_numbering.saturating_sub(now);
-                }
-                Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: numbering stays"),
+            if let Err(e) = numbering::forget(state, &work.numbering) {
+                tracing::warn!(error = ?e, "retired-provider sweep: numbering stays");
             }
         }
         Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: rows not renumbered"),
     }
+    // Counted across the whole sweep, whatever its writes did: a
+    // removed row took its own numbering with it, and a write that
+    // failed took nothing.
+    report.numbering_rows = numbering_gone(state, work.retired_numbering);
     match cache::delete(state, &work.cache) {
         Ok(n) => report.cache_rows = n,
         Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: cache stays"),
