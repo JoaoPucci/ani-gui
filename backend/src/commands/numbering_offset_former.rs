@@ -16,7 +16,8 @@ pub use read::{former_stamp, stamp_beside};
 /// alone, and a show whose stamp names no such row is not written.
 ///
 /// `shared` says whether a former tag is one a row of the listing
-/// carries now.
+/// carries now. A former tag a repair kept, which a row of this listing
+/// carries now, is dropped ([`drop_shared_former`]).
 pub fn retag_display(
     state: &AppState,
     slug: &str,
@@ -31,6 +32,38 @@ pub fn retag_display(
         .any(|(slot, former, _)| *slot == stamped && *former == tag)
     {
         retag_row(state, slug, former_tags, shared);
+    }
+    drop_shared_former(state, slug, shared);
+}
+
+/// The former tag a stamp keeps beside it, once a listing at hand is
+/// read: none where a row of the listing carries it now (`shared`),
+/// since a position or a file kept under it may be that row's.
+#[must_use]
+fn kept_former(
+    former: Option<(u32, String)>,
+    shared: &dyn Fn(&str) -> bool,
+) -> Option<(u32, String)> {
+    former.filter(|(_, tag)| !shared(tag))
+}
+
+/// Drop the slug's former tag where [`kept_former`] keeps none, decided
+/// under the store's locks against the row as it stands there; a slug
+/// whose former tag is kept, or that has none, is not written.
+fn drop_shared_former(state: &AppState, slug: &str, shared: &dyn Fn(&str) -> bool) {
+    let dropped = |former: &Option<(u32, String)>| {
+        former.is_some() && kept_former(former.clone(), shared).is_none()
+    };
+    if !dropped(&former_stamp(state, slug)) {
+        return;
+    }
+    let change = |rows: &mut Vec<Row>| {
+        if let Some(row) = rows.iter_mut().find(|r| r.slug == slug) {
+            row.former = kept_former(row.former.take(), shared);
+        }
+    };
+    if let Err(e) = rewrite(state, change) {
+        tracing::warn!(slug, error = ?e, "numbering former tag drop failed");
     }
 }
 
