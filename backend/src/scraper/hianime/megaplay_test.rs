@@ -2,7 +2,7 @@
 //! the sources response, and the language a track file names.
 
 use super::megaplay::{media_id, sources_url};
-use super::megaplay_sources::{lang_of_track, parse_sources};
+use super::megaplay_sources::{lang_of_track, parse_sources, unread_languages};
 use crate::error::AniError;
 use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 
@@ -534,17 +534,20 @@ fn american_names_a_region_only_for_english() {
 }
 
 /// A listing's tracks whose language the reader could not read are
-/// named in one warning per listing — file and label — so a third
-/// naming shows in the log the first time it is played, not as
-/// tracks quietly without a language. A listing it reads in full
-/// logs nothing.
+/// reported together — file and label — so a third naming shows in
+/// the log the first time it is played, not as tracks quietly without
+/// a language: one warning per listing, logged from this report
+/// (`warn_unread_languages`). A listing it reads in full reports
+/// nothing. The report is checked rather than the log line: capturing
+/// a log line in a test races every other test thread that reaches the
+/// same call site, and lost the line under a loaded machine.
 #[test]
-fn a_listing_with_unread_languages_logs_one_warning_naming_them() {
+fn a_listing_with_unread_languages_reports_them_together() {
     let listing = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[
         {"file":"https://cdn.example/subs/eng-2.vtt","label":"English","kind":"captions","default":true},
         {"file":"https://cdn.example/subs/q7.vtt?sig=s3cr3t&e=99","label":"Klingon","kind":"captions"},
         {"file":"https://cdn.example/subs/zz-9.vtt","label":"Track 4","kind":"captions"}]}"#;
-    let (lines, payload) = logged(|| parse_sources(listing).expect("listing"));
+    let payload = parse_sources(listing).expect("listing");
     let langs: Vec<&str> = payload.subtitles.iter().map(|t| t.lang.as_str()).collect();
     assert_eq!(langs, ["en", "und", "und"]);
     let labels: Vec<&str> = payload.subtitles.iter().map(|t| t.label.as_str()).collect();
@@ -553,55 +556,21 @@ fn a_listing_with_unread_languages_logs_one_warning_naming_them() {
         ["English", "Klingon", "Track 4"],
         "the label is kept for display"
     );
-    let warnings: Vec<&String> = lines.iter().filter(|l| l.contains("WARN")).collect();
-    assert_eq!(warnings.len(), 1, "one warning per listing: {lines:?}");
+    let (count, report) = unread_languages(&payload.subtitles).expect("a report");
+    assert_eq!(count, 2);
     for named in ["q7.vtt", "Klingon", "zz-9.vtt", "Track 4"] {
-        assert!(
-            warnings[0].contains(named),
-            "{named} named in {:?}",
-            warnings[0]
-        );
+        assert!(report.contains(named), "{named} named in {report:?}");
     }
+    assert!(!report.contains("eng-2.vtt"), "a read track is not named");
     assert!(
-        !warnings[0].contains("eng-2.vtt"),
-        "a read track is not named"
-    );
-    assert!(
-        !warnings[0].contains("s3cr3t"),
-        "a signed file's query stays out of the log: {:?}",
-        warnings[0]
+        !report.contains("s3cr3t"),
+        "a signed file's query stays out of the log: {report:?}"
     );
 
     let read = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[
         {"file":"https://cdn.example/subs/eng-2.vtt","label":"English","kind":"captions"}]}"#;
-    let (lines, _) = logged(|| parse_sources(read).expect("listing"));
-    assert!(lines.iter().all(|l| !l.contains("WARN")), "{lines:?}");
-}
-
-/// What `f` logs at warn level and above, line by line, beside what it
-/// returns.
-fn logged<T>(f: impl FnOnce() -> T) -> (Vec<String>, T) {
-    #[derive(Clone, Default)]
-    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-    impl std::io::Write for Sink {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("sink").extend_from_slice(buf);
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let sink = Sink::default();
-    let writer = sink.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(move || writer.clone())
-        .with_ansi(false)
-        .with_max_level(tracing::Level::WARN)
-        .finish();
-    let out = tracing::subscriber::with_default(subscriber, f);
-    let text = String::from_utf8(sink.0.lock().expect("sink").clone()).expect("utf-8");
-    (text.lines().map(str::to_string).collect(), out)
+    let payload = parse_sources(read).expect("listing");
+    assert_eq!(unread_languages(&payload.subtitles), None);
 }
 
 /// The tracks are a nicety beside the stream: the field being
