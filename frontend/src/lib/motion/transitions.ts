@@ -25,12 +25,18 @@ interface Timed {
 	delay?: number;
 }
 
+/** A config Svelte asks for later, with the transition's direction. */
+type Deferred = (options?: { direction?: 'in' | 'out' | 'both' }) => Timed;
+
 /** `config` as it is with motion on; with no time in it under reduced
  *  motion. A deferred config (a function, as `crossfade` returns) is
- *  stilled when Svelte calls it. */
-export function stillWhenReduced<C extends Timed | (() => Timed)>(config: C, reduced: boolean): C {
+ *  stilled when Svelte calls it, with what Svelte passes. */
+export function stillWhenReduced<C extends Timed | Deferred>(config: C, reduced: boolean): C {
 	if (!reduced) return config;
-	if (typeof config === 'function') return (() => stillWhenReduced(config(), true)) as C;
+	if (typeof config === 'function') {
+		return ((options?: { direction?: 'in' | 'out' | 'both' }) =>
+			stillWhenReduced(config(options), true)) as C;
+	}
 	return { ...config, duration: 0, delay: 0 };
 }
 
@@ -40,7 +46,7 @@ export function stillWhenReduced<C extends Timed | (() => Timed)>(config: C, red
  *
  *      const cwOutScale = reducible((node: Element) => scale(node, { … }));
  */
-export function reducible<A extends unknown[], C extends Timed | (() => Timed)>(
+export function reducible<A extends unknown[], C extends Timed | Deferred>(
 	transition: (node: Element, ...args: A) => C
 ): (node: Element, ...args: A) => C {
 	return (node, ...args) => stillWhenReduced(transition(node, ...args), reducedMotion.current);
