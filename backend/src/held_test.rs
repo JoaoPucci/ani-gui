@@ -29,6 +29,12 @@
 //! on tokio's clock, and on a paused clock that clock jumps ahead
 //! whenever the runtime is idle — while a subject works on a thread of
 //! its own, say — so those are for tests on the real clock.
+//!
+//! A test that times a subject's deadline once its request is held
+//! runs it through [`frozen_until`], whose clock stands still until the
+//! hold is reached, or [`paused_once`], whose clock runs until then: a
+//! loaded machine can spend the deadline on the way to the hold, so the
+//! second is for a subject that sleeps on its way there.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -247,6 +253,12 @@ fn queued_on(queued: &BTreeMap<String, usize>, on: &str) -> usize {
 }
 
 impl Queue {
+    /// The same watch, counting only the waits that come after now.
+    #[cfg(unix)]
+    pub(crate) fn again(self) -> Self {
+        queue(self.on)
+    }
+
     /// Whether a waiter has queued on the lock since the watch opened.
     pub(crate) fn has_joined(&self) -> bool {
         queued_on(
@@ -294,50 +306,65 @@ impl Queue {
     }
 }
 
-/// A bounded wait timed on tokio's clock: how long it took, and when
-/// the clock was paused. See [`paused_once`].
+/// A bounded wait timed on tokio's clock, from the call
+/// ([`paused_once`], [`frozen_until`]): how long it took, the latest it
+/// can have set its deadline, and when it reached its hold.
 pub(crate) struct Timed<T> {
     pub(crate) out: T,
     took: std::time::Duration,
-    paused_at: std::time::Duration,
+    /// [`paused_once`]: the pause, since the wait set its deadline
+    /// somewhere between the call and the pause. [`frozen_until`]:
+    /// nothing, the clock having stood still from the call.
+    set_by: std::time::Duration,
+    // Read only by the Unix-only fallback-deadline case.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    reached_at: std::time::Duration,
+    #[cfg_attr(not(unix), allow(dead_code))]
+    started: tokio::time::Instant,
 }
 
 impl<T> Timed<T> {
     /// The wait's output, once it is seen to have returned by
-    /// `deadline`. The wait started its deadline somewhere between the
-    /// call and the pause, so it returns no later than the deadline
-    /// after the pause. From the pause on only timers move the clock,
-    /// so a wait still out then returns at the first deadline that ends
-    /// it, however slow the machine.
+    /// `deadline` after the latest moment it can have set it. From then
+    /// on only timers move the clock, so a wait still out returns at the
+    /// first deadline that ends it, however slow the machine.
     pub(crate) fn ended_by(self, deadline: std::time::Duration, what: &str) -> T {
         // Tokio's timers fire on millisecond ticks, rounded up from the
         // instant they were set: up to two of them past the deadline.
         let tick = std::time::Duration::from_millis(2);
-        let bound = self.paused_at + deadline + tick;
+        let bound = self.set_by + deadline + tick;
         assert!(
             self.took <= bound,
             "{what}: took {:?} on tokio's clock, past the {deadline:?} deadline \
-             (clock paused at {:?})",
+             (set by {:?} at the latest)",
             self.took,
-            self.paused_at
+            self.set_by
         );
         self.out
     }
 }
 
 impl<T> Timed<T> {
-    /// When the clock was paused, from the call. Read only by the
-    /// fallback-deadline case, which stages shell stubs and so runs on
-    /// Unix alone; gated with it so Windows builds carry no dead code.
+    /// When the wait reached its hold, from the call, and the call's
+    /// moment on tokio's clock. Read only by the fallback-deadline case,
+    /// which stages shell stubs and so runs on Unix alone; gated with it
+    /// so Windows builds carry no dead code.
     #[cfg(unix)]
-    pub(crate) fn paused_at(&self) -> std::time::Duration {
-        self.paused_at
+    pub(crate) fn reached_at(&self) -> std::time::Duration {
+        self.reached_at
+    }
+
+    /// See [`Self::reached_at`].
+    #[cfg(unix)]
+    pub(crate) fn started(&self) -> tokio::time::Instant {
+        self.started
     }
 }
 
 /// Run `subject` on the real clock until `reached` resolves — the
 /// requests it makes have reached the holds that keep them — then on a
-/// paused clock to its end, and resume the clock. Paused, tokio moves
+/// paused clock to its end, and resume the clock. Panics when the
+/// subject ends before it reaches the hold: it then timed nothing. Paused, tokio moves
 /// time on only to the next timer, so the subject's own deadline is
 /// what ends it, at that deadline exactly, and a deadline that grew is
 /// seen to have. The test must run on a current-thread runtime.
@@ -354,9 +381,10 @@ pub(crate) async fn paused_once<F: std::future::Future>(
     let start = tokio::time::Instant::now();
     tokio::pin!(subject);
     tokio::select! {
-        out = &mut subject => {
-            let took = start.elapsed();
-            Timed { out, took, paused_at: took }
+        _ = &mut subject => {
+            // Ended before its hold, it timed nothing: a bound read off
+            // it would hold whatever its deadline was.
+            panic!("the subject ended before it reached the hold");
         }
         () = reached => {
             let paused_at = start.elapsed();
@@ -364,8 +392,76 @@ pub(crate) async fn paused_once<F: std::future::Future>(
             let out = subject.await;
             let took = start.elapsed();
             tokio::time::resume();
-            Timed { out, took, paused_at }
+            Timed { out, took, set_by: paused_at, reached_at: paused_at, started: start }
         }
+    }
+}
+
+/// Run `subject` on a paused clock that stands still until `reached`
+/// resolves — the requests it makes have reached the holds that keep
+/// them — and from then on moves only to the next timer. No deadline
+/// the subject sets can run out before it is held, so its deadline is
+/// what ends it, at that deadline exactly, however long the machine
+/// took to bring it to the hold. The test must run on a current-thread
+/// runtime.
+///
+/// [`paused_once`] runs the way to the hold on the real clock, and a
+/// machine slow enough there spends the deadline before the request
+/// is out; this one does not. While the clock stands still, a timer the
+/// subject waits on before the hold never fires, so a subject that
+/// sleeps on its way there is for [`paused_once`].
+///
+/// A blocking task keeps the clock still: tokio does not move a paused
+/// clock on for an idle current-thread runtime while one runs. So does
+/// any other blocking task still running once the hold is reached, and
+/// a hold the test keeps waits on the runtime ([`Hold::wait`]) or on a
+/// thread of its own (a [`Held`] answer), not in a blocking task.
+///
+/// # Panics
+/// When the subject ends before it reaches the hold, or reaches it only
+/// after [`QUEUE_DEADLINE`] of real time, when the clock was given back
+/// — once no other blocking task ran, the test's own watchers in
+/// `reached` among them — and could have moved on the way.
+pub(crate) async fn frozen_until<F: std::future::Future>(
+    subject: F,
+    reached: impl std::future::Future<Output = ()>,
+) -> Timed<F::Output> {
+    tokio::time::pause();
+    let start = tokio::time::Instant::now();
+    let (hold_still, still) = std::sync::mpsc::channel::<()>();
+    // Whether the hold timed out: the clock was given back before the
+    // subject reached the hold.
+    let standing = tokio::task::spawn_blocking(move || {
+        matches!(
+            still.recv_timeout(QUEUE_DEADLINE),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        )
+    });
+    tokio::pin!(subject);
+    let ended_first = tokio::select! {
+        () = reached => false,
+        _ = &mut subject => true,
+    };
+    drop(hold_still);
+    if ended_first {
+        tokio::time::resume();
+        panic!("the subject ended before it reached the hold");
+    }
+    let reached_at = start.elapsed();
+    let gave_up = standing.await.expect("the clock's hold ends");
+    if gave_up {
+        tokio::time::resume();
+        panic!("the subject did not reach the hold within {QUEUE_DEADLINE:?} of real time");
+    }
+    let out = subject.await;
+    let took = start.elapsed();
+    tokio::time::resume();
+    Timed {
+        out,
+        took,
+        set_by: std::time::Duration::ZERO,
+        reached_at,
+        started: start,
     }
 }
 
@@ -462,6 +558,39 @@ async fn a_wait_timed_once_its_request_is_held_returns_at_its_deadline() {
     assert!(out.is_err(), "the deadline ended it");
     gate.release();
     held.await.expect("released");
+}
+
+/// The way to the hold takes longer than the deadline, on the real
+/// clock: a clock that ran meanwhile would end the wait before it was
+/// held. Frozen until the hold, it ends at the deadline exactly.
+#[tokio::test]
+async fn a_wait_frozen_until_its_request_is_held_returns_at_its_deadline_however_slow_the_way() {
+    let (hold, gate) = gate();
+    let deadline = std::time::Duration::from_millis(300);
+    // The slow way runs on a thread of its own, as a connection's other
+    // end does: a blocking task would keep the clock standing by itself,
+    // and the test would pass without the hold `frozen_until` keeps.
+    let held = std::thread::spawn(move || {
+        std::thread::sleep(2 * deadline);
+        hold.wait_blocking();
+    });
+    let timed = frozen_until(
+        tokio::time::timeout(deadline, async { std::future::pending::<()>().await }),
+        gate.asked(),
+    )
+    .await;
+    assert!(timed.took >= deadline, "ended at {:?}", timed.took);
+    let out = timed.ended_by(deadline, "a wait frozen until its hold");
+    assert!(out.is_err(), "the deadline ended it");
+    gate.release();
+    held.join().expect("released");
+}
+
+#[tokio::test]
+#[should_panic(expected = "before it reached the hold")]
+async fn a_subject_that_ends_before_its_hold_is_seen_to() {
+    let (_hold, gate) = gate();
+    let _ = frozen_until(std::future::ready(()), gate.asked()).await;
 }
 
 #[tokio::test]
