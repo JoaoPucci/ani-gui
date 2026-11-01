@@ -3,6 +3,7 @@ import { altTitlesFromKitsu, type KitsuAnimeRef } from '$lib/api';
 import {
 	claimPlay,
 	playArgsFor,
+	playedRecord,
 	playMode,
 	playQuality,
 	recordPlayed,
@@ -265,6 +266,53 @@ describe('playArgsFor', () => {
 			kitsuId: '42'
 		});
 		expect(args).toMatchObject({ episode_count: null, year: null, subtype: null });
+	});
+});
+
+describe("playArgsFor — a guessed card's row", () => {
+	const base = {
+		title: 'Show',
+		episode: 3,
+		mode: 'sub' as const,
+		quality: 'best',
+		show: null,
+		kitsuId: undefined
+	};
+
+	it("names the guessed card's row when given, and only then", () => {
+		expect(playArgsFor({ ...base, guessRow: 'hianime:show-1' }).guess_row).toBe('hianime:show-1');
+		expect('guess_row' in playArgsFor(base)).toBe(false);
+	});
+});
+
+describe('playedRecord', () => {
+	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+
+	it('records and mirrors a play no guess opened under the show', () => {
+		expect(playedRecord(args, '42', false, {})).toEqual({
+			args: { ...args, kitsu_id: '42' },
+			mirror: true
+		});
+	});
+
+	it("records and mirrors a guess's play that landed on the card's own listing", () => {
+		expect(playedRecord(args, '42', true, { own_listing: true })).toEqual({
+			args: { ...args, kitsu_id: '42' },
+			mirror: true
+		});
+	});
+
+	it("records no id and mirrors nothing for a guess's play that landed elsewhere", () => {
+		const guessed = { ...args, guess_row: 'hianime:show-1' };
+		expect(playedRecord(guessed, '42', true, { own_listing: false })).toEqual({
+			args: guessed,
+			mirror: false
+		});
+		expect(playedRecord(guessed, '42', true, {})).toEqual({ args: guessed, mirror: false });
+	});
+
+	it('records no id for an empty one', () => {
+		expect(playedRecord(args, '', false, {})).toEqual({ args, mirror: true });
 	});
 });
 

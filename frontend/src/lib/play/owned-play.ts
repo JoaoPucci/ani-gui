@@ -93,6 +93,9 @@ export function playArgsFor(input: {
 	/** The version remembered for the show (`storedChoice` in
 	 *  `$lib/versions/version-choice.ts`); left off when none is. */
 	version?: VersionKind;
+	/** The history row a guessed Continue card opened the session from
+	 *  (`guessRow` in `./play-origin`). */
+	guessRow?: string;
 }): PlayArgs {
 	const args: PlayArgs = {
 		title: input.title,
@@ -108,6 +111,20 @@ export function playArgsFor(input: {
 	if (input.prefetch) args.prefetch = true;
 	if (input.version) args.version = input.version;
 	return args;
+}
+
+/** What a session's play records: `args` carrying the show's Kitsu id
+ *  when the play may record it, and whether it is mirrored to the
+ *  trackers. */
+export function playedRecord(
+	args: PlayArgs,
+	showId: string,
+	guess: boolean,
+	session: { own_listing?: boolean }
+): { args: PlayArgs; mirror: boolean } {
+	void showId;
+	void session;
+	return { args, mirror: !guess };
 }
 
 /** The audio a play asks for: anything but "dub" reads as sub. */
