@@ -83,6 +83,18 @@ describe('a wrapped status line', () => {
 			'display: none;'
 		);
 		expect(SOURCE).toContain('data-meta-wraps={metaWraps}');
+	});
+
+	it('puts the status on a line of its own whenever its separator is hidden', () => {
+		// The wrap is held until the header grows (holdWrap), so it can
+		// outlast the layout that caused it — a status that shrank, a
+		// separator whose removal let it fit back. Hidden separator and
+		// status-on-the-title's-line must never coincide: while marked,
+		// the title takes the whole first line and the status starts the
+		// next, whatever its width.
+		expect(rule(".strip-header[data-meta-wraps='true'] .strip-title")).toContain(
+			'flex-basis: 100%;'
+		);
 		expect(SOURCE).toContain('watchHeaderWrap(');
 	});
 });
