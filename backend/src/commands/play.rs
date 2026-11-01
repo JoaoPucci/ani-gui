@@ -123,6 +123,17 @@ pub struct PlayArgs {
 }
 
 impl PlayArgs {
+    /// Whether this play, asked from a guessed Continue card, landed
+    /// on the card's own listing — the show key `played`
+    /// ([`crate::scraper::provider::same_listing`]). False for a play
+    /// no guessed card asked for.
+    #[must_use]
+    pub fn lands_on_guess_row(&self, played: &str) -> bool {
+        self.guess_row
+            .as_deref()
+            .is_some_and(|row| crate::scraper::provider::same_listing(row, played))
+    }
+
     /// The resolution-cache key this play reads and writes: the
     /// request's own axes, its version among them.
     #[must_use]
@@ -326,7 +337,8 @@ where
     let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-            if let Some(resp) = try_serve_cached(state, &cached).await {
+            if let Some(mut resp) = try_serve_cached(state, &cached).await {
+                resp.own_listing = args.lands_on_guess_row(&cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -531,6 +543,7 @@ where
         episode: Some(episode),
         former_episode,
         episode_unverified: cached_resolution.episode_unverified,
+        own_listing: args.lands_on_guess_row(&cached_resolution.show_id),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);

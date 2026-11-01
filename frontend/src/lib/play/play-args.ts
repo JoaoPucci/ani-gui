@@ -47,5 +47,6 @@ export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
 	if (input.prefetch === true) args.prefetch = true;
 	if (input.kitsuId) args.kitsu_id = input.kitsuId;
 	if (input.version) args.version = input.version;
+	if (input.guessRow) args.guess_row = input.guessRow;
 	return args;
 }

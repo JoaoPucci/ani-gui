@@ -27,17 +27,21 @@ export function recordableId(id: string, fromGuess: boolean): string | undefined
 }
 
 /** Whether a session's play may record its Kitsu id and write the
- *  trackers. */
+ *  trackers. A session no guess opened always may. A guessed one may
+ *  once its play landed on the card's own listing — the backend's
+ *  `own_listing`, answered for the row its plays name (`guessRow`):
+ *  the provider listing the guessed show resolves to is the one the
+ *  card's history row was written by, so the guess names the show the
+ *  row has been playing all along. */
 export function guessBinds(guess: boolean, session: { own_listing?: boolean }): boolean {
-	void session;
-	return !guess;
+	return !guess || session.own_listing === true;
 }
 
-/** The history row a session's plays name as the guessed card's. */
+/** The history row a guessed session's plays name, so the backend can
+ *  say whether each landed on that row's own listing; undefined for
+ *  every other session. */
 export function guessRow(guess: boolean, row: string | null): string | undefined {
-	void guess;
-	void row;
-	return undefined;
+	return guess && row ? row : undefined;
 }
 
 /** `query` (a `?…` play query) carrying the guess flag when `guess`. */

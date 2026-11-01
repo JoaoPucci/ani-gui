@@ -716,7 +716,10 @@
 			kitsuId: recordableId(a.match.id, a.guess === true),
 			// The version remembered for the show, as its detail page
 			// would play it.
-			version: storedChoice(a.match.id)
+			version: storedChoice(a.match.id),
+			// A guess names its card's row, and the session answers whether
+			// the play landed on that row's own listing.
+			guessRow: a.row
 		});
 	// A Continue click awaits its session before it opens the player;
 	// one that answers after the viewer left home, or started a

@@ -726,6 +726,7 @@ export function playStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
+	if (args.guess_row) params.set('guess_row', args.guess_row);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>

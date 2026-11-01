@@ -28,6 +28,7 @@ import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
 import { claimOrHold } from '$lib/navigation/claims';
 import { settledRow } from './settled-row';
+import { guessBinds, guessRow } from '$lib/play/play-origin';
 
 export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
@@ -89,6 +90,8 @@ export interface StartResumeDeps {
 		episode?: string;
 		former_episode?: string;
 		episode_unverified?: boolean;
+		/** Whether a guess's play landed on the card's own listing. */
+		own_listing?: boolean;
 	}>;
 	markWatched: (args: ResumePlayArgs) => Promise<void>;
 	syncTrackers: (
@@ -216,7 +219,9 @@ export function makeStartResume(
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
+		const row = guessRow(guess, entry.id);
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
+		if (row) args.row = row;
 		// The viewer moved on while the click was still settling what to
 		// play: no play has begun, so none is resolved, started or
 		// recorded.
@@ -230,13 +235,17 @@ export function makeStartResume(
 			// The episode the session plays, which the request may have
 			// named by a number it no longer carries.
 			const played = deps.followPlayed?.(match.id, session, episode) ?? episode;
+			// A guess whose play landed on the card's own listing names the
+			// show the row has been playing: it is recorded, and reaches the
+			// trackers, as a play of the show's own page would be.
+			const binds = guessBinds(guess, session);
 			// Marked as the episode played: a resolve the request named by a
 			// former tag is kept under it.
-			void deps.markWatched({ ...args, episode: played }).catch(() => {});
-			// A guessed match writes nothing to the user's tracker accounts,
+			void deps.markWatched({ ...args, episode: played, guess: !binds }).catch(() => {});
+			// Any other guess writes nothing to the user's tracker accounts,
 			// nor does an episode the session could not verify: a row past
 			// Kitsu's count that may be an extra the provider appended.
-			if (!guess && !session.episode_unverified) {
+			if (binds && !session.episode_unverified) {
 				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
 			// The viewer moved on while the session was on its way: the
