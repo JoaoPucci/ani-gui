@@ -32,3 +32,20 @@ export function shouldRunHeroRotation(opts: {
 	if (opts.prefersReducedMotion) return false;
 	return true;
 }
+
+// Placeholder signatures; the behaviour lands with the green commit.
+export const HERO_ROTATE_MS = 6000;
+
+export interface IntervalHost {
+	every(cb: () => void, ms: number): number;
+	cancel(id: number): void;
+}
+
+export function startHeroRotation(
+	conditions: { rotationLength: number; paused: boolean; prefersReducedMotion: boolean },
+	advance: () => void,
+	host?: IntervalHost
+): () => void {
+	void [conditions, advance, host];
+	return () => {};
+}
