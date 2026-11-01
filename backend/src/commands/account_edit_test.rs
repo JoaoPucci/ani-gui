@@ -843,3 +843,8 @@ async fn a_refresh_that_keeps_conflicting_fails_instead_of_reporting_a_fresh_sna
     assert!(matches!(result, Err(crate::error::AniError::Cache)),
         "an uncommitted refresh must fail so Home does not advance its freshness timestamp: {result:?}");
 }
+
+// Staleness cases that pair a full-list refresh with a write: their own
+// file, so this one stays readable.
+#[path = "account_staleness_test.rs"]
+mod staleness;
