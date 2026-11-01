@@ -15,8 +15,8 @@
 // Each entry keeps the shallow-routing state SvelteKit keeps on it:
 // what the page wrote to `page.state` while the entry was current,
 // put back on `page.state` when a press lands on it. A new document (a
-// launch or a reload) starts with an empty `page.state`, as SvelteKit
-// starts one.
+// launch or a reload) starts with an empty `page.state` and clears what
+// its entry kept, as SvelteKit's `enter` does.
 
 import { vi } from 'vitest';
 import { afterNavigate } from '$app/navigation';
@@ -90,6 +90,8 @@ export const sessionHistory = {
 	/** A new document on the current entry: a launch, a reload, or a
 	 *  return to the app. The scenario mounts the layout first. */
 	open(): void {
+		// SvelteKit's `enter` writes the entry afresh, without its state.
+		entries[index].state = {};
 		show(entries[index].url, {});
 		report('enter', null);
 	},

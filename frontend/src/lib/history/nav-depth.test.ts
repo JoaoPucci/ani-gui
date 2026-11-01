@@ -31,6 +31,12 @@ function nav(type: NavType, over: Partial<Navigated> = {}): Navigated {
 	};
 }
 
+/** Where the model says the layout really stands. */
+interface Real {
+	position: number;
+	openedFrom: string | null;
+}
+
 type Step =
 	| { kind: 'push'; type: 'link' | 'goto' | 'form'; path: string }
 	| { kind: 'replace'; path: string }
@@ -61,10 +67,21 @@ const stepArb: fc.Arbitrary<Step> = fc.oneof(
  * kept. After every step `check` gets the layout's depth and the
  * entry's real position.
  */
-function play(start: string, steps: Step[], check: (depth: number, position: number) => void) {
+function play(
+	start: string,
+	steps: Step[],
+	check: (held: { depth: number; origin: string | null }, real: Real) => void
+) {
 	const url = (p: string) => new URL(p, 'http://app.test');
-	const entries: { path: string; state: Navigated['state'] }[] = [{ path: start, state: {} }];
+	// Each entry also carries the page it was really opened from: the
+	// page a push left, kept across a push to the same path and across
+	// a replace, and lost on a reload (SvelteKit's `enter` replaces the
+	// entry's state with nothing).
+	const entries: { path: string; state: Navigated['state']; openedFrom: string | null }[] = [
+		{ path: start, state: {}, openedFrom: null }
+	];
 	let index = 0;
+	const real = (): Real => ({ position: index, openedFrom: entries[index].openedFrom });
 	const land = (
 		type: NavType,
 		from: string | null,
@@ -85,18 +102,22 @@ function play(start: string, steps: Step[], check: (depth: number, position: num
 	};
 
 	let held = land('enter', null, {}, { depth: 0, origin: null });
-	check(held.depth, index);
+	check(held, real());
 	for (const s of steps) {
 		const from = entries[index].path;
+		const behind = entries[index].openedFrom;
 		if (s.kind === 'push') {
+			const samePath = url(s.path).pathname === url(from).pathname;
 			entries.splice(index + 1);
-			entries.push({ path: s.path, state: {} });
+			entries.push({ path: s.path, state: {}, openedFrom: samePath ? behind : from });
 			index += 1;
 			held = land(s.type, from, {}, held);
 		} else if (s.kind === 'replace') {
-			entries[index] = { path: s.path, state: {} };
+			entries[index] = { path: s.path, state: {}, openedFrom: behind };
 			held = land('goto', from, {}, held);
 		} else if (s.kind === 'reload') {
+			entries[index].state = {};
+			entries[index].openedFrom = null;
 			held = land('enter', null, {}, { depth: 0, origin: null });
 		} else {
 			const to = index + (s.kind === 'back' ? -1 : 1);
@@ -104,7 +125,7 @@ function play(start: string, steps: Step[], check: (depth: number, position: num
 			index = to;
 			held = land('popstate', from, entries[index].state, held);
 		}
-		check(held.depth, index);
+		check(held, real());
 	}
 }
 
@@ -146,20 +167,36 @@ describe('afterNavigation: the depth is the entry’s place in the session histo
 	it('equals the real position over any run of pushes, replaces, presses and reloads', () => {
 		fc.assert(
 			fc.property(pathArb, fc.array(stepArb, { maxLength: 40 }), (start, steps) => {
-				play(start, steps, (depth, position) => {
-					expect(depth).toBe(position);
-					expect(shouldShowBackButton(depth)).toBe(position > 0);
+				play(start, steps, (held, real) => {
+					expect(held.depth).toBe(real.position);
+					expect(shouldShowBackButton(held.depth)).toBe(real.position > 0);
 				});
 			})
 		);
 	});
 
-	it('is never stamped on the entry', () => {
+	it('knows the page each entry was opened from over the same runs', () => {
 		fc.assert(
-			fc.property(fc.constantFrom(...TYPES), fc.nat(50), fc.nat(50), (type, entry, depth) => {
-				const out = afterNavigation(nav(type, { entry, prev: { depth, origin: '/x' } }));
-				expect(out.stamp === null || !('aniGuiDepth' in out.stamp)).toBe(true);
+			fc.property(pathArb, fc.array(stepArb, { maxLength: 40 }), (start, steps) => {
+				play(start, steps, (held, real) => expect(held.origin).toBe(real.openedFrom));
 			})
+		);
+	});
+
+	it('stamps only a forward navigation that knows its origin, and only with that origin', () => {
+		fc.assert(
+			fc.property(
+				fc.constantFrom(...TYPES),
+				fc.nat(50),
+				fc.nat(50),
+				fc.option(fc.constant('/search?q=a'), { nil: null }),
+				(type, entry, depth, origin) => {
+					const out = afterNavigation(nav(type, { entry, prev: { depth, origin } }));
+					const forward = type === 'goto' || type === 'link' || type === 'form';
+					if (!forward || out.origin === null) expect(out.stamp).toBeNull();
+					else expect(out.stamp).toEqual({ aniGuiFrom: out.origin });
+				}
+			)
 		);
 	});
 });
