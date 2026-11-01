@@ -17,8 +17,10 @@
 //! package is offered nothing and asks GitHub nothing. The version
 //! comparison against the running app stays in the renderer.
 //!
-//! The page bounds the walk: a platform whose newest installable
-//! release is further back than the page reaches is offered nothing.
+//! When the page loads and holds nothing to offer, the lookup also
+//! asks `/releases/latest` for the newest full release, however far
+//! back it sits, and offers it under the same rules. A pre-release
+//! further back than the page reaches is not found.
 //!
 //! Failures (network down, GitHub rate limit, malformed payload)
 //! collapse to `Ok(None)` so the renderer can branch on a single
@@ -164,9 +166,8 @@ fn parse_response(
 /// Fetch the newest release `platform` can install. Returns `None`
 /// for a platform the app does not package, and on every soft
 /// failure (offline, rate-limited, 404, malformed JSON, no release
-/// on the page that qualifies). The caller treats
-/// `None` and "no newer version" identically — the badge stays
-/// hidden either way.
+/// that qualifies). The caller treats `None` and "no newer version"
+/// identically — the badge stays hidden either way.
 pub async fn fetch_latest_release(
     client: &reqwest::Client,
     include_prereleases: bool,
@@ -175,9 +176,24 @@ pub async fn fetch_latest_release(
 ) -> Option<ReleaseInfo> {
     let platform = platform?;
     let base = base_override.unwrap_or(GITHUB_API);
-    let url = format!("{base}/repos/{REPO_PATH}/releases?per_page={RELEASE_PAGE}");
+    let page = get_body(
+        client,
+        &format!("{base}/repos/{REPO_PATH}/releases?per_page={RELEASE_PAGE}"),
+    )
+    .await?;
+    if let Some(offer) = parse_response(&page, platform, include_prereleases) {
+        return Some(offer);
+    }
+    let latest = get_body(client, &format!("{base}/repos/{REPO_PATH}/releases/latest")).await?;
+    let raw: RawRelease = serde_json::from_slice(&latest).ok()?;
+    select_release(vec![raw], platform, false)
+}
+
+/// GET `url` from the GitHub API and return the body of a successful
+/// answer.
+async fn get_body(client: &reqwest::Client, url: &str) -> Option<bytes::Bytes> {
     let resp = client
-        .get(&url)
+        .get(url)
         // GitHub requires a User-Agent header on every request; an
         // empty UA gets a 403. Using the app name is the
         // GitHub-recommended convention.
@@ -190,8 +206,7 @@ pub async fn fetch_latest_release(
     if !resp.status().is_success() {
         return None;
     }
-    let bytes = resp.bytes().await.ok()?;
-    parse_response(&bytes, platform, include_prereleases)
+    resp.bytes().await.ok()
 }
 
 #[cfg(test)]
