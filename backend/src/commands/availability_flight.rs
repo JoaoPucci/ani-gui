@@ -58,10 +58,10 @@
 //! class it was asked in — except that a walk started for interactive
 //! callers (see **Older than the row**) runs at interactive priority,
 //! at the scraper gate and at AniList alike. A caller joining it takes
-//! the verdict the first caller's arguments reached. Every surface that asks sends the
-//! same arguments for a show — its titles, count, year and subtype,
-//! from the same Kitsu entry — and the verdict is written to the one
-//! row whoever asked.
+//! the verdict the first caller's arguments reached. Every surface
+//! that asks sends the same arguments for a show — its titles, count,
+//! year and subtype, from the same Kitsu entry — and the verdict is
+//! written to the one row whoever asked.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -196,7 +196,7 @@ impl AvailabilityFlights {
         table.next_id += 1;
         let id = table.next_id;
         let (slot, heard) = watch::channel(Slot::Walking);
-        let class = walk_class(interactive, crate::meta::anilist_gate::callers_class());
+        let class = walk_class(interactive, crate::meta::anilist_gate::current_class());
         let walk = tokio::spawn(crate::meta::anilist_gate::in_class(
             class,
             walk(Arc::clone(state), args, self.clone(), key.to_owned(), id),
