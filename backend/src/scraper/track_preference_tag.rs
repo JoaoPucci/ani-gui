@@ -55,13 +55,19 @@ fn read_subtag(parsed: &mut Tag, subtag: &str) {
     }
 }
 
-/// The script a region writes Chinese in, so a `zh-TW` user is taken
-/// to want the `zh-Hant` track: the listing names the script, not the
-/// region.
-pub(super) fn implied_script(region: &str) -> Option<&'static str> {
-    match region {
-        "tw" | "hk" | "mo" => Some("hant"),
-        "cn" | "sg" => Some("hans"),
+/// The script a language written in more than one is written in, in
+/// `region` or with none: Chinese in Traditional where Taiwan, Hong
+/// Kong and Macao write it and Simplified elsewhere, Serbian in Latin
+/// where Montenegro, Romania and Turkey write it and Cyrillic
+/// elsewhere. `None` for a language written in one, where the script
+/// decides nothing. The built-in player reads by the same table
+/// (`$lib/play/caption-start.ts`), so both start on the same track.
+pub(super) fn implied_script(language: &str, region: Option<&str>) -> Option<&'static str> {
+    match (language, region) {
+        ("zh", Some("tw" | "hk" | "mo")) => Some("hant"),
+        ("zh", _) => Some("hans"),
+        ("sr", Some("me" | "ro" | "tr")) => Some("latn"),
+        ("sr", _) => Some("cyrl"),
         _ => None,
     }
 }

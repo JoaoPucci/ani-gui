@@ -122,7 +122,11 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
         subtitle_urls: subtitle_urls_preferred(&native.subtitles, args.wanted(&cfg.locale)),
-        subtitles_off: args.captions_off(),
+        subtitles_off: args.captions_off()
+            || !crate::scraper::track_preference::has_start(
+                &native.subtitles,
+                args.wanted(&cfg.locale),
+            ),
     }
 }
 

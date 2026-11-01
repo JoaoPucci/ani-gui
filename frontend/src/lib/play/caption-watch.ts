@@ -13,7 +13,12 @@
  * The app notes what it set, per video ({@link expectCaptions}); a
  * change the video's TextTrackList reports is the viewer's when the
  * app had set the captions and they now differ. Before the start is
- * set, and while a session's tracks are removed, nothing is.
+ * set, and once the session goes, nothing is. The page asks only
+ * while its own controls are off: with them on there is no browser
+ * menu, and a change the app did not make is hls.js's. The start is
+ * set where a session has sidecar tracks, so on a stream that carries
+ * its subtitles only in its playlist a pick in the browser's menu is
+ * not remembered.
  */
 
 /** Which subtitle track shows: its index in the TextTrackList, or off. */

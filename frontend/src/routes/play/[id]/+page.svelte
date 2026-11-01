@@ -510,6 +510,9 @@
 	 *  controls off — remembered for the show as the app's own menu's
 	 *  are ($lib/play/caption-watch). */
 	function rememberViewerPick(video: HTMLVideoElement) {
+		// With the app's own controls on there is no browser menu: a
+		// change the app did not make is hls.js's, not the viewer's.
+		if (USE_CUSTOM_PLAYER_CONTROLS) return;
 		const pick = noteCaptionChange(video, video.textTracks);
 		if (pick === null) return;
 		const choice = captionChoiceOf(video.textTracks, pick);

@@ -16,41 +16,12 @@
  * chosen by language. Off remembered starts with every track off.
  */
 
+import { readTag, scriptOf, type Tag } from './caption-tag';
+
 /** What the start reads of a listed track. */
 export interface StartableTrack {
 	lang: string;
 	default: boolean;
-}
-
-/** A BCP 47 tag's parts as the start compares them. */
-interface Tag {
-	language: string;
-	region?: string;
-	script?: string;
-}
-
-/** `tag` read as a language, or `null` for one that names none —
- *  `und`, an empty string, or anything that is not a tag. Three-letter
- *  codes read as the language they alias (`por` is `pt`). */
-function readTag(tag: string): Tag | null {
-	try {
-		const parsed = new Intl.Locale(tag.trim());
-		if (!parsed.language || parsed.language === 'und') return null;
-		return { language: parsed.language, region: parsed.region, script: parsed.script };
-	} catch {
-		return null;
-	}
-}
-
-/** The script `tag` is written in: the one it names, else the one
- *  the locale data gives its language in its region (`zh-TW` writes
- *  `Hant`, `zh-CN` `Hans`). */
-function scriptOf(tag: Tag): string | undefined {
-	if (tag.script) return tag.script;
-	// The language and region came out of a parsed locale, so the
-	// pair parses too.
-	const full = tag.region ? `${tag.language}-${tag.region}` : tag.language;
-	return new Intl.Locale(full).maximize().script;
 }
 
 /** The first track in `want`'s language that `matches`, or -1. */

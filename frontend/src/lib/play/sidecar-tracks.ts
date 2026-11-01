@@ -141,6 +141,9 @@ export function armSidecarTracks(
 	});
 	return () => {
 		controller.abort();
+		// The session going is no pick of the viewer's, whether it had
+		// sidecar tracks or not.
+		expectCaptions(video, null);
 		detach?.();
 	};
 }

@@ -103,7 +103,9 @@ const LANGUAGES: &[Language] = &[
     },
     Language {
         tag: "he",
-        codes: &["heb"],
+        // `iw` is the code's former spelling, which a locale reader
+        // still folds into `he`; likewise `in`, `mo`, `ji`, `jw` below.
+        codes: &["heb", "iw"],
         names: &["hebrew"],
     },
     Language {
@@ -123,7 +125,7 @@ const LANGUAGES: &[Language] = &[
     },
     Language {
         tag: "id",
-        codes: &["ind"],
+        codes: &["ind", "in"],
         names: &["indonesian"],
     },
     Language {
@@ -135,6 +137,11 @@ const LANGUAGES: &[Language] = &[
         tag: "ja",
         codes: &["jpn"],
         names: &["japanese"],
+    },
+    Language {
+        tag: "jv",
+        codes: &["jav", "jw"],
+        names: &["javanese"],
     },
     Language {
         tag: "ko",
@@ -173,7 +180,7 @@ const LANGUAGES: &[Language] = &[
     },
     Language {
         tag: "ro",
-        codes: &["rum", "ron"],
+        codes: &["rum", "ron", "mo"],
         names: &["romanian"],
     },
     Language {
@@ -225,6 +232,11 @@ const LANGUAGES: &[Language] = &[
         tag: "vi",
         codes: &["vie"],
         names: &["vietnamese"],
+    },
+    Language {
+        tag: "yi",
+        codes: &["yid", "ji"],
+        names: &["yiddish"],
     },
     Language {
         tag: "zh",

@@ -16,12 +16,12 @@ fn track_tag(track: &SubtitleTrack) -> Option<Tag> {
     })
 }
 
-/// The script a tag is written in: the one it names, or the one its
-/// region writes Chinese in.
+/// The script a tag is written in: the one it names, else the one its
+/// language is written in in its region ([`implied_script`]).
 fn script_of(tag: &Tag) -> Option<&str> {
     tag.script
         .as_deref()
-        .or_else(|| tag.region.as_deref().and_then(implied_script))
+        .or_else(|| implied_script(&tag.language, tag.region.as_deref()))
 }
 
 /// How close a track is to the language `want` names, or `None` when
@@ -40,6 +40,11 @@ fn closeness(track: &Tag, want: &Tag) -> Option<u8> {
     Some(2)
 }
 
+/// The rank of the provider's default track. A track ranked at most
+/// this — in the remembered or the locale's language, or the default —
+/// is one the built-in player starts on.
+pub(super) const DEFAULT: u8 = 6;
+
 /// Where a track stands: 0–2 the show's remembered language (its
 /// region, its script, any), 3–5 the user's locale's the same way, 6
 /// the provider's default, 7 English, 8 any other known language, 9 an
@@ -57,7 +62,7 @@ pub(super) fn rank(track: &SubtitleTrack, remembered: Option<&Tag>, user: Option
         }
     }
     if track.default {
-        return 6;
+        return DEFAULT;
     }
     match tag {
         None => 9,

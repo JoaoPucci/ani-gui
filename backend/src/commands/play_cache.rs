@@ -327,7 +327,11 @@ pub(crate) fn cached_launch_args(
             &cached.subtitles,
             args.wanted(&cfg.locale),
         ),
-        subtitles_off: args.captions_off(),
+        subtitles_off: args.captions_off()
+            || !crate::scraper::track_preference::has_start(
+                &cached.subtitles,
+                args.wanted(&cfg.locale),
+            ),
     }
 }
 

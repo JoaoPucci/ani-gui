@@ -52,7 +52,9 @@ pub struct LaunchArgs {
     pub player_kind: ExternalPlayerKind,
     /// Free-text args template used only when `player_kind` is
     /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`,
-    /// `{subtitle}` (the first sidecar track's URL).
+    /// `{subtitle}` (the first sidecar track's URL — the one the
+    /// built-in player starts on; none when it starts on none, or for
+    /// a show remembered Off).
     /// A token containing a missing/empty placeholder is dropped
     /// from argv entirely (so optional flags don't end up as
     /// `--referrer=` with nothing after the equals).

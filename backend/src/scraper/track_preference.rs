@@ -57,6 +57,18 @@ pub fn preference_order(tracks: &[SubtitleTrack], wanted: Wanted<'_>) -> Vec<usi
     order
 }
 
+/// Whether the listing has a track the built-in player would start on:
+/// one in the remembered or the locale's language, or the provider's
+/// default. Without one it starts with none, and so does a hand-off.
+#[must_use]
+pub fn has_start(tracks: &[SubtitleTrack], wanted: Wanted<'_>) -> bool {
+    let remembered = wanted.remembered.and_then(parse_tag);
+    let user = parse_tag(wanted.locale);
+    tracks
+        .iter()
+        .any(|t| rank(t, remembered.as_ref(), user.as_ref()) <= rank::DEFAULT)
+}
+
 /// The tracks in [`preference_order`].
 #[must_use]
 pub fn preferred_first<'a>(
