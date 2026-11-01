@@ -149,13 +149,17 @@ describe('a banner held back by AniList’s pacing', () => {
 
 		const before = tiles();
 		const title = target.querySelector('h1');
+		expect(title).not.toBeNull();
 		const focused = target.querySelector<HTMLButtonElement>('li[data-ep-num="2"] .ep-tile');
 		focused?.focus();
 		window.scrollTo(0, 420);
 		const scrolled = window.scrollY;
 		// The scroll took: the check after the refill compares real
-		// positions, not two zeros.
+		// positions, not two zeros. The test DOM has no layout, so an
+		// element scrolled into view moves nothing here; that call is
+		// watched on its own.
 		expect(scrolled).toBe(420);
+		const intoView = vi.spyOn(Element.prototype, 'scrollIntoView');
 		expect(document.activeElement).toBe(focused);
 
 		land();
@@ -169,6 +173,8 @@ describe('a banner held back by AniList’s pacing', () => {
 		expect(target.querySelector('h1')).toBe(title);
 		expect(document.activeElement).toBe(focused);
 		expect(window.scrollY).toBe(scrolled);
+		expect(intoView).not.toHaveBeenCalled();
+		intoView.mockRestore();
 	});
 
 	it('is not fetched again for a page closed before it lands, and its retry is let go', async () => {

@@ -194,14 +194,19 @@ describe('play route — held-back episode stills', () => {
 		window.scrollTo(0, 420);
 		const scrolled = window.scrollY;
 		// The scroll took: the check after the refill compares real
-		// positions, not two zeros.
+		// positions, not two zeros. The test DOM has no layout, so an
+		// element scrolled into view moves nothing here; that call is
+		// watched on its own.
 		expect(scrolled).toBe(420);
+		const intoView = vi.spyOn(Element.prototype, 'scrollIntoView');
 		expect(document.activeElement).toBe(focused);
 
 		land();
 		await until(() => stillImgs().length === 5, 'the stills to fill in');
 		expect(document.activeElement).toBe(focused);
 		expect(window.scrollY).toBe(scrolled);
+		expect(intoView).not.toHaveBeenCalled();
+		intoView.mockRestore();
 
 		// Fetched once more, not on and on.
 		expect(seen.readsAfter).toBe(1);

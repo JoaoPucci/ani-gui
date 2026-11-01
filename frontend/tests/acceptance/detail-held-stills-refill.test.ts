@@ -136,8 +136,11 @@ describe('episode stills held back by AniList’s pacing', () => {
 		window.scrollTo(0, 420);
 		const scrolled = window.scrollY;
 		// The scroll took: the check after the refill compares real
-		// positions, not two zeros.
+		// positions, not two zeros. The test DOM has no layout, so an
+		// element scrolled into view moves nothing here; that call is
+		// watched on its own.
 		expect(scrolled).toBe(420);
+		const intoView = vi.spyOn(Element.prototype, 'scrollIntoView');
 		expect(document.activeElement).toBe(focused);
 
 		land();
@@ -151,6 +154,8 @@ describe('episode stills held back by AniList’s pacing', () => {
 		after.forEach((li, i) => expect(li).toBe(before[i]));
 		expect(document.activeElement).toBe(focused);
 		expect(window.scrollY).toBe(scrolled);
+		expect(intoView).not.toHaveBeenCalled();
+		intoView.mockRestore();
 		// Only the new images appear, and they fade in.
 		expect(stillImgs().map((img) => decodeURIComponent(img.src))).toEqual(
 			[1, 2, 3].map((n) => expect.stringContaining(still(n)))
