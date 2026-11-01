@@ -1697,6 +1697,7 @@
 				replaceState: true
 			}),
 		/* eslint-enable svelte/no-navigation-without-resolve */
+		here: () => page.url.pathname,
 		refresh: () => {
 			const currentId = id;
 			void lookupResume(currentId, historyByKitsu, kitsuAnimeDetail(currentId))

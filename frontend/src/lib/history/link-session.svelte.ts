@@ -41,6 +41,8 @@ export interface LinkSessionDeps extends LinkDeps {
 	showPage: (kitsuId: string, row: string | null) => void;
 	/** Read again what the page reads from the history. */
 	refresh: () => void;
+	/** The path the app is on now. */
+	here: () => string;
 }
 
 export class LinkSession {
@@ -51,6 +53,10 @@ export class LinkSession {
 	chosen = $state<LinkCandidate | null>(null);
 	busy = $state(false);
 	error = $state<string | null>(null);
+	/** Whether the latest arrival's offer is decided. */
+	settled = $state(true);
+	/** The history rows the card stands for, once worked out. */
+	group = $state<string[] | null>(null);
 
 	#deps: LinkSessionDeps;
 	#arrival = 0;

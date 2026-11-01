@@ -67,6 +67,7 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 		notify: (n) => f.notices.push(n),
 		showPage: (id, row) => f.pages.push([id, row]),
 		refresh: () => f.refreshed++,
+		here: () => `/anime/${GUESS}`,
 		...over
 	};
 	return f;
