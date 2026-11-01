@@ -406,3 +406,61 @@ async fn a_clear_goes_by_the_latest_read_not_an_earlier_absent_one() {
         Some((ListStatus::Planning, 0))
     );
 }
+
+/// A refresh whose list read went out before a removal's live read found
+/// MAL 21 absent, arriving after the removal cleared the cached row,
+/// cannot put the row back: the read is newer than the refresh's answer.
+#[tokio::test]
+async fn a_refresh_older_than_the_clears_read_cannot_put_the_row_back() {
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    let list_server = wiremock::MockServer::start().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let kind = ProviderKind::MyAnimeList;
+    let tokens = test_tokens();
+    let (hold, gate) = crate::held::gate();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me/animelist"))
+        .respond_with(crate::held::Held::new(
+            hold,
+            wiremock::ResponseTemplate::new(200).set_body_string(page(&[PLANNED_21])),
+        ))
+        .mount(&list_server)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .and(query_param("fields", "my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":21}"#))
+        .mount(&mal)
+        .await;
+    let provider = mal_provider(&mal.uri());
+    let list_provider = mal_provider(&list_server.uri());
+    let refresh = crate::commands::account::list_all_and_cache_via(
+        &state,
+        kind,
+        &list_provider,
+        &tokens,
+        "4242",
+    );
+    let removal = async {
+        tokio::time::timeout(std::time::Duration::from_secs(5), gate.asked())
+            .await
+            .expect("the refresh's list read reached its hold");
+        let read = super::get_entry_via(&state, kind, &provider, &tokens, "12")
+            .await
+            .expect("the live read answers");
+        assert!(read.is_none());
+        super::super::forget_cached_entry(&state, kind, "12", "4242")
+            .await
+            .expect("the clear answers");
+        gate.release();
+    };
+    let (refreshed, ()) = tokio::join!(refresh, removal);
+    refreshed.expect("the refresh lands");
+    let rows = crate::account::cache::list_entries(&state.cache_pool, kind, "4242").unwrap();
+    assert!(
+        rows.iter().all(|r| r.media_id.0 != 21),
+        "an answer older than the clear's read put the row back: {rows:?}"
+    );
+}
