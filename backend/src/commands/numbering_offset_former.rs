@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 use super::display_stamp;
-use super::repair::{repair, Listing};
+use super::repair::{repair, repair_carried, Carrier, Listing};
 use super::AppState;
 use crate::commands::listing_tags::Hearing;
 
@@ -55,14 +55,19 @@ pub fn retag_from_resolve(
     state: &AppState,
     native: &crate::commands::play_native_resolve::NativeResolved,
 ) {
-    let shared = |former: &str| crate::commands::play_native_merge::names_a_row_now(former, native);
+    // A row carries a former tag where the listing's extra tags carry it
+    // in the entry's numbering (`names_a_row_now`).
+    let carrier = Carrier::Entry {
+        extra: native.extra_tags.clone(),
+        offset: native.numbering_offset,
+    };
+    let shared = |former: &str| carrier.carries(former);
     let listing = Listing {
         former_tags: &native.former_tags,
         shared: &shared,
         rows: Some((&native.listing, native.unread_past)),
     };
-    repair(state, &native.slug, &listing, native.heard);
-    drop_shared_former(state, &native.slug, &shared);
+    repair_carried(state, &native.slug, &listing, native.heard, &carrier);
     // The pick's other versions: each copy's history row reads a stamp
     // of its own, put right from that copy's listing.
     for (slug, episodes) in &native.other_copies {
@@ -85,21 +90,15 @@ pub fn retag_from_listing(
     unread_past: Option<u32>,
     heard: Option<Hearing>,
 ) {
-    let shared = |former: &str| {
-        episodes.iter().any(|e| {
-            e.number2
-                .as_deref()
-                .is_some_and(|t| crate::commands::play_native_episode::tag_matches(t, former))
-        })
-    };
+    let carrier = Carrier::Tags(episodes.iter().filter_map(|e| e.number2.clone()).collect());
+    let shared = |former: &str| carrier.carries(former);
     let former_tags = crate::commands::play_native_merge::former_tags_of(episodes);
     let listing = Listing {
         former_tags: &former_tags,
         shared: &shared,
         rows: Some((episodes, unread_past)),
     };
-    repair(state, slug, &listing, heard);
-    drop_shared_former(state, slug, &shared);
+    repair_carried(state, slug, &listing, heard, &carrier);
 }
 
 #[cfg(test)]

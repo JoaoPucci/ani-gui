@@ -37,8 +37,8 @@ use crate::commands::listing_tags::Hearing;
 
 #[path = "numbering_offset_repair_rule.rs"]
 mod rule;
-pub(super) use rule::Listing;
 use rule::{outstanding, repaired, standing, Repairs, Stamps};
+pub(super) use rule::{Carrier, Listing};
 
 /// The repairs a show's stamps took this run: the stamps from before
 /// the run's first repair, each repair that still has a say, with its
@@ -50,6 +50,9 @@ struct Taken {
     base: Stamps,
     repairs: Repairs,
     left: Stamps,
+    /// Every listing at hand this run, repairing or not: a former tag
+    /// any of them carries is not kept, whatever order they came in.
+    carriers: Vec<Carrier>,
 }
 
 #[cfg(test)]
@@ -60,6 +63,7 @@ impl Taken {
             base,
             repairs: vec![(heard, left.clone())],
             left,
+            carriers: Vec::new(),
         }
     }
 }
@@ -73,6 +77,20 @@ static TAKEN: Mutex<BTreeMap<(PathBuf, String), Taken>> = Mutex::new(BTreeMap::n
 /// ordered against nothing and leaves nothing for another to be.
 /// Decided under the store's locks, against the row as it stands there.
 pub(super) fn repair(state: &AppState, slug: &str, listing: &Listing<'_>, heard: Option<Hearing>) {
+    repair_carried(state, slug, listing, heard, &Carrier::Tags(Vec::new()));
+}
+
+/// [`repair`], from a listing that carries the rows `carrier` names: a
+/// former tag the stamps keep, which it or any other listing at hand
+/// this run carries, is dropped, since a position kept under it may be
+/// that row's.
+pub(super) fn repair_carried(
+    state: &AppState,
+    slug: &str,
+    listing: &Listing<'_>,
+    heard: Option<Hearing>,
+    carrier: &Carrier,
+) {
     // A show with no display stamp has nothing to repair, and its store
     // is not written.
     let rows = parse(&read_store(&state.history_path));
@@ -107,9 +125,38 @@ pub(super) fn repair(state: &AppState, slug: &str, listing: &Listing<'_>, heard:
         let row_ep = listing.rows.and_then(|_| legacy_row_ep(state, slug));
         let offset = row.offset;
         let ours = |base: &Stamps| repaired(base, offset, row_ep.as_deref(), listing);
-        let Some(next) = decided(&mut taken, key, Stamps::of(row), heard, ours) else {
-            return false;
+        let current = Stamps::of(row);
+        // A record whose stamps were changed since starts over.
+        if taken.get(&key).is_some_and(|t| t.left != current) {
+            taken.remove(&key);
+        }
+        let mut next = decided(&mut taken, key.clone(), current.clone(), heard, ours)
+            .unwrap_or_else(|| current.clone());
+        let carried = match heard {
+            Some(_) => {
+                let t = taken.entry(key).or_insert_with(|| Taken {
+                    base: current.clone(),
+                    repairs: Vec::new(),
+                    left: current.clone(),
+                    carriers: Vec::new(),
+                });
+                if !t.carriers.contains(carrier) {
+                    t.carriers.push(carrier.clone());
+                }
+                next.former = next
+                    .former
+                    .filter(|(_, f)| !t.carriers.iter().any(|c| c.carries(f)));
+                t.left = next.clone();
+                true
+            }
+            None => false,
         };
+        if !carried {
+            next.former = next.former.filter(|(_, f)| !carrier.carries(f));
+        }
+        if next == current {
+            return false;
+        }
         row.display = next.display;
         row.former = next.former;
         true
@@ -147,6 +194,7 @@ fn decided(
         return None;
     }
     let mut repairs = prior.map_or_else(Vec::new, |t| t.repairs.clone());
+    let prior_carriers = prior.map_or_else(Vec::new, |t| t.carriers.clone());
     repairs.push((heard, ours));
     let repairs = outstanding(&repairs);
     let next = standing(&base, &repairs);
@@ -156,6 +204,7 @@ fn decided(
             base,
             repairs,
             left: next.clone(),
+            carriers: prior_carriers,
         },
     );
     (next != current).then_some(next)

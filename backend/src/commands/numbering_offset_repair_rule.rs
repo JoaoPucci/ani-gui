@@ -23,6 +23,32 @@ impl Stamps {
     }
 }
 
+/// The rows a listing at hand carries now, kept as the listing's tags so
+/// a later repair can still ask it about a former tag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in super::super) enum Carrier {
+    /// A listing's own tags, compared as tags are.
+    Tags(Vec<String>),
+    /// A resolve's extra tags in the entry's numbering, with the offset
+    /// a former tag, in the listing's numbering, is read through.
+    Entry { extra: Vec<String>, offset: u32 },
+}
+
+impl Carrier {
+    /// Whether a row of the listing carries `former` now.
+    pub(in super::super) fn carries(&self, former: &str) -> bool {
+        match self {
+            Self::Tags(tags) => tags
+                .iter()
+                .any(|t| crate::commands::play_native_episode::tag_matches(t, former)),
+            Self::Entry { extra, offset } => crate::commands::play_native_merge::carries_tag(
+                extra,
+                &super::super::kitsu_ep_no(former, *offset),
+            ),
+        }
+    }
+}
+
 /// What a repair reads off a listing at hand.
 pub(in super::super) struct Listing<'a> {
     /// The listing's rows an earlier version tagged otherwise: (slot,
