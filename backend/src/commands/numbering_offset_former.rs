@@ -10,13 +10,20 @@ use super::{display_stamp, AppState};
 mod read;
 pub use read::{former_stamp, stamp_beside};
 
+#[path = "numbering_offset_former_drop.rs"]
+mod drop;
+use drop::drop_shared_former;
+#[cfg(test)]
+use drop::kept_former;
+
 /// Put a display stamp an earlier version wrote right: when the slug's
 /// stamp names one of `former_tags`' slots with the tag that version
 /// gave it, it names the tag the row has now. Any other stamp is left
 /// alone, and a show whose stamp names no such row is not written.
 ///
 /// `shared` says whether a former tag is one a row of the listing
-/// carries now.
+/// carries now. A former tag a repair kept, which a row of this listing
+/// carries now, is dropped (`drop_shared_former`).
 pub fn retag_display(
     state: &AppState,
     slug: &str,
@@ -32,6 +39,7 @@ pub fn retag_display(
     {
         retag_row(state, slug, former_tags, shared);
     }
+    drop_shared_former(state, slug, shared);
 }
 
 /// Put the slug's display stamp right: where it names one of
@@ -91,7 +99,10 @@ pub fn retag_from_resolve(
 /// a stamp a warm moved off the show's legacy history row goes back on
 /// it, where the listing agrees with the sidecar. `unread_past` is the
 /// pick's ([`crate::commands::play_native::PickedShow::unread_past`]):
-/// no row past it gets a stamp.
+/// no row past it gets a stamp. The listing's record is the walk's to
+/// write, at its pick ([`crate::commands::listing_tags`]): a repair runs
+/// once the walk is done, by when a newer walk may have recorded a newer
+/// listing.
 pub fn retag_from_listing(
     state: &AppState,
     slug: &str,
