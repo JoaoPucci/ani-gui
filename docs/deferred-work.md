@@ -371,6 +371,28 @@ starting it, and delete it when you find it done.
   `startDate` and `averageRating` in either direction. Name any further
   filters wanted before starting, rather than reading this as filters
   being missing.
+- **A search result the provider turns out not to carry vanishes
+  from under the user.** The search page renders each page of
+  results first and checks it against the provider afterwards
+  (`frontend/src/lib/availability/progressive.ts`). Cached verdicts
+  and those that settle within two seconds shape the first render. A
+  later "not carried" for a finished show removes its card from a
+  grid the user is already reading, on any page loaded so far, with
+  no motion and no explanation. The other surfaces that hide such
+  cards never remove one in view: Home's rows, a show page's
+  similar-titles strip, the search page's own discovery rows and the
+  topbar's live results filter against verdicts before rendering, so
+  a card known to be unplayable never appears there in the first
+  place. Continue Watching never hides a card on an availability
+  verdict. What search should do instead is undecided. One option is
+  the exit motion Continue Watching plays when the user deletes a
+  card. The other, which the maintainer leans towards, is to keep the
+  card and mark it, so a show the user searched for by name doesn't
+  silently disappear and the reason is visible. That raises questions
+  a design pass has to settle: what the mark says and where it sits,
+  whether a marked card still opens its page, whether the grid's
+  order or count changes, and whether the surfaces that hide such
+  cards before rendering should show them marked too.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages
