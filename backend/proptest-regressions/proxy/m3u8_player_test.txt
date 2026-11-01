@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 877ee21d7cea881f523fad94191f61768e10a6513831f0ee9b6f6e1a73af123e # shrinks to lines = ["#EXT-X-KEY:METHOD=AES-128,KEYFORMATVERSIONS=1,URI =https://evil.example/x\n", "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"n\",URI =https://evil.example/x\n"], media = false
+cc e84fa81cb5b2c231b5766aaf8433f24df193ac74afdb172a0eeaa81ba43ec35d # shrinks to lines = ["#EXT-X-DATERANGE:ID=\"i\",START-DATE=\"2026-01-01T00:00:00Z\",URI =\"x\n#EXTINF:4,\nhttp://127.0.0.1:42337@evil.example/\n#\"\n"], media = false

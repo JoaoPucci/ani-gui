@@ -5,12 +5,16 @@
 //!
 //! - [`super::m3u8_lines`] ends lines where hls.js does, before the
 //!   parse, and tells a media playlist by hls.js's own test.
-//! - [`keep_player_view_on_proxy`] reads each tag line of the rewritten
-//!   manifest as hls.js reads an attribute list, where a name is
-//!   trimmed (`URI ="…"` is its `URI`). A line in which any attribute
-//!   whose name ends in `URI`, `URL` or `-LIST` would resolve off the
-//!   proxy is dropped; an `#EXTINF` line loses its title instead, so
-//!   the segment after it keeps its duration.
+//! - [`keep_player_view_on_proxy`] reads the rewritten manifest's lines
+//!   as hls.js ends them, `\r` included. A line not starting `#` is a
+//!   URI to the player and must be on the proxy (or, in a media
+//!   playlist, an inline segment) — a quoted value m3u8-rs kept can
+//!   carry lines of its own. A tag line is read as hls.js reads an
+//!   attribute list, where a name is trimmed (`URI ="…"` is its `URI`);
+//!   one in which any attribute whose name ends in `URI`, `URL` or
+//!   `-LIST` would resolve off the proxy is dropped. An `#EXTINF` line
+//!   loses its title instead, so the segment after it keeps its
+//!   duration.
 //!
 //! What may stay off the proxy is what [`super::m3u8_reach`] keeps as
 //! written: an inline key, init segment, session key or session data.
@@ -20,40 +24,45 @@ use url::Url;
 use super::m3u8::ProxyOrigin;
 use super::m3u8_reach::on_proxy;
 
-/// `out` without any tag line through which hls.js would fetch
-/// something off the proxy. `base` is the URL the player resolves the
-/// manifest's relative URIs against: the proxy URL it fetched it from.
+/// `out` without any line through which hls.js would fetch something
+/// off the proxy. Lines are read as the player reads them, ended by
+/// `\r`, `\n`, U+2028 and U+2029 alike, and every line is checked: a
+/// quoted value m3u8-rs kept can span lines of its own, so a line not
+/// starting `#` need not be one the rewrite wrote. Relative URIs are
+/// resolved against the proxy's own `/s/` path, where the player
+/// fetched the manifest from.
 pub(super) fn keep_player_view_on_proxy(out: &str, origin: &ProxyOrigin) -> String {
     let Ok(base) = Url::parse(&format!("{}/s/", origin.base)) else {
         return out.to_owned();
     };
+    let media = super::m3u8_lines::reads_as_media(out.as_bytes());
     let mut kept = String::with_capacity(out.len());
-    for line in out.split_inclusive('\n') {
-        let body = line.trim_end_matches(['\n', '\r']);
-        if !body.starts_with('#') || stays_on_proxy(body, &base, origin) {
-            kept.push_str(line);
-        } else if let Some(untitled) = untitled_extinf(body) {
-            kept.push_str(&untitled);
+    let body = out.strip_suffix('\n').unwrap_or(out);
+    for line in body.split(['\n', '\r', '\u{2028}', '\u{2029}']) {
+        let shown = if line.starts_with('#') {
+            line_stays(line, &base, origin).then(|| line.to_owned())
+        } else {
+            uri_line_stays(line, &base, origin, media).then(|| line.to_owned())
+        };
+        if let Some(line) = shown.or_else(|| super::m3u8_lines::untitled_extinf(line)) {
+            kept.push_str(&line);
             kept.push('\n');
         }
     }
     kept
 }
 
-/// An `#EXTINF` line without its title, which the player reads as no
-/// attribute list.
-fn untitled_extinf(line: &str) -> Option<String> {
-    let duration = line.strip_prefix("#EXTINF:")?;
-    Some(format!(
-        "#EXTINF:{},",
-        duration.split(',').next().unwrap_or("")
-    ))
+/// Whether a line not starting `#` — a URI to the player, which in a
+/// master names a variant and in a media playlist a segment — is on the
+/// proxy, or, in a media playlist, an inline segment.
+fn uri_line_stays(line: &str, base: &Url, origin: &ProxyOrigin, media: bool) -> bool {
+    line.trim().is_empty() || value_stays(line.trim(), base, origin, media)
 }
 
 /// Whether every URI-naming attribute hls.js could read in `line`
 /// resolves onto the proxy, or is inline media. Every `=` is taken as
 /// the end of a name, which covers each split hls.js could make.
-fn stays_on_proxy(line: &str, base: &Url, origin: &ProxyOrigin) -> bool {
+fn line_stays(line: &str, base: &Url, origin: &ProxyOrigin) -> bool {
     let inline_allowed = [
         "#EXT-X-KEY:",
         "#EXT-X-MAP:",
@@ -110,14 +119,5 @@ fn value_stays(value: &str, base: &Url, origin: &ProxyOrigin, inline_allowed: bo
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_quoted_value_runs_to_a_quote_before_a_comma_or_the_end() {
-        assert_eq!(attribute_value("\"data:,x\",B=1"), "data:,x");
-        assert_eq!(attribute_value("\"a\"b\""), "a\"b");
-        assert_eq!(attribute_value("plain,B=1"), "plain");
-        assert_eq!(attribute_value("\"open,B=1"), "\"open");
-    }
-}
+#[path = "m3u8_guard_test.rs"]
+mod tests;

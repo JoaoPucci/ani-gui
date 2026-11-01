@@ -273,8 +273,9 @@ pub fn rewrite_master_naming(
 /// Rewrite what the session's URL served: a master, or — from a source
 /// with a single quality — the media playlist of the main stream
 /// itself. Which one it is goes by hls.js's test — any line starting
-/// `#EXTINF:` or `#EXT-X-TARGETDURATION:` makes a media playlist — so
-/// the route rewrites the playlist the player will read. m3u8-rs parses
+/// `#EXTINF:` or `#EXT-X-TARGETDURATION:` makes a media playlist —
+/// applied to the body as the master rewrite would parse it, its
+/// variables substituted. m3u8-rs parses
 /// a media playlist as a master without failing, a master with no
 /// variants, so a failed master parse cannot tell them apart.
 ///
@@ -289,7 +290,8 @@ pub fn rewrite_served(
     secret: &AppSecret,
     vars: &str,
 ) -> Result<String> {
-    if reads_as_media(&player_lines(body)) {
+    let parsed = super::m3u8_define::substitute(body, url, &super::m3u8_define::Variables::new());
+    if reads_as_media(&player_lines(&parsed)) {
         rewrite_media(body, url, origin, session, secret)
     } else {
         rewrite_master_naming(body, url, origin, session, secret, vars)

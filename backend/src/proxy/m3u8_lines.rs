@@ -1,9 +1,11 @@
 //! Where the player's reading of a playlist's lines differs from
 //! m3u8-rs's, before the rewrite parses it ([`super::m3u8_guard`]):
 //!
-//! - [`player_lines`] ends lines where hls.js does. JavaScript's line
-//!   terminators include U+2028 and U+2029, which m3u8-rs reads as
-//!   ordinary text inside a title or an unknown tag.
+//! - [`player_lines`] turns U+2028 and U+2029, which JavaScript ends a
+//!   line at and m3u8-rs reads as ordinary text inside a title or an
+//!   unknown tag, into newlines. m3u8-rs still reads a quoted value
+//!   across lines; the check of the output reads those as the player
+//!   does.
 //! - [`reads_as_media`] is hls.js's test for a media playlist: any line
 //!   starting `#EXTINF:` or `#EXT-X-TARGETDURATION:`.
 
@@ -34,6 +36,16 @@ pub(super) fn player_lines(body: &[u8]) -> Cow<'_, [u8]> {
 pub(super) fn reads_as_media(body: &[u8]) -> bool {
     body.split(|&b| b == b'\n' || b == b'\r')
         .any(|l| l.starts_with(b"#EXTINF:") || l.starts_with(b"#EXT-X-TARGETDURATION:"))
+}
+
+/// An `#EXTINF` line without its title, which the player reads as no
+/// attribute list.
+pub(super) fn untitled_extinf(line: &str) -> Option<String> {
+    let duration = line.strip_prefix("#EXTINF:")?;
+    Some(format!(
+        "#EXTINF:{},",
+        duration.split(',').next().unwrap_or("")
+    ))
 }
 
 #[cfg(test)]
