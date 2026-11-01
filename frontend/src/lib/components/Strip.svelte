@@ -363,9 +363,16 @@
 	.strip-meta-sep {
 		color: color-mix(in oklab, var(--bone-100) 40%, transparent);
 	}
-	/* A status pushed onto its own line has nothing to separate it from. */
+	/* A status pushed onto its own line has nothing to separate it from.
+	   The wrap is held until the header grows (strip-header-wrap), so
+	   the title also takes the whole first line while it holds: the
+	   status then starts the next line whatever its width, and a hidden
+	   separator never sits between caption and status. */
 	.strip-header[data-meta-wraps='true'] .strip-meta-sep {
 		display: none;
+	}
+	.strip-header[data-meta-wraps='true'] .strip-title {
+		flex-basis: 100%;
 	}
 	.strip-actions {
 		display: inline-flex;
