@@ -16,9 +16,8 @@
 // Bundled today:
 //   - curl-impersonate.exe — the transport native resolution spawns.
 //   - yt-dlp.exe           — the downloader.
-// Not bundled: ffmpeg. Too large (~80 MB compressed) to ship in the
-// installer, so the NSIS script fetches it at install time — see
-// `build-resources/installer.nsh`.
+//   - ffmpeg.exe           — the muxer yt-dlp hands MPEG-TS to, and the
+//                            downloader's fallback. See its entry.
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -85,6 +84,33 @@ export const DEPS = [
 		// the name as written — dropping the prefix fails the extract
 		// with "not found in archive".
 		archivePath: './curl-impersonate.exe',
+	},
+	// ffmpeg: Linux takes it from the distribution (the .deb recommends
+	// it — `SYSTEM_DEPS` in fetch-linux-deps.mjs); Windows has nothing
+	// to recommend through, so the installer carries it.
+	//
+	// Through 0.17.0 the NSIS script downloaded it at install time
+	// instead, into the install directory but outside the package's own
+	// files. electron-builder's upgrade runs the previous version's
+	// uninstaller before the new payload lands, and that empties the
+	// install directory — so every update deleted ffmpeg and fetched it
+	// again (~90 MB, the whole zip), and an update run offline left
+	// none. In the payload it is replaced with the rest of the app, at
+	// about 22 MB of installer, and verified here like the others.
+	//
+	// Source: gyan.dev's essentials build, published on GitHub. A static
+	// GPL build, compatible with the GPL-3.0 this project ships under.
+	// Only ffmpeg.exe is staged; the zip's ffprobe and ffplay are not
+	// used.
+	{
+		name: 'ffmpeg',
+		dep: 'ffmpeg',
+		version: '7.1.1',
+		archiveName: 'ffmpeg-7.1.1-essentials_build.zip',
+		url: 'https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip',
+		sha256: '04861d3339c5ebe38b56c19a15cf2c0cc97f5de4fa8910e4d47e5e6404e4a2d4',
+		binary: 'ffmpeg.exe',
+		archivePath: 'ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe',
 	},
 ];
 

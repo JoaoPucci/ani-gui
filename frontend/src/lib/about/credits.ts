@@ -32,8 +32,8 @@ export interface BundledTool {
 	/** Display label — the upstream's own name. */
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
-	 *  the upstream doesn't version uniformly (ffmpeg is whatever
-	 *  the distro ships). */
+	 *  the platforms don't ship one version (ffmpeg: the Windows
+	 *  installer pins one, Linux takes whatever the distro ships). */
 	version: string | null;
 	/** SPDX license id (or a free-text combo for dual-licensed
 	 *  upstreams). */
@@ -50,7 +50,8 @@ export interface BundledTool {
 /** Tools the packages bundle or recommend so playback and downloads
  *  work without the user installing anything by hand. Versions track
  *  what `fetch-linux-deps.mjs` / `fetch-windows-deps.mjs` pin — the
- *  two stage the same set, so one version here covers both. */
+ *  two stage the same set but for ffmpeg, which Linux takes from the
+ *  distribution, so one version here covers both. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
 		// The transport the native resolver spawns. The provider
