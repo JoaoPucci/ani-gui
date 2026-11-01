@@ -196,7 +196,7 @@ use crate::proxy::MediaKind;
 // year filter drops the latter too. A v25 row for an undated entry can hold a hentai's stream — one
 // listed under one of the entry's own names — under the entry's key,
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v26";
+pub(crate) const SCHEMA: &str = "v26";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -296,7 +296,10 @@ pub fn cache_key(
     let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
     let s = subtype.unwrap_or("-");
-    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
+    format!(
+        "{}{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}",
+        crate::cache::families::play()
+    )
 }
 
 /// [`cache_key`] for a request naming the version it plays

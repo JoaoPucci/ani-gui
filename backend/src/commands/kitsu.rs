@@ -42,7 +42,7 @@ use super::kitsu_search::SEARCH_PAGE_LIMIT;
 pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
     discovery_cached(
         state,
-        "kitsu:v2:trending",
+        crate::cache::families::KITSU_TRENDING,
         TRENDING_TTL.as_secs(),
         |limit| async move { state.kitsu.currently_airing_by_user_count(limit).await },
     )
@@ -65,7 +65,7 @@ pub(crate) use trending_anilist::kitsu_trending_anilist_with_base;
 pub async fn kitsu_top_rated(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
     discovery_cached(
         state,
-        "kitsu:v2:top_rated",
+        crate::cache::families::KITSU_TOP_RATED,
         DISCOVERY_TTL.as_secs(),
         |limit| async move { state.kitsu.top_rated(limit).await },
     )
@@ -157,7 +157,7 @@ pub async fn kitsu_episodes_with(
     refresh: bool,
 ) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
-    let key = format!("kitsu:episodes:{anime_id}:p{p}");
+    let key = format!("{}{anime_id}:p{p}", crate::cache::families::KITSU_EPISODES);
     let cached = if refresh {
         None
     } else {
@@ -225,7 +225,7 @@ pub(crate) async fn kitsu_episode_page(
     page: u32,
 ) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
-    let key = format!("kitsu:episodes:{anime_id}:p{p}");
+    let key = format!("{}{anime_id}:p{p}", crate::cache::families::KITSU_EPISODES);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
             return Ok(eps);
@@ -255,7 +255,7 @@ pub async fn kitsu_relationships(
     state: &AppState,
     anime_id: &str,
 ) -> Result<crate::meta::kitsu::KitsuRelations> {
-    let key = format!("kitsu:relations:v3:{anime_id}");
+    let key = format!("{}{anime_id}", crate::cache::families::KITSU_RELATIONS);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(rel) = serde_json::from_str(&body) {
             return Ok(rel);
@@ -295,7 +295,7 @@ async fn kitsu_episodes_fresh(
 /// # Errors
 /// Inherits from [`crate::meta::kitsu::KitsuClient::anime_by_slug`].
 pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<KitsuAnimeRef>> {
-    let key = format!("kitsu:v2:anime-slug:{slug}");
+    let key = format!("{}{slug}", crate::cache::families::KITSU_ANIME_SLUG);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<Option<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
@@ -351,7 +351,10 @@ pub(crate) fn title_match_prefix(
 ) -> String {
     let normalized = title.trim().to_lowercase();
     let segment = provider.map_or(LEGACY_TITLE_MATCH_SEGMENT, |p| p.label());
-    format!("title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c")
+    format!(
+        "{}{segment}:{normalized}:c",
+        crate::cache::families::title_match()
+    )
 }
 
 /// The provider segment of a title match for a history row whose key
@@ -465,14 +468,14 @@ pub fn title_match_put(
 pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 9;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
-    format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
+    format!("{}{show_id}", crate::cache::families::mapping())
 }
 
 /// The mark a play leaves beside the mapping it stored, naming the
 /// Kitsu id it stored ([`crate::commands::kitsu_played`]). Under the
 /// mapping's prefix, so clearing the history takes it with them.
 pub(crate) fn allmanga_kitsu_played_key(show_id: &str) -> String {
-    format!("allmanga2kitsu:played:v1:{show_id}")
+    format!("{}{show_id}", crate::cache::families::MAPPING_PLAYED)
 }
 
 /// Read the cached `provider show_id → kitsu_id` mapping. Returns
@@ -893,7 +896,7 @@ async fn first_kitsu_match(
 /// resolved and never reached mark-watched — the user left before it
 /// fired — has no stamp, so its row falls to the bottom of the strip
 /// (still rendered, just demoted).
-const WATCHED_AT_PREFIX: &str = "watched-at:v1:";
+const WATCHED_AT_PREFIX: &str = crate::cache::families::WATCHED_AT;
 
 pub(crate) fn watched_at_key(show_id: &str) -> String {
     format!("{WATCHED_AT_PREFIX}{show_id}")
@@ -955,7 +958,7 @@ pub(crate) fn anime_detail_key(id: &str) -> String {
     // rows hold null covers for shows only that path can fill — a
     // finished show's for a week — so re-keying refetches them on the
     // next open.
-    format!("kitsu:v5:anime:{id}")
+    format!("{}{id}", crate::cache::families::KITSU_ANIME)
 }
 
 /// How long a detail row is served. The row carries the show's status

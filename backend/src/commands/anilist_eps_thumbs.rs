@@ -30,7 +30,7 @@ mod titles;
 /// whole [`StreamingListing`] (entry titles, AniList's episode count
 /// and status) where `v1` cached a bare number → thumbnail map.
 fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
-    format!("anilist:eps-thumbs:v2:k{kitsu_id}")
+    format!("{}{kitsu_id}", crate::cache::families::ANILIST_EPS_THUMBS)
 }
 
 /// Writes the outcome of an AniList lookup to the cache. `Ok(listing)`

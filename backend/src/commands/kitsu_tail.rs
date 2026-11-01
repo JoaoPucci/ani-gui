@@ -92,7 +92,7 @@ impl std::fmt::Debug for KitsuTail<'_> {
 /// v1 reading was proved against a TV sequel alone and may be one the
 /// rule now refuses, so it is not read.
 fn kept_key(kitsu_id: &str) -> String {
-    format!("appended:v2:{kitsu_id}")
+    format!("{}{kitsu_id}", crate::cache::families::APPENDED)
 }
 
 #[path = "kitsu_tail_read.rs"]
