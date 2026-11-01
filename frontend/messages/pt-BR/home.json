@@ -27,8 +27,7 @@
 	"delete_confirm_title": "Remover \"{title}\" do histórico?",
 	"delete_confirm_body": "Você pode adicionar de volta assistindo novamente.",
 	"delete_confirm_button": "Remover",
-	"clear_menu_button_aria": "Opções do histórico",
-	"clear_menu_item": "Limpar histórico",
+	"clear_history_action": "Limpar histórico",
 	"clear_confirm_eyebrow": "Limpar tudo",
 	"clear_confirm_title": [
 		{
@@ -43,5 +42,7 @@
 	],
 	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Não pode ser desfeito.",
 	"clear_confirm_button": "Limpar tudo",
-	"hero_error_eyebrow_value": "Sem resposta do Kitsu"
+	"hero_error_eyebrow_value": "Sem resposta do Kitsu",
+	"clear_menu_button_aria": "Opções do histórico",
+	"clear_menu_item": "Limpar histórico"
 }

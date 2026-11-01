@@ -29,5 +29,8 @@
 	"legacy_sweep_description": "These files are no longer used, so they were deleted:",
 	"section_banner_framing": "Banner framing",
 	"banner_framing_description": "Shows a small control on the home page and on each show's page for choosing how the banner is framed and which image it uses first. The choice is kept on this computer and stays in effect after the controls are hidden again.",
-	"banner_framing_toggle_label": "Show banner framing controls"
+	"banner_framing_toggle_label": "Show banner framing controls",
+	"section_row_style": "Home row style",
+	"row_style_description": "Shows a small control on the home page for choosing how its rows present their actions: beside each row's title, or on a band that marks out the whole row. The choice is kept on this computer and stays in effect after the control is hidden again.",
+	"row_style_toggle_label": "Show row style control"
 }

@@ -32,7 +32,11 @@
 	"settings_subtitle_disconnected": "No tracker connected.",
 	"watch_later_title": "Посмотреть позже",
 	"watch_later_caption": "Из вашего списка «В планах»",
-	"watch_later_refresh": "Обновить из трекера",
+	"watch_later_refresh_action": "Обновить",
+	"watch_later_refreshing": "Обновляется…",
+	"watch_later_updated": "Обновлено {when}",
+	"watch_later_updated_now": "Обновлено только что",
+	"watch_later_not_updated": "Ещё не обновлялось",
 	"watch_later_empty": "Пока ничего не запланировано",
 	"watch_later_empty_hint": "Добавили тайтл в трекере? Обновите, чтобы подтянуть его.",
 	"watch_later_failed": "Не удалось загрузить список",
@@ -60,5 +64,6 @@
 	"busy_saving_for": "{busy} занят, сохраним в {provider} через {seconds} с",
 	"busy_saving_unnamed": "Сервис занят, сохраним в {provider} через {seconds} с",
 	"busy_saving_now": "Сохраняем в {provider}…",
-	"progress_save_failed": "Не удалось сохранить прогресс в {provider}"
+	"progress_save_failed": "Не удалось сохранить прогресс в {provider}",
+	"watch_later_refresh": "Обновить из трекера"
 }
