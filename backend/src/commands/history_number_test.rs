@@ -321,3 +321,52 @@ fn a_legacy_row_s_former_number_a_later_listing_gives_a_real_episode_is_not_name
         })
     );
 }
+
+#[test]
+fn a_former_number_the_last_recorded_listing_gives_a_real_episode_is_not_named() {
+    // A walk recorded the show's listing, with a real "2.5", and then
+    // stopped before any stamp repair read it: its episode did not
+    // serve, or the probe's mode search found nothing. The kept former
+    // tag is still in the store, but the record says "2.5" is a real
+    // episode's number now, so it is not named.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    own_row(&state, "1.5");
+    crate::commands::listing_tags::put(
+        &state,
+        SHOW,
+        &["1.5".to_string(), "2.5".to_string()],
+        crate::commands::listing_tags::Begun::now().picked(),
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: None,
+        })
+    );
+}
+
+#[test]
+fn a_former_number_the_last_recorded_listing_leaves_free_is_named() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    own_row(&state, "1.5");
+    crate::commands::listing_tags::put(
+        &state,
+        SHOW,
+        &["1.5".to_string()],
+        crate::commands::listing_tags::Begun::now().picked(),
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: Some("2.5".into()),
+        })
+    );
+}
