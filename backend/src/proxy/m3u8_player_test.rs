@@ -183,6 +183,20 @@ fn an_extinf_line_carries_no_uri_of_its_own() {
     }
 }
 
+/// The inline media a session key or session data may name belongs to
+/// that tag alone: a rendition hls.js reads starting later in the same
+/// line is a playlist, and an inline one is not the proxy's.
+#[test]
+fn a_rendition_inside_an_inline_media_line_names_nothing_inline() {
+    let inline = "data:application/vnd.apple.mpegurl;base64,\
+        I0VYVE0zVQojRVhULVgtVEFSR0VURFVSQVRJT046NAojRVhUSU5GOjQuMCwKaHR0cHM6Ly9ldmlsLmV4YW1wbGUvcy50cwo=";
+    assert_contained(&format!(
+        "#EXTM3U\n\
+         #EXT-X-SESSION-DATA:DATA-ID=\"d\",VALUE=\"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=aud,NAME=x,DEFAULT=YES,AUTOSELECT=YES\",URI =\"{inline}\"\n\
+         #EXT-X-STREAM-INF:BANDWIDTH=1000000,AUDIO=\"aud\"\nv/index.m3u8\n"
+    ));
+}
+
 /// The route tells master from media by what the rewrite parses —
 /// after a variable a query parameter defines has been substituted —
 /// so a playlist the player reads as media is rewritten as media.
@@ -211,7 +225,7 @@ fn a_substituted_variable_cannot_make_a_master_read_as_media() {
 /// them.
 fn any_line() -> impl proptest::strategy::Strategy<Value = String> {
     use proptest::prelude::*;
-    let tag = "(EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"n\",|EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1,|EXT-X-MAP:|EXT-X-KEY:METHOD=AES-128,|EXT-X-KEY:METHOD=AES-128,KEYFORMATVERSIONS=1,|EXT-X-CONTENT-STEERING:|EXT-X-SESSION-DATA:DATA-ID=\"d\",|EXT-X-DATERANGE:ID=\"i\",START-DATE=\"2026-01-01T00:00:00Z\",|EXT-X-FOO:|EXTINF:4,)";
+    let tag = "(EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"n\",|EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1,|EXT-X-MAP:|EXT-X-KEY:METHOD=AES-128,|EXT-X-KEY:METHOD=AES-128,KEYFORMATVERSIONS=1,|EXT-X-CONTENT-STEERING:|EXT-X-SESSION-DATA:DATA-ID=\"d\",|EXT-X-DATERANGE:ID=\"i\",START-DATE=\"2026-01-01T00:00:00Z\",|EXT-X-FOO:|EXTINF:4,|EXT-X-SESSION-DATA:DATA-ID=\"d\",VALUE=\"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=aud,DEFAULT=YES\",)";
     let name = "(URI|SERVER-URI|X-ASSET-URI|X-ASSET-LIST|X-ASSET-URL)";
     let gap = "( |\t|\u{a0}|)";
     let value = "(https://evil\\.example/x|//evil\\.example/x|\\{\\$v\\}|data:,x|rel/x\\.m3u8|http://127\\.0\\.0\\.1:42337@evil\\.example/)";

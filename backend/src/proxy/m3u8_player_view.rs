@@ -40,18 +40,19 @@ pub(super) fn player_uris(out: &str) -> Vec<Named> {
             });
         }
         // hls.js's master regexes are not anchored to a line's start:
-        // a tag anywhere in a line is read from where it begins.
-        let Some(tag) = line.find('#') else {
-            continue;
-        };
-        let attrs = line[tag..].split_once(':').map_or("", |(_, rest)| rest);
-        for (name, value) in attribute_list(attrs) {
-            let name = name.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
-            if ["URI", "URL", "-LIST"].iter().any(|s| name.ends_with(s)) {
-                found.push(Named {
-                    line: line.to_owned(),
-                    uri: value,
-                });
+        // a tag anywhere in a line is read from where it begins, to the
+        // line's end.
+        for (tag, _) in line.match_indices('#') {
+            let segment = &line[tag..];
+            let attrs = segment.split_once(':').map_or("", |(_, rest)| rest);
+            for (name, value) in attribute_list(attrs) {
+                let name = name.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
+                if ["URI", "URL", "-LIST"].iter().any(|s| name.ends_with(s)) {
+                    found.push(Named {
+                        line: segment.to_owned(),
+                        uri: value,
+                    });
+                }
             }
         }
     }
