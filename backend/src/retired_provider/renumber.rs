@@ -11,6 +11,10 @@ pub(super) fn renumber(state: &AppState, planned: &[(String, String)]) -> Result
     if planned.is_empty() {
         return Ok(Vec::new());
     }
+    #[cfg(test)]
+    if FAIL_NEXT.with(|f| f.replace(false)) {
+        return Err(crate::error::AniError::Io);
+    }
     crate::history::guard::hold(&state.history_path, |held| {
         let mut rows = held.rows()?;
         let mut renumbered = Vec::new();
@@ -26,4 +30,16 @@ pub(super) fn renumber(state: &AppState, planned: &[(String, String)]) -> Result
         }
         Ok(renumbered)
     })
+}
+
+#[cfg(test)]
+thread_local! {
+    static FAIL_NEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Make this thread's next renumbering fail as an unwritable history
+/// would, for a case about what the sweep reports when a write fails.
+#[cfg(test)]
+pub(super) fn fail_next_for_tests() {
+    FAIL_NEXT.with(|f| f.set(true));
 }

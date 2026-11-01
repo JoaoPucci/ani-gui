@@ -541,3 +541,23 @@ fn an_unreadable_cache_stops_the_whole_sweep() {
     assert_eq!(std::fs::read(&state.history_path).unwrap(), history);
     assert_eq!(offsets(dir.path()), store);
 }
+
+#[test]
+fn a_write_that_fails_part_way_still_reports_the_numbering_that_went() {
+    // The superseded row's removal takes its numbering row; the kept
+    // row's renumbering then fails, so its own numbering stays. The
+    // report counts the one row that went, not none.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    seed_history(&state, dir.path());
+    super::renumber::fail_next_for_tests();
+
+    let report = sweep(&state);
+
+    assert_eq!(report.superseded, ["Naruto Shippuden"]);
+    assert!(report.renumbered.is_empty());
+    let store = offsets(dir.path());
+    assert!(!store.contains("naruto-shippuden-3687"), "{store}");
+    assert!(store.contains("the-separation-677"), "{store}");
+    assert_eq!(report.numbering_rows, 1, "{report:?}");
+}
