@@ -679,3 +679,66 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
 
     assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
 }
+
+/// Gintama Season 2 played from its own page: Kitsu's entry is
+/// Gintama' under the slug `gintama-2`, which carries no cour suffix,
+/// and titles it "Gintama Season 2" — the provider's card title. The
+/// entry names the watch's season, so the row records its id and the
+/// mapping is stored, with no Kitsu request.
+#[tokio::test]
+async fn a_season_kitsu_titles_as_the_provider_does_is_recorded() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    let detail = KitsuAnimeRef {
+        id: "5971".into(),
+        canonical_title: "Gintama'".into(),
+        titles: [
+            ("en_jp", "Gintama'"),
+            ("en_us", "Gintama Season 2"),
+            ("ja_jp", "銀魂'"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
+        abbreviated_titles: vec!["Gintama (2011)".into()],
+        slug: Some("gintama-2".into()),
+        synopsis: None,
+        start_date: None,
+        end_date: None,
+        episode_count: Some(51),
+        average_rating: None,
+        subtype: Some("TV".into()),
+        status: Some("finished".into()),
+        age_rating: None,
+        popularity_rank: None,
+        poster_image: None,
+        anilist_banner: None,
+        cover_image: None,
+    };
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("5971"),
+        &serde_json::to_string(&detail).expect("ser"),
+        3600,
+    )
+    .expect("seed detail");
+    let watch = Watch {
+        show_id: "hianime:gintama-season-2-1153".into(),
+        title: "Gintama Season 2".into(),
+        ep_no: "1".into(),
+    };
+
+    record_watch(&state, &watch, Some("5971")).await;
+
+    assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("5971"));
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &watch.show_id).expect("mapping read"),
+        Some("5971".to_string())
+    );
+    assert!(kitsu
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .is_empty());
+}

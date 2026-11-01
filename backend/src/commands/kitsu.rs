@@ -706,7 +706,7 @@ pub(crate) async fn cour_pairing_disagrees(
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    crate::commands::cour_pairing::entry_disagrees(provider_cour, &detail)
+    crate::commands::cour_pairing::entry_disagrees(show_title, provider_cour, &detail)
 }
 
 /// [`cour_pairing_disagrees`] answered from the cache alone: `None`
@@ -723,6 +723,7 @@ pub(crate) fn cached_cour_pairing_verdict(
     let body = meta_cache_get(&state.cache_pool, &anime_detail_key(kitsu_id)).ok()??;
     let detail: KitsuAnimeRef = serde_json::from_str(&body).ok()?;
     Some(crate::commands::cour_pairing::entry_disagrees(
+        show_title,
         provider_cour,
         &detail,
     ))
@@ -854,7 +855,7 @@ async fn first_kitsu_match(
         };
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
-                && crate::commands::cour_pairing::hit_agrees(source_cour, h)
+                && crate::commands::cour_pairing::hit_agrees(source_cour, &term, h)
                 && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
             // The guess answers this request; whether it is stored as
