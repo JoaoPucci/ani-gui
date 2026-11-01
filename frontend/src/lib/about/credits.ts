@@ -45,6 +45,36 @@ export interface BundledTool {
 	 *  `about_bundled_tool_note_<noteId>` key in every locale's
 	 *  about.json. */
 	noteId: BundledToolNoteId;
+	/** Where to get the corresponding source of a copyleft binary a
+	 *  package redistributes. Present only for those. */
+	sourceOffer?: SourceOffer;
+}
+
+/** An offer of the corresponding source for one redistributed build. */
+export interface SourceOffer {
+	/** The build's version, as the fetcher pins it. */
+	version: string;
+	/** The page the build is published on — the one the fetcher
+	 *  downloads it from. */
+	buildUrl: string;
+	/** The upstream source at the matching tag. */
+	sourceUrl: string;
+}
+
+/** The ffmpeg build the Windows installer carries. Must equal the
+ *  version `fetch-windows-deps.mjs` pins; credits.test.ts imports the
+ *  fetcher and holds the two together. */
+export const FFMPEG_WINDOWS_BUILD = '7.1.1';
+
+/** The source offer for gyan.dev's ffmpeg essentials build `version`:
+ *  its GitHub release, and FFmpeg's own `n<version>` tag. Derived from
+ *  the version alone so the links cannot name a different build. */
+export function ffmpegSourceOffer(version: string): SourceOffer {
+	return {
+		version,
+		buildUrl: `https://github.com/GyanD/codexffmpeg/releases/tag/${version}`,
+		sourceUrl: `https://github.com/FFmpeg/FFmpeg/tree/n${version}`
+	};
 }
 
 /** Tools the packages bundle or recommend so playback and downloads
@@ -80,7 +110,10 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		version: null,
 		license: 'LGPL-2.1+ / GPL',
 		url: 'https://ffmpeg.org/',
-		noteId: 'ffmpeg'
+		noteId: 'ffmpeg',
+		// The Windows installer redistributes a GPL build (Linux takes
+		// the distribution's, which the distribution answers for).
+		sourceOffer: ffmpegSourceOffer(FFMPEG_WINDOWS_BUILD)
 	}
 ];
 

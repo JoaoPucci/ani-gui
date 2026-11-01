@@ -25,6 +25,10 @@
 	"bundled_tool_note_curl_impersonate": "Transporte HTTP para a resolução de fontes. O provedor recusa requisições comuns, então a reprodução e os downloads dependem dele.",
 	"bundled_tool_note_yt_dlp": "Motor de downloads. Baixa o episódio em fragmentos paralelos e repete os que falham, para que uma conexão instável não reinicie o arquivo inteiro.",
 	"bundled_tool_note_ffmpeg": "O instalador do Windows o inclui; o .deb o declara como Recommends; o AppImage depende da instalação do sistema. Usado para combinar os segmentos baixados em MP4.",
+	"bundled_tools_licenses": "O texto da licença de cada ferramenta é instalado com o app, na pasta resources/licenses do diretório de instalação.",
+	"source_offer": "O instalador do Windows redistribui o {name} {version} sob a GNU GPL v3. Seu código-fonte correspondente:",
+	"source_offer_build_link": "a compilação {version}",
+	"source_offer_source_link": "código-fonte do {name} {version}",
 	"asset_note_lottie_loading": "Anima o LoadingOverlay usado durante a resolução de reprodução e esperas semelhantes.",
 	"asset_name_lottie_loading": "Animação de carregamento (LottieFiles)"
 }
