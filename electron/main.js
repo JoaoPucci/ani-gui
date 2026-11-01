@@ -58,6 +58,8 @@ const {
 const { startOAuthServer } = require("./oauth-server");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { guardWindow } = require("./lib/window-guard.cjs");
+const { guardedIpc } = require("./lib/ipc-guard.cjs");
+const { isRevealableDirectory } = require("./lib/reveal-folder.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -547,32 +549,37 @@ function registerAppProtocol() {
   });
 }
 
+// Every IPC handler below answers only the main frame holding the app's
+// own document (lib/ipc-guard.cjs); tests/arch/ipc_sender.sh keeps them
+// all registered through this wrapper.
+const ipc = guardedIpc(ipcMain, { app: APP_DOCUMENT, logError: console.error });
+
 // Window controls for the renderer's custom (frameless) titlebar.
 // Each resolves the sender's own window, so they're correct even if a
 // second window ever exists. `close` goes through win.close() so the
 // existing close-prompt guard (win.on("close", …)) still fires.
-ipcMain.on("ani-gui:window:minimize", (event) => {
+ipc.on("ani-gui:window:minimize", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
-ipcMain.on("ani-gui:window:toggle-maximize", (event) => {
+ipc.on("ani-gui:window:toggle-maximize", (event) => {
   const w = BrowserWindow.fromWebContents(event.sender);
   if (!w) return;
   if (w.isMaximized()) w.unmaximize();
   else w.maximize();
 });
-ipcMain.on("ani-gui:window:close", (event) => {
+ipc.on("ani-gui:window:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });
 // Synchronous so the titlebar can paint the correct maximize/restore
 // icon on first render without a flash; the maximize-changed event keeps
 // it live afterwards.
-ipcMain.on("ani-gui:window:is-maximized", (event) => {
+ipc.onSync("ani-gui:window:is-maximized", (event) => {
   event.returnValue = Boolean(BrowserWindow.fromWebContents(event.sender)?.isMaximized());
-});
+}, false);
 
 // IPC handlers for the renderer's preload bridge. Exposed as
 // window.aniGui.pickDirectory() / .pickFile() / .revealInFolder(path).
-ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
+ipc.handle("ani-gui:pick-directory", async (_event, options) => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory", "createDirectory"],
     title: options?.title || "Choose download folder",
@@ -587,7 +594,7 @@ ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
 // on Windows where mpv.exe is often installed under
 // `C:\Program Files\mpv\` outside the system PATH). Mirrors
 // pick-directory: returns the absolute path or null on cancel.
-ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
+ipc.handle("ani-gui:pick-file", async (_event, options) => {
   const filters = Array.isArray(options?.filters) ? options.filters : undefined;
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
@@ -599,11 +606,12 @@ ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
   return result.filePaths[0];
 });
 
-ipcMain.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
-  if (typeof dirPath !== "string" || !dirPath) return false;
+ipc.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
+  // An existing absolute directory and nothing else: openPath opens a
+  // file in its application and runs an executable (lib/reveal-folder.cjs).
+  if (!isRevealableDirectory(dirPath, { pathModule: path, statSync: fs.statSync })) return false;
   // Use openPath for directories (showItemInFolder targets a file
-  // and selects it; for our case the renderer always passes a
-  // directory). Returns '' on success per Electron docs.
+  // and selects it). Returns '' on success per Electron docs.
   const err = await shell.openPath(dirPath);
   return err === "";
 });
@@ -617,7 +625,7 @@ let activeDownloadCount = 0;
 // prompt. Without this we'd recurse.
 let confirmedQuit = false;
 
-ipcMain.on("ani-gui:active-downloads", (_event, count) => {
+ipc.on("ani-gui:active-downloads", (_event, count) => {
   if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return;
   activeDownloadCount = Math.floor(count);
 });
@@ -630,9 +638,9 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // frozen at whatever config.toml held when Electron first started.
 // Re-reading the file here is cheap (config is a handful of KB) and
 // happens once per renderer load.
-ipcMain.on("ani-gui:read-config-locale", (event) => {
+ipc.onSync("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
-});
+}, null);
 
 // ─── Account integration IPC handlers ──────────────────────────────
 //
@@ -670,7 +678,7 @@ let activeOAuth = null;
  * Renderer gets `{ code, state }` back when the user approves, or an
  * error with one of the documented `kind`s.
  */
-ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
+ipc.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   if (typeof authUrl !== "string" || !authUrl.startsWith("https://")) {
     return { ok: false, kind: "bad_request" };
   }
@@ -753,7 +761,7 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
 });
 
 /** Cancel the active OAuth attempt (renderer pressed cancel). */
-ipcMain.handle("ani-gui:account:cancel-oauth", () => {
+ipc.handle("ani-gui:account:cancel-oauth", () => {
   if (activeOAuth) {
     try {
       activeOAuth.stop();
@@ -796,7 +804,7 @@ function isRealEncryptionBackend() {
   return backend !== "basic_text" && backend !== "unknown";
 }
 
-ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
+ipc.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
   if (!isRealEncryptionBackend()) {
     return { ok: false, kind: "encryption_unavailable" };
   }
@@ -820,7 +828,7 @@ ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }
  * Synchronous IPC because the renderer calls this on EVERY backend
  * request that needs a bearer; the round-trip cost matters.
  */
-ipcMain.on("ani-gui:account:get-token", (event, provider) => {
+ipc.onSync("ani-gui:account:get-token", (event, provider) => {
   try {
     const p = tokenPathFor(provider);
     if (!fs.existsSync(p)) {
@@ -840,10 +848,10 @@ ipcMain.on("ani-gui:account:get-token", (event, provider) => {
   } catch (err) {
     event.returnValue = { ok: false, kind: "decrypt_error", message: String(err.message || err) };
   }
-});
+}, { ok: false, kind: "refused" });
 
 /** Delete the persisted token file for the given provider. */
-ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
+ipc.handle("ani-gui:account:clear-token", async (_event, provider) => {
   try {
     const p = tokenPathFor(provider);
     if (fs.existsSync(p)) {
@@ -860,7 +868,7 @@ ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
  * Privacy Policy link. Only allows https / http schemes — a renderer
  * compromise can't redirect this to a file:// path.
  */
-ipcMain.handle("ani-gui:open-external", async (_event, url) => {
+ipc.handle("ani-gui:open-external", async (_event, url) => {
   if (typeof url !== "string") return false;
   if (!/^https?:\/\//.test(url)) return false;
   await shell.openExternal(url);
