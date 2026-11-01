@@ -159,8 +159,10 @@ fn render(dump: &BTreeMap<String, serde_json::Value>) -> String {
 
 /// Runs every pool the file `PICKER_ORACLE_CASES` holds and writes
 /// each outcome to `PICKER_ORACLE_OUT` as `[{"id": …, "got": …}, …]`,
-/// for the oracle's `cmp` to read against its predictions.
-#[tokio::test]
+/// for the oracle's `cmp` to read against its predictions. The pools
+/// are walked on a worker per core; the outcomes are written in the
+/// file's order.
+#[tokio::test(flavor = "multi_thread")]
 #[ignore = "driven by tests/picker-oracle: reads PICKER_ORACLE_CASES, writes PICKER_ORACLE_OUT"]
 async fn run_the_oracle_cases() {
     let input =
@@ -182,17 +184,24 @@ async fn walk_case(case: Case) -> serde_json::Value {
 }
 
 /// Every pool's outcome through `walk`, as `{"id": …, "got": …}` in
-/// the order the pools came in. A walk that panics is reported as
+/// the order the pools came in, the walks running at once. A walk that panics is reported as
 /// `{"panic": true}` for its pool rather than ending the run.
 async fn walk_all<F, Fut>(cases: Vec<Case>, walk: F) -> Vec<serde_json::Value>
 where
     F: Fn(Case) -> Fut,
     Fut: std::future::Future<Output = serde_json::Value> + Send + 'static,
 {
-    let mut out = Vec::with_capacity(cases.len());
-    for case in cases {
-        let id = case.id.clone();
-        let got = tokio::spawn(walk(case))
+    // Every pool is started before the first is awaited, so a runtime
+    // with several workers walks as many pools at once; each is then
+    // awaited in the order it came in, so the order written is the
+    // input's whatever order the walks finish in.
+    let walks: Vec<_> = cases
+        .into_iter()
+        .map(|case| (case.id.clone(), tokio::spawn(walk(case))))
+        .collect();
+    let mut out = Vec::with_capacity(walks.len());
+    for (id, walk) in walks {
+        let got = walk
             .await
             .unwrap_or_else(|_| serde_json::json!({"panic": true}));
         out.push(serde_json::json!({"id": id, "got": got}));
