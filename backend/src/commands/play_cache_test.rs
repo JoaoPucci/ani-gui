@@ -1325,3 +1325,51 @@ async fn a_cached_rows_check_reads_the_users_language() {
             .await;
     assert!(!live, "the user's track is gone, so the row is not served");
 }
+
+/// The tracks a replay's check reads follow the same order as the
+/// start: the show's remembered language first, however late the
+/// listing puts it, so a dead track in it makes the row not live.
+#[tokio::test]
+async fn a_cached_rows_check_reads_the_shows_remembered_language() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/subs/11.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(&server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..12)
+        .map(|i| {
+            // Every other track is in a known language too, so only the
+            // remembered one can lift the last track into the check.
+            const OTHERS: [&str; 11] = [
+                "ar", "de", "fr", "it", "ja", "ko", "nl", "pl", "ru", "sv", "tr",
+            ];
+            let lang = if i == 11 { "es-419" } else { OTHERS[i] };
+            track(lang, i == 0, &format!("{}/subs/{i}.vtt", server.uri()))
+        })
+        .collect();
+    let state = state_with_proxy_origin();
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Some("es-419"),
+    )
+    .await;
+    assert!(!live, "the show's track is gone, so the row is not served");
+}

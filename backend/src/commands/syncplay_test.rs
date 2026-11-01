@@ -408,3 +408,31 @@ fn a_batch_player_behind_syncplay_gets_cmds_bound() {
         .count();
     assert!(subs > 0 && subs < long.len(), "{subs}");
 }
+
+/// Through Syncplay too, a show remembered Off starts the wrapped
+/// player with subtitles off: mpv and IINA get `--sid=no` among the
+/// forwarded flags beside every track; VLC, which takes one file,
+/// gets none.
+#[test]
+fn a_show_remembered_off_starts_the_wrapped_player_with_subtitles_off() {
+    let mut mpv = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    mpv.subtitles_off = true;
+    let argv = build_argv(&mpv);
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    assert!(
+        argv[sep + 1..].contains(&"--sid=no".to_string()),
+        "{argv:?}"
+    );
+    assert!(
+        argv[sep + 1..].iter().any(|a| a.starts_with("--sub-file=")),
+        "{argv:?}"
+    );
+    let mut iina = with_tracks(ExternalPlayerKind::Iina, None);
+    iina.subtitles_off = true;
+    let argv = build_argv(&iina);
+    assert!(argv.contains(&"--mpv-sid=no".to_string()), "{argv:?}");
+    let mut vlc = with_tracks(ExternalPlayerKind::Vlc, None);
+    vlc.subtitles_off = true;
+    let argv = build_argv(&vlc);
+    assert!(!argv.iter().any(|a| a.contains("sub-file")), "{argv:?}");
+}

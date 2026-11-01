@@ -116,3 +116,36 @@ fn every_track_flag_fits_on_windows_command_line_with_the_stream_last() {
         );
     }
 }
+
+/// A show whose remembered captions choice is Off starts its player
+/// with subtitles off, as the built-in player does: mpv and IINA keep
+/// every track to turn on and start on none (`--sid=no`); VLC, which
+/// takes one file, and a custom template take none.
+#[test]
+fn a_show_remembered_off_starts_the_player_with_subtitles_off() {
+    let off = |kind, template: Option<&str>| {
+        let mut launch = args(kind, template, &[EN, ES]);
+        launch.subtitles_off = true;
+        build_argv(&launch)
+    };
+    let mpv = off(ExternalPlayerKind::Mpv, None);
+    assert!(mpv.contains(&"--sid=no".to_string()), "{mpv:?}");
+    assert!(mpv.contains(&format!("--sub-file={EN}")), "{mpv:?}");
+    assert_eq!(
+        mpv.last().map(String::as_str),
+        Some("https://cdn.example/x/master.m3u8")
+    );
+    let iina = off(ExternalPlayerKind::Iina, None);
+    assert!(iina.contains(&"--mpv-sid=no".to_string()), "{iina:?}");
+    assert!(iina.contains(&format!("--mpv-sub-file={EN}")), "{iina:?}");
+    let vlc = off(ExternalPlayerKind::Vlc, None);
+    assert!(!vlc.iter().any(|a| a.contains("sub-file")), "{vlc:?}");
+    let custom = off(ExternalPlayerKind::Custom, Some("--sub={subtitle} {url}"));
+    assert_eq!(
+        custom,
+        vec!["https://cdn.example/x/master.m3u8".to_string()]
+    );
+    // Not off: no such flag.
+    let on = build_argv(&args(ExternalPlayerKind::Mpv, None, &[EN, ES]));
+    assert!(!on.iter().any(|a| a.contains("sid=")), "{on:?}");
+}

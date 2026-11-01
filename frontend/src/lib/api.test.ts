@@ -565,6 +565,29 @@ describe('playStream', () => {
 		await unnamed;
 	});
 
+	it("names the show's remembered captions choice, and nothing when none is", async () => {
+		// The backend cuts a listing past its cap by the choice, as the
+		// player starts by it.
+		const named = playStream(
+			{ title: 'X', episode: '5', mode: 'sub', caption: 'es-419' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('caption')).toBe('es-419');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await named;
+
+		const unnamed = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const plain = FakeEventSource.instances[1];
+		expect(new URL(plain.url).searchParams.has('caption')).toBe(false);
+		plain.dispatch('done', JSON.stringify(donePayload()));
+		await unnamed;
+	});
+
 	it('omits prefetch param entirely when not set or false', async () => {
 		// Click path: leave the field default. Backend treats absence
 		// as false, history-write fires.

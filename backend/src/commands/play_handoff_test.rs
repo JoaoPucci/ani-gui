@@ -213,10 +213,11 @@ fn launch_args_carry_the_resolves_referer() {
 }
 
 /// A player that takes one subtitle file takes the first listed, so
-/// the track the provider flagged default leads the list; the
-/// provider's order stands otherwise.
+/// the list leads with the track the built-in player starts on: the
+/// show's remembered language, else the user's, else the provider's
+/// default; the provider's order stands otherwise.
 #[test]
-fn launch_args_lead_with_the_providers_default_track() {
+fn launch_args_lead_with_the_track_the_built_in_player_starts_on() {
     use crate::scraper::provider::SubtitleTrack;
     let track = |lang: &str, default: bool| SubtitleTrack {
         lang: lang.into(),
@@ -253,22 +254,41 @@ fn launch_args_lead_with_the_providers_default_track() {
             "https://cdn.example/x/subs/es.vtt".to_string(),
         ]
     );
-    // The user's language follows the default: a player that takes the
-    // tracks in order, or a command line that cannot carry them all,
-    // reaches it before the alphabet's first.
+    // The user's language leads the default, as the built-in player
+    // starts: a player that takes one track, or a command line that
+    // cannot carry them all, reaches it first.
     let cfg = crate::config::Config {
         locale: "es-419".into(),
         ..crate::config::Config::default()
     };
-    let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
+    let launch = super::play_handoff::launch_args_for(native.clone(), &args_for(), &cfg);
     assert_eq!(
         launch.subtitle_urls,
         vec![
-            "https://cdn.example/x/subs/en.vtt".to_string(),
             "https://cdn.example/x/subs/es.vtt".to_string(),
+            "https://cdn.example/x/subs/en.vtt".to_string(),
             "https://cdn.example/x/subs/ar.vtt".to_string(),
         ]
     );
+    assert!(!launch.subtitles_off);
+    // The language last picked on the show leads the locale's.
+    let mut remembered = args_for();
+    remembered.caption = Some("ar".into());
+    let launch = super::play_handoff::launch_args_for(native.clone(), &remembered, &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec![
+            "https://cdn.example/x/subs/ar.vtt".to_string(),
+            "https://cdn.example/x/subs/es.vtt".to_string(),
+            "https://cdn.example/x/subs/en.vtt".to_string(),
+        ]
+    );
+    // Off remembered: the same order, the player's subtitles off.
+    let mut off = args_for();
+    off.caption = Some("off".into());
+    let launch = super::play_handoff::launch_args_for(native, &off, &cfg);
+    assert_eq!(launch.subtitle_urls[0], "https://cdn.example/x/subs/es.vtt");
+    assert!(launch.subtitles_off);
 }
 
 mod default_first_props {
