@@ -126,3 +126,59 @@ async fn fetch_returns_none_on_404() {
         .await
         .is_none());
 }
+
+// Asset names as the releases carry them, e.g. v0.16.0:
+// ani-gui-0.16.0-x64-setup.exe, ani-gui-0.16.0-x86_64.AppImage,
+// ani-gui-0.16.0-amd64.deb.
+
+#[test]
+fn windows_carries_the_nsis_installer_and_nothing_linux_ships() {
+    assert!(Platform::Windows.carries("ani-gui-0.16.0-x64-setup.exe"));
+    assert!(!Platform::Windows.carries("ani-gui-0.16.0-x86_64.AppImage"));
+    assert!(!Platform::Windows.carries("ani-gui-0.16.0-amd64.deb"));
+}
+
+#[test]
+fn linux_carries_the_appimage_or_the_deb_and_not_the_installer() {
+    assert!(Platform::Linux.carries("ani-gui-0.16.0-x86_64.AppImage"));
+    assert!(Platform::Linux.carries("ani-gui-0.16.0-amd64.deb"));
+    assert!(!Platform::Linux.carries("ani-gui-0.16.0-x64-setup.exe"));
+}
+
+#[test]
+fn neither_platform_carries_an_unrelated_file() {
+    for name in ["SHA256SUMS", "ani-gui-0.16.0.tar.gz", "latest.yml", ""] {
+        assert!(!Platform::Windows.carries(name), "{name}");
+        assert!(!Platform::Linux.carries(name), "{name}");
+    }
+}
+
+proptest::proptest! {
+    /// Whatever the version in the name, each platform recognises its
+    /// own packages and never the other platform's.
+    #[test]
+    fn each_platform_carries_its_own_packages_and_never_the_others(
+        version in "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(-[a-z0-9.]{1,8})?",
+    ) {
+        let exe = format!("ani-gui-{version}-x64-setup.exe");
+        let appimage = format!("ani-gui-{version}-x86_64.AppImage");
+        let deb = format!("ani-gui-{version}-amd64.deb");
+        proptest::prop_assert!(Platform::Windows.carries(&exe));
+        proptest::prop_assert!(!Platform::Windows.carries(&appimage));
+        proptest::prop_assert!(!Platform::Windows.carries(&deb));
+        proptest::prop_assert!(Platform::Linux.carries(&appimage));
+        proptest::prop_assert!(Platform::Linux.carries(&deb));
+        proptest::prop_assert!(!Platform::Linux.carries(&exe));
+    }
+
+    /// A name ending in none of the package suffixes installs nowhere.
+    #[test]
+    fn a_name_without_a_package_suffix_is_carried_by_neither(name in "\\PC{0,40}") {
+        let packaged = ["-x64-setup.exe", "-x86_64.AppImage", "-amd64.deb"]
+            .iter()
+            .any(|s| name.ends_with(s));
+        proptest::prop_assume!(!packaged);
+        proptest::prop_assert!(!Platform::Windows.carries(&name));
+        proptest::prop_assert!(!Platform::Linux.carries(&name));
+    }
+}

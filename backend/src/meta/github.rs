@@ -29,6 +29,25 @@ const GITHUB_API: &str = "https://api.github.com";
 /// silently silence the notifier.
 pub const REPO_PATH: &str = "JoaoPucci/ani-gui";
 
+/// A platform the app is packaged for. A release is offered to an
+/// install only when it carries that install's package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    /// 64-bit Windows, packaged as the NSIS installer.
+    Windows,
+    /// 64-bit Linux, packaged as an AppImage and a `.deb`.
+    Linux,
+}
+
+impl Platform {
+    /// Whether a release asset named `asset_name` installs on this
+    /// platform.
+    pub fn carries(self, asset_name: &str) -> bool {
+        let _ = asset_name;
+        false
+    }
+}
+
 /// Slim shape of the GitHub `release` object — only what the
 /// renderer needs. Serialised back to JSON by the HTTP handler.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
