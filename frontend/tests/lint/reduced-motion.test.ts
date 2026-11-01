@@ -31,8 +31,8 @@
 //   nothing may import `svelte/transition`, `svelte/animate`,
 //   `svelte/motion` or `lottie-web`, call a method named `animate`,
 //   pass `behavior: 'smooth'`, or name the reduced-motion media query.
-//   The last section below runs ESLint over small fixtures to prove the
-//   rules are configured and fire.
+//   The script section below runs ESLint over small fixtures to prove
+//   the rules are configured and fire.
 //
 // A last section holds the indeterminate progress bars, a fixed list,
 // to a still full-width bar under reduced motion; see its own comment.
