@@ -31,8 +31,10 @@ import { settledRow } from './settled-row';
 import { guessBinds, guessRow } from '$lib/play/play-origin';
 
 export interface ResumePlayArgs {
-	/** Whether the card's match is only a guess (row-trust.ts): its id
-	 *  is then not recorded, and the session is opened as a guess. */
+	/** Whether the card's match is only a guess (row-trust.ts): the
+	 *  session is opened as a guess, and its id is recorded only where
+	 *  the play landed on the card's own listing. On the watch's stamp,
+	 *  whether that stamp may record the id. */
 	guess?: boolean;
 	/** The clicked card's history row, named only on a guess's play. */
 	row?: string;

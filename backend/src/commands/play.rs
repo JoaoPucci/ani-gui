@@ -134,6 +134,17 @@ impl PlayArgs {
             .is_some_and(|row| crate::scraper::provider::same_listing(row, played))
     }
 
+    /// The Kitsu id a watch of `played` may record: the request's, unless
+    /// a guessed Continue card asked for it and `played` is not that
+    /// card's own listing ([`Self::lands_on_guess_row`]).
+    #[must_use]
+    pub fn recordable_kitsu_id(&self, played: &str) -> Option<&str> {
+        if self.guess_row.is_some() && !self.lands_on_guess_row(played) {
+            return None;
+        }
+        self.kitsu_id.as_deref()
+    }
+
     /// The resolution-cache key this play reads and writes: the
     /// request's own axes, its version among them.
     #[must_use]

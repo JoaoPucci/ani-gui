@@ -725,10 +725,13 @@ async fn post_play_mark_watched(
             // build theirs: the episode the click played, as the app
             // numbers it.
             let watch = crate::commands::play_cache::cached_watch(&cached, &args.episode);
+            // A guessed card's watch carries the guessed id only onto
+            // that card's own listing: a resolve since the session's may
+            // have landed elsewhere.
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
-                args.kitsu_id.as_deref(),
+                args.recordable_kitsu_id(&cached.show_id),
                 begun,
             )
             .await;

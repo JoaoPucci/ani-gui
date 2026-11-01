@@ -144,7 +144,8 @@ export function playQuality(config: { quality: string } | null | undefined): str
 /** Record a played episode for the clicked show: stamp Continue
  *  Watching (the click may have reused a prefetch, which stamps
  *  nothing; the backend op is idempotent), and mirror the progress to
- *  the connected trackers unless the match was a guess (`mirror`) or
+ *  the connected trackers unless the match was a guess whose play did
+ *  not land on the card's own listing (`mirror`, from `playedRecord`) or
  *  the episode is one the session could not verify (`unverified`): a
  *  row past Kitsu's count that may be an extra the provider appended.
  *  Completion is decided against the show's full finite total, and only

@@ -188,10 +188,11 @@
 	} from '$lib/play/play-origin';
 
 	const id = $derived(page.params.id ?? '');
-	// A session opened from a guessed Continue match records the guess
-	// nowhere — not on the history row, not on tracker accounts
-	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
-	// this page builds for itself carries it on.
+	// A session opened from a guessed Continue match records the guess —
+	// on the history row, on tracker accounts — only for a play that
+	// landed on the card's own listing ($lib/play/play-origin.ts). The
+	// flag is in the URL, and every URL this page builds for itself
+	// carries it on.
 	const fromGuess = $derived(openedFromGuess(page.url.searchParams));
 	// A session a Continue card opened writes its positions for the
 	// card's history row, so removing the card forgets them whatever
@@ -2086,8 +2087,9 @@
 				// guessed card's row as the click would.
 				guessRow: guessRow(fromGuess, fromRow)
 			});
-			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
-				playStream(args, emit, signal)
+			void getOrFire(
+				makeKey(id, targetEp, mode, quality, version, args.guess_row),
+				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
 				 *  rejects with "aborted" which we swallow */
@@ -2166,7 +2168,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality, version),
+						makeKey(owner.showId, targetEp, mode, quality, version, playArgs.guess_row),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);

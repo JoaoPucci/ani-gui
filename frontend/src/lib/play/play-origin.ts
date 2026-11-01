@@ -3,9 +3,10 @@
  *
  * A play started from a Continue card whose Kitsu match was only a
  * guess — a remembered title match, a search pick, a guessed mapping —
- * must not record that guess anywhere: not on the history row, where
- * the row would be matched by it for good, and not on the user's
- * tracker accounts. The flag travels with the session's URL (every
+ * records that guess, on the history row and on the user's tracker
+ * accounts, only when the play landed on the card's own listing
+ * (`guessBinds`); any other play of it would match the row by a guess
+ * for good. The flag and the card's row travel with the session's URL (every
  * URL the play page builds for itself — each episode switch — carries
  * it), so the session keeps its verdict for its whole life whatever
  * the home page does meanwhile. A session opened from the

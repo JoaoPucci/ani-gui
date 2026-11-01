@@ -701,8 +701,8 @@
 	// cap also refreshes the badge's episode metadata (latest-wins
 	// token in row-ready.ts drops the stale fetch).
 	// Per row, whether its Continue match is only a guess: the card
-	// then opens its play as one, which records the guess nowhere
-	// ($lib/play/play-origin.ts).
+	// then opens its play as one, which records the guess only when the
+	// play lands on the card's own listing ($lib/play/play-origin.ts).
 	const rowTrust = createRowTrust((entry) =>
 		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
 	);
@@ -783,7 +783,7 @@
 			})),
 		resolvePlay: (a, onProgress) =>
 			getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id)),
+				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id), a.row),
 				(emit, signal) => playStream(playArgsFor(a), emit, signal),
 				(p) => onProgress(progressLabel(p))
 			),

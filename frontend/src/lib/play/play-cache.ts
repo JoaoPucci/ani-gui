@@ -41,7 +41,13 @@ export function makeKey(
 	version?: VersionKind,
 	guessRow?: string
 ): CacheKey {
-	void guessRow;
+	// A guessed card's plays ask whether they landed on that card's own
+	// listing: a session fired by any other caller never answered that
+	// for this row. The row goes before the version, which stays the
+	// key's last axis (clearBackgroundForOtherVersions).
+	if (guessRow) {
+		return `${showId}|${episode}|${mode}|${quality}|guess=${encodeURIComponent(guessRow)}|${version ?? ''}` as CacheKey;
+	}
 	return `${showId}|${episode}|${mode}|${quality}|${version ?? ''}` as CacheKey;
 }
 
