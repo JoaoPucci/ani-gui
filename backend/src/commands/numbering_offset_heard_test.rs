@@ -88,6 +88,25 @@ fn a_listing_heard_earlier_that_repairs_last_leaves_the_later_one_s_former_tag()
 }
 
 #[test]
+fn a_former_tag_a_listing_at_hand_gives_a_row_is_not_named_whichever_finishes_first() {
+    // The later listing leaves "24.5" free and the earlier one tags a
+    // row "24.5". A former tag any listing at hand carries is dropped,
+    // since a position kept under it may be that row's, so neither order
+    // names it.
+    for earlier_first in [true, false] {
+        let state = state();
+        stamped(&state);
+        let (earlier, later) = one_after_the_other();
+        let repairs = [(listing(true), earlier), (listing(false), later)];
+        let order: [usize; 2] = if earlier_first { [0, 1] } else { [1, 0] };
+        for i in order {
+            repair(&state, &repairs[i].0, repairs[i].1);
+        }
+        assert_eq!(former(&state), None, "earlier first: {earlier_first}");
+    }
+}
+
+#[test]
 fn overlapping_hearings_name_no_former_tag_either_listing_gives_a_row() {
     for carrying_first in [false, true] {
         let state = state();
