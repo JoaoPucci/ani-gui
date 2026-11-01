@@ -13,14 +13,15 @@ use super::{evidence, walks};
 
 /// The rows to remove and the rows to renumber, each with what the
 /// write needs: a removed row's title, a renumbered row's episode as
-/// the read boundary shows it. Read under the history's guard, through
-/// `numbering` and the cache, every read of which that fails is an
-/// error.
+/// the read boundary shows it.
 pub(super) struct HistoryPlan {
     pub superseded: Vec<(String, String)>,
     pub renumber: Vec<(String, String)>,
 }
 
+/// The history's plan, read under the history's guard through
+/// `numbering` and the cache; any of those reads that fails is an
+/// error.
 pub(super) fn plan_history(state: &AppState, numbering: &Numbering) -> Result<HistoryPlan> {
     crate::history::guard::hold(&state.history_path, |held| {
         let rows = held.rows()?;

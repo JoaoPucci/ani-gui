@@ -21,7 +21,10 @@ pub(super) struct Work {
 /// the writes. A store that exists and cannot be read is an error.
 pub(super) fn gather(state: &AppState) -> Result<Work> {
     let mut rows = crate::history::read_all(&state.history_path)?;
-    let store = Numbering::try_read(&state.history_path).map_err(|_| AniError::Io)?;
+    let store = Numbering::try_read(&state.history_path).map_err(|e| {
+        tracing::warn!(error = %e, "retired-provider sweep: the numbering sidecar could not be read");
+        AniError::Io
+    })?;
     let plan = history::plan_history(state, &store)?;
     // The history as it stands once the renumbering is written; a
     // removed row's own stamp, mapping, numbering and title matches go

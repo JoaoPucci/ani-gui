@@ -1,4 +1,4 @@
-//! The history read path with a cache read that fails an error rather
+//! The history read path where a failed cache read is an error rather
 //! than a row read without its extra — split from [`super`] for the
 //! per-file complexity bar.
 
@@ -6,8 +6,8 @@ use crate::commands::numbering_offset::Numbering;
 use crate::error::Result;
 use crate::history::{read_all, HistoryEntry};
 
-/// The rows as [`super::history_list_through`] reads them, with a cache read
-/// that fails an error rather than a row read without its extra — for
+/// The rows as [`super::history_list_through`] reads them, where a failed
+/// cache read is an error rather than a row read without its extra — for
 /// a caller that writes what it reads.
 ///
 /// # Errors
@@ -22,7 +22,7 @@ pub(crate) fn history_list_checked(
         .collect()
 }
 
-/// [`super::to_kitsu_numbering`] with a cache read that fails an error rather
+/// [`super::to_kitsu_numbering`] where a failed cache read is an error rather
 /// than no extra reading, for a caller that writes what it reads.
 pub(super) fn to_kitsu_numbering_checked(
     state: &crate::app::AppState,

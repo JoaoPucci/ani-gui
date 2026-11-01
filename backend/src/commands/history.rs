@@ -201,7 +201,7 @@ pub fn watched_at_all(
     Ok(stamps)
 }
 
-// The read path with a cache read that fails an error, for a caller
+// The read path where a failed cache read is an error, for a caller
 // that writes what it reads; beside this file for the per-file
 // complexity bar.
 #[path = "history_checked.rs"]
