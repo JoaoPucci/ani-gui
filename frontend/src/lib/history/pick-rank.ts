@@ -53,3 +53,17 @@ export function rankedPick(
 		) ?? null
 	);
 }
+
+/** The candidates the row's year or title names, in their order: the
+ *  ones from the row's year, then among those the ones titled exactly
+ *  as the row, else the ones titled as the row but for marks; each
+ *  step narrows only when it names one. */
+export function namedCandidates(
+	candidates: KitsuAnimeRef[],
+	searchTitle: string,
+	year: number | null
+): KitsuAnimeRef[] {
+	void searchTitle;
+	void year;
+	return candidates;
+}

@@ -118,6 +118,32 @@ async fn a_deleted_recorded_entry_gives_way_to_the_title_match_past_a_dead_mappi
 }
 
 #[tokio::test]
+async fn a_title_match_the_version_before_stored_names_no_show() {
+    // Home no longer reads a title match an earlier pick order stored —
+    // Black Clover's special for the TV series — so neither does the
+    // resume lookup: the row is named by the match Home reads now.
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    let before = crate::commands::kitsu::TITLE_MATCH_VERSION - 1;
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!(
+            "{}1",
+            crate::commands::kitsu::title_match_prefix_at(
+                before,
+                ShowKey::parse(SHOW).provider,
+                TITLE
+            )
+        ),
+        "1",
+        86_400,
+    )
+    .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1"), None);
+}
+
+#[tokio::test]
 async fn a_deleted_recorded_entry_with_nothing_else_names_no_show() {
     let (_tmp, _mock, state) = row_recording("999", 404).await;
     assert!(kitsu_anime_detail_fails(&state, "999").await);

@@ -255,6 +255,30 @@ describe('pickKitsuMatch — the hit the row names', () => {
 		expect(pickKitsuMatch([jojoTv, jojo2000], r)?.id).toBe('7730');
 	});
 
+	it('takes the series titled as the row, not a sibling a mark tells apart', () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:gintama-1237', ep_no: '1', title: 'Gintama' },
+			null
+		);
+		const sibling = ref('5971', "Gintama'", 'gintama-2', 'TV', '2011-04-04', 51, {
+			en_jp: "Gintama'",
+			en_us: 'Gintama Season 2'
+		});
+		const series = ref('818', 'Gintama', 'gintama', 'TV', '2006-04-04', 201, { en: 'Gintama' });
+		expect(pickKitsuMatch([sibling, series], r)?.id).toBe('818');
+	});
+
+	it("leaves a season the cour rule names among hits from the row's year", () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-2019-9', ep_no: '1', title: 'Show Season 2', key_year: 2019 },
+			null
+		);
+		expect(r.cour).toBe(2);
+		const first = ref('s1', 'Show', 'show', 'TV', '2019-01-10', 12, {});
+		const second = ref('s2', 'Show Season 2', 'show-season-2', 'TV', '2019-10-02', 12, {});
+		expect(pickKitsuMatch([first, second], r)?.id).toBe('s2');
+	});
+
 	it('leaves the pick as it was when the row names neither', () => {
 		const r = resolveHistoryEntry(
 			{ id: 'hianime:x-1', ep_no: '1', title: 'Black Clover Recap' },
