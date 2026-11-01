@@ -504,6 +504,16 @@
 		ccMenuOpen = !ccMenuOpen;
 	}
 
+	/** The UI locale, which the subtitle track a session starts on
+	 *  follows; empty when Paraglide has none resolved. */
+	function uiLocale(): string {
+		try {
+			return getLocale();
+		} catch {
+			return '';
+		}
+	}
+
 	/** Pick a subtitle track by its index in the TextTrackList, or
 	 *  'off' for none. Only the track shown is loaded; the rule is
 	 *  $lib/play/caption-pick's. */
@@ -1923,7 +1933,7 @@
 		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId));
+			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale()));
 		}
 	});
 

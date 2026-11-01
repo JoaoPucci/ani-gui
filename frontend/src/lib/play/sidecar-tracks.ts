@@ -14,6 +14,8 @@
  * exercised by the acceptance test on the mounted page.
  */
 
+import { startingTrack } from './caption-start';
+
 /** One listed track, as the proxy answers it. */
 export interface SidecarTrack {
 	lang: string;
@@ -70,10 +72,19 @@ export async function fetchSidecarTracks(
 	}
 }
 
-/** Append one `<track>` per listing; the returned function removes them. */
-export function attachSidecarTracks(video: HTMLVideoElement, tracks: SidecarTrack[]): () => void {
-	const elements = tracks.map((track) => {
-		const attrs = trackAttributes(track);
+/**
+ * Append one `<track>` per listing; the returned function removes them.
+ * The track the player starts on ({@link startingTrack}, for the
+ * user's `locale`) alone carries the `default` attribute.
+ */
+export function attachSidecarTracks(
+	video: HTMLVideoElement,
+	tracks: SidecarTrack[],
+	locale = ''
+): () => void {
+	const start = startingTrack(tracks, locale);
+	const elements = tracks.map((track, i) => {
+		const attrs = { ...trackAttributes(track), default: i === start };
 		const el = document.createElement('track');
 		el.setAttribute('kind', attrs.kind);
 		el.setAttribute('srclang', attrs.srclang);
@@ -97,13 +108,14 @@ export function attachSidecarTracks(video: HTMLVideoElement, tracks: SidecarTrac
 export function armSidecarTracks(
 	video: HTMLVideoElement,
 	mediaUrl: string,
-	sessionId: string
+	sessionId: string,
+	locale = ''
 ): () => void {
 	const controller = new AbortController();
 	let detach: (() => void) | null = null;
 	void fetchSidecarTracks(mediaUrl, sessionId, controller.signal).then((tracks) => {
 		if (controller.signal.aborted || tracks.length === 0) return;
-		detach = attachSidecarTracks(video, tracks);
+		detach = attachSidecarTracks(video, tracks, locale);
 	});
 	return () => {
 		controller.abort();
