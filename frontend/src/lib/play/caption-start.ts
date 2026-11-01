@@ -47,12 +47,10 @@ function readTag(tag: string): Tag | null {
  *  `Hant`, `zh-CN` `Hans`). */
 function scriptOf(tag: Tag): string | undefined {
 	if (tag.script) return tag.script;
-	try {
-		const full = tag.region ? `${tag.language}-${tag.region}` : tag.language;
-		return new Intl.Locale(full).maximize().script;
-	} catch {
-		return undefined;
-	}
+	// The language and region came out of a parsed locale, so the
+	// pair parses too.
+	const full = tag.region ? `${tag.language}-${tag.region}` : tag.language;
+	return new Intl.Locale(full).maximize().script;
 }
 
 /** The first track in `want`'s language that `matches`, or -1. */
