@@ -481,6 +481,16 @@
 			inset-inline-start: 100%;
 		}
 	}
+	/* Reduced motion: the sweep comes off (tokens.css), and a chunk left
+	   at the start of the track would read as progress stuck part-way.
+	   The whole track takes the colour at part strength instead. */
+	@media (prefers-reduced-motion: reduce) {
+		.dl-row-bar-indet span {
+			inset-inline-start: 0;
+			inline-size: 100%;
+			opacity: 0.6;
+		}
+	}
 	/* What an ended download still has to say — the already-here
 	   report, the claim refusal with the path to delete — rendered as
 	   the row's second line, visible without hover so touch and

@@ -179,6 +179,16 @@
 			inset-inline-start: 100%;
 		}
 	}
+	/* Reduced motion: the sweep comes off (tokens.css), and a chunk left
+	   at the start of the track would read as progress stuck part-way.
+	   The whole track takes the colour at part strength instead. */
+	@media (prefers-reduced-motion: reduce) {
+		.dl-bar-progress span {
+			inset-inline-start: 0;
+			inline-size: 100%;
+			opacity: 0.6;
+		}
+	}
 	.dl-bar-label {
 		/* The label is composed: title + separator + episode marker.
 		   Only the title truncates — the "Ep N" / "Ep n of M" suffix
