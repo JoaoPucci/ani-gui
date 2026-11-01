@@ -37,10 +37,6 @@ use crate::commands::listing_tags::Hearing;
 
 #[path = "numbering_offset_repair_rule.rs"]
 mod rule;
-#[cfg(test)]
-use crate::commands::listing_tags::Order;
-#[cfg(test)]
-use rule::settle;
 pub(super) use rule::Listing;
 use rule::{outstanding, repaired, standing, Repairs, Stamps};
 

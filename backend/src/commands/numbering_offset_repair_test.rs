@@ -1,8 +1,10 @@
-//! Tests for `crate::commands::numbering_offset::repair`: the order a
-//! repair's write is decided in, as properties of [`settle`], and what a
-//! listing makes of the stamps, as properties of [`repaired`].
+//! Tests for `crate::commands::numbering_offset::repair`: which repairs'
+//! stamps stand, as properties of [`standing`] and of [`decided`] with
+//! its record of repairs taken, and what a listing makes of the stamps,
+//! as properties of [`repaired`].
 
 use super::*;
+use crate::commands::listing_tags::Order;
 use proptest::prelude::*;
 
 fn stamp() -> impl Strategy<Value = Option<(u32, String)>> {
@@ -17,94 +19,61 @@ fn stamps() -> impl Strategy<Value = Stamps> {
     (stamp(), stamp()).prop_map(|(display, former)| Stamps { display, former })
 }
 
-/// The stamps after a repair `settle` decides.
-fn after(order: Order, current: &Stamps, base: &Stamps, ours: &Stamps) -> Stamps {
-    settle(order, current, base, ours.clone()).unwrap_or_else(|| current.clone())
-}
-
-/// Repairs from `base` whose hearings all overlap, written in the order
-/// given. The first that repairs something is ordered against nothing,
-/// and the ones after it overlap it; one that repairs nothing takes no
-/// part in the order.
-fn overlapping_all(base: &Stamps, repairs: &[&Stamps]) -> Stamps {
-    let mut current = base.clone();
-    let mut taken = false;
-    for ours in repairs {
-        if *ours == base {
-            continue;
-        }
-        let order = if taken {
-            Order::Overlapping
-        } else {
-            Order::Later
-        };
-        current = after(order, &current, base, ours);
-        taken = true;
+fn hearing_of(n: u64, len: u64) -> Hearing {
+    Hearing {
+        run: 1,
+        start: n,
+        at: n + len,
     }
-    current
-}
-
-fn overlapping(base: &Stamps, first: &Stamps, second: &Stamps) -> Stamps {
-    overlapping_all(base, &[first, second])
 }
 
 proptest! {
     #[test]
-    fn a_repair_heard_before_the_last_one_writes_nothing(
-        current in stamps(), base in stamps(), ours in stamps(),
+    fn a_repair_heard_wholly_after_the_others_stands(
+        base in stamps(), a in stamps(), b in stamps(), last in stamps(),
     ) {
-        prop_assert_eq!(settle(Order::Earlier, &current, &base, ours), None);
+        let repairs = [(hearing_of(0, 3), a), (hearing_of(1, 3), b), (hearing_of(10, 1), last.clone())];
+        prop_assert_eq!(standing(&base, &repairs), last);
     }
 
     #[test]
-    fn a_repair_heard_after_the_last_one_leaves_its_own_stamps(
-        current in stamps(), base in stamps(), ours in stamps(),
+    fn a_repair_heard_before_another_has_no_say(
+        base in stamps(), early in stamps(), late in stamps(),
     ) {
-        let got = after(Order::Later, &current, &base, &ours);
-        if ours == base {
-            // It repairs nothing: the last repair stands.
-            prop_assert_eq!(got, current);
-        } else {
-            prop_assert_eq!(got, ours);
-        }
+        let with = [(hearing_of(0, 1), early), (hearing_of(5, 1), late.clone())];
+        prop_assert_eq!(standing(&base, &with), standing(&base, &[(hearing_of(5, 1), late)]));
     }
 
     #[test]
-    fn two_overlapping_repairs_end_the_same_in_either_order(
+    fn the_order_repairs_were_taken_in_plays_no_part(
+        base in stamps(),
+        repairs in prop::collection::vec(((0u64..6, 1u64..4), stamps()), 0..4),
+    ) {
+        let repairs: Vec<(Hearing, Stamps)> =
+            repairs.into_iter().map(|((n, len), s)| (hearing_of(n, len), s)).collect();
+        let mut reversed = repairs.clone();
+        reversed.reverse();
+        prop_assert_eq!(standing(&base, &repairs), standing(&base, &reversed));
+    }
+
+    #[test]
+    fn overlapping_repairs_name_no_former_tag_only_some_name(
         base in stamps(), a in stamps(), b in stamps(),
     ) {
-        prop_assert_eq!(overlapping(&base, &a, &b), overlapping(&base, &b, &a));
-    }
-
-    #[test]
-    fn three_overlapping_repairs_end_the_same_in_any_order(
-        base in stamps(), a in stamps(), b in stamps(), c in stamps(),
-    ) {
-        let first = overlapping_all(&base, &[&a, &b, &c]);
-        for order in [[&a, &c, &b], [&b, &a, &c], [&b, &c, &a], [&c, &a, &b], [&c, &b, &a]] {
-            prop_assert_eq!(&overlapping_all(&base, &order), &first);
-        }
-    }
-
-    #[test]
-    fn two_overlapping_repairs_name_no_former_tag_only_one_names(
-        base in stamps(), a in stamps(), b in stamps(),
-    ) {
-        prop_assume!(a != base && b != base);
-        let got = overlapping(&base, &a, &b);
+        let got = standing(&base, &[(hearing_of(0, 5), a.clone()), (hearing_of(1, 5), b.clone())]);
         if got != base {
+            prop_assert_eq!(&got.display, &a.display);
             prop_assert!(got.former.is_none() || (got.former == a.former && got.former == b.former));
         }
     }
 
     #[test]
-    fn a_settled_write_changes_the_stamps(
-        order in prop::sample::select(vec![Order::Later, Order::Earlier, Order::Overlapping]),
-        current in stamps(), base in stamps(), ours in stamps(),
+    fn overlapping_repairs_that_put_the_stamp_apart_leave_it_as_it_was(
+        base in stamps(), a in stamps(), b in stamps(),
     ) {
-        if let Some(next) = settle(order, &current, &base, ours) {
-            prop_assert_ne!(next, current);
-        }
+        prop_assume!(a.display != b.display);
+        let got = standing(&base, &[(hearing_of(0, 5), a), (hearing_of(1, 5), b)]);
+        prop_assert_eq!(got, base);
     }
 
     #[test]

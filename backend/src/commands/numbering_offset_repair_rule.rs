@@ -70,42 +70,6 @@ pub(super) fn repaired(
     stamps
 }
 
-/// The stamps a repair writes, or `None` to write nothing, given how
-/// its hearing stands against the last one this run took (`order`),
-/// the stamps now (`current`), the stamps before this run's first
-/// repair (`base`), and what the repair's listing makes of those
-/// (`ours`, [`repaired`] from `base`). Two repairs at a time; the
-/// repairs decide through [`standing`], which orders them all.
-#[cfg(test)]
-#[must_use]
-pub(super) fn settle(
-    order: Order,
-    current: &Stamps,
-    base: &Stamps,
-    ours: Stamps,
-) -> Option<Stamps> {
-    let next = match order {
-        Order::Earlier => return None,
-        // A listing that repairs nothing leaves the last repair as it is.
-        _ if ours == *base => return None,
-        Order::Later => ours,
-        // Overlapping a repair this run took, yet the stamps are as they
-        // were before it: two overlapping repairs disagreed, and every
-        // other one heard alongside them leaves them so.
-        Order::Overlapping if current == base => return None,
-        // The same display stamp: a former tag only one of the two names
-        // may be a row's of the other's listing, and is not named.
-        Order::Overlapping if ours.display == current.display => Stamps {
-            former: ours.former.filter(|f| current.former.as_ref() == Some(f)),
-            display: ours.display,
-        },
-        // Two listings that put the stamp in different places, neither
-        // heard after the other: the stamp stays as it was before.
-        Order::Overlapping => base.clone(),
-    };
-    (next != *current).then_some(next)
-}
-
 /// The repairs this run took of one show, each its listing's hearing
 /// and what the listing made of the stamps from before them.
 pub(super) type Repairs = Vec<(Hearing, Stamps)>;
