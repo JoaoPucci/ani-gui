@@ -88,8 +88,9 @@ ani-gui keeps the following on your computer only:
   write the file that holds the numbering, the numbering is missed:
   the show's own stays, and so does the other catalogue's, whose
   stream addresses are removed all the same, so trying again no longer
-  finds it. A stream address that is missed stays until you clear your
-  history; numbering that is missed stays as that of any show a page
+  finds it. A stream address that is missed stays until it expires —
+  the app deletes expired stream addresses when it starts — or you
+  clear your history; numbering that is missed stays as that of any show a page
   resolved and you never played does. Catalogue data shared with
   browsing — anime details, artwork, episode lists and which catalogue
   carries a show — is not part of your history and stays in the cache,
