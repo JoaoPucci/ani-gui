@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
+use proptest::prelude::*;
 
 fn state(td: &tempfile::TempDir) -> AppState {
     let mut state = super::tests::state_with_proxy_origin();
@@ -128,4 +129,58 @@ async fn a_replayed_resolution_says_whether_it_lands_on_the_cards_listing() {
         .expect("replays");
     assert!(resp.cache_hit);
     assert!(!resp.own_listing);
+}
+
+fn asked(kitsu_id: Option<&str>, guess_row: Option<&str>) -> PlayArgs {
+    let mut v = serde_json::json!({ "title": "t", "episode": "1", "mode": "sub" });
+    if let Some(id) = kitsu_id {
+        v["kitsu_id"] = serde_json::json!(id);
+    }
+    if let Some(row) = guess_row {
+        v["guess_row"] = serde_json::json!(row);
+    }
+    serde_json::from_value(v).expect("args")
+}
+
+fn key() -> impl Strategy<Value = String> {
+    (
+        prop::option::of(prop::sample::select(vec!["hianime", "test-a"])),
+        prop::collection::vec("[a-z][a-z0-9]{0,5}", 1..4),
+        1u32..50,
+    )
+        .prop_map(|(label, words, id)| {
+            let slug = format!("{}-{id}", words.join("-"));
+            label.map_or(slug.clone(), |l| format!("{l}:{slug}"))
+        })
+}
+
+proptest! {
+    /// The id a watch may record: the request's when no guessed card
+    /// asked; when one did, the request's exactly when the played key
+    /// is the card's own listing, else none — and never an id the
+    /// request lacks.
+    #[test]
+    fn a_watch_records_the_requests_id_only_where_its_guess_lands(
+        kitsu_id in prop::option::of("[1-9][0-9]{0,5}"),
+        guess_row in prop::option::of(key()),
+        played in key(),
+        own in any::<bool>(),
+    ) {
+        // Half the time the card's own key is the one played.
+        let played = match (&guess_row, own) {
+            (Some(row), true) => row.clone(),
+            _ => played,
+        };
+        let args = asked(kitsu_id.as_deref(), guess_row.as_deref());
+        let lands = guess_row
+            .as_deref()
+            .is_some_and(|row| crate::scraper::provider::same_listing(row, &played));
+        prop_assert_eq!(args.lands_on_guess_row(&played), lands);
+        let want = match &guess_row {
+            None => kitsu_id.as_deref(),
+            Some(_) if lands => kitsu_id.as_deref(),
+            Some(_) => None,
+        };
+        prop_assert_eq!(args.recordable_kitsu_id(&played), want);
+    }
 }
