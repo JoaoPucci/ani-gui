@@ -333,8 +333,8 @@ assisted installer"] So both kinds of install exist in the wild.
 
 The app has to know which kind it is before it offers anything. The
 installer records the install under the current user's registry hive
-or the machine's, depending on the mode (`InstallLocation` under its
-uninstall key) [source: electron-builder 25.1.8,
+or the machine's, depending on the mode (`InstallLocation` under the
+app's own key) [source: electron-builder 25.1.8,
 `templates/nsis/include/installer.nsh`, `registryAddInstallInfo`
 writes to `SHELL_CONTEXT`], so: a machine-wide entry means a
 per-machine install, which updates with a UAC prompt; a per-user entry
@@ -380,9 +380,11 @@ update from a fresh install [source:
 installer runs with `--updated` [source: electron-builder 25.1.8,
 `src/targets/nsis/nsisScriptGenerator.ts`], but the old copy is gone
 by the time `customInstall` runs. The fix has to keep the old copy
-through the update: set it aside before the old directory is removed
-and put it back under `${isUpdated}`, or keep it outside the install
-directory. The app's per-user data folder does not fit the second: a
+through the update: have the *new* installer set it aside before it
+runs the old version's uninstaller (whose `customUnInstall`, already
+shipped, deletes it) and put it back under `${isUpdated}`, or keep it
+outside the install directory. The first update after the fix still
+meets the shipped uninstaller. The app's per-user data folder does not fit the second: a
 per-machine install serves several users, and an installer elevated
 with another account resolves that folder to the administrator's
 profile. Either way the uninstall step's cleanup of ffmpeg moves with
@@ -595,14 +597,17 @@ reports `immutable: false`. [release] It stops a published release
 being *changed*; it does not stop someone with the same access from
 publishing a *new* one.
 
-It is not free. Every asset has to be attached while the release is
-still a draft, and nothing can be added or replaced after publishing:
-a forgotten package or signature means a new release. [source: the
-"preventing changes" page above] Releases since 0.14.0 have had every
-asset in place before publishing; earlier ones did not — 0.13.0's
-installer arrived nine hours after it was published, and the Windows
-installers of 0.9.1 to 0.12.0 were added on 2026-09-01, weeks later.
-[release: asset `created_at` against `published_at`]
+It is not free. Published assets "cannot be modified or deleted", and
+the docs recommend attaching every asset to a draft so that "all
+assets are in place before the release becomes immutable" [source:
+the immutable-releases page above]; that adding an asset after
+publishing is refused too is [unverified], but a replaced or missing
+file would at least need a new release. Releases since 0.14.0 have had
+every asset in place before publishing; earlier ones did not — 0.9.0's
+Linux packages arrived about five hours after it was published,
+0.13.0's installer nine hours after, and the Windows installers of
+0.9.0 to 0.12.0 were added on 2026-09-01, weeks later. [release: asset
+`created_at` against `published_at`]
 
 GitHub's **artifact attestations** prove which workflow built a file;
 they are made by GitHub Actions, and nothing here builds in Actions.
@@ -712,7 +717,8 @@ The rules, then the screens. All of them are [proposal].
   update download still running at quit is simply resumed next time.
 - **No automatic download unless asked.** A setting "Download updates
   automatically", off by default, lets a user who wants it skip the
-  first click. The check itself stays as it is today.
+  first click. The check itself is unchanged apart from its new
+  switch (below).
 - **Failure leaves the old version untouched.** Download failures keep
   the partial file for a range-resume on the next try; a file that
   fails verification is deleted and never offered again in that
@@ -1048,9 +1054,9 @@ proposal's findings, and "What the in-app updater leaves out").
 3. **Turn on immutable releases now?** Recommended: yes. It applies
    only to releases published after it is on, and it fits how releases
    have been made since 0.14.0 (every asset on the draft before
-   publishing); the cost is that a forgotten file then needs a new
-   release, and that installers can no longer be added to old
-   releases, as happened for 0.9.1 to 0.12.0.
+   publishing); the cost is that a wrong file then needs a new
+   release, and adding files to an old release, as happened for 0.9.0
+   to 0.12.0, may no longer be possible [unverified].
 4. **When an AppImage is replaced, keep its path or rename it to the
    new version's file name?** Recommended: keep the path, so launcher
    entries and integrations keep working; the old version number in

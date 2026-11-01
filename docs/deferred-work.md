@@ -1123,9 +1123,10 @@ the AppImage and the Windows installer. It leaves out, on purpose:
 - **Authenticode signing of the Windows installer.** The updater's own
   signature check does not need it; browser downloads would benefit.
   The cheap services want either an individual developer in the
-  United States or Canada (Azure Artifact Signing) or a verifiable CI
-  build (SignPath Foundation), so it waits for release CI or a change
-  in those terms.
+  United States or Canada (Azure Artifact Signing) or binaries built
+  "from source code in a verifiable way" (SignPath Foundation), which
+  in practice means CI, so it waits for release CI or a change in
+  those terms.
 
 ## Housekeeping
 
