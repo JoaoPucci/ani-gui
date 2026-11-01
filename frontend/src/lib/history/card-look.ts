@@ -65,7 +65,7 @@ export interface LookInputs {
 	episode: KitsuEpisode | null | undefined;
 	/** The episode the card offers (what its click plays); null unmatched. */
 	offered: number | null;
-	/** The episode the details were fetched for. Stub: not read yet. */
+	/** The episode `episode` was fetched for; absent when unknown. */
 	episodeFor?: number;
 	/** Whether the episode wait has run out for this card. */
 	capReached: boolean;
@@ -87,16 +87,18 @@ export function posterSource(match: KitsuAnimeRef | null | undefined): string | 
  * offers. The row's details are fetched for one episode at a time and
  * re-fetched when the offered episode moves (a refined cap, a row read
  * again), so the page can briefly hold the previous episode's: those
- * are not this card's, and count as not arrived. A null answer (no
- * details found) stands, as does anything when no episode is offered.
+ * are not this card's, and count as not arrived. An answer fetched for
+ * another episode is not this card's either, "nothing found" included.
+ * Anything stands when no episode is offered.
  */
 export function offeredEpisode(
 	episode: KitsuEpisode | null | undefined,
 	offered: number | null,
 	episodeFor?: number
 ): KitsuEpisode | null | undefined {
-	void episodeFor;
-	if (!episode || offered === null) return episode;
+	if (episode === undefined || offered === null) return episode;
+	if (episodeFor !== undefined && episodeFor !== offered) return undefined;
+	if (episode === null) return null;
 	return episode.number === offered || episode.relative_number === offered ? episode : undefined;
 }
 
@@ -133,7 +135,7 @@ export function decideLook(inputs: LookInputs, proxy: ProxyUrl): SettledLook | n
 	const { match, offered } = inputs;
 	if (match === undefined) return null;
 	if (match === null) return { image: null, matchId: null, episode: null };
-	const episode = offeredEpisode(inputs.episode, offered);
+	const episode = offeredEpisode(inputs.episode, offered, inputs.episodeFor);
 	if (episode !== undefined) {
 		const thumb = proxy(episode?.thumbnail?.original ?? null);
 		const poster = posterLook(match, offered, proxy);

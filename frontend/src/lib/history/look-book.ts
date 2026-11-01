@@ -47,7 +47,10 @@ function contradicted(pin: { look: SettledLook }, inputs: LookInputs): boolean {
 
 /** Whether the live details for the offered episode are in. */
 function detailsIn(inputs: LookInputs): boolean {
-	return inputs.match === null || offeredEpisode(inputs.episode, inputs.offered) !== undefined;
+	return (
+		inputs.match === null ||
+		offeredEpisode(inputs.episode, inputs.offered, inputs.episodeFor) !== undefined
+	);
 }
 
 /**

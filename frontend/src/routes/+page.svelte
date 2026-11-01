@@ -194,6 +194,9 @@
 	// can show the actual episode thumbnail + canonical title rather than
 	// generic anime-poster + anime-title.
 	let historyEpisodes = $state<Record<string, KitsuEpisode | null>>({});
+	// The episode each entry's details above were fetched for, so a card
+	// whose offered episode has moved on does not read the last one's.
+	let historyEpisodeFor = $state<Record<string, number>>({});
 	// Per-history-entry the provider playable episode count, keyed by entry.id.
 	// Read from the shared availability cache via a single batch lookup
 	// after all matches resolve. Lets the Continue card derive the same
@@ -220,8 +223,8 @@
 		capMs: EPISODE_WAIT_CAP_MS,
 		schedule: (fn, ms) => setTimeout(fn, ms),
 		cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
-		onElapsed: (id) => {
-			capReached = { ...capReached, [id]: true };
+		onElapsed: (key) => {
+			capReached = { ...capReached, [key]: true };
 		}
 	});
 	onDestroy(() => capTimers.dispose());
@@ -248,14 +251,13 @@
 		fetchKitsuEpisodes: kitsuEpisodes,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
-			// The episode wait counts from the match.
-			if (m) capTimers.arm(id);
 		},
 		setPlayableCount: (id, c) => {
 			historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
 		},
-		setEpisode: (id, ep) => {
+		setEpisode: (id, ep, forEpisode) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
+			historyEpisodeFor = { ...historyEpisodeFor, [id]: forEpisode };
 		},
 		leftPartWay
 	});
@@ -1159,16 +1161,21 @@
 				playableCount ?? match?.episode_count ?? null,
 				match ? leftPartWay : undefined
 			)}
+			{@const offered = match ? nextEpisode : null}
+			<!-- The episode wait is per offered episode, armed as the card
+			     first offers it. -->
+			{@const capKey = `${entry.id}|${offered}`}
 			{@const card = lookBook.look(entry.id, lookKey(entry), {
 				match,
 				episode: ep,
-				offered: match ? nextEpisode : null,
-				capReached: capReached[entry.id] === true,
+				episodeFor: historyEpisodeFor[entry.id],
+				offered,
+				capReached: offered !== null && capTimers.arm(capKey) && capReached[capKey] === true,
 				text:
 					match === undefined
 						? null
 						: cardText(
-								offeredEpisode(ep, match ? nextEpisode : null),
+								offeredEpisode(ep, offered, historyEpisodeFor[entry.id]),
 								singleVideo,
 								resumable ? nextEpisode : target.displayEpisode,
 								target.displayTitle
