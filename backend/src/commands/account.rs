@@ -1036,21 +1036,12 @@ pub(crate) async fn write_through(
     if update.is_empty() {
         return Ok(None);
     }
-    let profile = provider.me(tokens).await?;
+    let owner = super::account_owner::before_write(provider, tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
-    {
-        let _ = state
-            .account_write_locks
-            .epochs
-            .write_if_current(kind, began, || {
-                state
-                    .account_write_locks
-                    .cache_revisions
-                    .write_row(kind, native.0, || {
-                        upsert_cached_entry(state, kind, &profile.user_id, &entry)
-                    })
-            });
-    }
+    let owner = super::account_owner::after_write(provider, tokens, owner).await;
+    super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
+        upsert_cached_entry(state, kind, owner, &entry)
+    });
     Ok(Some(entry))
 }
 

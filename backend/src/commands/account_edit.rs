@@ -115,30 +115,16 @@ async fn set_entry_via(
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     // Resolve the cache owner before the mutation: the write may spend
     // the last allowance, so a profile request afterwards can be refused.
-    let profile = provider.me(tokens).await?;
+    let owner = super::account_owner::before_write(provider, tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
+    let owner = super::account_owner::after_write(provider, tokens, owner).await;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
     // rail/editor reflect a downward correction immediately. Best-effort
     // — the authoritative tracker write already succeeded.
-    {
-        let _ = state
-            .account_write_locks
-            .epochs
-            .write_if_current(kind, began, || {
-                state
-                    .account_write_locks
-                    .cache_revisions
-                    .write_row(kind, native.0, || {
-                        cache_upsert::upsert_entry_force(
-                            &state.cache_pool,
-                            kind,
-                            &profile.user_id,
-                            &entry,
-                        )
-                    })
-            });
-    }
+    super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
+        cache_upsert::upsert_entry_force(&state.cache_pool, kind, owner, &entry)
+    });
     Ok(Some(entry))
 }
 
@@ -182,30 +168,18 @@ async fn remove_entry_via(
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates.
-    let profile = provider.me(tokens).await?;
+    let owner = super::account_owner::before_write(provider, tokens).await?;
     if let Err(e) = provider.delete_entry(tokens, native).await {
         match provider.current_entry(tokens, native).await {
             Ok(None) => {}
             _ => return Err(e),
         }
     }
+    let owner = super::account_owner::after_write(provider, tokens, owner).await;
     // Drop the cache row (best-effort) so the rail stops showing it.
-    let _ = state
-        .account_write_locks
-        .epochs
-        .write_if_current(kind, began, || {
-            state
-                .account_write_locks
-                .cache_revisions
-                .write_row(kind, native.0, || {
-                    cache_upsert::delete_entry_row(
-                        &state.cache_pool,
-                        kind,
-                        &profile.user_id,
-                        native.0,
-                    )
-                })
-        });
+    super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
+        cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, native.0)
+    });
     Ok(true)
 }
 
