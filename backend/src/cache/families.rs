@@ -212,7 +212,13 @@ pub enum Fate {
 /// The fate of the row under `key`, `expired` or not, among `families`.
 #[must_use]
 pub fn fate(key: &str, expired: bool, families: &[Family]) -> Fate {
-    let _ = (key, expired, families);
+    let mut holding = families.iter().filter(|f| f.holds(key)).peekable();
+    if holding.peek().is_none() {
+        return Fate::Undeclared;
+    }
+    if expired && !holding.any(|f| f.read_after_expiry) {
+        return Fate::Expired;
+    }
     Fate::Keep
 }
 
