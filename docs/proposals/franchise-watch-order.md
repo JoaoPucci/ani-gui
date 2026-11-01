@@ -283,7 +283,7 @@ these works, not something the data says):
 | *JoJo* (TV, 2012) → *JoJo* 2000 OVA | 2012 → 2000 | Story: Parts 1–2 come before Part 3 (listed only on the OVA's side) |
 | *Fate/Zero 2nd Season* → *Fate/stay night* | 2012 → 2006 | Story: *Fate/Zero* is the earlier war |
 | *Fate/Zero 2nd Season* → *Unlimited Blade Works* (film) | 2012 → 2010 | Story, as above |
-| *Gintama: The Semi-Final* → *Gintama: The Final* | 2021-01-15 → 2021-01-08 | Story: a lead-in released a week after the film |
+| *Gintama: The Semi-Final* → *Gintama: The Final* | 2021-01-15 → 2021-01-08 | Story: a lead-in streamed a week after the film opened ([Anime News Network](https://www.animenewsnetwork.com/news/2021-01-07/gintama-the-semi-final-net-anime-special-posts-new-trailer/.168186): the film opened in Japan on 8 January 2021, the special's first episode on 15 January) |
 | *Kizumonogatari III* → *Nisemonogatari* | 2017 → 2012 | Story, skipping the entries set in between |
 | *Koyomimonogatari* → *Kizumonogatari I* | 2016-01-10 → 2016-01-08 | Neither: *Kizumonogatari* is the earliest story, and the gap is two days of release |
 | *Kamitsubaki* (TV) → *Witchling – Zenpen* (special) | 2025-07-09 → 2025-07-03 | Not established: the special aired six days before the series it is listed after |
@@ -549,21 +549,34 @@ read for each entry it considers, added or not.
 single app-wide setting (section 5) decides the order they are shown
 in:
 
-- **Link order** (the default): the order the links give. An entry
-  that lists two next entries in the run is a fork; both are shown as
-  the ways to continue.
+- **Link order** (the default): the order the links give, using every
+  prequel/sequel link between two run members, whichever of the two
+  lists it. A link that a longer path through the run already covers
+  is a shortcut and is ignored. Cycles are taken as a block: entries
+  that lead round to one another (as ten *Monogatari* entries do)
+  count as a single step, links inside a cycle are never shortcuts,
+  and a link counts as covered only by a path that does not pass back
+  through the entry it starts from. [data] Digimon's *Last Evolution
+  Kizuna* lists *tri. 6* as its prequel, while *tri. 6* lists the 20th
+  anniversary story as its sequel and that story lists *Kizuna* as its
+  sequel, so the direct *tri. 6* → *Kizuna* link adds nothing and
+  would otherwise show a fork that is not one. An entry with two
+  remaining next entries is a fork; both are shown as the ways to
+  continue. An entry with two remaining previous entries is a join.
 - **Release order**: every run member in order of start date (an
   unknown date last), as one line with no forks.
 
 **Position numbers.** In link order, positions count along the
 anchor's own path from the run's first entry: the entry reached by
-following prequels from the anchor, taking the earliest-starting one
-where two prequels are listed. Entries after a forward fork are not
-numbered. In release order, the position is the entry's place in the
-date-ordered line. A position is shown as a plain number ("05"), not
-as a "part": franchises use "part" for their own divisions (JoJo's
-Parts 1–9, *Thousand-Year Blood War*'s cours), and the run's count
-does not match them.
+following prequels from the anchor (shortcuts ignored), taking the
+earliest-starting one at a join and stopping at a cycle. Entries after
+a forward fork, and entries in a cycle, are not numbered, and a total
+("of 05") is shown only for a run with no fork, join or cycle. In
+release order, the position is the entry's place in the date-ordered
+line. A position is shown as a plain number ("05"), not as a "part":
+franchises use "part" for their own divisions (JoJo's Parts 1–9,
+*Thousand-Year Blood War*'s cours), and the run's count does not match
+them.
 
 ### What the order setting changes
 
@@ -574,7 +587,7 @@ each entry's own listing, as rule 1 says, gives the same members and
 other versions for every anchor below. "Differ" counts the run members
 whose previous or next entry is not the same in the two orders.
 
-| Franchise (anchor) | Run members | Differ | Forks in link order |
+| Franchise (anchor) | Run members | Differ | Forks and joins in link order |
 |---|---|---|---|
 | Attack on Titan (season 1) | 8 | 0 | none |
 | Bleach (2004 series) | 5 | 0 | none |
@@ -582,12 +595,12 @@ whose previous or next entry is not the same in the two orders.
 | JoJo (2012 series) | 9 | 0 | none |
 | JoJo (the 2000 OVA) | 3 | 3 | none |
 | Fate (*Unlimited Blade Works*) | 5 | 0 | none |
-| Fate (*Fate/Zero*) | 6 | 3 | after *Fate/Zero 2nd Season* |
-| Digimon (*Adventure*) | 14 | 2 | after *tri. 6* |
-| Dragon Ball (1986 series) | 8 | 3 | after *Z* |
-| Gintama (2006 series) | 11 | 4 | after *Enchousen* |
-| Saint Seiya (1986 series) | 8 | 8 | after *The Lost Canvas* |
-| Monogatari (*Bakemonogatari*) | 16 | 13 | at seven entries |
+| Digimon (*Adventure*) | 14 | 0 | none (one shortcut ignored) |
+| Fate (*Fate/Zero*) | 6 | 3 | fork after *Fate/Zero 2nd Season* |
+| Dragon Ball (1986 series) | 8 | 3 | fork after *Z* |
+| Gintama (2006 series) | 11 | 2 | join at *The Final* (one shortcut ignored) |
+| Saint Seiya (1986 series) | 8 | 8 | none (one shortcut ignored) |
+| Monogatari (*Bakemonogatari*) | 16 | 13 | seven forks, five joins, ten entries in a cycle |
 
 Where they differ, entry by entry:
 
@@ -620,25 +633,38 @@ Where they differ, entry by entry:
   *Daima*: Kitsu lists *Daima* as a version of *GT*, and rule 2 keeps
   the earlier one. [inference] Viewers may not expect *Daima* there;
   it is what the data says.
-- **Gintama.** Link order: *Enchousen* forks to the second film and to
-  *Gintama°*, and *The Semi-Final* comes before *The Final*. Release
-  order puts the film between *Enchousen* and *Gintama°*, and *The
-  Final* before *The Semi-Final*. Four entries differ.
-- **Digimon.** Link order: after *tri. 6* the run forks to the 20th
-  anniversary story and *Last Evolution Kizuna*; release order puts the
-  anniversary story first. Two entries differ.
-- **Saint Seiya.** Link order: *The Lost Canvas* leads both to *Lost
-  Canvas 2* and straight to *Saint Seiya* (1986), which *Lost Canvas 2*
-  also leads to; then the Hades OVAs → *Elysion* → *Overture* →
-  *Omega*. Release order: *Saint Seiya* (1986) → Hades *Sanctuary*
-  (2002) → *Overture* (2004) → Hades *Inferno* (2005) → *Elysion*
-  (2008) → *The Lost Canvas* (2009, 2011) → *Omega* (2012). Every entry
-  differs.
-- **Monogatari.** Link order is a web: seven of sixteen entries list
-  two next entries in the run, and five list two or more previous
-  ones (*Owarimonogatari 2nd Season* lists three).
-  Release order is a single line from *Bakemonogatari* (2009) to *Off
-  & Monster Season* (2024), then its undated special. Thirteen entries
+- **Gintama.** Both orders run *Enchousen* → the second film →
+  *Gintama°* (the direct *Enchousen* → *Gintama°* link is a shortcut).
+  They differ only at the end. [data] Kitsu stores *The Semi-Final*
+  (special, start 2021-01-15) with *The Final* (film, start
+  2021-01-08) as its sequel, and *The Final* names both *The
+  Semi-Final* and the second *Silver Soul* part as its prequels. In
+  link order, *The Final* is a join: the *Silver Soul* finale and *The
+  Semi-Final* both lead to it. In release order, *The Final* comes
+  first and *The Semi-Final* follows it. Two entries differ.
+- **Digimon.** No difference once the shortcut is ignored. [data]
+  *tri. 6* (film, 2018-05-05) lists the *20th Anniversary Memorial
+  Story* (ONA, 2019-11-22) as its sequel; that story lists *Last
+  Evolution Kizuna* (film, 2020-02-21) as its sequel; and *Kizuna*
+  lists both the story and *tri. 6* as prequels. Taken literally, the
+  last link would make *tri. 6*'s strip offer "2 ways to continue"
+  (the story or *Kizuna*) and *Kizuna*'s strip show two entries before
+  it, where release order shows a single line, *tri. 6* → story →
+  *Kizuna*. With the shortcut ignored, link order is that same line.
+- **Saint Seiya.** Link order: *The Lost Canvas* → *Lost Canvas 2* →
+  *Saint Seiya* (1986) (the direct *Lost Canvas* → 1986 link is a
+  shortcut) → the Hades OVAs → *Elysion* → *Overture* → *Omega*.
+  Release order: *Saint Seiya* (1986) → Hades *Sanctuary* (2002) →
+  *Overture* (2004) → Hades *Inferno* (2005) → *Elysion* (2008) → *The
+  Lost Canvas* (2009, 2011) → *Omega* (2012). Every entry differs.
+- **Monogatari.** Link order is a web, and a circular one. [data]
+  *Kizumonogatari I* → *II* → *III* → *Nisemonogatari* → *Nekomonogatari
+  (Kuro)* → *Second Season* → … → *Koyomimonogatari* → *Kizumonogatari
+  I* closes a loop through ten entries. No link is a shortcut once the
+  loop is taken as a block; seven entries fork and five are joins
+  (*Owarimonogatari 2nd Season* has three entries before it). Release
+  order is a single line from *Bakemonogatari* (2009) to *Off &
+  Monster Season* (2024), then its undated special. Thirteen entries
   differ.
 
 [inference] For most of the library the setting changes nothing. It
@@ -679,11 +705,10 @@ year.
   sequel links, the 2010 film and the first *Heaven's Feel* film, are
   other versions (rule 2): not offered as next, and listed on the
   franchise page. In release order there are no forks.
-- A join, in link order (*Gintama°* follows both *Enchousen* and the
-  second film; *The Final* follows both the *Silver Soul* finale and
-  *The Semi-Final*): the "before" slot holds both, side by side, the
-  way a fork fills the "next" slot. The position number follows the
-  earliest-starting one (section 4).
+- A join, in link order (*The Final* follows both the *Silver Soul*
+  finale and *The Semi-Final*): the "before" slot holds both, side by
+  side, the way a fork fills the "next" slot. The position number
+  follows the earliest-starting one (section 4).
 - Recaps (`summary`) never take a slot; the role filter leaves them
   out.
 - An unaired sequel (a start date in the future — the repository's
@@ -730,12 +755,13 @@ first.**
   it), the finished entry's card gives way to the sequel's ordinary
   Continue card, so the Continue Watching rail does not show both.
 
-**Rules** [proposal]. The end card appears only on the last episode
-of an entry that has finished airing. Its candidates are the entry's
-next entries in the run, in the order the setting chooses (section
-4): every run member it links to as a sequel in link order, or the
-one that started next in release order. Recaps and other versions are
-never candidates; no other filter applies. What the card shows:
+**Rules** [proposal]. The end card appears only on the last episode of
+an entry that has finished airing. Its candidates are the entry's next
+entries in the run, in the order the setting chooses (section 4):
+every run member it links to as a sequel in link order, shortcuts
+ignored, or the one that started next in release order. Recaps and
+other versions are never candidates; no other filter applies. What the
+card shows:
 
 - exactly one that has aired: that entry, as "Up next";
 - exactly one that has not aired: that entry with its date
@@ -743,8 +769,12 @@ never candidates; no other filter applies. What the card shows:
 - several: all of them, as the choices;
 - none: no card.
 
-Continue moves to the next entry in the first case only; in every
-other case it keeps today's behaviour.
+Continue moves to the next entry in the first case only, and only to
+an entry the viewer has not played yet; in every other case it keeps
+today's behaviour. The second condition matters in a cycle: in link
+order *Kizumonogatari III*'s finale names *Nisemonogatari*, and
+without it Continue could lead round the ten-entry *Monogatari* loop
+to entries already watched. The card still names the entry.
 
 **Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
 link order and the 2012 TV series in release order — whichever the
@@ -786,9 +816,9 @@ smaller.
 **How it looks.** `/anime/<id>/franchise`, reached from the strip's
 trailing link and from search results that belong to a franchise. A
 header named after the run's first entry, with your position: "05 ·
-*Golden Wind* · EP 12" (with a total only for a run that does not
-fork) and a Resume button; its hero and accent are set in the design
-section. Below it, sections:
+*Golden Wind* · EP 12" (with a total only for a run with no fork, join
+or cycle) and a Resume button; its hero and accent are set in the
+design section. Below it, sections:
 
 1. **Main story** — the run (section 4's rules), in the order the
    setting chooses, numbered as section 4 describes, with branches
@@ -816,11 +846,13 @@ already caches for 30 days).
 
 **Edge cases.** A run longer than the walk's bound (about 40 entries;
 the largest run sampled, *Monogatari*, has 16) ends with "showing 40
-of more"; Kitsu pages are
-cached for a week, so a second visit costs nothing. Forked runs
-(Fate seen from *Fate/Zero*) render as the numbered path and the
-branches side by side. Entries without a Kitsu id in the history (the
-hianime "Gintama Season N" rows) contribute no progress.
+of more"; Kitsu pages are cached for a week, so a second visit costs
+nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
+numbered path and the branches side by side; a join shows its earlier
+entries side by side above it; the entries of a cycle are listed as
+one unnumbered group, in air-date order, where the cycle sits in the
+run. Entries without a Kitsu id in the history (the hianime "Gintama
+Season N" rows) contribute no progress.
 
 **Trackers.** Read-only.
 
@@ -952,7 +984,8 @@ them introduces a new widget style.
 
 - **Placement.** The strip comes right after the masthead, above the
   synopsis, as a full-width rail with its own eyebrow ("Watch order —
-  05"; a total, "of 05", only for a run that does not fork). The
+  05"; a total, "of 05", only for a run with no fork, join or
+  cycle). The
   masthead's eyebrow gains the position in its value
   slot ("TV · Finished · 05"). The reason
   for this spot: "where am I, and did I miss something" is answered
@@ -1003,6 +1036,9 @@ them introduces a new widget style.
   - A forked run (link order only): the "next" position holds the
     branches side by side, each with its year and format, under a "2
     ways to continue" key, and they are unnumbered.
+  - A join or a cycle (link order only): a join fills the "before"
+    position the same way; an entry in a cycle shows its linked
+    neighbours like any other, without a position number.
   - An unaired entry: a card with its date in the meta line ("Coming
     January 2027") and no episode count.
 
@@ -1079,6 +1115,7 @@ them introduces a new widget style.
 
 ### The watch-order setting
 
+[decided: link order is the default; "As released" is the setting]
 One setting decides the order everywhere; no surface has a toggle of
 its own, and nothing is marked as "out of order". A choice made in
 one place and explained once is less to think about than a switch
@@ -1192,6 +1229,12 @@ manual test section, a consistency check) before it merges:
 - **No auto-play across entries.** The finale shows the "Up next"
   card and waits; auto-play stays within one entry.
 - **The franchise page (phase 3) is part of 0.19.0.**
+- **Link order is the default**, with "As released" as an app-wide
+  preference in Settings (section 5). The maintainer disagrees with
+  some of the links Kitsu's editors chose, but does not want the app
+  to keep its own list of differences from the source for now: the
+  app follows the source, and the one setting is the way out for a
+  viewer who prefers release order.
 
 ## Live requests made for this proposal
 
