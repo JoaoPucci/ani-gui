@@ -197,3 +197,31 @@ pub fn live() -> Vec<Family> {
     ]);
     families
 }
+
+/// What becomes of a row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fate {
+    /// A family reads it.
+    Keep,
+    /// No family declares its key: no reader of this build asks for it.
+    Undeclared,
+    /// Past its lifetime, in a family nothing reads past it.
+    Expired,
+}
+
+/// The fate of the row under `key`, `expired` or not, among `families`.
+#[must_use]
+pub fn fate(key: &str, expired: bool, families: &[Family]) -> Fate {
+    let _ = (key, expired, families);
+    Fate::Keep
+}
+
+/// Whether some family of this build declares `key`.
+#[must_use]
+pub fn declared(key: &str) -> bool {
+    live().iter().any(|f| f.holds(key))
+}
+
+#[cfg(test)]
+#[path = "families_test.rs"]
+mod tests;
