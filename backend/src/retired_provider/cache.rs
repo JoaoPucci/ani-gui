@@ -15,24 +15,29 @@ use crate::history::HistoryEntry;
 
 use super::cache_families as family;
 
-/// Delete the rows only a retired provider's key or verdict could be
-/// read by, and answer how many went. `remaining` is the history: a
-/// retired key a kept row still carries keeps its stamp, mapping and
-/// title matches, which order and resolve that row.
-pub(super) fn sweep(state: &AppState, remaining: &[HistoryEntry]) -> Result<usize> {
+/// The rows only a retired provider's key or verdict could be read by.
+/// `remaining` is the history: a retired key a row still carries keeps
+/// its stamp, mapping and title matches, which order and resolve that
+/// row; a row the sweep removes takes its own with it.
+pub(super) fn doomed(state: &AppState, remaining: &[HistoryEntry]) -> Result<Vec<String>> {
     let ids: HashSet<&str> = remaining.iter().map(|e| e.id.as_str()).collect();
     let mut doomed = family::stamps(state, &ids)?;
     doomed.extend(family::mappings(state, &ids)?);
     doomed.extend(family::resolutions(state)?);
     doomed.extend(family::verdicts(state)?);
     doomed.extend(super::cache_titles::title_matches(state, remaining)?);
+    Ok(doomed)
+}
+
+/// Delete `doomed` in one write, and answer how many rows went.
+pub(super) fn delete(state: &AppState, doomed: &[String]) -> Result<usize> {
     if doomed.is_empty() {
         return Ok(0);
     }
     let mut conn = state.cache_pool.get().map_err(|_| AniError::Cache)?;
     let tx = conn.transaction().map_err(|_| AniError::Cache)?;
     let mut deleted = 0;
-    for key in &doomed {
+    for key in doomed {
         deleted += tx
             .execute("DELETE FROM meta_cache WHERE key = ?1", params![key])
             .map_err(|_| AniError::Cache)?;

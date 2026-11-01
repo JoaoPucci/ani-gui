@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use super::numbering_offset_store::{parse, read_store, Row};
+use super::numbering_offset_store::{parse, read_store, read_store_checked, Row};
 
 /// The numbering store, read once.
 pub struct Numbering(Vec<Row>);
@@ -15,6 +15,16 @@ impl Numbering {
     #[must_use]
     pub fn read(history_path: &Path) -> Self {
         Self(parse(&read_store(history_path)))
+    }
+
+    /// [`Self::read`] for a caller that writes what it derives from
+    /// the store: a store that exists and cannot be read is an error,
+    /// not an empty store.
+    ///
+    /// # Errors
+    /// The read's failure, unless the store does not exist.
+    pub fn try_read(history_path: &Path) -> std::io::Result<Self> {
+        Ok(Self(parse(&read_store_checked(history_path)?)))
     }
 
     /// The store as `body` writes it, for a case that needs no file.

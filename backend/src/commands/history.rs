@@ -33,32 +33,19 @@ pub use super::history_remove::{history_clear, history_delete};
 fn to_kitsu_numbering(
     state: &crate::app::AppState,
     numbering: &Numbering,
-    mut entry: HistoryEntry,
+    entry: HistoryEntry,
     claimed_for: Option<&str>,
 ) -> HistoryEntry {
-    // A row in the app's own numbering is already the episode; only a
-    // provider slot needs the sidecar.
-    if !entry.own_number {
-        entry.ep_no = numbering.read_ep_no(&entry.id, &entry.ep_no);
-    }
-    let mapped = || {
-        crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)
-            .ok()
-            .flatten()
+    // A read the cache cannot serve leaves the row with no extra
+    // reading, as a cache with no reading would.
+    let translated = |mut e: HistoryEntry| {
+        if !e.own_number {
+            e.ep_no = numbering.read_ep_no(&e.id, &e.ep_no);
+        }
+        e
     };
-    let kitsu = entry
-        .kitsu_id
-        .clone()
-        .or_else(|| claimed_for.map(str::to_string))
-        .or_else(mapped);
-    let reading = super::kitsu_tail::KitsuTail::for_entry(state, kitsu.as_deref())
-        .and_then(|t| super::play_native_appended::TailSource::remembered(&t));
-    if let Some(extra) = reading
-        .and_then(|r| super::play_native_appended::extra_for_slot(&r, &entry.id, &entry.ep_no))
-    {
-        entry.ep_no = extra;
-    }
-    entry
+    checked::to_kitsu_numbering_checked(state, numbering, entry.clone(), claimed_for)
+        .unwrap_or_else(|_| translated(entry))
 }
 
 /// Returns every history entry as the frontend would render the
@@ -213,6 +200,13 @@ pub fn watched_at_all(
     }
     Ok(stamps)
 }
+
+// The read path with a cache read that fails an error, for a caller
+// that writes what it reads; beside this file for the per-file
+// complexity bar.
+#[path = "history_checked.rs"]
+mod checked;
+pub(crate) use checked::history_list_checked;
 
 #[cfg(test)]
 #[path = "history_selection_test.rs"]

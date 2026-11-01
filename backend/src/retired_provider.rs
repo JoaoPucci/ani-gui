@@ -46,6 +46,7 @@ mod cache_families;
 mod cache_keys;
 mod cache_titles;
 mod evidence;
+mod gather;
 mod history;
 mod numbering;
 mod renumber;
@@ -89,30 +90,23 @@ pub(crate) fn walks(state: &AppState, id: &str) -> bool {
         .is_some_and(|p| state.providers.order().contains(&p))
 }
 
-/// Run the sweep. Never fails the caller: a store that cannot be read
-/// or written is logged and left for the next launch.
+/// Run the sweep. Never fails the caller. Every store it reads — the
+/// history, the numbering sidecar, the cache — is read in full before
+/// anything is written, and one that exists but cannot be read stops
+/// the sweep with nothing written: read as empty, it would be taken for
+/// a store with nothing in it, and what the sweep wrote from that would
+/// not come back when the store could be read again. A store that
+/// cannot be written is logged and left for the next launch.
 #[must_use]
 pub fn sweep(state: &AppState) -> RetiredSweepReport {
-    let mut report = RetiredSweepReport::default();
-    let numbering_before = numbering::retired(state).len();
-    if let Err(e) = history::sweep(state, &mut report) {
-        tracing::warn!(error = ?e, "retired-provider sweep: history left as it is");
-    }
-    let remaining = match crate::history::read_all(&state.history_path) {
-        Ok(rows) => rows,
+    let work = match gather::gather(state) {
+        Ok(work) => work,
         Err(e) => {
-            tracing::warn!(error = ?e, "retired-provider sweep: history unreadable");
-            return report;
+            tracing::warn!(error = ?e, "retired-provider sweep: an input could not be read; nothing changed");
+            return RetiredSweepReport::default();
         }
     };
-    if let Err(e) = numbering::sweep(state, &remaining) {
-        tracing::warn!(error = ?e, "retired-provider sweep: numbering left as it is");
-    }
-    report.numbering_rows = numbering_before.saturating_sub(numbering::retired(state).len());
-    match cache::sweep(state, &remaining) {
-        Ok(n) => report.cache_rows = n,
-        Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: cache left as it is"),
-    }
+    let report = gather::apply(state, work);
     if !report.is_empty() {
         tracing::info!(
             target: "retired_provider",

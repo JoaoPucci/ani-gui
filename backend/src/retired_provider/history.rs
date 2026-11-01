@@ -1,42 +1,61 @@
-//! The history half of the retired-provider sweep — split from
-//! [`super`] for the per-file complexity bar.
+//! The history half of the retired-provider sweep: what to do with
+//! each retired row — split from [`super`] for the per-file complexity
+//! bar.
 
 use crate::app::AppState;
 use crate::commands::history_resume::latest_of;
+use crate::commands::numbering_offset::Numbering;
 use crate::error::{AniError, Result};
 use crate::history::HistoryEntry;
 use crate::retired_provider_plan::{plan, PlanRow};
 
-use super::renumber::{renumber, shown_rows};
-use super::{evidence, walks, RetiredSweepReport};
+use super::{evidence, walks};
 
-/// Remove the superseded retired rows and renumber the kept ones.
-pub(super) fn sweep(state: &AppState, report: &mut RetiredSweepReport) -> Result<()> {
-    let rows = crate::history::read_all(&state.history_path)?;
-    if rows.iter().all(|r| walks(state, &r.id)) {
-        return Ok(());
-    }
-    let the_plan = crate::history::guard::hold(&state.history_path, |held| {
-        let raw = held.rows()?;
-        let shown = shown_rows(state)?;
-        let rows = raw
-            .iter()
-            .zip(&shown)
-            .map(|(e, s)| plan_row(state, e, &s.ep_no))
-            .collect::<Result<Vec<_>>>()?;
-        Ok::<_, AniError>(plan(&rows))
-    })?;
-    for id in &the_plan.superseded {
-        if crate::commands::history::history_delete(state, id)? {
-            report
-                .superseded
-                .extend(rows.iter().find(|r| &r.id == id).map(|r| r.title.clone()));
+/// The rows to remove and the rows to renumber, each with what the
+/// write needs: a removed row's title, a renumbered row's episode as
+/// the read boundary shows it. Read under the history's guard, through
+/// `numbering` and the cache, every read of which that fails is an
+/// error.
+pub(super) struct HistoryPlan {
+    pub superseded: Vec<(String, String)>,
+    pub renumber: Vec<(String, String)>,
+}
+
+pub(super) fn plan_history(state: &AppState, numbering: &Numbering) -> Result<HistoryPlan> {
+    crate::history::guard::hold(&state.history_path, |held| {
+        let rows = held.rows()?;
+        if rows.iter().all(|r| walks(state, &r.id)) {
+            return Ok(HistoryPlan {
+                superseded: Vec::new(),
+                renumber: Vec::new(),
+            });
         }
-    }
-    if !the_plan.renumber.is_empty() {
-        report.renumbered = renumber(state, &the_plan)?;
-    }
-    Ok(())
+        let shown = crate::commands::history::history_list_checked(state, numbering)?;
+        let planned = plan(
+            &rows
+                .iter()
+                .zip(&shown)
+                .map(|(e, s)| plan_row(state, e, &s.ep_no))
+                .collect::<Result<Vec<_>>>()?,
+        );
+        let titled = |id: &String, of: &[HistoryEntry], pick: fn(&HistoryEntry) -> String| {
+            of.iter()
+                .find(|r| &r.id == id)
+                .map(|r| (id.clone(), pick(r)))
+        };
+        Ok::<_, AniError>(HistoryPlan {
+            superseded: planned
+                .superseded
+                .iter()
+                .filter_map(|id| titled(id, &rows, |r| r.title.clone()))
+                .collect(),
+            renumber: planned
+                .renumber
+                .iter()
+                .filter_map(|id| titled(id, &shown, |r| r.ep_no.clone()))
+                .collect(),
+        })
+    })
 }
 
 /// What the plan needs of `entry`, shown at episode `ep`.
