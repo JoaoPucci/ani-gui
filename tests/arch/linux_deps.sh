@@ -38,6 +38,7 @@
 #   - `build.deb.recommends` must include "ffmpeg", and every
 #     dependency `fetch-linux-deps.mjs` declares in `SYSTEM_DEPS` —
 #     what Linux takes from the distribution rather than staging.
+#   - every staged binary ships its licence text in the package.
 #   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
 #     so any invocation path (package, dist, e2e) gets the bin
 #     dir populated before electron-builder runs.
@@ -175,6 +176,36 @@ const bad = SYSTEM_DEPS.filter((d) => typeof d.dep !== "string" || !recommends.i
 if (bad.length) { console.error(bad.map((d) => String(d.dep)).join(" ")); process.exit(1); }
 ' inventory "$REPO_ROOT/$FETCH" "$REPO_ROOT/$PKG"; then
     printf 'arch/linux_deps FAIL: %s SYSTEM_DEPS could not be read, or names a dependency (above) that build.deb.recommends in %s does not\n' "$FETCH" "$PKG" >&2
+    failed=1
+fi
+
+# 9. Every binary the Linux packages bundle ships with its licence
+#    text: `electron/build-resources/licenses/<dep>.txt`, non-empty,
+#    for every `dep` in the fetcher's DEPS, copied into the package by
+#    a `build.linux.extraResources` entry from `build-resources/licenses`
+#    to `licenses` whose filter, if it has one, names that file. The
+#    licences of what these binaries bundle require their notice to
+#    travel with every copy, and GPL object code needs its licence
+#    beside it. Read with node: DEPS by import, package.json by its
+#    JSON parser. Not checked: that a file's text is the right licence.
+if ! node --input-type=module -e '
+const [fetcher, pkg, root] = process.argv.slice(2);
+const { DEPS } = await import(fetcher);
+const { readFileSync, statSync } = await import("node:fs");
+const extra = ((JSON.parse(readFileSync(pkg, "utf8")).build || {}).linux || {}).extraResources || [];
+const entry = extra.find((e) => typeof e === "object" && e.from === "build-resources/licenses" && e.to === "licenses");
+const bad = [];
+if (!entry) bad.push("no extraResources entry copies build-resources/licenses to licenses");
+for (const dep of new Set(DEPS.map((d) => d.dep))) {
+    const file = dep + ".txt";
+    let size = 0;
+    try { size = statSync(root + "/electron/build-resources/licenses/" + file).size; } catch {}
+    if (size === 0) bad.push(file + " is missing or empty");
+    if (entry && Array.isArray(entry.filter) && !entry.filter.includes(file)) bad.push(file + " is not in the filter");
+}
+if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+' inventory "$REPO_ROOT/electron/scripts/fetch-linux-deps.mjs" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
+    printf 'arch/linux_deps FAIL: a bundled binary does not ship its licence text (above)\n' >&2
     failed=1
 fi
 

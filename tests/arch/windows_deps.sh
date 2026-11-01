@@ -25,6 +25,7 @@
 #   - the impersonating transport must be among the staged binaries.
 #   - ffmpeg must be among them too, and the installer script must
 #     fetch nothing at install time.
+#   - every staged binary ships its licence text in the package.
 #
 # What this check does NOT establish: that the fetch succeeds, that
 # the archive still contains the entry the dep names, or that the
@@ -229,6 +230,36 @@ if [ -f "$NSH" ]; then
         printf 'arch/windows_deps FAIL: %s downloads at install time (lines above) — what it fetches is deleted by the next update; stage the file through fetch-windows-deps.mjs instead\n' "$NSH" >&2
         failed=1
     fi
+fi
+
+# 8. Every binary the Windows packages bundle ships with its licence
+#    text: `electron/build-resources/licenses/<dep>.txt`, non-empty,
+#    for every `dep` in the fetcher's DEPS, copied into the package by
+#    a `build.win.extraResources` entry from `build-resources/licenses`
+#    to `licenses` whose filter, if it has one, names that file. The
+#    licences of what these binaries bundle require their notice to
+#    travel with every copy, and GPL object code needs its licence
+#    beside it. Read with node: DEPS by import, package.json by its
+#    JSON parser. Not checked: that a file's text is the right licence.
+if ! node --input-type=module -e '
+const [fetcher, pkg, root] = process.argv.slice(2);
+const { DEPS } = await import(fetcher);
+const { readFileSync, statSync } = await import("node:fs");
+const extra = ((JSON.parse(readFileSync(pkg, "utf8")).build || {}).win || {}).extraResources || [];
+const entry = extra.find((e) => typeof e === "object" && e.from === "build-resources/licenses" && e.to === "licenses");
+const bad = [];
+if (!entry) bad.push("no extraResources entry copies build-resources/licenses to licenses");
+for (const dep of new Set(DEPS.map((d) => d.dep))) {
+    const file = dep + ".txt";
+    let size = 0;
+    try { size = statSync(root + "/electron/build-resources/licenses/" + file).size; } catch {}
+    if (size === 0) bad.push(file + " is missing or empty");
+    if (entry && Array.isArray(entry.filter) && !entry.filter.includes(file)) bad.push(file + " is not in the filter");
+}
+if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+' inventory "$REPO_ROOT/electron/scripts/fetch-windows-deps.mjs" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
+    printf 'arch/windows_deps FAIL: a bundled binary does not ship its licence text (above)\n' >&2
+    failed=1
 fi
 
 [ "$failed" -eq 0 ] || {

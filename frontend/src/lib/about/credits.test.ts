@@ -22,6 +22,7 @@ import {
 	assetName,
 	BUNDLED_TOOLS,
 	DONATION_ETH_ADDRESS,
+	ffmpegSourceOffer,
 	type AssetCredit,
 	type BundledTool
 } from './credits';
@@ -60,6 +61,25 @@ function stagedDeps(): Set<string> {
 	}
 	return found;
 }
+
+/** A fetcher's `DEPS`, imported: the version and URL of an entry are
+ *  fields of a parsed object, not text to pick out of the script. The
+ *  fetchers guard their entry point, so importing one downloads
+ *  nothing. */
+type FetcherDep = { name: string; dep: string; version: string; url: string };
+const SCRIPTS = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	'../../../../electron/scripts'
+);
+async function fetcherDeps(file: string): Promise<FetcherDep[]> {
+	const mod = await import(/* @vite-ignore */ path.join(SCRIPTS, file));
+	return mod.DEPS as FetcherDep[];
+}
+const FETCHED = {
+	linux: await fetcherDeps('fetch-linux-deps.mjs'),
+	windows: await fetcherDeps('fetch-windows-deps.mjs')
+};
+const README = readFileSync(path.resolve(SCRIPTS, '../../README.md'), 'utf8');
 
 // Read while the file is collected, not inside the test that compares
 // it: a test's 5 s budget is wall time, and a cold read queued behind
@@ -122,6 +142,46 @@ describe('credits — bundled tools', () => {
 		for (const name of credited) {
 			expect(staged.has(name), `${name} is credited but no fetcher stages it`).toBe(true);
 		}
+	});
+
+	it('credits each tool at the version the fetchers pin', () => {
+		// A hand-typed version drifts from the binary the package
+		// carries the first time someone bumps one and not the other.
+		for (const tool of BUNDLED_TOOLS) {
+			if (tool.version === null) continue;
+			const pinned = [...FETCHED.linux, ...FETCHED.windows].filter((d) => d.dep === tool.name);
+			expect(pinned.length, `${tool.name}: no fetcher pins it`).toBeGreaterThan(0);
+			for (const d of pinned) {
+				expect(d.version, `${tool.name}: ${d.name} pins ${d.version}`).toBe(tool.version);
+			}
+		}
+	});
+
+	it("offers ffmpeg's source for the exact build the Windows installer ships", () => {
+		// The installer redistributes a GPL build, which obliges an offer
+		// of its corresponding source. The offer is derived from the
+		// fetcher's pin, so it cannot name a different build than the
+		// one in the package.
+		const win = FETCHED.windows.find((d) => d.dep === 'ffmpeg');
+		expect(win, 'the Windows fetcher stages ffmpeg').toBeTruthy();
+		const v = win!.version;
+		expect(win!.url, 'the staged binary comes from that build page').toBe(
+			`https://github.com/GyanD/codexffmpeg/releases/download/${v}/ffmpeg-${v}-essentials_build.zip`
+		);
+		const ffmpeg = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg');
+		expect(ffmpeg?.sourceOffer).toEqual(ffmpegSourceOffer(v));
+		expect(ffmpegSourceOffer(v)).toEqual({
+			version: v,
+			buildUrl: `https://github.com/GyanD/codexffmpeg/releases/tag/${v}`,
+			sourceUrl: `https://github.com/FFmpeg/FFmpeg/tree/n${v}`
+		});
+	});
+
+	it('repeats the source offer in the README, at the same build', () => {
+		const offer = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg')?.sourceOffer;
+		expect(offer).toBeTruthy();
+		expect(README, 'README links the build page').toContain(offer!.buildUrl);
+		expect(README, 'README links the FFmpeg source tag').toContain(offer!.sourceUrl);
 	});
 
 	it('noteIds are unique (and thus typesafe against the page-side switch)', () => {
