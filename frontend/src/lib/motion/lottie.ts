@@ -62,3 +62,16 @@ export async function playLottie(
 		}
 	};
 }
+
+/** The overlay's animation across showings; placeholder signature. */
+export interface LoaderAnimation {
+	show(container: Element): void;
+	hide(): void;
+}
+
+export function loaderAnimation(
+	load: (container: Element) => Promise<{ destroy(): void }>
+): LoaderAnimation {
+	void load;
+	return { show() {}, hide() {} };
+}
