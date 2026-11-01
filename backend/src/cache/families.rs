@@ -120,6 +120,8 @@ pub(crate) const ANILIST_MEDIA_FOR_MAL: &str = "anilist:media-id-for-mal:v1:";
 pub(crate) const ANILIST_MAL_FOR_MEDIA: &str = "anilist:mal-id-for-media:v1:";
 /// The AniList media recording one MyAnimeList id.
 pub(crate) const ANILIST_MEDIA_RECORDING_MAL: &str = "anilist:media-ids-recording-mal:v1:";
+/// The extra tags a show's listing carried, per show key.
+pub(crate) const LISTING_TAGS: &str = "listing-tags:v3:";
 /// An image the proxy found gone.
 pub(crate) const IMAGE_DEAD: &str = "image:dead:v1:";
 /// A tracker's mapping of a Kitsu entry.
@@ -182,6 +184,7 @@ pub fn live() -> Vec<Family> {
         ANILIST_MEDIA_RECORDING_MAL,
         IMAGE_DEAD,
         TRACKER_MAP,
+        LISTING_TAGS,
     ]
     .into_iter()
     .map(Family::prefix)
