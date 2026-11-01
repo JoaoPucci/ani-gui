@@ -104,31 +104,19 @@ export async function setReducedMotion(reduced: boolean): Promise<void> {
 	await new Promise((r) => setTimeout(r, 0));
 }
 
-let ownScrollY: PropertyDescriptor | undefined;
-let scrollOverridden = false;
-
 /**
- * Scrolls the window to `y` as far as the page can tell: happy-dom
- * lays nothing out and keeps `scrollY` at 0, so this gives `window` a
- * `scrollY` of `y`, sends the `scroll` a real scroll would, and
- * resolves once the page has re-rendered. `restoreWindowScroll()` puts
- * happy-dom's own `scrollY` back.
+ * Scrolls the window to `y` and sends the `scroll` a real scroll
+ * would: happy-dom moves `scrollY` on `scrollTo()` but fires no event.
+ * Resolves once the page has re-rendered. `restoreWindowScroll()`
+ * scrolls back to the top.
  */
 export async function scrollWindowTo(y: number): Promise<void> {
-	if (!scrollOverridden) {
-		ownScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
-		scrollOverridden = true;
-	}
-	Object.defineProperty(window, 'scrollY', { configurable: true, value: y });
+	window.scrollTo(0, y);
 	window.dispatchEvent(new Event('scroll'));
 	await new Promise((r) => setTimeout(r, 20));
 }
 
-/** Undoes `scrollWindowTo`; does nothing if it was not called. */
+/** Puts the window back at the top for the next scenario. */
 export function restoreWindowScroll(): void {
-	if (!scrollOverridden) return;
-	if (ownScrollY) Object.defineProperty(window, 'scrollY', ownScrollY);
-	else delete (window as unknown as { scrollY?: number }).scrollY;
-	ownScrollY = undefined;
-	scrollOverridden = false;
+	window.scrollTo(0, 0);
 }

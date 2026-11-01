@@ -5,11 +5,11 @@
 // The user asks the system for reduced motion and opens the app.
 // The hero's rotation, its banner as the page scrolls, a card deleted
 // from the Continue Watching row and the rails' scroll arrows must all
-// stand still. (The rows start
-// no motion on load in either mode, so landing is not a scenario here;
-// the e2e samples it with real CSS. Watch Later's own motion has its
-// pair in watch-later-held-write.test.ts.) This tier sees the motion
-// script starts (see ./motion.ts); the CSS half is asserted in a real
+// stand still. (The rows start no motion on load in either mode, so
+// landing is not a scenario here; the e2e samples it with real CSS.
+// Watch Later's own motion has its pair in
+// watch-later-held-write.test.ts.) This tier sees the motion script
+// starts (see ./motion.ts); the CSS half is asserted in a real
 // Chromium by the Electron e2e.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
