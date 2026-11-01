@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
@@ -1117,11 +1118,14 @@
 					>
 						<span class="resume-poster">
 							{#if image}
-								<!-- Keyed: an image that arrives later — a held-back
-								     still — fades in like a first one. -->
-								{#key image}
-									<img class="img-arrive" src={image} alt="" loading="lazy" decoding="async" />
-								{/key}
+								<img
+									class="img-fade"
+									use:fadeOnLoad
+									src={image}
+									alt=""
+									loading="lazy"
+									decoding="async"
+								/>
 							{:else}
 								<span class="resume-poster-placeholder" aria-hidden="true">
 									{target.displayTitle.slice(0, 2).toUpperCase()}
@@ -1192,11 +1196,14 @@
 					>
 						<span class="resume-poster">
 							{#if image}
-								<!-- Keyed: an image that arrives later — a held-back
-								     still — fades in like a first one. -->
-								{#key image}
-									<img class="img-arrive" src={image} alt="" loading="lazy" decoding="async" />
-								{/key}
+								<img
+									class="img-fade"
+									use:fadeOnLoad
+									src={image}
+									alt=""
+									loading="lazy"
+									decoding="async"
+								/>
 							{:else}
 								<span class="resume-poster-placeholder" aria-hidden="true">
 									{target.displayTitle.slice(0, 2).toUpperCase()}
@@ -2053,7 +2060,10 @@
 		object-fit: cover;
 		object-position: center 30%;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.resume-card:hover .resume-poster img {
 		filter: brightness(1);

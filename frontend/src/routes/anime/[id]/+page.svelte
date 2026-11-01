@@ -21,6 +21,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -1757,19 +1758,15 @@
 				/>
 			{/if}
 			{#if hero.url}
-				<!-- Keyed: a banner that arrives later — held back, then
-				     refilled — enters as the first one did. -->
-				{#key hero.url}
-					<img
-						class="hero-img"
-						src={hero.url}
-						alt=""
-						style:transform={heroTransform(scrollY, hero.isCover)}
-						style:--ratio={heroRatios[heroId]}
-						onload={(e) => onHeroLoad(heroId, e)}
-						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
-					/>
-				{/key}
+				<img
+					class="hero-img"
+					src={hero.url}
+					alt=""
+					style:transform={heroTransform(scrollY, hero.isCover)}
+					style:--ratio={heroRatios[heroId]}
+					onload={(e) => onHeroLoad(heroId, e)}
+					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
+				/>
 			{/if}
 			<div class="hero-scrim" aria-hidden="true"></div>
 			{#if !hero.isCover}
@@ -2250,7 +2247,8 @@
 											<span class="ep-thumb">
 												{#if thumb}
 													<img
-														class="img-arrive"
+														class="img-fade"
+														use:fadeOnLoad
 														src={thumb}
 														alt=""
 														loading="lazy"
@@ -3230,7 +3228,10 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-thumb-placeholder {
 		display: grid;
