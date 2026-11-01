@@ -112,3 +112,38 @@ fn a_former_tag_a_later_listing_leaves_free_is_kept() {
     assert_eq!(former_stamp(&state, SHOW), Some((13, "24.5".to_string())));
     assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
 }
+
+mod kept_former_props {
+    use super::kept_former;
+    use proptest::prelude::*;
+
+    fn tag() -> impl Strategy<Value = String> {
+        (0u32..40, prop::bool::ANY).prop_map(|(n, half)| {
+            if half {
+                format!("{n}.5")
+            } else {
+                n.to_string()
+            }
+        })
+    }
+
+    proptest! {
+        /// Whatever the former tag and whichever tags the listing
+        /// carries, a former tag is dropped exactly when the listing
+        /// carries it, and is otherwise kept as it was; no former tag
+        /// stays none.
+        #[test]
+        fn a_former_tag_is_dropped_exactly_when_the_listing_carries_it(
+            former in prop::option::of((0u32..40, tag())),
+            carried in prop::collection::vec(tag(), 0..8),
+        ) {
+            let shared = |t: &str| carried.iter().any(|c| c == t);
+            let kept = kept_former(former.clone(), &shared);
+            match &former {
+                None => prop_assert_eq!(kept, None),
+                Some((_, t)) if carried.contains(t) => prop_assert_eq!(kept, None),
+                Some(_) => prop_assert_eq!(kept, former),
+            }
+        }
+    }
+}
