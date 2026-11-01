@@ -80,6 +80,10 @@ async function render(undeclared: number, expired: number) {
 }
 
 describe('diagnostics — the cache tidied at startup', () => {
+	// The English heading, to tell a page stuck in English from one
+	// that rendered the locale asked for.
+	const enHeading = m.diagnostics_section_cache_reclaim();
+
 	for (const locale of locales) {
 		it(`counts the old and the expired entries a launch removed (${locale})`, async () => {
 			setLocale(locale, { reload: false });
@@ -87,12 +91,13 @@ describe('diagnostics — the cache tidied at startup', () => {
 
 			expect(text).toContain(m.diagnostics_section_cache_reclaim());
 			expect(text).toContain(m.diagnostics_cache_reclaim_description());
+			if (locale !== 'en') expect(text).not.toContain(enHeading);
 			expect(text).toContain(m.diagnostics_cache_reclaim_old({ count: 1156 }));
 			expect(text).toContain(m.diagnostics_cache_reclaim_expired({ count: 180 }));
 		});
 	}
 
-	it('renders each locale in its own words', () => {
+	it('the catalogue has a heading of its own per locale', () => {
 		const headings = new Set<string>();
 		for (const locale of locales) {
 			setLocale(locale, { reload: false });
@@ -110,5 +115,7 @@ describe('diagnostics — the cache tidied at startup', () => {
 		const text = await render(0, 12);
 		expect(text).toContain(m.diagnostics_section_cache_reclaim());
 		expect(text).toContain(m.diagnostics_cache_reclaim_expired({ count: 12 }));
+		// A kind none of went is not listed at zero.
+		expect(text).not.toContain(m.diagnostics_cache_reclaim_old({ count: 0 }));
 	});
 });
