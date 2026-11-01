@@ -287,6 +287,13 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 | `use_custom_player_controls` | `true` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
 | `download_bottom_bar_enabled` | `true` | Show the per-download progress dock at the bottom of the window when downloads are active. |
 
+## Reduced motion
+
+The renderer's animations key off `prefers-reduced-motion`, through CSS media queries and `matchMedia` checks. What sets that media query depends on the platform:
+
+- **Windows.** Chromium reads the system's animation setting itself (Settings › Accessibility › Visual effects › Animation effects).
+- **Linux.** Chromium reads only GTK's `gtk-enable-animations`, which follows GNOME's global `org.gnome.desktop.interface enable-animations`. GNOME's Reduced Motion switch (Settings › Accessibility › Seeing) writes a different key, `org.gnome.desktop.a11y.interface reduced-motion`, which Chromium never sees. So at launch the main process reads it itself: the desktop portal's `org.freedesktop.appearance reduced-motion` through `busctl`, or `gdbus` where `busctl` is missing, and that gsettings key when the portal cannot answer. When the answer is `reduce` it appends Chromium's `--force-prefers-reduced-motion` switch before the first window opens. Any other outcome — no preference, no portal, no GNOME, a failed or slow read — appends nothing, and Chromium's own reading of `enable-animations` stays in effect. The read is bounded at half a second and runs beside the backend's start; a change to the setting takes effect on the next launch (`electron/lib/reduced-motion.cjs`).
+
 ## Localization
 
 Four MVP locales: English (`en`), Brazilian Portuguese (`pt-BR`), Latin American Spanish (`es-419`), Russian (`ru`). The set was chosen for free-content market fit, not language-coverage prestige. Phase-2 candidates listed in `docs/i18n.md`.
