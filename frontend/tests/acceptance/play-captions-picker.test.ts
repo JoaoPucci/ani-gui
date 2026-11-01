@@ -49,6 +49,8 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	// A pick is remembered per show; each scenario starts with none.
+	localStorage.clear();
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -263,10 +265,11 @@ describe('the captions picker', () => {
 		expect(listed.some((text) => text?.includes('id3'))).toBe(false);
 	});
 
-	// A pick belongs to the session it was made in, as it always has:
-	// the next episode's tracks are new elements, and the browser starts
-	// them on the provider's default. Reloading the page does the same.
-	it('the next episode, and a reload, start again on the default track', async () => {
+	// A pick is the show's from then on: the next episode's tracks are
+	// new elements, and they start on the language picked; a reload of
+	// the page does the same (play-captions-start.test.ts covers the
+	// rest of what is remembered).
+	it('the next episode, and a reload, start on the language picked', async () => {
 		handlers();
 		const video = await mountAt('session-1', '1');
 		await pick('Español');
@@ -281,18 +284,18 @@ describe('the captions picker', () => {
 			"the second session's tracks attached"
 		);
 		expect(modes(video)).toEqual([
-			['English', 'showing'],
+			['English', 'disabled'],
 			['Português', 'disabled'],
-			['Español', 'disabled']
+			['Español', 'showing']
 		]);
 
 		if (app) unmount(app);
 		app = null;
 		const reloaded = await mountAt('session-2', '2');
 		expect(modes(reloaded)).toEqual([
-			['English', 'showing'],
+			['English', 'disabled'],
 			['Português', 'disabled'],
-			['Español', 'disabled']
+			['Español', 'showing']
 		]);
 	});
 });
