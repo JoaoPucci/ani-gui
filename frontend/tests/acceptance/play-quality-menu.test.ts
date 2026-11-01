@@ -98,7 +98,7 @@ vi.mock('hls.js', () => {
 import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { playerVideoInSlot } from './player-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	config: Record<string, unknown>;
@@ -347,6 +347,24 @@ describe('play route — the quality the setting names, and the menu that change
 			frag: { type: 'main', level: 0 },
 			tracks: { video: { metadata: { width: 1920, height: 1080 } } }
 		});
+		await tick();
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		expect(qualityRow()?.textContent).toContain(label(1080));
+	});
+
+	it("names a lone fMP4 level from the picture's height, which its segments do not carry", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [{ height: 0, width: 0, bitrate: 0 }] });
+		await until(() => hls.starts === 1, 'the engine to start');
+		// hls.js reports an fMP4 init segment with no picture size.
+		hls.emit(EVENTS.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 0 },
+			tracks: { video: { container: 'video/mp4' } }
+		});
+		const video = playerVideo();
+		Object.defineProperty(video, 'videoHeight', { configurable: true, value: 1080 });
+		video.dispatchEvent(new Event('loadedmetadata'));
 		await tick();
 		menuButton().click();
 		await until(() => qualityRow() !== undefined, 'the quality row');

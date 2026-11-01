@@ -1,7 +1,7 @@
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
-import { ladderOrder, type LadderLevel } from './quality-ladder';
+import type { LadderLevel } from './quality-ladder';
 import { levelLabel, qualityMenu, type QualityView } from './quality-menu';
 
 const LEVELS: LadderLevel[] = [
@@ -126,20 +126,27 @@ describe('qualityMenu', () => {
 
 const level = fc.record({
 	height: fc.oneof(fc.constant(0), fc.integer({ min: 144, max: 2160 })),
-	bitrate: fc.integer({ min: 1, max: 20_000_000 })
+	bitrate: fc.oneof(fc.constant(0), fc.integer({ min: 1, max: 20_000_000 }))
 });
 
 describe('qualityMenu — properties', () => {
-	it('one level gives one checked item and no Auto', () => {
+	it('one level gives one checked item and no Auto, once it can be named and loaded', () => {
 		fc.assert(
 			fc.property(
 				level,
+				fc.boolean(),
 				fc.constantFrom(null, 0),
 				fc.constantFrom(null, 0),
-				(only, pinned, playing) => {
-					const menu = qualityMenu(view({ levels: [only], pinned, playing }));
-					expect(menu?.items).toHaveLength(1);
-					expect(menu?.items[0]).toMatchObject({ key: 0, checked: true });
+				(only, failed, pinned, playing) => {
+					const menu = qualityMenu(
+						view({ levels: [only], unavailable: failed ? [0] : [], pinned, playing })
+					);
+					const named = only.height > 0 || only.bitrate > 0;
+					if (failed || !named) {
+						expect(menu).toBeNull();
+						return;
+					}
+					expect(menu?.items).toEqual([{ key: 0, label: levelLabel([only], 0), checked: true }]);
 					expect(menu?.current).toBe(levelLabel([only], 0));
 				}
 			)
@@ -164,23 +171,42 @@ describe('qualityMenu — properties', () => {
 						: fc.constant(null);
 				return pin.map((pinned) => ({ ...s, pinned }));
 			});
+		const rank = ({ height, bitrate }: LadderLevel) => [height, bitrate];
+		const above = (a: LadderLevel, b: LadderLevel) => {
+			const [ha, ba] = rank(a);
+			const [hb, bb] = rank(b);
+			return ha > hb || (ha === hb && ba >= bb);
+		};
 		fc.assert(
 			fc.property(stream, (s) => {
 				const menu = qualityMenu(view(s));
-				const offered = [...ladderOrder(s.levels)]
-					.reverse()
-					.filter((i) => !s.unavailable.includes(i));
-				expect(menu?.items.map((i) => i.key)).toEqual(['auto', ...offered]);
+				const keys = menu?.items.map((i) => i.key) ?? [];
+				// Auto, then every loadable level once, each no lower than the next.
+				expect(keys[0]).toBe('auto');
+				const offered = keys.slice(1) as number[];
+				expect([...offered].sort((a, b) => a - b)).toEqual(
+					s.levels.map((_, i) => i).filter((i) => !s.unavailable.includes(i))
+				);
+				for (let i = 1; i < offered.length; i++) {
+					expect(above(s.levels[offered[i - 1]], s.levels[offered[i]])).toBe(true);
+				}
 				expect(menu?.items.filter((i) => i.checked).map((i) => i.key)).toEqual([
 					s.pinned ?? 'auto'
 				]);
-				if (s.pinned === null) {
-					expect(menu?.current).toBe(
-						s.playing === null
-							? m.play_quality_auto()
-							: m.play_quality_auto_playing({ quality: levelLabel(s.levels, s.playing) })
-					);
-				}
+				const auto =
+					s.playing === null
+						? m.play_quality_auto()
+						: m.play_quality_auto_playing({ quality: levelLabel(s.levels, s.playing) });
+				const pinnedCurrent =
+					s.pinned === null
+						? auto
+						: s.playing === null || s.playing === s.pinned
+							? levelLabel(s.levels, s.pinned)
+							: m.play_quality_pinned_playing({
+									pinned: levelLabel(s.levels, s.pinned),
+									quality: levelLabel(s.levels, s.playing)
+								});
+				expect(menu?.current).toBe(pinnedCurrent);
 			})
 		);
 	});
