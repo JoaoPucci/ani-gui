@@ -153,3 +153,10 @@ pub fn unlink(state: &AppState, args: &UnlinkArgs) -> Result<UnlinkOutcome> {
         kept: args.rows.iter().map(|r| r.row.clone()).collect(),
     })
 }
+#[cfg(test)]
+#[path = "history_link_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "history_link_prop_test.rs"]
+mod prop_tests;
