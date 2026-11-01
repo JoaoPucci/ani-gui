@@ -186,9 +186,22 @@ describe('play route — held-back episode stills', () => {
 		const tracks = Array.from(video.querySelectorAll('track'));
 		const trackModes = Array.from(video.textTracks ?? []).map((t) => t.mode);
 		const before = cards();
+		const focused = target.querySelector<HTMLElement>(
+			'li[data-ep-num="3"] button, li[data-ep-num="3"] a'
+		);
+		expect(focused).not.toBeNull();
+		focused?.focus();
+		window.scrollTo(0, 420);
+		const scrolled = window.scrollY;
+		// The scroll took: the check after the refill compares real
+		// positions, not two zeros.
+		expect(scrolled).toBe(420);
+		expect(document.activeElement).toBe(focused);
 
 		land();
 		await until(() => stillImgs().length === 5, 'the stills to fill in');
+		expect(document.activeElement).toBe(focused);
+		expect(window.scrollY).toBe(scrolled);
 
 		// Fetched once more, not on and on.
 		expect(seen.readsAfter).toBe(1);

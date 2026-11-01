@@ -96,11 +96,20 @@ describe('home Continue Watching — a held-back still', () => {
 		await vi.waitFor(() => expect(reads).toBeGreaterThan(0), { timeout: 5000 });
 		const before = card();
 		expect(cardImg()?.src ?? '').not.toContain(encodeURIComponent(STILL));
+		before?.focus();
+		window.scrollTo(0, 420);
+		const scrolled = window.scrollY;
+		// The scroll took: the check after the refill compares real
+		// positions, not two zeros.
+		expect(scrolled).toBe(420);
+		expect(document.activeElement).toBe(before);
 
 		land();
 		await vi.waitFor(() => expect(cardImg()?.src ?? '').toContain(encodeURIComponent(STILL)), {
 			timeout: 3000
 		});
+		expect(document.activeElement).toBe(before);
+		expect(window.scrollY).toBe(scrolled);
 		// Fetched once more, not on and on.
 		expect(readsAfter).toBe(1);
 		expect(card()).toBe(before);
