@@ -65,6 +65,8 @@ export interface LookInputs {
 	episode: KitsuEpisode | null | undefined;
 	/** The episode the card offers (what its click plays); null unmatched. */
 	offered: number | null;
+	/** The episode the details were fetched for. Stub: not read yet. */
+	episodeFor?: number;
 	/** Whether the episode wait has run out for this card. */
 	capReached: boolean;
 	/** The card's text from live data; null while the row is unmatched. */
@@ -90,8 +92,10 @@ export function posterSource(match: KitsuAnimeRef | null | undefined): string | 
  */
 export function offeredEpisode(
 	episode: KitsuEpisode | null | undefined,
-	offered: number | null
+	offered: number | null,
+	episodeFor?: number
 ): KitsuEpisode | null | undefined {
+	void episodeFor;
 	if (!episode || offered === null) return episode;
 	return episode.number === offered || episode.relative_number === offered ? episode : undefined;
 }

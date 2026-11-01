@@ -153,8 +153,11 @@ function rowHandlers(
 		rows?: (typeof ROW)[];
 		search?: () => Promise<unknown> | unknown;
 		episodes?: () => Promise<unknown> | unknown;
+		/** The row's number as read again after its match. */
+		number?: () => Promise<{ ep_no: string }>;
 	} = {}
 ) {
+	const number = opts.number;
 	return homeHandlers({ history: opts.rows ?? [ROW] }, [
 		http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 			const body = (await request.json()) as { query?: string };
@@ -166,7 +169,14 @@ function rowHandlers(
 		}),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, async () =>
 			HttpResponse.json(await (opts.episodes?.() ?? [episode(4, THUMB)]))
-		)
+		),
+		...(number
+			? [
+					http.get(`${API_BASE}/api/history/:id/number`, async () =>
+						HttpResponse.json(await number())
+					)
+				]
+			: [])
 	]);
 }
 
@@ -296,6 +306,34 @@ describe('Continue Watching card artwork', () => {
 		await sleep(50);
 		looks.stop();
 		expect(looks.seen).toEqual([`image | ${THUMB} | Cowboy Bebop Episode title 4`]);
+	});
+
+	it('gives a card whose episode moves on this visit its own full wait', async () => {
+		const THUMB_5 = 'https://media.kitsu.app/episodes/5/thumb.jpg';
+		const number = held<{ ep_no: string }>();
+		let calls = 0;
+		server.use(
+			...rowHandlers({
+				number: () => number.answer,
+				// The first answer is immediate; the one for the moved-on
+				// episode takes a moment, well inside the wait.
+				episodes: async () => {
+					if (calls++ > 0) await sleep(150);
+					return [episode(4, THUMB), episode(5, THUMB_5)];
+				}
+			})
+		);
+		app = mount(HomePage, { target });
+		await until(() => imageSource() === THUMB, 'the card to settle on episode 4');
+		// Its wait has run out by now.
+		await sleep(EPISODE_WAIT_CAP_MS + 100);
+		const looks = watchLooks();
+		// Read again, the row records episode 4: the card offers 5.
+		number.release({ ep_no: '4' });
+		await until(() => imageSource() === THUMB_5, 'the card to settle on episode 5', 3000);
+		looks.stop();
+		expect(looks.seen.some((a) => a.includes(POSTER))).toBe(false);
+		expect(cell()?.querySelector('.resume-ep-num')?.textContent?.trim()).toBe('5');
 	});
 
 	it('resolves a remembered card afresh when it now offers another episode', async () => {

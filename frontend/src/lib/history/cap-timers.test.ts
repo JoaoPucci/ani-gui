@@ -36,6 +36,18 @@ describe('createCapTimers', () => {
 		expect(clock.pending.size).toBe(0);
 	});
 
+	it('says whether a wait is running for the key, so a caller can arm as it reads', () => {
+		const clock = fakeClock();
+		const timers = createCapTimers({ capMs: 400, ...clock, onElapsed: () => {} });
+		expect(timers.arm('a|4')).toBe(true);
+		expect(timers.arm('a|4')).toBe(true);
+		// The card offers another episode: that one gets its own full wait.
+		expect(timers.arm('a|5')).toBe(true);
+		expect(clock.pending.size).toBe(2);
+		timers.dispose();
+		expect(timers.arm('a|6')).toBe(false);
+	});
+
 	it('cancels every wait when the page goes, and arms none after', () => {
 		const clock = fakeClock();
 		const elapsed: string[] = [];

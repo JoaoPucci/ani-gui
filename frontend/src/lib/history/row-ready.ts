@@ -20,7 +20,9 @@ export interface ContinueRowReadyDeps {
 	 *  so all reactivity stays component-scoped. */
 	setMatch: (entryId: string, match: KitsuAnimeRef | null) => void;
 	setPlayableCount: (entryId: string, count: number) => void;
-	setEpisode: (entryId: string, episode: KitsuEpisode | null) => void;
+	/** `forEpisode`: the episode the answer was fetched for. Stub: not
+	 *  passed yet. */
+	setEpisode: (entryId: string, episode: KitsuEpisode | null, forEpisode?: number) => void;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept — the card then shows that episode, which its click plays.
 	 *  Omitted, nothing was. */

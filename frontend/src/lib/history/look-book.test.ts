@@ -162,6 +162,24 @@ describe('createLookBook', () => {
 		).toBe('proxy:https://t/4.jpg');
 	});
 
+	it('does not settle a card that moved on to another episode on the last one\'s "nothing"', () => {
+		const book = createLookBook(proxy, new Map());
+		const m = ref('1');
+		// Episode 4's lookup found nothing; the card now offers 5.
+		const stale = book.look(
+			'a',
+			'a|1',
+			inputs({ match: m, offered: 5, episode: null, episodeFor: 4 })
+		);
+		expect(stale.look).toBeNull();
+		const own = book.look(
+			'a',
+			'a|1',
+			inputs({ match: m, offered: 5, episode: ep('https://t/5.jpg', 'Five', 5), episodeFor: 5 })
+		);
+		expect(own.look?.image?.src).toBe('proxy:https://t/5.jpg');
+	});
+
 	it('gives way when the match changes under a look pinned on this page', () => {
 		const book = createLookBook(proxy, new Map());
 		book.look('a', 'a|1', inputs({ match: ref('1'), episode: null }));
@@ -228,6 +246,7 @@ describe('createLookBook', () => {
 type Event =
 	| { kind: 'match'; value: KitsuAnimeRef | null }
 	| { kind: 'episode'; value: KitsuEpisode | null }
+	| { kind: 'answer'; for: number; value: KitsuEpisode | null }
 	| { kind: 'offer'; value: number }
 	| { kind: 'cap' }
 	| { kind: 'render' };
@@ -258,6 +277,19 @@ const eventArb: fc.Arbitrary<Event> = fc.oneof(
 	matchArb.map((value) => ({ kind: 'match' as const, value })),
 	anyEpisodeArb.map((value) => ({ kind: 'episode' as const, value })),
 	fc.constantFrom(4, 5).map((value) => ({ kind: 'offer' as const, value })),
+	// An answer as the page holds it: the episode it was fetched for,
+	// and what was found for it (null: nothing).
+	fc
+		.tuple(
+			fc.constantFrom(4, 5),
+			fc.option(fc.constant('https://t/c.jpg'), { nil: null }),
+			fc.boolean()
+		)
+		.map(([n, t, found]) => ({
+			kind: 'answer' as const,
+			for: n,
+			value: found ? ep(t, 'An Episode', n) : null
+		})),
 	fc.constant({ kind: 'cap' as const }),
 	fc.constant({ kind: 'render' as const })
 );
@@ -268,7 +300,8 @@ function drive(events: Event[], book = createLookBook(proxy, new Map())) {
 	const looks = [book.look('a', 'a|1', state)];
 	for (const e of events) {
 		if (e.kind === 'match') state = { ...state, match: e.value };
-		else if (e.kind === 'episode') state = { ...state, episode: e.value };
+		else if (e.kind === 'episode') state = { ...state, episode: e.value, episodeFor: undefined };
+		else if (e.kind === 'answer') state = { ...state, episode: e.value, episodeFor: e.for };
 		else if (e.kind === 'offer') state = { ...state, offered: e.value };
 		else if (e.kind === 'cap') state = { ...state, capReached: true };
 		states.push(state);
@@ -305,6 +338,25 @@ describe('card look properties', () => {
 					if (l.look === null || s.match === undefined) return;
 					expect(l.look.matchId).toBe(s.match?.id ?? null);
 					if (s.match !== null) expect(l.look.episode).toBe(s.offered);
+				});
+			})
+		);
+	});
+
+	it('a card settles before its wait is over only on an answer for the episode it offers', () => {
+		const belongs = (s: LookInputs) =>
+			s.episode !== undefined &&
+			(s.episodeFor !== undefined
+				? s.episodeFor === s.offered
+				: s.episode === null || s.episode.number === s.offered);
+		fc.assert(
+			fc.property(fc.array(eventArb, { maxLength: 12 }), (events) => {
+				const { looks, states } = drive(events);
+				let heard = false;
+				states.forEach((s, i) => {
+					if (i > 0 && identity(states[i - 1]) !== identity(s)) heard = false;
+					heard = heard || belongs(s);
+					if (s.match && !s.capReached && !heard) expect(looks[i].look).toBeNull();
 				});
 			})
 		);

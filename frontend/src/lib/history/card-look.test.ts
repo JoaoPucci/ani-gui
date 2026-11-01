@@ -135,6 +135,12 @@ describe('offeredEpisode', () => {
 	it("treats another episode's details as not arrived", () => {
 		expect(offeredEpisode(four, 5)).toBeUndefined();
 	});
+	it('treats an answer fetched for another episode as not arrived, "nothing" included', () => {
+		expect(offeredEpisode(null, 5, 4)).toBeUndefined();
+		expect(offeredEpisode(four, 5, 4)).toBeUndefined();
+		expect(offeredEpisode(null, 5, 5)).toBeNull();
+		expect(offeredEpisode(four, 4, 4)).toBe(four);
+	});
 	it('lets "no details" and "not asked yet" stand, and anything when nothing is offered', () => {
 		expect(offeredEpisode(null, 4)).toBeNull();
 		expect(offeredEpisode(undefined, 4)).toBeUndefined();
