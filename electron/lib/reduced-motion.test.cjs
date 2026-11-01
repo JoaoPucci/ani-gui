@@ -46,7 +46,8 @@ function fakeExec(outcomes) {
 
 /**
  * A clock the test drives: `now` moves only when `advance` is called,
- * which fires the timers it passes. No test here reads the wall clock,
+ * which fires the timers it passes, in the order they were set; one set
+ * by a firing timer waits for the next `advance`. No test here reads the wall clock,
  * so the budget arithmetic comes out the same on any machine.
  */
 function fakeClock() {
@@ -182,7 +183,7 @@ test("when every reader fails, nothing is forced", async () => {
   );
 });
 
-test("a reader that never returns costs the budget and no more", async () => {
+test("a reader that never returns costs the budget and no more", { timeout: 5000 }, async () => {
   const clock = fakeClock();
   const { exec } = fakeExec({ busctl: HANG, gdbus: HANG, gsettings: HANG });
   const appended = [];
@@ -191,13 +192,15 @@ test("a reader that never returns costs the budget and no more", async () => {
     platform: "linux",
     exec,
     appendSwitch: (name) => appended.push(name),
-    timeoutMs: 50,
+    // Far longer than the test may run, so only the fake clock can be
+    // what settles it.
+    timeoutMs: 60_000,
     clock,
   }).then((result) => {
     settled = true;
     return result;
   });
-  clock.advance(49);
+  clock.advance(59_999);
   await flush();
   assert.equal(settled, false, "settled before the budget was spent");
   clock.advance(1);
@@ -228,7 +231,7 @@ test("each reader is handed what is left of the budget as its own timeout", asyn
   ]);
 });
 
-test("no reader is started once the budget is spent", async () => {
+test("no reader is started once the budget is spent", { timeout: 5000 }, async () => {
   const clock = fakeClock();
   const calls = [];
   const exec = (cmd) => {
@@ -251,6 +254,14 @@ test("no reader is started once the budget is spent", async () => {
   assert.deepEqual(calls, ["busctl"]);
 });
 
+// The one test on the system clock, which is what a launch runs on. It
+// asserts only that the read settles, never how long it took; a clock
+// that waits far past its budget runs into the test's own timeout.
+test("on the system clock a read that gets no answer still settles", { timeout: 5000 }, async () => {
+  const { exec } = fakeExec({ busctl: HANG, gdbus: HANG, gsettings: HANG });
+  assert.equal(await readReducedMotion({ platform: "linux", exec, timeoutMs: 20 }), null);
+});
+
 test("a read that answers early leaves no timer behind", async () => {
   const clock = fakeClock();
   const { exec } = fakeExec(PORTAL_REDUCE);
@@ -264,7 +275,7 @@ test("a read that answers early leaves no timer behind", async () => {
   assert.equal(clock.pending(), 0);
 });
 
-test("a reader that answers after the deadline is not acted on", async () => {
+test("a reader that answers after the deadline is not acted on", { timeout: 5000 }, async () => {
   const clock = fakeClock();
   const appended = [];
   let release;
