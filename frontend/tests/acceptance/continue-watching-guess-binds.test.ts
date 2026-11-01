@@ -136,6 +136,11 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+/** Long enough for a tracker write the stamp set off to arrive: the
+ *  write goes out after a few awaited steps, which the positive cases
+ *  here see land well inside this. */
+const noTrackerWriteWindow = () => new Promise((r) => setTimeout(r, 300));
+
 /** The backend the routes talk to, over `rows`. A watch stamp records
  *  the watch on the listing played, under the Kitsu id it carries —
  *  the contract `mark_watched_guess_test.rs` holds the backend to. */
@@ -279,8 +284,7 @@ describe('a guessed Continue card whose play lands on another listing', () => {
 		const { stream } = await playTheCard(false);
 		expect(stream.searchParams.get('guess_row')).toBe(LISTING);
 		expect(stamps[0]).not.toHaveProperty('kitsu_id');
-		// A tracker write leaves beside the stamp; one more turn, then none.
-		await new Promise((r) => setTimeout(r, 0));
+		await noTrackerWriteWindow();
 		expect(trackerWrites).toEqual([]);
 
 		expect(await playTheCardAgain()).toEqual({ guess: true, recorded: null });

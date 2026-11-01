@@ -127,6 +127,11 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+/** Long enough for a tracker write the stamp set off to arrive: the
+ *  write goes out after a few awaited steps, which the positive cases
+ *  here see land well inside this. */
+const noTrackerWriteWindow = () => new Promise((r) => setTimeout(r, 300));
+
 const card = (n: number) =>
 	(target.querySelector(`li[data-ep-num="${n}"] button`) as HTMLButtonElement | null) ?? null;
 
@@ -270,8 +275,7 @@ describe("play route — a guessed card's session", () => {
 		const asked = await switchInGuessedSession(3, 4, false);
 		expect(asked.searchParams.get('guess_row')).toBe(ROW);
 		expect(stamped.at(-1)).not.toHaveProperty('kitsu_id');
-		// A tracker write leaves beside the stamp; one more turn, then none.
-		await new Promise((r) => setTimeout(r, 0));
+		await noTrackerWriteWindow();
 		expect(writes).toEqual([]);
 	});
 
@@ -279,7 +283,7 @@ describe("play route — a guessed card's session", () => {
 		const asked = await switchInGuessedSession(3, 4, true, true);
 		expect(asked.searchParams.get('guess_row')).toBe(ROW);
 		expect(stamped.at(-1)).toMatchObject({ episode: '4', kitsu_id: KITSU_ID });
-		await new Promise((r) => setTimeout(r, 0));
+		await noTrackerWriteWindow();
 		expect(writes).toEqual([]);
 	});
 });
