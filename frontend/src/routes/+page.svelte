@@ -640,6 +640,10 @@
 	// initial load path, post-refresh, and a settled tracker write — the
 	// one caller that moves the cards it changed (`moved`).
 	async function reloadWatchLaterRail(moved = false) {
+		// Whatever sent the row here — a mount, a pull, a settled write
+		// that invalidated a tracker's last pull — may have changed the
+		// stamps the freshness line reads, so it reads them again.
+		wlStamped += 1;
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const ticket = watchLaterLoads.start(false);
 		const deps = buildWatchLaterDeps();
