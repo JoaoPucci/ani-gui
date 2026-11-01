@@ -51,6 +51,10 @@ async function drain(): Promise<void> {
 	for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 
+/** The runner's clock: searches start at the time the saved one was
+ *  left, unless a scenario moves it. */
+let clock = 1_000_000;
+
 function harness(overrides: Partial<SearchRunnerDeps> = {}) {
 	const results: KitsuAnimeRef[][] = [];
 	const phases: PagingPhase['kind'][] = [];
@@ -65,6 +69,7 @@ function harness(overrides: Partial<SearchRunnerDeps> = {}) {
 		onBusy: () => {},
 		onPhase: (p) => phases.push(p.kind),
 		onReached: (found) => reached.push(found),
+		now: () => clock,
 		...overrides
 	};
 	return { deps, results, phases, reached, last: () => results.at(-1) ?? [] };
@@ -73,6 +78,7 @@ function harness(overrides: Partial<SearchRunnerDeps> = {}) {
 /** A search for "frieren" that loaded two pages, saved with card `21`
  *  at the top of the screen. */
 async function savedSearch(now = 1_000_000): Promise<SearchSnapshot> {
+	clock = now;
 	const h = harness();
 	const runner = createSearchRunner(h.deps);
 	await runner.run('frieren', 'year');
@@ -294,5 +300,48 @@ describe('resume against other runs', () => {
 		await run;
 		expect(h.reached).toEqual([]);
 		expect(vi.mocked(h.deps.searchPage).mock.calls).toEqual([['himmel', 0, 'relevance']]);
+	});
+});
+
+describe('the age of saved results', () => {
+	it('is when the search fetched its first page', async () => {
+		clock = 5_000;
+		const runner = createSearchRunner(harness().deps);
+		await runner.run('frieren');
+		clock = 9_000;
+		runner.loadMore();
+		await drain();
+		expect(runner.checkpoint()!.fetchedAt).toBe(5_000);
+	});
+
+	it('stays the saved one when the results come back as they were', async () => {
+		const saved = await savedSearch();
+		const runner = createSearchRunner(harness().deps);
+		clock = saved.capturedAt + 50 * 60_000;
+		await runner.resume(saved, { now: clock, reload: false });
+		runner.loadMore();
+		await drain();
+		expect(runner.checkpoint()!.fetchedAt).toBe(saved.results!.fetchedAt);
+	});
+
+	it('is not renewed by going back and forth: past an hour the search is asked again', async () => {
+		const first = await savedSearch();
+		const h = harness();
+		const runner = createSearchRunner(h.deps);
+		clock = first.capturedAt + 50 * 60_000;
+		await runner.resume(first, { now: clock, reload: false });
+		expect(h.deps.searchPage).not.toHaveBeenCalled();
+		const again = captureSearch({
+			q: 'frieren',
+			order: 'year',
+			subtypes: [],
+			checkpoint: runner.checkpoint(),
+			cards: [{ id: '21', top: -40, bottom: 240 }],
+			now: clock
+		});
+		clock = first.capturedAt + 70 * 60_000;
+		await createSearchRunner(h.deps).resume(again, { now: clock, reload: false });
+		await drain();
+		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year');
 	});
 });

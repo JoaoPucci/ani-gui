@@ -20,12 +20,20 @@ describe('checkpointAt', () => {
 	it('keeps an ended or held search as it is, and any other as idle', () => {
 		fc.assert(
 			fc.property(phaseArb, fc.nat(3), (kind, streak) => {
-				const cp = checkpointAt(
-					{ mode: 'dub', seen: new Set(['1']), next: 20, loaded: 2 },
-					{ phase: { kind } as PagingPhase, emptyStreak: streak, advance: false }
-				);
+				const search = {
+					mode: 'dub' as const,
+					fetchedAt: 7,
+					seen: new Set(['1']),
+					next: 20,
+					loaded: 2
+				};
+				const cp = checkpointAt(search, {
+					phase: { kind } as PagingPhase,
+					emptyStreak: streak,
+					advance: false
+				});
 				expect(cp.phase).toBe(kind === 'end' || kind === 'held' ? kind : 'idle');
-				expect(cp).toMatchObject({ mode: 'dub', seen: ['1'], next: 20, pages: 2 });
+				expect(cp).toMatchObject({ mode: 'dub', fetchedAt: 7, seen: ['1'], next: 20, pages: 2 });
 				expect(cp.emptyStreak).toBe(streak);
 			})
 		);
@@ -99,6 +107,7 @@ describe('resumePlan', () => {
 		subtypes: [],
 		checkpoint: {
 			mode: 'sub',
+			fetchedAt: 0,
 			hits: [ref('1')],
 			seen: ['1'],
 			next: 20,

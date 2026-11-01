@@ -282,8 +282,8 @@ describe('back to the search page', () => {
 
 	it('asks again, in the order and filters left, once the results are an hour old', async () => {
 		const before = await browse();
-		const kept = leave() as { capturedAt: number };
-		kept.capturedAt -= 2 * 60 * 60 * 1000;
+		const kept = leave() as { results: { fetchedAt: number } };
+		kept.results.fetchedAt -= 2 * 60 * 60 * 1000;
 		asked.length = 0;
 
 		comeBack(kept);
@@ -409,5 +409,23 @@ describe('back to the search page', () => {
 		navigated('popstate');
 		await until(() => cards().length === 0, 'the results to go');
 		expect(query()).toBe(m.search_eyebrow_value_empty());
+	});
+
+	it('asks again on the way back from a search left open for over an hour', async () => {
+		const before = await browse();
+		// Two hours pass on the search page before the reader opens a show.
+		const realNow = Date.now.bind(Date);
+		const later = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 2 * 60 * 60 * 1000);
+		try {
+			const kept = leave();
+			asked.length = 0;
+			comeBack(kept);
+			await until(() => cards().includes('Show 21'), 'the search up to the card');
+			await settle();
+			expect(asked).toEqual(['frieren@0/year', 'frieren@20/year']);
+			expect(cards()).toEqual(before);
+		} finally {
+			later.mockRestore();
+		}
 	});
 });

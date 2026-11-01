@@ -52,6 +52,7 @@ function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef 
 function checkpoint(hits: KitsuAnimeRef[], overrides: Partial<SearchCheckpoint> = {}) {
 	return {
 		mode: 'sub' as const,
+		fetchedAt: 1_000_000,
 		hits,
 		seen: hits.map((h) => h.id),
 		next: 20,
@@ -228,7 +229,8 @@ const inputArb = fc.record({
 			next: fc.option(fc.nat(10_000), { nil: null }),
 			emptyStreak: fc.nat(3),
 			pages: fc.nat(30),
-			phase: fc.constantFrom<'idle' | 'end' | 'held'>('idle', 'end', 'held')
+			phase: fc.constantFrom<'idle' | 'end' | 'held'>('idle', 'end', 'held'),
+			fetchedAt: fc.nat(2_000_000_000_000)
 		}),
 		{ nil: null }
 	),
@@ -326,6 +328,34 @@ describe('canReuse', () => {
 
 	it('reuses results saved a moment ago, for the same audio, on a back press', () => {
 		expect(canReuse(saved(), at)).toBe(true);
+	});
+
+	it('judges the results by when they were fetched, not when the page was left', () => {
+		// A search left open for two hours is saved as the reader leaves,
+		// but its results are as old as their first page.
+		const left = 1_000_000 + 2 * FRESH_FOR_MS;
+		const kept = captureSearch(input({ now: left }));
+		expect(canReuse(kept, { ...at, now: left + 1 })).toBe(false);
+	});
+
+	it('asks again when the results do not say when they were fetched', () => {
+		const s = saved();
+		const { fetchedAt: _unknown, ...results } = s.results!;
+		void _unknown;
+		expect(canReuse({ ...s, results }, at)).toBe(false);
+	});
+
+	it('never moves the fetch time forward on capture, however late the page is left', () => {
+		fc.assert(
+			fc.property(fc.nat(10 * FRESH_FOR_MS), fc.nat(10 * FRESH_FOR_MS), (fetchedAt, later) => {
+				const cp = checkpoint([ref('1')], { fetchedAt });
+				const snap = captureSearch(input({ checkpoint: cp, now: fetchedAt + later }));
+				expect(snap.results!.fetchedAt).toBe(fetchedAt);
+				const back = readSnapshot(JSON.parse(JSON.stringify(snap)))!;
+				expect(back.results!.fetchedAt).toBe(fetchedAt);
+				expect(canReuse(back, { ...at, now: fetchedAt + later })).toBe(later < FRESH_FOR_MS);
+			})
+		);
 	});
 
 	it('asks again once the results are an hour old', () => {
