@@ -30,6 +30,11 @@ pub(super) async fn walk(
     key: String,
     id: u64,
 ) {
+    #[cfg(test)]
+    flights
+        .table()
+        .classes
+        .insert(id, crate::meta::anilist_gate::current_class());
     let mut out = Out {
         flights,
         key,
