@@ -327,10 +327,11 @@ mod default_first_props {
     }
 
     proptest! {
-        /// Every URL survives, exactly once, and a default track — when
-        /// there is one — comes first.
+        /// Every URL survives, exactly once, and the first is the track
+        /// the built-in player starts on: one in the user's language
+        /// when the listing has one, else a default when it has one.
         #[test]
-        fn the_urls_are_a_permutation_led_by_a_default(tracks in tracks()) {
+        fn the_urls_are_a_permutation_led_by_the_start(tracks in tracks()) {
             let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale("en"));
             let mut expected: Vec<String> = tracks.iter().map(|t| t.url.clone()).collect();
             let mut got = urls.clone();
@@ -338,14 +339,17 @@ mod default_first_props {
             got.sort();
             prop_assert_eq!(got, expected);
             if let Some(first) = urls.first() {
-                let first_is_default = tracks.iter().any(|t| t.default && &t.url == first);
-                let any_default = tracks.iter().any(|t| t.default);
-                prop_assert!(first_is_default || !any_default);
+                let first = tracks.iter().find(|t| &t.url == first).expect("listed");
+                if tracks.iter().any(|t| t.lang == "en") {
+                    prop_assert_eq!(first.lang.as_str(), "en");
+                } else if tracks.iter().any(|t| t.default) {
+                    prop_assert!(first.default);
+                }
             }
         }
 
         /// The URLs follow the preference order, the user's locale
-        /// deciding it: after the default, a user's own language, then
+        /// deciding it: the user's own language, then the default, then
         /// English, then the provider's order.
         #[test]
         fn the_urls_follow_the_preference_order(
