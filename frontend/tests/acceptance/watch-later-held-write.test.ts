@@ -37,8 +37,8 @@ vi.mock('$app/navigation', () => ({
 const { scaled } = vi.hoisted(() => ({
 	scaled: [] as { id: string; duration: number; easing?: (t: number) => number }[]
 }));
-vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
-	const real = await importOriginal<typeof import('../../src/lib/transitions/card-motion')>();
+vi.mock('../../src/lib/motion/card-motion', async (importOriginal) => {
+	const real = await importOriginal<typeof import('../../src/lib/motion/card-motion')>();
 	return {
 		...real,
 		cardScale: (
@@ -56,7 +56,7 @@ vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
 	};
 });
 
-import { CARD_SCALE } from '../../src/lib/transitions/card-motion';
+import { CARD_SCALE } from '../../src/lib/motion/card-motion';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import {

@@ -86,7 +86,7 @@
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
-	import { settle, settleOut } from '$lib/transitions/settle';
+	import { settle, settleOut } from '$lib/motion/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';

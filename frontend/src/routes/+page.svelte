@@ -11,7 +11,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
-	import { cardScale, cardShift, STILL } from '$lib/transitions/card-motion';
+	import { cardScale, cardShift, STILL } from '$lib/motion/card-motion';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';

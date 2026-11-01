@@ -33,7 +33,7 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
-	import { settle } from '$lib/transitions/settle';
+	import { settle } from '$lib/motion/settle';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
