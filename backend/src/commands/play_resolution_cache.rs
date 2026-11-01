@@ -199,7 +199,8 @@ use crate::proxy::MediaKind;
 // v27: the language reader learned the `<code>-<n>.vtt` naming. A v26
 // row from that CDN holds each track's label as its language
 // (`lang: "Portuguese (- Brazil)"`), which a replay hands the player
-// as the track's srclang; bumping re-resolves.
+// as the track's srclang and a download names its sidecar by;
+// bumping re-resolves.
 const SCHEMA: &str = "v27";
 
 /// What the native resolve produced, frozen for replay. The session
