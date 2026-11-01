@@ -211,3 +211,71 @@ proptest! {
         }
     }
 }
+
+/// A later listing's repair that read the stamp before another repair
+/// here moved it, and reaches the store's locks after: the move was this
+/// run's own, so the order decides, and the later listing's stamp is
+/// written. (A stamp something else moved meanwhile is left as it is.)
+#[test]
+fn a_stamp_this_run_s_own_repair_moved_meanwhile_is_ordered_not_left() {
+    const SLUG: &str = "hianime:the-show-1";
+    let td = tempfile::tempdir().expect("td");
+    let mut state = crate::commands::play::tests::state_with_proxy_origin();
+    state.history_path = td.path().join("history");
+    crate::commands::numbering_offset::put_display(&state, SLUG, 0, 13, "24.5");
+    let store = state.history_path.with_file_name("ani-gui-offsets");
+    let lock_path = state.history_path.with_file_name("ani-gui-offsets.lock");
+    let foreign = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("lock file");
+    fs4::FileExt::lock(&foreign).expect("hold the store");
+    let queue = crate::held::queue(lock_path.display().to_string());
+    let earlier = Hearing {
+        run: u64::MAX,
+        start: 1,
+        at: 2,
+    };
+    let later = Hearing {
+        run: u64::MAX,
+        start: 3,
+        at: 4,
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    let history = state.history_path.clone();
+    let late = std::thread::spawn(move || {
+        let tags = [(13, "24.5".to_string(), "12.5".to_string())];
+        let listing = Listing {
+            former_tags: &tags,
+            shared: &|_| false,
+            rows: None,
+        };
+        repair(&state, SLUG, &listing, Some(later));
+        tx.send(()).ok();
+    });
+    // The later repair has read the stamp and waits on the store.
+    queue.joined_blocking(|| rx.try_recv().is_ok());
+    // Meanwhile an earlier listing's repair here moved the stamp.
+    let moved = Stamps {
+        display: Some((13, "12.75".into())),
+        former: None,
+    };
+    std::fs::write(&store, format!("{SLUG}\t0\t13\t12.75\n")).expect("the earlier repair");
+    TAKEN.lock().expect("taken").insert(
+        (history, SLUG.to_string()),
+        Taken {
+            heard: earlier,
+            base: Stamps {
+                display: Some((13, "24.5".into())),
+                former: None,
+            },
+            left: moved,
+        },
+    );
+    fs4::FileExt::unlock(&foreign).expect("let the store go");
+    late.join().expect("the later repair");
+    let body = std::fs::read_to_string(&store).expect("store");
+    assert_eq!(body, format!("{SLUG}\t0\t13\t12.5\t13\t24.5\n"));
+}
