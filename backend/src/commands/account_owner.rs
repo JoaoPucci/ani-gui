@@ -35,20 +35,39 @@ use crate::error::{AniError, Result};
 
 /// The user each bearer seen so far belongs to, per tracker.
 #[derive(Clone, Default)]
-pub(crate) struct OwnerMemo(Arc<Mutex<HashMap<(ProviderKind, String), String>>>);
+pub(crate) struct OwnerMemo(Arc<Mutex<Owners>>);
+
+/// The memo's contents: each bearer's user, and how many times each
+/// tracker has been forgotten, so a lookup that was out across a
+/// disconnect keeps nothing.
+#[derive(Default)]
+struct Owners {
+    users: HashMap<(ProviderKind, String), String>,
+    forgotten: HashMap<ProviderKind, u64>,
+}
+
+impl Owners {
+    fn generation(&self, kind: ProviderKind) -> u64 {
+        self.forgotten.get(&kind).copied().unwrap_or(0)
+    }
+}
 
 impl OwnerMemo {
-    fn owners(&self) -> std::sync::MutexGuard<'_, HashMap<(ProviderKind, String), String>> {
+    fn owners(&self) -> std::sync::MutexGuard<'_, Owners> {
         self.0.lock().expect("owner memo poisoned")
     }
 
-    /// Forget every bearer of `kind`: its account is gone.
+    /// Forget every bearer of `kind`: its account is gone. A lookup
+    /// already out keeps nothing when it answers.
     pub(crate) fn forget(&self, kind: ProviderKind) {
-        self.owners().retain(|(k, _), _| *k != kind);
+        let mut owners = self.owners();
+        owners.users.retain(|(k, _), _| *k != kind);
+        *owners.forgotten.entry(kind).or_insert(0) += 1;
     }
 
     /// The user `tokens` belongs to on `provider`: remembered, or asked
-    /// once and remembered.
+    /// once and remembered — unless the tracker was forgotten while the
+    /// lookup was out.
     pub(crate) async fn owner(
         &self,
         kind: ProviderKind,
@@ -56,11 +75,18 @@ impl OwnerMemo {
         tokens: &Tokens,
     ) -> Result<String> {
         let key = (kind, tokens.access_token.clone());
-        if let Some(user) = self.owners().get(&key) {
-            return Ok(user.clone());
-        }
+        let generation = {
+            let owners = self.owners();
+            if let Some(user) = owners.users.get(&key) {
+                return Ok(user.clone());
+            }
+            owners.generation(kind)
+        };
         let user = provider.me(tokens).await?.user_id;
-        self.owners().insert(key, user.clone());
+        let mut owners = self.owners();
+        if owners.generation(kind) == generation {
+            owners.users.insert(key, user.clone());
+        }
         Ok(user)
     }
 }
