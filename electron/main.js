@@ -58,6 +58,7 @@ const {
 const { startOAuthServer } = require("./oauth-server");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { guardWindow } = require("./lib/window-guard.cjs");
+const { guardPermissions } = require("./lib/permissions.cjs");
 const { guardedIpc } = require("./lib/ipc-guard.cjs");
 const { isRevealableDirectory } = require("./lib/reveal-folder.cjs");
 
@@ -422,6 +423,11 @@ async function createWindow(backend) {
     openExternal: (url) => shell.openExternal(url),
     logError: console.error,
   });
+  // Fullscreen and clipboard writes for the app's document; every other
+  // permission denied (lib/permissions.cjs). The handlers belong to the
+  // session the window shares, so installing them again for a later
+  // window replaces them with the same.
+  guardPermissions(win.webContents.session, { app: APP_DOCUMENT });
 
   // Renderer-side diagnostics surface in the main process log so we
   // can tell whether the page actually loaded and whether scripts
