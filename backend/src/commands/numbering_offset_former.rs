@@ -129,3 +129,7 @@ pub fn retag_from_listing(
 #[cfg(test)]
 #[path = "numbering_offset_former_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "numbering_offset_heard_test.rs"]
+mod heard_tests;

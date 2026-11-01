@@ -1,0 +1,160 @@
+//! Two walks of a show can overlap, and the one that heard its listing
+//! first can repair the show's numbering stamps last. The stamps end
+//! as the listing heard last repairs them; a repair from a listing
+//! heard earlier than the last one taken writes nothing; two whose
+//! hearings overlap name no former tag either listing gives a row.
+
+use super::*;
+use crate::commands::listing_tags::{Begun, Hearing};
+use crate::scraper::provider::EpisodeRef;
+
+const SHOW: &str = "hianime:the-show-1";
+
+fn state() -> AppState {
+    let dir = Box::leak(Box::new(tempfile::tempdir().expect("tmp")));
+    let mut state = crate::commands::play::tests::state_with_proxy_origin();
+    state.history_path = dir.path().join("history");
+    state
+}
+
+fn row(number: u32, tag: Option<&str>, former: Option<&str>) -> EpisodeRef {
+    EpisodeRef {
+        id: u64::from(number),
+        number,
+        number2: tag.map(str::to_string),
+        former_tag: former.map(str::to_string),
+        title: None,
+    }
+}
+
+/// Twelve episodes, then the stitched recap in slot 13 that an earlier
+/// version tagged "24.5" and that is "12.5" now. `carries` adds a row
+/// that is "24.5" itself, so the recap's former tag names it now.
+fn listing(carries: bool) -> Vec<EpisodeRef> {
+    let mut rows: Vec<EpisodeRef> = (1..=12).map(|n| row(n, None, None)).collect();
+    rows.push(row(13, Some("12.5"), Some("24.5")));
+    if carries {
+        rows.push(row(14, Some("24.5"), None));
+    }
+    rows
+}
+
+/// The recap's stamp as the earlier version wrote it.
+fn stamped(state: &AppState) {
+    crate::commands::numbering_offset::put_display(state, SHOW, 0, 13, "24.5");
+}
+
+fn repair(state: &AppState, listing: &[EpisodeRef], heard: Hearing) {
+    retag_from_listing(state, SHOW, listing, None, Some(heard));
+}
+
+/// Two hearings, the first wholly before the second.
+fn one_after_the_other() -> (Hearing, Hearing) {
+    let first = Begun::now().picked();
+    (first, Begun::now().picked())
+}
+
+/// Two hearings whose spans overlap.
+fn overlapping() -> (Hearing, Hearing) {
+    let (a, b) = (Begun::now(), Begun::now());
+    (a.picked(), b.picked())
+}
+
+fn former(state: &AppState) -> Option<(u32, String)> {
+    former_stamp(state, SHOW)
+}
+
+#[test]
+fn a_listing_heard_later_puts_right_the_former_tag_one_heard_earlier_kept() {
+    let state = state();
+    stamped(&state);
+    let (earlier, later) = one_after_the_other();
+    repair(&state, &listing(false), earlier);
+    repair(&state, &listing(true), later);
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".into())));
+    assert_eq!(former(&state), None, "a row is \"24.5\" now");
+}
+
+#[test]
+fn a_listing_heard_earlier_that_repairs_last_leaves_the_later_one_s_former_tag() {
+    // The later listing tags another row "24.5": the earlier one,
+    // repairing after it, does not name the former tag again.
+    let state = state();
+    stamped(&state);
+    let (earlier, later) = one_after_the_other();
+    repair(&state, &listing(true), later);
+    repair(&state, &listing(false), earlier);
+    assert_eq!(former(&state), None);
+}
+
+#[test]
+fn overlapping_hearings_name_no_former_tag_either_listing_gives_a_row() {
+    for carrying_first in [false, true] {
+        let state = state();
+        stamped(&state);
+        let (a, b) = overlapping();
+        repair(&state, &listing(carrying_first), a);
+        repair(&state, &listing(!carrying_first), b);
+        assert_eq!(
+            display_stamp(&state, SHOW),
+            Some((13, "12.5".into())),
+            "carrying first: {carrying_first}"
+        );
+        assert_eq!(former(&state), None, "carrying first: {carrying_first}");
+    }
+}
+
+/// The show's episode 14 watched before rows recorded the app's own
+/// number: a history row holding slot 15, past the recap, which reads
+/// through the show's stamp once a listing moves it there.
+fn legacy_row(state: &AppState) {
+    let row = crate::history::parse(&format!("15\t{SHOW}\tThe Show\n"))
+        .pop()
+        .expect("a row");
+    crate::history::upsert_and_write(&state.history_path, row).expect("write");
+}
+
+/// [`listing`] with slots 14 and 15 after the recap, slot 15 tagged
+/// `fifteenth`.
+fn listing_past_the_recap(fifteenth: &str) -> Vec<EpisodeRef> {
+    let mut rows = listing(false);
+    rows.push(row(14, Some("13"), None));
+    rows.push(row(15, Some(fifteenth), None));
+    rows
+}
+
+#[test]
+fn a_listing_heard_later_puts_the_stamp_where_it_reads_the_row() {
+    let state = state();
+    stamped(&state);
+    legacy_row(&state);
+    let (earlier, later) = one_after_the_other();
+    repair(&state, &listing_past_the_recap("13.5"), earlier);
+    repair(&state, &listing_past_the_recap("14"), later);
+    assert_eq!(display_stamp(&state, SHOW), Some((15, "14".into())));
+}
+
+#[test]
+fn a_listing_heard_earlier_landing_inside_a_later_one_s_repair_leaves_its_stamp() {
+    // Wherever the earlier listing's repair lands among the store reads
+    // the later one makes, the later listing's stamp stands: its repair
+    // may read the store again before it moves the stamp onto the
+    // history row's slot.
+    for read in 1..=2 {
+        let state = std::rc::Rc::new(state());
+        stamped(&state);
+        legacy_row(&state);
+        let (earlier, later) = one_after_the_other();
+        let inside = std::rc::Rc::clone(&state);
+        super::super::read_tap::before_read(read, move || {
+            repair(&inside, &listing_past_the_recap("13.5"), earlier);
+        });
+        repair(&state, &listing_past_the_recap("14"), later);
+        super::super::read_tap::clear();
+        assert_eq!(
+            display_stamp(&state, SHOW),
+            Some((15, "14".into())),
+            "landing before read {read}"
+        );
+    }
+}
