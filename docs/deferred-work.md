@@ -100,11 +100,10 @@ starting it, and delete it when you find it done.
   does, and the guard reads neither a slug's bare trailing number nor
   a title's as a season, so a play from its page records no id on its
   history row and stores no mapping. It waited because both obvious
-  readings accept wrong pairings in the impact study run for the
-  name comparison: a slug's bare trailing number accepted "Slime 2nd
-  Season Part 2" against this Part 1 entry, and a title's bare
-  trailing number collides with names that end in one (Mob Psycho
-  100). The 2nd-Season-Part-1 alias suggests reading a season and a
+  readings accept wrong pairings: read as a season, the slug's bare
+  trailing number accepts the "Slime 2nd Season Part 2" listing
+  against this Part 1 entry, and a title's bare trailing number
+  collides with names that end in one (Mob Psycho 100). The 2nd-Season-Part-1 alias suggests reading a season and a
   part together rather than one trailing cour.
 
 - **Decide the resolution cache's final shape after the opt-in
