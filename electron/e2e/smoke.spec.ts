@@ -369,7 +369,12 @@ test("a navigation off the app's document is refused and the app stays", async (
       await pageNavigatesTo(page, url);
       expect(page.url(), `navigated to ${url}`).toBe(home);
     }
-    await expect(page.getByText(/top rated/i).first()).toBeVisible();
+    // Read the live document rather than through a locator: Playwright
+    // counts a refused navigation as one still in flight, and a locator
+    // would wait on it until it timed out.
+    await expect
+      .poll(() => page.evaluate(() => /top rated/i.test(document.body.innerText)))
+      .toBe(true);
   } finally {
     await app.close();
   }
