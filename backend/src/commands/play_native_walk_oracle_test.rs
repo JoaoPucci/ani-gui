@@ -200,6 +200,111 @@ where
     out
 }
 
+/// The hand-written pools under `tests/picker-oracle/cases/`, every
+/// file in name order: the docs' pool table row by row and every shape
+/// the fuzzer or a review found, pinned with their answers.
+fn hand_written_cases() -> Vec<Case> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .join("tests/picker-oracle/cases");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("list {}: {e}", dir.display()))
+        .map(|entry| entry.expect("dir entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .flat_map(|path| {
+            let body = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            serde_json::from_str::<Vec<Case>>(&body)
+                .unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+        })
+        .collect()
+}
+
+fn named(ids: &[&str]) -> Vec<Case> {
+    ids.iter()
+        .map(|id| {
+            let mut case: Case = serde_json::from_str(SHOW).expect("parse");
+            case.id = (*id).to_string();
+            case
+        })
+        .collect()
+}
+
+/// Every pool is under way before the first is awaited: a pool whose
+/// walk can finish only once a later pool's walk has started finishes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn every_pool_is_under_way_before_the_first_is_awaited() {
+    let together = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+    let walk = move |case: Case| {
+        let together = together.clone();
+        async move {
+            together.wait().await;
+            serde_json::json!(case.id)
+        }
+    };
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        walk_all(named(&["first", "second"]), walk),
+    )
+    .await
+    .expect("the first pool waited for a second that was never started");
+    assert_eq!(
+        out,
+        [
+            serde_json::json!({"id": "first", "got": "first"}),
+            serde_json::json!({"id": "second", "got": "second"}),
+        ]
+    );
+}
+
+/// A pool whose walk panics is reported as a panic in its own place,
+/// and the pools around it are walked and reported in theirs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_panicking_pool_is_reported_in_its_place() {
+    let walk = |case: Case| async move {
+        assert_ne!(case.id, "b", "a walk that panics");
+        serde_json::json!(case.id)
+    };
+    let out = walk_all(named(&["a", "b", "c"]), walk).await;
+    assert_eq!(
+        out,
+        [
+            serde_json::json!({"id": "a", "got": "a"}),
+            serde_json::json!({"id": "b", "got": {"panic": true}}),
+            serde_json::json!({"id": "c", "got": "c"}),
+        ]
+    );
+}
+
+/// Walked on several threads at once, the hand-written pools are
+/// written byte for byte as a walk of one pool at a time writes them:
+/// the order, every pick, every episode and every refusal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_threaded_walk_writes_what_one_pool_at_a_time_writes() {
+    let mut one_at_a_time = Vec::new();
+    for case in hand_written_cases() {
+        let id = case.id.clone();
+        let got = tokio::spawn(walk_case(case))
+            .await
+            .unwrap_or_else(|_| serde_json::json!({"panic": true}));
+        one_at_a_time.push(serde_json::json!({"id": id, "got": got}));
+    }
+    assert!(
+        one_at_a_time.len() > 300,
+        "the hand-written pools were read"
+    );
+    let all_at_once = walk_all(hand_written_cases(), walk_case).await;
+    assert_eq!(
+        serde_json::to_string(&all_at_once).expect("serialise"),
+        serde_json::to_string(&one_at_a_time).expect("serialise"),
+    );
+}
+
 /// Rewrites the golden from the fixtures as they pick now. Run it in
 /// the change that means to alter a recorded show's pick, and say why
 /// in that commit's body.
