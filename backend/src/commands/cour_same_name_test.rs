@@ -140,6 +140,26 @@ mod props {
             }
         }
 
+        /// A name never names an entry whose name extends it, nor
+        /// the other way round — the case independent draws almost
+        /// never reach ("attack on titan" against "attack on titan
+        /// final season").
+        #[test]
+        fn a_name_and_its_extension_are_not_one_entry(
+            a in "[a-z]{2,6}( [a-z]{2,6}){0,2}",
+            more in "[a-z]{2,6}( [a-z]{2,6}){0,1}",
+            n in 1u32..40,
+            kw in prop::sample::select(KEYWORDS.to_vec()),
+        ) {
+            let b = format!("{a} {more}");
+            for provider in spellings(&a, n, kw) {
+                for kitsu in spellings(&b, n, kw) {
+                    prop_assert!(!names_the_entry(&provider, [kitsu.as_str()]), "{} / {}", provider, kitsu);
+                    prop_assert!(!names_the_entry(&kitsu, [provider.as_str()]), "{} / {}", kitsu, provider);
+                }
+            }
+        }
+
         /// A different name never names the entry, whatever cour
         /// either side carries.
         #[test]

@@ -154,6 +154,22 @@ describe('namesTheEntry properties', () => {
 		);
 	});
 
+	it('a name and its extension are not one entry', () => {
+		// Independent draws almost never reach this case ("attack on titan"
+		// against "attack on titan final season").
+		fc.assert(
+			fc.property(name, name, cour, kw, (a, more, n, k) => {
+				const b = `${a} ${more}`;
+				for (const provider of spellings(a, n, k)) {
+					for (const kitsu of spellings(b, n, k)) {
+						expect(namesTheEntry(provider, [kitsu]), `${provider} / ${kitsu}`).toBe(false);
+						expect(namesTheEntry(kitsu, [provider]), `${kitsu} / ${provider}`).toBe(false);
+					}
+				}
+			})
+		);
+	});
+
 	it('another name never names the entry', () => {
 		fc.assert(
 			fc.property(name, name, cour, kw, (a, b, n, k) => {
