@@ -23,7 +23,13 @@
 import type { Config, KitsuAnimeRef, KitsuSearchPage, SearchOrder } from '$lib/api';
 import { afterPage, canLoadMore, freshHits, type PagingPhase } from './paging';
 import { probeScope, type ProbeRun } from '$lib/availability/probe-scope';
-import type { SearchCheckpoint, SearchSnapshot } from './snapshot';
+import {
+	canReuse,
+	resumeStep,
+	type ResumeTarget,
+	type SearchCheckpoint,
+	type SearchSnapshot
+} from './snapshot';
 
 export interface SearchRunnerDeps {
 	/** One page of the Kitsu search in `order`, starting at `offset`. */
@@ -64,9 +70,16 @@ interface Search {
 	/** The offset of the next page; `null` once there is none. */
 	next: number | null;
 	emptyStreak: number;
+	/** Pages loaded, counting any a resume brought back. */
+	loaded: number;
 	/** The probes this search's pages ask: ended when another search
 	 *  replaces it, since the page's path does not change. */
 	probes: ProbeRun;
+	/** Where it stood when its last page settled; null before then. */
+	settled: Omit<SearchCheckpoint, 'hits'> | null;
+	/** A search asked again on the way back: the card it loads pages
+	 *  until it shows. */
+	target: ResumeTarget | null;
 }
 
 export function createSearchRunner(deps: SearchRunnerDeps): {
@@ -122,6 +135,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		// A superseded search still runs its page through the filter,
 		// as it always has; its emissions are what the guard drops.
 		s.next = page.next_offset;
+		s.loaded += 1;
 		const index = s.pages.push([]) - 1;
 		let settled = false;
 		await deps.filter(
@@ -144,6 +158,29 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	const settle = (s: Search, visible: number) => {
 		const r = afterPage(visible, s.next, s.emptyStreak);
 		s.emptyStreak = r.emptyStreak;
+		s.settled = {
+			mode: s.mode,
+			seen: [...s.seen],
+			next: s.next,
+			emptyStreak: r.emptyStreak,
+			pages: s.loaded,
+			phase: r.phase.kind === 'end' || r.phase.kind === 'held' ? r.phase.kind : 'idle'
+		};
+		if (s.target) {
+			const at = { shown: s.pages.flat(), pages: s.loaded, phase: r.phase.kind };
+			const step = resumeStep(s.target, at);
+			if (step === 'more') {
+				void fetchMore(s);
+				return;
+			}
+			if (step !== 'wait') {
+				s.target = null;
+				setPhase(r.phase);
+				deps.onReached?.(step === 'found');
+				if (r.advance) void fetchMore(s);
+				return;
+			}
+		}
 		setPhase(r.phase);
 		if (r.advance) void fetchMore(s);
 	};
@@ -153,11 +190,25 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		try {
 			await fetchPage(s);
 		} catch (error) {
-			if (s === search) setPhase({ kind: 'failed', error });
+			if (s !== search) return;
+			setPhase({ kind: 'failed', error });
+			// The card cannot be reached past a page that failed; the
+			// reader can retry the page from where the search stands.
+			if (s.target) {
+				s.target = null;
+				deps.onReached?.(false);
+			}
 		}
 	};
 
-	const run = async (q: string, order: SearchOrder = 'relevance') => {
+	/**
+	 * Start a new search, replacing the current one: its probes, phase
+	 * and busy state end, the config loads if it has not, and `body`
+	 * runs with the probes for its pages — unless another search has
+	 * replaced this one while the config loaded, in which case nothing
+	 * is sent: the search that replaced it owns the page now.
+	 */
+	const launch = async (body: (probes: ProbeRun) => Promise<void> | void) => {
 		const gen = ++generation;
 		const current = () => gen === generation;
 		// The search this one replaces stops asking: its emissions were
@@ -170,21 +221,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		deps.onBusy(true);
 		try {
 			if (!configLoaded) await loadConfigOnce();
-			const s: Search = {
-				q,
-				order,
-				mode: deps.pickMode(config),
-				pages: [],
-				seen: new Set(),
-				next: 0,
-				emptyStreak: 0,
-				probes
-			};
-			// A run superseded while its config loaded sends nothing:
-			// the run that replaced it owns the page now.
-			if (!current()) return;
-			search = s;
-			await fetchPage(s);
+			if (current()) await body(probes);
 		} catch (e) {
 			if (current()) deps.onError(e);
 		} finally {
@@ -192,19 +229,67 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		}
 	};
 
+	/** A search for `q` from its first page, made the current one. */
+	const begin = (q: string, order: SearchOrder, probes: ProbeRun, target: ResumeTarget | null) =>
+		(search = {
+			q,
+			order,
+			mode: deps.pickMode(config),
+			pages: [],
+			seen: new Set(),
+			next: 0,
+			emptyStreak: 0,
+			loaded: 0,
+			probes,
+			settled: null,
+			target
+		});
+
+	const run = (q: string, order: SearchOrder = 'relevance') =>
+		launch((probes) => fetchPage(begin(q, order, probes, null)));
+
+	const checkpoint = (): SearchCheckpoint | null =>
+		search?.settled ? { ...search.settled, hits: search.pages.flat() } : null;
+
+	/** The saved search made the current one as it was, its results
+	 *  shown without asking Kitsu for anything. */
+	const restore = (saved: SearchSnapshot, kept: SearchCheckpoint, probes: ProbeRun) => {
+		const { hits, ...settled } = kept;
+		const s = begin(saved.q, saved.order, probes, null);
+		Object.assign(s, {
+			pages: [hits],
+			seen: new Set(kept.seen),
+			next: kept.next,
+			emptyStreak: kept.emptyStreak,
+			loaded: kept.pages,
+			settled
+		});
+		deps.onResults(hits);
+		setPhase({ kind: kept.phase });
+		const anchor = saved.anchor;
+		deps.onReached?.(anchor !== null && hits.some((h) => h.id === anchor.id));
+	};
+
+	/**
+	 * Bring back a saved search: as it was, when `canReuse` allows;
+	 * otherwise run again in the saved order, loading pages until the
+	 * card the reader left at the top shows or the pages they had are
+	 * loaded. Either way `onReached` says whether that card is up.
+	 */
+	const resume = (saved: SearchSnapshot, at: { now: number; reload: boolean }) =>
+		launch((probes) => {
+			const kept = saved.results;
+			if (kept && canReuse(saved, { ...at, mode: deps.pickMode(config) })) {
+				return restore(saved, kept, probes);
+			}
+			const target = { id: saved.anchor?.id ?? null, pages: Math.max(1, saved.pages) };
+			return fetchPage(begin(saved.q, saved.order, probes, target));
+		});
+
 	const loadMore = () => {
 		if (!search || !canLoadMore(phase)) return;
 		if (phase.kind === 'held') search.emptyStreak = 0;
 		void fetchMore(search);
-	};
-
-	/** Declared ahead of its rules. */
-	const checkpoint = (): SearchCheckpoint | null => null;
-
-	/** Declared ahead of its rules. */
-	const resume = async (saved: SearchSnapshot, at: { now: number; reload: boolean }) => {
-		void saved;
-		void at;
 	};
 
 	return { run, loadMore, checkpoint, resume };

@@ -4,9 +4,11 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import type { Snapshot } from '@sveltejs/kit';
 	import { page } from '$app/state';
+	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
 		imageProxyUrl,
@@ -37,6 +39,13 @@
 	import { watchSentinel, type SentinelWatch } from '$lib/search/sentinel';
 	import { staggerSlots } from '$lib/search/stagger';
 	import { keepFocus } from '$lib/search/keep-focus';
+	import {
+		captureSearch,
+		readSnapshot,
+		type ScrollAnchor,
+		type SearchSnapshot
+	} from '$lib/search/snapshot';
+	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -184,13 +193,81 @@
 	// Drive the search off the URL ?q=… param. The global topbar from
 	// +layout.svelte writes that param on submit; this page reacts to
 	// it. As a bonus, search history (browser back/forward) and deep
-	// links work for free.
+	// links work for free. A back or forward press is the exception:
+	// the entry it lands on may have a snapshot to restore, which
+	// SvelteKit hands over only after the page has updated, so the
+	// address is followed from `afterNavigate` instead (below).
+	const urlQuery = () => page.url.searchParams.get('q')?.trim() ?? '';
 	$effect(() => {
-		const q = page.url.searchParams.get('q')?.trim() ?? '';
-		if (q && q !== submitted) {
-			void runSearch(q);
-		}
+		const q = urlQuery();
+		const href = page.url.href;
+		untrack(() => {
+			if (href !== arriving) follow(q);
+		});
 	});
+
+	function follow(q: string) {
+		if (q && q !== submitted) void runSearch(q);
+	}
+
+	// Going back to the search page restores what the reader left: the
+	// query, order and type filters, the results already loaded, and
+	// the card at the top of the screen. SvelteKit keeps the snapshot
+	// with the history entry (https://svelte.dev/docs/kit/snapshots);
+	// what is kept, and when kept results may be shown again, is
+	// $lib/search/snapshot.ts.
+	let pageEl = $state<HTMLElement | null>(null);
+	/** The address a back or forward press is taking this page to. */
+	let arriving: string | null = null;
+	/** The snapshot SvelteKit restored, until the navigation lands. */
+	let saved: SearchSnapshot | null = null;
+	/** The card to put back at the top once the results are up. */
+	let anchor: ScrollAnchor | null = null;
+	/** Cards that came back as they were left: they do not rise in again. */
+	let restoredIds = $state.raw(new Set<string>());
+
+	export const snapshot: Snapshot<SearchSnapshot> = {
+		capture: () =>
+			captureSearch({
+				q: submitted,
+				order: sortKey,
+				subtypes: [...activeSubtypes],
+				checkpoint: searchRunner.checkpoint(),
+				cards: cardPositions(pageEl, window.scrollY),
+				now: Date.now()
+			}),
+		restore: (value) => {
+			saved = readSnapshot(value);
+		}
+	};
+
+	beforeNavigate(({ type, to }) => {
+		arriving = type === 'popstate' && to ? to.url.href : null;
+	});
+
+	afterNavigate(({ type }) => {
+		arriving = null;
+		const kept = saved;
+		saved = null;
+		if (kept && (type === 'popstate' || type === 'enter')) restoreFrom(kept, type === 'enter');
+		else if (type === 'popstate') follow(urlQuery());
+	});
+
+	/** Put back the search `kept` describes, if it is the one the
+	 *  address names; follow the address otherwise. */
+	function restoreFrom(kept: SearchSnapshot, reload: boolean) {
+		const q = urlQuery();
+		if (!q || kept.q !== q) return follow(q);
+		sortKey = kept.order;
+		activeSubtypes.clear();
+		for (const t of kept.subtypes) activeSubtypes.add(t);
+		error = null;
+		submitted = q;
+		reach = UNMEASURED;
+		anchor = kept.anchor;
+		restoredIds = new Set(kept.results?.hits.map((h) => h.id));
+		void searchRunner.resume(kept, { now: Date.now(), reload });
+	}
 
 	// All async search state transitions live in the runner
 	// ($lib/search/run-search.ts): render-then-prune emissions from
@@ -218,6 +295,7 @@
 		onError: (e) => {
 			error = { headline: m.search_error_headline(), detail: describeError(e) };
 			results = null;
+			anchor = null;
 		},
 		onBusy: (b) => {
 			busy = b;
@@ -228,12 +306,21 @@
 			// Load more brought it back to idle). Only a measurement of
 			// the grid as it now stands may load the next page.
 			if (p.kind === 'idle') gridChanged();
+		},
+		// A resumed search is up: put the card the reader left back at
+		// the top of the screen, or open at the top when it is gone.
+		onReached: (found) => {
+			const card = found ? anchor : null;
+			anchor = null;
+			void tick().then(() => scrollToAnchor(pageEl, card, window));
 		}
 	});
 
 	async function runSearch(q: string) {
 		error = null;
 		submitted = q;
+		anchor = null;
+		restoredIds = new Set();
 		// The marker's last report belongs to the previous results; it
 		// unmounts while this search's first page loads, and the
 		// observer made when it mounts again reports its initial state.
@@ -277,7 +364,7 @@
 	<title>{m.app_page_title_search()}</title>
 </svelte:head>
 
-<div class="page">
+<div class="page" bind:this={pageEl}>
 	<SearchProgress {busy} />
 	<header class="page-header">
 		<h1 class="page-title">{m.search_title()}</h1>
@@ -430,7 +517,12 @@
 				{@const accent = accentFor(hit.id)}
 				{@const year = yearOf(hit)}
 				{@const rating = ratingOf(hit)}
-				<li class="card" style="--i: {slotOf.get(hit.id) ?? i}; --accent: {accent};">
+				<li
+					class="card"
+					class:card-restored={restoredIds.has(hit.id)}
+					data-card-id={hit.id}
+					style="--i: {slotOf.get(hit.id) ?? i}; --accent: {accent};"
+				>
 					<a href={resolve('/anime/[id]', { id: hit.id })} class="card-link">
 						<span class="poster">
 							{#if poster}
@@ -641,6 +733,10 @@
 		--i: 0;
 		animation: card-in var(--dur-med) var(--ease-out-soft) both;
 		animation-delay: calc(var(--i) * var(--dur-stagger));
+	}
+	/* A card that came back as the reader left it is already in place. */
+	.card.card-restored {
+		animation: none;
 	}
 	@keyframes card-in {
 		from {
