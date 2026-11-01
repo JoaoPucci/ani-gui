@@ -148,12 +148,16 @@ pub const UNKNOWN_LANGUAGE: &str = "und";
 /// reader could not read, by file and label: the listing carries no
 /// language field, so a new file naming or an unknown label shows up
 /// in the log the first time it is played, rather than as tracks that
-/// quietly lose their language.
+/// quietly lose their language. The file is named without its query,
+/// where a CDN puts its signature.
 pub(super) fn warn_unread_languages(subtitles: &[SubtitleTrack]) {
     let unread: Vec<String> = subtitles
         .iter()
         .filter(|t| t.lang == UNKNOWN_LANGUAGE)
-        .map(|t| format!("{} ({:?})", t.url, t.label))
+        .map(|t| {
+            let file = t.url.split(['?', '#']).next().unwrap_or_default();
+            format!("{file} ({:?})", t.label)
+        })
         .collect();
     if !unread.is_empty() {
         tracing::warn!(
