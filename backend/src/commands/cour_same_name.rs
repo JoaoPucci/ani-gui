@@ -19,6 +19,11 @@
 //! Stardust Crusaders entry Kitsu also calls "JoJo's Bizarre Adventure
 //! Part 3".
 
+/// The ten spelled ordinals the cour parsers read.
+const ORDINAL_WORDS: [&str; 10] = [
+    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
+];
+
 /// Whether `provider_title` is one of `entry_titles`: the same words
 /// once case and punctuation are folded, or the same name before a
 /// trailing cour suffix with the same cour number however the suffix
@@ -29,9 +34,61 @@ pub fn names_the_entry<'a>(
     provider_title: &str,
     entry_titles: impl IntoIterator<Item = &'a str>,
 ) -> bool {
-    // Red stub: the comparison lands with its green commit.
-    let _ = (provider_title, entry_titles.into_iter().count());
-    false
+    let wanted = words(provider_title);
+    if wanted.is_empty() {
+        return false;
+    }
+    let wanted_cour = split_cour(&wanted);
+    entry_titles.into_iter().any(|t| {
+        let have = words(t);
+        have == wanted || (wanted_cour.is_some() && split_cour(&have) == wanted_cour)
+    })
+}
+
+/// The title's words: lowercased, split on everything that is not a
+/// letter or a digit.
+fn words(title: &str) -> Vec<String> {
+    title
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// The name before a trailing cour suffix, and the cour it names —
+/// `[.., season|part|cour, N]`, `[.., Nst|Nnd|Nrd|Nth, keyword]` or
+/// `[.., second, keyword]`. None without a suffix, or when nothing
+/// precedes it.
+fn split_cour(words: &[String]) -> Option<(&[String], u32)> {
+    let [name @ .., a, b] = words else {
+        return None;
+    };
+    if name.is_empty() {
+        return None;
+    }
+    let cour = if super::cour::is_cour_keyword(a) {
+        b.parse().ok()
+    } else if super::cour::is_cour_keyword(b) {
+        ordinal(a)
+    } else {
+        None
+    }?;
+    Some((name, cour))
+}
+
+/// A cour written as an ordinal: a number with its suffix, or one of
+/// the spelled ordinals.
+fn ordinal(word: &str) -> Option<u32> {
+    if let Some(i) = ORDINAL_WORDS.iter().position(|o| *o == word) {
+        return u32::try_from(i + 1).ok();
+    }
+    let digits = word.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let suffix = &word[digits.len()..];
+    if digits.is_empty() || !matches!(suffix, "st" | "nd" | "rd" | "th") {
+        return None;
+    }
+    digits.parse().ok()
 }
 
 #[cfg(test)]
