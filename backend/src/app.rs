@@ -153,7 +153,11 @@ impl AppState {
         if let Some(parent) = metadata_db.parent() {
             std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
         }
-        let cache_pool = crate::cache::open_pool(&metadata_db)?;
+        // Opening the cache also deletes the rows no reader of this
+        // build asks for — families re-keyed or retired, and rows past
+        // their lifetime nothing reads past it — reported through the
+        // diagnostics page.
+        let (cache_pool, cache_reclaim) = crate::cache::open_pool_reclaiming(&metadata_db)?;
         let meta_http = crate::proxy::upstream::build_meta_client();
         let kitsu = KitsuClient::new(meta_http.clone());
         let config_path = paths::config_file().ok_or(AniError::Io)?;
@@ -183,6 +187,7 @@ impl AppState {
         // What a provider the app no longer walks left in the history
         // and the cache goes before anything is served, so no surface
         // ever reads it; reported through the diagnostics page.
+        state.legacy_sweep.cache_reclaim = cache_reclaim;
         state.legacy_sweep.retired_provider = crate::retired_provider::sweep(&state);
         Ok(state)
     }

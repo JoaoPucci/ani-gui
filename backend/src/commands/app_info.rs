@@ -25,6 +25,9 @@ pub struct AppInfo {
     /// `crate::retired_provider`): empty on every launch that found
     /// nothing such a provider left.
     pub retired_provider_sweep: crate::retired_provider::RetiredSweepReport,
+    /// What the launch's cache reclaim deleted (see `crate::cache::reclaim`):
+    /// zero on every launch that found nothing to reclaim.
+    pub cache_reclaim: crate::cache::reclaim::ReclaimReport,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -44,6 +47,7 @@ pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
             .map(|p| p.display().to_string())
             .collect(),
         retired_provider_sweep: state.legacy_sweep.retired_provider.clone(),
+        cache_reclaim: state.legacy_sweep.cache_reclaim.clone(),
     })
 }
 
