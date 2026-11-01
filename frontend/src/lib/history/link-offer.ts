@@ -1,10 +1,24 @@
 /**
  * Whether a show page offers to link the guessed card it was opened
- * from, and the flow that does it. Not wired yet.
+ * from, and the flow that does it.
+ *
+ * The page offers it only when it was opened from a guessed Continue
+ * card ($lib/history/guessed-context.ts), the card's row is still in
+ * the history with no Kitsu id recorded, and the row is still matched
+ * to this very show by a guess — the match Continue Watching makes
+ * (`resolveKitsuMatchWithTrust`). Anything else, and the page says
+ * nothing.
+ *
+ * A link covers every guessed row the card stands for: the rows
+ * Continue Watching shows as one card because they are guessed as the
+ * same show. Linking the shown row alone would leave a hidden sibling
+ * guessed as the old show, and it would surface as a card of its own.
+ * Rows that recorded an id stay out: a play from a page recorded them.
  */
 
 import type { HistoryEntry, KitsuAnimeRef, LinkedRow, LinkOutcome, UnlinkOutcome } from '$lib/api';
-import type { LinkCandidate } from './link-candidates';
+import { resolveHistoryEntry } from './resolve';
+import { mergeCandidates, slugSearchTerm, type LinkCandidate } from './link-candidates';
 
 /** What the page needs from the app. */
 export interface LinkDeps {
@@ -22,51 +36,85 @@ export interface LinkOffer {
 	current: KitsuAnimeRef;
 }
 
+/** Whether a row is matched to `pageId` by a guess. */
+async function guessedAs(
+	deps: LinkDeps,
+	entry: HistoryEntry,
+	pageId: string
+): Promise<KitsuAnimeRef | null> {
+	if (entry.kitsu_id) return null;
+	const { match, trusted } = await deps.resolve(entry);
+	return match && !trusted && match.id === pageId ? match : null;
+}
+
+/** The offer the show page `pageId` makes for the guessed card's row
+ *  `row`, or null when it makes none. A failure to read makes none. */
 export async function linkOffer(
 	deps: LinkDeps,
 	row: string | null,
 	pageId: string
 ): Promise<LinkOffer | null> {
-	void deps;
-	void row;
-	void pageId;
-	return null;
+	if (!row) return null;
+	try {
+		const entry = (await deps.history()).find((e) => e.id === row);
+		if (!entry) return null;
+		const current = await guessedAs(deps, entry, pageId);
+		return current ? { entry, current } : null;
+	} catch {
+		return null;
+	}
 }
 
+/** The candidates for the offer's row: both searches, each allowed to
+ *  fail on its own. */
 export async function loadCandidates(deps: LinkDeps, offer: LinkOffer): Promise<LinkCandidate[]> {
-	void deps;
-	void offer;
-	return [];
+	const title = resolveHistoryEntry(offer.entry, null).searchTitle;
+	const slug = slugSearchTerm(offer.entry.id);
+	const quiet = (q: string | null) => (q ? deps.search(q).catch(() => []) : Promise.resolve([]));
+	const [titleHits, slugHits] = await Promise.all([quiet(title), quiet(slug)]);
+	return mergeCandidates(offer.current, titleHits, slugHits);
 }
 
+/** The candidates a typed search answers with. Its failure is the
+ *  caller's to show. */
 export async function searchCandidates(
 	deps: LinkDeps,
 	offer: LinkOffer,
 	query: string
 ): Promise<LinkCandidate[]> {
-	void deps;
-	void offer;
-	void query;
-	return [];
+	const hits = await deps.search(query.trim());
+	return mergeCandidates(null, hits, []).map((c) => ({
+		...c,
+		current: c.ref.id === offer.current.id
+	}));
 }
 
+/** Every guessed row the offer's card stands for: its own, and each
+ *  other row with no recorded id guessed as the same show. A row whose
+ *  match cannot be read is left out. */
 export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
-	void deps;
-	return [offer.entry.id];
+	const rows = await deps.history();
+	const group = [offer.entry.id];
+	for (const entry of rows) {
+		if (entry.id === offer.entry.id || entry.kitsu_id) continue;
+		const same = await guessedAs(deps, entry, offer.current.id).catch(() => null);
+		if (same) group.push(entry.id);
+	}
+	return group;
 }
 
+/** Link the offer's card, and every guessed row it stands for, to
+ *  `kitsuId`. */
 export async function confirmLink(
 	deps: LinkDeps,
 	offer: LinkOffer,
 	kitsuId: string
 ): Promise<LinkOutcome> {
-	void deps;
-	void offer;
-	return { kitsu_id: kitsuId, linked: [] };
+	return deps.link(await guessedGroup(deps, offer), kitsuId);
 }
 
+/** Undo `outcome`; true when every row it linked got its id back. */
 export async function undoLink(deps: LinkDeps, outcome: LinkOutcome): Promise<boolean> {
-	void deps;
-	void outcome;
-	return false;
+	const undone = await deps.unlink(outcome.kitsu_id, outcome.linked);
+	return undone.kept.length === 0;
 }
