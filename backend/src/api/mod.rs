@@ -97,6 +97,8 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
+        .route("/api/history/link", post(post_history_link))
+        .route("/api/history/unlink", post(post_history_unlink))
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -212,6 +214,25 @@ async fn get_history_number(
     Ok(Json(crate::commands::history_number::history_number(
         &state, &id,
     )?))
+}
+
+/// Link history rows to the show the user named for them
+/// ([`crate::commands::history_link::link`]).
+async fn post_history_link(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::LinkArgs>,
+) -> Result<Json<crate::commands::history_link::LinkOutcome>, AniError> {
+    Ok(Json(
+        crate::commands::history_link::link(&state, &args).await?,
+    ))
+}
+
+/// Undo a link ([`crate::commands::history_link::unlink`]).
+async fn post_history_unlink(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::UnlinkArgs>,
+) -> Result<Json<crate::commands::history_link::UnlinkOutcome>, AniError> {
+    Ok(Json(crate::commands::history_link::unlink(&state, &args)?))
 }
 
 async fn post_external_player(
