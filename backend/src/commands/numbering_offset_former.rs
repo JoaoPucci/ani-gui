@@ -91,7 +91,10 @@ pub fn retag_from_resolve(
 /// a stamp a warm moved off the show's legacy history row goes back on
 /// it, where the listing agrees with the sidecar. `unread_past` is the
 /// pick's ([`crate::commands::play_native::PickedShow::unread_past`]):
-/// no row past it gets a stamp.
+/// no row past it gets a stamp. The listing's record is the walk's to
+/// write, at its pick ([`crate::commands::listing_tags`]): a repair runs
+/// once the walk is done, by when a newer walk may have recorded a newer
+/// listing.
 pub fn retag_from_listing(
     state: &AppState,
     slug: &str,
