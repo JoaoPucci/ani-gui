@@ -173,6 +173,17 @@
 	--ring: 0 0 0 2px var(--ink-000), 0 0 0 4px var(--accent);
 }
 
+/* The surface a home row sits on (Strip.svelte). Registered as a colour
+   so a banded row can ease between its resting and hovered shade: an
+   unregistered property swaps at once, and the edge fades drawn in it
+   would jump while the band beneath them eased. The initial value is
+   --ink-000's, written out because a registration cannot read a var. */
+@property --strip-surface {
+	syntax: '<color>';
+	inherits: true;
+	initial-value: #0c0a09;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	:root {
 		--dur-fast: 0ms;

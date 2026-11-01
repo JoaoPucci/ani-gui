@@ -42,7 +42,5 @@
 	],
 	"clear_confirm_body": "Это очистит историю просмотров ani-gui. Действие необратимо.",
 	"clear_confirm_button": "Очистить всё",
-	"hero_error_eyebrow_value": "Kitsu не отвечает",
-	"clear_menu_button_aria": "Параметры истории",
-	"clear_menu_item": "Очистить историю"
+	"hero_error_eyebrow_value": "Kitsu не отвечает"
 }

@@ -28,10 +28,17 @@
 		 *  Continue Watching's popped-out delete chip) needs this
 		 *  widened to keep that hover surface from being clipped. */
 		padBlock?: string;
-		/** Optional trailing slot in the strip header, right-aligned
-		 *  next to the eyebrow. The Continue Watching rail uses this
-		 *  for a kebab → "Clear history" affordance. */
-		headerTrailing?: Snippet;
+		/** Status words that continue the header's title line, after
+		 *  the caption and a separator — the Watch Later rail says how
+		 *  fresh it is here. */
+		headerMeta?: Snippet;
+		/** The row's actions (RowAction buttons). They continue the
+		 *  title line on a plain row, and sit at the band's end on a
+		 *  banded one; either way they are inside this row's header. */
+		headerActions?: Snippet;
+		/** What the row sits on: the page itself, or a faint band that
+		 *  marks out the row's extent (the home row style switch). */
+		surface?: 'plain' | 'band';
 		children: Snippet;
 	}
 
@@ -42,7 +49,9 @@
 		cardWidth = '11.25rem',
 		pad = 'var(--space-8)',
 		padBlock = 'var(--space-2) var(--space-3)',
-		headerTrailing,
+		headerMeta,
+		headerActions,
+		surface = 'plain',
 		children
 	}: Props = $props();
 
@@ -151,17 +160,24 @@
 <section
 	class="strip"
 	class:strip-headless={headless}
+	data-surface={surface}
 	style="--strip-card: {cardWidth}; --strip-pad: {pad}; --strip-pad-block: {padBlock};"
 >
 	{#if !headless}
 		<header class="strip-header">
-			<h2 class="eyebrow">
+			<h2 class="eyebrow strip-title">
 				<span class="eyebrow-key">{eyebrow}</span>
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
-			{#if headerTrailing}
-				<div class="strip-header-trailing">{@render headerTrailing()}</div>
+			{#if headerMeta}
+				<p class="strip-meta">
+					<span class="strip-meta-sep" aria-hidden="true">·</span>
+					{@render headerMeta()}
+				</p>
+			{/if}
+			{#if headerActions}
+				<div class="strip-actions">{@render headerActions()}</div>
 			{/if}
 		</header>
 	{/if}
@@ -259,21 +275,91 @@
 		   the content begins ~160px from the viewport edge, which reads
 		   as "designed" rather than "glued to the rail". */
 		--strip-pad: var(--space-8);
+		/* The gutter inside the row's own box. A plain row's box is the
+		   page column; a banded row is inset by the band's margin, and
+		   takes it back here so its cards stay in line with a plain
+		   row's and with the hero copy above. */
+		--strip-pad-inner: var(--strip-pad);
+		/* What the row sits on. The edge fades are drawn in it, so they
+		   melt into the page on a plain row and into the band on a
+		   banded one (registered in tokens.css so it can transition). */
+		--strip-surface: var(--ink-000);
 		margin-block-end: var(--space-7);
 	}
 
+	/* A banded row: a faint surface the whole row — header, cards,
+	   fades — sits on, so an action in the header is visibly part of
+	   this row. No border and no highlight: an edge drawn around every
+	   row is the generic card look the design rules keep out; the band
+	   is a change of ground, and it lifts a little while the row is
+	   under the pointer or holds focus. */
+	.strip[data-surface='band'] {
+		--strip-band-inset: var(--space-5);
+		--strip-pad-inner: calc(var(--strip-pad) - var(--strip-band-inset));
+		--strip-surface: color-mix(in oklab, var(--bone-100) 4%, var(--ink-000));
+		margin-inline: var(--strip-band-inset);
+		/* The band's own padding replaces part of the gap between rows,
+		   so the page is no taller than with plain rows. */
+		margin-block-end: var(--space-5);
+		padding-block: var(--space-4) var(--space-2);
+		border-radius: var(--radius-card);
+		background: var(--strip-surface);
+		/* --dur-med is 0ms under prefers-reduced-motion (tokens.css). */
+		transition: --strip-surface var(--dur-med) var(--ease-out-soft);
+	}
+	.strip[data-surface='band']:hover,
+	.strip[data-surface='band']:focus-within {
+		--strip-surface: color-mix(in oklab, var(--bone-100) 6.5%, var(--ink-000));
+	}
+
+	/* The header is one line of items — title, rule, caption, status,
+	   actions — spaced by one gap. Every rule below that spaces an item
+	   reads --strip-header-gap; none adds a margin of its own, so the
+	   space between any two neighbours on the line is the same. */
 	.strip-header {
+		--strip-header-gap: var(--space-3);
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--space-5);
-		padding-inline: var(--strip-pad);
+		flex-wrap: wrap;
+		align-items: center;
+		column-gap: var(--strip-header-gap);
+		row-gap: var(--space-2);
+		/* An action is 32px tall; every row reserves that height, so a
+		   row with an action and one without start their cards level. */
+		min-block-size: var(--space-6);
+		padding-inline: var(--strip-pad-inner);
 		margin-block-end: var(--space-4);
 	}
-	.strip-header-trailing {
+	.strip-title {
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--strip-header-gap);
+	}
+	.strip-meta {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--strip-header-gap);
+		margin: 0;
+		/* The caption's voice (tokens.css .eyebrow-value), so the status
+		   reads as the caption continuing, not as a third style. */
+		font-family: var(--font-body);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
+	}
+	.strip-meta-sep {
+		color: color-mix(in oklab, var(--bone-100) 40%, transparent);
+	}
+	.strip-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--strip-header-gap);
+	}
+	/* On a band the row's extent is drawn, so its actions can sit at the
+	   band's end and still read as this row's. */
+	.strip[data-surface='band'] .strip-actions {
+		margin-inline-start: auto;
 	}
 
 	.strip-frame {
@@ -306,7 +392,7 @@
 		gap: var(--space-5);
 		/* Padding lives on the rail, not the scroll container — keeps
 		   first-card alignment matching the eyebrow on initial render. */
-		padding-inline: var(--strip-pad);
+		padding-inline: var(--strip-pad-inner);
 		/* Block padding gives cards room for their hover treatments
 		   (lift, popped-out chips, etc.) without the parent's auto
 		   overflow shaving them. Override via the `padBlock` prop on
@@ -351,9 +437,9 @@
 		inset-inline-start: 0;
 		background: linear-gradient(
 			to right,
-			var(--ink-000) 0%,
-			color-mix(in oklab, var(--ink-000) 90%, transparent) 30%,
-			color-mix(in oklab, var(--ink-000) 60%, transparent) 60%,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
 			transparent 100%
 		);
 	}
@@ -361,9 +447,9 @@
 		inset-inline-end: 0;
 		background: linear-gradient(
 			to left,
-			var(--ink-000) 0%,
-			color-mix(in oklab, var(--ink-000) 90%, transparent) 30%,
-			color-mix(in oklab, var(--ink-000) 60%, transparent) 60%,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
 			transparent 100%
 		);
 	}

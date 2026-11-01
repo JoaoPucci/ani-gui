@@ -41,7 +41,5 @@
 	],
 	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
 	"clear_confirm_button": "Clear all",
-	"hero_error_eyebrow_value": "No answer from Kitsu",
-	"clear_menu_button_aria": "History options",
-	"clear_menu_item": "Clear history"
+	"hero_error_eyebrow_value": "No answer from Kitsu"
 }

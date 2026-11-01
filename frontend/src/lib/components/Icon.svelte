@@ -22,7 +22,8 @@
 		| 'external'
 		| 'arrow-back'
 		| 'arrow-right'
-		| 'update';
+		| 'update'
+		| 'refresh';
 
 	let { name, size = 18 }: { name: IconName; size?: number } = $props();
 </script>
@@ -198,5 +199,23 @@
 		<circle cx="12" cy="12" r="9" />
 		<path d="M12 7 V15" />
 		<path d="M8 12 L12 16 L16 12" />
+	</svg>
+{:else if name === 'refresh'}
+	<!-- Refresh: three-quarters of a circle closing on its own
+	     arrowhead — "pull this again". Not the 'update' glyph above,
+	     whose arrow points down into a circle and reads as a download. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<path d="M19.5 12 A7.5 7.5 0 1 1 17.3 6.7" />
+		<path d="M19 3.5 V7.5 H15" />
 	</svg>
 {/if}
