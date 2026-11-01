@@ -44,8 +44,10 @@ pub(super) fn gather(state: &AppState) -> Result<Work> {
 
 /// How many of the `before` retired numbering rows are gone now. When
 /// the store cannot be read to tell, the `forgotten` rows the sweep's
-/// own removal is known to have taken: all of them were in the store
-/// the sweep read.
+/// own removal asked for, all of which were in the store the sweep
+/// read: a removed history row may already have taken some of them,
+/// and what such a removal took is left out, but the count never falls
+/// below what this sweep's writes removed of them.
 fn numbering_gone(state: &AppState, before: usize, forgotten: usize) -> usize {
     #[cfg(test)]
     let read = if FAIL_COUNT_READ.with(|f| f.replace(false)) {
