@@ -195,7 +195,7 @@ fn every_shared_vector_reads_the_same_as_on_the_frontend() {
         "../../../tests/fixtures/same-name/vectors.json"
     ))
     .expect("vectors");
-    assert!(vectors.len() >= 29, "the shared vectors are all there");
+    assert!(vectors.len() >= 30, "the shared vectors are all there");
     let wrong: Vec<&str> = vectors
         .iter()
         .filter(|v| names_the_entry(&v.title, v.names.iter().map(String::as_str)) != v.names_entry)

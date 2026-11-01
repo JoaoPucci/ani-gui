@@ -309,5 +309,13 @@
    "Attack on Titan Season 3"
   ],
   "names_entry": false
+ },
+ {
+  "case": "leading zeros read as the number",
+  "title": "Show Season 02",
+  "names": [
+   "Show Part 2"
+  ],
+  "names_entry": true
  }
 ]

@@ -29,7 +29,7 @@ describe('namesTheEntry shared vectors', () => {
 	});
 
 	it('runs every shared vector', () => {
-		expect(vectors.length).toBeGreaterThanOrEqual(29);
+		expect(vectors.length).toBeGreaterThanOrEqual(30);
 	});
 });
 
