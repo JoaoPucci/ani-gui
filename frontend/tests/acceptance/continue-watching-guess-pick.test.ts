@@ -205,3 +205,88 @@ describe("a guessed Continue card for hianime's 2000 JoJo listing", () => {
 		expect(asked.get('year')).toBe('2000');
 	});
 });
+
+describe('two guessed Continue cards titled alike, from different years', () => {
+	it('each keep the show its own year names, on the next visit too', async () => {
+		// The backend keeps a row's stored guess under the year it names
+		// (`year`), as `backend/src/api/title_match_year_test.rs` holds it
+		// to; this fake keeps them the same way.
+		const stored = new Map<string, string>();
+		const keyOf = (title: unknown, provider: unknown, year: unknown) =>
+			`${title}|${provider ?? ''}|${year ?? ''}`;
+		const rows = [
+			{
+				ep_no: '1',
+				id: 'hianime:jojos-bizarre-adventure-2012-9',
+				title: "JoJo's Bizarre Adventure",
+				key_year: 2012
+			},
+			{
+				ep_no: '1',
+				id: 'hianime:jojos-bizarre-adventure-2000-5182',
+				title: "JoJo's Bizarre Adventure",
+				key_year: 2000
+			}
+		];
+		const hits = [
+			hit(
+				'7158',
+				'JoJo no Kimyou na Bouken (TV)',
+				'jojo-s-bizarre-adventure-2012',
+				'TV',
+				'2012-10-06',
+				26,
+				{
+					en_us: "JoJo's Bizarre Adventure",
+					en: "JoJo's Bizarre Adventure (2012)"
+				}
+			),
+			hit(
+				'7730',
+				'JoJo no Kimyou na Bouken: Adventure',
+				'jojo-s-bizarre-adventure-2000',
+				'OVA',
+				'2000-05-25',
+				7,
+				{
+					en: "JoJo's Bizarre Adventure (2000)"
+				}
+			)
+		];
+		server.use(
+			...homeHandlers({}, [
+				http.get(`${API_BASE}/api/history`, () => HttpResponse.json(rows)),
+				http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json(hits)),
+				http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
+					HttpResponse.json(hits.find((h) => h.id === params.id) ?? null)
+				),
+				http.get(`${API_BASE}/api/title-match`, ({ request }) => {
+					const q = new URL(request.url).searchParams;
+					return HttpResponse.json(
+						stored.get(keyOf(q.get('title'), q.get('provider'), q.get('year'))) ?? null
+					);
+				}),
+				http.put(`${API_BASE}/api/title-match`, async ({ request }) => {
+					const b = (await request.json()) as Record<string, unknown>;
+					stored.set(keyOf(String(b.title), b.provider, b.year), String(b.kitsu_id));
+					return new HttpResponse(null, { status: 204 });
+				})
+			])
+		);
+		const shown = (title: string) =>
+			Array.from(target.querySelectorAll('button')).some((b) => b.textContent?.includes(title));
+		const both = () =>
+			shown('JoJo no Kimyou na Bouken (TV)') && shown('JoJo no Kimyou na Bouken: Adventure');
+
+		app = mount(HomePage, { target });
+		await until(both, 'both cards, each its own show');
+		await until(() => stored.size >= 1, 'the guesses to be stored');
+		await new Promise((r) => setTimeout(r, 50));
+		unmount(app);
+		app = null;
+
+		// The next visit reads the stored guesses.
+		app = mount(HomePage, { target });
+		await until(both, 'both cards again, each its own show');
+	});
+});

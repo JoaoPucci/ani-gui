@@ -49,6 +49,15 @@ fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
 /// A history holding one row that records `recorded`, with Kitsu
 /// answering `/anime/<recorded>` with `status`.
 async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockServer, AppState) {
+    row_recording_titled(recorded, status, TITLE).await
+}
+
+/// [`row_recording`], the row titled `title`.
+async fn row_recording_titled(
+    recorded: &str,
+    status: u16,
+    title: &str,
+) -> (tempfile::TempDir, MockServer, AppState) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(format!("/anime/{recorded}")))
@@ -62,7 +71,7 @@ async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockS
         &[HistoryEntry {
             ep_no: "5".into(),
             id: SHOW.into(),
-            title: TITLE.into(),
+            title: title.into(),
             watched_at: None,
             kitsu_id: Some(recorded.into()),
             own_number: false,
@@ -141,6 +150,24 @@ async fn a_title_match_the_version_before_stored_names_no_show() {
     assert!(kitsu_anime_detail_fails(&state, "999").await);
 
     assert_eq!(found(&state, "1"), None);
+}
+
+#[tokio::test]
+async fn a_deleted_recorded_entry_gives_way_to_the_title_match_its_year_keyed() {
+    // A row whose title ends with the year it names keeps its guess
+    // keyed by that year; the resume lookup reads it there.
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, "Show (12 episodes) (2009)").await;
+    crate::commands::kitsu::title_match_put(
+        &state,
+        ShowKey::parse(SHOW).provider,
+        "Show (2009)",
+        1,
+        "1",
+    )
+    .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
 }
 
 #[tokio::test]

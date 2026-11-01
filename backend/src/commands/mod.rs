@@ -122,6 +122,7 @@ pub mod settings;
 pub mod syncplay;
 pub(crate) mod title_match_rows;
 pub(crate) mod title_match_store;
+pub(crate) mod title_match_year;
 pub(crate) mod tracker_map;
 
 pub use app_info::app_info;

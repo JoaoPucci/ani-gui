@@ -402,6 +402,10 @@ struct TitleMatchQuery {
     /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
+    /// The year the row names, which keeps its guess apart from a
+    /// row's titled alike ([`crate::commands::title_match_year`]).
+    #[serde(default)]
+    year: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -419,7 +423,8 @@ async fn get_title_match(
 ) -> Result<Json<Option<String>>, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
-    let stored = kitsu_inner::title_match_get(&state, provider, &q.title, q.cour)?;
+    let title = crate::commands::title_match_year::keyed_title(&q.title, q.year);
+    let stored = kitsu_inner::title_match_get(&state, provider, &title, q.cour)?;
     Ok(Json(stored_kitsu_id(stored)))
 }
 
@@ -442,6 +447,9 @@ struct TitleMatchBody {
     /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
+    /// The year the row names ([`TitleMatchQuery::year`]).
+    #[serde(default)]
+    year: Option<u32>,
 }
 
 async fn put_title_match(
@@ -451,10 +459,11 @@ async fn put_title_match(
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
     let kitsu_id = crate::kitsu_id::require(&body.kitsu_id)?;
-    crate::commands::title_match_store::store_title_match(
+    crate::commands::title_match_store::store_title_match_for_year(
         &state,
         provider,
         &body.title,
+        body.year,
         body.cour,
         kitsu_id,
     )?;
@@ -856,6 +865,10 @@ mod kitsu_map_tests;
 #[cfg(test)]
 #[path = "history_key_year_test.rs"]
 mod history_key_year_tests;
+
+#[cfg(test)]
+#[path = "title_match_year_test.rs"]
+mod title_match_year_tests;
 
 #[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]

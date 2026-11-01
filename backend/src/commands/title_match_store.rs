@@ -25,6 +25,23 @@ pub(crate) fn store_title_match(
     cour: u32,
     kitsu_id: &str,
 ) -> Result<()> {
+    store_title_match_for_year(state, provider, title, None, cour, kitsu_id)
+}
+
+/// [`store_title_match`] for a row that names `year`: kept under the
+/// title keyed by it ([`crate::commands::title_match_year::keyed_title`]),
+/// for a title a history row carries.
+///
+/// # Errors
+/// History read and cache write failures propagate.
+pub(crate) fn store_title_match_for_year(
+    state: &AppState,
+    provider: Option<ProviderId>,
+    title: &str,
+    year: Option<u32>,
+    cour: u32,
+    kitsu_id: &str,
+) -> Result<()> {
     let Some(kitsu_id) = crate::history::kitsu_id_in(kitsu_id) else {
         return Ok(());
     };
@@ -32,7 +49,8 @@ pub(crate) fn store_title_match(
         if !held.rows()?.iter().any(|e| searches(e, provider, title)) {
             return Ok(());
         }
-        title_match_put(state, provider, title, cour, kitsu_id)
+        let keyed = crate::commands::title_match_year::keyed_title(title, year);
+        title_match_put(state, provider, &keyed, cour, kitsu_id)
     })
 }
 

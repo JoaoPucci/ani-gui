@@ -1109,6 +1109,36 @@ describe('kitsuTitleMatchGet', () => {
 	});
 });
 
+describe('the title match of a row that names a year', () => {
+	it('asks for the guess its year keyed', async () => {
+		const fetchMock = mockFetchOnce('7730');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
+		const url = new URL(lastCall(fetchMock).url);
+		expect(url.searchParams.get('year')).toBe('2000');
+	});
+
+	it('stores the guess under its year', async () => {
+		const fetchMock = mockFetchOnce(null, 204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchPut("JoJo's Bizarre Adventure", 1, '7730', 'hianime', 2000);
+		expect(JSON.parse(lastCall(fetchMock).init?.body as string)).toEqual({
+			title: "JoJo's Bizarre Adventure",
+			cour: 1,
+			kitsu_id: '7730',
+			provider: 'hianime',
+			year: 2000
+		});
+	});
+
+	it('names no year for a row that names none', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet('Demon Slayer', 1, 'hianime', null);
+		expect(new URL(lastCall(fetchMock).url).searchParams.has('year')).toBe(false);
+	});
+});
+
 describe('kitsuTitleMatchPut', () => {
 	it('PUTs the JSON body the backend expects (kitsu_id snake_case)', async () => {
 		const fetchMock = mockFetchOnce(null, 204);

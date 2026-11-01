@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as fc from 'fast-check';
 import {
 	cachedBindingVerdict,
 	isCandidateForRow,
@@ -170,6 +171,55 @@ describe('resolveHistoryEntry — episode-number quirks', () => {
 	it('falls back to 1 when ep_no is not numeric', () => {
 		const r = resolveHistoryEntry(entry('Show (12 episodes)', 'foo'), stubKitsu());
 		expect(r.displayEpisode).toBe(1);
+	});
+});
+
+describe('resolveHistoryEntry — the year a legacy title names', () => {
+	const at = (title: string, key_year?: number) =>
+		resolveHistoryEntry(
+			{ id: 'legacy-id', ep_no: '1', title, ...(key_year ? { key_year } : {}) },
+			null
+		);
+
+	it('reads the year after a legacy episode tail, which the search title drops', () => {
+		const r = at('Show (12 episodes) (2009)');
+		expect(r.searchTitle).toBe('Show');
+		expect(r.year).toBe(2009);
+	});
+
+	it('reads the year before a legacy episode tail, and a title that ends with one', () => {
+		expect(at('Show (2009) (12 episodes)').year).toBe(2009);
+		expect(at('Show (2009)').year).toBe(2009);
+	});
+
+	it("falls back to the key's year when the title names none", () => {
+		expect(at('Show (12 episodes)', 2000).year).toBe(2000);
+		expect(at('Show (12 episodes)').year).toBeNull();
+	});
+
+	it('reads the year from every legacy shape', () => {
+		const word = fc.stringMatching(/^[A-Z][a-z]{1,6}$/);
+		fc.assert(
+			fc.property(
+				fc.array(word, { minLength: 1, maxLength: 3 }),
+				fc.integer({ min: 1960, max: 2039 }),
+				fc.integer({ min: 1, max: 1999 }),
+				fc.constantFrom(0, 1, 2, 3),
+				fc.boolean(),
+				(words, y, n, shape, one) => {
+					const t = words.join(' ');
+					const tail = `(${n} episode${one ? '' : 's'})`;
+					const titled = [
+						`${t} (${y})`,
+						`${t} ${tail} (${y})`,
+						`${t} (${y}) ${tail}`,
+						`${t}  ${tail}  ( ${y} )`
+					][shape];
+					expect(at(titled).year).toBe(y);
+					expect(at(`${t} ${tail}`).year).toBeNull();
+				}
+			)
+		);
 	});
 });
 
