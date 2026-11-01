@@ -1077,6 +1077,12 @@ is a convenience on top of that. The notifier covers installs that keep
 notifier asks only for full releases, and since every release so far is
 a pre-release, it announces none.
 
+Updating from inside the app is studied in
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md), which
+recommends the app replace its own AppImage without this mechanism;
+what this entry covers is for AppImageUpdate and other third-party
+tools.
+
 Three things are worth knowing before starting:
 
 - `electron/scripts/repack-appimage.mjs` builds the final AppImage
@@ -1087,8 +1093,11 @@ Three things are worth knowing before starting:
 - Every release is published as a pre-release, and the `latest` tag of
   the usual `gh-releases-zsync|JoaoPucci|ani-gui|latest|…` string goes
   through GitHub's latest-release lookup, which skips pre-releases.
-  Whatever string is embedded has to be confirmed to find a
-  pre-release.
+  The format also defines `latest-pre` and `latest-all`, and upstream
+  AppImageUpdate reads them from the releases list, but it takes the
+  newest release and fails when that one has no matching AppImage, so
+  a release without a Linux package would stall updates until the
+  next one.
 - The `.zsync` file comes from `zsyncmake`, which the release build
   does not provision: nothing in the packaging scripts fetches it, the
   way the repack fetches the runtime. Requiring it to be installed on
