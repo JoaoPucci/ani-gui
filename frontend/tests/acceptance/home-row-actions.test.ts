@@ -33,7 +33,12 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import type { ListEntry, Provider } from '../../src/lib/account/types';
-import { markRefreshed, readLastRefreshed } from '../../src/lib/account/watch-later-refresh';
+import {
+	invalidateWatchLater,
+	markRefreshed,
+	readLastRefreshed
+} from '../../src/lib/account/watch-later-refresh';
+import { listChanges } from '../../src/lib/account/list-changes';
 import { ROW_PREFS_STORAGE_KEY, type RowStyle } from '../../src/lib/rows/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
@@ -269,6 +274,29 @@ for (const style of ['inline', 'band'] as const) {
 				'the not-yet-updated state'
 			);
 			expect(pulls).toEqual(['anilist']);
+		});
+
+		it('stops vouching for the rail when a tracker write settles while it is on screen', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			await mountHome(style);
+			expect(status()).toContain(short(12, 'minute'));
+			// A write lands on the tracker: the snapshot is due a pull again
+			// (the write path invalidates it), and the row reads its list
+			// again. The pull it is due has not happened, so the line must
+			// not go on saying the rail was updated 12 minutes ago.
+			invalidateWatchLater('anilist');
+			listChanges.announce({
+				kitsuId: String(PLANNED.malId),
+				providers: ['anilist'],
+				landed: ['anilist'],
+				source: 'editor'
+			});
+			await until(
+				() => status().includes(m.account_watch_later_not_updated()),
+				'the line to stop vouching for the rail'
+			);
 		});
 
 		it('ticks: the age moves on without a reload', async () => {
