@@ -74,17 +74,16 @@ export function posterSource(match: KitsuAnimeRef | null | undefined): string | 
 	return p?.medium ?? p?.large ?? p?.small ?? p?.original ?? null;
 }
 
-/** The text a card shows for an episode number. */
+/** The text a card shows: the show's name and the episode line. */
 export function cardText(
 	episode: KitsuEpisode | null | undefined,
 	singleVideo: boolean,
 	episodeNumber: number,
-	show = ''
+	show: string
 ): CardText {
-	void show;
 	const title = episode?.canonical_title ?? null;
 	return {
-		show: '',
+		show,
 		tag: singleVideo ? null : episodeNumber,
 		title,
 		episodeLabel: title === null && !singleVideo ? episodeNumber : null

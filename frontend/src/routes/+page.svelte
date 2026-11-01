@@ -1056,28 +1056,36 @@
 	</span>
 {/snippet}
 
-<!-- A Continue card's text. The show's name is known from the history
-     row; the episode line under it waits with the artwork. Every state
-     keeps a second row two lines tall — the episode title, the faint
+<!-- A Continue card's text. It lands with the artwork: the show's name
+     is the one the card settles on (the history row's own title can
+     differ from the show's), so while the card is a skeleton both lines
+     are bars of the tile's surface. Every state keeps the same two rows
+     — the name, then two lines for the episode title, the faint
      "Episode N", or an empty reservation — so the card's box is the
      same before and after it settles and the rail never reflows as
      cards land. -->
-{#snippet cardBody(card: CardLookState, displayTitle: string)}
-	<span class="resume-body">
-		<span class="resume-show">{displayTitle}</span>
-		{#if card.look === null || card.text === null}
-			<span class="resume-title resume-title-reserved resume-title-skeleton" aria-hidden="true"
-			></span>
-		{:else if card.text.title}
-			<span class="resume-title">{card.text.title}</span>
-		{:else if card.text.episodeLabel !== null}
-			<span class="resume-title resume-title-faint"
-				>{m.home_resume_episode_label({ episode: card.text.episodeLabel })}</span
-			>
-		{:else}
-			<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-		{/if}
-	</span>
+{#snippet cardBody(card: CardLookState, knownTitle: string)}
+	{#if card.look === null || card.text === null}
+		<!-- Still named for assistive tech, by the title known so far. -->
+		<span class="resume-sr-name">{knownTitle}</span>
+		<span class="resume-body" aria-hidden="true">
+			<span class="resume-show resume-line-skeleton"></span>
+			<span class="resume-title resume-title-reserved resume-line-skeleton"></span>
+		</span>
+	{:else}
+		<span class="resume-body" class:look-landed={!card.instant}>
+			<span class="resume-show">{card.text.show}</span>
+			{#if card.text.title}
+				<span class="resume-title">{card.text.title}</span>
+			{:else if card.text.episodeLabel !== null}
+				<span class="resume-title resume-title-faint"
+					>{m.home_resume_episode_label({ episode: card.text.episodeLabel })}</span
+				>
+			{:else}
+				<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
+			{/if}
+		</span>
+	{/if}
 {/snippet}
 
 {#snippet continueHeaderTrailing()}
@@ -1154,9 +1162,14 @@
 				text:
 					match === undefined
 						? null
-						: cardText(ep, singleVideo, resumable ? nextEpisode : target.displayEpisode)
+						: cardText(
+								ep,
+								singleVideo,
+								resumable ? nextEpisode : target.displayEpisode,
+								target.displayTitle
+							)
 			})}
-			{@const initials = target.displayTitle.slice(0, 2).toUpperCase()}
+			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,
 		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
@@ -2233,15 +2246,38 @@
 			opacity: 0;
 		}
 	}
-	/* The episode line's stand-in: one short bar where the title goes. */
-	.resume-title-skeleton::before {
+	/* The text's stand-ins: a short bar on each line, the name's
+	   narrower than the episode title's, each in the box its line keeps
+	   once it lands. */
+	.resume-line-skeleton::before {
 		content: '';
 		display: block;
 		inline-size: 62%;
 		block-size: 0.75rem;
-		margin-block-start: 0.3lh;
+		margin-block-start: calc((1lh - 0.75rem) / 2);
 		border-radius: 2px;
 		background: var(--ink-100);
+	}
+	/* Holds the one line the name will take. */
+	.resume-show.resume-line-skeleton {
+		block-size: 1lh;
+	}
+	.resume-show.resume-line-skeleton::before {
+		inline-size: 44%;
+		block-size: 0.5rem;
+		margin-block-start: calc((1lh - 0.5rem) / 2);
+	}
+	.resume-sr-name {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	/* Lands with the artwork. */
+	.resume-body.look-landed {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.look-skeleton::before {
