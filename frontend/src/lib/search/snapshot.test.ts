@@ -171,14 +171,29 @@ describe('pickAnchor', () => {
 		expect(pickAnchor([{ id: 'a', top: -400, bottom: -100 }])).toBeNull();
 	});
 
+	it('takes the card just below the top edge, past one just above it', () => {
+		// The shrunk shape of a case the property below once failed on
+		// (its own lookup failed on repeated ids, not pickAnchor), with
+		// the distinct ids a grid carries.
+		expect(
+			pickAnchor([
+				{ id: 'a', top: -1, bottom: 0 },
+				{ id: 'b', top: 0, bottom: 1 }
+			])
+		).toEqual({ id: 'b', top: 0 });
+	});
+
 	it('answers a card on screen with every card before it scrolled past', () => {
+		// A grid never shows one show twice: the search runner drops a
+		// hit whose id the search has already carried (paging.ts
+		// freshHits), so the grid's cards, keyed by id, carry each id once.
 		const card = fc.record({
 			id: fc.string({ minLength: 1 }),
 			top: fc.integer({ min: -5000, max: 5000 }),
 			height: fc.integer({ min: 1, max: 600 })
 		});
 		fc.assert(
-			fc.property(fc.array(card, { maxLength: 30 }), (raw) => {
+			fc.property(fc.uniqueArray(card, { maxLength: 30, selector: (c) => c.id }), (raw) => {
 				const cards: CardPosition[] = raw.map((c) => ({
 					id: c.id,
 					top: c.top,
