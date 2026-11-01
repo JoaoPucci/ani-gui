@@ -165,6 +165,14 @@ fn render(dump: &BTreeMap<String, serde_json::Value>) -> String {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "driven by tests/picker-oracle: reads PICKER_ORACLE_CASES, writes PICKER_ORACLE_OUT"]
 async fn run_the_oracle_cases() {
+    // The walks share the cores only on a runtime with several
+    // workers; on a current-thread one every test here still passes
+    // and the 65,520 pools are walked on one core, so the run refuses.
+    assert_eq!(
+        tokio::runtime::Handle::current().runtime_flavor(),
+        tokio::runtime::RuntimeFlavor::MultiThread,
+        "the oracle's pools are walked on a multi-threaded runtime"
+    );
     let input =
         std::env::var("PICKER_ORACLE_CASES").expect("PICKER_ORACLE_CASES names the case file");
     let output =
