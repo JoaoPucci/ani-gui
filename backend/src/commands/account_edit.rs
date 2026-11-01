@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use crate::account::cache_upsert;
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, Tokens, UserListProvider,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
 };
 use crate::app::AppState;
 use crate::commands::account::{provider_for_kind, resolve_native_media_id};
@@ -64,6 +64,18 @@ async fn get_entry_via(
     // And the entry's own lock, which writes reaching it from another
     // Kitsu entry (a part filed under it) take too.
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
+    read_entry_at(state, kind, provider, tokens, native).await
+}
+
+/// The live read of `native`'s entry, with the show's locks held by the
+/// caller.
+pub(crate) async fn read_entry_at(
+    _state: &Arc<AppState>,
+    _kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+) -> Result<Option<CurrentEntry>> {
     provider.current_entry(tokens, native).await
 }
 
@@ -199,10 +211,22 @@ pub async fn forget_cached_entry(
     let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
         return Ok(());
     };
-    super::account_owner::cache_row(state, kind, began, native.0, Some(user_id), |owner| {
-        cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, native.0)
-    });
+    clear_cached_row(state, kind, began, native.0, user_id);
     Ok(())
+}
+
+/// Clear `media`'s cached row from `user_id`'s list, for a request that
+/// arrived in connection epoch `began`.
+pub(crate) fn clear_cached_row(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    began: u64,
+    media: u32,
+    user_id: &str,
+) {
+    super::account_owner::cache_row(state, kind, began, media, Some(user_id), |owner| {
+        cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, media)
+    });
 }
 
 #[cfg(test)]
