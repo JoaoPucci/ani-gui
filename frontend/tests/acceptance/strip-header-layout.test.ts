@@ -38,6 +38,16 @@ describe('a row header’s line', () => {
 			// A margin between items would be a second, different gap.
 			expect(r, selector).not.toMatch(/margin-inline/);
 		}
+		// The one exception, and deliberate: on a band the actions are
+		// pushed to the row's end, and come back beside the title when
+		// they wrap below it.
+		expect(rule(".strip[data-surface='band'] .strip-actions")).toContain(
+			'margin-inline-start: auto;'
+		);
+		const margins = STYLE.match(/margin-inline-start: [^;]+;/g) ?? [];
+		expect(margins.filter((d) => d !== 'margin-inline-start: 0;')).toEqual([
+			'margin-inline-start: auto;'
+		]);
 	});
 
 	it('centres its items on one axis and wraps rather than overflowing', () => {
@@ -86,9 +96,9 @@ describe('a wrapped status line', () => {
 	});
 
 	it('puts the status on a line of its own whenever its separator is hidden', () => {
-		// The wrap is held until the header grows (holdWrap), so it can
-		// outlast the layout that caused it — a status that shrank, a
-		// separator whose removal let it fit back. Hidden separator and
+		// The wrap is decided from natural widths, with the hidden
+		// separator counted at its last shown width, so the decision does
+		// not undo itself once the separator is gone. Hidden separator and
 		// status-on-the-title's-line must never coincide: while marked,
 		// the title takes the whole first line and the status starts the
 		// next, whatever its width.
