@@ -215,7 +215,7 @@
 		stroke-linejoin="miter"
 		aria-hidden="true"
 	>
-		<path d="M19.5 12 A7.5 7.5 0 1 1 17.3 6.7" />
-		<path d="M19 3.5 V7.5 H15" />
+		<path d="M19.5 12 A7.5 7.5 0 1 1 18 7.5" />
+		<path d="M18 3.5 V7.5 H14" />
 	</svg>
 {/if}

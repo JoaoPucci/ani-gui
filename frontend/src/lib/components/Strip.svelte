@@ -214,7 +214,7 @@
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
 			{#if headerMeta}
-				<p class="strip-meta">
+				<p class="eyebrow eyebrow-value strip-meta">
 					<span class="strip-meta-sep" aria-hidden="true" bind:this={sepEl}>·</span>
 					<span class="strip-meta-words" bind:this={statusEl}>{@render headerMeta()}</span>
 				</p>
@@ -318,11 +318,6 @@
 		   the content begins ~160px from the viewport edge, which reads
 		   as "designed" rather than "glued to the rail". */
 		--strip-pad: var(--space-8);
-		/* The gutter inside the row's own box. A plain row's box is the
-		   page column; a banded row is inset by the band's margin, and
-		   takes it back here so its cards stay in line with a plain
-		   row's and with the hero copy above. */
-		--strip-pad-inner: var(--strip-pad);
 		/* What the row sits on. The edge fades are drawn in it, so they
 		   melt into the page on a plain row and into the band on a
 		   banded one (registered in tokens.css so it can transition). */
@@ -330,22 +325,19 @@
 		margin-block-end: var(--space-7);
 	}
 
-	/* A banded row: a faint surface the whole row — header, cards,
-	   fades — sits on, so an action in the header is visibly part of
-	   this row. No border and no highlight: an edge drawn around every
-	   row is the generic card look the design rules keep out; the band
-	   is a change of ground, and it lifts a little while the row is
-	   under the pointer or holds focus. */
+	/* A banded row: a faint ground the whole row — header, cards, fades —
+	   sits on, so an action in the header is visibly part of this row.
+	   It runs the full width of the rows' column, square, with the row's
+	   own gutter: an inset rounded panel per row is the stacked-card
+	   look the design rules keep out, and a change of ground is all the
+	   row needs. It lifts a little while the row is under the pointer or
+	   holds focus — the subtle per-row highlight the style is for. */
 	.strip[data-surface='band'] {
-		--strip-band-inset: var(--space-5);
-		--strip-pad-inner: calc(var(--strip-pad) - var(--strip-band-inset));
 		--strip-surface: color-mix(in oklab, var(--bone-100) 4%, var(--ink-000));
-		margin-inline: var(--strip-band-inset);
 		/* The band's own padding replaces part of the gap between rows,
 		   so the page is no taller than with plain rows. */
 		margin-block-end: var(--space-5);
 		padding-block: var(--space-4) var(--space-2);
-		border-radius: var(--radius-card);
 		background: var(--strip-surface);
 		/* --dur-med is 0ms under prefers-reduced-motion (tokens.css). */
 		transition: --strip-surface var(--dur-med) var(--ease-out-soft);
@@ -369,7 +361,7 @@
 		/* An action is 32px tall; every row reserves that height, so a
 		   row with an action and one without start their cards level. */
 		min-block-size: var(--space-6);
-		padding-inline: var(--strip-pad-inner);
+		padding-inline: var(--strip-pad);
 		margin-block-end: var(--space-4);
 	}
 	.strip-title {
@@ -378,18 +370,9 @@
 		gap: var(--strip-header-gap);
 	}
 	.strip-meta {
-		display: inline-flex;
-		align-items: center;
+		/* The caption's voice comes from the eyebrow classes (tokens.css);
+		   only the line's own gap is set here. */
 		gap: var(--strip-header-gap);
-		margin: 0;
-		/* The caption's voice (tokens.css .eyebrow-value), so the status
-		   reads as the caption continuing, not as a third style. */
-		font-family: var(--font-body);
-		font-size: 0.8125rem;
-		font-weight: 500;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
 	}
 	.strip-meta-sep {
 		color: color-mix(in oklab, var(--bone-100) 40%, transparent);
@@ -451,7 +434,7 @@
 		gap: var(--space-5);
 		/* Padding lives on the rail, not the scroll container — keeps
 		   first-card alignment matching the eyebrow on initial render. */
-		padding-inline: var(--strip-pad-inner);
+		padding-inline: var(--strip-pad);
 		/* Block padding gives cards room for their hover treatments
 		   (lift, popped-out chips, etc.) without the parent's auto
 		   overflow shaving them. Override via the `padBlock` prop on
@@ -506,6 +489,26 @@
 		inset-inline-end: 0;
 		background: linear-gradient(
 			to left,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
+			transparent 100%
+		);
+	}
+	/* The gradients' directions are physical; a right-to-left row starts
+	   at the right, so its fades turn round. */
+	.strip-fade-start:dir(rtl) {
+		background: linear-gradient(
+			to left,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
+			transparent 100%
+		);
+	}
+	.strip-fade-end:dir(rtl) {
+		background: linear-gradient(
+			to right,
 			var(--strip-surface) 0%,
 			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
 			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,

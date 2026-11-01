@@ -58,14 +58,19 @@
 		   and a row without one start their cards at the same depth. */
 		block-size: var(--space-6);
 		padding-inline: var(--space-3);
-		border: 1px solid color-mix(in oklab, var(--bone-100) 30%, transparent);
+		/* The edge is what marks this as a button on a line of uppercase
+		   text: 40% bone is about 3.4:1 on the page and on a band. */
+		--row-action-border: color-mix(in oklab, var(--bone-100) 40%, transparent);
+		border: 1px solid var(--row-action-border);
 		border-radius: var(--radius-pill);
 		background: transparent;
 		color: var(--bone-200);
 		font-family: var(--font-body);
-		font-size: var(--type-micro);
+		/* The eyebrow's type (tokens.css .eyebrow), so the header line reads
+		   as one voice. */
+		font-size: 0.8125rem;
 		font-weight: 600;
-		letter-spacing: var(--tracking-micro);
+		letter-spacing: 0.14em;
 		line-height: 1;
 		text-transform: uppercase;
 		white-space: nowrap;
@@ -82,7 +87,6 @@
 		color: var(--ink-000);
 	}
 	.row-action.quiet {
-		border-color: color-mix(in oklab, var(--bone-100) 22%, transparent);
 		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
 	}
 	.row-action.quiet:hover:not([aria-disabled='true']) {
