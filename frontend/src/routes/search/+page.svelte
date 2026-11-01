@@ -46,6 +46,7 @@
 		type SearchSnapshot
 	} from '$lib/search/snapshot';
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
+	import { followAddress } from '$lib/search/follow-address';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -207,7 +208,7 @@
 	});
 
 	function follow(q: string) {
-		if (q && q !== submitted) void runSearch(q);
+		if (followAddress(q, submitted) === 'search') void runSearch(q);
 	}
 
 	// Going back to the search page restores what the reader left: the
