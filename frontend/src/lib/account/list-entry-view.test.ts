@@ -392,3 +392,22 @@ describe('clampProgress', () => {
 		expect(clampProgress(500, null)).toBe(500);
 	});
 });
+
+// A finished row is furthest along, whatever the other trackers hold: a
+// Completed row seeds Completed, at the highest count, beside a rewatch too.
+describe('pickSeedEntry — a rewatch beside a Completed row', () => {
+	it('seeds Completed, at the highest count', () => {
+		for (const entries of [
+			[
+				{ status: 'completed', progress: 26 },
+				{ status: 'rewatching', progress: 3 }
+			],
+			[
+				{ status: 'rewatching', progress: 3 },
+				{ status: 'completed', progress: 26 }
+			]
+		] as EntryView[][]) {
+			expect(pickSeedEntry(entries)).toEqual({ status: 'completed', progress: 26 });
+		}
+	});
+});

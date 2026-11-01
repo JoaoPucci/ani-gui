@@ -45,6 +45,7 @@ impl Tracker {
                             CurrentEntry {
                                 status,
                                 progress_episodes,
+                                times_rewatched: None,
                             },
                         )
                     })
@@ -108,6 +109,7 @@ impl UserListProvider for Tracker {
         let row = rows.entry(id.0).or_insert(CurrentEntry {
             status: ListStatus::Planning,
             progress_episodes: 0,
+            times_rewatched: None,
         });
         if let Some(status) = update.status {
             row.status = status;

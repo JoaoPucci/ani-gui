@@ -9,7 +9,7 @@ use crate::account::provider::{CurrentEntry, EntryUpdate, ListEntry, ProviderMed
 use crate::account::status::ListStatus;
 use crate::error::Result;
 
-use super::account::{push_progress_from, push_progress_read, reconcile_monotonic, write_through};
+use super::account::{push_progress_from, push_progress_read, reconcile_for, write_through};
 use super::tracker_map::{episode_map_for, episode_map_for_unresolved, MapAsk};
 
 /// Push `update` for Kitsu's `kitsu_id`, which Kitsu's mappings resolve
@@ -123,16 +123,14 @@ async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
 
 /// Bring an earlier segment's entry to its total — completed where the
 /// tracker has it finished — unless the row is already there, reading
-/// and writing it under its own lock. The monotonic reconcile keeps it
-/// from lowering a row and keeps a rewatch.
+/// and writing it under its own lock. The reconcile ([`reconcile_for`])
+/// keeps it from lowering a row and keeps an AniList rewatch; a MAL one
+/// is a Watching row there, so it is closed — back at Completed, its
+/// rewatch counted.
 async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment, began: u64) -> Result<()> {
     let _guard = hold_entry(ask, earlier.entry).await;
     let row = row_on(ask, earlier.entry).await?;
-    let done = row.is_some_and(|r| {
-        r.progress_episodes >= earlier.total
-            && matches!(r.status, ListStatus::Completed | ListStatus::Rewatching)
-    });
-    if done {
+    if row.is_some_and(|r| r.stands_at(ask.kind, earlier.total)) {
         return Ok(());
     }
     let update = EntryUpdate {
@@ -140,7 +138,7 @@ async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment, began: u64) 
         progress_episodes: Some(earlier.total),
         ..Default::default()
     };
-    if let Some(update) = reconcile_monotonic(update, row) {
+    if let Some(update) = reconcile_for(ask.kind, update, row) {
         write_through(
             ask.state,
             ask.kind,
@@ -201,7 +199,7 @@ async fn write_episode(
         score_0_to_100: update.score_0_to_100,
         repeat_count: None,
     };
-    let Some(ours) = reconcile_monotonic(ours, row) else {
+    let Some(ours) = reconcile_for(ask.kind, ours, row) else {
         return Ok(None);
     };
     write_through(
@@ -214,7 +212,6 @@ async fn write_episode(
         began,
     )
     .await
-    .map(Some)
 }
 
 #[cfg(test)]

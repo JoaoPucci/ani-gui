@@ -60,7 +60,9 @@ export interface PushWatchedDeps {
  *
  * The backend reads `completed` on the progress route as this finale
  * and drops it where the tracker's own episode total is known and
- * differs from the episode (and, as before, for a rewatching row), so
+ * differs from the episode (and, as before, for an AniList rewatching row,
+ * which AniList closes itself; on a MyAnimeList rewatch the backend
+ * completes the row and counts the rewatch), so
  * nothing else may send `completed` through `updateProgress`. Where the
  * show's map on a tracker files its episodes under other entries or
  * numbers, the backend decides each entry's completion from the map —

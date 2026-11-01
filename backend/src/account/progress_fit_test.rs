@@ -90,6 +90,7 @@ fn row(status: ListStatus, progress_episodes: u32) -> Option<CurrentEntry> {
     Some(CurrentEntry {
         status,
         progress_episodes,
+        times_rewatched: None,
     })
 }
 

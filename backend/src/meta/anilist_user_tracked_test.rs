@@ -42,6 +42,7 @@ async fn tracked_media_reads_the_row_and_the_episode_total_in_one_request() {
             entry: Some(CurrentEntry {
                 status: crate::account::status::ListStatus::Watching,
                 progress_episodes: 11,
+                times_rewatched: None,
             }),
             episodes: Some(13),
         }
