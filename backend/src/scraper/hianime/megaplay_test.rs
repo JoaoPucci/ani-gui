@@ -408,6 +408,35 @@ fn the_language_is_the_files_trailing_code_or_else_the_label() {
     assert_eq!(lang_of_track("https://c.example/x.vtt", "   "), "und");
 }
 
+/// The site's other CDN names a track by its code and its place in
+/// the listing (`eng-2.vtt`, `por-24.vtt`), with no `track_` prefix.
+/// Steel Ball Run's first episode lists 33 tracks named that way; read
+/// by the underscore rule alone, every one took its label as its
+/// language, and the player was handed `srclang="Portuguese (- Brazil)"`.
+#[test]
+fn a_code_followed_by_the_tracks_place_is_the_language() {
+    let at = |name: &str, label: &str| {
+        lang_of_track(
+            &format!("https://de3bv.example/anime/a/b/subtitles/{name}"),
+            label,
+        )
+    };
+    assert_eq!(at("eng-2.vtt", "English"), "eng");
+    assert_eq!(at("por-24.vtt", "Portuguese (- Brazil)"), "por");
+    assert_eq!(at("ara-3.vtt?sig=abc", "Arabic"), "ara");
+    assert_eq!(at("chi-4.VTT", "Chinese (- Simplified)"), "chi");
+    assert_eq!(at("track_0_eng-7.vtt", "English"), "eng");
+    // Only a run of digits is a place in the listing.
+    assert_eq!(at("eng-.vtt", "English"), "English");
+    assert_eq!(at("eng-2a.vtt", "English"), "English");
+    assert_eq!(at("eng-2-3.vtt", "English"), "English");
+    // And only three lowercase letters ahead of it are a code.
+    assert_eq!(at("english-2.vtt", "English"), "English");
+    assert_eq!(at("ENG-2.vtt", "English"), "English");
+    assert_eq!(at("en-2.vtt", "English"), "English");
+    assert_eq!(at("-2.vtt", "   "), "und");
+}
+
 /// The tracks are a nicety beside the stream: the field being
 /// `null`, absent or not a list, or holding rows in another shape,
 /// costs those rows and nothing else. A lone megaplay server is not

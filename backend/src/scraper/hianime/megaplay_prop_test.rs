@@ -332,6 +332,25 @@ proptest! {
         prop_assert_eq!(lang_of_track(&plain, &label), expected);
     }
 
+    /// A stem of a code and the track's place in the listing reads as
+    /// the code, whatever precedes it and whatever query follows;
+    /// a place that is not all digits leaves the stem to the label.
+    #[test]
+    fn a_code_and_its_place_read_as_the_code(
+        prefix in "(|track_[0-9]{1,2}_)",
+        code in "[a-z]{3}",
+        place in "[0-9]{1,3}",
+        junk in "[a-z]{1,3}",
+        query in "(\\?[a-z]=[0-9]{1,3})?",
+        label in "[A-Za-z ()]{0,16}",
+    ) {
+        let file = format!("https://c.example/subs/{prefix}{code}-{place}.vtt{query}");
+        prop_assert_eq!(lang_of_track(&file, &label), code.clone());
+        let off = format!("https://c.example/subs/{code}-{place}{junk}.vtt{query}");
+        let expected = if label.trim().is_empty() { "und".to_string() } else { label.trim().to_string() };
+        prop_assert_eq!(lang_of_track(&off, &label), expected);
+    }
+
     /// The sources list is read row by row: the stream is the first
     /// row naming a file the transport can fetch, and rows of another
     /// shape around it — `null`, a string, a number, a list, an
