@@ -63,3 +63,18 @@ fn a_row_whose_tracks_took_the_label_as_language_is_not_read() {
         "the key must have moved past play:v26: — {key}"
     );
 }
+
+/// A row written under the cap of 16 holds the first sixteen tracks of
+/// a listing the provider orders alphabetically — Steel Ball Run's
+/// first episode cached without Portuguese, Spanish, Russian or
+/// Japanese — and a replay would keep offering that cut for the
+/// row's whole life. Those rows are keyed `play:v27:`, so the key
+/// must move past it.
+#[test]
+fn a_row_cut_at_the_old_cap_is_not_read() {
+    let key = cache_key("t", "sub", "best", "1", None, None, None);
+    assert!(
+        !key.starts_with("play:v27:"),
+        "the key must have moved past play:v27: — {key}"
+    );
+}

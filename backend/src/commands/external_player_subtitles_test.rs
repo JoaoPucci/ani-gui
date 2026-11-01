@@ -72,3 +72,46 @@ fn the_custom_template_substitutes_the_first_track_and_drops_the_token_without_o
         vec!["https://cdn.example/x/master.m3u8".to_string()]
     );
 }
+
+/// What an argv takes on a Windows command line at most, the program
+/// included: every character escaped, each argument quoted and spaced.
+fn worst_case_line(program: &str, argv: &[String]) -> usize {
+    std::iter::once(program)
+        .chain(argv.iter().map(String::as_str))
+        .map(|a| 2 * a.len() + 3)
+        .sum()
+}
+
+/// A listing at the cap, each track at the longest URL a CDN signs,
+/// would not fit on Windows' command line, and the player would not
+/// start. The tracks go on in order until the next would not fit; the
+/// stream URL, last, is always there.
+#[test]
+fn every_track_flag_fits_on_windows_command_line_with_the_stream_last() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(1000)))
+        .collect();
+    let refs: Vec<&str> = long.iter().map(String::as_str).collect();
+    for kind in [ExternalPlayerKind::Mpv, ExternalPlayerKind::Iina] {
+        let launch = args(kind, None, &refs);
+        let argv = build_argv(&launch);
+        assert!(
+            worst_case_line(&launch.player_command, &argv) <= 32_766,
+            "{kind:?}"
+        );
+        assert_eq!(
+            argv.last().map(String::as_str),
+            Some("https://cdn.example/x/master.m3u8")
+        );
+        let subs: Vec<&String> = argv.iter().filter(|a| a.contains("sub-file=")).collect();
+        assert!(
+            !subs.is_empty() && subs.len() < long.len(),
+            "{kind:?}: {}",
+            subs.len()
+        );
+        assert!(
+            subs[0].ends_with(&long[0]),
+            "the first listed goes on first"
+        );
+    }
+}

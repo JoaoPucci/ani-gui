@@ -355,3 +355,24 @@ fn vlc_gets_the_first_track_and_custom_gets_none() {
         "custom forwards nothing: {custom:?}"
     );
 }
+
+/// Through Syncplay the tracks sit past the separator on Syncplay's
+/// own command line, which Windows bounds the same way.
+#[test]
+fn syncplays_track_flags_fit_on_windows_command_line() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(1000)))
+        .collect();
+    let mut launch = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    launch.subtitle_urls = long.clone();
+    let argv = build_argv(&launch);
+    let line: usize = std::iter::once(launch.binary.as_str())
+        .chain(argv.iter().map(String::as_str))
+        .map(|a| 2 * a.len() + 3)
+        .sum();
+    assert!(line <= 32_766, "{line}");
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    assert_eq!(argv[sep + 1], "--referrer=https://embed.example/");
+    let subs = argv.iter().filter(|a| a.starts_with("--sub-file=")).count();
+    assert!(subs > 0 && subs < long.len(), "{subs}");
+}

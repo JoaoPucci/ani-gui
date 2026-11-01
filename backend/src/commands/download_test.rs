@@ -3577,14 +3577,26 @@ async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
             url: format!("{}/subs/l{i:02}.vtt", server.uri()),
         })
         .collect();
-    let written = write_sidecar_subtitles(
+    // The host's budget would pace the fetches past its burst at a
+    // token a second and a half, and this test is about the cap, not
+    // the pacing: the host here lets every request through at once.
+    let budget = crate::proxy::host_budget::HostBudget::new(
+        u32::try_from(total).expect("small"),
+        crate::proxy::host_budget::SEGMENT_REFILL,
+    );
+    let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
+        &budget,
+        &crate::commands::download_pacing::SidecarGate::never(),
         &tracks,
         None,
         dest.path(),
         "Show Episode 16",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
     )
     .await;
+    let written = crate::commands::download_transfer::install_staged(staged);
     let expected: Vec<std::path::PathBuf> = (0..SUBTITLE_TRACK_CAP)
         .map(|i| dest.path().join(format!("Show Episode 16.l{i:02}.vtt")))
         .collect();

@@ -50,3 +50,7 @@ pub fn most_wanted_within(
     tracks.truncate(cap);
     (tracks, dropped)
 }
+
+#[cfg(test)]
+#[path = "track_preference_test.rs"]
+mod tests;

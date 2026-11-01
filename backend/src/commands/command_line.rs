@@ -6,3 +6,7 @@
 pub fn flags_within_budget(_program: &str, _fixed: &[String], flags: Vec<String>) -> Vec<String> {
     flags
 }
+
+#[cfg(test)]
+#[path = "command_line_test.rs"]
+mod tests;

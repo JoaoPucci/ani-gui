@@ -177,3 +177,47 @@ async fn a_change_before_the_wait_began_is_seen_at_once() {
 fn a_relayed_run_waits_its_turn_as_long_as_a_paced_run_may_last() {
     assert!(Duration::from_secs(u64::from(RELAYED_SOCKET_TIMEOUT_S)) >= PACED_RUN_CEILING);
 }
+
+/// The phase's deadlines were sized for a listing of sixteen tracks.
+/// Past that each track waits its turn at the host — a token every
+/// [`SEGMENT_REFILL`](crate::proxy::host_budget::SEGMENT_REFILL) once
+/// the burst is spent — so a listing of every language a provider
+/// offers (Steel Ball Run's first episode lists 33; the cap is 64)
+/// would run out of time with tracks still unfetched. Each track past
+/// sixteen adds a refill to the deadline, live or not.
+#[test]
+fn a_long_listing_gets_the_time_its_tokens_take() {
+    use crate::proxy::host_budget::SEGMENT_REFILL;
+    for live in [false, true] {
+        assert_eq!(
+            sidecar_phase_deadline(live, 16),
+            sidecar_phase_deadline(live, 0)
+        );
+        assert_eq!(
+            sidecar_phase_deadline(live, 33),
+            sidecar_phase_deadline(live, 16) + SEGMENT_REFILL * 17
+        );
+    }
+    assert_eq!(
+        sidecar_phase_deadline(false, 64),
+        super::super::download::SIDECAR_PHASE_DEADLINE + SEGMENT_REFILL * 48
+    );
+}
+
+proptest! {
+    /// However many tracks, the deadline is the base for the phase's
+    /// liveness plus a refill for every track past sixteen: never
+    /// shorter than the base, and never shorter than what the host's
+    /// burst and refill take to hand every track a token.
+    #[test]
+    fn the_deadline_covers_every_tracks_token(live in proptest::bool::ANY, tracks in 0usize..200) {
+        use crate::proxy::host_budget::{SEGMENT_BURST, SEGMENT_REFILL};
+        let base = sidecar_phase_deadline(live, 0);
+        let d = sidecar_phase_deadline(live, tracks);
+        let past = u32::try_from(tracks.saturating_sub(16)).expect("small");
+        prop_assert_eq!(d, base + SEGMENT_REFILL * past);
+        let tokens = u32::try_from(tracks.saturating_sub(SEGMENT_BURST as usize)).expect("small");
+        prop_assert!(d >= SEGMENT_REFILL * tokens);
+        prop_assert!(sidecar_phase_deadline(live, tracks + 1) >= d);
+    }
+}

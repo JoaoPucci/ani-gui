@@ -1213,3 +1213,103 @@ async fn a_replay_never_takes_back_a_mode_the_standing_row_knows() {
         .expect("row");
     assert_eq!(after, before);
 }
+
+/// A replay's check reads the stream and the few tracks the user most
+/// likely wants, not every track the row lists: a listing carries up to
+/// the cap, every read waits for a token at the host, and one track of
+/// dozens failing would evict a row whose stream and wanted tracks are
+/// fine. The tracks of one listing sit on one host, signed or not
+/// together, so the ones read stand for the rest.
+#[tokio::test]
+async fn a_cached_rows_check_reads_only_the_most_wanted_tracks() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    // The default and the next three answer; the rest are gone.
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/[0-3]\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..12)
+        .map(|i| {
+            track(
+                &format!("l{i}"),
+                i == 0,
+                &format!("{}/subs/{i}.vtt", server.uri()),
+            )
+        })
+        .collect();
+    let state = state_with_proxy_origin();
+    let live =
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;
+    let reads = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.method.as_str() == "GET")
+        .count();
+    assert!(live, "the stream and the wanted tracks answer");
+    assert!(
+        reads <= 4,
+        "{reads} track reads; the default and the three next most wanted"
+    );
+}
+
+/// The tracks read are the user's: a dead track in the user's
+/// language, however late the listing puts it, makes the row not live.
+#[tokio::test]
+async fn a_cached_rows_check_reads_the_users_language() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/subs/11.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(&server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..12)
+        .map(|i| {
+            let lang = if i == 11 {
+                "pt-BR".to_string()
+            } else {
+                format!("l{i}")
+            };
+            track(&lang, i == 0, &format!("{}/subs/{i}.vtt", server.uri()))
+        })
+        .collect();
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state_with_proxy_origin();
+    state.config_path = td.path().join("config.toml");
+    std::fs::write(&state.config_path, "locale = \"pt-BR\"\n").expect("config");
+    let live =
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;
+    assert!(!live, "the user's track is gone, so the row is not served");
+}
