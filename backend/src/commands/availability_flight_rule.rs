@@ -34,8 +34,7 @@ pub(crate) fn starts_interactive(
     caller_interactive: bool,
     displaced: Option<(bool, usize)>,
 ) -> bool {
-    let _ = displaced;
-    caller_interactive
+    caller_interactive || displaced.is_some_and(|(interactive, waiters)| interactive && waiters > 0)
 }
 
 #[cfg(test)]

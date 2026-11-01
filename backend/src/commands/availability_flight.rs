@@ -34,6 +34,9 @@
 //!   place, as above, so it is never handed an answer older than the
 //!   row it would have read. The older walk's own write is already
 //!   refused by the row's write ordering (`availability_refresh`).
+//!   The walk it starts is interactive when the caller is, or when the
+//!   older walk was interactive and had callers: those move onto it,
+//!   and would displace a background walk a second time.
 //! - **The first caller leaves while others wait.** The walk goes on;
 //!   whoever is still waiting gets its verdict.
 //! - **The last caller leaves an interactive walk.** It ends: nobody
@@ -162,12 +165,12 @@ impl AvailabilityFlights {
         key: &str,
         args: &AvailabilityArgs,
     ) -> (watch::Receiver<Slot>, Waiting) {
-        let interactive = !args.background;
+        let caller_interactive = !args.background;
         let generation = state.availability_refreshes.generation(key);
         let mut table = self.table();
         let mut displaced = None;
         if let Some(flight) = table.flights.get_mut(key) {
-            if flight.generation == generation && joins(flight.interactive, interactive) {
+            if flight.generation == generation && joins(flight.interactive, caller_interactive) {
                 let was_unwatched = flight.waiters == 0;
                 flight.waiters += 1;
                 let joined = (flight.slot.subscribe(), self.waiter(key, flight.id));
@@ -179,12 +182,21 @@ impl AvailabilityFlights {
             let id = flight.id;
             displaced = table.take(key, id);
         }
+        // Started for whoever will wait on it: the callers of a
+        // displaced interactive walk move onto this one, and would
+        // displace it again were it background.
+        let interactive = starts_interactive(
+            caller_interactive,
+            displaced.as_ref().map(|d| (d.interactive, d.waiters)),
+        );
+        let mut args = args.clone();
+        args.background = !interactive;
         table.next_id += 1;
         let id = table.next_id;
         let (slot, heard) = watch::channel(Slot::Walking);
         let walk = tokio::spawn(crate::meta::anilist_gate::in_callers_class(walk(
             Arc::clone(state),
-            args.clone(),
+            args,
             self.clone(),
             key.to_owned(),
             id,
