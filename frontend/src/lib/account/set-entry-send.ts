@@ -67,13 +67,23 @@ export async function sendSave(
 export async function sendRemoval(
 	deps: ReadDeps & {
 		removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
+		/** Clear `kitsuId`'s cached row for `provider` locally, asking the
+		 *  tracker nothing. */
+		forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
 	},
 	to: SendTo
 ): Promise<FanoutResult> {
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
 	const current = await deps.getEntry(to.provider, to.bearer, to.kitsuId);
-	if (current === null) return 'neither'; // nothing to remove here
 	if (to.held.left().length < ALL_FIELDS.length) throw new SupersededError();
+	if (current === null) {
+		// Nothing on the tracker to remove, so nothing is sent to it: a
+		// stale cached row is cleared locally. The tracker being clean
+		// already, a failed clear does not fail the removal; the list's
+		// next refresh replaces the row.
+		await deps.forgetCached?.(to.provider, to.kitsuId).catch(() => undefined);
+		return 'neither';
+	}
 	await deps.removeEntry(to.provider, to.bearer, to.kitsuId);
 	return 'ok';
 }

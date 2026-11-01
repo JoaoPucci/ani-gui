@@ -59,7 +59,7 @@ use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
 #[path = "anilist_gate_turn.rs"]
 mod turn;
-pub(crate) use turn::{as_retry, current_class, in_background};
+pub(crate) use turn::{as_retry, current_class, in_background, in_class};
 use turn::{sent, Waiting};
 
 struct Gate {

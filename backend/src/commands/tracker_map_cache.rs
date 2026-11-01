@@ -20,6 +20,11 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 /// v2: the chain rule places a segment outside Kitsu's start and end
 /// dates by Kitsu's own episode dates. A v1 row, written before it could,
 /// says identity for chains it now maps.
+///
+/// v3: a part or a tracker sequel that aired before the one it follows
+/// is no later part, and a special the tracker has no entry for is filed
+/// among the extras a related entry counts. A v2 row may file such a
+/// part as a later one, or such a special nowhere.
 #[must_use]
 pub(crate) fn map_key(
     kind: ProviderKind,
@@ -33,7 +38,7 @@ pub(crate) fn map_key(
         ),
         None => "unresolved".to_string(),
     };
-    format!("tracker-map:v2:{}:k{kitsu_id}:{place}", kind.slug())
+    format!("tracker-map:v3:{}:k{kitsu_id}:{place}", kind.slug())
 }
 
 /// How long `map` is served from its row: the long window only for a

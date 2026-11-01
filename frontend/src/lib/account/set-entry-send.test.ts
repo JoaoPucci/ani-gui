@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { AccountApiError } from './api';
 import { sendRemoval, sendSave } from './set-entry-send';
 import { SupersededError } from './save-when-allowed';
 
@@ -28,7 +29,7 @@ describe('a held write with nothing left', () => {
 		const removeEntry = vi.fn(async () => undefined);
 		await expect(
 			sendRemoval(
-				{ getEntry, removeEntry },
+				{ getEntry, removeEntry, forgetCached: async () => undefined },
 				{ provider: 'mal', bearer: 'old', kitsuId: '12', held: nothingLeft }
 			)
 		).rejects.toBeInstanceOf(SupersededError);
@@ -47,11 +48,60 @@ describe('a held removal a newer write overtakes while its read is out', () => {
 		const removeEntry = vi.fn(async () => undefined);
 		await expect(
 			sendRemoval(
-				{ getEntry, removeEntry },
+				{ getEntry, removeEntry, forgetCached: async () => undefined },
 				{ provider: 'anilist', bearer: 't', kitsuId: '12', held: { left: () => left } }
 			)
 		).rejects.toBeInstanceOf(SupersededError);
 		expect(getEntry).toHaveBeenCalledTimes(1);
 		expect(removeEntry).not.toHaveBeenCalled();
+	});
+});
+
+describe('reconciling an absent tracker entry', () => {
+	const to = {
+		provider: 'mal' as const,
+		bearer: 't',
+		kitsuId: '12',
+		held: { left: () => ['status', 'progress'] as const }
+	};
+
+	it('clears the stale cached row locally and sends the tracker nothing', async () => {
+		const removeEntry = vi.fn(async () => undefined);
+		const forgetCached = vi.fn(async () => undefined);
+		await expect(
+			sendRemoval({ getEntry: async () => null, removeEntry, forgetCached }, to)
+		).resolves.toBe('neither');
+		expect(removeEntry).not.toHaveBeenCalled();
+		expect(forgetCached).toHaveBeenCalledWith('mal', '12');
+	});
+
+	it('is not failed by a local clear that fails: the tracker is already clean', async () => {
+		const forgetCached = vi.fn(async () => {
+			throw new AccountApiError(500, '');
+		});
+		await expect(
+			sendRemoval(
+				{ getEntry: async () => null, removeEntry: async () => undefined, forgetCached },
+				to
+			)
+		).resolves.toBe('neither');
+	});
+
+	it('keeps a present row whose delete fails failed, and clears nothing locally', async () => {
+		const error = new AccountApiError(404, '{"kind":"upstream","status":404}');
+		const forgetCached = vi.fn(async () => undefined);
+		await expect(
+			sendRemoval(
+				{
+					getEntry: async () => ({ status: 'planning' as const, progress: 0 }),
+					removeEntry: async () => {
+						throw error;
+					},
+					forgetCached
+				},
+				to
+			)
+		).rejects.toBe(error);
+		expect(forgetCached).not.toHaveBeenCalled();
 	});
 });

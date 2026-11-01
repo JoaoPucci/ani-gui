@@ -18,7 +18,8 @@ entry (`backend/src/account/episode_map_rules.rs`, and `target` in
   ("Kitsu's episodes on a tracker's entries"). It writes out every
   synthetic case it knows the docs' answer for — chains, shared
   entries, split parts, prologues and several half-episode recaps,
-  conflicts, and the near misses of each — and every recorded case,
+  conflicts, specials the tracker has no entry for among a related
+  entry's extras, and the near misses of each — and every recorded case,
   each with the map and every episode's write it predicts. The app maps
   them, and the outcomes are compared. Any disagreement fails unless
   `allowlist.json` carries it with a reason. This runs as the

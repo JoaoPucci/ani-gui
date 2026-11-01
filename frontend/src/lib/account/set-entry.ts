@@ -5,12 +5,14 @@
 
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 import { getEntry, removeEntry, setEntry } from './entry-api';
+import { forgetCachedUnder } from './forget-cached';
 import { failureResult, outcomeFlags, tallyFanout, type FanoutResult } from './set-entry-outcome';
 import { ALL_FIELDS, SupersededError, type HeldWrite, type WriteField } from './save-when-allowed';
 import { sendRemoval, sendSave } from './set-entry-send';
 import { accountStore } from './store.svelte';
 import { freshBearerFor } from './fresh-bearer';
 import { invalidateWatchLater } from './watch-later-refresh';
+import { announceEnds, listChanges, recordEnd, type WriteEnd } from './list-changes';
 import { saveWhenTrackerAllows } from './busy-save';
 import { listAccounts } from './held-account';
 
@@ -68,6 +70,9 @@ export interface RemoveEntryDeps {
 	bearerFor: (provider: Provider) => string | null | Promise<string | null>;
 	getEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<EntryView | null>;
 	removeEntry: (provider: Provider, bearer: string, kitsuId: string) => Promise<void>;
+	/** Clear `kitsuId`'s cached row for `provider` locally, asking the
+	 *  tracker nothing; with none given, nothing is cleared. */
+	forgetCached?: (provider: Provider, kitsuId: string) => Promise<void>;
 	/** How each provider's removal is run; {@link runOnce} when omitted. */
 	runWrite?: RunWrite;
 }
@@ -171,8 +176,9 @@ export interface RemoveOutcome {
 
 /**
  * Remove a show from every connected tracker that has it. Reads each
- * provider first: a provider without the row is skipped (its delete would
- * be a no-op and must not count). A present tracker whose delete fails — or
+ * provider first: one without the row is sent nothing, its stale cached
+ * row (if any) is cleared locally, and it counts toward neither tally. A
+ * present tracker whose delete fails — or
  * any provider we can't confirm clean (read threw, no bearer) — is tallied
  * as `failed`, so the caller keeps the entry visible rather than claiming a
  * clean removal while a tracker still has the row.
@@ -214,6 +220,7 @@ export async function removeEntryAcrossTrackers(
 export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<SetOutcome> {
 	const connected = accountStore.connected;
 	const listed = listAccounts(connected);
+	const ends: Partial<Record<Provider, WriteEnd>> = {};
 	const outcome = await setEntryAcrossTrackers(
 		{
 			connected,
@@ -221,12 +228,18 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<S
 			getEntry,
 			setEntry,
 			runWrite: (provider, id, attempt, fields) =>
-				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				recordEnd(
+					ends,
+					provider,
+					saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				)
 		},
 		kitsuId,
 		save
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
+	// The views showing these lists read them again (`list-changes`).
+	announceEnds(listChanges, kitsuId, 'editor', ends);
 	return outcome;
 }
 
@@ -236,17 +249,26 @@ export async function syncSetEntry(kitsuId: string, save: EditorSave): Promise<S
 export async function syncRemoveEntry(kitsuId: string): Promise<RemoveOutcome> {
 	const connected = accountStore.connected;
 	const listed = listAccounts(connected);
+	const ends: Partial<Record<Provider, WriteEnd>> = {};
 	const outcome = await removeEntryAcrossTrackers(
 		{
 			connected,
 			bearerFor: (provider) => freshBearerFor(provider),
 			getEntry,
 			removeEntry,
+			// Under the user the removal was made for, read before any await.
+			forgetCached: forgetCachedUnder(listed),
 			runWrite: (provider, id, attempt, fields) =>
-				saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				recordEnd(
+					ends,
+					provider,
+					saveWhenTrackerAllows(provider, id, attempt, fields, listed[provider])
+				)
 		},
 		kitsuId
 	);
 	for (const provider of connected) invalidateWatchLater(provider);
+	// The views showing these lists read them again (`list-changes`).
+	announceEnds(listChanges, kitsuId, 'editor', ends);
 	return outcome;
 }

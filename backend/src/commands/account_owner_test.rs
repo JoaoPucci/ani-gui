@@ -106,3 +106,50 @@ async fn a_disconnect_forgets_the_tracker_s_bearers() {
         .await
         .expect("owner (asked again)");
 }
+
+#[tokio::test]
+async fn a_lookup_answered_after_a_disconnect_is_not_remembered() {
+    // The bearer's user is being asked when the account disconnects. The
+    // answer still reaches the caller that asked, but the memo — which a
+    // disconnect has just emptied — does not keep it: the next ask goes
+    // out again.
+    let server = MockServer::start().await;
+    let (hold, gate) = crate::held::gate();
+    Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(crate::held::Held::new(
+            hold,
+            ResponseTemplate::new(200).set_body_string(VIEWER),
+        ))
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(VIEWER))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = AniListProvider::with_bases(
+        reqwest::Client::new(),
+        server.uri(),
+        "http://unused-token".to_owned(),
+    );
+    let memo = OwnerMemo::default();
+    let tokens = bearer("tok-a");
+    let asking = memo.owner(ProviderKind::AniList, &provider, &tokens);
+    let disconnect = async {
+        tokio::time::timeout(std::time::Duration::from_secs(5), gate.asked())
+            .await
+            .expect("the lookup reached its hold");
+        memo.forget(ProviderKind::AniList);
+        gate.release();
+    };
+    let (asked, ()) = tokio::join!(asking, disconnect);
+    assert_eq!(asked.expect("owner"), "4242");
+    memo.owner(ProviderKind::AniList, &provider, &tokens)
+        .await
+        .expect("owner (asked again)");
+    // `.expect(1)` on each mock: the second ask reached the tracker.
+}

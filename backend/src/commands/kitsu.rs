@@ -236,12 +236,18 @@ pub(crate) async fn kitsu_episode_page(
 
 /// The entries Kitsu relates an anime to
 /// ([`crate::meta::kitsu::KitsuClient::media_relationships`]), cached
-/// under `kitsu:relations:v2:<id>` for as long as a finished show's
+/// under `kitsu:relations:v3:<id>` for as long as a finished show's
 /// detail row.
 ///
 /// v2: the parser refuses a page naming a destination it does not
 /// include. A v1 row may hold such an entry, read then as one of no
 /// format or status.
+///
+/// v3: each relation carries the day its destination started, which
+/// orders Kitsu's parts, and a destination that leaves out its subtype,
+/// status, count or start is no answer. A v2 row carries no start, read
+/// then as parts whose order the dates do not settle, and may come from
+/// the looser reader before that.
 ///
 /// # Errors
 /// As the client's, on a miss.
@@ -249,7 +255,7 @@ pub async fn kitsu_relationships(
     state: &AppState,
     anime_id: &str,
 ) -> Result<crate::meta::kitsu::KitsuRelations> {
-    let key = format!("kitsu:relations:v2:{anime_id}");
+    let key = format!("kitsu:relations:v3:{anime_id}");
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(rel) = serde_json::from_str(&body) {
             return Ok(rel);
@@ -449,8 +455,9 @@ pub fn title_match_put(
 ///   carries no cour marker the guard could refuse it on; re-keying
 ///   lets the next resolve re-derive it.
 /// - v9: an undated entry's pick reads the entry page of each listing
-///   it would serve and never takes one filed under Hentai, nor one
-///   whose page lists no genre. A v8 row can bind a hentai's key to an
+///   it would serve and never takes one filed under Hentai or rated
+///   Rx, nor one whose page lists no genre and no ordinary rating. A v8
+///   row can bind a hentai's key to an
 ///   undated entry one of whose names it is listed under; re-keying
 ///   lets the next resolve re-derive it.
 pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 9;

@@ -81,6 +81,20 @@ pub fn delete_entry_row(
     Ok(())
 }
 
+/// Delete the cached row of `media_id` for every user of `provider`. A
+/// write whose account the tracker would not name leaves the row it
+/// changed with no owner to update it under; dropping it everywhere
+/// shows nothing stale until the next list refresh fills it in.
+pub fn delete_media_rows(pool: &SqlitePool, kind: ProviderKind, media_id: u32) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    conn.execute(
+        "DELETE FROM user_list_cache WHERE provider = ?1 AND media_id = ?2",
+        params![kind.slug(), i64::from(media_id)],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
 /// Shared upsert. `force` drops the `WHERE excluded.progress >= …`
 /// guard so an explicit edit can lower the cached progress.
 fn upsert(
