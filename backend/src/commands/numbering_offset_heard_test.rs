@@ -158,3 +158,73 @@ fn a_listing_heard_earlier_landing_inside_a_later_one_s_repair_leaves_its_stamp(
         );
     }
 }
+
+/// [`listing`] as a provider that stopped stitching lists it: the recap
+/// is "12.5" with no tag an earlier version gave it otherwise.
+fn listing_without_a_former_tag() -> Vec<EpisodeRef> {
+    let mut rows: Vec<EpisodeRef> = (1..=12).map(|n| row(n, None, None)).collect();
+    rows.push(row(13, Some("12.5"), None));
+    rows
+}
+
+#[test]
+fn a_later_listing_that_repairs_nothing_leaves_an_earlier_one_s_repair_whichever_finishes_first() {
+    for earlier_first in [true, false] {
+        let state = state();
+        stamped(&state);
+        let (earlier, later) = one_after_the_other();
+        let repairs = [
+            (listing(false), earlier),
+            (listing_without_a_former_tag(), later),
+        ];
+        let order: [usize; 2] = if earlier_first { [0, 1] } else { [1, 0] };
+        for i in order {
+            repair(&state, &repairs[i].0, repairs[i].1);
+        }
+        assert_eq!(
+            display_stamp(&state, SHOW),
+            Some((13, "12.5".into())),
+            "earlier first: {earlier_first}"
+        );
+        assert_eq!(
+            former(&state),
+            Some((13, "24.5".into())),
+            "earlier first: {earlier_first}"
+        );
+    }
+}
+
+/// [`listing`] with the recap tagged `now`.
+fn listing_tagging_the_recap(now: &str) -> Vec<EpisodeRef> {
+    let mut rows: Vec<EpisodeRef> = (1..=12).map(|n| row(n, None, None)).collect();
+    rows.push(row(13, Some(now), Some("24.5")));
+    rows
+}
+
+#[test]
+fn three_overlapping_listings_that_disagree_leave_the_stamp_as_it_was_in_any_order() {
+    let orders = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    for order in orders {
+        let state = state();
+        stamped(&state);
+        let begun = [Begun::now(), Begun::now(), Begun::now()];
+        let heard = begun.map(Begun::picked);
+        let listings = ["12.5", "12.25", "12.75"].map(listing_tagging_the_recap);
+        for i in order {
+            repair(&state, &listings[i], heard[i]);
+        }
+        assert_eq!(
+            display_stamp(&state, SHOW),
+            Some((13, "24.5".into())),
+            "order {order:?}"
+        );
+        assert_eq!(former(&state), None, "order {order:?}");
+    }
+}

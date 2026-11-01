@@ -22,11 +22,30 @@ fn after(order: Order, current: &Stamps, base: &Stamps, ours: &Stamps) -> Stamps
     settle(order, current, base, ours.clone()).unwrap_or_else(|| current.clone())
 }
 
-/// Two repairs from `base` whose hearings overlap, in the order given:
-/// the first this run is ordered against nothing.
+/// Repairs from `base` whose hearings all overlap, written in the order
+/// given. The first that repairs something is ordered against nothing,
+/// and the ones after it overlap it; one that repairs nothing takes no
+/// part in the order.
+fn overlapping_all(base: &Stamps, repairs: &[&Stamps]) -> Stamps {
+    let mut current = base.clone();
+    let mut taken = false;
+    for ours in repairs {
+        if *ours == base {
+            continue;
+        }
+        let order = if taken {
+            Order::Overlapping
+        } else {
+            Order::Later
+        };
+        current = after(order, &current, base, ours);
+        taken = true;
+    }
+    current
+}
+
 fn overlapping(base: &Stamps, first: &Stamps, second: &Stamps) -> Stamps {
-    let once = after(Order::Later, base, base, first);
-    after(Order::Overlapping, &once, base, second)
+    overlapping_all(base, &[first, second])
 }
 
 proptest! {
@@ -55,6 +74,16 @@ proptest! {
         base in stamps(), a in stamps(), b in stamps(),
     ) {
         prop_assert_eq!(overlapping(&base, &a, &b), overlapping(&base, &b, &a));
+    }
+
+    #[test]
+    fn three_overlapping_repairs_end_the_same_in_any_order(
+        base in stamps(), a in stamps(), b in stamps(), c in stamps(),
+    ) {
+        let first = overlapping_all(&base, &[&a, &b, &c]);
+        for order in [[&a, &c, &b], [&b, &a, &c], [&b, &c, &a], [&c, &a, &b], [&c, &b, &a]] {
+            prop_assert_eq!(&overlapping_all(&base, &order), &first);
+        }
     }
 
     #[test]
