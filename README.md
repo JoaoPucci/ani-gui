@@ -34,7 +34,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Install
 
-ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream provider ships inside it, so browsing and playback need nothing else. Each bundled tool's license text is installed with it, under `resources/licenses/`. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
+ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream provider ships inside it, so browsing and playback need nothing else. Each package installs the license texts of the tools it bundles, with the notices of the libraries built into them, under `resources/licenses/`. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
 
 Platform support tiers:
 
@@ -59,7 +59,7 @@ NSIS installer (`.exe`). Run it; it installs per-user by default and creates Sta
 
 The installer carries everything the app runs — the impersonating transport, yt-dlp, and ffmpeg — so it needs no network while it installs, and an update replaces them with the rest of the app. The bundled copies are the ones the app uses, even when you have your own ffmpeg or yt-dlp on `PATH`.
 
-The installer redistributes ffmpeg 7.1.1 as built by gyan.dev, under the GNU GPL v3. Its corresponding source is the [7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1) and [FFmpeg's n7.1.1 source](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1). The license text of every bundled tool is installed in `resources\licenses\` in the install directory.
+The installer redistributes ffmpeg 7.1.1 as built by gyan.dev ([7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1)), under the GNU GPL v3. FFmpeg's source code for that version is at [n7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1); the build description installed in `resources\licenses\ffmpeg.txt` names the external libraries the build links. The license texts of the bundled tools, with the notices of the libraries built into them, are installed in `resources\licenses\` in the install directory.
 
 </details>
 

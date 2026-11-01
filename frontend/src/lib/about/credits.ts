@@ -45,12 +45,13 @@ export interface BundledTool {
 	 *  `about_bundled_tool_note_<noteId>` key in every locale's
 	 *  about.json. */
 	noteId: BundledToolNoteId;
-	/** Where to get the corresponding source of a copyleft binary a
-	 *  package redistributes. Present only for those. */
+	/** Where a copyleft binary a package redistributes was built, and
+	 *  its upstream source. Present only for those. */
 	sourceOffer?: SourceOffer;
 }
 
-/** An offer of the corresponding source for one redistributed build. */
+/** The published build and the upstream source for one redistributed
+ *  copyleft binary. */
 export interface SourceOffer {
 	/** The build's version, as the fetcher pins it. */
 	version: string;
