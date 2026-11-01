@@ -19,10 +19,11 @@
 # command has ended; a process a command leaves running in the
 # background when it exits is that command's to wait for.
 #
-# Stopped by SIGINT or SIGTERM, as a cancelled or timed-out CI step is,
-# it stops every command still running together with whatever that
-# command started, prints what each had written so far, and exits 130
-# or 143. Each command runs in a session of its own (setsid, from
+# Stopped by SIGINT or SIGTERM, as a cancelled or timed-out CI step is
+# when the step execs it, it stops every command still running together
+# with whatever that command started, prints what each had written so
+# far, and exits 130 or 143; a further signal meanwhile is ignored, and
+# a command not yet started when the first came is never started. Each command runs in a session of its own (setsid, from
 # util-linux) so that it leads a process group the stop can signal
 # whole; this is a Linux tool.
 #
@@ -66,11 +67,19 @@ report() {
                 printf '\n'
             fi
         fi
-        if [ -f "$logs/$n.stopped" ]; then
-            printf '=== [%s] stopped by SIG%s\n' "$n" "$signal"
-        else
+        status=
+        if [ -f "$logs/$n.status" ]; then
             status=$(cat "$logs/$n.status")
+        fi
+        # One the stop signalled is reported as stopped, unless it ended
+        # with a status of its own as the signal came: SIGTERM ends a
+        # command with 143.
+        if [ -f "$logs/$n.stopped" ] && { [ -z "$status" ] || [ "$status" -eq 143 ]; }; then
+            printf '=== [%s] stopped by SIG%s\n' "$n" "$signal"
+        elif [ -n "$status" ]; then
             printf '=== [%s] exited %s\n' "$n" "$status"
+        else
+            printf '=== [%s] not started: SIG%s came first\n' "$n" "$signal"
         fi
     done
 }
@@ -79,23 +88,24 @@ report() {
 # what it started, wait for each, print what each wrote, and exit as a
 # shell stopped by that signal does.
 stop() {
-    trap - INT TERM
+    # A second signal, as a runner sends SIGTERM after SIGINT, does not
+    # cut the report short.
+    trap '' INT TERM
     signal=$1
     code=$2
     shift 2
+    # A command's runner that has not yet looked for this declines to
+    # start its command once it does.
+    : >"$logs/stopping"
     n=0
     for command in "$@"; do
         n=$((n + 1))
-        if [ ! -f "$logs/$n.status" ]; then
-            : >"$logs/$n.stopped"
-            # A command's runner writes its process id as it starts
-            # it; a signal can arrive a moment before.
-            tries=0
-            while [ ! -s "$logs/$n.pid" ] && [ "$tries" -lt 50 ]; do
-                tries=$((tries + 1))
-                sleep 0.1
-            done
+        # A runner that looked before the flag was set starts its
+        # command and records its process id a moment later.
+        if [ -f "$logs/$n.alive" ] && [ ! -f "$logs/$n.status" ]; then
+            settled "$n" pid
             if [ -s "$logs/$n.pid" ]; then
+                : >"$logs/$n.stopped"
                 pid=$(cat "$logs/$n.pid")
                 kill -s TERM -- "-$pid" 2>/dev/null || true
             fi
@@ -104,25 +114,53 @@ stop() {
     n=0
     for command in "$@"; do
         n=$((n + 1))
-        pid=$(cat "$logs/$n.runner")
-        wait "$pid" || true
+        if [ -f "$logs/$n.runner" ]; then
+            pid=$(cat "$logs/$n.runner")
+            wait "$pid" || true
+        elif [ -f "$logs/$n.alive" ]; then
+            # Started a moment before the signal, its runner's id was
+            # not yet recorded; it records how it ends instead.
+            settled "$n" status
+        fi
     done
     report "$@"
     exit "$code"
 }
 
+# settled N pid|status: wait, for five seconds at most, until command
+# N's runner has recorded its command's process id (pid) or its exit
+# status (status), or has declined to start it.
+settled() {
+    tries=0
+    while [ "$tries" -lt 50 ]; do
+        if [ -f "$logs/$1.declined" ] || [ -f "$logs/$1.status" ]; then
+            return 0
+        fi
+        if [ "$2" = pid ] && [ -s "$logs/$1.pid" ]; then
+            return 0
+        fi
+        tries=$((tries + 1))
+        sleep 0.1
+    done
+}
+
 trap 'stop INT 130 "$@"' INT
 trap 'stop TERM 143 "$@"' TERM
 
-# One runner per command: it starts the command in a session of its
-# own, records the command's process id, waits for it, and records its
-# exit status as it ends, so the status is kept whatever this shell is
-# doing at that moment.
+# One runner per command: unless a stop has begun, it starts the
+# command in a session of its own, records the command's process id,
+# waits for it, and records its exit status as it ends, so the status
+# is kept whatever this shell is doing at that moment.
 n=0
 for command in "$@"; do
     n=$((n + 1))
     (
         trap - INT TERM EXIT
+        : >"$logs/$n.alive"
+        if [ -f "$logs/stopping" ]; then
+            : >"$logs/$n.declined"
+            exit 0
+        fi
         setsid sh -c "$command" >"$logs/$n.log" 2>&1 &
         printf '%s\n' "$!" >"$logs/$n.pid"
         if wait "$!"; then
