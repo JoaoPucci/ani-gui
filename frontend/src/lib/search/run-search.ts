@@ -23,6 +23,7 @@
 import type { Config, KitsuAnimeRef, KitsuSearchPage, SearchOrder } from '$lib/api';
 import { afterPage, canLoadMore, freshHits, type PagingPhase } from './paging';
 import { probeScope, type ProbeRun } from '$lib/availability/probe-scope';
+import type { SearchCheckpoint, SearchSnapshot } from './snapshot';
 
 export interface SearchRunnerDeps {
 	/** One page of the Kitsu search in `order`, starting at `offset`. */
@@ -46,6 +47,9 @@ export interface SearchRunnerDeps {
 	onBusy: (busy: boolean) => void;
 	/** Every change of the paging phase. */
 	onPhase: (phase: PagingPhase) => void;
+	/** A resumed search has its results up: whether the card the reader
+	 *  left at the top of the screen is among them. */
+	onReached?: (found: boolean) => void;
 }
 
 /** One run's search: the pages it has shown and where it goes next. */
@@ -71,6 +75,11 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	/** Load the next page: when idle, retrying a failed page, or
 	 *  continuing a held search. Does nothing in any other phase. */
 	loadMore: () => void;
+	/** Where the current search stood when its last page settled, with
+	 *  the results it shows; `null` before a first page has settled. */
+	checkpoint: () => SearchCheckpoint | null;
+	/** Bring back a search the page saved when the reader left it. */
+	resume: (saved: SearchSnapshot, at: { now: number; reload: boolean }) => Promise<void>;
 } {
 	let generation = 0;
 	let previousProbes: ProbeRun | null = null;
@@ -189,5 +198,14 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		void fetchMore(search);
 	};
 
-	return { run, loadMore };
+	/** Declared ahead of its rules. */
+	const checkpoint = (): SearchCheckpoint | null => null;
+
+	/** Declared ahead of its rules. */
+	const resume = async (saved: SearchSnapshot, at: { now: number; reload: boolean }) => {
+		void saved;
+		void at;
+	};
+
+	return { run, loadMore, checkpoint, resume };
 }
