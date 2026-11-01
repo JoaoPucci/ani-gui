@@ -9,7 +9,12 @@
 # background command's exit status unless something waits for it by
 # name, and `set -e` does not reach it, so these cases assert that the
 # tool fails whenever any command it ran failed, wherever that command
-# stands, and that it fails only once every command has ended.
+# stands, and that it fails only once every command has ended. They
+# also hold what it does with an empty command (a usage error) and an
+# output with no final newline, and what it does when it is itself
+# signalled, as the jobs' steps exec it so a cancelled or timed-out
+# step signals it: it stops what it started, whatever stage it is at,
+# and prints what each command wrote.
 
 load '../helpers/loader'
 
@@ -140,4 +145,42 @@ setup() {
     [ -s grandchild ]
     sleep 0.5
     run ! kill -0 "$(cat grandchild)"
+}
+
+@test "interrupted, it stops what it started and reports, exiting 130" {
+    # Run in the foreground: a command started with `&` from a shell
+    # without job control starts with SIGINT ignored, and a shell
+    # cannot trap a signal it was started ignoring.
+    (
+        sleep 1
+        kill -INT "$(cat toolpid)"
+    ) &
+    start=$SECONDS
+    run sh -c 'echo "$$" >toolpid; exec sh "$1" "echo started; sleep 30"' sh "$TOOL"
+    [ $((SECONDS - start)) -lt 10 ]
+    [ "$status" -eq 130 ]
+    printf '%s\n' "$output" | grep -qx 'started'
+    printf '%s\n' "$output" | grep -qx '=== \[1\] stopped by SIGINT'
+}
+
+@test "signalled while still starting its commands, it stops at once and reports" {
+    # Six hundred commands take the runner a while to start; the signal
+    # lands among them, so some have not started when it comes.
+    set --
+    i=0
+    while [ "$i" -lt 600 ]; do
+        i=$((i + 1))
+        set -- "$@" 'sleep 30'
+    done
+    sh "$TOOL" "$@" >out 2>&1 &
+    tool=$!
+    sleep 0.02
+    start=$SECONDS
+    kill -TERM "$tool"
+    status=0
+    wait "$tool" || status=$?
+    [ $((SECONDS - start)) -lt 15 ]
+    [ "$status" -eq 143 ]
+    grep -qx '=== \[1\] stopped by SIGTERM' out
+    grep -qx '=== \[600\] not started: SIGTERM came first' out
 }
