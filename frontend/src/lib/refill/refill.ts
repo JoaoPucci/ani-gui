@@ -78,3 +78,10 @@ export async function refetchOnRefill<T>(
 	if (opts.signal?.aborted) return;
 	opts.apply(data);
 }
+
+/** Fetch a read once more for a page whose refill landed. Each page
+ *  fetches on its own for now. */
+export function shareRefetch<T>(key: string, start: () => Promise<T>): Promise<T> {
+	void key;
+	return start();
+}

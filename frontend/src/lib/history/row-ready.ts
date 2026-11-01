@@ -21,6 +21,13 @@ export interface ContinueRowReadyDeps {
 	/** Aborted when the page leaves: a refill that lands after it is
 	 *  not fetched ($lib/refill/refill). */
 	signal?: AbortSignal;
+	/** Put a refilled still on the episode the card shows, in place.
+	 *  Not called yet: a refill replaces the card's episode. */
+	fillThumbnail?: (
+		entryId: string,
+		episodeId: string,
+		thumbnail: { original: string | null }
+	) => void;
 	/** Setters for the three pieces of page state the row owns. The
 	 *  page side provides one-line Svelte reassignments
 	 *  (`historyMatches = { ...historyMatches, [id]: m }` and friends)
