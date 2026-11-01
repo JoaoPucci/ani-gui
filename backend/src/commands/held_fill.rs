@@ -188,6 +188,8 @@ pub(crate) fn on_unanswered(
             let mut ending = Ending {
                 key,
                 ticket,
+                fill: job.fill,
+                kitsu_id: job.kitsu_id.clone(),
                 landed: false,
             };
             ending.landed = job.retry().await;
@@ -201,6 +203,8 @@ pub(crate) fn on_unanswered(
 struct Ending {
     key: String,
     ticket: u64,
+    fill: Fill,
+    kitsu_id: String,
     landed: bool,
 }
 
@@ -214,6 +218,8 @@ impl Drop for Ending {
         };
         ENDED.send_modify(|n| *n += 1);
         tracing::info!(
+            fill = ?self.fill,
+            kitsu_id = %self.kitsu_id,
             ticket = self.ticket,
             landed = self.landed,
             on_screen,
