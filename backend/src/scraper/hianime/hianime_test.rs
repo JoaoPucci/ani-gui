@@ -3727,13 +3727,13 @@ async fn a_megaplay_server_is_read_through_the_sites_sources_endpoint() {
             referer: Some("https://megaplay.buzz/".into()),
             subtitles: vec![
                 SubtitleTrack {
-                    lang: "eng".into(),
+                    lang: "en".into(),
                     label: "English".into(),
                     default: true,
                     url: "https://mp.example/v/subs/track_0_eng.vtt".into(),
                 },
                 SubtitleTrack {
-                    lang: "spa".into(),
+                    lang: "es-419".into(),
                     label: "Spanish (Latin American)".into(),
                     default: false,
                     url: "https://mp.example/v/subs/track_2_Latin_American_spa.vtt".into(),
