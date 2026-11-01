@@ -99,6 +99,26 @@ fn a_line_ended_by_a_javascript_line_terminator_names_nothing_upstream() {
     }
 }
 
+/// m3u8-rs reads a quoted value up to its closing quote, line breaks
+/// and all, and writes it back as it was: a value can carry whole
+/// lines of its own into the rewrite — a variant, a segment — which
+/// the player reads as lines.
+#[test]
+fn a_quoted_value_spanning_lines_adds_no_line_upstream() {
+    for brk in ["\n", "\r", "\r\n"] {
+        assert_contained(&format!(
+            "#EXTM3U\n\
+             #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"s\",NAME=\"x{brk}#EXT-X-STREAM-INF:BANDWIDTH=9000000{brk}https://evil.example/v.m3u8{brk}#\"\n\
+             #EXT-X-STREAM-INF:BANDWIDTH=1000000\nv/index.m3u8\n"
+        ));
+        assert_contained(&format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:4\n\
+             #EXT-X-DATERANGE:ID=\"d{brk}#EXTINF:4,{brk}https://evil.example/a.ts{brk}#\",START-DATE=\"2026-01-01T00:00:00Z\"\n\
+             #EXTINF:4.0,\nseg0.ts\n#EXT-X-ENDLIST\n"
+        ));
+    }
+}
+
 /// hls.js calls a playlist media by its lines, wherever its first
 /// decisive tag sits; the route serves it as the playlist the player
 /// will read, its segment on the proxy.
@@ -122,8 +142,32 @@ fn a_playlist_the_player_reads_as_media_is_rewritten_as_media() {
     );
 }
 
+/// The route tells master from media by what the rewrite parses —
+/// after a variable a query parameter defines has been substituted —
+/// so a playlist the player reads as media is rewritten as media.
+#[test]
+fn a_substituted_variable_cannot_make_a_master_read_as_media() {
+    let url =
+        Url::parse("https://cdn.example/a/master.m3u8?p=%E2%80%A8%23EXT-X-TARGETDURATION%3A4")
+            .expect("url");
+    let body = "#EXTM3U\n#EXT-X-DEFINE:QUERYPARAM=\"p\"\n\
+                #EXT-X-SESSION-DATA:DATA-ID=\"d\",VALUE=\"{$p}\"\n\
+                #EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n";
+    let out = rewrite_served(
+        body.as_bytes(),
+        &url,
+        &origin(),
+        SessionId::new(),
+        &AppSecret::random(),
+        "",
+    )
+    .expect("rewrite");
+    assert!(!(reads_as_media(&out) && out.contains("&k=pl")), "{out}");
+}
+
 /// A tag, an attribute name and a value from the shapes a hostile
-/// playlist can take.
+/// playlist can take — a quoted value carrying lines of its own among
+/// them.
 fn any_line() -> impl proptest::strategy::Strategy<Value = String> {
     use proptest::prelude::*;
     let tag = "(EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"n\",|EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1,|EXT-X-MAP:|EXT-X-KEY:METHOD=AES-128,|EXT-X-KEY:METHOD=AES-128,KEYFORMATVERSIONS=1,|EXT-X-CONTENT-STEERING:|EXT-X-SESSION-DATA:DATA-ID=\"d\",|EXT-X-DATERANGE:ID=\"i\",START-DATE=\"2026-01-01T00:00:00Z\",|EXT-X-FOO:|EXTINF:4,)";
@@ -131,12 +175,21 @@ fn any_line() -> impl proptest::strategy::Strategy<Value = String> {
     let gap = "( |\t|\u{a0}|)";
     let value = "(https://evil\\.example/x|//evil\\.example/x|\\{\\$v\\}|data:,x|rel/x\\.m3u8|http://127\\.0\\.0\\.1:42337@evil\\.example/)";
     let sep = "(\n|\r\n|\u{2028}|\u{2029})";
-    (tag, name, gap, value, proptest::bool::ANY, sep).prop_map(
-        |(tag, name, gap, value, quote, sep)| {
-            let value = if quote { format!("\"{value}\"") } else { value };
-            format!("#{tag}{name}{gap}={value}{sep}")
-        },
+    (
+        tag,
+        name,
+        gap,
+        value,
+        proptest::option::of("(\n|\r|\r\n|\u{2028})"),
+        sep,
     )
+        .prop_map(|(tag, name, gap, value, quote, sep)| {
+            let value = match quote {
+                Some(brk) => format!("\"x{brk}#EXTINF:4,{brk}{value}{brk}#\""),
+                None => value,
+            };
+            format!("#{tag}{name}{gap}={value}{sep}")
+        })
 }
 
 proptest::proptest! {
