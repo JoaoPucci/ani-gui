@@ -196,11 +196,14 @@ use crate::proxy::MediaKind;
 // year filter drops the latter too. A v25 row for an undated entry can hold a hentai's stream — one
 // listed under one of the entry's own names — under the entry's key,
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-// v27: the language reader learned the `<code>-<n>.vtt` naming. A v26
-// row from that CDN holds each track's label as its language
-// (`lang: "Portuguese (- Brazil)"`), which a replay hands the player
-// as the track's srclang and a download names its sidecar by;
-// bumping re-resolves.
+// v27: the language reader learned the `<code>-<n>.vtt` naming, and a
+// megaplay track's language became a BCP 47 tag read from its file
+// name or its label (`eng` is now `en`, `Portuguese (- Brazil)` is
+// `pt-BR`). A v26 row from that CDN holds each track's label as its
+// language (`lang: "Portuguese (- Brazil)"`), which a replay hands
+// the player as the track's srclang and a download names its sidecar
+// by, and every v26 megaplay row holds the old codes; bumping
+// re-resolves.
 const SCHEMA: &str = "v27";
 
 /// What the native resolve produced, frozen for replay. The session

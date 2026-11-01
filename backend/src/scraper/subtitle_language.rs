@@ -14,12 +14,15 @@
 //! in parentheses (`Portuguese (- Brazil)`, `Chinese (- Traditional)`,
 //! `Spanish (- Spanish[LAT])`). So the language is read from either
 //! source: the file name's code when it has one the table knows, or
-//! else the label's name — and the region or script from the label in
-//! either case. The result is a BCP 47 tag (`pt-BR`, `es-419`,
-//! `zh-Hant`, `en`), what the player's `srclang` and a download's file
-//! name take. A track that neither names is `und`, never a guess: a
-//! third naming then plays with its label and no language, and the
-//! reader logs it ([`super::hianime::parse_sources`]).
+//! else the label's name — and the region or script from the label
+//! whenever the label names that same language. The result is a BCP 47
+//! tag (`pt-BR`, `es-419`, `zh-Hant`, `en`), what the player's
+//! `srclang` and a download's file name take. A track whose file name
+//! and label both name no language the table knows is `und`, never a
+//! guess: it plays with its label and no language, and the reader logs
+//! it ([`super::hianime::parse_sources`]). A third file naming is read
+//! from the labels, which name the language whatever the files are
+//! called.
 
 /// One language the reader recognises: its BCP 47 subtag, the
 /// three-letter codes a file name can carry for it (bibliographic and
@@ -256,7 +259,7 @@ const REGIONS: &[(&str, &str)] = &[
     ("hong kong", "HK"),
 ];
 
-/// The language tag a three-letter code — or a two-letter one — names.
+/// The language tag a file name's three-letter code names.
 fn language_of_code(code: &str) -> Option<&'static str> {
     LANGUAGES
         .iter()
@@ -280,9 +283,9 @@ fn language_of_label(label: &str) -> Option<&'static str> {
         .map(|l| l.tag)
 }
 
-/// The script and region subtags the label's words name, for a track
-/// in `language`. `american` names a region only beside a language
-/// spoken there, so `Spanish (Latin American)` is not read as `US`.
+/// The script and region subtags the label's words name, the first in
+/// table order of each. Whether they apply to the track is
+/// [`track_tag`]'s call.
 fn qualifiers_of_label(label: &str) -> (Option<&'static str>, Option<&'static str>) {
     let label = label.to_lowercase();
     let script = SCRIPTS
@@ -342,8 +345,9 @@ pub fn track_tag(file: &str, label: &str) -> Option<String> {
             tag.push('-');
             tag.push_str(script);
         }
-        // `american` is a region only for English; a Spanish label
-        // saying `Latin American` matched `latin america` first.
+        // The United States is a region only for English: a Spanish
+        // label calling itself `American` is read as Spanish, no region
+        // (`Latin American` already matched `latin america` first).
         if let Some(region) = region.filter(|r| *r != "US" || language == "en") {
             tag.push('-');
             tag.push_str(region);
