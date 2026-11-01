@@ -111,8 +111,15 @@ fn related_doc(edges: &[(String, bool, u32, Option<u32>)]) -> Value {
     let included: Vec<Value> = edges
         .iter()
         .map(|(_, anime, id, count)| {
+            // An anime is asked for its count and the day it started; a
+            // manga for neither.
+            let attributes = if *anime {
+                json!({ "subtype": "TV", "status": "finished", "episodeCount": count, "startDate": "2020-01-01" })
+            } else {
+                json!({ "subtype": "TV", "status": "finished", "episodeCount": count })
+            };
             json!({ "id": id.to_string(), "type": if *anime { "anime" } else { "manga" },
-                    "attributes": { "subtype": "TV", "status": "finished", "episodeCount": count } })
+                    "attributes": attributes })
         })
         .collect();
     json!({ "data": data, "included": included, "meta": { "count": edges.len() } })
@@ -195,6 +202,7 @@ proptest! {
             prop_assert_eq!(&entry.id, &id.to_string());
             prop_assert_eq!(entry.episode_count, *count);
             prop_assert_eq!(entry.subtype.as_deref(), Some("TV"));
+            prop_assert_eq!(entry.start.as_deref(), anime.then_some("2020-01-01"));
         }
         if !edges.is_empty() {
             for missing in [
@@ -209,6 +217,11 @@ proptest! {
             let dangling = with(doc.clone(), &["data", "0", "relationships", "destination", "data"], Value::Null);
             let read = kitsu::parse_relationships_response(&decorated(dangling, &extra)).expect("an answer");
             prop_assert_eq!(read.entries.len(), edges.len() - 1);
+            // An anime that leaves out the day it started is no answer.
+            if edges[0].1 {
+                let undated = without(doc.clone(), &["included", "0", "attributes", "startDate"]);
+                prop_assert!(kitsu::parse_relationships_response(&decorated(undated, &extra)).is_err());
+            }
         }
         if edges.len() >= 2 {
             // One destination left out while the others are included.

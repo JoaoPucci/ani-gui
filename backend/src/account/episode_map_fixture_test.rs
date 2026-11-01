@@ -52,6 +52,7 @@ fn shape_name(shape: &Shape) -> &'static str {
         Shape::SharedEntry => "shared_entry",
         Shape::SplitParts => "split_parts",
         Shape::Extras => "extras",
+        Shape::SpecialExtras => "special_extras",
     }
 }
 
