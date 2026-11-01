@@ -27,21 +27,37 @@ export type Arrival =
 	| { kind: 'follow'; q: string }
 	| { kind: 'restore'; view: SearchView; saved: SearchSnapshot; reload: boolean };
 
-/** Declared ahead of its rules. */
+/** The page with nothing asked: no search, Kitsu's ranking, no type
+ *  filter. */
 export function emptyView(): SearchView {
 	return { q: '', order: 'relevance', subtypes: [], anchor: null, restoredIds: new Set() };
 }
 
-/** Declared ahead of its rules. */
+/** The view a saved search puts back. The cards it saved do not rise
+ *  in again, whether they come back as they were or from the search
+ *  run again. */
 export function restoredView(saved: SearchSnapshot): SearchView {
-	void saved;
-	return emptyView();
+	return {
+		q: saved.q,
+		order: saved.order,
+		subtypes: [...saved.subtypes],
+		anchor: saved.anchor,
+		restoredIds: new Set(saved.results?.hits.map((h) => h.id))
+	};
 }
 
-/** Declared ahead of its rules. */
+/**
+ * What a navigation landing on the search page asks of it, given the
+ * snapshot SvelteKit restored for the entry (if any), the navigation's
+ * type, and the query the address names. A back or forward press, or
+ * a reload, onto a saved search the address names restores it; a
+ * press that cannot restore follows the address. Any other navigation
+ * was already followed as the address changed.
+ */
 export function arrive(saved: SearchSnapshot | null, type: string, q: string): Arrival {
-	void saved;
-	void type;
-	void q;
-	return { kind: 'none' };
+	if (type !== 'popstate' && type !== 'enter') return { kind: 'none' };
+	if (saved && q && saved.q === q) {
+		return { kind: 'restore', view: restoredView(saved), saved, reload: type === 'enter' };
+	}
+	return saved || type === 'popstate' ? { kind: 'follow', q } : { kind: 'none' };
 }

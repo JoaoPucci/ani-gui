@@ -47,6 +47,7 @@
 	} from '$lib/search/snapshot';
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { followAddress } from '$lib/search/follow-address';
+	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -213,19 +214,25 @@
 		else if (step === 'clear') startOver();
 	}
 
-	/** The page as it opens with nothing asked: no search, Kitsu's
-	 *  ranking, no type filter. */
+	/** The page as it opens with nothing asked ($lib/search/arrival). */
 	function startOver() {
 		searchRunner.stop();
-		submitted = '';
 		results = null;
-		error = null;
 		phase = { kind: 'loading' };
-		reach = UNMEASURED;
-		sortKey = 'relevance';
+		show(emptyView());
+	}
+
+	/** Show `view`: its query, order, filters, the card to land on and
+	 *  the cards that skip their entrance. */
+	function show(view: SearchView) {
+		submitted = view.q;
+		sortKey = view.order;
 		activeSubtypes.clear();
-		anchor = null;
-		restoredIds = new Set();
+		for (const t of view.subtypes) activeSubtypes.add(t);
+		anchor = view.anchor;
+		restoredIds = view.restoredIds;
+		error = null;
+		reach = UNMEASURED;
 	}
 
 	// Going back to the search page restores what the reader left: the
@@ -241,8 +248,7 @@
 	let saved: SearchSnapshot | null = null;
 	/** The card to put back at the top once the results are up. */
 	let anchor: ScrollAnchor | null = null;
-	/** Cards the saved search carried: they do not rise in again, whether
-	 *  they come back as they were or from the search run again. */
+	/** Cards that do not rise in again ($lib/search/arrival). */
 	let restoredIds = $state.raw(new Set<string>());
 
 	export const snapshot: Snapshot<SearchSnapshot> = {
@@ -264,29 +270,19 @@
 		arriving = type === 'popstate' && to ? to.url.href : null;
 	});
 
+	// What the landing navigation asks is $lib/search/arrival's rule;
+	// this applies it.
 	afterNavigate(({ type }) => {
 		arriving = null;
 		const kept = saved;
 		saved = null;
-		if (kept && (type === 'popstate' || type === 'enter')) restoreFrom(kept, type === 'enter');
-		else if (type === 'popstate') follow(urlQuery());
+		const step = arrive(kept, type, urlQuery());
+		if (step.kind === 'follow') follow(step.q);
+		else if (step.kind === 'restore') {
+			show(step.view);
+			void searchRunner.resume(step.saved, { now: Date.now(), reload: step.reload });
+		}
 	});
-
-	/** Put back the search `kept` describes, if it is the one the
-	 *  address names; follow the address otherwise. */
-	function restoreFrom(kept: SearchSnapshot, reload: boolean) {
-		const q = urlQuery();
-		if (!q || kept.q !== q) return follow(q);
-		sortKey = kept.order;
-		activeSubtypes.clear();
-		for (const t of kept.subtypes) activeSubtypes.add(t);
-		error = null;
-		submitted = q;
-		reach = UNMEASURED;
-		anchor = kept.anchor;
-		restoredIds = new Set(kept.results?.hits.map((h) => h.id));
-		void searchRunner.resume(kept, { now: Date.now(), reload });
-	}
 
 	// All async search state transitions live in the runner
 	// ($lib/search/run-search.ts): render-then-prune emissions from
