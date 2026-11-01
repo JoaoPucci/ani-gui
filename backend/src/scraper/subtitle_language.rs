@@ -355,3 +355,11 @@ pub fn track_tag(file: &str, label: &str) -> Option<String> {
     }
     Some(tag)
 }
+
+/// The tag a provider's own `lang` field stands for, beside the track's
+/// label: the field as listed.
+#[must_use]
+pub fn listed_tag(lang: &str, label: &str) -> String {
+    let _ = label;
+    lang.to_string()
+}
