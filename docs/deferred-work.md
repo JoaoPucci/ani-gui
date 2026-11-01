@@ -460,35 +460,18 @@ starting it, and delete it when you find it done.
   preference has nothing to choose between yet. A payload that flags
   no track at all starts with every subtitle off.
 - **Illustrated brand assets** — post-1.0.
-- **A notification center.** Two jobs, and the second is the reason
-  the feature exists. The first is aggregation: the app's notices are
-  scattered today — update availability is a topbar badge with its
-  dialog, download outcomes live on the dock's terminal rows, and the
-  diagnostics page holds boot-time notices — and a single surface
-  would give them, and whatever later features emit, somewhere to go
-  when the user was not looking. The second is telling users about
-  outages like the provider failure of 2026-08-27 — the outage that
-  led the app to hianime: every
-  uncached play failed as unreachable and
-  the app had nowhere to say the problem was the provider's, not
-  their setup's. That job needs a
-  notice source that does not exist yet — the app inferring an outage
-  from its own failures, or fetching announcements from somewhere it
-  trusts — and choosing one is the design work, along with which
-  signals feed the surface and what persistence they get.
-
-  Tracker sign-in problems are among the notices the first job would
-  gather. A tracker can refuse to
-  renew a sign-in, which means reconnecting, or fail to answer the
-  renewal, which means the sign-in may still be valid and the app keeps
-  trying. Until the centre exists, a pinned toast carries both, and it
-  is the stopgap rather than the design: one toast per incident is all
-  it can do. It is not kept anywhere, so once dismissed it is gone.
-  While the sign-in stays expired, the amber dot on the account chip is
-  the only trace. A sign-in still valid whose renewal was refused
-  leaves none. A tracker list
-  pull for the Watch Later rail that fails for any other reason is
-  quieter still: the rail keeps its saved copy and nothing says so.
+- **A notification center.** The app's notices are scattered —
+  update availability is a topbar badge with its dialog, download
+  outcomes live on the dock's rows in memory, a tracker sign-in problem
+  is a pinned toast (once it is dismissed, an expired sign-in leaves
+  the account chip's dot and a refused renewal of a valid one leaves
+  nothing), and the diagnostics page holds boot-time notices — and an
+  outage of the streaming source has no surface at all: each failed
+  play reports its own error, and nothing says once that the source
+  is failing. A design is proposed in
+  [`proposals/notification-center.md`](./proposals/notification-center.md),
+  covering the surface, outage detection from the app's own failures,
+  signed remote notices and a donation ask.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
   entry has been matched to a Kitsu show, is a button that tries to
