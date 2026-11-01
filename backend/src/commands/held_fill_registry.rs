@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 /// keeps what it shows.
 pub(crate) const REMEMBERED: usize = 256;
 
-/// Retries a held-back fill gets: one per pause it is held in, up to
-/// this many pauses.
-pub(crate) const MAX_RETRIES: u32 = 3;
+#[path = "held_fill_step.rs"]
+mod step;
+pub(crate) use step::{after_run, Step, MAX_RETRIES};
 
 /// The most fills waiting on a retry at once. A fill held back past it
 /// gets no retry and no ticket: the next view asks again, as before.
@@ -144,30 +144,5 @@ impl Registry {
             .find(|&&(t, _)| t == ticket)
             .is_some_and(|&(_, landed)| landed);
         Standing::Ended(landed)
-    }
-}
-
-/// What a retry does after a run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Step {
-    /// The fill is in the cache.
-    Landed,
-    /// Held back again: wait out this pause too and run once more.
-    Again,
-    /// Not landed, and no pause to wait out — a failure that is not a
-    /// rate limit — or out of retries.
-    GiveUp,
-}
-
-/// The step after run number `attempt` (from 1): `landed` when the fill
-/// is now in the cache, `paused` when the gate is holding background
-/// fills back.
-pub(crate) fn after_run(landed: bool, paused: bool, attempt: u32) -> Step {
-    if landed {
-        Step::Landed
-    } else if paused && attempt < MAX_RETRIES {
-        Step::Again
-    } else {
-        Step::GiveUp
     }
 }

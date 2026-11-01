@@ -125,44 +125,6 @@ impl Ledger {
         self.sent.iter().filter(|&&s| s + pace.window > now).count()
     }
 
-    /// A retry left at `at`, besides [`Ledger::record_send`].
-    pub(crate) fn record_retry(&mut self, pace: &Pace, at: Instant) {
-        self.retries.push_back(at);
-        while self.retries.len() > pace.capacity.max(1) {
-            self.retries.pop_front();
-        }
-    }
-
-    /// [`Ledger::ready_at`] as it would be had no retry been sent: a
-    /// request for which this is earlier waited behind a retry.
-    pub(crate) fn ready_at_without_retries(
-        &self,
-        pace: &Pace,
-        class: Class,
-        now: Instant,
-    ) -> Instant {
-        let mut sent = self.sent.clone();
-        for r in &self.retries {
-            if let Some(i) = sent.iter().position(|s| s == r) {
-                sent.remove(i);
-            }
-        }
-        let other = Ledger {
-            sent,
-            not_before: self.not_before,
-            retries: VecDeque::new(),
-        };
-        other.ready_at(pace, class, now)
-    }
-
-    /// How many retries left less than a window before `now`.
-    pub(crate) fn retries_in_window(&self, pace: &Pace, now: Instant) -> usize {
-        self.retries
-            .iter()
-            .filter(|&&s| s + pace.window > now)
-            .count()
-    }
-
     /// A request left at `at`. Only the last `capacity` sends can bound
     /// a later one, so older ones are dropped.
     pub(crate) fn record_send(&mut self, pace: &Pace, at: Instant) {
@@ -196,6 +158,9 @@ impl Ledger {
         self.not_before = Some(self.not_before.map_or(until, |nb| nb.max(until)));
     }
 }
+
+#[path = "anilist_gate_retries.rs"]
+mod retries;
 
 #[cfg(test)]
 #[path = "anilist_gate_prop_test.rs"]

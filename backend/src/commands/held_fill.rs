@@ -40,9 +40,8 @@
 //! fetch once more when its fill lands.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::future::Future;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::app::AppState;
@@ -52,7 +51,11 @@ use crate::error::AniError;
 mod job;
 #[path = "held_fill_registry.rs"]
 mod registry;
+#[path = "held_fill_ticket.rs"]
+mod ticket;
 use registry::{Registry, Standing};
+pub(crate) use ticket::release;
+use ticket::{turn, Ending, Watching};
 
 /// Which fill was held back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,83 +198,6 @@ pub(crate) fn on_unanswered(
             ending.landed = job.retry().await;
         });
     }
-}
-
-/// Ends a retry's ticket when the retry is done with it — returned,
-/// or dropped unfinished (a panic, the runtime going down), which ends
-/// it unlanded rather than leaving the show's key taken for good.
-struct Ending {
-    key: String,
-    ticket: u64,
-    fill: Fill,
-    kitsu_id: String,
-    landed: bool,
-}
-
-impl Drop for Ending {
-    fn drop(&mut self) {
-        let on_screen = {
-            let mut registry = registry();
-            let on_screen = registry.on_screen(self.ticket, Instant::now());
-            registry.end(&self.key, self.ticket, self.landed);
-            on_screen
-        };
-        ENDED.send_modify(|n| *n += 1);
-        tracing::info!(
-            fill = ?self.fill,
-            kitsu_id = %self.kitsu_id,
-            ticket = self.ticket,
-            landed = self.landed,
-            on_screen,
-            "held-back fill retry ended"
-        );
-    }
-}
-
-/// The pages showing these tickets' fills have gone. Their retries
-/// still go — a landed fill is cached for the next view — but only once
-/// no fill on screen waits for one.
-pub(crate) fn release(tickets: &[u64]) {
-    let mut registry = registry();
-    for &t in tickets {
-        registry.release(t);
-    }
-}
-
-/// While alive, a page waits on its tickets: they count as on screen.
-struct Watching<'a>(&'a [u64]);
-
-impl<'a> Watching<'a> {
-    fn new(tickets: &'a [u64]) -> Self {
-        let now = Instant::now();
-        let mut registry = registry();
-        for &t in tickets {
-            registry.watch(t, now);
-        }
-        Self(tickets)
-    }
-}
-
-impl Drop for Watching<'_> {
-    fn drop(&mut self) {
-        let now = Instant::now();
-        let mut registry = registry();
-        for &t in self.0 {
-            registry.unwatch(t, now);
-        }
-    }
-}
-
-/// One retry at a time per AniList endpoint.
-fn turn(url: &str) -> Arc<tokio::sync::Mutex<()>> {
-    static TURNS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
-        LazyLock::new(Default::default);
-    TURNS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .entry(url.to_owned())
-        .or_default()
-        .clone()
 }
 
 /// Wait until one of `tickets` has ended, at most `limit`, and return

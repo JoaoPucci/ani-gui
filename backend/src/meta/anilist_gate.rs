@@ -45,9 +45,8 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::error::{AniError, Result};
@@ -58,32 +57,10 @@ mod answer;
 mod pace;
 use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
-
-tokio::task_local! {
-    static CLASS: Class;
-}
-
-/// Run `f` with every AniList request it sends counted as
-/// [`Class::Background`] — or as [`Class::Retry`] inside [`as_retry`],
-/// which a fill's own background scope does not lift.
-pub(crate) async fn in_background<F: Future>(f: F) -> F::Output {
-    let class = match current_class() {
-        Class::Retry => Class::Retry,
-        _ => Class::Background,
-    };
-    CLASS.scope(class, f).await
-}
-
-/// Run `f` with every AniList request it sends counted as
-/// [`Class::Retry`].
-pub(crate) async fn as_retry<F: Future>(f: F) -> F::Output {
-    CLASS.scope(Class::Retry, f).await
-}
-
-/// The class a request sent from here counts as.
-pub(crate) fn current_class() -> Class {
-    CLASS.try_with(|c| *c).unwrap_or(Class::Interactive)
-}
+#[path = "anilist_gate_turn.rs"]
+mod turn;
+pub(crate) use turn::{as_retry, current_class, in_background};
+use turn::{sent, Waiting};
 
 struct Gate {
     pace: Pace,
@@ -91,22 +68,6 @@ struct Gate {
     /// Requests other than retries waiting for their turn now. While
     /// any waits, no retry takes a turn.
     fresh_waiting: AtomicUsize,
-}
-
-/// Counts a request among [`Gate::fresh_waiting`] while it waits.
-struct Waiting<'a>(&'a AtomicUsize);
-
-impl<'a> Waiting<'a> {
-    fn new(count: &'a AtomicUsize) -> Self {
-        count.fetch_add(1, Ordering::SeqCst);
-        Self(count)
-    }
-}
-
-impl Drop for Waiting<'_> {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
 }
 
 impl Gate {
@@ -122,11 +83,7 @@ impl Gate {
     /// and for a retry no sooner than a moment from now while a request
     /// of another class waits.
     fn ready_at(&self, ledger: &Ledger, class: Class, now: Instant) -> Instant {
-        let at = ledger.ready_at(&self.pace, class, now);
-        if class == Class::Retry && self.fresh_waiting.load(Ordering::SeqCst) > 0 {
-            return at.max(now + self.pace.min_gap.max(RETRY_YIELD));
-        }
-        at
+        turn::ready_at(&self.pace, ledger, &self.fresh_waiting, class, now)
     }
 
     fn ledger(&self) -> std::sync::MutexGuard<'_, Ledger> {
@@ -178,35 +135,6 @@ impl Gate {
         }
     }
 }
-
-/// One debug line per request sent: its class, how full the window it
-/// left in is — this send included — against the capacity and the
-/// background share, how many of the window's requests were retries,
-/// how long it waited for its turn, and whether a retry sent before it
-/// made it wait. What the split between the classes is measured from.
-fn sent(
-    pace: &Pace,
-    class: Class,
-    ledger: &Ledger,
-    now: Instant,
-    waited: Duration,
-    behind_retry: bool,
-) {
-    tracing::debug!(
-        provider = "anilist",
-        ?class,
-        in_window = ledger.in_window(pace, now),
-        retries_in_window = ledger.retries_in_window(pace, now),
-        waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX),
-        behind_retry,
-        capacity = pace.capacity,
-        background_capacity = pace.capacity_for(Class::Background),
-        "anilist request sent"
-    );
-}
-
-/// How long a retry stands back, at least, while another request waits.
-const RETRY_YIELD: Duration = Duration::from_millis(50);
 
 static SHARED: LazyLock<Mutex<HashMap<String, Arc<Gate>>>> = LazyLock::new(|| {
     let mut gates = HashMap::new();
