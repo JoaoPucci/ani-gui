@@ -61,7 +61,8 @@ pub fn parse_sources(json: &str) -> Result<EmbedPayload> {
             default: t.default,
             url: t.file,
         })
-        .collect();
+        .collect::<Vec<_>>();
+    warn_unread_languages(&subtitles);
     Ok(EmbedPayload { src, subtitles })
 }
 
