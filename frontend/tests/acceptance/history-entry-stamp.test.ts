@@ -1,7 +1,11 @@
 // Acceptance: the topbar's breadcrumb knows whether there is a page
-// behind the one on screen, and the layout keeps what it needs for that
-// on each history entry through SvelteKit's own state, never by writing
-// `history.state` itself.
+// behind the one on screen, and the layout keeps what else it needs
+// about an entry (the page it was opened from) through SvelteKit's own
+// state, never by writing `history.state` itself.
+//
+// Whether there is a page behind is the browser's to say: the
+// Navigation API's index for the current entry, which it keeps across
+// a replace and a reload. The layout writes no depth of its own.
 //
 // SvelteKit owns `history.state`: every entry it writes carries its own
 // keys, and its dev runtime warns that a direct `history.pushState` or
@@ -86,7 +90,7 @@ afterEach(() => {
 	(window as unknown as { aniGui?: unknown }).aniGui = undefined;
 });
 
-describe('the layout keeps its back-stack depth on the history entry', () => {
+describe('the layout keeps what it knows about an entry on the entry', () => {
 	it('writes it through SvelteKit, never through history.replaceState', async () => {
 		sessionHistory.open();
 		await tick();
@@ -95,10 +99,7 @@ describe('the layout keeps its back-stack depth on the history entry', () => {
 		sessionHistory.push('link', '/search?q=frieren');
 		await tick();
 		expect(vi.mocked(replaceState)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(replaceState)).toHaveBeenCalledWith(
-			'',
-			expect.objectContaining({ aniGuiDepth: 1 })
-		);
+		expect(vi.mocked(replaceState)).toHaveBeenCalledWith('', { aniGuiFrom: '/' });
 		expect(historyWrites).not.toHaveBeenCalled();
 		expect(breadcrumb(), 'Home is behind the search page').not.toBeNull();
 	});
@@ -120,5 +121,31 @@ describe('the layout keeps its back-stack depth on the history entry', () => {
 		expect(breadcrumb(), 'nothing is behind Home').toBeNull();
 		expect(vi.mocked(replaceState)).not.toHaveBeenCalled();
 		expect(historyWrites).not.toHaveBeenCalled();
+	});
+});
+
+describe('the breadcrumb across a reload', () => {
+	it('stays while the browser keeps a page behind the reloaded one', async () => {
+		sessionHistory.open();
+		sessionHistory.push('link', '/search?q=frieren');
+		sessionHistory.push('link', '/anime/46474');
+		await tick();
+		expect(breadcrumb()).not.toBeNull();
+
+		// A reload starts a new document over the same history: a fresh
+		// layout, and SvelteKit restores no page.state onto it.
+		unmount(layout!);
+		vi.mocked(afterNavigate).mockClear();
+		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
+		layout = mount(Layout, { target, props: { children } });
+		sessionHistory.open();
+		// The new document's boot reads answer before the scenario ends.
+		for (let i = 0; i < 40; i++) await new Promise((r) => setTimeout(r, 5));
+		expect(breadcrumb(), 'the search is still behind the show').not.toBeNull();
+
+		sessionHistory.back();
+		sessionHistory.back();
+		await tick();
+		expect(breadcrumb(), 'nothing is behind Home').toBeNull();
 	});
 });
