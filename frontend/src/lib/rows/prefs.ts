@@ -27,23 +27,44 @@ export const ROW_PREFS_DEFAULT: RowPrefs = { style: 'inline', controls: false };
 export const ROW_PREFS_STORAGE_KEY = 'ani-gui:row-style';
 export const ROW_STYLES: readonly RowStyle[] = ['inline', 'band'];
 
+function styleOr(v: unknown, fallback: RowStyle): RowStyle {
+	return ROW_STYLES.find((s) => s === v) ?? fallback;
+}
+
 /** Read stored preferences, falling back to the default per field. */
 export function parseRowPrefs(raw: string | null): RowPrefs {
-	void raw;
-	throw new Error('not implemented');
+	let v: unknown;
+	try {
+		v = JSON.parse(raw ?? 'null');
+	} catch {
+		v = null;
+	}
+	if (typeof v !== 'object' || v === null || Array.isArray(v)) return ROW_PREFS_DEFAULT;
+	const o = v as Record<string, unknown>;
+	return {
+		style: styleOr(o.style, ROW_PREFS_DEFAULT.style),
+		controls: o.controls === true
+	};
 }
 
 /** The stored preferences, or the default when there is no storage,
  *  storage refuses, or nothing is stored. */
 export function loadRowPrefs(storage: StorageLike | null): RowPrefs {
-	void storage;
-	throw new Error('not implemented');
+	let stored: string | null;
+	try {
+		stored = storage?.getItem(ROW_PREFS_STORAGE_KEY) ?? null;
+	} catch {
+		stored = null;
+	}
+	return parseRowPrefs(stored);
 }
 
 /** Keep `prefs` for the next load. A refusal is not an error: the
  *  caller already holds the preferences for this session. */
 export function saveRowPrefs(storage: StorageLike | null, prefs: RowPrefs): void {
-	void storage;
-	void prefs;
-	throw new Error('not implemented');
+	try {
+		storage?.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+	} catch {
+		// Not persisted: this session still uses it.
+	}
 }

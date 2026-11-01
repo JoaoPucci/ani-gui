@@ -23,31 +23,45 @@ export type WatchLaterStatus =
 	| { kind: 'never' }
 	| { kind: 'updated'; at: number };
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
 /** The status for the connected trackers' last-pulled times, or
  *  `null` when no tracker is connected (there is nothing to report). */
 export function watchLaterStatus(
 	stamps: readonly (number | null)[],
 	refreshing: boolean
 ): WatchLaterStatus | null {
-	void stamps;
-	void refreshing;
-	throw new Error('not implemented');
+	if (stamps.length === 0) return null;
+	if (refreshing) return { kind: 'refreshing' };
+	let oldest = Infinity;
+	for (const s of stamps) {
+		if (s === null) return { kind: 'never' };
+		oldest = Math.min(oldest, s);
+	}
+	return { kind: 'updated', at: oldest };
 }
 
 export type Age = { unit: 'now' } | { unit: 'minute' | 'hour' | 'day'; count: number };
 
 /** How long ago `at` was at `now`, in the bucket a person reads. */
 export function ageOf(at: number, now: number): Age {
-	void at;
-	void now;
-	throw new Error('not implemented');
+	const elapsed = now - at;
+	if (elapsed < MINUTE) return { unit: 'now' };
+	if (elapsed < HOUR) return { unit: 'minute', count: Math.floor(elapsed / MINUTE) };
+	if (elapsed < DAY) return { unit: 'hour', count: Math.floor(elapsed / HOUR) };
+	return { unit: 'day', count: Math.floor(elapsed / DAY) };
 }
 
 /** Milliseconds from `now` until `ageOf(at, ·)` next changes. */
 export function nextAgeChange(at: number, now: number): number {
-	void at;
-	void now;
-	throw new Error('not implemented');
+	const elapsed = now - at;
+	// A stamp ahead of the clock reads as just now until the clock has
+	// caught up with it and then run a full minute past.
+	if (elapsed < 0) return -elapsed + MINUTE;
+	const step = elapsed < HOUR ? MINUTE : elapsed < DAY ? HOUR : DAY;
+	return step - (elapsed % step);
 }
 
 /** The localized words for each status, supplied by the caller so the
@@ -66,9 +80,14 @@ export function statusLabel(
 	locale: string,
 	copy: StatusCopy
 ): string | null {
-	void status;
-	void now;
-	void locale;
-	void copy;
-	throw new Error('not implemented');
+	if (status === null) return null;
+	if (status.kind === 'refreshing') return copy.refreshing();
+	if (status.kind === 'never') return copy.never();
+	const age = ageOf(status.at, now);
+	if (age.unit === 'now') return copy.justNow();
+	const when = new Intl.RelativeTimeFormat(locale, { numeric: 'always', style: 'short' }).format(
+		-age.count,
+		age.unit
+	);
+	return copy.updated(when);
 }
