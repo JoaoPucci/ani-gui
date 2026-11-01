@@ -175,6 +175,12 @@ describe('play route — held-back episode stills', () => {
 
 		const video = playerVideo();
 		video.currentTime = 42;
+		expect(video.currentTime).toBe(42);
+		// What the page would call to reload, start, stop or seek the
+		// player; none of it may run because of a refill.
+		const load = vi.spyOn(video, 'load');
+		const play = vi.spyOn(video, 'play');
+		const pause = vi.spyOn(video, 'pause');
 		const src = video.getAttribute('src');
 		const paused = video.paused;
 		const tracks = Array.from(video.querySelectorAll('track'));
@@ -190,12 +196,15 @@ describe('play route — held-back episode stills', () => {
 		expect(video.getAttribute('src')).toBe(src);
 		expect(video.currentTime).toBe(42);
 		expect(video.paused).toBe(paused);
+		expect(load).not.toHaveBeenCalled();
+		expect(play).not.toHaveBeenCalled();
+		expect(pause).not.toHaveBeenCalled();
 		expect(Array.from(video.querySelectorAll('track'))).toEqual(tracks);
 		Array.from(video.querySelectorAll('track')).forEach((t, i) => expect(t).toBe(tracks[i]));
 		expect(Array.from(video.textTracks ?? []).map((t) => t.mode)).toEqual(trackModes);
 		const after = cards();
 		expect(after).toHaveLength(before.length);
 		after.forEach((li, i) => expect(li).toBe(before[i]));
-		for (const img of stillImgs()) expect(img.classList.contains('img-arrive')).toBe(true);
+		for (const img of stillImgs()) expect(img.classList.contains('img-fade')).toBe(true);
 	});
 });

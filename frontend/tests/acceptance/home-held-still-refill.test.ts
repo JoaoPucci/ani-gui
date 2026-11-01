@@ -104,6 +104,6 @@ describe('home Continue Watching — a held-back still', () => {
 		// Fetched once more, not on and on.
 		expect(readsAfter).toBe(1);
 		expect(card()).toBe(before);
-		expect(cardImg()?.classList.contains('img-arrive')).toBe(true);
+		expect(cardImg()?.classList.contains('img-fade')).toBe(true);
 	});
 });

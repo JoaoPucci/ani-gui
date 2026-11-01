@@ -135,6 +135,9 @@ describe('episode stills held back by AniList’s pacing', () => {
 		focused?.focus();
 		window.scrollTo(0, 420);
 		const scrolled = window.scrollY;
+		// The scroll took: the check after the refill compares real
+		// positions, not two zeros.
+		expect(scrolled).toBe(420);
 		expect(document.activeElement).toBe(focused);
 
 		land();
@@ -152,6 +155,6 @@ describe('episode stills held back by AniList’s pacing', () => {
 		expect(stillImgs().map((img) => decodeURIComponent(img.src))).toEqual(
 			[1, 2, 3].map((n) => expect.stringContaining(still(n)))
 		);
-		for (const img of stillImgs()) expect(img.classList.contains('img-arrive')).toBe(true);
+		for (const img of stillImgs()) expect(img.classList.contains('img-fade')).toBe(true);
 	});
 });
