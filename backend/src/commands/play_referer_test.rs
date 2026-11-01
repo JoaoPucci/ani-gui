@@ -29,6 +29,7 @@ fn native(referer: Option<&str>) -> NativeResolved {
         other_copies: Vec::new(),
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     }
 }
 

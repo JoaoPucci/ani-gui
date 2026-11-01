@@ -45,6 +45,7 @@ proptest::proptest! {
             other_copies: Vec::new(),
             listing: Vec::new(),
             unread_past: None,
+            heard: None,
         };
         let args: PlayArgs = serde_json::from_value(serde_json::json!({
             "title": show_title,

@@ -56,6 +56,7 @@ fn native() -> NativeResolved {
         other_copies: Vec::new(),
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     }
 }
 

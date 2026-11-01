@@ -90,7 +90,7 @@ pub fn retag_from_resolve(
     // The pick's other versions: each copy's history row reads a stamp
     // of its own, put right from that copy's listing.
     for (slug, episodes) in &native.other_copies {
-        retag_from_listing(state, slug, episodes, native.unread_past);
+        retag_from_listing(state, slug, episodes, native.unread_past, native.heard);
     }
 }
 
@@ -108,6 +108,7 @@ pub fn retag_from_listing(
     slug: &str,
     episodes: &[crate::scraper::provider::EpisodeRef],
     unread_past: Option<u32>,
+    _heard: Option<crate::commands::listing_tags::Hearing>,
 ) {
     let shared = |former: &str| {
         episodes.iter().any(|e| {

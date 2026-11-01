@@ -117,8 +117,32 @@ pub trait ListingSink: Send + Sync + std::fmt::Debug {
     );
 }
 
-/// The sink that records each listing a walk picks ([`record_listing`]).
-pub(crate) struct Recorder<'s>(pub(crate) &'s AppState);
+/// The sink that records each listing a walk picks ([`record_listing`]),
+/// and keeps when it heard each show key's last, for the repairs that
+/// run from the same listing once the walk is done.
+pub(crate) struct Recorder<'s> {
+    state: &'s AppState,
+    heard: std::sync::Mutex<std::collections::HashMap<String, Hearing>>,
+}
+
+impl<'s> Recorder<'s> {
+    /// A recorder into `state`'s store that has heard nothing yet.
+    pub(crate) fn new(state: &'s AppState) -> Self {
+        Self {
+            state,
+            heard: std::sync::Mutex::default(),
+        }
+    }
+
+    /// When the last listing of `show_key` this recorder took was heard.
+    pub(crate) fn hearing(&self, show_key: &str) -> Option<Hearing> {
+        self.heard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(show_key)
+            .copied()
+    }
+}
 
 impl std::fmt::Debug for Recorder<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -133,7 +157,11 @@ impl ListingSink for Recorder<'_> {
         episodes: &[crate::scraper::provider::EpisodeRef],
         heard: Hearing,
     ) {
-        record_listing(self.0, show_key, episodes, heard);
+        self.heard
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(show_key.to_string(), heard);
+        record_listing(self.state, show_key, episodes, heard);
     }
 }
 
