@@ -6,7 +6,8 @@
 //! the file lock alone and its history file under no lock of the
 //! store's, and this process's own puts can land first on the mutex.
 //! So the repair decides again, under both locks, against the store
-//! row it is about to rewrite and the history row as it stands then.
+//! row it is about to rewrite and the history row as it stands then,
+//! and leaves a stamp that moved meanwhile as it is.
 //! Each case here plays the other instance: it holds the file lock,
 //! lets the repair queue behind it, writes the store or the history
 //! file as that instance would, and then lets the repair go.
@@ -150,18 +151,21 @@ fn a_stamp_the_other_instance_already_put_right_keeps_what_it_kept() {
 }
 
 #[test]
-fn a_stamp_moved_to_a_slot_the_listing_agrees_with_is_still_put_right() {
+fn a_stamp_moved_while_the_repair_waited_is_left_for_the_next_listing() {
     // That build's warm of episode 7 moved the stamp again, to a slot
-    // the listing tags as the stamp does, and left the row as it was: the
-    // listing still proves the row's slot, and the repair still lands.
+    // the listing tags as the stamp does, and left the row as it was.
+    // A play of that build writes the same stamp before its row, so a
+    // stamp that moved while the repair waited may have a row on its
+    // way: it is left as it is. The next listing at hand, finding the
+    // row unchanged, puts the stamp on it.
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
     seed_drifted_row(&state);
     let theirs = format!("{SLUG}\t0\t8\t7\n");
-    assert_eq!(
-        repair_racing(state, |h| store_is(h, &theirs)),
-        format!("{SLUG}\t0\t6\t5\n")
-    );
+    assert_eq!(repair_racing(state, |h| store_is(h, &theirs)), theirs);
+    let state = self::state(&td);
+    put_drift_right(&state, SLUG, &recap_after_three(), None);
+    assert_eq!(store_body(&state), format!("{SLUG}\t0\t6\t5\n"));
 }
 
 #[test]
@@ -181,24 +185,64 @@ fn a_show_forgotten_while_the_repair_waited_gets_no_row_back() {
 }
 
 #[test]
-fn a_play_caught_between_its_stamp_and_its_row_is_put_right_by_the_next_listing() {
+fn a_play_whose_stamp_lands_while_the_repair_waits_keeps_it() {
     // Builds from before rows recorded the app's own number stamp a
-    // play and then write its row, and the history file is written
-    // outside the store's locks. A repair that runs between the two
-    // sees the new stamp beside the old row: what a warm moving the
-    // stamp looks like, and nothing it reads tells them apart. It puts
-    // the stamp on the old row's slot. Once the row lands, the next
-    // listing at hand puts the stamp on the new row.
+    // play and then write its row. The stamp landed after the repair's
+    // first read and before its write; the row lands after. The stamp
+    // the repair finds under the lock is not the one it decided on, so
+    // it is left as it is, and it is the new row's.
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
     seed_drifted_row(&state);
     let history = state.history_path.clone();
-    let stamped = |h: &std::path::Path| store_is(h, &format!("{SLUG}\t0\t8\t7\n"));
-    assert_eq!(repair_racing(state, stamped), format!("{SLUG}\t0\t6\t5\n"));
+    let theirs = format!("{SLUG}\t0\t8\t7\n");
+    assert_eq!(repair_racing(state, |h| store_is(h, &theirs)), theirs);
     row_is(&history, "8");
     let state = self::state(&td);
     put_drift_right(&state, SLUG, &recap_after_three(), None);
+    assert_eq!(store_body(&state), theirs);
+}
+
+#[test]
+fn a_play_caught_between_its_stamp_and_its_row_is_put_right_by_the_next_listing() {
+    // The same play with its stamp landed before the repair's first
+    // read and its row after the repair's last read of the history
+    // file. Both of the repair's reads see the new stamp beside the old
+    // row, which is what a warm moving the stamp leaves, and nothing
+    // the repair reads tells them apart: it puts the stamp on the old
+    // row's slot. Once the row lands, the next listing at hand puts the stamp
+    // on the new row. docs/deferred-work.md, "A stamp repair can land
+    // inside an older instance's play".
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_drifted_row(&state);
+    store_is(&state.history_path, &format!("{SLUG}\t0\t8\t7\n"));
+    put_drift_right(&state, SLUG, &recap_after_three(), None);
+    assert_eq!(store_body(&state), format!("{SLUG}\t0\t6\t5\n"));
+    row_is(&state.history_path, "8");
+    put_drift_right(&state, SLUG, &recap_after_three(), None);
     assert_eq!(store_body(&state), format!("{SLUG}\t0\t8\t7\n"));
+}
+
+#[test]
+fn a_replay_of_the_stamped_episode_caught_before_its_row_is_put_right_by_the_next_listing() {
+    // That build played episode 6, the episode the drifted stamp names:
+    // it wrote the same stamp again while the repair waited, and its
+    // row, slot 7, lands after the repair's last read of the history
+    // file. The stamp under the lock is the one the repair decided on,
+    // so it puts the stamp on the old row's slot; once the row lands,
+    // the next listing at hand puts it back. docs/deferred-work.md, "A
+    // stamp repair can land inside an older instance's play".
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_drifted_row(&state);
+    let history = state.history_path.clone();
+    let same = |h: &std::path::Path| store_is(h, &format!("{SLUG}\t0\t7\t6\n"));
+    assert_eq!(repair_racing(state, same), format!("{SLUG}\t0\t6\t5\n"));
+    row_is(&history, "7");
+    let state = self::state(&td);
+    put_drift_right(&state, SLUG, &recap_after_three(), None);
+    assert_eq!(store_body(&state), format!("{SLUG}\t0\t7\t6\n"));
 }
 
 #[test]
