@@ -44,10 +44,8 @@ describe('a row header’s line', () => {
 		expect(rule(".strip[data-surface='band'] .strip-actions")).toContain(
 			'margin-inline-start: auto;'
 		);
-		const margins = STYLE.match(/margin-inline-start: [^;]+;/g) ?? [];
-		expect(margins.filter((d) => d !== 'margin-inline-start: 0;')).toEqual([
-			'margin-inline-start: auto;'
-		]);
+		const margins = STYLE.match(/margin-inline(-start|-end)?: [^;]+;/g) ?? [];
+		expect(margins.filter((d) => !/: 0;$/.test(d))).toEqual(['margin-inline-start: auto;']);
 	});
 
 	it('centres its items on one axis and wraps rather than overflowing', () => {
