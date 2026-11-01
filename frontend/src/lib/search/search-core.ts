@@ -40,6 +40,8 @@ export interface SearchRunnerDeps {
 	/** A resumed search has its results up: whether the card the reader
 	 *  left at the top of the screen is among them. */
 	onReached?: (found: boolean) => void;
+	/** The clock; `Date.now` unless a test gives one. */
+	now?: () => number;
 }
 
 /** One run's search: the pages it has shown and where it goes next. */
