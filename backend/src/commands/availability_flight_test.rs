@@ -456,3 +456,62 @@ async fn a_background_lookup_after_a_refresh_starts_the_one_walk_the_page_moves_
     probe.await.expect("joins").expect("answers");
     assert_eq!(flights.live(), 0);
 }
+
+fn spawn_in_background(
+    state: &Arc<AppState>,
+    args: AvailabilityArgs,
+) -> tokio::task::JoinHandle<crate::error::Result<AvailabilityResponse>> {
+    let state = Arc::clone(state);
+    tokio::spawn(crate::meta::anilist_gate::in_background(async move {
+        check_shared(&state, args).await
+    }))
+}
+
+#[tokio::test]
+async fn a_background_walk_runs_in_its_callers_anilist_class() {
+    use crate::meta::anilist_gate::Class;
+    let (hold, gate) = crate::held::gate();
+    let table = carrying(Some(hold));
+    let td = tempfile::tempdir().expect("td");
+    let state = state_with(&td, &table);
+    let flights = state.availability_refreshes.flights.clone();
+
+    let warm = spawn_in_background(&state, lookup("700", true));
+    crate::held::until("the walk has started", || {
+        flights.class_of(&row("700")).is_some()
+    })
+    .await;
+    assert_eq!(flights.class_of(&row("700")), Some(Class::Background));
+    gate.release();
+    warm.await.expect("joins").expect("answers");
+}
+
+#[tokio::test]
+async fn a_walk_the_warm_starts_for_a_page_runs_interactive_at_anilist() {
+    // The warm worker counts its AniList traffic as background. When
+    // its lookup replaces a page's walk older than a refresh, the walk
+    // it starts is the page's too, and runs interactive at AniList as
+    // at the scraper gate.
+    use crate::meta::anilist_gate::Class;
+    let (hold, gate) = crate::held::gate();
+    let table = carrying(Some(hold));
+    let td = tempfile::tempdir().expect("td");
+    let state = state_with(&td, &table);
+    let flights = state.availability_refreshes.flights.clone();
+
+    let page = spawn_lookup(&state, lookup("700", false));
+    gate.asked().await;
+    let first = flights
+        .walk_id(&row("700"))
+        .expect("the page's walk is out");
+    state.availability_refreshes.bump(&row("700"));
+    let warm = spawn_in_background(&state, lookup("700", true));
+    crate::held::until("the replacement walk has started", || {
+        flights.walk_id(&row("700")) == Some(first + 1) && flights.class_of(&row("700")).is_some()
+    })
+    .await;
+    assert_eq!(flights.class_of(&row("700")), Some(Class::Interactive));
+    gate.release();
+    page.await.expect("joins").expect("answers");
+    warm.await.expect("joins").expect("answers");
+}

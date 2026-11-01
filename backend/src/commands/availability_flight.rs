@@ -103,6 +103,10 @@ struct Table {
     next_id: u64,
     /// Live background walks nobody is waiting on.
     unwatched: usize,
+    /// The AniList class each walk runs in, by walk, as the walk
+    /// itself reads it.
+    #[cfg(test)]
+    classes: HashMap<u64, crate::meta::anilist_gate::Class>,
 }
 
 /// The walks in flight, per row. One per app state; a clone shares
