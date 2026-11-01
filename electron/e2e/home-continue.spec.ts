@@ -71,8 +71,13 @@ interface StubOptions {
 	/** Serve the show as a movie. Combined with `episodeTitle: null`
 	 *  this is the only variant whose body has no episode line. */
 	singleVideo?: boolean;
-	/** Hook fired whenever the renderer posts to /api/play — lets
-	 *  the test assert the click handler ran with the right episode. */
+	/** Hook fired for every play request the renderer sends — the
+	 *  stream and the POST alike — so a test can tell which episode a
+	 *  click asked for. Background warms come through here too: the
+	 *  player warms the next episode as soon as it opens. A warm is
+	 *  marked on the wire (`prefetch=1` on the stream, `prefetch: true`
+	 *  in the POST body), and the recorded body keeps that mark, so a
+	 *  test can pick out the request a click caused. */
 	onPlay?: (body: unknown) => void;
 	/** Per-request hook for /api/play/stream. Return 'hang' to leave
 	 *  that request pending forever (only the renderer's own abort
@@ -188,7 +193,8 @@ async function launchAppWithContinueStubsOnce(
 				title: u.searchParams.get('title'),
 				episode: u.searchParams.get('episode'),
 				mode: u.searchParams.get('mode'),
-				quality: u.searchParams.get('quality')
+				quality: u.searchParams.get('quality'),
+				prefetch: u.searchParams.get('prefetch')
 			};
 			opts.onPlay?.(body);
 			if (opts.onPlayStream?.(u) === 'hang') return;
@@ -297,11 +303,16 @@ async function waitForStripVisible(page: Page) {
 }
 
 test('Continue card shows last+1 and clicking it plays that episode', async () => {
-	let playArgs: Record<string, string | null> | null = null;
+	const plays: Record<string, unknown>[] = [];
+	// The click's play is the request that is not a warm. The player
+	// warms the next episode the moment it opens, so episode 7 follows
+	// the click on the wire — and whether it lands before or after a
+	// read of "the latest request" is a race this test must not run.
+	const clicked = () => plays.filter((p) => p.prefetch !== '1' && p.prefetch !== true);
 	const { app, page } = await launchAppWithContinueStubs({
 		history: continueHistory,
 		onPlay: (body) => {
-			playArgs = body as typeof playArgs;
+			plays.push(body as Record<string, unknown>);
 		}
 	});
 	try {
@@ -319,12 +330,13 @@ test('Continue card shows last+1 and clicking it plays that episode', async () =
 		await expect(card).toContainText('6');
 
 		await card.click();
-		await expect.poll(() => playArgs?.episode, { timeout: 10_000 }).toBe('6');
-		// playStream encodes title + mode in the SSE query string;
-		// kitsu_id isn't on the wire (the backend reads it from the
-		// reverse cache during resolution), so assert what is.
-		expect(playArgs?.title).toBe(continueKitsuMatch.canonical_title);
-		expect(playArgs?.mode).toBe('sub');
+		await expect.poll(() => clicked().length, { timeout: 10_000 }).toBeGreaterThan(0);
+		const [playArgs] = clicked();
+		expect(playArgs.episode).toBe('6');
+		// The same request carries the show and the audio the card
+		// resolved.
+		expect(playArgs.title).toBe(continueKitsuMatch.canonical_title);
+		expect(playArgs.mode).toBe('sub');
 	} finally {
 		await app.close();
 	}
