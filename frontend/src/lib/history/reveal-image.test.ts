@@ -71,6 +71,13 @@ describe('revealWhenDecoded', () => {
 		expect(img.dataset.revealed).toBeUndefined();
 	});
 
+	it('leaves a failed image hidden when nobody asked to hear of it', () => {
+		const img = fakeImage();
+		revealWhenDecoded(img);
+		expect(() => img.fire('error')).not.toThrow();
+		expect(img.dataset.revealed).toBeUndefined();
+	});
+
 	it('does nothing once the card is gone', async () => {
 		const img = fakeImage({ decode: () => Promise.resolve() });
 		const onError = vi.fn();

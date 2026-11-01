@@ -124,6 +124,16 @@ describe('createLookBook', () => {
 		expect(fresh.instant).toBe(false);
 	});
 
+	it('drops a remembered look when the row now matches nothing', () => {
+		const remembered = new Map<string, RememberedCard>();
+		createLookBook(proxy, remembered).look('a', 'a|1', inputs({ match: ref('1'), episode: null }));
+		const book = createLookBook(proxy, remembered);
+		expect(book.look('a', 'a|1', inputs()).look?.matchId).toBe('1');
+		const now = book.look('a', 'a|1', inputs({ match: null }));
+		expect(now.look).toEqual({ image: null, matchId: null });
+		expect(now.instant).toBe(false);
+	});
+
 	it('keeps a remembered look the live match agrees with', () => {
 		const remembered = new Map<string, RememberedCard>();
 		createLookBook(proxy, remembered).look(
