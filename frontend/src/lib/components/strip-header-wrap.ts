@@ -41,8 +41,8 @@ export function startsNewLine(lead: LineBox, item: LineBox): boolean {
 /** The width from the leftmost to the rightmost of `boxes`; 0 for none.
  *  Direction-free, so it measures the same in a right-to-left line. */
 export function naturalSpan(boxes: readonly Span[]): number {
-	void boxes;
-	throw new Error('not implemented');
+	if (boxes.length === 0) return 0;
+	return Math.max(...boxes.map((b) => b.right)) - Math.min(...boxes.map((b) => b.left));
 }
 
 /** The widths the status decision compares. */
@@ -61,8 +61,7 @@ export interface StatusFit {
 
 /** True when title, separator and status do not fit on one line. */
 export function statusWraps(fit: StatusFit): boolean {
-	void fit;
-	throw new Error('not implemented');
+	return fit.title + fit.gap + fit.sep + fit.gap + fit.status > fit.available;
 }
 
 export interface HeaderLines {
@@ -99,54 +98,30 @@ export function watchHeaderLines(
 	onChange: (lines: HeaderLines) => void,
 	deps: HeaderDeps
 ): () => void {
-	void parts;
-	void onChange;
-	void deps;
-	throw new Error('not implemented');
-}
-
-// The wiring Strip uses until it moves to watchHeaderLines.
-/** What the header last decided, and at which width. */
-export interface WrapState {
-	wraps: boolean;
-	width: number;
-}
-
-/**
- * The next wrap decision, given a fresh measurement at `width`.
- *
- * Hiding the separator narrows the status, which can let it fit back
- * on the title's line; measured again, it would no longer wrap, the
- * separator would return, and it would wrap again — a loop on every
- * header resize at widths near the edge. So a wrap holds until the
- * header grows wider than it was when the wrap was decided: narrowing
- * or a same-width resize cannot undo it.
- */
-export function holdWrap(prev: WrapState | null, measured: boolean, width: number): WrapState {
-	if (prev?.wraps && !(width > prev.width)) return prev;
-	return { wraps: measured, width };
-}
-
-/**
- * Report whether `item` starts a new line after `lead` now, and again
- * whenever the header's box resizes (a window resize, a translation
- * swapped in, a status that grew). Returns the teardown.
- */
-export function watchHeaderWrap(
-	header: Element,
-	lead: Element,
-	item: Element,
-	onChange: (wraps: boolean) => void,
-	Observer: new (cb: () => void) => ResizeObserverLike = globalThis.ResizeObserver
-): () => void {
-	let state: WrapState | null = null;
+	const { header, title, sep, status, actions } = parts;
+	// The separator is hidden while the status wraps; its width is the
+	// one it had when last shown, so hiding it cannot change the answer.
+	let sepWidth = 0;
 	const update = () => {
-		const measured = startsNewLine(lead.getBoundingClientRect(), item.getBoundingClientRect());
-		state = holdWrap(state, measured, header.getBoundingClientRect().width);
-		onChange(state.wraps);
+		const { padStart, padEnd, gap } = deps.styleOf(header);
+		const shown = sep?.getBoundingClientRect().width ?? 0;
+		if (shown > 0) sepWidth = shown;
+		const metaWraps =
+			status !== null &&
+			statusWraps({
+				available: header.clientWidth - padStart - padEnd,
+				title: naturalSpan(Array.from(title.children, (c) => c.getBoundingClientRect())),
+				sep: sepWidth,
+				status: status.getBoundingClientRect().width,
+				gap
+			});
+		const actionsWrap =
+			actions !== null &&
+			startsNewLine(title.getBoundingClientRect(), actions.getBoundingClientRect());
+		onChange({ metaWraps, actionsWrap });
 	};
-	const ro = new Observer(update);
-	ro.observe(header);
+	const ro = new deps.Observer(update);
+	for (const el of [header, title, status, actions]) if (el) ro.observe(el);
 	update();
 	return () => ro.disconnect();
 }

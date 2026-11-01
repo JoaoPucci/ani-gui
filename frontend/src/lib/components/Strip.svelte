@@ -8,7 +8,7 @@
 	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { watchStripOverflow } from '$lib/components/strip-overflow';
-	import { watchHeaderWrap } from '$lib/components/strip-header-wrap';
+	import { watchHeaderLines } from '$lib/components/strip-header-wrap';
 
 	interface Props {
 		eyebrow: string;
@@ -69,15 +69,41 @@
 		});
 	});
 
-	// Whether the status was pushed onto a line of its own — see
-	// $lib/components/strip-header-wrap. Its separator hides while so.
+	// How the header's line breaks — see $lib/components/strip-header-wrap.
+	// A wrapped status loses its separator and starts the next line; a
+	// banded row's wrapped actions stop being pushed to the band's end.
 	let headerEl: HTMLElement | undefined = $state();
 	let titleEl: HTMLElement | undefined = $state();
-	let metaEl: HTMLElement | undefined = $state();
+	let sepEl: HTMLElement | undefined = $state();
+	let statusEl: HTMLElement | undefined = $state();
+	let actionsEl: HTMLElement | undefined = $state();
 	let metaWraps = $state(false);
+	let actionsWrap = $state(false);
+	function headerStyle(el: Element) {
+		const cs = getComputedStyle(el);
+		const px = (v: string) => parseFloat(v) || 0;
+		return {
+			padStart: px(cs.paddingInlineStart),
+			padEnd: px(cs.paddingInlineEnd),
+			gap: px(cs.columnGap)
+		};
+	}
 	$effect(() => {
-		if (!headerEl || !titleEl || !metaEl) return;
-		return watchHeaderWrap(headerEl, titleEl, metaEl, (wraps) => (metaWraps = wraps));
+		if (!headerEl || !titleEl) return;
+		return watchHeaderLines(
+			{
+				header: headerEl,
+				title: titleEl,
+				sep: sepEl ?? null,
+				status: statusEl ?? null,
+				actions: actionsEl ?? null
+			},
+			(lines) => {
+				metaWraps = lines.metaWraps;
+				actionsWrap = lines.actionsWrap;
+			},
+			{ Observer: ResizeObserver, styleOf: headerStyle }
+		);
 	});
 
 	function nudge(dir: 1 | -1) {
@@ -176,20 +202,25 @@
 	style="--strip-card: {cardWidth}; --strip-pad: {pad}; --strip-pad-block: {padBlock};"
 >
 	{#if !headless}
-		<header class="strip-header" bind:this={headerEl} data-meta-wraps={metaWraps}>
+		<header
+			class="strip-header"
+			bind:this={headerEl}
+			data-meta-wraps={metaWraps}
+			data-actions-wrap={actionsWrap}
+		>
 			<h2 class="eyebrow strip-title" bind:this={titleEl}>
 				<span class="eyebrow-key">{eyebrow}</span>
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
 			{#if headerMeta}
-				<p class="strip-meta" bind:this={metaEl}>
-					<span class="strip-meta-sep" aria-hidden="true">·</span>
-					{@render headerMeta()}
+				<p class="strip-meta">
+					<span class="strip-meta-sep" aria-hidden="true" bind:this={sepEl}>·</span>
+					<span class="strip-meta-words" bind:this={statusEl}>{@render headerMeta()}</span>
 				</p>
 			{/if}
 			{#if headerActions}
-				<div class="strip-actions">{@render headerActions()}</div>
+				<div class="strip-actions" bind:this={actionsEl}>{@render headerActions()}</div>
 			{/if}
 		</header>
 	{/if}
@@ -383,6 +414,11 @@
 	   band's end and still read as this row's. */
 	.strip[data-surface='band'] .strip-actions {
 		margin-inline-start: auto;
+	}
+	/* …until they wrap below the title: pushed to the far end of a line of
+	   their own they would sit away from the title they belong to. */
+	.strip[data-surface='band'] .strip-header[data-actions-wrap='true'] .strip-actions {
+		margin-inline-start: 0;
 	}
 
 	.strip-frame {
