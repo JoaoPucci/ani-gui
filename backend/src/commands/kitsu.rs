@@ -691,7 +691,10 @@ async fn drop_mapping_the_title_disagrees_with(
 /// `-part-N` suffix. So a slug that's present but has no suffix is
 /// POSITIVE evidence (cour 1), not missing evidence — that's the
 /// signal that catches the original Stone Ocean Part 2 → Part 1
-/// poison. Only an absent `slug` field counts as no evidence.
+/// poison. Only an absent `slug` field counts as no evidence. A slug
+/// can mark a later season without a suffix (`gintama-2`), so an
+/// entry whose own titles include `show_title` agrees whatever its
+/// slug says ([`crate::commands::cour_pairing::entry_disagrees`]).
 pub(crate) async fn cour_pairing_disagrees(
     state: &AppState,
     show_title: &str,
@@ -834,8 +837,9 @@ pub async fn resolve_allmanga_show_id(
 /// Kitsu answers words it does not carry with its closest entry, and
 /// "there is also a hole in the student organization" brings back Here
 /// is Greenwood. So is a hit whose slug disagrees with
-/// `source_cour`, the cour the source carries
-/// ([`cour::hit_cour_disagrees`]) — read off the stored slug by the
+/// `source_cour`, the cour the source carries, and whose titles do
+/// not include the term ([`crate::commands::cour_pairing::hit_agrees`])
+/// — the cour read off the stored slug by the
 /// caller, since a slug's cour forms include a bare number the
 /// term's words would not carry: Kitsu ranking the parent cour first
 /// is the poison the mapping guard refuses on the play path, so the

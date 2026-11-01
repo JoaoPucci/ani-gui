@@ -6,7 +6,10 @@
 //! sibling cour when ep-count and year tie. The guard reads the
 //! provider show's title (cour from trailing "Part N" / "Cour N" /
 //! "Season N") and compares it against the Kitsu slug's trailing
-//! "-part-N" / "-cour-N" / "-season-N". Mismatch → reject the write.
+//! "-part-N" / "-cour-N" / "-season-N". Mismatch → reject the write,
+//! unless the entry's own titles include the provider's
+//! ([`super::cour_same_name`]): a slug can mark a later season
+//! without a suffix (`gintama-2` is Gintama Season 2).
 //!
 //! Kitsu writes the cour before the keyword as often as after it —
 //! "2nd Season", "Second Season", and in slugs `2nd-season`,
