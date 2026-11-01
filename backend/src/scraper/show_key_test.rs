@@ -84,18 +84,38 @@ fn words() -> impl Strategy<Value = Vec<String>> {
     prop::collection::vec("[a-z][a-z0-9]{0,6}", 1..5)
 }
 
+/// Two word lists that are the same as often as not, so a property
+/// about equal words is exercised and not only one about different
+/// ones.
+fn word_pair() -> impl Strategy<Value = (Vec<String>, Vec<String>)> {
+    (words(), words(), any::<bool>()).prop_map(|(a, b, same)| {
+        let b = if same { a.clone() } else { b };
+        (a, b)
+    })
+}
+
 fn label() -> impl Strategy<Value = &'static str> {
     prop::sample::select(vec!["hianime", "test-a", "test-b"])
 }
 
+fn cased(s: &str, upper: bool) -> String {
+    if upper {
+        s.to_ascii_uppercase()
+    } else {
+        s.to_string()
+    }
+}
+
 proptest! {
     /// A walked provider's row is the play's listing exactly when the
-    /// two keys are one.
+    /// two keys are one — the same words under another id or another
+    /// provider are another listing.
     #[test]
     fn a_labelled_row_is_its_listing_exactly_under_its_key(
-        l1 in label(), w1 in words(), id1 in 1u32..100_000,
-        l2 in label(), w2 in words(), id2 in 1u32..100_000,
+        l1 in label(), id1 in 1u32..100_000,
+        l2 in label(), (w1, w2) in word_pair(), same_id in any::<bool>(), id2 in 1u32..100_000,
     ) {
+        let id2 = if same_id { id1 } else { id2 };
         let row = format!("{l1}:{}-{id1}", w1.join("-"));
         let played = format!("{l2}:{}-{id2}", w2.join("-"));
         prop_assert!(same_listing(&row, &row));
@@ -104,18 +124,15 @@ proptest! {
 
     /// A bare row is the play's listing exactly when the played slug
     /// carries the row's words, whatever either numeric id and
-    /// whatever the row's letter case.
+    /// whatever either side's letter case.
     #[test]
     fn a_bare_row_is_its_listing_exactly_when_the_words_agree(
-        l in label(), w1 in words(), id1 in 1u32..100_000,
-        w2 in words(), id2 in 1u32..100_000, upper in any::<bool>(),
+        l in label(), (w1, w2) in word_pair(), id1 in 1u32..100_000,
+        id2 in 1u32..100_000, upper_row in any::<bool>(), upper_played in any::<bool>(),
     ) {
-        let bare = format!("{}-{id1}", w1.join("-"));
-        let row = if upper { bare.to_ascii_uppercase() } else { bare };
-        let own = format!("{l}:{}-{id2}", w1.join("-"));
-        let other = format!("{l}:{}-{id2}", w2.join("-"));
-        prop_assert!(same_listing(&row, &own));
-        prop_assert_eq!(same_listing(&row, &other), w1 == w2);
+        let row = cased(&format!("{}-{id1}", w1.join("-")), upper_row);
+        let played = format!("{l}:{}", cased(&format!("{}-{id2}", w2.join("-")), upper_played));
+        prop_assert_eq!(same_listing(&row, &played), w1 == w2);
     }
 
     /// A played key that names no walked provider is never the row's
