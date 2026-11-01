@@ -24,10 +24,20 @@
 //! - AniList's trending list, served stale while AniList is down
 //!   (`kitsu_trending_anilist`);
 //! - the reverse mappings and the title matches, which a history
-//!   removal reads to find every Kitsu id a show was known by
+//!   removal reads to find the Kitsu ids a show was known by
 //!   (`history_forget*`), and which the detail page's lookup reads for
 //!   a row whose recorded entry Kitsu answered gone
 //!   (`history_forget_titles::title_match_ids`).
+//!
+//! Those two readers also read the versions before the current one, by
+//! prefix. Their rows are not declared: the reclaim deletes them at
+//! launch, so the readers find them only before the first launch of a
+//! build that declares the registry. What that costs is small and heals
+//! by use: a removal finds fewer ids for a show known only by an old
+//! mapping or match, so skip times and stream addresses under those ids
+//! wait out their own lifetimes, which the reclaim then ends; and a row
+//! whose recorded entry is gone, matched only under an old version, is
+//! matched again under the current one by the home page's next load.
 
 /// One key family: the prefix its keys start with, or the one key it
 /// is when it is a single row.
@@ -240,8 +250,9 @@ thread_local! {
     static UNDECLARED_ALLOWED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Test builds only: a row this thread stores or reads must belong to a
-/// declared family, so code that starts keeping a family the registry
+/// Test builds only: a row this thread stores or reads by its exact key
+/// — `meta_cache_get`, `put`, `row`, `fetched_at`, `rebody`, `shorten` —
+/// must belong to a declared family, so code that starts keeping a family the registry
 /// does not name fails the suite instead of losing its rows to the
 /// launch sweep. A case that seeds rows earlier builds kept — the
 /// very rows the sweep is for — runs inside [`undeclared_allowed`].
@@ -263,8 +274,9 @@ pub(crate) fn check(key: &str) {
 
 /// Allow rows of undeclared families on this thread for the rest of
 /// the case: for a file of cases that key their rows by a fixed key of
-/// an earlier version, the key being beside the point. Each case runs
-/// on a thread of its own.
+/// an earlier version, the key being beside the point. The test harness
+/// runs each case on a thread of its own, so the allowance ends with
+/// the case.
 #[cfg(test)]
 pub(crate) fn allow_undeclared_on_this_thread() {
     UNDECLARED_ALLOWED.with(|a| a.set(true));
@@ -274,8 +286,13 @@ pub(crate) fn allow_undeclared_on_this_thread() {
 /// a case about rows earlier builds kept.
 #[cfg(test)]
 pub(crate) fn undeclared_allowed<T>(f: impl FnOnce() -> T) -> T {
-    let before = UNDECLARED_ALLOWED.with(|a| a.replace(true));
-    let out = f();
-    UNDECLARED_ALLOWED.with(|a| a.set(before));
-    out
+    /// Puts the thread's allowance back, on return and on unwind.
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            UNDECLARED_ALLOWED.with(|a| a.set(self.0));
+        }
+    }
+    let _restore = Restore(UNDECLARED_ALLOWED.with(|a| a.replace(true)));
+    f()
 }

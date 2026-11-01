@@ -8,9 +8,11 @@
 //! ## TTL policy
 //!
 //! `meta_cache_get` returns `None` for entries past their TTL but does
-//! not delete them — overwrite happens on the next `meta_cache_put`. This
-//! lets a future revalidation flow opt to serve the stale body while a
-//! background refresh runs.
+//! not delete them: the next `meta_cache_put` overwrites one, and the
+//! launch reclaim ([`crate::cache::reclaim`]) deletes the rest, except in
+//! the families a reader takes past their lifetime. A reader that serves
+//! a stale body has to mark its family that way in
+//! [`crate::cache::families`], or the reclaim deletes what it serves.
 //!
 //! ## Threading
 //!
@@ -208,7 +210,10 @@ pub fn meta_cache_get(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let row: Option<(i64, i64)> = conn
         .query_row(
@@ -261,7 +266,10 @@ pub struct MetaCacheRow {
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_row(pool: &SqlitePool, key: &str) -> Result<Option<MetaCacheRow>> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let row: Option<(String, i64, i64)> = conn
         .query_row(
@@ -285,12 +293,15 @@ pub fn meta_cache_row(pool: &SqlitePool, key: &str) -> Result<Option<MetaCacheRo
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_shorten(
     pool: &SqlitePool,
     key: &str,
     seen: &MetaCacheRow,
     ttl_seconds: u64,
 ) -> Result<bool> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
     let changed = conn
@@ -316,12 +327,15 @@ pub fn meta_cache_shorten(
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_rebody(
     pool: &SqlitePool,
     key: &str,
     seen: &MetaCacheRow,
     body: &str,
 ) -> Result<bool> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
     let changed = conn
