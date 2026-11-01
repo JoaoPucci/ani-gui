@@ -87,9 +87,10 @@ pub(super) fn settle(
         // A listing that repairs nothing leaves the last repair as it is.
         _ if ours == *base => return None,
         Order::Later => ours,
-        // Nothing else repaired the stamps: there is nothing to disagree
-        // with.
-        Order::Overlapping if current == base => ours,
+        // Overlapping a repair this run took, yet the stamps are as they
+        // were before it: two overlapping repairs disagreed, and every
+        // other one heard alongside them leaves them so.
+        Order::Overlapping if current == base => return None,
         // The same display stamp: a former tag only one of the two names
         // may be a row's of the other's listing, and is not named.
         Order::Overlapping if ours.display == current.display => Stamps {

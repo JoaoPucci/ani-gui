@@ -12,13 +12,15 @@
 //! - one heard wholly after it repairs the stamps as they stood before
 //!   this run's first repair, so what an earlier listing decided — a
 //!   former tag it found free, a slot it moved the stamp to — does not
-//!   outlive a later listing that decides otherwise; a later listing
-//!   that repairs nothing leaves the last repair as it is;
+//!   outlive a later listing that decides otherwise;
+//! - a listing that repairs nothing takes no part in the order, and
+//!   leaves the stamps to the listings that do, heard before or after;
 //! - two whose hearings overlap cannot be ordered, so the order they
 //!   write in changes nothing: a former tag only one of them names is
 //!   not named, as the other's listing may give it to a row of its own,
 //!   and two that put the display stamp in different places leave it as
-//!   it was before this run's repairs.
+//!   it was before this run's repairs, whatever else is heard alongside
+//!   them.
 //!
 //! What a repair started from is kept for this run alone. A hearing
 //! counts this process's walks, and a stamp an earlier run repaired is
@@ -87,29 +89,34 @@ pub(super) fn repair(state: &AppState, slug: &str, listing: &Listing<'_>, heard:
         let row_ep = listing.rows.and_then(|_| legacy_row_ep(state, slug));
         let mut taken = TAKEN.lock().unwrap_or_else(PoisonError::into_inner);
         let key = (state.history_path.clone(), slug.to_string());
-        let Some(next) = decided(&mut taken, key, row, row_ep.as_deref(), listing, heard) else {
+        let offset = row.offset;
+        let ours = |base: &Stamps| repaired(base, offset, row_ep.as_deref(), listing);
+        let Some(next) = decided(&mut taken, key, Stamps::of(row), heard, ours) else {
             return false;
         };
         row.display = next.display;
         row.former = next.former;
         true
     };
+    // A write that fails leaves the record of repairs taken naming
+    // stamps the store does not hold: the next repair finds the stamps
+    // changed, and starts over from them.
     if let Err(e) = rewrite_if(state, decide) {
         tracing::warn!(slug, error = ?e, "numbering stamp repair failed");
     }
 }
 
-/// The stamps a repair writes to `row`, the show's store row, or `None`
-/// to write nothing, noting the repair in `taken` under `key`.
+/// The stamps a repair heard as `heard` writes over `current`, the
+/// show's stamps now, or `None` to write nothing, noting the repair in
+/// `taken` under `key`. `ours` is what its listing makes of the stamps
+/// it starts from ([`repaired`]).
 fn decided(
     taken: &mut BTreeMap<(PathBuf, String), Taken>,
     key: (PathBuf, String),
-    row: &Row,
-    row_ep: Option<&str>,
-    listing: &Listing<'_>,
+    current: Stamps,
     heard: Option<Hearing>,
+    ours: impl FnOnce(&Stamps) -> Stamps,
 ) -> Option<Stamps> {
-    let current = Stamps::of(row);
     current.display.as_ref()?;
     let prior = heard
         .and_then(|_| taken.get(&key))
@@ -119,7 +126,12 @@ fn decided(
         return None;
     }
     let base = prior.map_or_else(|| current.clone(), |t| t.base.clone());
-    let ours = repaired(&base, row.offset, row_ep, listing);
+    let ours = ours(&base);
+    // A listing that repairs nothing takes no part in the order: the
+    // stamps are left to the listings that do, heard before it or after.
+    if ours == base {
+        return None;
+    }
     let next = settle(order, &current, &base, ours);
     if let Some(h) = heard {
         let heard = match prior {
