@@ -4,12 +4,15 @@
 //! track a player that takes a single file is given, and the tracks a
 //! cached row's check reads.
 //!
-//! The order is the provider's default first, then the tracks in the
-//! user's language — those for the user's region ahead of the rest —
-//! then English, then everything else, a track whose language is
-//! unknown last; ties keep the listing's order. A provider lists its
-//! tracks in its own order (megaplay's is alphabetical by label), so a
-//! cut by listing order alone keeps whatever sorts first.
+//! The order is the one the built-in player starts by
+//! (`$lib/play/caption-start.ts`), so every player starts on the same
+//! track: the language last picked on the show, then the user's
+//! locale's language — each its own region first, then its script,
+//! then any — then the provider's default, then English, then
+//! everything else, a track whose language is unknown last; ties keep
+//! the listing's order. A provider lists its tracks in its own order
+//! (megaplay's is alphabetical by label), so a cut by listing order
+//! alone keeps whatever sorts first.
 
 use crate::scraper::provider::SubtitleTrack;
 
@@ -51,42 +54,64 @@ fn track_tag(track: &SubtitleTrack) -> Option<Tag> {
     })
 }
 
-/// Whether a track in the user's language is for the user's region:
-/// the same region, or the script that region writes in.
-fn in_users_region(track: &Tag, user: &Tag) -> bool {
-    let Some(region) = user.region.as_deref() else {
-        return false;
-    };
-    track.region.as_deref() == Some(region)
-        || implied_script(region).is_some_and(|s| track.script.as_deref() == Some(s))
+/// The script a tag is written in: the one it names, or the one its
+/// region writes Chinese in.
+fn script_of(tag: &Tag) -> Option<&str> {
+    tag.script
+        .as_deref()
+        .or_else(|| tag.region.as_deref().and_then(implied_script))
 }
 
-/// Where a track stands for `user`: 0 the provider's default, 1 the
-/// user's language for the user's region, 2 the user's language, 3
-/// English, 4 any other known language, 5 an unknown one.
-fn rank(track: &SubtitleTrack, user: Option<&Tag>) -> u8 {
+/// How close a track is to the language `want` names, or `None` when
+/// it is in another: 0 the same region, 1 the same script, 2 the
+/// language alone.
+fn closeness(track: &Tag, want: &Tag) -> Option<u8> {
+    if track.language != want.language {
+        return None;
+    }
+    if want.region.is_some() && track.region == want.region {
+        return Some(0);
+    }
+    if script_of(want).is_some() && script_of(track) == script_of(want) {
+        return Some(1);
+    }
+    Some(2)
+}
+
+/// Where a track stands: 0–2 the show's remembered language (its
+/// region, its script, any), 3–5 the user's locale's the same way, 6
+/// the provider's default, 7 English, 8 any other known language, 9 an
+/// unknown one — the order the built-in player starts by
+/// (`$lib/play/caption-start.ts`), so the first track is the one it
+/// would show.
+fn rank(track: &SubtitleTrack, remembered: Option<&Tag>, user: Option<&Tag>) -> u8 {
+    let tag = track_tag(track);
+    if let Some(tag) = tag.as_ref() {
+        if let Some(k) = remembered.and_then(|r| closeness(tag, r)) {
+            return k;
+        }
+        if let Some(k) = user.and_then(|u| closeness(tag, u)) {
+            return 3 + k;
+        }
+    }
     if track.default {
-        return 0;
+        return 6;
     }
-    let Some(tag) = track_tag(track) else {
-        return 5;
-    };
-    if let Some(user) = user.filter(|u| u.language == tag.language) {
-        return if in_users_region(&tag, user) { 1 } else { 2 };
+    match tag {
+        None => 9,
+        Some(t) if t.language == "en" => 7,
+        Some(_) => 8,
     }
-    if tag.language == "en" {
-        return 3;
-    }
-    4
 }
 
 /// The listing's indices, most wanted first, for a user in `locale`
 /// (a BCP 47 tag, the app's own setting).
 #[must_use]
 pub fn preference_order(tracks: &[SubtitleTrack], wanted: Wanted<'_>) -> Vec<usize> {
+    let remembered = wanted.remembered.and_then(parse_tag);
     let user = parse_tag(wanted.locale);
     let mut order: Vec<usize> = (0..tracks.len()).collect();
-    order.sort_by_key(|&i| (rank(&tracks[i], user.as_ref()), i));
+    order.sort_by_key(|&i| (rank(&tracks[i], remembered.as_ref(), user.as_ref()), i));
     order
 }
 

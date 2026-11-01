@@ -147,8 +147,8 @@ pub(crate) fn cached_row_is_walked(state: &AppState, cached: &CachedResolution) 
     cached_row_provider(cached).is_some_and(|p| state.providers.order().contains(&p))
 }
 
-/// How many of a cached row's tracks its check reads: the default and
-/// the next most wanted
+/// How many of a cached row's tracks its check reads: the one the
+/// built-in player starts on and the next most wanted
 /// ([`crate::scraper::track_preference::preference_order`]).
 pub(crate) const CACHED_ROW_CHECK_TRACKS: usize = 4;
 

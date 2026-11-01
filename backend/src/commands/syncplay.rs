@@ -122,18 +122,26 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     // Custom is short-circuited above; its arms here are unreachable,
     // but the compiler can't see that without the explicit matches!()
     // above, so they stay explicit.
-    let (referrer_flag, sub_flag, every_track) = match args.player_kind {
-        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true),
-        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false),
-        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true),
-        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false),
+    let (referrer_flag, sub_flag, every_track, off_flag) = match args.player_kind {
+        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true, "--sid=no"),
+        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false, ""),
+        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true, "--mpv-sid=no"),
+        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false, ""),
     };
     let mut player_opts = Vec::new();
     if let Some(r) = args.referer.as_deref().filter(|s| !s.is_empty()) {
         player_opts.push(format!("{referrer_flag}{r}"));
     }
+    // A show remembered Off starts the player with its subtitles off:
+    // every track still there to turn on where the player takes them
+    // all, none where it takes one.
+    if args.subtitles_off && every_track {
+        player_opts.push(off_flag.to_string());
+    }
     let tracks: &[String] = if every_track {
         &args.subtitle_urls
+    } else if args.subtitles_off {
+        &[]
     } else {
         &args.subtitle_urls[..args.subtitle_urls.len().min(1)]
     };
