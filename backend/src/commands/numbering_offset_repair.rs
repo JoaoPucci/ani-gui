@@ -40,36 +40,16 @@ use crate::commands::listing_tags::Hearing;
 
 #[path = "numbering_offset_repair_rule.rs"]
 mod rule;
-use rule::{outstanding, repaired, standing, Repairs, Stamps};
+use rule::{repaired, Stamps};
 pub(super) use rule::{Carrier, Listing};
 
-/// The repairs a show's stamps took this run: the stamps from before
-/// the run's first repair, each repair that still has a say, with its
-/// hearing and what its listing made of those stamps ([`standing`]),
-/// and the stamps they left. Stamps that are no longer the ones they
-/// left were written by something else since — a removal, another
-/// instance — and a repair starts over from them.
-struct Taken {
-    base: Stamps,
-    repairs: Repairs,
-    left: Stamps,
-    /// Every listing at hand this run, repairing or not: a former tag
-    /// any of them carries is not kept, whatever order they came in.
-    carriers: Vec<Carrier>,
-}
-
+#[path = "numbering_offset_repair_record.rs"]
+mod record;
 #[cfg(test)]
-impl Taken {
-    /// One repair heard as `heard`, from `base`, that left `left`.
-    fn one(heard: Hearing, base: Stamps, left: Stamps) -> Self {
-        Self {
-            base,
-            repairs: vec![(heard, left.clone())],
-            left,
-            carriers: Vec::new(),
-        }
-    }
-}
+use record::decided;
+use record::{settled, Taken};
+#[cfg(test)]
+use rule::standing;
 
 /// The repairs taken this run, by history file and show key. Read and
 /// written inside the store's locks, as a repair decides.
@@ -129,34 +109,7 @@ pub(super) fn repair_carried(
         let offset = row.offset;
         let ours = |base: &Stamps| repaired(base, offset, row_ep.as_deref(), listing);
         let current = Stamps::of(row);
-        // A record whose stamps were changed since starts over.
-        if taken.get(&key).is_some_and(|t| t.left != current) {
-            taken.remove(&key);
-        }
-        let mut next = decided(&mut taken, key.clone(), current.clone(), heard, ours)
-            .unwrap_or_else(|| current.clone());
-        let carried = match heard {
-            Some(_) => {
-                let t = taken.entry(key).or_insert_with(|| Taken {
-                    base: current.clone(),
-                    repairs: Vec::new(),
-                    left: current.clone(),
-                    carriers: Vec::new(),
-                });
-                if !t.carriers.contains(carrier) {
-                    t.carriers.push(carrier.clone());
-                }
-                next.former = next
-                    .former
-                    .filter(|(_, f)| !t.carriers.iter().any(|c| c.carries(f)));
-                t.left = next.clone();
-                true
-            }
-            None => false,
-        };
-        if !carried {
-            next.former = next.former.filter(|(_, f)| !carrier.carries(f));
-        }
+        let next = settled(&mut taken, key, &current, heard, carrier, ours);
         if next == current {
             return false;
         }
@@ -170,47 +123,6 @@ pub(super) fn repair_carried(
     if let Err(e) = rewrite_if(state, decide) {
         tracing::warn!(slug, error = ?e, "numbering stamp repair failed");
     }
-}
-
-/// The stamps a repair heard as `heard` writes over `current`, the
-/// show's stamps now, or `None` to write nothing, noting the repair in
-/// `taken` under `key`. `ours` is what its listing makes of the stamps
-/// it starts from ([`repaired`]).
-fn decided(
-    taken: &mut BTreeMap<(PathBuf, String), Taken>,
-    key: (PathBuf, String),
-    current: Stamps,
-    heard: Option<Hearing>,
-    ours: impl FnOnce(&Stamps) -> Stamps,
-) -> Option<Stamps> {
-    current.display.as_ref()?;
-    let Some(heard) = heard else {
-        let ours = ours(&current);
-        return (ours != current).then_some(ours);
-    };
-    let prior = taken.get(&key).filter(|t| t.left == current);
-    let base = prior.map_or_else(|| current.clone(), |t| t.base.clone());
-    let ours = ours(&base);
-    // A listing that repairs nothing takes no part in the order: the
-    // stamps are left to the listings that do, heard before it or after.
-    if ours == base {
-        return None;
-    }
-    let mut repairs = prior.map_or_else(Vec::new, |t| t.repairs.clone());
-    let prior_carriers = prior.map_or_else(Vec::new, |t| t.carriers.clone());
-    repairs.push((heard, ours));
-    let repairs = outstanding(&repairs);
-    let next = standing(&base, &repairs);
-    taken.insert(
-        key,
-        Taken {
-            base,
-            repairs,
-            left: next.clone(),
-            carriers: prior_carriers,
-        },
-    );
-    (next != current).then_some(next)
 }
 
 /// What the show's history row from before rows recorded the app's own
