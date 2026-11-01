@@ -156,6 +156,7 @@ impl Gate {
                     if class == Class::Retry {
                         ledger.record_retry(&self.pace, now);
                     }
+                    sent(&self.pace, class, &ledger, now, now - began, behind_retry);
                     return Ok(now);
                 }
                 if class != Class::Retry
@@ -176,6 +177,32 @@ impl Gate {
             tokio::time::sleep_until(at).await;
         }
     }
+}
+
+/// One debug line per request sent: its class, how full the window it
+/// left in is — this send included — against the capacity and the
+/// background share, how many of the window's requests were retries,
+/// how long it waited for its turn, and whether a retry sent before it
+/// made it wait. What the split between the classes is measured from.
+fn sent(
+    pace: &Pace,
+    class: Class,
+    ledger: &Ledger,
+    now: Instant,
+    waited: Duration,
+    behind_retry: bool,
+) {
+    tracing::debug!(
+        provider = "anilist",
+        ?class,
+        in_window = ledger.in_window(pace, now),
+        retries_in_window = ledger.retries_in_window(pace, now),
+        waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX),
+        behind_retry,
+        capacity = pace.capacity,
+        background_capacity = pace.capacity_for(Class::Background),
+        "anilist request sent"
+    );
 }
 
 /// How long a retry stands back, at least, while another request waits.

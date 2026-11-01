@@ -90,6 +90,9 @@ export function makeContinueRowReadyHandler(
 	// in-flight work without becoming a cache — a later re-fire for
 	// the same target issues a fresh request.
 	const inFlight = new Map<string, { target: string; token: object }>();
+	// The target each row's card shows, once its request settled: a
+	// refill applies only to the card still showing its target.
+	const shown = new Map<string, string>();
 	return (entryId, match, playableCount) => {
 		deps.setMatch(entryId, match);
 		if (typeof playableCount === 'number') {
@@ -118,20 +121,29 @@ export function makeContinueRowReadyHandler(
 		const settle = () => {
 			if (inFlight.get(entryId)?.token === token) inFlight.delete(entryId);
 		};
+		const pick = (eps: KitsuEpisode[]) =>
+			eps.find((e) => e.number === nextEpisode) ??
+			eps.find((e) => e.relative_number === nextEpisode) ??
+			null;
+		// A thumbnail AniList's pacing held back lands later: the card
+		// takes it while it still shows this episode and no newer
+		// request has replaced it.
+		const onRefill = (eps: KitsuEpisode[]) => {
+			if (shown.get(entryId) !== target || inFlight.has(entryId)) return;
+			deps.setEpisode(entryId, pick(eps));
+		};
 		void deps
-			.fetchKitsuEpisodes(match.id, kitsuPage)
+			.fetchKitsuEpisodes(match.id, kitsuPage, { onRefill, signal: deps.signal })
 			.then((eps) => {
 				if (inFlight.get(entryId)?.token !== token) return;
 				settle();
-				const ep =
-					eps.find((e) => e.number === nextEpisode) ??
-					eps.find((e) => e.relative_number === nextEpisode) ??
-					null;
-				deps.setEpisode(entryId, ep);
+				shown.set(entryId, target);
+				deps.setEpisode(entryId, pick(eps));
 			})
 			.catch(() => {
 				if (inFlight.get(entryId)?.token !== token) return;
 				settle();
+				shown.delete(entryId);
 				deps.setEpisode(entryId, null);
 			});
 	};

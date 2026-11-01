@@ -1421,9 +1421,10 @@
 		return out;
 	}
 
-	// What says the page has gone: a refill landing after it is not
-	// fetched ($lib/refill/refill).
-	const refills = new AbortController();
+	// What says the show this page shows has gone — the page closed, or
+	// moved to another show: a refill landing after it is not fetched
+	// ($lib/refill/refill). Renewed per show below.
+	let refills = new AbortController();
 	onDestroy(() => refills.abort());
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
@@ -1980,6 +1981,8 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		id;
 		resetEpisodePageCache(kitsuPageCache);
+		refills.abort();
+		refills = new AbortController();
 	});
 
 	onMount(() => {
