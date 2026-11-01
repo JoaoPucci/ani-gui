@@ -113,3 +113,31 @@ setup() {
     grep -qx 'started' out
     grep -qx 'also-started' out
 }
+
+@test "stopped by a signal, a command that had already ended shows its own status" {
+    sh "$TOOL" 'sleep 30' 'echo done; exit 4' >out 2>&1 &
+    tool=$!
+    sleep 1
+    start=$SECONDS
+    kill -TERM "$tool"
+    status=0
+    wait "$tool" || status=$?
+    # Stopped, not waited out: the sleep had twenty-nine seconds left.
+    [ $((SECONDS - start)) -lt 10 ]
+    [ "$status" -eq 143 ]
+    grep -qx '=== \[2\] exited 4' out
+    grep -qx '=== \[1\] stopped by SIGTERM' out
+}
+
+@test "stopped by a signal, it stops what its commands started as well" {
+    sh "$TOOL" 'sleep 30 & echo "$!" >grandchild; wait' >out 2>&1 &
+    tool=$!
+    sleep 1
+    start=$SECONDS
+    kill -TERM "$tool"
+    wait "$tool" || true
+    [ $((SECONDS - start)) -lt 10 ]
+    [ -s grandchild ]
+    sleep 0.5
+    run ! kill -0 "$(cat grandchild)"
+}
