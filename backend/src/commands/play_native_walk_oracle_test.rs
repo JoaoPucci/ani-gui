@@ -171,16 +171,33 @@ async fn run_the_oracle_cases() {
         &std::fs::read_to_string(&input).unwrap_or_else(|e| panic!("read {input}: {e}")),
     )
     .unwrap_or_else(|e| panic!("parse {input}: {e}"));
+    let out = walk_all(cases, walk_case).await;
+    std::fs::write(&output, serde_json::to_string(&out).expect("serialise"))
+        .unwrap_or_else(|e| panic!("write {output}: {e}"));
+}
+
+/// One pool's outcome, as the walk reaches it.
+async fn walk_case(case: Case) -> serde_json::Value {
+    outcome(walk_over(site_of(&case)).await)
+}
+
+/// Every pool's outcome through `walk`, as `{"id": …, "got": …}` in
+/// the order the pools came in. A walk that panics is reported as
+/// `{"panic": true}` for its pool rather than ending the run.
+async fn walk_all<F, Fut>(cases: Vec<Case>, walk: F) -> Vec<serde_json::Value>
+where
+    F: Fn(Case) -> Fut,
+    Fut: std::future::Future<Output = serde_json::Value> + Send + 'static,
+{
     let mut out = Vec::with_capacity(cases.len());
     for case in cases {
         let id = case.id.clone();
-        let got = tokio::spawn(async move { outcome(walk_over(site_of(&case)).await) })
+        let got = tokio::spawn(walk(case))
             .await
             .unwrap_or_else(|_| serde_json::json!({"panic": true}));
         out.push(serde_json::json!({"id": id, "got": got}));
     }
-    std::fs::write(&output, serde_json::to_string(&out).expect("serialise"))
-        .unwrap_or_else(|e| panic!("write {output}: {e}"));
+    out
 }
 
 /// Rewrites the golden from the fixtures as they pick now. Run it in
