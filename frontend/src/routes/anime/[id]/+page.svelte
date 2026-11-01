@@ -1817,7 +1817,7 @@
 						     the page, so the line arriving moves nothing below it. -->
 						<p class="guess-note">
 							{#if linkSession.offer}
-								<span class="guess-note-text"
+								<span class="guess-note-text" title={linkSession.offer.entry.title}
 									>{m.detail_link_matched({ title: linkSession.offer.entry.title })}</span
 								>
 								<span class="guess-note-ask">{m.detail_link_not_this()}</span>
@@ -2757,23 +2757,34 @@
 	}
 	.guess-note {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: baseline;
 		column-gap: var(--space-2);
+		min-inline-size: 0;
 		min-block-size: calc(var(--type-meta) * var(--leading-prose));
 		margin: 0 0 var(--space-5);
 		font-size: var(--type-meta);
 		line-height: var(--leading-prose);
-		color: var(--bone-400);
-	}
-	.guess-note-text {
-		animation: text-in var(--dur-med) var(--ease-out-soft) both;
-	}
-	.guess-note-ask {
 		color: var(--bone-300);
 	}
+	/* One line, whatever the title: the saved title gives way, the ask
+	   and its button never do, and nothing below moves when it lands. */
+	.guess-note > * {
+		animation: text-in var(--dur-med) var(--ease-out-soft) both;
+	}
+	.guess-note-text {
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.guess-note-ask {
+		flex: none;
+		color: var(--bone-400);
+	}
 	.guess-note-change {
-		padding: 0;
+		flex: none;
+		padding: 2px 0;
+		margin-block: -2px;
 		border: 0;
 		background: none;
 		font: inherit;

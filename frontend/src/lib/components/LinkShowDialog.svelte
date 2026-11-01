@@ -58,15 +58,59 @@
 	let query = $state('');
 	let searchInput: HTMLInputElement | undefined = $state();
 	let confirmBtn: HTMLButtonElement | undefined = $state();
+	let list: HTMLUListElement | undefined = $state();
+	/** The show last picked, so Back lands on its row. */
+	let lastPicked: string | null = null;
+	/** What had focus when the dialog opened, given it back on close. */
+	let opener: HTMLElement | null = null;
 
+	$effect.pre(() => {
+		if (open && !opener && document.activeElement instanceof HTMLElement) {
+			opener = document.activeElement;
+		}
+	});
+	$effect(() => {
+		if (open) return;
+		const back = opener;
+		opener = null;
+		lastPicked = null;
+		if (back?.isConnected) back.focus();
+	});
 	$effect(() => {
 		if (!open) return;
-		if (chosen) confirmBtn?.focus();
-		else searchInput?.focus();
+		if (chosen) {
+			lastPicked = chosen.ref.id;
+			confirmBtn?.focus();
+			return;
+		}
+		const row = lastPicked
+			? list?.querySelector<HTMLButtonElement>(`button[data-id="${CSS.escape(lastPicked)}"]`)
+			: null;
+		(row ?? searchInput)?.focus();
 	});
 
-	function year(c: LinkCandidate): string | null {
-		return c.ref.start_date?.slice(0, 4) ?? null;
+	/** What the list says to assistive tech, from one live region. */
+	const status = $derived(
+		candidates === null
+			? m.detail_link_candidates_loading()
+			: failed
+				? m.detail_link_candidates_failed()
+				: candidates.length === 0
+					? m.detail_link_candidates_empty()
+					: ''
+	);
+
+	/** The row's facts, in order: year, format, episode count. */
+	function meta(c: LinkCandidate): { text: string; num: boolean }[] {
+		const fields: { text: string; num: boolean }[] = [];
+		const year = c.ref.start_date?.slice(0, 4);
+		if (year) fields.push({ text: year, num: true });
+		fields.push({ text: subtypeLabel(c.ref.subtype), num: false });
+		const count = c.ref.episode_count;
+		if (count !== null) {
+			fields.push({ text: `${count} ${m.search_card_eps_suffix({ count })}`, num: true });
+		}
+		return fields;
 	}
 
 	function close() {
@@ -91,9 +135,11 @@
 		aria-modal="true"
 		aria-labelledby="ls-title"
 		tabindex="-1"
-		onclick={close}
+		onclick={(e) => {
+			if (e.target === e.currentTarget) close();
+		}}
 	>
-		<div class="ls-card" role="document" onclick={(e) => e.stopPropagation()} tabindex="-1">
+		<div class="ls-card" role="document">
 			<header class="ls-head">
 				<p class="ls-eyebrow" aria-hidden="true">
 					<span class="ls-eyebrow-rule"></span>
@@ -111,7 +157,7 @@
 						{m.detail_link_dialog_title({ title: savedTitle })}
 					</h2>
 					<p class="ls-body">
-						{m.detail_link_dialog_body({ title: savedTitle, episode })}
+						{m.detail_link_dialog_body({ episode })}
 					</p>
 				{/if}
 			</header>
@@ -152,7 +198,7 @@
 						disabled={busy}
 						aria-busy={busy}
 					>
-						{m.detail_link_confirm_button()}
+						{busy ? m.detail_link_linking() : m.detail_link_confirm_button()}
 					</button>
 				</footer>
 			{:else}
@@ -177,18 +223,21 @@
 					<button type="submit" class="ls-btn ls-btn-quiet">{m.detail_link_search_submit()}</button>
 				</form>
 
-				{#if candidates === null}
-					<p class="ls-status" role="status">{m.detail_link_candidates_loading()}</p>
-				{:else if failed}
-					<p class="ls-status" role="status">{m.detail_link_candidates_failed()}</p>
-				{:else if candidates.length === 0}
-					<p class="ls-status" role="status">{m.detail_link_candidates_empty()}</p>
-				{:else}
-					<ul class="ls-list" aria-label={m.detail_link_candidates_aria()}>
+				<p class="ls-live" role="status">{status}</p>
+				{#if status}
+					<p class="ls-status" aria-hidden="true">{status}</p>
+				{:else if candidates}
+					<ul bind:this={list} class="ls-list" aria-label={m.detail_link_candidates_aria()}>
 						{#each candidates as c (c.ref.id)}
 							{@const poster = imageProxyUrl(c.ref.poster_image?.small ?? c.ref.poster_image?.tiny)}
 							<li>
-								<button type="button" class="ls-row" onclick={() => onChoose(c)}>
+								<button
+									type="button"
+									class="ls-row"
+									data-id={c.ref.id}
+									title={c.ref.canonical_title}
+									onclick={() => onChoose(c)}
+								>
 									<span class="ls-thumb">
 										{#if poster}
 											<img src={poster} alt="" loading="lazy" decoding="async" />
@@ -197,15 +246,10 @@
 									<span class="ls-row-text">
 										<span class="ls-row-title">{c.ref.canonical_title}</span>
 										<span class="ls-row-meta">
-											{#if year(c)}<span class="ls-num">{year(c)}</span>{/if}
-											<span>{subtypeLabel(c.ref.subtype)}</span>
-											{#if c.ref.episode_count !== null}
-												<span class="ls-num"
-													>{m.detail_link_meta_episodes({
-														count: String(c.ref.episode_count)
-													})}</span
-												>
-											{/if}
+											{#each meta(c) as field, i (i)}
+												{#if i > 0}<span class="ls-dot" aria-hidden="true">·</span>{/if}
+												<span class:ls-num={field.num}>{field.text}</span>
+											{/each}
 										</span>
 									</span>
 									{#if c.current}
@@ -243,7 +287,7 @@
 	}
 	.ls-card {
 		inline-size: min(34rem, calc(100vw - var(--space-6)));
-		max-block-size: min(40rem, calc(100vh - var(--space-6)));
+		max-block-size: min(40rem, calc(100dvh - var(--space-6)));
 		display: flex;
 		flex-direction: column;
 		background: var(--ink-050);
@@ -324,10 +368,6 @@
 		font: inherit;
 		font-size: var(--type-meta);
 	}
-	.ls-input:focus-visible {
-		outline: 2px solid var(--accent, var(--brand));
-		outline-offset: 1px;
-	}
 	.ls-list {
 		list-style: none;
 		margin: 0;
@@ -383,9 +423,14 @@
 	.ls-row-title {
 		color: var(--bone-100);
 		font-size: var(--type-meta);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	}
+	.ls-dot {
+		color: var(--bone-400);
 	}
 	.ls-row-meta {
 		display: flex;
@@ -402,6 +447,14 @@
 		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
 		color: var(--accent, var(--bone-300));
+	}
+	.ls-live {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.ls-status {
 		margin: var(--space-3) 0;
