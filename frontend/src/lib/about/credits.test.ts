@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 /**
- * The `dep` names both platform fetchers declare.
+ * The `dep` names both platform fetchers stage — their `DEPS` lists.
  *
  * Read as text rather than imported: the fetchers live outside the
  * frontend root, so vitest cannot resolve them as modules. `dep` is a
@@ -47,7 +47,16 @@ function stagedDeps(): Set<string> {
 	const found = new Set<string>();
 	for (const file of ['fetch-linux-deps.mjs', 'fetch-windows-deps.mjs']) {
 		const src = readFileSync(path.join(scripts, file), 'utf8');
-		for (const m of src.matchAll(/^\t\tdep: '([^']+)',$/gm)) found.add(m[1]);
+		// Only the `DEPS` array, bounded by its column-zero opening and
+		// closing lines: the Linux fetcher's `SYSTEM_DEPS` names ffmpeg
+		// too, as a dependency it does *not* stage, and counting that
+		// would credit Linux's declaration as a staged binary.
+		const start = src.indexOf('\nexport const DEPS = [\n');
+		const end = src.indexOf('\n];\n', start);
+		if (start < 0 || end < 0) {
+			throw new Error(`${file}: no column-zero \`export const DEPS = [\` ... \`];\` to read`);
+		}
+		for (const m of src.slice(start, end).matchAll(/^\t\tdep: '([^']+)',$/gm)) found.add(m[1]);
 	}
 	return found;
 }

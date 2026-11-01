@@ -8,8 +8,9 @@
 # that matter and says little about why: every play dies on the
 # provider's TLS interstitial without the impersonating transport, and
 # every download dies without a downloader. Bundling the small fast
-# ones removes that dependency on the user's environment; ffmpeg is
-# too large to stage, hence the `Recommends:`.
+# ones removes that dependency on the user's environment; ffmpeg Linux
+# takes from the distribution instead, hence the `Recommends:` (the
+# Windows installer, with no package manager to lean on, bundles it).
 #
 # This once described the script's dependencies — `dep_ch fzf`
 # aborting at startup, aria2c for downloads. Those went when the app
@@ -173,7 +174,7 @@ if (!Array.isArray(SYSTEM_DEPS)) { console.error("SYSTEM_DEPS is not exported as
 const bad = SYSTEM_DEPS.filter((d) => typeof d.dep !== "string" || !recommends.includes(d.dep));
 if (bad.length) { console.error(bad.map((d) => String(d.dep)).join(" ")); process.exit(1); }
 ' inventory "$REPO_ROOT/$FETCH" "$REPO_ROOT/$PKG"; then
-    printf 'arch/linux_deps FAIL: %s declares a dependency Linux takes from the system (above) that build.deb.recommends in %s does not name\n' "$FETCH" "$PKG" >&2
+    printf 'arch/linux_deps FAIL: %s SYSTEM_DEPS could not be read, or names a dependency (above) that build.deb.recommends in %s does not\n' "$FETCH" "$PKG" >&2
     failed=1
 fi
 

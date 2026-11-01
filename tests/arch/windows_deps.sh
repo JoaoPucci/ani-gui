@@ -200,14 +200,32 @@ fi
 # 7. The installer script fetches nothing at install time, for the
 #    reason above: anything it downloads lives in the install directory
 #    outside the package's manifest, and the next update removes it.
-#    Asserted as a constraint on the text, not an interpretation of it:
-#    the file names no NSIS download plug-in and no URL at all, comment
-#    or not. It does not catch a download routed through a spawned
-#    program that is handed a URL built at run time; the installer has
-#    no business building one either.
+#    Asserted as constraints on the text, not an interpretation of it:
+#    package.json (parsed) points `nsis.include` at installer.nsh and
+#    sets no `nsis.script`; installer.nsh pulls in no further file
+#    (`!include`, `!addincludedir`); and it names none of the NSIS
+#    download plug-ins (inetc, NSISdl, NScurl, INetLoad — matched
+#    without regard to case, as NSIS resolves them) and no URL at all,
+#    comment or not.
+#
+#    What it does not catch: a download routed through a spawned
+#    program that is handed a URL built at run time, and a plug-in
+#    outside that list. A green run means the script carries none of
+#    the usual markers of a download, not that it cannot download.
 NSH=electron/build-resources/installer.nsh
+if ! node -e '
+const n = (require(process.argv[1]).build || {}).nsis || {};
+process.exit(n.include === "build-resources/installer.nsh" && n.script === undefined ? 0 : 1);
+' "$REPO_ROOT/$PKG"; then
+    printf 'arch/windows_deps FAIL: %s nsis.include is not exactly build-resources/installer.nsh, or nsis.script is set — the checks below would not be reading the installer script that ships\n' "$PKG" >&2
+    failed=1
+fi
 if [ -f "$NSH" ]; then
-    if grep -nE '(inetc|NSISdl|INetC)::|://' "$NSH" >&2; then
+    if grep -niE '^[[:space:]]*!(include|addincludedir)' "$NSH" >&2; then
+        printf 'arch/windows_deps FAIL: %s pulls in another file (lines above) — keep the installer hooks in this one file, where the check below can read them\n' "$NSH" >&2
+        failed=1
+    fi
+    if grep -niE '(inetc|nsisdl|nscurl|inetload)::|://' "$NSH" >&2; then
         printf 'arch/windows_deps FAIL: %s downloads at install time (lines above) — what it fetches is deleted by the next update; stage the file through fetch-windows-deps.mjs instead\n' "$NSH" >&2
         failed=1
     fi
