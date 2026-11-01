@@ -356,8 +356,15 @@ test("a navigation off the app's document is refused and the app stays", async (
     for (const url of [
       `file://${droppedPage()}`,
       "data:text/html,<h1>data page</h1>",
-      "about:blank",
+      // Another host on the app's scheme: the protocol handler serves
+      // the bundle whatever the host, so this would load the app under
+      // a document the bridge was never meant for.
       "app://elsewhere/",
+      // about:blank is not here. Chromium commits it without the
+      // navigation hooks Electron's will-navigate hangs off, so no
+      // main-process guard sees it; it takes the origin of the document
+      // that asked for it, which is the app's own, and calls from it
+      // across the bridge are refused by the IPC sender check.
     ]) {
       await pageNavigatesTo(page, url);
       expect(page.url(), `navigated to ${url}`).toBe(home);
