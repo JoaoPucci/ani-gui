@@ -102,3 +102,7 @@ pub(super) fn escapes(out: &str) -> Vec<String> {
         .map(|n| n.uri)
         .collect()
 }
+
+#[cfg(test)]
+#[path = "m3u8_player_view_test.rs"]
+mod tests;
