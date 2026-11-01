@@ -34,6 +34,9 @@
 //!   place, as above, so it is never handed an answer older than the
 //!   row it would have read. The older walk's own write is already
 //!   refused by the row's write ordering (`availability_refresh`).
+//!   The walk it starts is interactive when the caller is, or when the
+//!   older walk was interactive and had callers: those move onto it,
+//!   and would displace a background walk a second time.
 //! - **The first caller leaves while others wait.** The walk goes on;
 //!   whoever is still waiting gets its verdict.
 //! - **The last caller leaves an interactive walk.** It ends: nobody
@@ -52,11 +55,13 @@
 //!   turn, as a lookup whose walk panicked always did.
 //!
 //! The walk is the first caller's: its arguments, and the AniList
-//! class it was asked in. A caller joining it takes the verdict the
-//! first caller's arguments reached. Every surface that asks sends the
-//! same arguments for a show — its titles, count, year and subtype,
-//! from the same Kitsu entry — and the verdict is written to the one
-//! row whoever asked.
+//! class it was asked in — except that a walk started for interactive
+//! callers (see **Older than the row**) runs at interactive priority,
+//! at the scraper gate and at AniList alike. A caller joining it takes
+//! the verdict the first caller's arguments reached. Every surface
+//! that asks sends the same arguments for a show — its titles, count,
+//! year and subtype, from the same Kitsu entry — and the verdict is
+//! written to the one row whoever asked.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -98,6 +103,11 @@ struct Table {
     next_id: u64,
     /// Live background walks nobody is waiting on.
     unwatched: usize,
+    /// The AniList class each walk runs in, by walk, as the walk
+    /// itself reads it at its first poll: a walk aborted before then
+    /// has none.
+    #[cfg(test)]
+    classes: HashMap<u64, crate::meta::anilist_gate::Class>,
 }
 
 /// The walks in flight, per row. One per app state; a clone shares
@@ -162,12 +172,12 @@ impl AvailabilityFlights {
         key: &str,
         args: &AvailabilityArgs,
     ) -> (watch::Receiver<Slot>, Waiting) {
-        let interactive = !args.background;
+        let caller_interactive = !args.background;
         let generation = state.availability_refreshes.generation(key);
         let mut table = self.table();
         let mut displaced = None;
         if let Some(flight) = table.flights.get_mut(key) {
-            if flight.generation == generation && joins(flight.interactive, interactive) {
+            if flight.generation == generation && joins(flight.interactive, caller_interactive) {
                 let was_unwatched = flight.waiters == 0;
                 flight.waiters += 1;
                 let joined = (flight.slot.subscribe(), self.waiter(key, flight.id));
@@ -179,16 +189,23 @@ impl AvailabilityFlights {
             let id = flight.id;
             displaced = table.take(key, id);
         }
+        // Started for whoever will wait on it: the callers of a
+        // displaced interactive walk move onto this one, and would
+        // displace it again were it background.
+        let interactive = starts_interactive(
+            caller_interactive,
+            displaced.as_ref().map(|d| (d.interactive, d.waiters)),
+        );
+        let mut args = args.clone();
+        args.background = !interactive;
         table.next_id += 1;
         let id = table.next_id;
         let (slot, heard) = watch::channel(Slot::Walking);
-        let walk = tokio::spawn(crate::meta::anilist_gate::in_callers_class(walk(
-            Arc::clone(state),
-            args.clone(),
-            self.clone(),
-            key.to_owned(),
-            id,
-        )))
+        let class = walk_class(interactive, crate::meta::anilist_gate::current_class());
+        let walk = tokio::spawn(crate::meta::anilist_gate::in_class(
+            class,
+            walk(Arc::clone(state), args, self.clone(), key.to_owned(), id),
+        ))
         .abort_handle();
         table.flights.insert(
             key.to_owned(),
@@ -262,7 +279,7 @@ impl Drop for Waiting {
 
 #[path = "availability_flight_rule.rs"]
 mod rule;
-pub(crate) use rule::{joins, outlives_its_callers, shared_row};
+pub(crate) use rule::{joins, outlives_its_callers, shared_row, starts_interactive, walk_class};
 
 #[path = "availability_flight_walk.rs"]
 mod walk;
