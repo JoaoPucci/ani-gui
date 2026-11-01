@@ -143,7 +143,7 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
 }
 
 @test "a picker file beside a frontend file selects the oracle" {
-    head=$(change frontend/src/app.ts tests/picker-oracle/cases/doc-table.json)
+    head=$(change frontend/src/app.ts tests/picker-oracle/oracle.py)
     run filter pull_request "$base" "$head"
     [ "$status" -eq 0 ]
     [ "$output" = "$(outputs false true false)" ]
