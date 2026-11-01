@@ -230,9 +230,6 @@ describe('the captions picker', () => {
 		]);
 	});
 
-	// A pick belongs to the session it was made in, as it always has:
-	// the next episode's tracks are new elements, and the browser starts
-	// them on the provider's default. Reloading the page does the same.
 	// hls.js keeps a `metadata` text track on the video for the stream's
 	// ID3 cues, hidden so its cues load. It is not a caption: the picker
 	// lists it nowhere and must leave its mode alone, a pick and Off
@@ -266,6 +263,9 @@ describe('the captions picker', () => {
 		expect(listed.some((text) => text?.includes('id3'))).toBe(false);
 	});
 
+	// A pick belongs to the session it was made in, as it always has:
+	// the next episode's tracks are new elements, and the browser starts
+	// them on the provider's default. Reloading the page does the same.
 	it('the next episode, and a reload, start again on the default track', async () => {
 		handlers();
 		const video = await mountAt('session-1', '1');
