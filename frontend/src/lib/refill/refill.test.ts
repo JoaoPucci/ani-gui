@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	FAILURE_BACKOFF_MS,
 	MAX_FAILURES,
 	RefillWaiter,
 	parseRefills,
@@ -149,6 +150,25 @@ describe('RefillWaiter', () => {
 		}
 		expect(await landed).toBe(false);
 		expect(sleep).toHaveBeenCalledTimes(MAX_FAILURES - 1);
+	});
+
+	it('waits a moment between failed waits when no pause is given', async () => {
+		vi.useFakeTimers();
+		try {
+			const { wait, calls } = manualWait();
+			const waiter = new RefillWaiter(wait);
+			const landed = waiter.landed([1]);
+			await vi.advanceTimersByTimeAsync(0);
+			calls[0].reject(new Error('offline'));
+			await vi.advanceTimersByTimeAsync(FAILURE_BACKOFF_MS - 1);
+			expect(calls).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(calls).toHaveLength(2);
+			calls[1].resolve([{ ticket: 1, landed: true }]);
+			expect(await landed).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('resolves false at once for no tickets', async () => {

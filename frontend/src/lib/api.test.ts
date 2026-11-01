@@ -43,6 +43,7 @@ import {
 	playSyncplay,
 	playStream,
 	proxyBaseUrl,
+	refillsRelease,
 	settingsGet,
 	settingsPut,
 	watchedAtAll,
@@ -1265,6 +1266,22 @@ function refillingFetch(first: unknown, then: unknown, landed: boolean) {
 		} as unknown as Response;
 	});
 }
+
+describe('refillsRelease', () => {
+	it('posts the tickets a closed page let go, and shrugs off a failure', async () => {
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			void init;
+			throw new Error('offline');
+		});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		refillsRelease([3, 4]);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/refills/release`);
+		expect(JSON.parse(init?.body as string)).toEqual({ tickets: [3, 4] });
+		await new Promise((r) => setTimeout(r, 0));
+	});
+});
 
 describe('kitsuAnimeDetail refill', () => {
 	it('hands the detail fetched once more after a held-back banner lands', async () => {
