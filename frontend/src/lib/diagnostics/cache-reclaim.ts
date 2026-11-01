@@ -24,6 +24,7 @@ export interface CacheReclaimView {
 export function cacheReclaimView(
 	report: Partial<CacheReclaimReport> | undefined | null
 ): CacheReclaimView {
-	void report;
-	return { visible: false, oldRows: 0, expiredRows: 0 };
+	const oldRows = report?.undeclared_rows ?? 0;
+	const expiredRows = report?.expired_rows ?? 0;
+	return { visible: oldRows + expiredRows > 0, oldRows, expiredRows };
 }
