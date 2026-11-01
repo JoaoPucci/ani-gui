@@ -6,10 +6,11 @@
 //! - [`super::m3u8_lines`] ends lines where hls.js does, before the
 //!   parse, and tells a media playlist by hls.js's own test.
 //! - [`keep_player_view_on_proxy`] reads the rewritten manifest's lines
-//!   as hls.js ends them, `\r` included. A line not starting `#` is a
-//!   URI to the player and must be on the proxy (or, in a media
-//!   playlist, an inline segment) — a quoted value m3u8-rs kept can
-//!   carry lines of its own. A tag line is read as hls.js reads an
+//!   as hls.js ends them, `\r` included. A line not starting `#` must
+//!   be on the proxy (or, in a media playlist, an inline segment) and
+//!   carry no `#` — a quoted value m3u8-rs kept can carry lines of its
+//!   own, and hls.js reads a master's tags wherever in a line they
+//!   begin. A tag line is read as hls.js reads an
 //!   attribute list, where a name is trimmed (`URI ="…"` is its `URI`);
 //!   one in which any attribute whose name ends in `URI`, `URL` or
 //!   `-LIST` would resolve off the proxy is dropped. An `#EXTINF` line
@@ -52,11 +53,13 @@ pub(super) fn keep_player_view_on_proxy(out: &str, origin: &ProxyOrigin) -> Stri
     kept
 }
 
-/// Whether a line not starting `#` — a URI to the player, which in a
-/// master names a variant and in a media playlist a segment — is on the
-/// proxy, or, in a media playlist, an inline segment.
+/// Whether a line not starting `#` — which in a master names a variant
+/// and in a media playlist a segment — is on the proxy, or, in a media
+/// playlist, an inline segment, and carries no `#`. hls.js reads a
+/// master's tags wherever in a line they begin, so a URI with a
+/// fragment can carry one; the URIs the rewrite writes have none.
 fn uri_line_stays(line: &str, base: &Url, origin: &ProxyOrigin, media: bool) -> bool {
-    line.trim().is_empty() || value_stays(line.trim(), base, origin, media)
+    line.trim().is_empty() || (!line.contains('#') && value_stays(line.trim(), base, origin, media))
 }
 
 /// Whether every URI-naming attribute hls.js could read in `line`
