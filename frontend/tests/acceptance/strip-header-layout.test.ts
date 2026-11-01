@@ -72,3 +72,17 @@ describe('a banded row’s edges', () => {
 		expect(STYLE).not.toMatch(/data-surface='band'\][^{]*strip-fade[^{]*\{[^}]*display: none/);
 	});
 });
+
+describe('a wrapped status line', () => {
+	// When a long translation pushes the status onto the next line, its
+	// "·" would open that line and separate nothing. Strip marks the
+	// header while the status starts a line of its own
+	// ($lib/components/strip-header-wrap), and the separator hides.
+	it('hides the separator while the status starts a line of its own', () => {
+		expect(rule(".strip-header[data-meta-wraps='true'] .strip-meta-sep")).toContain(
+			'display: none;'
+		);
+		expect(SOURCE).toContain('data-meta-wraps={metaWraps}');
+		expect(SOURCE).toContain('watchHeaderWrap(');
+	});
+});
