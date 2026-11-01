@@ -4,10 +4,13 @@
 //! the streaming proxy fetches it from the upstream CDN, parses it, and
 //! rewrites every network URI the parsed tags carry — variants,
 //! renditions, segments, keys, init segments, session keys and data —
-//! to flow back through itself with HMAC-signed tokens. Nothing else
-//! the player would fetch is left in the manifest: a tag the parser
-//! does not know that names a URI is dropped, and so is a playlist
-//! entry that is not a network URI (see below). That way:
+//! to flow back through itself with HMAC-signed tokens. A tag the
+//! parser does not know that names a URI is dropped, and so is a
+//! playlist entry that is not a network URI (see below). The player
+//! reads the result with hls.js rather than m3u8-rs, so the rewrite
+//! then reads its own output the way hls.js does and drops any line
+//! through which hls.js would still fetch something off the proxy
+//! ([`super::m3u8_guard`]). That way:
 //!
 //! - Browser fetches see only `127.0.0.1:<port>` URLs (no CORS pain).
 //! - The upstream `Referer:` requirement is enforced server-side per
@@ -23,7 +26,8 @@
 //!   new manifest.
 //! - [`rewrite_served`] — what the master route serves: a master
 //!   rewritten as one, or the media playlist a single-quality source
-//!   serves in its place rewritten as media, told apart by their tags.
+//!   serves in its place rewritten as media, told apart by hls.js's
+//!   own test for a media playlist.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
 //! - `build_proxy_uri` (private) — leave media that is not a network
@@ -42,19 +46,23 @@
 //!   playlist: by that mark, or for an unmarked URL by a lowercase
 //!   `.m3u8` path.
 //!
-//! A tag the parser does not know that carries a `URI=` attribute —
-//! a low-latency part (`EXT-X-PART`), a preload hint, a rendition
-//! report, a content steering server (`EXT-X-CONTENT-STEERING`) — and a
-//! date range whose client attributes name an asset (`…URI`, `…-LIST`),
-//! are dropped rather than rewritten or left pointing upstream. A URI
+//! A tag the parser does not know whose text contains `URI=` — a
+//! low-latency part (`EXT-X-PART`), a preload hint, a rendition report,
+//! a content steering server (`EXT-X-CONTENT-STEERING`) — and a date
+//! range whose client attributes name an asset (`…URI`, `…-LIST`), are
+//! dropped rather than rewritten or left pointing upstream. Those
+//! checks read the text as m3u8-rs splits it; a spelling only hls.js
+//! reads as a URI (`URI ="…"`) is caught by the check of the output. A URI
 //! built from `EXT-X-DEFINE` variables is read as the URI they spell:
 //! the variables are substituted before the parse
 //! ([`super::m3u8_define`]), a media playlist importing its master's.
 //!
 //! All functions are pure (no I/O). Property tests target idempotency,
-//! that every playlist a master names comes back on the proxy, and that
+//! that every playlist a master names comes back on the proxy, that
 //! every network URI a media playlist names does — what a media
-//! playlist keeps as written is no fetch.
+//! playlist keeps as written is no fetch — and that nothing hls.js
+//! would read from the output, as an hls.js-style reading finds it,
+//! is fetched past the proxy.
 
 use base64::Engine;
 use url::Url;
@@ -411,9 +419,9 @@ pub fn rewrite_media_importing(
         })
 }
 
-/// Whether a tag the parser does not know carries a URI — a
-/// low-latency part, preload hint or rendition report, a content
-/// steering server. The rewrite cannot follow what it does not parse,
+/// Whether a tag the parser does not know carries a URI, by the text
+/// `URI=` — a low-latency part, preload hint or rendition report, a
+/// content steering server. The rewrite cannot follow what it does not parse,
 /// so such a tag is dropped rather than left pointing upstream; the
 /// player and the tools fall back to whole segments and the master's
 /// own variants without it.
