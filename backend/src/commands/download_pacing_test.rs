@@ -70,11 +70,11 @@ fn a_downloads_tracks_are_fetched_one_at_a_time_while_playback_is_live() {
         super::super::download::SIDECAR_FETCH_CONCURRENCY
     );
     assert_eq!(
-        sidecar_phase_deadline(false),
+        sidecar_phase_deadline(false, 1),
         super::super::download::SIDECAR_PHASE_DEADLINE
     );
     assert!(
-        sidecar_phase_deadline(true) > sidecar_phase_deadline(false),
+        sidecar_phase_deadline(true, 1) > sidecar_phase_deadline(false, 1),
         "tracks taking their tokens one at a time in turn with the player's need the time"
     );
 }
@@ -88,7 +88,7 @@ proptest! {
         let n = sidecar_concurrency(live);
         prop_assert!(n == 1 || n == super::super::download::SIDECAR_FETCH_CONCURRENCY);
         prop_assert_eq!(n == 1, live);
-        let d = sidecar_phase_deadline(live);
+        let d = sidecar_phase_deadline(live, 1);
         prop_assert!(
             d == super::super::download::SIDECAR_PHASE_DEADLINE || d == SIDECAR_PHASE_DEADLINE_LIVE
         );

@@ -18,12 +18,13 @@ pub(crate) fn sidecar_concurrency(playback_live: bool) -> usize {
     }
 }
 
-/// The sidecar phase's deadline, chosen once as the phase starts:
+/// The sidecar phase's deadline for a listing of `_tracks`, chosen once
+/// as the phase starts:
 /// [`SIDECAR_PHASE_DEADLINE`](crate::commands::download::SIDECAR_PHASE_DEADLINE)
 /// for a host that stalls, [`SIDECAR_PHASE_DEADLINE_LIVE`](super::SIDECAR_PHASE_DEADLINE_LIVE) while
 /// playback is live.
 #[must_use]
-pub(crate) fn sidecar_phase_deadline(playback_live: bool) -> Duration {
+pub(crate) fn sidecar_phase_deadline(playback_live: bool, _tracks: usize) -> Duration {
     if playback_live {
         super::SIDECAR_PHASE_DEADLINE_LIVE
     } else {

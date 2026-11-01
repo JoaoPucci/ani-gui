@@ -458,6 +458,7 @@ where
 #[must_use]
 pub(crate) fn tracks_within_cap(tracks: Vec<SubtitleTrack>, locale: &str) -> Vec<SubtitleTrack> {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let tracks = each_file_once(tracks);
     let (kept, dropped) =
         crate::scraper::track_preference::most_wanted_within(tracks, SUBTITLE_TRACK_CAP, locale);
     if dropped > 0 {
@@ -467,6 +468,11 @@ pub(crate) fn tracks_within_cap(tracks: Vec<SubtitleTrack>, locale: &str) -> Vec
         );
     }
     kept
+}
+
+/// The listing as the cut takes it.
+fn each_file_once(tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
+    tracks
 }
 
 #[cfg(test)]

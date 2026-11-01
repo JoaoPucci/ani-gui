@@ -67,7 +67,7 @@ where
         source.referer.as_deref(),
         dest,
         file_stem,
-        super::download_pacing::sidecar_phase_deadline(live),
+        super::download_pacing::sidecar_phase_deadline(live, source.subtitles.len()),
         super::download_pacing::sidecar_concurrency(live),
     ));
     let mut transfer = std::pin::pin!(super::download::spawn_download_tool_paced(
