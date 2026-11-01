@@ -30,7 +30,10 @@
 		yearFromKitsuRef,
 		checkAvailability,
 		historyByKitsu,
+		historyLink,
+		historyList,
 		historyNumber,
+		historyUnlink,
 		imageProxyUrl,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
@@ -137,6 +140,11 @@
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
 	import { breadcrumb } from '$lib/breadcrumb';
+	import { guessedQuery, guessedRowOf } from '$lib/history/guessed-context';
+	import { LinkSession } from '$lib/history/link-session.svelte';
+	import { resolveKitsuMatchWithTrust } from '$lib/history/match';
+	import { resolveHistoryEntry } from '$lib/history/resolve';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -1671,6 +1679,37 @@
 		});
 		downloadModalOpen = true;
 	}
+	// A page a guessed Continue card opened says, in one quiet line,
+	// which history title it was matched from, and lets the user name
+	// the show the card really is ($lib/history/link-session.svelte.ts).
+	const guessedRow = $derived(guessedRowOf(page.url.searchParams));
+	const linkSession = new LinkSession({
+		history: historyList,
+		resolve: (entry) => resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null)),
+		search: kitsuSearch,
+		link: historyLink,
+		unlink: historyUnlink,
+		notify: (notice) =>
+			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
+		/* eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query */
+		showPage: (kitsuId, row) =>
+			void goto(resolve('/anime/[id]', { id: kitsuId }) + guessedQuery(row !== null, row), {
+				replaceState: true
+			}),
+		/* eslint-enable svelte/no-navigation-without-resolve */
+		refresh: () => {
+			const currentId = id;
+			void lookupResume(currentId, historyByKitsu, kitsuAnimeDetail(currentId))
+				.then((h) => {
+					if (id !== currentId) return;
+					resumeEntry = h;
+					resumeRefresh.row(h);
+				})
+				.catch(() => {});
+		}
+	});
+	$effect(() => void linkSession.arrive(guessedRow, id));
+
 	function onPickEpisode(n: number) {
 		// Honour the availability gate — episode tiles call this too,
 		// not just the masthead Play CTA. Without this guard a click
@@ -1772,7 +1811,24 @@
 						<span class="eyebrow-value">{statusLabel(detail.status)}</span>
 					</p>
 
-					<h1 class="title">{detail.canonical_title}</h1>
+					<h1 class="title" class:title-noted={guessedRow !== null}>{detail.canonical_title}</h1>
+					{#if guessedRow !== null}
+						<!-- Held open from the first paint when a guessed card opened
+						     the page, so the line arriving moves nothing below it. -->
+						<p class="guess-note">
+							{#if linkSession.offer}
+								<span class="guess-note-text"
+									>{m.detail_link_matched({ title: linkSession.offer.entry.title })}</span
+								>
+								<span class="guess-note-ask">{m.detail_link_not_this()}</span>
+								<button
+									type="button"
+									class="guess-note-change"
+									onclick={() => void linkSession.start()}>{m.detail_link_change()}</button
+								>
+							{/if}
+						</p>
+					{/if}
 
 					<!-- Action row: primary play, secondary download. Gated
 					     by the availability probe — until it lands, render
@@ -2352,6 +2408,23 @@
 			{/if}
 		</div>
 	{/if}
+	{#if linkSession.offer}
+		<LinkShowDialog
+			open={linkSession.open}
+			savedTitle={linkSession.offer.entry.title}
+			episode={linkSession.episode}
+			candidates={linkSession.candidates}
+			failed={linkSession.failed}
+			chosen={linkSession.chosen}
+			warnings={linkSession.warnings}
+			busy={linkSession.busy}
+			error={linkSession.error}
+			onSearch={(q) => void linkSession.search(q)}
+			onChoose={(c) => linkSession.choose(c)}
+			onConfirm={() => void linkSession.confirm()}
+			onCancel={() => linkSession.cancel()}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
@@ -2675,6 +2748,46 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+
+	/* The history line a guessed card's page carries: it takes its
+	   room from the title's own margin, held from the first paint. */
+	.title-noted {
+		margin-block-end: var(--space-2);
+	}
+	.guess-note {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: var(--space-2);
+		min-block-size: calc(var(--type-meta) * var(--leading-prose));
+		margin: 0 0 var(--space-5);
+		font-size: var(--type-meta);
+		line-height: var(--leading-prose);
+		color: var(--bone-400);
+	}
+	.guess-note-text {
+		animation: text-in var(--dur-med) var(--ease-out-soft) both;
+	}
+	.guess-note-ask {
+		color: var(--bone-300);
+	}
+	.guess-note-change {
+		padding: 0;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: var(--bone-200);
+		text-decoration: underline;
+		text-decoration-color: color-mix(in oklab, var(--accent) 70%, transparent);
+		text-underline-offset: 0.2em;
+		cursor: pointer;
+		transition: color var(--dur-fast) var(--ease-out-soft);
+	}
+	.guess-note-change:hover,
+	.guess-note-change:focus-visible {
+		color: var(--bone-100);
+		text-decoration-color: var(--accent);
 	}
 
 	/* — Action row. */

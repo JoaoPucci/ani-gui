@@ -186,6 +186,7 @@
 		withGuess,
 		withRow
 	} from '$lib/play/play-origin';
+	import { guessedQuery } from '$lib/history/guessed-context';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess —
@@ -198,6 +199,9 @@
 	// card's history row, so removing the card forgets them whatever
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
+	// The show page a guessed card's session goes up to says which
+	// history title the card was matched from ($lib/history/guessed-context).
+	const showHref = $derived(resolve('/anime/[id]', { id }) + guessedQuery(fromGuess, fromRow));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
@@ -2022,7 +2026,7 @@
 		const title = detail?.canonical_title ?? null;
 		breadcrumb.set([
 			{ label: m.breadcrumb_home(), href: '/' },
-			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
+			{ label: title ?? m.breadcrumb_anime(), href: showHref },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
 		]);
 	});
@@ -2781,14 +2785,15 @@
 					<p class="player-error-body">
 						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
 					</p>
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 					<a
 						class="player-error-action"
-						href={resolve('/anime/[id]', { id })}
+						href={showHref}
 						onclick={(e) => {
 							// Replace, like the now-playing link: the show's page
 							// is "up" from the player.
 							e.preventDefault();
-							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+							void goto(showHref, { replaceState: true });
 						}}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -2799,6 +2804,7 @@
 						</svg>
 						<span>{m.play_error_stream_back_to_show()}</span>
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{:else}
 					<!-- Held while the airing lookup is out: the switch the
 					     Reload hands to would decline it ($lib/play/reload-offer). -->
@@ -3399,14 +3405,15 @@
 		     similar". Show title links back to the detail page; episode
 		     prev/next + external player live on the right. -->
 		<header class="now-playing">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 			<a
 				class="np-link"
-				href={resolve('/anime/[id]', { id })}
+				href={showHref}
 				onclick={(e) => {
 					// Replace, not push — treats poster → details as an "up"
 					// navigation rather than burying the player in history.
 					e.preventDefault();
-					void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+					void goto(showHref, { replaceState: true });
 				}}
 			>
 				{#if npPoster}
@@ -3451,6 +3458,7 @@
 					</span>
 				</span>
 			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 			<div class="np-actions">
 				{#if !singleVideo}
