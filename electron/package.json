@@ -31,7 +31,8 @@
 	"devDependencies": {
 		"@playwright/test": "^1.59.1",
 		"electron": "^33.2.0",
-		"electron-builder": "^25.1.8"
+		"electron-builder": "^25.1.8",
+		"fast-check": "^4.7.0"
 	},
 	"build": {
 		"appId": "net.thirdmovement.ani-gui",
