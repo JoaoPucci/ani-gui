@@ -80,9 +80,10 @@ export async function fetchSidecarTracks(
 export function attachSidecarTracks(
 	video: HTMLVideoElement,
 	tracks: SidecarTrack[],
-	locale = ''
+	locale = '',
+	remembered?: string
 ): () => void {
-	const start = startingTrack(tracks, locale);
+	const start = startingTrack(tracks, locale, remembered);
 	const elements = tracks.map((track, i) => {
 		const attrs = { ...trackAttributes(track), default: i === start };
 		const el = document.createElement('track');
@@ -109,13 +110,14 @@ export function armSidecarTracks(
 	video: HTMLVideoElement,
 	mediaUrl: string,
 	sessionId: string,
-	locale = ''
+	locale = '',
+	remembered?: string
 ): () => void {
 	const controller = new AbortController();
 	let detach: (() => void) | null = null;
 	void fetchSidecarTracks(mediaUrl, sessionId, controller.signal).then((tracks) => {
 		if (controller.signal.aborted || tracks.length === 0) return;
-		detach = attachSidecarTracks(video, tracks, locale);
+		detach = attachSidecarTracks(video, tracks, locale, remembered);
 	});
 	return () => {
 		controller.abort();

@@ -75,6 +75,7 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
@@ -521,6 +522,8 @@
 		ccMenuOpen = false;
 		if (!videoEl) return;
 		applyCaptionPick(videoEl.textTracks, target);
+		const choice = captionChoiceOf(videoEl.textTracks, target);
+		if (choice !== undefined) rememberCaption(id, choice);
 	}
 
 	function setVolume(v: number) {
@@ -1933,7 +1936,9 @@
 		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale()));
+			sourceScope.add(
+				armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale(), storedCaption(id))
+			);
 		}
 	});
 

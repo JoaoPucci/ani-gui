@@ -16,8 +16,13 @@ export interface StartableTrack {
  * The index of the track to start on, or `null` for none: the
  * provider's default.
  */
-export function startingTrack(tracks: readonly StartableTrack[], locale: string): number | null {
+export function startingTrack(
+	tracks: readonly StartableTrack[],
+	locale: string,
+	remembered?: string
+): number | null {
 	void locale; // not read yet
+	void remembered; // not read yet
 	const at = tracks.findIndex((t) => t.default === true);
 	return at === -1 ? null : at;
 }
