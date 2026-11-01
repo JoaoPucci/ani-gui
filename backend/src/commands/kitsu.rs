@@ -706,7 +706,7 @@ pub(crate) async fn cour_pairing_disagrees(
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    slug_cour_disagrees(provider_cour, &detail)
+    crate::commands::cour_pairing::entry_disagrees(provider_cour, &detail)
 }
 
 /// [`cour_pairing_disagrees`] answered from the cache alone: `None`
@@ -722,18 +722,10 @@ pub(crate) fn cached_cour_pairing_verdict(
     };
     let body = meta_cache_get(&state.cache_pool, &anime_detail_key(kitsu_id)).ok()??;
     let detail: KitsuAnimeRef = serde_json::from_str(&body).ok()?;
-    Some(slug_cour_disagrees(provider_cour, &detail))
-}
-
-/// Whether the detail's slug names another cour than `provider_cour`.
-/// Kitsu's slug convention leaves cour 1 unmarked, so a slug without a
-/// suffix is cour 1; a detail without a slug is no evidence.
-fn slug_cour_disagrees(provider_cour: u32, detail: &KitsuAnimeRef) -> bool {
-    detail
-        .slug
-        .as_deref()
-        .map(|slug| crate::commands::cour::cour_from_slug(slug).unwrap_or(1))
-        .is_some_and(|kitsu_cour| kitsu_cour != provider_cour)
+    Some(crate::commands::cour_pairing::entry_disagrees(
+        provider_cour,
+        &detail,
+    ))
 }
 
 /// Whether a Kitsu `subtype` is a music video. A provider that indexes
@@ -862,7 +854,7 @@ async fn first_kitsu_match(
         };
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
-                && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
+                && crate::commands::cour_pairing::hit_agrees(source_cour, h)
                 && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
             // The guess answers this request; whether it is stored as

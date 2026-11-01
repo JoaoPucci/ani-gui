@@ -27,6 +27,7 @@ pub(crate) mod availability_warm;
 pub mod cour;
 mod cour_keyword_form;
 mod cour_ordinal_form;
+mod cour_pairing;
 pub mod download;
 mod download_names;
 pub(crate) mod external_ids;
