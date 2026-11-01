@@ -16,6 +16,9 @@
 //!   say once that one is taken, and writes nothing after it;
 //! - a listing that repairs nothing takes no part, and leaves the stamps
 //!   to the listings that do, heard before or after;
+//! - a former tag any listing at hand this run carries is not kept,
+//!   repairing or not, heard before or after: a position kept under it
+//!   may be that row's;
 //! - the repairs left, heard alongside one another, cannot be ordered:
 //!   a former tag only some of them name is not named, as another's
 //!   listing may give it to a row of its own, and where they put the
