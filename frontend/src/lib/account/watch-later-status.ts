@@ -58,8 +58,11 @@ export function ageOf(at: number, now: number): Age {
 export function nextAgeChange(at: number, now: number): number {
 	const elapsed = now - at;
 	// A stamp ahead of the clock reads as just now until the clock has
-	// caught up with it and then run a full minute past.
-	if (elapsed < 0) return -elapsed + MINUTE;
+	// caught up with it and then run a full minute past. The wait is
+	// capped at a day: it goes to setTimeout, which wraps a delay past
+	// 2^31 - 1 ms to nearly nothing, so a stamp weeks ahead would
+	// otherwise re-render the page in a loop.
+	if (elapsed < 0) return Math.min(-elapsed + MINUTE, DAY);
 	const step = elapsed < HOUR ? MINUTE : elapsed < DAY ? HOUR : DAY;
 	return step - (elapsed % step);
 }
