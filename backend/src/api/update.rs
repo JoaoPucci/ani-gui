@@ -16,11 +16,9 @@ use crate::app::AppState;
 
 #[derive(serde::Deserialize, Default)]
 pub(super) struct UpdateCheckQuery {
-    /// Whether the GitHub list endpoint should be queried instead
-    /// of `/releases/latest`. The list endpoint surfaces pre-
-    /// releases (which `/latest` filters out). Defaults to true
+    /// Whether pre-releases count as an offer. Defaults to true
     /// because every ani-gui release shipped so far is marked
-    /// prerelease=true — `/latest` would always 404 today.
+    /// prerelease=true — with it off, nothing is offered today.
     #[serde(default = "default_include_prereleases")]
     include_prereleases: bool,
 }
@@ -34,6 +32,9 @@ fn default_include_prereleases() -> bool {
 /// boundary. The renderer used to call `api.github.com` directly,
 /// breaking the documented "backend owns outbound HTTP" rule (see
 /// `docs/architecture.md`).
+///
+/// The offer is the newest release with a package for the
+/// platform this binary was built for (see `meta::github`).
 ///
 /// Returns 200 + JSON `ReleaseInfo` when a release is found, or
 /// 204 No Content for every soft failure (offline, rate-limited,

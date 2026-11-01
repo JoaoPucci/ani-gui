@@ -6,14 +6,19 @@
 //! proxy: same shape the renderer used to compose itself, but the
 //! external call is centralised here.
 //!
-//! Endpoint choice:
-//! - `include_prereleases=true` → `/releases?per_page=1`. Returns
-//!   a JSON array of one element (newest non-draft release,
-//!   pre-releases included).
-//! - `include_prereleases=false` → `/releases/latest`. Returns a
-//!   single object — newest *full* release (prerelease=false,
-//!   draft=false). 404 when the repo has no full releases yet,
-//!   which is the case for ani-gui today.
+//! What is offered: the lookup reads the most recent releases, a
+//! page of [`RELEASE_PAGE`], newest first, and offers the first one
+//! that is published (not a draft), counts under the pre-release
+//! setting (with `include_prereleases=false` a pre-release does not),
+//! and carries a package for the platform this binary was built for
+//! (see [`Platform::carries`]). A release cut without one platform's
+//! package is skipped for that platform, which is offered the newest
+//! release it can install instead. A platform the app does not
+//! package is offered nothing and asks GitHub nothing. The version
+//! comparison against the running app stays in the renderer.
+//!
+//! The page bounds the walk: a platform whose newest installable
+//! release is further back than the page reaches is offered nothing.
 //!
 //! Failures (network down, GitHub rate limit, malformed payload)
 //! collapse to `Ok(None)` so the renderer can branch on a single
@@ -29,6 +34,9 @@ const GITHUB_API: &str = "https://api.github.com";
 /// silently silence the notifier.
 pub const REPO_PATH: &str = "JoaoPucci/ani-gui";
 
+/// How many of the most recent releases the walk reads.
+const RELEASE_PAGE: usize = 10;
+
 /// A platform the app is packaged for. A release is offered to an
 /// install only when it carries that install's package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +51,13 @@ impl Platform {
     /// The packaged platform this binary was built for, or `None`
     /// on one the app does not package.
     pub fn current() -> Option<Self> {
-        None
+        if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+            Some(Self::Windows)
+        } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            Some(Self::Linux)
+        } else {
+            None
+        }
     }
 
     /// Whether a release asset named `asset_name` installs on this
@@ -122,14 +136,19 @@ fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
     })
 }
 
-/// The release to offer from `releases`, newest first.
+/// The release to offer from `releases`, newest first: the first
+/// that counts under the pre-release setting, carries a package for
+/// `platform`, and normalises (published, with a tag and a URL).
 fn select_release(
     releases: Vec<RawRelease>,
     platform: Platform,
     include_prereleases: bool,
 ) -> Option<ReleaseInfo> {
-    let _ = (platform, include_prereleases);
-    normalise(releases.into_iter().next()?)
+    releases
+        .into_iter()
+        .filter(|r| include_prereleases || !r.prerelease)
+        .filter(|r| r.assets.iter().any(|a| platform.carries(&a.name)))
+        .find_map(normalise)
 }
 
 /// Parse the list endpoint's body and pick the release to offer.
@@ -142,9 +161,10 @@ fn parse_response(
     select_release(releases, platform, include_prereleases)
 }
 
-/// Fetch the latest GitHub release for the bundled repo. Returns
-/// `Ok(None)` on every soft failure (offline, rate-limited, 404,
-/// malformed JSON, missing fields, draft-only). The caller treats
+/// Fetch the newest release `platform` can install. Returns `None`
+/// for a platform the app does not package, and on every soft
+/// failure (offline, rate-limited, 404, malformed JSON, no release
+/// on the page that qualifies). The caller treats
 /// `None` and "no newer version" identically — the badge stays
 /// hidden either way.
 pub async fn fetch_latest_release(
@@ -153,13 +173,9 @@ pub async fn fetch_latest_release(
     platform: Option<Platform>,
     base_override: Option<&str>,
 ) -> Option<ReleaseInfo> {
-    let platform = platform.unwrap_or(Platform::Linux);
+    let platform = platform?;
     let base = base_override.unwrap_or(GITHUB_API);
-    let url = if include_prereleases {
-        format!("{base}/repos/{REPO_PATH}/releases?per_page=1")
-    } else {
-        format!("{base}/repos/{REPO_PATH}/releases/latest")
-    };
+    let url = format!("{base}/repos/{REPO_PATH}/releases?per_page={RELEASE_PAGE}");
     let resp = client
         .get(&url)
         // GitHub requires a User-Agent header on every request; an
