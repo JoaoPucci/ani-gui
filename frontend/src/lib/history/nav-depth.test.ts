@@ -105,6 +105,7 @@ function nav(type: NavType, over: Partial<Navigated> = {}): Navigated {
 		state: {},
 		from: HOME,
 		to: SEARCH,
+		entry: null,
 		prev: { depth: 0, origin: null },
 		...over
 	};

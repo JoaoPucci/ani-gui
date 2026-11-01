@@ -93,6 +93,11 @@ export interface Navigated {
 	state: Partial<EntryStamp>;
 	from: URL | null;
 	to: URL | null;
+	/** The browser's index for the entry the navigation landed on, as
+	 *  the Navigation API reports it (`navigation.currentEntry.index`):
+	 *  its position in the window's session history. Null where the
+	 *  browser has no Navigation API or no current entry. */
+	entry: number | null;
 	/** What the layout held before this navigation. */
 	prev: { depth: number; origin: string | null };
 }

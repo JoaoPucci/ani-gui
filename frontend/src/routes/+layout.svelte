@@ -115,6 +115,7 @@
 			state: page.state ?? {},
 			from: from?.url ?? null,
 			to: to?.url ?? null,
+			entry: 'navigation' in window ? (window.navigation.currentEntry?.index ?? null) : null,
 			prev: { depth: navDepth, origin: navOrigin }
 		});
 		navDepth = out.depth;
