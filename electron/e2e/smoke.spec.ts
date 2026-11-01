@@ -508,3 +508,190 @@ test("a web link opens in the system browser and the window stays", async () => 
     await app.close();
   }
 });
+
+// ─── The bridge answers the app's document only ───────────────────
+//
+// Every IPC handler in main checks that the call came from the main
+// frame holding the app's document (lib/ipc-guard.cjs). A page that
+// does get into the window — the guard above is meant to make that
+// impossible — still gets nothing from the bridge.
+
+/** Main-process stderr, line by line, from this point on. */
+function collectStderr(app: ElectronApplication): string[] {
+  const lines: string[] = [];
+  app.process().stderr?.on("data", (chunk: Buffer) => {
+    lines.push(...chunk.toString().split("\n"));
+  });
+  return lines;
+}
+
+test("every IPC channel refuses a sender that is not the app's document", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const stderr = collectStderr(app);
+    // Call every handler the running app registered, the way Electron
+    // would for a call from a frame holding about:blank. The channels
+    // come from ipcMain itself, so a handler added later is covered
+    // without editing this list.
+    const outcome = await app.evaluate(async ({ ipcMain }) => {
+      const forged = () => {
+        const event: Record<string, unknown> = {
+          senderFrame: { url: "about:blank", parent: null },
+          touched: [] as string[],
+        };
+        // A refused call reads senderFrame and nothing else; a handler
+        // that ran would reach for the sender's window.
+        Object.defineProperty(event, "sender", {
+          get() {
+            (event.touched as string[]).push("sender");
+            throw new Error("handler reached for the sender");
+          },
+        });
+        return event;
+      };
+      const settle = <T,>(p: Promise<T>) =>
+        Promise.race([p, new Promise((r) => setTimeout(() => r("no answer"), 2_000))]);
+
+      const invoke = (ipcMain as unknown as {
+        _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => Promise<void>>;
+      })._invokeHandlers;
+      const handled: Record<string, string> = {};
+      for (const [channel, fn] of invoke) {
+        const event = forged();
+        const answer = await settle(
+          new Promise<string>((resolve) => {
+            event._reply = (v: unknown) => resolve(`replied ${JSON.stringify(v)}`);
+            event._throw = (err: unknown) => resolve(`threw ${String((err as Error)?.message ?? err)}`);
+            void fn(event);
+          }),
+        );
+        handled[channel] = String(answer);
+      }
+      const listened: Record<string, { returnValue: unknown; touched: string[] }> = {};
+      for (const channel of ipcMain.eventNames()) {
+        if (typeof channel !== "string" || !channel.startsWith("ani-gui:")) continue;
+        const event = forged();
+        for (const fn of ipcMain.listeners(channel)) {
+          try {
+            // No arguments: a count reaching the active-downloads
+            // handler would make the app prompt before it quits.
+            (fn as (e: unknown) => void)(event);
+          } catch {
+            // A handler that ran and failed is recorded by `touched`.
+          }
+        }
+        listened[channel] = { returnValue: event.returnValue, touched: event.touched as string[] };
+      }
+      return { handled, listened };
+    });
+
+    const handledChannels = Object.keys(outcome.handled);
+    const listenedChannels = Object.keys(outcome.listened);
+    // Not vacuous: the bridge's channels are all there.
+    expect(handledChannels).toEqual(
+      expect.arrayContaining([
+        "ani-gui:pick-directory",
+        "ani-gui:pick-file",
+        "ani-gui:reveal-in-folder",
+        "ani-gui:account:open-oauth",
+        "ani-gui:account:cancel-oauth",
+        "ani-gui:account:set-token",
+        "ani-gui:account:clear-token",
+        "ani-gui:open-external",
+      ]),
+    );
+    expect(listenedChannels).toEqual(
+      expect.arrayContaining([
+        "ani-gui:window:minimize",
+        "ani-gui:window:toggle-maximize",
+        "ani-gui:window:close",
+        "ani-gui:window:is-maximized",
+        "ani-gui:active-downloads",
+        "ani-gui:read-config-locale",
+        "ani-gui:account:get-token",
+      ]),
+    );
+    for (const channel of handledChannels) {
+      expect(outcome.handled[channel], channel).toMatch(/^threw .*refused/);
+    }
+    for (const channel of listenedChannels) {
+      expect(outcome.listened[channel].touched, channel).toEqual([]);
+    }
+    // The sync channels answer with a refusal, never a token or a locale.
+    expect(outcome.listened["ani-gui:account:get-token"].returnValue).toEqual({
+      ok: false,
+      kind: "refused",
+    });
+    expect(outcome.listened["ani-gui:read-config-locale"].returnValue).toBeNull();
+    expect(outcome.listened["ani-gui:window:is-maximized"].returnValue).toBe(false);
+    // Every refusal is logged, the async messages included.
+    await expect
+      .poll(() => listenedChannels.filter((ch) => !stderr.some((l) => l.includes(`[ipc] refused ${ch} `))))
+      .toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's own document still reaches the bridge", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await stubOpenExternal(app);
+    const answers = await page.evaluate(async () => {
+      const bridge = (window as unknown as {
+        aniGui: {
+          windowControls: { isMaximized(): boolean };
+          openExternal(url: string): Promise<boolean>;
+          account: { getToken(p: string): { ok: boolean; kind?: string } };
+        };
+      }).aniGui;
+      return {
+        maximized: typeof bridge.windowControls.isMaximized(),
+        opened: await bridge.openExternal("https://example.com/privacy"),
+        token: bridge.account.getToken("anilist"),
+      };
+    });
+    expect(answers.maximized).toBe("boolean");
+    expect(answers.opened).toBe(true);
+    // No token was stored in this fresh profile; what matters is that
+    // the handler ran rather than refusing.
+    expect(answers.token.kind).not.toBe("refused");
+    expect(await openedExternally(app)).toEqual(["https://example.com/privacy"]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("revealInFolder opens a directory and never a file", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { __openedPaths: string[] };
+      g.__openedPaths = [];
+      shell.openPath = async (p: string) => {
+        g.__openedPaths.push(p);
+        return "";
+      };
+    });
+    const file = droppedPage();
+    const dir = path.dirname(file);
+    const answers = await page.evaluate(
+      async ([f, d]) => {
+        const bridge = (window as unknown as {
+          aniGui: { revealInFolder(p: string): Promise<boolean> };
+        }).aniGui;
+        return { file: await bridge.revealInFolder(f), dir: await bridge.revealInFolder(d) };
+      },
+      [file, dir],
+    );
+    expect(answers).toEqual({ file: false, dir: true });
+    expect(
+      await app.evaluate(() => (globalThis as unknown as { __openedPaths: string[] }).__openedPaths),
+    ).toEqual([dir]);
+  } finally {
+    await app.close();
+  }
+});
