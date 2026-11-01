@@ -136,27 +136,30 @@ fn a_listing_heard_later_puts_the_stamp_where_it_reads_the_row() {
 
 #[test]
 fn a_listing_heard_earlier_landing_inside_a_later_one_s_repair_leaves_its_stamp() {
-    // Wherever the earlier listing's repair lands among the store reads
-    // the later one makes, the later listing's stamp stands: its repair
-    // may read the store again before it moves the stamp onto the
-    // history row's slot.
-    for read in 1..=2 {
-        let state = std::rc::Rc::new(state());
-        stamped(&state);
-        legacy_row(&state);
-        let (earlier, later) = one_after_the_other();
-        let inside = std::rc::Rc::clone(&state);
-        super::super::read_tap::before_read(read, move || {
-            repair(&inside, &listing_past_the_recap("13.5"), earlier);
-        });
-        repair(&state, &listing_past_the_recap("14"), later);
-        super::super::read_tap::clear();
-        assert_eq!(
-            display_stamp(&state, SHOW),
-            Some((15, "14".into())),
-            "landing before read {read}"
-        );
-    }
+    // The later listing's repair reads the store before it decides,
+    // under the store's locks; the earlier listing's repair lands just
+    // before that read. Its decision is made against the stamps as they
+    // stand under the locks, so the later listing's stamp stands. (A
+    // repair that read the store twice, deciding between the reads, let
+    // the earlier one land between its steps.)
+    let state = std::rc::Rc::new(state());
+    stamped(&state);
+    legacy_row(&state);
+    let (earlier, later) = one_after_the_other();
+    let inside = std::rc::Rc::clone(&state);
+    let landed = std::rc::Rc::new(std::cell::Cell::new(false));
+    let seen = std::rc::Rc::clone(&landed);
+    super::super::read_tap::before_read(1, move || {
+        repair(&inside, &listing_past_the_recap("13.5"), earlier);
+        seen.set(true);
+    });
+    repair(&state, &listing_past_the_recap("14"), later);
+    super::super::read_tap::clear();
+    assert!(
+        landed.get(),
+        "the earlier listing's repair landed inside the later one's"
+    );
+    assert_eq!(display_stamp(&state, SHOW), Some((15, "14".into())));
 }
 
 /// [`listing`] as a provider that stopped stitching lists it: the recap
