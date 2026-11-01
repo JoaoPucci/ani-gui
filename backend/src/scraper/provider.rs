@@ -119,8 +119,8 @@ pub struct BrowseHit {
 
 /// What a show's entry page says about it: the premiere year, the
 /// other names it lists for the show — its Japanese title and its
-/// synonyms, as written there — and the genres it files the show
-/// under.
+/// synonyms, as written there — the genres it files the show under,
+/// and the age rating it gives the show.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryPage {
     /// The premiere year the page names, when it names one.
@@ -129,6 +129,9 @@ pub struct EntryPage {
     pub names: Vec<String>,
     /// The genres the page lists, as written, in page order.
     pub genres: Vec<String>,
+    /// The age rating the page's own heading carries ("PG-13", "R+",
+    /// "Rx"), as written, when it carries one.
+    pub rating: Option<String>,
 }
 
 /// One episode row: the id the per-episode endpoints are keyed on
@@ -337,8 +340,10 @@ pub trait Provider: Send + Sync {
 
     /// The show's entry page as [`EntryPage`] reads it — the year
     /// [`Self::detail_year`] answers, the other names the page gives
-    /// the show and its genres — from the one request. A provider
-    /// whose pages carry neither answers the year alone.
+    /// the show, its genres and its rating — from the one request. A
+    /// provider whose pages carry none of them answers the year alone,
+    /// and the pick then takes none of its listings: a page that lists
+    /// no genre and no rating is never read as safe.
     ///
     /// # Errors
     /// As [`Self::detail_year`].
