@@ -120,8 +120,12 @@
 			<h2>{m.diagnostics_section_cache_reclaim()}</h2>
 			<p>{m.diagnostics_cache_reclaim_description()}</p>
 			<ul>
-				<li>{m.diagnostics_cache_reclaim_old({ count: cacheReclaim.oldRows })}</li>
-				<li>{m.diagnostics_cache_reclaim_expired({ count: cacheReclaim.expiredRows })}</li>
+				{#if cacheReclaim.oldRows > 0}
+					<li>{m.diagnostics_cache_reclaim_old({ count: cacheReclaim.oldRows })}</li>
+				{/if}
+				{#if cacheReclaim.expiredRows > 0}
+					<li>{m.diagnostics_cache_reclaim_expired({ count: cacheReclaim.expiredRows })}</li>
+				{/if}
 			</ul>
 		</section>
 	{/if}
