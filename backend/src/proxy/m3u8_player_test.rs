@@ -142,6 +142,23 @@ fn a_playlist_the_player_reads_as_media_is_rewritten_as_media() {
     );
 }
 
+/// hls.js reads a master's tags wherever in a line they begin: a line
+/// that resolves onto the proxy as a URI can still carry a rendition or
+/// a steering server after a `#`.
+#[test]
+fn a_tag_inside_a_uri_line_names_nothing_upstream() {
+    for tag in [
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=aud,NAME=e,DEFAULT=YES,AUTOSELECT=YES,URI=https://evil.example/a.m3u8",
+        "#EXT-X-CONTENT-STEERING:SERVER-URI=https://evil.example/s.json",
+    ] {
+        assert_contained(&format!(
+            "#EXTM3U\n\
+             #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"s\",NAME=\"x\na{tag}\n#\"\n\
+             #EXT-X-STREAM-INF:BANDWIDTH=1000000,AUDIO=\"aud\"\nv/index.m3u8\n"
+        ));
+    }
+}
+
 /// The route tells master from media by what the rewrite parses —
 /// after a variable a query parameter defines has been substituted —
 /// so a playlist the player reads as media is rewritten as media.

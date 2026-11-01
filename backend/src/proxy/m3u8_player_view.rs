@@ -19,7 +19,7 @@ pub(super) struct Named {
 }
 
 /// Every URI a player would read from `out`: each non-tag line, and
-/// each URI-naming attribute of each tag line.
+/// each URI-naming attribute of a tag wherever in a line it begins.
 pub(super) fn player_uris(out: &str) -> Vec<Named> {
     let mut found = Vec::new();
     for line in out.split(['\n', '\r', '\u{2028}', '\u{2029}']) {
@@ -32,9 +32,13 @@ pub(super) fn player_uris(out: &str) -> Vec<Named> {
                 line: line.to_owned(),
                 uri: trimmed.to_owned(),
             });
-            continue;
         }
-        let attrs = line.split_once(':').map_or("", |(_, rest)| rest);
+        // hls.js's master regexes are not anchored to a line's start:
+        // a tag anywhere in a line is read from where it begins.
+        let Some(tag) = line.find('#') else {
+            continue;
+        };
+        let attrs = line[tag..].split_once(':').map_or("", |(_, rest)| rest);
         for (name, value) in attribute_list(attrs) {
             let name = name.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
             if ["URI", "URL", "-LIST"].iter().any(|s| name.ends_with(s)) {
