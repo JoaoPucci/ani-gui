@@ -138,27 +138,27 @@
     "sha256": "04e3936a205fe88851f860b0f20e92c4b4eea6a476d10379ed48f4515f967b7d"
   },
   "kitsu-relations-10800.json": {
-    "source": "GET https://kitsu.io/api/edge/anime/10800/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",
-    "captured": "2026-10-17",
-    "size": 3444,
-    "sha256": "3e95b9f341766337cbe231b59a8363c5115d32a8df9cde98237c1dbd2f393289"
+    "source": "GET https://kitsu.app/api/edge/anime/10800/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount,startDate&fields[manga]=subtype,status&page[limit]=20, verbatim, with the fixture rescan's User-Agent",
+    "captured": "2026-10-28",
+    "size": 3569,
+    "sha256": "525c84ab052032bd43d94aa93783ba6383182e2dee9f3571d227ba86ca6e6313"
   },
   "kitsu-relations-13715.json": {
-    "source": "GET https://kitsu.io/api/edge/anime/13715/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",
-    "captured": "2026-10-17",
-    "size": 2054,
-    "sha256": "f3347fbe03afd19721b04645a75451ba62b58b2c0ee1d45be8cccc3b6c165f3a"
+    "source": "GET https://kitsu.app/api/edge/anime/13715/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount,startDate&fields[manga]=subtype,status&page[limit]=20, verbatim, with the fixture rescan's User-Agent",
+    "captured": "2026-10-28",
+    "size": 2117,
+    "sha256": "46acc379b4cbfacec2d57a7703228424d8aefa8abbfb9c8985d04c187a326b79"
   },
   "kitsu-relations-48677.json": {
-    "source": "GET https://kitsu.io/api/edge/anime/48677/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent: Shangri-La Frontier Season 2, which Kitsu relates to its upcoming TV sequel (49778, Shangri-La Frontier 3rd Season)",
-    "captured": "2026-10-17",
-    "size": 2852,
-    "sha256": "481b6a74f06081c2023d29f83f392e018eccad92bf9b34972dbe6fa3cb0c2845"
+    "source": "GET https://kitsu.app/api/edge/anime/48677/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount,startDate&fields[manga]=subtype,status&page[limit]=20, verbatim, with the fixture rescan's User-Agent: Shangri-La Frontier Season 2, which Kitsu relates to its upcoming TV sequel (49778, Shangri-La Frontier 3rd Season)",
+    "captured": "2026-10-28",
+    "size": 2946,
+    "sha256": "197c96300fc141ba1ee26e873184518e4910ce61847bc918f76c26e4b47fbfec"
   },
   "kitsu-relations-7881.json": {
-    "source": "GET https://kitsu.io/api/edge/anime/7881/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",
-    "captured": "2026-10-17",
-    "size": 3470,
-    "sha256": "0544614355e9616e3daf9c6e7288cecf372461de5fc067cabac8c408233dd129"
+    "source": "GET https://kitsu.app/api/edge/anime/7881/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount,startDate&fields[manga]=subtype,status&page[limit]=20, verbatim, with the fixture rescan's User-Agent",
+    "captured": "2026-10-28",
+    "size": 3595,
+    "sha256": "122c2fa5879b9b5d65b92fd532c65a7c2e4ba5537a3c7eefa5d6b784015f3d84"
   }
 }

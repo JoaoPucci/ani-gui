@@ -152,6 +152,7 @@ impl PlayArgs {
             version: self.version,
             stamps_beside,
             tail,
+            heard: None,
         }
     }
 }
@@ -358,12 +359,15 @@ where
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let request = args.native_request(
+    // Every listing the resolve picks is recorded, served or not.
+    let recorder = crate::commands::listing_tags::Recorder(state);
+    let mut request = args.native_request(
         quality,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
     );
+    request.heard = Some(&recorder);
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
     // that accepts connections but stalls every request must not
@@ -1323,7 +1327,9 @@ pub(crate) mod tests {
         // The track is held until after the check, so its deadline is all
         // that ends it; a check that waited on the track would never
         // return. On the real clock, so the healthy requests are answered
-        // as they would be: the stalled track alone makes the row dead.
+        // as they would be. The check must have asked for the stalled
+        // track: a deadline run out before it did would leave the row
+        // dead without the track having been tried.
         let live = tokio::time::timeout(
             // Only a guard against hanging the suite.
             std::time::Duration::from_secs(10),
@@ -1336,12 +1342,18 @@ pub(crate) mod tests {
         .await
         .expect("the check returned at the deadline, not after the stalled request");
         assert!(!live, "a track that does not answer in time is a dead row");
+        // Kept for whoever awaits it, so a request that came before
+        // resolves at once.
+        tokio::time::timeout(std::time::Duration::ZERO, stalled.asked())
+            .await
+            .expect("the check asked for the stalled track");
         // The deadline the check applies must be the one it is given. A
         // second check, its track held on a server of its own, runs on a
-        // clock paused once that track is held
-        // ([`crate::held::paused_once`]), so it returns at the deadline it
-        // applies. Its outcome is not read: the paused clock may end the
-        // healthy requests too.
+        // clock that stands still until that track is held
+        // ([`crate::held::frozen_until`]), so the deadline cannot run out
+        // before the check has asked for it, however slow the machine,
+        // and it returns at the deadline it applies. Its outcome is not
+        // read: the paused clock may end the healthy requests too.
         let stalling_again = wiremock::MockServer::start().await;
         let (hold_again, stalled_again) = crate::held::gate();
         wiremock::Mock::given(wiremock::matchers::method("GET"))
@@ -1353,7 +1365,7 @@ pub(crate) mod tests {
             .mount(&stalling_again)
             .await;
         let again = row(&stalling_again);
-        let _ = crate::held::paused_once(
+        let _ = crate::held::frozen_until(
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 crate::commands::play_cache::cached_row_is_live_within(&state, &again, deadline),

@@ -34,19 +34,25 @@ fn dest() -> BoxedStrategy<Dest> {
     .boxed()
 }
 
-/// An included anime: its id, its count, and whether it carries its
-/// attributes at all.
+/// An included anime: its id, its count, whether it carries its
+/// attributes at all, and its start: left out, null, or a day.
 fn node() -> BoxedStrategy<Node> {
     (
         0u8..5,
         proptest::option::of(0u32..30),
         prop::bool::weighted(0.9),
+        prop_oneof![
+            1 => Just(None),
+            1 => Just(Some(None)),
+            6 => Just(Some(Some("2020-01-01"))),
+        ],
     )
         .boxed()
 }
 
-/// An included anime: its id, its count, whether it has attributes.
-type Node = (u8, Option<u32>, bool);
+/// An included anime: its id, its count, whether it has attributes, and
+/// its start (`None` left out, `Some(None)` null).
+type Node = (u8, Option<u32>, bool, Option<Option<&'static str>>);
 
 /// A page: its relations' destinations, its included anime, its count.
 type Page = (Vec<Dest>, Vec<Node>, Option<usize>);
@@ -77,9 +83,14 @@ fn body(dests: &[Dest], nodes: &[Node], count: Option<usize>) -> Vec<u8> {
         .collect();
     let included: Vec<Value> = nodes
         .iter()
-        .map(|(id, count, attrs)| {
+        .map(|(id, count, attrs, start)| {
             if *attrs {
-                json!({ "type": "anime", "id": id.to_string(), "attributes": { "subtype": "TV", "status": "finished", "episodeCount": count } })
+                let mut attributes =
+                    json!({ "subtype": "TV", "status": "finished", "episodeCount": count });
+                if let Some(start) = start {
+                    attributes["startDate"] = json!(start);
+                }
+                json!({ "type": "anime", "id": id.to_string(), "attributes": attributes })
             } else {
                 json!({ "type": "anime", "id": id.to_string() })
             }
@@ -94,11 +105,11 @@ fn body(dests: &[Dest], nodes: &[Node], count: Option<usize>) -> Vec<u8> {
 
 /// The relations a page is specified to read as, `(id, count)` in order,
 /// or `None` where it is no answer: a relation with no destination, or
-/// one without its data key, or one whose destination is not included;
-/// or an included entry without attributes. A null destination is no
-/// relation.
+/// one without its data key, or one whose destination is not included,
+/// or is an anime that leaves out the day it started; or an included
+/// entry without attributes. A null destination is no relation.
 fn model(dests: &[Dest], nodes: &[Node]) -> Option<Vec<(String, Option<u32>)>> {
-    if nodes.iter().any(|(_, _, attrs)| !attrs) {
+    if nodes.iter().any(|(_, _, attrs, _)| !attrs) {
         return None;
     }
     let mut out = Vec::new();
@@ -107,7 +118,8 @@ fn model(dests: &[Dest], nodes: &[Node]) -> Option<Vec<(String, Option<u32>)>> {
             Dest::Absent | Dest::NoData => return None,
             Dest::Null => {}
             Dest::To(id) => {
-                let (_, count, _) = nodes.iter().find(|(n, _, _)| n == id)?;
+                let (_, count, _, start) = nodes.iter().find(|(n, _, _, _)| n == id)?;
+                start.as_ref()?;
                 out.push((id.to_string(), *count));
             }
         }
