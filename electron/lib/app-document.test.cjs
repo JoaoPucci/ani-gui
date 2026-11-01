@@ -202,7 +202,7 @@ test("property: a web URL is either the dev server itself or goes out — never 
 
 test("property: the verdict never throws and is always one of the three answers", () => {
   fc.assert(
-    fc.property(fc.oneof(fc.string(), fc.fullUnicodeString(), fc.webUrl()), (s) => {
+    fc.property(fc.oneof(fc.string(), fc.string({ unit: "binary" }), fc.webUrl()), (s) => {
       for (const app of [PACKAGED, DEV]) {
         assert.ok(["allow", "external", "deny"].includes(navigationVerdict(s, app)));
         assert.ok(["external", "deny"].includes(windowOpenVerdict(s, app)));
