@@ -298,4 +298,20 @@ describe('LinkSession', () => {
 		expect(f.pages).toEqual([[RIGHT.id, null]]);
 		expect(f.refreshed).toBe(0);
 	});
+
+	it('leaves the card’s rows to the confirmation when the history cannot be read on opening', async () => {
+		const link = vi.fn(fake().deps.link);
+		const f = fake({ link });
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		const history = f.deps.history;
+		f.deps.history = async () => Promise.reject(new Error('down'));
+		await s.start();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(s.group).toBeNull();
+		f.deps.history = history;
+		s.choose(s.candidates![0]);
+		await s.confirm();
+		expect(link).toHaveBeenCalledWith([CARD.id], GUESS);
+	});
 });
