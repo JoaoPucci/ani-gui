@@ -1609,13 +1609,15 @@ mod tests {
         // through. Nothing in a row says which pick wrote it.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:gintama-silver-soul-arc-second-half-war-1157";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v3:{key}"),
-            "14095",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v3:{key}"),
+                "14095",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1628,13 +1630,15 @@ mod tests {
         // wrote it.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:dragon-ball-super-1101";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v4:{key}"),
-            "50496",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v4:{key}"),
+                "50496",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1647,13 +1651,15 @@ mod tests {
         // a title the cross-cour guard has no cour to refuse on.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:show-1";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v5:{key}"),
-            "50600",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v5:{key}"),
+                "50600",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1666,13 +1672,15 @@ mod tests {
         // refuse on.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:girlfriend-girlfriend-560";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v6:{key}"),
-            "45637",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v6:{key}"),
+                "45637",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1684,13 +1692,15 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         let key =
             "hianime:muttsuri-dosukebe-tsuyu-gibo-shimai-no-honshitsu-minuite-sex-sanmai-2256";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v8:{key}"),
-            "8404",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v8:{key}"),
+                "8404",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1701,13 +1711,15 @@ mod tests {
         // title the cross-cour guard has no cour to refuse on.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:medaka-box-abnormal-4606";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v7:{key}"),
-            "6067",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v7:{key}"),
+                "6067",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 

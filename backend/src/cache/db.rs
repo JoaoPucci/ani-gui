@@ -150,7 +150,10 @@ pub fn open_in_memory() -> Result<SqlitePool> {
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_get(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let row: Option<(String, i64, i64)> = conn
         .query_row(
@@ -197,7 +200,10 @@ pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_put(pool: &SqlitePool, key: &str, body: &str, ttl_seconds: u64) -> Result<()> {
+    #[cfg(test)]
+    super::families::check(key);
     #[cfg(test)]
     super::put_observer::saw(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;

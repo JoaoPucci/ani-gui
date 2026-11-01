@@ -332,6 +332,7 @@ pub fn cache_key_for_version(
 /// # Errors
 /// SQLite errors propagate; deserialization failures are treated as
 /// misses (we don't want a corrupt row to permanently mask a show).
+#[cfg_attr(test, track_caller)]
 pub fn get(pool: &SqlitePool, key: &str) -> crate::error::Result<Option<CachedResolution>> {
     match meta_cache_get(pool, key)? {
         None => Ok(None),
@@ -343,6 +344,7 @@ pub fn get(pool: &SqlitePool, key: &str) -> crate::error::Result<Option<CachedRe
 /// from SQLite or serialization are logged at warn level by the
 /// caller; we don't propagate (a cache write failure shouldn't fail
 /// the play).
+#[cfg_attr(test, track_caller)]
 pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
     let Ok(body) = serde_json::to_string(value) else {
         return;
