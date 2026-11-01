@@ -34,6 +34,15 @@ const REDUCED_MOTION_SWITCH = "force-prefers-reduced-motion";
 // wedged, and is all such a launch can lose.
 const READ_TIMEOUT_MS = 500;
 
+// The wall clock the budget runs on, unless the caller supplies one.
+// Wrapped in arrows: a bare `setTimeout` lifted onto an object throws
+// "Illegal invocation" in Chromium.
+const SYSTEM_CLOCK = {
+  now: () => Date.now(),
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (id) => clearTimeout(id),
+};
+
 const PORTAL = {
   service: "org.freedesktop.portal.Desktop",
   path: "/org/freedesktop/portal/desktop",
@@ -118,8 +127,8 @@ function readerEnv(env) {
 }
 
 /** Run `reader` within what is left of the budget; `null` on failure. */
-async function ask(reader, parse, exec, deadline, env) {
-  const remaining = deadline - Date.now();
+async function ask(reader, parse, { exec, deadline, env, clock }) {
+  const remaining = deadline - clock.now();
   // Also the guard against a zero timeout, which execFile reads as none.
   if (remaining <= 0) return null;
   try {
@@ -129,33 +138,34 @@ async function ask(reader, parse, exec, deadline, env) {
   }
 }
 
-async function readChain(exec, deadline, env) {
+async function readChain(run) {
   for (const reader of PORTAL_READERS) {
-    const answer = await ask(reader, parsePortalAnswer, exec, deadline, env);
+    const answer = await ask(reader, parsePortalAnswer, run);
     if (answer !== null) return answer;
   }
-  return ask(GSETTINGS_READER, parseGsettingsAnswer, exec, deadline, env);
+  return ask(GSETTINGS_READER, parseGsettingsAnswer, run);
 }
 
 /**
  * The desktop's reduced-motion preference: "reduce", "no-preference",
  * or `null` when nothing answered in time. Never rejects, and settles
- * within `timeoutMs` whatever the readers do.
+ * within `timeoutMs` of `clock` whatever the readers do.
  */
 function readReducedMotion({
   platform,
   exec,
   timeoutMs = READ_TIMEOUT_MS,
   env = process.env,
+  clock = SYSTEM_CLOCK,
 }) {
   if (platform !== "linux") return Promise.resolve(null);
-  const deadline = Date.now() + timeoutMs;
+  const deadline = clock.now() + timeoutMs;
   let timer;
   const expiry = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(null), timeoutMs);
+    timer = clock.setTimeout(() => resolve(null), timeoutMs);
   });
-  const read = readChain(exec, deadline, readerEnv(env)).catch(() => null);
-  return Promise.race([read, expiry]).finally(() => clearTimeout(timer));
+  const read = readChain({ exec, deadline, env: readerEnv(env), clock }).catch(() => null);
+  return Promise.race([read, expiry]).finally(() => clock.clearTimeout(timer));
 }
 
 /**
@@ -171,8 +181,9 @@ async function applyReducedMotion({
   appendSwitch,
   timeoutMs = READ_TIMEOUT_MS,
   env = process.env,
+  clock = SYSTEM_CLOCK,
 }) {
-  const answer = await readReducedMotion({ platform, exec, timeoutMs, env });
+  const answer = await readReducedMotion({ platform, exec, timeoutMs, env, clock });
   if (!forcesReducedMotion(answer)) return false;
   try {
     appendSwitch(REDUCED_MOTION_SWITCH);
