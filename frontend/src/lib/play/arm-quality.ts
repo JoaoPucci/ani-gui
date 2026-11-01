@@ -26,7 +26,7 @@ import {
 	readError,
 	readInitSegment
 } from './quality-report';
-import { pickMove } from './quality-choice';
+import { choosable, pickMove } from './quality-choice';
 import { afterError, engineMover, levelsUpdated, whenSettled } from './quality-sink';
 import { RemapWindow } from './quality-remap';
 import { QualityTrack } from './quality-track';
@@ -166,7 +166,7 @@ export function armQuality(input: {
 
 	return {
 		pick(choice) {
-			const g = governor;
+			const g = choosable(governor, track);
 			if (!g) return;
 			// A choice already in force still switches at once when the
 			// level playing is another — segments from before a climb.
