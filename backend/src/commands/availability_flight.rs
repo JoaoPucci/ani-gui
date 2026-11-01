@@ -55,8 +55,10 @@
 //!   turn, as a lookup whose walk panicked always did.
 //!
 //! The walk is the first caller's: its arguments, and the AniList
-//! class it was asked in. A caller joining it takes the verdict the
-//! first caller's arguments reached. Every surface that asks sends the
+//! class it was asked in — except that a walk started for interactive
+//! callers (see **Older than the row**) runs at interactive priority,
+//! at the scraper gate and at AniList alike. A caller joining it takes
+//! the verdict the first caller's arguments reached. Every surface that asks sends the
 //! same arguments for a show — its titles, count, year and subtype,
 //! from the same Kitsu entry — and the verdict is written to the one
 //! row whoever asked.
@@ -194,13 +196,11 @@ impl AvailabilityFlights {
         table.next_id += 1;
         let id = table.next_id;
         let (slot, heard) = watch::channel(Slot::Walking);
-        let walk = tokio::spawn(crate::meta::anilist_gate::in_callers_class(walk(
-            Arc::clone(state),
-            args,
-            self.clone(),
-            key.to_owned(),
-            id,
-        )))
+        let class = walk_class(interactive, crate::meta::anilist_gate::callers_class());
+        let walk = tokio::spawn(crate::meta::anilist_gate::in_class(
+            class,
+            walk(Arc::clone(state), args, self.clone(), key.to_owned(), id),
+        ))
         .abort_handle();
         table.flights.insert(
             key.to_owned(),
@@ -274,7 +274,7 @@ impl Drop for Waiting {
 
 #[path = "availability_flight_rule.rs"]
 mod rule;
-pub(crate) use rule::{joins, outlives_its_callers, shared_row, starts_interactive};
+pub(crate) use rule::{joins, outlives_its_callers, shared_row, starts_interactive, walk_class};
 
 #[path = "availability_flight_walk.rs"]
 mod walk;

@@ -42,8 +42,11 @@ pub(crate) fn starts_interactive(
 /// interactive walk, whoever started it, and the starting caller's
 /// otherwise.
 pub(crate) fn walk_class(interactive: bool, caller: Class) -> Class {
-    let _ = interactive;
-    caller
+    if interactive {
+        Class::Interactive
+    } else {
+        caller
+    }
 }
 
 #[cfg(test)]
