@@ -3,8 +3,8 @@
 //! keeps as opaque could name something hls.js fetches, so the rewrite
 //! reads its input and checks its output the way hls.js does:
 //!
-//! - [`super::m3u8_lines`] ends lines where hls.js does, before the
-//!   parse, and tells a media playlist by hls.js's own test.
+//! - [`super::m3u8_lines`] turns U+2028 and U+2029 into newlines
+//!   before the parse, and tells a media playlist by hls.js's own test.
 //! - [`keep_player_view_on_proxy`] reads the rewritten manifest's lines
 //!   as hls.js ends them, `\r` included. A line not starting `#` must
 //!   be on the proxy (or, in a media playlist, an inline segment) and
@@ -14,8 +14,10 @@
 //!   attribute list, where a name is trimmed (`URI ="…"` is its `URI`);
 //!   one in which any attribute whose name ends in `URI`, `URL` or
 //!   `-LIST` would resolve off the proxy is dropped. An `#EXTINF` line
-//!   loses its title instead, so the segment after it keeps its
-//!   duration.
+//!   must also read as a number followed by a comma or nothing, since
+//!   hls.js reads anything else after the number as a URI. An
+//!   `#EXTINF` line that fails either check is rewritten to its number
+//!   alone, so the segment after it keeps its duration.
 //!
 //! What may stay off the proxy is what [`super::m3u8_reach`] keeps as
 //! written: an inline key, init segment, session key or session data.
