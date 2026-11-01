@@ -9,7 +9,7 @@
 // opening a new one, so the search page comes back as it was left.
 //
 // With the router mocked, the scenario plays SvelteKit as
-// history-entry-stamp.test.ts does.
+// history-entry-stamp.test.ts does, through ./session-history.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -17,6 +17,7 @@ import { mount, unmount, createRawSnippet, tick } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setPageState, setUrl } from './page-state.svelte';
+import { sessionHistory } from './session-history';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -47,26 +48,15 @@ let layout: ReturnType<typeof mount> | null = null;
 let historyWrites: ReturnType<typeof vi.spyOn>;
 let backPresses: ReturnType<typeof vi.spyOn>;
 
-/** Report a navigation to the layout as SvelteKit does once it lands.
- *  `state` is what SvelteKit restored onto `page.state`: on a back or
- *  forward press, the entry's own; on any other navigation, nothing. */
-function land(
-	type: 'link' | 'goto' | 'popstate' | 'enter',
-	from: string | null,
-	to: string,
-	state: App.PageState = {}
-) {
-	const url = new URL(to, 'http://127.0.0.1:31337');
-	setUrl(url.pathname, Object.fromEntries(url.searchParams));
-	setPageState(state);
-	for (const [callback] of vi.mocked(afterNavigate).mock.calls) {
-		(callback as (nav: unknown) => void)({
-			type,
-			from: from ? { url: new URL(from, 'http://127.0.0.1:31337') } : null,
-			to: { url },
-			willUnload: false
-		});
-	}
+/** Land a navigation the way SvelteKit and the browser do, through
+ *  the session-history model (./session-history): the launch, a link
+ *  that adds an entry, or a back press onto `to`. */
+function land(type: 'enter' | 'link' | 'popstate', to: string) {
+	if (type === 'enter') sessionHistory.open();
+	else if (type === 'link') sessionHistory.push('link', to);
+	else sessionHistory.back();
+	const landed = page.url.pathname + page.url.search;
+	if (landed !== to) throw new Error(`landed on ${landed}, not ${to}`);
 }
 
 const breadcrumb = () =>
@@ -86,6 +76,7 @@ beforeEach(async () => {
 	backPresses = vi.spyOn(window.history, 'back').mockImplementation(() => {});
 	vi.mocked(goto).mockClear();
 	server.use(...quietBackend);
+	sessionHistory.install('/');
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
@@ -101,6 +92,7 @@ afterEach(() => {
 	target.remove();
 	historyWrites.mockRestore();
 	backPresses.mockRestore();
+	sessionHistory.uninstall();
 	setPageState({});
 	setUrl('/search');
 	(window as unknown as { aniGui?: unknown }).aniGui = undefined;
@@ -120,7 +112,7 @@ function routeTrail(path: string) {
 /** A navigation lands, and the route it lands on sets its trail. */
 function go(...args: Parameters<typeof land>) {
 	land(...args);
-	routeTrail(args[2]);
+	routeTrail(args[1]);
 }
 
 const crumbs = () =>
@@ -134,9 +126,9 @@ const crumbLink = (label: string) =>
 
 describe('the topbar back chevron on a show opened from a search', () => {
 	it('names the search in the trail and steps back to it', async () => {
-		go('enter', null, '/');
-		go('link', '/', '/search?q=frieren');
-		go('link', '/search?q=frieren', '/anime/46474');
+		go('enter', '/');
+		go('link', '/search?q=frieren');
+		go('link', '/anime/46474');
 		await tick();
 		expect(crumbs()).toEqual([m.breadcrumb_home(), m.breadcrumb_search(), 'Frieren']);
 		expect(crumbLink(m.breadcrumb_search())?.getAttribute('href')).toBe('/search?q=frieren');
@@ -147,9 +139,9 @@ describe('the topbar back chevron on a show opened from a search', () => {
 	});
 
 	it('steps back from the Search crumb as well', async () => {
-		go('enter', null, '/');
-		go('link', '/', '/search?q=frieren');
-		go('link', '/search?q=frieren', '/anime/46474');
+		go('enter', '/');
+		go('link', '/search?q=frieren');
+		go('link', '/anime/46474');
 		await tick();
 		crumbLink(m.breadcrumb_search())!.click();
 		expect(backPresses).toHaveBeenCalledTimes(1);
@@ -157,15 +149,14 @@ describe('the topbar back chevron on a show opened from a search', () => {
 	});
 
 	it('still names the search after the reader comes back to the show from another page', async () => {
-		go('enter', null, '/');
-		go('link', '/', '/search?q=frieren');
-		go('link', '/search?q=frieren', '/anime/46474');
-		const showEntry = { ...page.state };
-		go('link', '/anime/46474', '/anime/52991');
+		go('enter', '/');
+		go('link', '/search?q=frieren');
+		go('link', '/anime/46474');
+		go('link', '/anime/52991');
 		await tick();
 		expect(crumbs()).toEqual([m.breadcrumb_home(), 'Frieren']);
 
-		go('popstate', '/anime/52991', '/anime/46474', showEntry);
+		go('popstate', '/anime/46474');
 		await tick();
 		expect(crumbs()).toEqual([m.breadcrumb_home(), m.breadcrumb_search(), 'Frieren']);
 		chevron().click();
@@ -173,8 +164,8 @@ describe('the topbar back chevron on a show opened from a search', () => {
 	});
 
 	it('opens Home, as before, from a show that was not opened from a search', async () => {
-		go('enter', null, '/');
-		go('link', '/', '/anime/46474');
+		go('enter', '/');
+		go('link', '/anime/46474');
 		await tick();
 		expect(crumbs()).toEqual([m.breadcrumb_home(), 'Frieren']);
 		chevron().click();
@@ -183,9 +174,9 @@ describe('the topbar back chevron on a show opened from a search', () => {
 	});
 
 	it('keeps the search page its own trail', async () => {
-		go('enter', null, '/');
-		go('link', '/', '/search?q=frieren');
-		go('link', '/search?q=frieren', '/search?q=himmel');
+		go('enter', '/');
+		go('link', '/search?q=frieren');
+		go('link', '/search?q=himmel');
 		await tick();
 		expect(crumbs()).toEqual([m.breadcrumb_home(), m.breadcrumb_search()]);
 	});
