@@ -239,3 +239,190 @@ fn an_own_numbered_row_on_a_repaired_stamps_episode_names_the_former_number() {
         })
     );
 }
+
+/// A listing of the stitched show with a real episode "2.5" after
+/// episode 2 — a row the listing the repair read did not carry.
+fn listing_with_a_real_two_point_five() -> Vec<crate::scraper::provider::EpisodeRef> {
+    let ep = |n: u32, tag: Option<&str>| crate::scraper::provider::EpisodeRef {
+        id: u64::from(n),
+        number: n,
+        number2: tag.map(str::to_string),
+        former_tag: None,
+        title: None,
+    };
+    vec![
+        ep(1, None),
+        ep(2, Some("1.5")),
+        ep(3, Some("2")),
+        ep(4, Some("2.5")),
+        ep(5, Some("3")),
+    ]
+}
+
+fn own_row(state: &AppState, ep_no: &str) {
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: ep_no.into(),
+            id: SHOW.into(),
+            title: "Stitched Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        },
+    )
+    .expect("row");
+}
+
+#[test]
+fn a_former_number_a_later_listing_gives_a_real_episode_is_not_named() {
+    // The recap went by "2.5" before the repair put it right to "1.5".
+    // A probe since fetched a listing with a real episode "2.5", and the
+    // viewer has a position kept for it. Named as the recap's former
+    // number, "2.5" would have that position moved under "1.5", or
+    // dropped where "1.5" has one of its own.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    own_row(&state, "1.5");
+    crate::commands::numbering_offset::retag_from_listing(
+        &state,
+        SHOW,
+        &listing_with_a_real_two_point_five(),
+        None,
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: None,
+        })
+    );
+}
+
+#[test]
+fn a_legacy_row_s_former_number_a_later_listing_gives_a_real_episode_is_not_named() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    crate::commands::numbering_offset::retag_from_listing(
+        &state,
+        SHOW,
+        &listing_with_a_real_two_point_five(),
+        None,
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: None,
+        })
+    );
+}
+
+#[test]
+fn a_former_number_the_last_recorded_listing_gives_a_real_episode_is_not_named() {
+    // A walk recorded the show's listing, with a real "2.5", and then
+    // stopped before any stamp repair read it: its episode did not
+    // serve, or the probe's mode search found nothing. The kept former
+    // tag is still in the store, but the record says "2.5" is a real
+    // episode's number now, so it is not named.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    own_row(&state, "1.5");
+    crate::commands::listing_tags::put(
+        &state,
+        SHOW,
+        &["1.5".to_string(), "2.5".to_string()],
+        crate::commands::listing_tags::Begun::now().picked(),
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: None,
+        })
+    );
+}
+
+#[test]
+fn a_former_number_the_last_recorded_listing_leaves_free_is_named() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    seed_former_recap_row(&state);
+    repair(&state);
+    own_row(&state, "1.5");
+    crate::commands::listing_tags::put(
+        &state,
+        SHOW,
+        &["1.5".to_string()],
+        crate::commands::listing_tags::Begun::now().picked(),
+    );
+    assert_eq!(
+        history_number(&state, SHOW).expect("read"),
+        Some(HistoryNumber {
+            ep_no: "1.5".into(),
+            former_ep_no: Some("2.5".into()),
+        })
+    );
+}
+
+mod former_number_props {
+    use super::former_number;
+    use crate::commands::numbering_offset::Numbering;
+    use proptest::prelude::*;
+
+    fn tag() -> impl Strategy<Value = String> {
+        (0u32..30, prop::bool::ANY).prop_map(|(n, half)| {
+            if half {
+                format!("{n}.5")
+            } else {
+                n.to_string()
+            }
+        })
+    }
+
+    proptest! {
+        /// Whatever the store's stamp and former tag, the row's number
+        /// and the recorded tags: with a record, the row names exactly
+        /// the former number it names with none, unless the record
+        /// carries it; and with no record, it names what the store
+        /// alone gives.
+        #[test]
+        fn a_recorded_listing_withholds_exactly_the_former_numbers_it_carries(
+            offset in 0u32..3,
+            slot in 1u32..20,
+            now in tag(),
+            former in tag(),
+            other_row in prop::option::of(tag()),
+            recorded in prop::option::of((prop::collection::vec(tag(), 0..6), prop::bool::ANY)),
+        ) {
+            use crate::commands::numbering_offset::kitsu_ep_no;
+            let numbering = Numbering::from_body(&format!(
+                "s\t{offset}\t{slot}\t{now}\t{slot}\t{former}\n"
+            ));
+            // The row is the stamp's episode unless another is drawn,
+            // and the record carries the former number when drawn so.
+            let ep_no = other_row.unwrap_or_else(|| kitsu_ep_no(&now, offset));
+            let recorded = recorded.map(|(mut tags, with_former)| {
+                if with_former {
+                    tags.push(kitsu_ep_no(&former, offset));
+                }
+                tags
+            });
+            let alone = former_number(&numbering, "s", &ep_no, None);
+            let got = former_number(&numbering, "s", &ep_no, recorded.as_deref());
+            let carried = |f: &str| recorded.as_ref().is_some_and(|t| {
+                crate::commands::play_native_merge::carries_tag(t, f)
+            });
+            match &alone {
+                Some(f) if carried(f) => prop_assert_eq!(got, None),
+                _ => prop_assert_eq!(got, alone),
+            }
+        }
+    }
+}
