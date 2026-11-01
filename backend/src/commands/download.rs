@@ -725,9 +725,11 @@ pub(crate) async fn publish_without_links(
     }
 }
 
-/// How long the sidecar phase may take as a whole. A subtitle file is
-/// kilobytes and the tracks are fetched together, so a minute is
-/// generous for all of them at once; the proxy client would otherwise
+/// How long the sidecar phase may take as a whole, for a listing of
+/// sixteen tracks; a longer one adds to it
+/// ([`super::download_pacing::sidecar_phase_deadline`]). A subtitle
+/// file is kilobytes and the tracks are fetched together, so a minute
+/// is generous for sixteen at once; the proxy client would otherwise
 /// let each one stall for its own two minutes, one after another,
 /// after the media tool had already finished under its hour. A CDN
 /// that has not answered in a minute is stalling, and the deadline

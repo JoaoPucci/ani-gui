@@ -111,9 +111,9 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
     // nothing the transport fetches, so such a row would only ride
     // into the proxy, the hand-offs and the cache row as a track that
     // never loads. A source longer than any a CDN signs is dropped
-    // the same way ([`SUBTITLE_URL_CAP`]): the hand-offs put every
-    // track URL on the player's command line, and one such row
-    // would fail the hand-off for an episode whose stream is fine.
+    // the same way ([`SUBTITLE_URL_CAP`]): the hand-offs put track
+    // URLs on the player's command line, and one such row would take
+    // the room of several others there.
     Ok(EmbedPayload {
         src: wire.src,
         subtitles: wire

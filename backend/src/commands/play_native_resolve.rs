@@ -445,16 +445,16 @@ where
     })
 }
 
-/// The tracks of a listing the resolve carries: the first
+/// The tracks of a listing the resolve carries: each file once — a
+/// file listed twice is kept at its first place, a default flag on
+/// either copy kept with it — and at most
 /// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
-/// in listing order, with one exception — a default track the listing
-/// put past the cap takes the last kept slot, so the provider's own
-/// choice is never dropped and no more than one track moves. A
-/// listing that fits is kept as it is. Applied once, in the episode
-/// step every resolve goes through, so every projection of the
-/// resolve — and the range download, which resolves its episodes
-/// through the same step — shares the bound instead of each
-/// guarding its own.
+/// of them, the user's most wanted when the listing is longer
+/// ([`crate::scraper::track_preference::most_wanted_within`]), kept in
+/// the listing's order. Applied once, in the episode step every
+/// resolve goes through, so every projection of the resolve — and the
+/// range download, which resolves its episodes through the same step —
+/// shares the bound instead of each guarding its own.
 #[must_use]
 pub(crate) fn tracks_within_cap(tracks: Vec<SubtitleTrack>, locale: &str) -> Vec<SubtitleTrack> {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
@@ -470,9 +470,24 @@ pub(crate) fn tracks_within_cap(tracks: Vec<SubtitleTrack>, locale: &str) -> Vec
     kept
 }
 
-/// The listing as the cut takes it.
+/// The listing with each file once, at its first place; a default flag
+/// on a later copy moves to the copy kept. Indexed, so a listing padded
+/// to thousands of copies — what the cap after it refuses — costs one
+/// pass.
 fn each_file_once(tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
-    tracks
+    let mut at: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::with_capacity(tracks.len());
+    let mut kept: Vec<SubtitleTrack> = Vec::with_capacity(tracks.len());
+    for track in tracks {
+        match at.get(&track.url) {
+            Some(&i) => kept[i].default |= track.default,
+            None => {
+                at.insert(track.url.clone(), kept.len());
+                kept.push(track);
+            }
+        }
+    }
+    kept
 }
 
 #[cfg(test)]
