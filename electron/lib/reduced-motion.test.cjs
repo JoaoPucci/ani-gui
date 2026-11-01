@@ -96,7 +96,7 @@ test("the portal is asked for org.freedesktop.appearance reduced-motion", async 
   ]);
 });
 
-test("without busctl the portal is read through gdbus", async () => {
+test("when busctl gives no answer the portal is asked again through gdbus", async () => {
   const { result, appended, calls } = await apply({ gdbus: "(<uint32 1>,)\n" });
   assert.equal(result, true);
   assert.deepEqual(appended, ["force-prefers-reduced-motion"]);
@@ -146,7 +146,7 @@ test("when every reader fails, nothing is forced", async () => {
   );
 });
 
-test("a reader that never returns costs no more than the timeout", async () => {
+test("a reader that never returns costs no more than the timeout", { timeout: 5000 }, async () => {
   const started = Date.now();
   const { result, appended } = await apply(
     { busctl: HANG, gdbus: HANG, gsettings: HANG },
@@ -158,14 +158,58 @@ test("a reader that never returns costs no more than the timeout", async () => {
   assert.ok(elapsed < 500, `took ${elapsed} ms against a 50 ms budget`);
 });
 
-test("each reader is handed the remaining budget as its own timeout", async () => {
-  const { calls } = await apply({}, { timeoutMs: 300 });
-  for (const call of calls) {
-    assert.ok(call.options.timeoutMs > 0 && call.options.timeoutMs <= 300);
-  }
+test("each reader is handed what is left of the budget as its own timeout", async () => {
+  const calls = [];
+  const exec = (cmd, _args, options) => {
+    calls.push({ cmd, options });
+    // The first reader spends a measurable slice of the budget.
+    return new Promise((_resolve, reject) => {
+      setTimeout(() => reject(new Error("failed")), cmd === "busctl" ? 80 : 0);
+    });
+  };
+  await applyReducedMotion({
+    platform: "linux",
+    exec,
+    appendSwitch: () => {},
+    timeoutMs: 300,
+  });
+  assert.equal(calls[0].options.timeoutMs, 300);
+  assert.ok(calls[1].options.timeoutMs > 0);
+  assert.ok(
+    calls[1].options.timeoutMs <= 300 - 70,
+    `gdbus got ${calls[1].options.timeoutMs} ms after busctl spent ~80`,
+  );
 });
 
-test("a reader that answers after the deadline is not acted on", async () => {
+test("no reader is started once the budget is spent", { timeout: 5000 }, async () => {
+  const calls = [];
+  const exec = (cmd) => {
+    calls.push(cmd);
+    // busctl fails just after the deadline: what follows must not run.
+    return new Promise((_resolve, reject) => {
+      setTimeout(() => reject(new Error("failed")), 60);
+    });
+  };
+  const result = await applyReducedMotion({
+    platform: "linux",
+    exec,
+    appendSwitch: () => {},
+    timeoutMs: 30,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(result, false);
+  assert.deepEqual(calls, ["busctl"]);
+});
+
+test("a read that answers early leaves no timer behind", async () => {
+  const timers = () =>
+    process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+  const before = timers();
+  await apply(PORTAL_REDUCE, { timeoutMs: 10_000 });
+  assert.equal(timers(), before);
+});
+
+test("a reader that answers after the deadline is not acted on", { timeout: 5000 }, async () => {
   const appended = [];
   let release;
   const late = new Promise((resolve) => {
@@ -303,7 +347,7 @@ test("execText rejects a missing command", async () => {
   await assert.rejects(execText("ani-gui-no-such-command", [], { timeoutMs: 5000 }));
 });
 
-test("execText kills a command that outlives its timeout", async () => {
+test("execText kills a command that outlives its timeout", { timeout: 5000 }, async () => {
   const started = Date.now();
   await assert.rejects(
     execText(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { timeoutMs: 100 }),
