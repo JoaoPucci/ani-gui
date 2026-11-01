@@ -63,15 +63,52 @@ export async function playLottie(
 	};
 }
 
-/** The overlay's animation across showings; placeholder signature. */
+/** The loader overlay's animation across its showings. */
 export interface LoaderAnimation {
+	/** The overlay is up with its animation box `container`. */
 	show(container: Element): void;
+	/** The overlay is gone. */
 	hide(): void;
 }
 
+/**
+ * Holds at most one player, in the box the overlay last showed. The
+ * runtime loads lazily, so the overlay can be hidden, or shown again
+ * in a new box, while a load is on its way: a player that arrives for
+ * a box no longer shown is torn down. One load is in flight per box.
+ * A load that fails leaves the overlay without its animation, which is
+ * decoration; the overlay still covers the page and shows its caption.
+ */
 export function loaderAnimation(
 	load: (container: Element) => Promise<{ destroy(): void }>
 ): LoaderAnimation {
-	void load;
-	return { show() {}, hide() {} };
+	let wanted: Element | null = null;
+	let current: { container: Element; player: { destroy(): void } } | null = null;
+	let loading: Element | null = null;
+
+	const drop = () => {
+		current?.player.destroy();
+		current = null;
+	};
+
+	return {
+		show(container) {
+			wanted = container;
+			if (current?.container === container || loading === container) return;
+			drop();
+			loading = container;
+			load(container)
+				.catch(() => null)
+				.then((player) => {
+					if (loading === container) loading = null;
+					if (!player) return;
+					if (wanted !== container || current) player.destroy();
+					else current = { container, player };
+				});
+		},
+		hide() {
+			wanted = null;
+			drop();
+		}
+	};
 }
