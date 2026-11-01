@@ -1,7 +1,7 @@
 /**
- * Pure helpers for the home hero's auto-rotation timer. The
- * component owns the `setInterval` itself + the reactive index; this
- * module owns the rules.
+ * The home hero's auto-rotation: its rules and the interval that
+ * applies them. The component owns only the reactive index and the
+ * conditions it reads.
  *
  * Why extract: the same `if (rotationLength <= 1) return; if (paused)
  * return; if (reducedMotion) return;` chain was hard to verify at a
@@ -33,19 +33,36 @@ export function shouldRunHeroRotation(opts: {
 	return true;
 }
 
-// Placeholder signatures; the behaviour lands with the green commit.
+/** How long each title holds the hero before the next. */
 export const HERO_ROTATE_MS = 6000;
 
+/** A repeating timer; `browserIntervalHost()` is the window's. */
 export interface IntervalHost {
 	every(cb: () => void, ms: number): number;
 	cancel(id: number): void;
 }
 
+/** The window's interval, wrapped in arrows: called as a method of
+ *  this object, `setInterval` throws "Illegal invocation" in Chromium. */
+export function browserIntervalHost(): IntervalHost {
+	return {
+		every: (cb, ms) => window.setInterval(cb, ms),
+		cancel: (id) => window.clearInterval(id)
+	};
+}
+
+/**
+ * Runs the rotation while `conditions` allow it: calls `advance` every
+ * `HERO_ROTATE_MS`. Returns the stop, which the page's effect hands
+ * back so a change of conditions (a pause, the motion preference)
+ * stops the interval and the next run decides again.
+ */
 export function startHeroRotation(
-	conditions: { rotationLength: number; paused: boolean; prefersReducedMotion: boolean },
+	conditions: Parameters<typeof shouldRunHeroRotation>[0],
 	advance: () => void,
-	host?: IntervalHost
+	host: IntervalHost = browserIntervalHost()
 ): () => void {
-	void [conditions, advance, host];
-	return () => {};
+	if (!shouldRunHeroRotation(conditions)) return () => {};
+	const id = host.every(advance, HERO_ROTATE_MS);
+	return () => host.cancel(id);
 }
