@@ -17,7 +17,10 @@ pub(crate) fn entry_disagrees(
     provider_cour: u32,
     detail: &KitsuAnimeRef,
 ) -> bool {
-    if super::cour_same_name::names_the_entry(show_title, entry_names(detail)) {
+    // The name is read as the cour is, without a legacy cache row's
+    // "(<N> episodes)" tail.
+    let name = super::cour::strip_trailing_episode_count(show_title.trim_end());
+    if super::cour_same_name::names_the_entry(name, entry_names(detail)) {
         return false;
     }
     detail

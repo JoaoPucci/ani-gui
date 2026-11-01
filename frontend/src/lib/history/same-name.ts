@@ -21,11 +21,12 @@ import type { KitsuAnimeRef } from '$lib/api';
 
 /** Every name the entry carries: canonical, localized, abbreviated. */
 export function entryNames(ref: KitsuAnimeRef): string[] {
+	// A stale cached shape can lack any of them, the canonical title too.
 	return [
 		ref.canonical_title,
 		...Object.values(ref.titles ?? {}),
 		...(ref.abbreviated_titles ?? [])
-	];
+	].filter((t): t is string => typeof t === 'string');
 }
 
 /** Whether `providerTitle` is one of `entryTitles`: the same words once
@@ -82,7 +83,7 @@ function splitCour(ws: string[]): { name: string; cour: number } | null {
 	if (ws.length < 3) return null;
 	const [a, b] = ws.slice(-2);
 	let cour: number | null = null;
-	if (COUR_KEYWORDS.has(a)) cour = /^\d+$/.test(b) ? Number(b) : null;
+	if (COUR_KEYWORDS.has(a)) cour = /^\d+$/.test(b) ? courNumber(b) : null;
 	else if (COUR_KEYWORDS.has(b)) cour = ordinal(a);
 	if (cour === null) return null;
 	return { name: ws.slice(0, -2).join(' '), cour };
@@ -94,5 +95,18 @@ function ordinal(word: string): number | null {
 	const spelled = ORDINAL_WORDS.indexOf(word);
 	if (spelled >= 0) return spelled + 1;
 	const m = /^(\d+)(st|nd|rd|th)$/.exec(word);
-	return m ? Number(m[1]) : null;
+	return m ? courNumber(m[1]) : null;
+}
+
+/** The largest cour the backend reads: it parses a cour as a `u32`. */
+const MAX_COUR = 0xffffffff;
+
+/** An ASCII digit run as a cour, as the backend reads it: none past
+ *  `u32`, which also keeps two numbers past double precision from
+ *  reading as one. */
+function courNumber(digits: string): number | null {
+	const trimmed = digits.replace(/^0+(?=\d)/, '');
+	if (trimmed.length > String(MAX_COUR).length) return null;
+	const n = Number(trimmed);
+	return n <= MAX_COUR ? n : null;
 }

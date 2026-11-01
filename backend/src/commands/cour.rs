@@ -96,7 +96,7 @@ pub fn hit_cour_disagrees(source_cour: Option<u32>, kitsu_slug: Option<&str>) ->
 /// Strip a trailing ` (<digits> episodes)` segment from a title, if
 /// present. Returns the original slice when no suffix matches so the
 /// caller can fall through transparently.
-fn strip_trailing_episode_count(s: &str) -> &str {
+pub(crate) fn strip_trailing_episode_count(s: &str) -> &str {
     let Some(inner) = s.strip_suffix(')') else {
         return s;
     };
