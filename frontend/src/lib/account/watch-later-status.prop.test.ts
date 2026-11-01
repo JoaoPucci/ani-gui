@@ -89,6 +89,22 @@ describe('nextAgeChange, by property', () => {
 			})
 		);
 	});
+
+	// The wait goes straight to setTimeout, which wraps a delay past
+	// 2^31 − 1 ms (about 24.8 days) to nearly nothing: the page would
+	// re-render in a loop for as long as a stamp sat that far ahead of
+	// the clock (a pull made while the clock ran fast, then corrected).
+	it('never asks for a wait a timer cannot hold, however far the clock is skewed', () => {
+		fc.assert(
+			fc.property(fc.integer({ min: -10 * YEAR, max: YEAR }), (e) => {
+				const at = NOW - e;
+				const wait = nextAgeChange(at, NOW);
+				expect(wait).toBeGreaterThan(0);
+				expect(wait).toBeLessThanOrEqual(2 ** 31 - 1);
+				expect(ageOf(at, NOW + wait - 1)).toEqual(ageOf(at, NOW));
+			})
+		);
+	});
 });
 
 describe('statusPhrases, by property', () => {

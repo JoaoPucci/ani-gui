@@ -90,6 +90,10 @@ describe('nextAgeChange', () => {
 	it('waits out a skewed stamp before the first minute starts', () => {
 		expect(nextAgeChange(NOW + 5 * MIN, NOW)).toBe(6 * MIN);
 	});
+
+	it('checks back within a day on a stamp far ahead of the clock', () => {
+		expect(nextAgeChange(NOW + 40 * DAY, NOW)).toBe(DAY);
+	});
 });
 
 describe('statusLabel', () => {
