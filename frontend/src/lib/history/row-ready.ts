@@ -13,7 +13,14 @@ export interface ContinueRowReadyDeps {
 	/** IPC wrapper for `/api/kitsu/episodes/<id>?page=N`. Factored out
 	 *  so tests can supply a synchronous stub instead of mocking the
 	 *  api module. */
-	fetchKitsuEpisodes: (kitsuId: string, page: number) => Promise<KitsuEpisode[]>;
+	fetchKitsuEpisodes: (
+		kitsuId: string,
+		page: number,
+		opts?: { onRefill?: (eps: KitsuEpisode[]) => void; signal?: AbortSignal }
+	) => Promise<KitsuEpisode[]>;
+	/** Aborted when the page leaves: a refill that lands after it is
+	 *  not fetched ($lib/refill/refill). */
+	signal?: AbortSignal;
 	/** Setters for the three pieces of page state the row owns. The
 	 *  page side provides one-line Svelte reassignments
 	 *  (`historyMatches = { ...historyMatches, [id]: m }` and friends)

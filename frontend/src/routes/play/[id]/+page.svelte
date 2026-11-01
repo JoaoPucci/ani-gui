@@ -121,6 +121,7 @@
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
+	import { refillEpisodes } from '$lib/refill/apply';
 	import { formatTime, progressLabel, skipLabel } from '$lib/play/format';
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
@@ -1420,11 +1421,23 @@
 		return out;
 	}
 
+	// What says the page has gone: a refill landing after it is not
+	// fetched ($lib/refill/refill).
+	const refills = new AbortController();
+	onDestroy(() => refills.abort());
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refills.signal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				rawWindowed = refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}

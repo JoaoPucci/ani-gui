@@ -20,6 +20,7 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -676,11 +677,22 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone: a refill landing
+	// after it is not fetched ($lib/refill/refill).
+	let refillSignal: AbortSignal | undefined;
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refillSignal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				rawWindowed = refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -1131,7 +1143,17 @@
 		resumeEntry = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const detailServed = kitsuAnimeDetail(currentId);
+		const refills = new AbortController();
+		refillSignal = refills.signal;
+		const detailServed = kitsuAnimeDetail(currentId, {
+			signal: refills.signal,
+			// A banner AniList's pacing held back, put on the hero once
+			// it lands.
+			onRefill: (fresh) => {
+				const images = refilledImages(detail, fresh);
+				if (images && detail && id === currentId) Object.assign(detail, images);
+			}
+		});
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
@@ -1195,6 +1217,7 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
+			refills.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});

@@ -15,6 +15,9 @@ pub(crate) enum Class {
     /// A fill the page renders without: thumbnails, banners, the
     /// airing seeds a warm writes.
     Background,
+    /// A background fill the gate held back, sent again once the pause
+    /// ended (`commands::held_fill`). Ranks after every other request.
+    Retry,
 }
 
 /// How a gate spends its host's budget.
@@ -57,16 +60,25 @@ impl Pace {
     pub(super) fn wait_for(&self, class: Class) -> Duration {
         match class {
             Class::Interactive => self.interactive_wait,
-            Class::Background => self.background_wait,
+            Class::Background | Class::Retry => self.background_wait,
         }
     }
 
-    fn capacity_for(&self, class: Class) -> usize {
+    pub(super) fn capacity_for(&self, class: Class) -> usize {
         match class {
             Class::Interactive => self.capacity,
             Class::Background => self.capacity.saturating_sub(self.reserve),
+            Class::Retry => return self.retry_capacity(),
         }
         .max(1)
+    }
+
+    /// Of the window, what a retry of a held-back fill may use: half
+    /// of the background share, so a retry never fills the window a
+    /// pause just emptied, and the fills of the page the user is on —
+    /// and the reserve beside them — keep the rest.
+    pub(crate) fn retry_capacity(&self) -> usize {
+        (self.capacity_for(Class::Background) / 2).max(1)
     }
 }
 
@@ -76,6 +88,9 @@ impl Pace {
 pub(crate) struct Ledger {
     sent: VecDeque<Instant>,
     not_before: Option<Instant>,
+    /// When the recent retries left, for the log: how many of the
+    /// window's requests were retries.
+    retries: VecDeque<Instant>,
 }
 
 impl Ledger {
@@ -84,6 +99,13 @@ impl Ledger {
     /// request, and late enough that the window ending then holds
     /// fewer requests than the class may send in it.
     pub(crate) fn ready_at(&self, pace: &Pace, class: Class, now: Instant) -> Instant {
+        self.ready_at_within(pace, pace.capacity_for(class), now)
+    }
+
+    /// [`Ledger::ready_at`] for a sender allowed `cap` requests in a
+    /// window.
+    pub(crate) fn ready_at_within(&self, pace: &Pace, cap: usize, now: Instant) -> Instant {
+        let cap = cap.max(1);
         let mut at = now;
         if let Some(not_before) = self.not_before {
             at = at.max(not_before);
@@ -91,11 +113,54 @@ impl Ledger {
         if let Some(&last) = self.sent.back() {
             at = at.max(last + pace.min_gap);
         }
-        let cap = pace.capacity_for(class);
         if self.sent.len() >= cap {
             at = at.max(self.sent[self.sent.len() - cap] + pace.window);
         }
         at
+    }
+
+    /// How many of the requests sent are still counted in the window
+    /// that ends at `now`.
+    pub(crate) fn in_window(&self, pace: &Pace, now: Instant) -> usize {
+        self.sent.iter().filter(|&&s| s + pace.window > now).count()
+    }
+
+    /// A retry left at `at`, besides [`Ledger::record_send`].
+    pub(crate) fn record_retry(&mut self, pace: &Pace, at: Instant) {
+        self.retries.push_back(at);
+        while self.retries.len() > pace.capacity.max(1) {
+            self.retries.pop_front();
+        }
+    }
+
+    /// [`Ledger::ready_at`] as it would be had no retry been sent: a
+    /// request for which this is earlier waited behind a retry.
+    pub(crate) fn ready_at_without_retries(
+        &self,
+        pace: &Pace,
+        class: Class,
+        now: Instant,
+    ) -> Instant {
+        let mut sent = self.sent.clone();
+        for r in &self.retries {
+            if let Some(i) = sent.iter().position(|s| s == r) {
+                sent.remove(i);
+            }
+        }
+        let other = Ledger {
+            sent,
+            not_before: self.not_before,
+            retries: VecDeque::new(),
+        };
+        other.ready_at(pace, class, now)
+    }
+
+    /// How many retries left less than a window before `now`.
+    pub(crate) fn retries_in_window(&self, pace: &Pace, now: Instant) -> usize {
+        self.retries
+            .iter()
+            .filter(|&&s| s + pace.window > now)
+            .count()
     }
 
     /// A request left at `at`. Only the last `capacity` sends can bound
@@ -120,6 +185,9 @@ impl Ledger {
         self.sent.remove(i);
         let at = self.sent.partition_point(|&s| s <= done);
         self.sent.insert(at, done.max(sent));
+        if let Some(r) = self.retries.iter_mut().find(|r| **r == sent) {
+            *r = done.max(sent);
+        }
     }
 
     /// Nothing may leave before `until`. A cool-down already running

@@ -45,7 +45,9 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::error::{AniError, Result};
@@ -62,9 +64,20 @@ tokio::task_local! {
 }
 
 /// Run `f` with every AniList request it sends counted as
-/// [`Class::Background`].
+/// [`Class::Background`] — or as [`Class::Retry`] inside [`as_retry`],
+/// which a fill's own background scope does not lift.
 pub(crate) async fn in_background<F: Future>(f: F) -> F::Output {
-    CLASS.scope(Class::Background, f).await
+    let class = match current_class() {
+        Class::Retry => Class::Retry,
+        _ => Class::Background,
+    };
+    CLASS.scope(class, f).await
+}
+
+/// Run `f` with every AniList request it sends counted as
+/// [`Class::Retry`].
+pub(crate) async fn as_retry<F: Future>(f: F) -> F::Output {
+    CLASS.scope(Class::Retry, f).await
 }
 
 /// The class a request sent from here counts as.
@@ -75,6 +88,25 @@ pub(crate) fn current_class() -> Class {
 struct Gate {
     pace: Pace,
     ledger: Mutex<Ledger>,
+    /// Requests other than retries waiting for their turn now. While
+    /// any waits, no retry takes a turn.
+    fresh_waiting: AtomicUsize,
+}
+
+/// Counts a request among [`Gate::fresh_waiting`] while it waits.
+struct Waiting<'a>(&'a AtomicUsize);
+
+impl<'a> Waiting<'a> {
+    fn new(count: &'a AtomicUsize) -> Self {
+        count.fetch_add(1, Ordering::SeqCst);
+        Self(count)
+    }
+}
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl Gate {
@@ -82,7 +114,19 @@ impl Gate {
         Self {
             pace,
             ledger: Mutex::new(Ledger::default()),
+            fresh_waiting: AtomicUsize::new(0),
         }
+    }
+
+    /// The earliest a `class` request may leave: the ledger's answer,
+    /// and for a retry no sooner than a moment from now while a request
+    /// of another class waits.
+    fn ready_at(&self, ledger: &Ledger, class: Class, now: Instant) -> Instant {
+        let at = ledger.ready_at(&self.pace, class, now);
+        if class == Class::Retry && self.fresh_waiting.load(Ordering::SeqCst) > 0 {
+            return at.max(now + self.pace.min_gap.max(RETRY_YIELD));
+        }
+        at
     }
 
     fn ledger(&self) -> std::sync::MutexGuard<'_, Ledger> {
@@ -96,27 +140,46 @@ impl Gate {
     /// taken, so a caller dropped while it waits costs nothing.
     /// Returns the instant the turn was taken, for [`Ledger::settle`].
     async fn admit(&self, class: Class, deadline: Instant) -> Result<Instant> {
+        let mut waiting = None;
+        let mut behind_retry = false;
+        let began = Instant::now();
         loop {
-            let (now, at) = {
+            let (now, at, retries) = {
                 let mut ledger = self.ledger();
                 // Read under the lock: a send settled by another task
                 // between a clock read and the lock would land after
                 // `now`, and this send would go in behind it.
                 let now = Instant::now();
-                let at = ledger.ready_at(&self.pace, class, now);
+                let at = self.ready_at(&ledger, class, now);
                 if at <= now {
                     ledger.record_send(&self.pace, now);
+                    if class == Class::Retry {
+                        ledger.record_retry(&self.pace, now);
+                    }
                     return Ok(now);
                 }
-                (now, at)
+                if class != Class::Retry
+                    && ledger.ready_at_without_retries(&self.pace, class, now) < at
+                {
+                    behind_retry = true;
+                }
+                (now, at, ledger.retries_in_window(&self.pace, now))
             };
             if at > deadline {
-                return Err(not_sent(at - now, class));
+                return Err(not_sent(at - now, class, retries, behind_retry));
+            }
+            // A request of another class counts as waiting from here,
+            // so no retry takes a turn ahead of it.
+            if class != Class::Retry && waiting.is_none() {
+                waiting = Some(Waiting::new(&self.fresh_waiting));
             }
             tokio::time::sleep_until(at).await;
         }
     }
 }
+
+/// How long a retry stands back, at least, while another request waits.
+const RETRY_YIELD: Duration = Duration::from_millis(50);
 
 static SHARED: LazyLock<Mutex<HashMap<String, Arc<Gate>>>> = LazyLock::new(|| {
     let mut gates = HashMap::new();
@@ -180,6 +243,28 @@ where
         );
         retried = true;
     }
+}
+
+/// How long until a background fill could leave through `url`'s gate:
+/// zero when one could leave now. Past zero, the gate is in a pause —
+/// a cool-down, or a background share spent for the window.
+pub(crate) fn background_wait(url: &str) -> std::time::Duration {
+    let gate = gate_for(url);
+    let now = Instant::now();
+    let at = gate.ledger().ready_at(&gate.pace, Class::Background, now);
+    at.saturating_duration_since(now)
+}
+
+/// How long until a retry of a held-back fill may start through
+/// `url`'s gate: zero once the window holds fewer requests than
+/// [`Pace::retry_capacity`], no request of another class waits, and
+/// nothing else keeps it back.
+pub(crate) fn retry_wait(url: &str) -> std::time::Duration {
+    let gate = gate_for(url);
+    let now = Instant::now();
+    let ledger = gate.ledger();
+    let at = gate.ready_at(&ledger, Class::Retry, now);
+    at.saturating_duration_since(now)
 }
 
 /// Share one gate under `url`'s host with `pace` until the guard drops.

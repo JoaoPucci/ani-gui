@@ -208,9 +208,14 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
+	// Aborted when Home is left: a Continue card's refill landing after
+	// is not fetched ($lib/refill/refill).
+	const refills = new AbortController();
+	onDestroy(() => refills.abort());
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
+		signal: refills.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
