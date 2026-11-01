@@ -79,8 +79,10 @@ async function launchAppWithStubsOnce(
     // `--no-sandbox` because chrome-sandbox in the unpackaged
     // linux-unpacked dir isn't SUID. The .deb's postinst fixes
     // that for installed copies; this test runs against the
-    // pre-install artifact.
-    args: ["--no-sandbox"],
+    // pre-install artifact. `--mute-audio`: a headless launch still
+    // opens the host's audio device, and test runs must not play sound
+    // on the desktop of whoever runs them.
+    args: ["--no-sandbox", "--mute-audio"],
     env: cleanEnv,
   });
   onLaunch(app);
@@ -289,6 +291,156 @@ test("home page hides the Continue Watching strip when history is empty", async 
     await expect(
       page.getByRole("heading", { name: /continue watching/i }),
     ).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── The window stays on the app's own document ───────────────────
+//
+// The main process refuses every navigation that would leave the app's
+// document (lib/window-guard.cjs). Any document the window loads gets
+// the preload bridge, so a web page or about:blank the window was sent
+// to ran with it. These cases drive renderer-initiated navigations,
+// and a drop delivered through Chromium's own drag handling (CDP
+// Input.dispatchDragEvent) rather than a synthetic DOM event. Electron
+// keeps a drop from navigating by default (`navigateOnDragDrop`); the
+// drop case holds that in place.
+
+async function waitForHome(page: import("@playwright/test").Page) {
+  await expect(page.getByText(/top rated/i).first()).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/** A harmless page on disk, the kind of file a user might drop. */
+function droppedPage(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-e2e-drop-"));
+  const file = path.join(dir, "dropped.html");
+  fs.writeFileSync(file, "<!doctype html><title>dropped</title><h1>dropped page</h1>");
+  return file;
+}
+
+/** Record shell.openExternal in the main process instead of launching a browser. */
+async function stubOpenExternal(app: ElectronApplication) {
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { __opened: string[] };
+    g.__opened = [];
+    shell.openExternal = async (url: string) => {
+      g.__opened.push(url);
+    };
+  });
+}
+
+async function openedExternally(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as unknown as { __opened: string[] }).__opened);
+}
+
+/** Ask the page to navigate itself; the context may die if it succeeds. */
+async function pageNavigatesTo(page: import("@playwright/test").Page, url: string) {
+  await page
+    .evaluate((u) => {
+      window.location.href = u;
+    }, url)
+    .catch(() => {});
+  // A refused navigation leaves no event to wait for; give an allowed
+  // one the time it would take to commit.
+  await page.waitForTimeout(1_000);
+}
+
+test("a navigation off the app's document is refused and the app stays", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const home = page.url();
+    for (const url of [
+      `file://${droppedPage()}`,
+      "data:text/html,<h1>data page</h1>",
+      "about:blank",
+      "app://elsewhere/",
+    ]) {
+      await pageNavigatesTo(page, url);
+      expect(page.url(), `navigated to ${url}`).toBe(home);
+    }
+    await expect(page.getByText(/top rated/i).first()).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("a file or link dropped on the window does not replace the app", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const home = page.url();
+    const file = droppedPage();
+    const cdp = await page.context().newCDPSession(page);
+    for (const data of [
+      {
+        items: [{ mimeType: "text/uri-list", data: `file://${file}` }],
+        files: [file],
+        dragOperationsMask: 1 | 2 | 16,
+      },
+      {
+        items: [{ mimeType: "text/uri-list", data: "https://example.com/dropped" }],
+        dragOperationsMask: 1 | 2 | 16,
+      },
+    ]) {
+      for (const type of ["dragEnter", "dragOver", "drop"] as const) {
+        await cdp.send("Input.dispatchDragEvent", { type, x: 400, y: 300, data });
+      }
+      await page.waitForTimeout(1_500);
+      expect(page.url()).toBe(home);
+    }
+    await expect(page.getByText(/top rated/i).first()).toBeVisible();
+    await expect(page.getByText("dropped page")).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's own routes still load in full, and reload", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    // A full-document navigation inside the app — SvelteKit falls back
+    // to one on an unknown route or a failed chunk load.
+    const loaded = page.waitForEvent("load");
+    await pageNavigatesTo(page, "/settings");
+    await loaded;
+    await expect(page).toHaveURL(/^app:\/\/localhost\/settings\/?$/);
+    await expect(page.getByRole("combobox", { name: /locale/i })).toBeVisible();
+    await page.reload();
+    await expect(page).toHaveURL(/^app:\/\/localhost\/settings\/?$/);
+    await expect(page.getByRole("combobox", { name: /locale/i })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("a web link opens in the system browser and the window stays", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await stubOpenExternal(app);
+    const home = page.url();
+    // A link that asks for a new window, like the app's own external links.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.href = "https://example.com/new-window";
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.textContent = "external";
+      a.id = "e2e-external";
+      document.body.append(a);
+    });
+    await page.locator("#e2e-external").click();
+    // And a navigation of the window itself to a web page.
+    await pageNavigatesTo(page, "https://example.com/same-window");
+    await expect
+      .poll(() => openedExternally(app))
+      .toEqual(["https://example.com/new-window", "https://example.com/same-window"]);
+    expect(page.url()).toBe(home);
   } finally {
     await app.close();
   }
