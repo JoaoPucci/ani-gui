@@ -15,7 +15,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { fly } from '$lib/motion/transitions';
-	import { playLottie } from '$lib/motion/lottie';
+	import { loaderAnimation, playLottie } from '$lib/motion/lottie';
 	import loadingJson from '$lib/anim/loading.json';
 	import { m } from '$lib/paraglide/messages';
 
@@ -29,37 +29,16 @@
 	}>();
 
 	let container: HTMLDivElement | undefined = $state();
-	type LottieInstance = { destroy: () => void };
-	let animation: LottieInstance | null = null;
+	// The load and teardown race lives in `loaderAnimation`; this only
+	// tells it when the overlay is up and where.
+	const animation = loaderAnimation((into) => playLottie(into, loadingJson));
 
 	$effect(() => {
-		if (!visible || !container || animation) return;
-		const into = container;
-		playLottie(into, loadingJson)
-			// The animation is decoration: an overlay whose runtime failed
-			// to load still covers the page and shows its caption.
-			.catch(() => null)
-			.then((player) => {
-				if (!player) return;
-				// Hidden, or remounted, while the runtime loaded.
-				if (!visible || container !== into || animation) player.destroy();
-				else animation = player;
-			});
+		if (visible && container) animation.show(container);
+		else animation.hide();
 	});
 
-	$effect(() => {
-		if (!visible && animation) {
-			animation.destroy();
-			animation = null;
-		}
-	});
-
-	onDestroy(() => {
-		if (animation) {
-			animation.destroy();
-			animation = null;
-		}
-	});
+	onDestroy(() => animation.hide());
 </script>
 
 {#if visible}

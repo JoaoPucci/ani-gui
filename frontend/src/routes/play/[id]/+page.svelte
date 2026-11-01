@@ -33,7 +33,7 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
-	import { scrollBehavior } from '$lib/motion/scroll';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { settle } from '$lib/motion/settle';
 	import {
 		altTitlesFromKitsu,
@@ -1542,20 +1542,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return;
-			el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	function teardown() {

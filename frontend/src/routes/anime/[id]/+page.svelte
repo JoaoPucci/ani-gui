@@ -86,7 +86,7 @@
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
-	import { scrollBehavior } from '$lib/motion/scroll';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { heroParallaxTransform } from '$lib/motion/parallax';
 	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { settle, settleOut } from '$lib/motion/settle';
@@ -807,20 +807,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return; // not rendered yet; effect re-runs when episodes changes
-			el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	let configError = $state<string | null>(null);
