@@ -120,6 +120,7 @@ pub mod proxy_url;
 pub mod session;
 pub mod settings;
 pub mod syncplay;
+pub(crate) mod title_match_rows;
 pub(crate) mod title_match_store;
 pub(crate) mod tracker_map;
 
