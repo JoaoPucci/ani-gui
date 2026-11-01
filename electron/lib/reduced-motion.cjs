@@ -12,9 +12,9 @@
 // reduced-motion`. With the switch on, Chromium still reports
 // no-preference and every animation plays.
 //
-// So the main process asks the portal itself — through busctl, or
-// gdbus where busctl is missing — and falls back to the gsettings key
-// when the portal cannot answer. When the answer is "reduce" it hands
+// So the main process asks the portal itself — through busctl, and
+// again through gdbus when busctl gives no answer — and falls back to
+// the gsettings key when the portal cannot answer. When the answer is "reduce" it hands
 // Chromium its own `--force-prefers-reduced-motion` switch, which
 // every CSS media query and matchMedia call then follows. Any other
 // outcome forces nothing, so Chromium's own reading of
@@ -106,23 +106,35 @@ function forcesReducedMotion(answer) {
   return answer === "reduce";
 }
 
+/**
+ * The environment the readers run in: the app's own, without DISPLAY.
+ * None of them draws anything, and with no session bus to find, gdbus
+ * would otherwise fall back to D-Bus's X11 autolaunch and start a
+ * dbus-daemon that outlives the reader.
+ */
+function readerEnv(env) {
+  const { DISPLAY: _display, ...rest } = env;
+  return rest;
+}
+
 /** Run `reader` within what is left of the budget; `null` on failure. */
-async function ask(reader, parse, exec, deadline) {
+async function ask(reader, parse, exec, deadline, env) {
   const remaining = deadline - Date.now();
+  // Also the guard against a zero timeout, which execFile reads as none.
   if (remaining <= 0) return null;
   try {
-    return parse(await exec(reader.cmd, reader.args, { timeoutMs: remaining }));
+    return parse(await exec(reader.cmd, reader.args, { timeoutMs: remaining, env }));
   } catch {
     return null;
   }
 }
 
-async function readChain(exec, deadline) {
+async function readChain(exec, deadline, env) {
   for (const reader of PORTAL_READERS) {
-    const answer = await ask(reader, parsePortalAnswer, exec, deadline);
+    const answer = await ask(reader, parsePortalAnswer, exec, deadline, env);
     if (answer !== null) return answer;
   }
-  return ask(GSETTINGS_READER, parseGsettingsAnswer, exec, deadline);
+  return ask(GSETTINGS_READER, parseGsettingsAnswer, exec, deadline, env);
 }
 
 /**
@@ -130,44 +142,57 @@ async function readChain(exec, deadline) {
  * or `null` when nothing answered in time. Never rejects, and settles
  * within `timeoutMs` whatever the readers do.
  */
-function readReducedMotion({ platform, exec, timeoutMs = READ_TIMEOUT_MS }) {
+function readReducedMotion({
+  platform,
+  exec,
+  timeoutMs = READ_TIMEOUT_MS,
+  env = process.env,
+}) {
   if (platform !== "linux") return Promise.resolve(null);
   const deadline = Date.now() + timeoutMs;
   let timer;
   const expiry = new Promise((resolve) => {
     timer = setTimeout(() => resolve(null), timeoutMs);
   });
-  const read = readChain(exec, deadline).catch(() => null);
+  const read = readChain(exec, deadline, readerEnv(env)).catch(() => null);
   return Promise.race([read, expiry]).finally(() => clearTimeout(timer));
 }
 
 /**
  * Read the preference and, when it is "reduce", append Chromium's
- * switch. Resolves whether the switch was appended. Must run before
- * the first window is created: a window takes the value it opens with.
+ * switch. Resolves whether the switch was appended, and never rejects:
+ * a switch that cannot be appended is the same as no answer. Must run
+ * before the first window is created: a window takes the value it
+ * opens with.
  */
 async function applyReducedMotion({
   platform,
   exec,
   appendSwitch,
   timeoutMs = READ_TIMEOUT_MS,
+  env = process.env,
 }) {
-  const answer = await readReducedMotion({ platform, exec, timeoutMs });
+  const answer = await readReducedMotion({ platform, exec, timeoutMs, env });
   if (!forcesReducedMotion(answer)) return false;
-  appendSwitch(REDUCED_MOTION_SWITCH);
-  return true;
+  try {
+    appendSwitch(REDUCED_MOTION_SWITCH);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Run a command and resolve its stdout. Rejects on a spawn failure, a
- * non-zero exit, or a run past `timeoutMs`, which kills the command.
+ * Run a command in `env` (the app's own when left out) and resolve its
+ * stdout. Rejects on a spawn failure, a non-zero exit, or a run past
+ * `timeoutMs`, which kills the command.
  */
-function execText(cmd, args, { timeoutMs }) {
+function execText(cmd, args, { timeoutMs, env }) {
   return new Promise((resolve, reject) => {
     execFile(
       cmd,
       args,
-      { timeout: timeoutMs, killSignal: "SIGKILL", encoding: "utf8", windowsHide: true },
+      { timeout: timeoutMs, killSignal: "SIGKILL", encoding: "utf8", windowsHide: true, env },
       (err, stdout) => (err ? reject(err) : resolve(stdout)),
     );
   });
