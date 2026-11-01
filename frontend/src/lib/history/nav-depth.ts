@@ -87,7 +87,10 @@ export function afterNavigation(nav: Navigated): NavOutcome {
 }
 
 /** Whether a forward navigation replaced the entry it left: the
- *  browser's index for it did not move. */
+ *  browser's index for it did not move. This relies on the layout
+ *  hearing of every move of the index, which holds while the app has
+ *  no hash links and no shallow `pushState`: SvelteKit does not report
+ *  a back or forward press across those to `afterNavigate`. */
 function replaced(nav: Navigated): boolean {
 	const at = position(nav.entry);
 	return at !== null && at === nav.prev.depth;
