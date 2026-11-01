@@ -95,6 +95,19 @@ describe('a wrapped status line', () => {
 		expect(rule(".strip-header[data-meta-wraps='true'] .strip-title")).toContain(
 			'flex-basis: 100%;'
 		);
-		expect(SOURCE).toContain('watchHeaderWrap(');
+		expect(SOURCE).toContain('watchHeaderLines(');
+	});
+});
+
+describe('a banded row’s wrapped actions', () => {
+	// On a band the actions are pushed to the band's end. Once they wrap
+	// below the title, that push strands them at the far end of an
+	// otherwise empty line, away from the title they belong to; they
+	// start their line instead.
+	it('drop the push to the band’s end once they wrap', () => {
+		expect(SOURCE).toContain('data-actions-wrap={actionsWrap}');
+		expect(
+			rule(".strip[data-surface='band'] .strip-header[data-actions-wrap='true'] .strip-actions")
+		).toContain('margin-inline-start: 0;');
 	});
 });
