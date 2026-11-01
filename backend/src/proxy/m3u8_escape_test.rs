@@ -102,13 +102,14 @@ fn a_masters_inline_session_key_stays_beside_a_dropped_inline_variant() {
 
 /// A URI a property can place anywhere a manifest names one: inline,
 /// relative, under a scheme of its own, already proxied, or absolute
-/// upstream.
+/// upstream — one of them dressed as the proxy's origin by its userinfo.
 fn any_uri() -> impl proptest::strategy::Strategy<Value = String> {
     use proptest::prelude::*;
     let host = prop_oneof![
         Just("127.0.0.1".to_owned()),
         Just("localhost".to_owned()),
         Just("evil.example".to_owned()),
+        Just("127.0.0.1:42337@evil.example".to_owned()),
         Just("u:p@127.0.0.1".to_owned()),
         Just("[::1]".to_owned()),
     ];

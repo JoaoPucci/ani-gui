@@ -125,3 +125,40 @@ async fn a_master_listing_an_inline_playlist_serves_no_inline_playlist() {
     assert_eq!(found.len(), 1, "{out}");
     assert!(found.iter().all(|u| h.on_proxy(u)), "{out}");
 }
+
+/// A variant whose userinfo spells the proxy's own origin is a request
+/// to the host after the `@`; the master serves it on the proxy, and
+/// the proxied URL reaches that host with the session's referer.
+#[tokio::test]
+async fn a_variant_dressed_as_the_proxy_by_its_userinfo_is_proxied() {
+    use wiremock::matchers::header;
+    let h = start_harness().await;
+    let upstream = Url::parse(&h.mock.uri()).expect("mock url");
+    let dressed = format!(
+        "http://127.0.0.1:{}@127.0.0.1:{}/elsewhere/index.m3u8",
+        h.proxy_port,
+        upstream.port().expect("mock port")
+    );
+    h.serve(
+        "/master.m3u8",
+        format!("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\n{dressed}\n"),
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/elsewhere/index.m3u8"))
+        .and(header("referer", "https://embed.example"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nseg0.ts\n#EXT-X-ENDLIST\n",
+        ))
+        .expect(1)
+        .mount(&h.mock)
+        .await;
+    let out = h.master(h.session("/master.m3u8")).await;
+    let found = uris(&out);
+    assert_eq!(found.len(), 1, "{out}");
+    assert!(h.on_proxy(&found[0]), "{out}");
+    let media = reqwest::get(&found[0]).await.expect("variant");
+    assert_eq!(media.status(), 200);
+    let media = media.text().await.expect("body");
+    assert!(uris(&media).iter().all(|u| h.on_proxy(u)), "{media}");
+}

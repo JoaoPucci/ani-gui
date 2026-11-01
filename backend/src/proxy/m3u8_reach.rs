@@ -46,3 +46,7 @@ pub(super) fn reach(upstream: &Url, origin: &ProxyOrigin, playlist: bool) -> Rea
         (false, true) => Reach::Dropped,
     }
 }
+
+#[cfg(test)]
+#[path = "m3u8_reach_test.rs"]
+mod tests;
