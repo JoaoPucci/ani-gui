@@ -447,19 +447,41 @@ describe('makeContinueRowReadyHandler — a range-shaped row', () => {
 });
 
 describe('a held-back thumbnail landing later', () => {
-	it('fills the card still showing its episode', async () => {
+	it('puts only the still on the card still showing its episode', async () => {
 		const entry = makeEntry('hist-r', '5', 'Show R');
 		let refill: ((eps: KitsuEpisode[]) => void) | undefined;
 		const spy = makeSpy([entry], (_id, _page, opts) => {
 			refill = opts?.onRefill;
 			return Promise.resolve([makeKitsuEpisode(6)]);
 		});
-		makeContinueRowReadyHandler(spy.deps)('hist-r', makeMatch('k-r', 12), 12);
+		const filledStills: [string, string, { original: string | null }][] = [];
+		makeContinueRowReadyHandler({
+			...spy.deps,
+			fillThumbnail: (entryId, episodeId, thumbnail) =>
+				filledStills.push([entryId, episodeId, thumbnail])
+		})('hist-r', makeMatch('k-r', 12), 12);
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
 
 		const filled = { ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } };
 		refill?.([filled as KitsuEpisode]);
-		expect(spy.calls.setEpisode.at(-1)).toEqual(['hist-r', filled]);
+		// The still goes onto the card's episode; the episode itself is
+		// not replaced.
+		expect(filledStills).toEqual([['hist-r', 'ep-6', { original: 'https://x/6.jpg' }]]);
+		expect(spy.calls.setEpisode).toHaveLength(1);
+	});
+
+	it('puts nothing on the card when the refill brought no still', async () => {
+		const entry = makeEntry('hist-u', '5', 'Show U');
+		let refill: ((eps: KitsuEpisode[]) => void) | undefined;
+		const spy = makeSpy([entry], (_id, _page, opts) => {
+			refill = opts?.onRefill;
+			return Promise.resolve([makeKitsuEpisode(6)]);
+		});
+		const fillThumbnail = vi.fn();
+		makeContinueRowReadyHandler({ ...spy.deps, fillThumbnail })('hist-u', makeMatch('k-u', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		refill?.([makeKitsuEpisode(6)]);
+		expect(fillThumbnail).not.toHaveBeenCalled();
 	});
 
 	it('leaves a card that moved on to another episode alone', async () => {
@@ -469,7 +491,8 @@ describe('a held-back thumbnail landing later', () => {
 			if (opts?.onRefill) refills.push(opts.onRefill);
 			return Promise.resolve([makeKitsuEpisode(6), makeKitsuEpisode(7)]);
 		});
-		const handle = makeContinueRowReadyHandler(spy.deps);
+		const fillThumbnail = vi.fn();
+		const handle = makeContinueRowReadyHandler({ ...spy.deps, fillThumbnail });
 		handle('hist-s', makeMatch('k-s', 12), 12);
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
 		// The row moves on: the watched episode is now 6, so the card
@@ -482,6 +505,7 @@ describe('a held-back thumbnail landing later', () => {
 			{ ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } } as KitsuEpisode
 		]);
 		expect(spy.calls.setEpisode).toHaveLength(2);
+		expect(fillThumbnail).not.toHaveBeenCalled();
 	});
 
 	it('passes the page signal along, so a closed page fetches nothing more', async () => {

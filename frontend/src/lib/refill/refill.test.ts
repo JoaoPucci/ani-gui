@@ -5,6 +5,7 @@ import {
 	RefillWaiter,
 	parseRefills,
 	refetchOnRefill,
+	shareRefetch,
 	type RefillEnded,
 	type WaitRefills
 } from './refill';
@@ -248,5 +249,35 @@ describe('refetchOnRefill', () => {
 			}
 		);
 		expect(apply).not.toHaveBeenCalled();
+	});
+});
+
+describe('shareRefetch', () => {
+	it('fetches once for every page refetching the same read at once', async () => {
+		let calls = 0;
+		const start = () => {
+			calls += 1;
+			return Promise.resolve('page');
+		};
+		const [a, b] = await Promise.all([shareRefetch('k', start), shareRefetch('k', start)]);
+		expect([a, b]).toEqual(['page', 'page']);
+		expect(calls).toBe(1);
+	});
+
+	it('fetches again once the shared read is done, and separately for another read', async () => {
+		let calls = 0;
+		const start = () => {
+			calls += 1;
+			return Promise.resolve(calls);
+		};
+		await shareRefetch('k2', start);
+		await shareRefetch('k2', start);
+		await shareRefetch('k3', start);
+		expect(calls).toBe(3);
+	});
+
+	it('lets a failed read go, so the next asks again', async () => {
+		await expect(shareRefetch('k4', () => Promise.reject(new Error('x')))).rejects.toThrow('x');
+		await expect(shareRefetch('k4', () => Promise.resolve(1))).resolves.toBe(1);
 	});
 });

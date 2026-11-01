@@ -25,44 +25,59 @@ function detail(id: string, cover: string | null): KitsuAnimeRef {
 }
 
 describe('refillEpisodes', () => {
-	it('puts the refilled page in the cache and its stills on the episodes shown', () => {
-		const cache = new Map([[1, [ep('a', 1), ep('b', 2)]]]);
-		const shown = [ep('a', 1), ep('b', 2)];
-		const filled = [ep('a', 1, 'https://x/1.jpg'), ep('b', 2, 'https://x/2.jpg')];
-		const got = refillEpisodes(cache, 1, filled, shown);
-		expect(cache.get(1)).toBe(filled);
-		expect(got?.map((e) => e.thumbnail?.original)).toEqual(['https://x/1.jpg', 'https://x/2.jpg']);
+	it('fills in only the missing stills, in place, on the cached page and the episodes shown', () => {
+		const cached = [ep('a', 1), ep('b', 2, 'https://kitsu/2.jpg')];
+		const cache = new Map([[1, cached]]);
+		const shown = [ep('a', 1), ep('b', 2, 'https://kitsu/2.jpg')];
+		const before = [...shown];
+		const titles = shown.map((e) => e.canonical_title);
+		refillEpisodes(cache, 1, [ep('a', 1, 'https://x/1.jpg'), ep('b', 2, 'https://x/2.jpg')], shown);
+		// The same page, the same array, the same episodes: nothing replaced.
+		expect(cache.get(1)).toBe(cached);
+		shown.forEach((e, i) => expect(e).toBe(before[i]));
+		// Only the missing still is filled; Kitsu's own still stays.
+		expect(shown.map((e) => e.thumbnail?.original)).toEqual([
+			'https://x/1.jpg',
+			'https://kitsu/2.jpg'
+		]);
+		expect(cached.map((e) => e.thumbnail?.original)).toEqual([
+			'https://x/1.jpg',
+			'https://kitsu/2.jpg'
+		]);
+		expect(shown.map((e) => e.canonical_title)).toEqual(titles);
 	});
 
-	it('keeps the episodes shown that the refilled page does not carry', () => {
+	it('leaves the episodes shown that the refilled page does not carry', () => {
 		const cache = new Map([[2, [ep('c', 51)]]]);
 		const shown = [ep('b', 50), ep('c', 51)];
-		const got = refillEpisodes(cache, 2, [ep('c', 51, 'https://x/51.jpg')], shown);
-		expect(got?.[0]).toBe(shown[0]);
-		expect(got?.[1].thumbnail?.original).toBe('https://x/51.jpg');
+		refillEpisodes(cache, 2, [ep('c', 51, 'https://x/51.jpg')], shown);
+		expect(shown[0].thumbnail).toBeNull();
+		expect(shown[1].thumbnail?.original).toBe('https://x/51.jpg');
 	});
 
 	it('leaves another show alone after the page moved on', () => {
 		const cache = new Map<number, KitsuEpisode[]>();
 		const shown = [ep('z', 1)];
-		expect(refillEpisodes(cache, 1, [ep('a', 1, 'https://x/1.jpg')], shown)).toBe(shown);
+		refillEpisodes(cache, 1, [ep('a', 1, 'https://x/1.jpg')], shown);
 		expect(cache.size).toBe(0);
+		expect(shown[0].thumbnail).toBeNull();
 	});
 
 	it('leaves another show’s page alone when the page moved on to a show with that page cached', () => {
 		const other = [ep('z1', 1), ep('z2', 2)];
 		const cache = new Map([[1, other]]);
 		const shown = [...other];
-		const got = refillEpisodes(cache, 1, [ep('a', 1, 'https://x/1.jpg')], shown);
+		refillEpisodes(cache, 1, [ep('a', 1, 'https://x/1.jpg')], shown);
 		expect(cache.get(1)).toBe(other);
-		expect(got).toBe(shown);
+		expect(other.every((e) => e.thumbnail === null)).toBe(true);
 	});
 
-	it('returns the same episodes when none were refilled', () => {
+	it('does nothing with no episodes shown or none refilled', () => {
 		const cache = new Map([[3, [ep('q', 99)]]]);
+		refillEpisodes(cache, 3, [], null);
 		const shown = [ep('a', 1)];
-		expect(refillEpisodes(cache, 3, [ep('q', 99, 'https://x/q.jpg')], shown)).toBe(shown);
-		expect(refillEpisodes(cache, 3, [], null)).toBeNull();
+		refillEpisodes(cache, 3, [ep('q', 99, 'https://x/q.jpg')], shown);
+		expect(shown[0].thumbnail).toBeNull();
 	});
 });
 
