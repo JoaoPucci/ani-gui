@@ -20,7 +20,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
@@ -55,7 +55,7 @@
 	import { needsRenewalRetry, RenewalRetry } from '$lib/account/renewal-retry';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
-	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
+	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
 		RECENT_LIMIT,
@@ -95,33 +95,35 @@
 	const isAbout = $derived(routeId.startsWith('/about'));
 
 	// Back-stack depth tracker. Layout adapter; the rules live in
-	// `$lib/history/nav-depth` so they're unit-testable. We pull
-	// type + stamped depth out of the SvelteKit event, hand them to
-	// nextDepth, and stamp the result back on forward navs so
-	// popstate can read it later.
+	// `$lib/history/nav-depth` so they're unit-testable. We hand the
+	// SvelteKit event and the entry's `page.state` to afterNavigation,
+	// and stamp what it returns on forward navs through SvelteKit's
+	// shallow routing so popstate can read it back from `page.state`.
 	let canGoBack = $state(false);
 	let navDepth = 0;
+	let navOrigin: string | null = null;
 
 	// Availability probes the page just left asked are aborted now
 	// that the next page is up ($lib/availability/probe-scope).
 	afterNavigate(() => probeScope.settle());
 
-	afterNavigate(({ type }) => {
+	afterNavigate(({ type, from, to }) => {
 		if (typeof window === 'undefined') return;
-		const stamped = (window.history.state as { aniGuiDepth?: number } | null)?.aniGuiDepth;
-		navDepth = nextDepth({
+		const out = afterNavigation({
 			type: type as NavType,
-			stampedDepth: typeof stamped === 'number' ? stamped : null,
-			prevDepth: navDepth
+			state: page.state ?? {},
+			from: from?.url ?? null,
+			to: to?.url ?? null,
+			prev: { depth: navDepth, origin: navOrigin }
 		});
-		// Forward navs need their depth stamped onto the new history
-		// entry so popstate can recover it. enter / popstate /
-		// leave / replaceState don't push a new entry — no stamp needed.
-		if (type === 'goto' || type === 'link' || type === 'form') {
+		navDepth = out.depth;
+		navOrigin = out.origin;
+		if (out.stamp) {
 			try {
-				window.history.replaceState({ ...window.history.state, aniGuiDepth: navDepth }, '');
+				replaceState('', { ...page.state, ...out.stamp });
 			} catch {
-				// replaceState can throw in privacy modes; non-fatal.
+				// The history API can refuse a write (a privacy mode, or
+				// Chromium's rate limit on history writes); non-fatal.
 			}
 		}
 		canGoBack = shouldShowBackButton(navDepth);

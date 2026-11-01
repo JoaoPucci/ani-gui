@@ -3,12 +3,16 @@
  * +layout.svelte so we can unit-test the rules without mounting the
  * full SvelteKit runtime.
  *
- * The layout calls `nextDepth(...)` from inside `afterNavigate`, then
- * stamps the result onto the new history entry's state via
- * `history.replaceState({ ...state, aniGuiDepth: depth }, '')`. On
- * popstate the previous entry's stamped depth is read back, so
- * forward+back through the SPA history works without us tracking
- * direction.
+ * The layout calls `afterNavigation(...)` from inside `afterNavigate`,
+ * then stamps the result onto the new history entry through SvelteKit's
+ * shallow routing: `replaceState('', { ...page.state, ...stamp })` from
+ * `$app/navigation` (https://svelte.dev/docs/kit/shallow-routing). On
+ * popstate SvelteKit puts the entry's state back on `page.state`, so
+ * the stamped depth is read back from there, and forward+back through
+ * the SPA history works without us tracking direction. The layout
+ * never writes `history.state` itself: SvelteKit owns it, and its dev
+ * runtime warns that a direct `history.replaceState` will conflict
+ * with its router.
  *
  * Why this is its own module:
  *   - The original tracker lived inline in the layout effect, which
@@ -29,8 +33,8 @@ export type NavType = 'enter' | 'popstate' | 'goto' | 'link' | 'form' | 'leave' 
 export interface NavStep {
 	/** SvelteKit afterNavigate's `type` field. */
 	type: NavType;
-	/** Depth read from `window.history.state?.aniGuiDepth` (the value
-	 *  stamped on the entry we're moving TO). Null when not stamped —
+	/** Depth read from `page.state.aniGuiDepth` (the value stamped on
+	 *  the entry we're moving TO). Null when not stamped —
 	 *  pre-stamp entries from earlier sessions, or types that don't
 	 *  carry our state. */
 	stampedDepth: number | null;
@@ -58,7 +62,7 @@ export function nextDepth(step: NavStep): number {
 		case 'form':
 			// Forward navigation. Layout caller is responsible for
 			// stamping the resulting depth onto the new entry's state via
-			// history.replaceState.
+			// SvelteKit's replaceState.
 			return step.prevDepth + 1;
 		case 'leave':
 		case 'replaceState':
@@ -100,7 +104,24 @@ export interface NavOutcome {
 	stamp: EntryStamp | null;
 }
 
-/** Declared ahead of its rules; answers as if nothing moved. */
+/** Whether a navigation of this type pushed or replaced an entry the
+ *  layout has not stamped yet. */
+function isForward(type: NavType): boolean {
+	return type === 'goto' || type === 'link' || type === 'form';
+}
+
+/** The layout's position after a navigation, and the stamp the entry
+ *  it landed on takes. Pure. */
 export function afterNavigation(nav: Navigated): NavOutcome {
-	return { depth: nav.prev.depth, origin: nav.prev.origin, stamp: null };
+	const stamped = nav.state.aniGuiDepth;
+	const depth = nextDepth({
+		type: nav.type,
+		stampedDepth: typeof stamped === 'number' ? stamped : null,
+		prevDepth: nav.prev.depth
+	});
+	return {
+		depth,
+		origin: null,
+		stamp: isForward(nav.type) ? { aniGuiDepth: depth } : null
+	};
 }
