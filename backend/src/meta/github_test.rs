@@ -70,7 +70,9 @@ fn parse_normalises_the_offered_release() {
 
 #[test]
 fn drafts_are_never_offered() {
-    let mut draft = valid_release_json();
+    // A full release, so the pre-release filter cannot be what drops
+    // it when pre-releases are excluded.
+    let mut draft = release_json("0.5.0", false, &every_package("0.5.0"));
     draft["draft"] = serde_json::Value::Bool(true);
     for platform in [Platform::Windows, Platform::Linux] {
         for include in [true, false] {
@@ -88,6 +90,23 @@ fn a_release_missing_its_tag_or_url_is_not_offered() {
     let mut no_url = valid_release_json();
     no_url.as_object_mut().unwrap().remove("html_url");
     assert!(tag_of(&list(&[no_url]), Platform::Linux, true).is_none());
+}
+
+#[test]
+fn a_release_missing_its_tag_or_url_is_passed_over_for_the_next() {
+    let mut no_tag = release_json("0.6.0", true, &every_package("0.6.0"));
+    no_tag.as_object_mut().unwrap().remove("tag_name");
+    let mut no_url = release_json("0.5.0", true, &every_package("0.5.0"));
+    no_url.as_object_mut().unwrap().remove("html_url");
+    let body = list(&[
+        no_tag,
+        no_url,
+        release_json("0.4.0", true, &every_package("0.4.0")),
+    ]);
+    assert_eq!(
+        tag_of(&body, Platform::Linux, true).as_deref(),
+        Some("v0.4.0")
+    );
 }
 
 #[test]
