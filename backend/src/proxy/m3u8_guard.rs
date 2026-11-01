@@ -13,7 +13,9 @@
 //!   begin. A tag line is read as hls.js reads an
 //!   attribute list, where a name is trimmed (`URI ="…"` is its `URI`);
 //!   one in which any attribute whose name ends in `URI`, `URL` or
-//!   `-LIST` would resolve off the proxy is dropped. An `#EXTINF` line
+//!   `-LIST` would resolve off the proxy is dropped, and so is one with
+//!   a second `#`, where hls.js could read a tag of its own whose
+//!   attributes the line's tag would otherwise answer for. An `#EXTINF` line
 //!   must also read as a number followed by a comma or nothing, since
 //!   hls.js reads anything else after the number as a URI. An
 //!   `#EXTINF` line that fails either check is rewritten to its number
@@ -45,7 +47,8 @@ pub(super) fn keep_player_view_on_proxy(out: &str, origin: &ProxyOrigin) -> Stri
     let body = out.strip_suffix('\n').unwrap_or(out);
     for line in body.split(['\n', '\r', '\u{2028}', '\u{2029}']) {
         let shown = if line.starts_with('#') {
-            (line_stays(line, &base, origin) && extinf_reads_whole(line)).then(|| line.to_owned())
+            (one_tag(line) && line_stays(line, &base, origin) && extinf_reads_whole(line))
+                .then(|| line.to_owned())
         } else {
             uri_line_stays(line, &base, origin, media).then(|| line.to_owned())
         };
@@ -64,6 +67,14 @@ pub(super) fn keep_player_view_on_proxy(out: &str, origin: &ProxyOrigin) -> Stri
 /// fragment can carry one; the URIs the rewrite writes have none.
 fn uri_line_stays(line: &str, base: &Url, origin: &ProxyOrigin, media: bool) -> bool {
     line.trim().is_empty() || (!line.contains('#') && value_stays(line.trim(), base, origin, media))
+}
+
+/// Whether a tag line holds only its own tag. hls.js reads a master's
+/// tags wherever in a line they begin, so a second `#` could start a
+/// tag — a rendition inside a session data value — whose attributes
+/// the inline media allowed for the line's own tag would cover.
+fn one_tag(line: &str) -> bool {
+    !line[1..].contains('#')
 }
 
 /// Whether every URI-naming attribute hls.js could read in `line`
