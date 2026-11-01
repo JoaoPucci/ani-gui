@@ -2143,7 +2143,8 @@ fn cache_key_is_versioned_per_mode() {
 /// A verdict stamped before an undated pick read the genre of the
 /// listing it serves is not served: a positive row for such an entry
 /// can be a hentai listed under one of the entry's own names, and a
-/// clean miss can rest on a page that listed no genre, which is no
+/// clean miss can rest on a page that listed no genre and no ordinary
+/// rating, which is no
 /// answer that its listing was not the entry. Nothing in a row says
 /// which page it was stamped from.
 #[test]
