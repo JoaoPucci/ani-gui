@@ -34,6 +34,9 @@
 //   The last section below runs ESLint over small fixtures to prove the
 //   rules are configured and fire.
 //
+// A last section holds the indeterminate progress bars, a fixed list,
+// to a still full-width bar under reduced motion; see its own comment.
+//
 // What it does not see, deliberately:
 //
 // - An inline style built from an expression (`style="{css}"`,

@@ -18,9 +18,9 @@
  *
  * What `getAnimations()` cannot see: the loader's Lottie, which draws
  * from its own frame loop, and the hero parallax, which is a transform
- * set from script on scroll. The acceptance tier covers the loader
- * through its stub (frontend/tests/acceptance/reduced-motion-*.test.ts)
- * and the unit tests cover the parallax ($lib/motion/parallax).
+ * set from script on scroll. The acceptance tier covers both
+ * (frontend/tests/acceptance/reduced-motion-*.test.ts): the loader
+ * through its stub, the parallax on a show's page by scrolling it.
  *
  * One scenario runs the same delete with motion on and requires that
  * something does move, so the check cannot pass by looking at a page

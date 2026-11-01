@@ -7,9 +7,9 @@
 // and the rails' scroll arrows must all stand still. (The rows start
 // no motion on load in either mode, so landing is not a scenario here;
 // the e2e samples it with real CSS. Watch Later's own motion has its
-// pair in watch-later-held-write.test.ts.) This tier sees the motion script starts (see
-// ./motion.ts); the CSS half is asserted in a real Chromium by the
-// Electron e2e.
+// pair in watch-later-held-write.test.ts.) This tier sees the motion
+// script starts (see ./motion.ts); the CSS half is asserted in a real
+// Chromium by the Electron e2e.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';

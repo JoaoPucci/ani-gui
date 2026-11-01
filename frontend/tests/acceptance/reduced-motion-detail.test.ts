@@ -103,7 +103,11 @@ function mountShow() {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Long Show', EPISODES), status: 'finished' })
+			HttpResponse.json({
+				...kitsuRef(KITSU_ID, 'Long Show', EPISODES),
+				status: 'finished',
+				poster_image: { large: 'https://media.kitsu.app/anime/42/poster_image/large.jpg' }
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
 			HttpResponse.json({ aired: EPISODES, next_episode: null, next_airing_at: null, upcoming: [] })
@@ -134,6 +138,25 @@ describe.each([
 	['with motion on', false]
 ] as const)("a show's page %s", (_mode, reduced) => {
 	beforeEach(() => setReducedMotion(reduced));
+
+	it('keeps the banner in place as the page scrolls', async () => {
+		mountShow();
+		await until(() => target.querySelector('section.hero img.hero-img') !== null, 'the banner');
+		const banner = () => target.querySelector<HTMLElement>('section.hero img.hero-img')!;
+		expect(banner().style.transform).toContain('translate3d(0, 0px, 0)');
+
+		Object.defineProperty(window, 'scrollY', { configurable: true, value: 400 });
+		try {
+			window.dispatchEvent(new Event('scroll'));
+			await new Promise((r) => setTimeout(r, 20));
+			// A quarter of the scroll, capped at 80px, with motion on.
+			expect(banner().style.transform).toContain(
+				reduced ? 'translate3d(0, 0px, 0)' : 'translate3d(0, 80px, 0)'
+			);
+		} finally {
+			Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+		}
+	});
 
 	it('scrolls to a jumped-to episode', async () => {
 		mountShow();
