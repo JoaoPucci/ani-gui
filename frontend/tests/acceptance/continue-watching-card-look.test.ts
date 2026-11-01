@@ -34,6 +34,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { EPISODE_WAIT_CAP_MS } from '../../src/lib/history/card-look';
 import { sessionLooks } from '../../src/lib/history/look-book';
 import { m } from '../../src/lib/paraglide/messages';
+import { savePosition } from '../../src/lib/play/watch-position';
 
 const POSTER = 'https://media.kitsu.app/anime/1/poster/medium.jpg';
 const THUMB = 'https://media.kitsu.app/episodes/4/thumb.jpg';
@@ -86,6 +87,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	sessionLooks.clear();
+	window.localStorage.clear();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -118,12 +120,20 @@ const imageSource = (id = ROW.id) => {
 const resumeButton = (id = ROW.id) =>
 	cell(id)?.querySelector<HTMLButtonElement>('button.resume-card') ?? null;
 
-/** Every look a card has been seen in, in order, from the moment it drew. */
+/** What a card shows at a glance: its look, its picture and its text. */
+const appearance = (id = ROW.id) => {
+	const l = look(id);
+	if (!l) return null;
+	const text = cell(id)?.querySelector('.resume-body')?.textContent?.replace(/\s+/g, ' ').trim();
+	return `${l} | ${imageSource(id) ?? '-'} | ${text ?? ''}`.trim();
+};
+
+/** Every appearance a card has been seen in, in order, from the moment it drew. */
 function watchLooks(id = ROW.id) {
 	const seen: string[] = [];
 	const record = () => {
-		const l = look(id);
-		if (l && seen[seen.length - 1] !== l) seen.push(l);
+		const a = appearance(id);
+		if (a && seen[seen.length - 1] !== a) seen.push(a);
 	};
 	record();
 	const observer = new MutationObserver(record);
@@ -195,7 +205,10 @@ describe('Continue Watching card artwork', () => {
 		await until(() => image()?.dataset.revealed === 'fade', 'the thumbnail to be shown');
 		expect(cell()?.textContent).toContain('Episode title 4');
 		looks.stop();
-		expect(looks.seen).toEqual(['pending', 'image']);
+		expect(looks.seen).toEqual([
+			'pending | - |',
+			`image | ${THUMB} | Cowboy Bebop Episode title 4`
+		]);
 	});
 
 	it('settles on the poster when the episode details are slow, and keeps it when they land', async () => {
@@ -262,10 +275,12 @@ describe('Continue Watching card artwork', () => {
 		unmount(app);
 		app = null;
 
-		// The second visit's match is held: whatever the card draws
-		// before it lands came from the first visit.
+		// The second visit's match is held, and then its episode page:
+		// whatever the card draws before they land came from the first
+		// visit, and nothing changes as they do.
 		const search = held<unknown>();
-		server.use(...rowHandlers({ search: () => search.answer }));
+		const episodes = held<unknown>();
+		server.use(...rowHandlers({ search: () => search.answer, episodes: () => episodes.answer }));
 		const looks = watchLooks();
 		app = mount(HomePage, { target });
 		await until(() => cell() !== null, 'the card');
@@ -277,9 +292,32 @@ describe('Continue Watching card artwork', () => {
 		search.release([show('1', 'Cowboy Bebop')]);
 		await until(() => resumeButton() !== null, 'the card to become clickable');
 		await sleep(50);
+		episodes.release([episode(4, THUMB)]);
+		await sleep(50);
 		looks.stop();
-		expect(looks.seen).toEqual(['image']);
+		expect(looks.seen).toEqual([`image | ${THUMB} | Cowboy Bebop Episode title 4`]);
+	});
+
+	it('resolves a remembered card afresh when it now offers another episode', async () => {
+		const THUMB_3 = 'https://media.kitsu.app/episodes/3/thumb.jpg';
+		const both = () => [episode(3, THUMB_3), episode(4, THUMB)];
+		// Episode 3 left part-way: the card offers 3 again.
+		savePosition('1', 3, 600, 1420);
+		server.use(...rowHandlers({ episodes: both }));
+		app = mount(HomePage, { target });
+		await until(() => imageSource() === THUMB_3, 'the first visit to settle on episode 3');
+		unmount(app);
+		app = null;
+
+		// Episode 3 finished since: the card offers 4.
+		savePosition('1', 3, 1400, 1420);
+		server.use(...rowHandlers({ episodes: both }));
+		app = mount(HomePage, { target });
+		await until(() => imageSource() === THUMB, 'the card to settle on episode 4');
+		await sleep(50);
 		expect(imageSource()).toBe(THUMB);
+		expect(cell()?.textContent).toContain('Episode title 4');
+		expect(cell()?.querySelector('.resume-ep-num')?.textContent?.trim()).toBe('4');
 	});
 
 	it('names the show as the card will, before the match lands, on a return to Home', async () => {

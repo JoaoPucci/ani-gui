@@ -40,6 +40,8 @@ export interface SettledLook {
 	image: CardImage | null;
 	/** The match the look was decided against; null when the row has none. */
 	matchId: string | null;
+	/** The episode the card offered when the look was decided. Stub: not recorded yet. */
+	episode?: number | null;
 }
 
 /** The text a card carries beside its artwork. */
@@ -59,6 +61,8 @@ export interface LookInputs {
 	match: KitsuAnimeRef | null | undefined;
 	/** undefined until the episode lookup settles. */
 	episode: KitsuEpisode | null | undefined;
+	/** The episode the card offers. Stub: not read yet. */
+	offered?: number | null;
 	/** Whether the episode wait has run out for this card. */
 	capReached: boolean;
 	/** The card's text from live data; null while the row is unmatched. */
@@ -72,6 +76,16 @@ export type ProxyUrl = (url: string | null) => string | null;
 export function posterSource(match: KitsuAnimeRef | null | undefined): string | null {
 	const p = match?.poster_image;
 	return p?.medium ?? p?.large ?? p?.small ?? p?.original ?? null;
+}
+
+/** The episode details as far as they describe the offered episode.
+ *  Stub: any details pass, as the page treats them today. */
+export function offeredEpisode(
+	episode: KitsuEpisode | null | undefined,
+	offered: number | null
+): KitsuEpisode | null | undefined {
+	void offered;
+	return episode;
 }
 
 /** The text a card shows: the show's name and the episode line. */

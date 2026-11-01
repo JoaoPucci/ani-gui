@@ -14,13 +14,13 @@ function ref(id: string, poster: string | null = `https://img/${id}.jpg`): Kitsu
 	} as unknown as KitsuAnimeRef;
 }
 
-function ep(thumb: string | null, title: string | null = 'An Episode'): KitsuEpisode {
+function ep(thumb: string | null, title: string | null = 'An Episode', n = 4): KitsuEpisode {
 	return {
-		id: 'e',
+		id: `e${n}`,
 		canonical_title: title,
 		season_number: 1,
-		number: 4,
-		relative_number: 4,
+		number: n,
+		relative_number: n,
 		length: 24,
 		synopsis: null,
 		airdate: null,
@@ -31,7 +31,15 @@ function ep(thumb: string | null, title: string | null = 'An Episode'): KitsuEpi
 const text: CardText = { show: 'Show 1', tag: 4, title: 'An Episode', episodeLabel: null };
 
 function inputs(over: Partial<LookInputs> = {}): LookInputs {
-	return { match: undefined, episode: undefined, capReached: false, text: null, ...over };
+	// The card offers episode 4, the episode ep() describes.
+	return {
+		match: undefined,
+		episode: undefined,
+		offered: 4,
+		capReached: false,
+		text: null,
+		...over
+	};
 }
 
 describe('lookKey', () => {
@@ -70,7 +78,8 @@ describe('createLookBook', () => {
 		expect(remembered.get('a|1')).toEqual({
 			look: {
 				image: { src: 'proxy:https://t/1.jpg', fallback: 'proxy:https://img/1.jpg' },
-				matchId: '1'
+				matchId: '1',
+				episode: 4
 			},
 			text
 		});
@@ -87,20 +96,78 @@ describe('createLookBook', () => {
 		expect(drawn.text).toEqual(text);
 	});
 
-	it('lets live text replace the remembered text once the row is matched', () => {
+	it('keeps the remembered text until the live details for the offered episode land', () => {
 		const remembered = new Map<string, RememberedCard>();
 		createLookBook(proxy, remembered).look(
 			'a',
 			'a|1',
-			inputs({ match: ref('1'), episode: null, text })
+			inputs({ match: ref('1'), episode: ep('https://t/1.jpg'), text })
 		);
-		const live: CardText = { show: 'Show 1', tag: 4, title: null, episodeLabel: 4 };
-		const drawn = createLookBook(proxy, remembered).look(
+		const book = createLookBook(proxy, remembered);
+		book.look('a', 'a|1', inputs());
+		// Matched, details not in yet: the live text is a stand-in.
+		const standIn: CardText = { show: 'Show 1', tag: 4, title: null, episodeLabel: 4 };
+		expect(book.look('a', 'a|1', inputs({ match: ref('1'), text: standIn })).text).toEqual(text);
+		// Details for another episode are not this card's either.
+		expect(
+			book.look('a', 'a|1', inputs({ match: ref('1'), episode: ep(null, 'X', 3), text: standIn }))
+				.text
+		).toEqual(text);
+		const live: CardText = { ...text, title: 'Renamed' };
+		expect(
+			book.look('a', 'a|1', inputs({ match: ref('1'), episode: ep('https://t/1.jpg'), text: live }))
+				.text
+		).toEqual(live);
+	});
+
+	it('resolves afresh when the episode the card offers moves', () => {
+		const book = createLookBook(proxy, new Map());
+		const m = ref('1');
+		const first = book.look('a', 'a|1', inputs({ match: m, episode: ep('https://t/4.jpg') }));
+		expect(first.look?.image?.src).toBe('proxy:https://t/4.jpg');
+		// The cap refines and the card now offers 5; the page still holds
+		// episode 4's details until episode 5's land.
+		const between = book.look(
 			'a',
 			'a|1',
-			inputs({ match: ref('1'), text: live })
+			inputs({ match: m, offered: 5, episode: ep('https://t/4.jpg') })
 		);
-		expect(drawn.text).toEqual(live);
+		expect(between.look).toBeNull();
+		const next = book.look(
+			'a',
+			'a|1',
+			inputs({ match: m, offered: 5, episode: ep('https://t/5.jpg', 'Five', 5) })
+		);
+		expect(next.look).toEqual({
+			image: { src: 'proxy:https://t/5.jpg', fallback: 'proxy:https://img/1.jpg' },
+			matchId: '1',
+			episode: 5
+		});
+	});
+
+	it('drops a remembered look made for another episode once the match shows which one is offered', () => {
+		const remembered = new Map<string, RememberedCard>();
+		createLookBook(proxy, remembered).look(
+			'a',
+			'a|3',
+			inputs({ match: ref('1'), offered: 3, episode: ep('https://t/3.jpg', 'Three', 3), text })
+		);
+		const book = createLookBook(proxy, remembered);
+		expect(book.look('a', 'a|3', inputs()).look?.episode).toBe(3);
+		// Episode 3 was finished since: the card offers 4 now.
+		expect(book.look('a', 'a|3', inputs({ match: ref('1'), offered: 4 })).look).toBeNull();
+		expect(
+			book.look('a', 'a|3', inputs({ match: ref('1'), offered: 4, episode: ep('https://t/4.jpg') }))
+				.look?.image?.src
+		).toBe('proxy:https://t/4.jpg');
+	});
+
+	it('gives way when the match changes under a look pinned on this page', () => {
+		const book = createLookBook(proxy, new Map());
+		book.look('a', 'a|1', inputs({ match: ref('1'), episode: null }));
+		expect(book.look('a', 'a|1', inputs({ match: ref('2'), episode: null })).look?.matchId).toBe(
+			'2'
+		);
 	});
 
 	it('fades in a look recorded while the card sat on this page as a skeleton', () => {
@@ -130,7 +197,7 @@ describe('createLookBook', () => {
 		const book = createLookBook(proxy, remembered);
 		expect(book.look('a', 'a|1', inputs()).look?.matchId).toBe('1');
 		const now = book.look('a', 'a|1', inputs({ match: null }));
-		expect(now.look).toEqual({ image: null, matchId: null });
+		expect(now.look).toEqual({ image: null, matchId: null, episode: null });
 		expect(now.instant).toBe(false);
 	});
 
@@ -161,6 +228,7 @@ describe('createLookBook', () => {
 type Event =
 	| { kind: 'match'; value: KitsuAnimeRef | null }
 	| { kind: 'episode'; value: KitsuEpisode | null }
+	| { kind: 'offer'; value: number }
 	| { kind: 'cap' }
 	| { kind: 'render' };
 
@@ -176,33 +244,68 @@ const episodeArb = fc.option(
 	fc.option(fc.constantFrom('https://t/a.jpg', 'https://t/b.jpg'), { nil: null }).map((t) => ep(t)),
 	{ nil: null }
 );
+/** Details for episode 4 or 5, whichever the card offers or not. */
+const anyEpisodeArb = fc.option(
+	fc
+		.tuple(
+			fc.option(fc.constantFrom('https://t/a.jpg', 'https://t/b.jpg'), { nil: null }),
+			fc.constantFrom(4, 5)
+		)
+		.map(([t, n]) => ep(t, 'An Episode', n)),
+	{ nil: null }
+);
 const eventArb: fc.Arbitrary<Event> = fc.oneof(
 	matchArb.map((value) => ({ kind: 'match' as const, value })),
-	episodeArb.map((value) => ({ kind: 'episode' as const, value })),
+	anyEpisodeArb.map((value) => ({ kind: 'episode' as const, value })),
+	fc.constantFrom(4, 5).map((value) => ({ kind: 'offer' as const, value })),
 	fc.constant({ kind: 'cap' as const }),
 	fc.constant({ kind: 'render' as const })
 );
 
 function drive(events: Event[], book = createLookBook(proxy, new Map())) {
 	let state = inputs();
+	const states = [state];
 	const looks = [book.look('a', 'a|1', state)];
 	for (const e of events) {
 		if (e.kind === 'match') state = { ...state, match: e.value };
 		else if (e.kind === 'episode') state = { ...state, episode: e.value };
+		else if (e.kind === 'offer') state = { ...state, offered: e.value };
 		else if (e.kind === 'cap') state = { ...state, capReached: true };
+		states.push(state);
 		looks.push(book.look('a', 'a|1', state));
 	}
-	return { looks, state };
+	return { looks, states, state };
+}
+
+/** What a card stands for: its show and the episode it offers. */
+function identity(s: LookInputs): string {
+	return s.match === undefined ? 'unmatched' : `${s.match?.id ?? 'none'}|${s.offered}`;
 }
 
 describe('card look properties', () => {
-	it('a card never changes artwork once it has settled', () => {
+	it('a card never changes artwork while it offers the same show and episode', () => {
 		fc.assert(
 			fc.property(fc.array(eventArb, { maxLength: 12 }), (events) => {
-				const { looks } = drive(events);
-				const first = looks.findIndex((l) => l.look !== null);
-				if (first < 0) return;
-				for (const l of looks.slice(first)) expect(l.look).toEqual(looks[first].look);
+				const { looks, states } = drive(events);
+				for (let i = 1; i < looks.length; i++) {
+					if (looks[i - 1].look === null) continue;
+					if (identity(states[i - 1]) !== identity(states[i])) continue;
+					expect(looks[i].look).toEqual(looks[i - 1].look);
+				}
+			})
+		);
+	});
+
+	it("a card's artwork always belongs to the show and episode it offers", () => {
+		fc.assert(
+			fc.property(fc.array(eventArb, { maxLength: 12 }), (events) => {
+				const { looks, states } = drive(events);
+				looks.forEach((l, i) => {
+					const s = states[i];
+					if (l.look === null || s.match === undefined) return;
+					expect(l.look.matchId).toBe(s.match?.id ?? null);
+					if (s.match !== null) expect(l.look.episode).toBe(s.offered);
+				});
 			})
 		);
 	});
@@ -245,7 +348,10 @@ describe('card look properties', () => {
 					'a|1',
 					inputs({ match: ref('1'), episode: null })
 				);
-				const agreeing = events.filter((e) => e.kind !== 'match' || e.value?.id === '1');
+				const agreeing = events.filter(
+					(e) =>
+						(e.kind !== 'match' || e.value?.id === '1') && (e.kind !== 'offer' || e.value === 4)
+				);
 				const { looks } = drive(agreeing, createLookBook(proxy, remembered));
 				for (const l of looks) expect(l.look).toEqual(looks[0].look);
 			})

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
-import { cardText, decideLook, posterSource, visibleImage, type LookInputs } from './card-look';
+import {
+	cardText,
+	decideLook,
+	offeredEpisode,
+	posterSource,
+	visibleImage,
+	type LookInputs
+} from './card-look';
 
 const proxy = (u: string | null) => (u ? `proxy:${u}` : null);
 
@@ -27,7 +34,15 @@ function ep(thumb: string | null, title: string | null = 'An Episode'): KitsuEpi
 }
 
 function inputs(over: Partial<LookInputs> = {}): LookInputs {
-	return { match: undefined, episode: undefined, capReached: false, text: null, ...over };
+	// The card offers episode 4, the episode ep() describes.
+	return {
+		match: undefined,
+		episode: undefined,
+		offered: 4,
+		capReached: false,
+		text: null,
+		...over
+	};
 }
 
 describe('decideLook', () => {
@@ -39,22 +54,41 @@ describe('decideLook', () => {
 	});
 
 	it('settles on the placeholder when the row has no match', () => {
-		expect(decideLook(inputs({ match: null }), proxy)).toEqual({ image: null, matchId: null });
+		expect(decideLook(inputs({ match: null }), proxy)).toEqual({
+			image: null,
+			matchId: null,
+			episode: null
+		});
 	});
 
 	it('is a skeleton while a matched card waits for its episode details', () => {
 		expect(decideLook(inputs({ match: ref('1') }), proxy)).toBeNull();
 	});
 
+	it("waits through another episode's details, then settles on the poster at the cap", () => {
+		const stale = inputs({ match: ref('1'), offered: 5, episode: ep('https://t/1.jpg') });
+		expect(decideLook(stale, proxy)).toBeNull();
+		expect(decideLook({ ...stale, capReached: true }, proxy)).toEqual({
+			image: { src: 'proxy:https://img/1.jpg', fallback: null },
+			matchId: '1',
+			episode: 5
+		});
+	});
+
 	it('settles on the thumbnail, with the poster to fall back on', () => {
 		expect(decideLook(inputs({ match: ref('1'), episode: ep('https://t/1.jpg') }), proxy)).toEqual({
 			image: { src: 'proxy:https://t/1.jpg', fallback: 'proxy:https://img/1.jpg' },
-			matchId: '1'
+			matchId: '1',
+			episode: 4
 		});
 	});
 
 	it('settles on the poster when the episode has no thumbnail, or no details at all', () => {
-		const poster = { image: { src: 'proxy:https://img/1.jpg', fallback: null }, matchId: '1' };
+		const poster = {
+			image: { src: 'proxy:https://img/1.jpg', fallback: null },
+			matchId: '1',
+			episode: 4
+		};
 		expect(decideLook(inputs({ match: ref('1'), episode: ep(null) }), proxy)).toEqual(poster);
 		expect(decideLook(inputs({ match: ref('1'), episode: null }), proxy)).toEqual(poster);
 	});
@@ -62,25 +96,49 @@ describe('decideLook', () => {
 	it('settles on the poster once the wait runs out', () => {
 		expect(decideLook(inputs({ match: ref('1'), capReached: true }), proxy)).toEqual({
 			image: { src: 'proxy:https://img/1.jpg', fallback: null },
-			matchId: '1'
+			matchId: '1',
+			episode: 4
 		});
 	});
 
 	it('settles on the placeholder when neither picture exists', () => {
 		expect(decideLook(inputs({ match: ref('1', null), episode: null }), proxy)).toEqual({
 			image: null,
-			matchId: '1'
+			matchId: '1',
+			episode: 4
 		});
 		expect(decideLook(inputs({ match: ref('1', null), capReached: true }), proxy)).toEqual({
 			image: null,
-			matchId: '1'
+			matchId: '1',
+			episode: 4
 		});
 	});
 
 	it('keeps a thumbnail with no poster behind it', () => {
 		expect(
 			decideLook(inputs({ match: ref('1', null), episode: ep('https://t/1.jpg') }), proxy)
-		).toEqual({ image: { src: 'proxy:https://t/1.jpg', fallback: null }, matchId: '1' });
+		).toEqual({
+			image: { src: 'proxy:https://t/1.jpg', fallback: null },
+			matchId: '1',
+			episode: 4
+		});
+	});
+});
+
+describe('offeredEpisode', () => {
+	const four = ep('https://t/4.jpg');
+	it('passes details for the offered episode, by number or relative number', () => {
+		expect(offeredEpisode(four, 4)).toBe(four);
+		const absolute = { ...four, number: 28 };
+		expect(offeredEpisode(absolute, 4)).toBe(absolute);
+	});
+	it("treats another episode's details as not arrived", () => {
+		expect(offeredEpisode(four, 5)).toBeUndefined();
+	});
+	it('lets "no details" and "not asked yet" stand, and anything when nothing is offered', () => {
+		expect(offeredEpisode(null, 4)).toBeNull();
+		expect(offeredEpisode(undefined, 4)).toBeUndefined();
+		expect(offeredEpisode(four, null)).toBe(four);
 	});
 });
 
