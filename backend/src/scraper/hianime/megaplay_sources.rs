@@ -130,9 +130,11 @@ where
 }
 
 /// The language a track carries: the three-letter code its file name
-/// ends in (`track_0_eng.vtt`, `track_2_Latin_American_spa.vtt`) —
-/// the site lists no code, only a label — or else the label itself,
-/// or `und` when there is neither.
+/// ends in — after an underscore (`track_0_eng.vtt`,
+/// `track_2_Latin_American_spa.vtt`), or ahead of the track's place
+/// in the listing (`eng-2.vtt`, `por-24.vtt`), the two namings the
+/// site's CDNs use — since the site lists no code, only a label; or
+/// else the label itself, or `und` when there is neither.
 #[must_use]
 pub fn lang_of_track(file: &str, label: &str) -> String {
     let name = file
@@ -146,6 +148,7 @@ pub fn lang_of_track(file: &str, label: &str) -> String {
         .strip_suffix(".vtt")
         .or_else(|| name.strip_suffix(".VTT"))
         .unwrap_or(name);
+    let stem = without_place(stem);
     let code = stem.rsplit('_').next().unwrap_or_default();
     if code.len() == 3 && code.bytes().all(|b| b.is_ascii_lowercase()) {
         return code.to_string();
@@ -155,6 +158,18 @@ pub fn lang_of_track(file: &str, label: &str) -> String {
         "und".to_string()
     } else {
         label.to_string()
+    }
+}
+
+/// A stem without the track's place in the listing: `eng-2` is `eng`.
+/// Only a trailing run of digits behind the last hyphen is a place;
+/// any other stem is returned as it is.
+fn without_place(stem: &str) -> &str {
+    match stem.rsplit_once('-') {
+        Some((head, place)) if !place.is_empty() && place.bytes().all(|b| b.is_ascii_digit()) => {
+            head
+        }
+        _ => stem,
     }
 }
 

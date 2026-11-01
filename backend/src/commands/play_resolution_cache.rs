@@ -196,7 +196,11 @@ use crate::proxy::MediaKind;
 // year filter drops the latter too. A v25 row for an undated entry can hold a hentai's stream — one
 // listed under one of the entry's own names — under the entry's key,
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v26";
+// v27: the language reader learned the `<code>-<n>.vtt` naming. A v26
+// row from that CDN holds each track's label as its language
+// (`lang: "Portuguese (- Brazil)"`), which a replay hands the player
+// as the track's srclang; bumping re-resolves.
+const SCHEMA: &str = "v27";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
