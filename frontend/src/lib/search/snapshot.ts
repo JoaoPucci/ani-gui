@@ -115,7 +115,8 @@ export function canReuse(
 /** What a search run again on the way back aims for: the card that was
  *  at the top of the screen, within the pages it had loaded. */
 export interface ResumeTarget {
-	id: string;
+	/** `null` when no card was on screen. */
+	id: string | null;
 	pages: number;
 }
 
