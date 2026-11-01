@@ -9,6 +9,8 @@ pub mod account;
 pub mod account_edit;
 pub(crate) mod account_epoch;
 mod account_mapped;
+pub(crate) mod account_owner;
+pub(crate) mod account_revisions;
 pub mod airing;
 mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
