@@ -162,3 +162,36 @@ async fn a_variant_dressed_as_the_proxy_by_its_userinfo_is_proxied() {
     let media = media.text().await.expect("body");
     assert!(uris(&media).iter().all(|u| h.on_proxy(u)), "{media}");
 }
+
+/// A source that serves a single-quality stream answers the session's
+/// URL with a media playlist rather than a master. The route serves it
+/// as the media playlist it is, every segment on the proxy, rather than
+/// as a master with no variants, which the player cannot play.
+#[tokio::test]
+async fn a_media_playlist_served_where_a_master_is_expected_keeps_its_segments() {
+    let h = start_harness().await;
+    h.serve(
+        "/index.m3u8",
+        "#EXTM3U\n\
+         #EXT-X-VERSION:3\n\
+         #EXT-X-TARGETDURATION:6\n\
+         #EXT-X-MEDIA-SEQUENCE:0\n\
+         #EXTINF:6.0,\n\
+         seg0.ts\n\
+         #EXTINF:6.0,\n\
+         seg1.ts\n\
+         #EXT-X-ENDLIST\n"
+            .to_owned(),
+    )
+    .await;
+    h.serve("/seg0.ts", "segment zero".to_owned()).await;
+    let out = h.master(h.session("/index.m3u8")).await;
+    let found = uris(&out);
+    assert_eq!(found.len(), 2, "{out}");
+    assert!(found.iter().all(|u| h.on_proxy(u)), "{out}");
+    assert_eq!(out.matches("#EXTINF:6").count(), 2, "{out}");
+    assert!(out.contains("#EXT-X-ENDLIST"), "{out}");
+    let segment = reqwest::get(&found[0]).await.expect("segment");
+    assert_eq!(segment.status(), 200);
+    assert_eq!(segment.text().await.expect("bytes"), "segment zero");
+}
