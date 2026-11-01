@@ -13,16 +13,8 @@
 
 import type { LinkOutcome } from '$lib/api';
 import { linkedNotice, linkFailure, undoAndReturn } from './link-notices';
-import { resolveHistoryEntry } from './resolve';
-import { linkWarnings, type LinkCandidate, type LinkWarning } from './link-candidates';
-import {
-	guessedGroup,
-	linkOffer,
-	loadCandidates,
-	searchCandidates,
-	type LinkDeps,
-	type LinkOffer
-} from './link-offer';
+import { LinkPicker } from './link-picker.svelte';
+import { guessedGroup, linkOffer, type LinkDeps } from './link-offer';
 
 /** A notice to the user, with an optional action. */
 export interface LinkNotice {
@@ -43,14 +35,9 @@ export interface LinkSessionDeps extends LinkDeps {
 	here: () => string;
 }
 
-export class LinkSession {
-	offer = $state<LinkOffer | null>(null);
+export class LinkSession extends LinkPicker {
 	open = $state(false);
-	candidates = $state<LinkCandidate[] | null>(null);
-	failed = $state(false);
-	chosen = $state<LinkCandidate | null>(null);
 	busy = $state(false);
-	error = $state<string | null>(null);
 	/** Whether the latest arrival's offer is decided. */
 	settled = $state(false);
 	/** The history rows the card stands for, once worked out. */
@@ -58,21 +45,11 @@ export class LinkSession {
 
 	#deps: LinkSessionDeps;
 	#arrival = 0;
-	#query = 0;
 	#pageId = '';
 
 	constructor(deps: LinkSessionDeps) {
+		super(deps);
 		this.#deps = deps;
-	}
-
-	/** What the chosen show would be worth a second look for. */
-	get warnings(): LinkWarning[] {
-		return this.offer && this.chosen ? linkWarnings(this.offer.entry, this.chosen.ref) : [];
-	}
-
-	/** The episode the card's row is at, as the card shows it. */
-	get episode(): string {
-		return this.offer ? String(resolveHistoryEntry(this.offer.entry, null).displayEpisode) : '';
 	}
 
 	/** The page `pageId` was opened, from the guessed card's row `row`
@@ -94,10 +71,6 @@ export class LinkSession {
 		const offer = this.offer;
 		if (!offer) return;
 		this.open = true;
-		this.chosen = null;
-		this.error = null;
-		this.failed = false;
-		this.candidates = null;
 		this.group = null;
 		// A history that cannot be read now leaves the group to the
 		// confirmation, which asks again.
@@ -107,34 +80,7 @@ export class LinkSession {
 			},
 			() => {}
 		);
-		const query = ++this.#query;
-		const found = await loadCandidates(this.#deps, offer);
-		if (query === this.#query && this.offer === offer) this.candidates = found;
-	}
-
-	/** The candidates a typed search answers with. */
-	async search(query: string): Promise<void> {
-		const offer = this.offer;
-		if (!offer) return;
-		this.candidates = null;
-		this.failed = false;
-		const asked = ++this.#query;
-		const current = () => asked === this.#query && this.offer === offer;
-		try {
-			const found = await searchCandidates(this.#deps, offer, query);
-			if (current()) this.candidates = found;
-		} catch {
-			if (current()) {
-				this.candidates = [];
-				this.failed = true;
-			}
-		}
-	}
-
-	/** Pick a show, or go back to the list (null). */
-	choose(candidate: LinkCandidate | null): void {
-		this.chosen = candidate;
-		this.error = null;
+		await this.loadFor(offer);
 	}
 
 	/** Close the picker, unless a link is in flight. */
