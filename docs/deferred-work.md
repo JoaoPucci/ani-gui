@@ -372,7 +372,8 @@ starting it, and delete it when you find it done.
   its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
   narrowed first by `frontend/src/lib/history/pick-rank.ts`). Over the
   season picker's recorded cases these still pick another entry, and a
-  click on the card opens and plays that one:
+  click on the card opens that one, playing whatever the provider lists
+  for it, if anything:
 
   - [Oshi no Ko], which hianime titles "My Star": "My Star" takes Fuyu
     no Suta-furu-tsu, and "My Star: Season 2" and "My Star Season 3"
