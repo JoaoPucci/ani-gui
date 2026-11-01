@@ -524,6 +524,15 @@ fn a_label_for_another_language_lends_no_region() {
     );
 }
 
+/// `American` names the United States only for English: a Spanish
+/// label calling itself American is read as Spanish, no region.
+#[test]
+fn american_names_a_region_only_for_english() {
+    let at = |label: &str| lang_of_track("https://c.example/subtitles/0f3a9c.vtt", label);
+    assert_eq!(at("English (American)"), "en-US");
+    assert_eq!(at("Spanish (American)"), "es");
+}
+
 /// A listing's tracks whose language the reader could not read are
 /// named in one warning per listing — file and label — so a third
 /// naming shows in the log the first time it is played, not as
@@ -533,7 +542,7 @@ fn a_label_for_another_language_lends_no_region() {
 fn a_listing_with_unread_languages_logs_one_warning_naming_them() {
     let listing = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[
         {"file":"https://cdn.example/subs/eng-2.vtt","label":"English","kind":"captions","default":true},
-        {"file":"https://cdn.example/subs/q7.vtt","label":"Klingon","kind":"captions"},
+        {"file":"https://cdn.example/subs/q7.vtt?sig=s3cr3t&e=99","label":"Klingon","kind":"captions"},
         {"file":"https://cdn.example/subs/zz-9.vtt","label":"Track 4","kind":"captions"}]}"#;
     let (lines, payload) = logged(|| parse_sources(listing).expect("listing"));
     let langs: Vec<&str> = payload.subtitles.iter().map(|t| t.lang.as_str()).collect();
@@ -556,6 +565,11 @@ fn a_listing_with_unread_languages_logs_one_warning_naming_them() {
     assert!(
         !warnings[0].contains("eng-2.vtt"),
         "a read track is not named"
+    );
+    assert!(
+        !warnings[0].contains("s3cr3t"),
+        "a signed file's query stays out of the log: {:?}",
+        warnings[0]
     );
 
     let read = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[
