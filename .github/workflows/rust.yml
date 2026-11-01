@@ -245,10 +245,13 @@ jobs:
         # fit beside them. tools/alongside.sh waits for each by its own
         # process id and fails the step when any of them failed, once
         # all have ended (tests/bash/arch/alongside.bats runs it over
-        # every outcome). The build takes the flags and environment the
-        # next step's test run takes, so that step compiles nothing.
+        # every outcome). The step execs it, so a cancelled or timed-out
+        # step signals it directly: it then stops all three and prints
+        # what each had written. The build takes the flags and
+        # environment the next step's test run takes, so that step
+        # compiles nothing.
         run: |
-          sh tools/alongside.sh \
+          exec sh tools/alongside.sh \
             'python3 -I -m unittest discover -s tests/picker-oracle -p "test_*.py"' \
             'python3 -I tests/picker-oracle/oracle.py gen "$RUNNER_TEMP/cases.json"' \
             'cd backend && cargo test --lib --no-run'
@@ -308,11 +311,11 @@ jobs:
       - if: needs.filter.outputs.picker == 'true'
         name: Draw the pools and build the picker, at once
         # As in the agreement job: the draw and the build of the test
-        # binary share the runner's cores, and tools/alongside.sh fails
-        # the step when either failed.
+        # binary share the runner's cores, and tools/alongside.sh, exec'd
+        # so a cancel reaches it, fails the step when either failed.
         run: |
           echo "fuzz seed $FUZZ_SEED, $FUZZ_POOLS pools"
-          sh tools/alongside.sh \
+          exec sh tools/alongside.sh \
             'python3 -I tests/picker-oracle/oracle.py fuzz "$FUZZ_SEED" "$FUZZ_POOLS" "$RUNNER_TEMP/fuzz.json"' \
             'cd backend && cargo test --lib --no-run'
       - if: needs.filter.outputs.picker == 'true'
