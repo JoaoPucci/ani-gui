@@ -386,3 +386,39 @@ describe('concurrent config loads (shared load promise)', () => {
 		expect(modes.at(-1)).toBe('dub');
 	});
 });
+
+describe('stop', () => {
+	it('ends the current search: a page still loading reaches nothing', async () => {
+		const pending = defer<KitsuSearchPage>();
+		const h = makeHarness({ searchPage: vi.fn().mockReturnValue(pending.promise) });
+		const runner = createSearchRunner(h.deps);
+		const run = runner.run('a');
+		await drain();
+
+		runner.stop();
+		pending.resolve(lastPage([ref('late')]));
+		await run;
+
+		expect(h.results).toEqual([]);
+		expect(runner.checkpoint()).toBeNull();
+		expect(h.busyLog).toEqual([true, false]);
+	});
+
+	it('ends the probes the search was asking', async () => {
+		let signal: AbortSignal | undefined;
+		const h = makeHarness({
+			filter: vi.fn().mockImplementation((_items, _mode, _emit, s: AbortSignal) => {
+				signal = s;
+				return new Promise<void>(() => {});
+			}),
+			searchPage: vi.fn().mockResolvedValue(lastPage([ref('a')]))
+		});
+		const runner = createSearchRunner(h.deps);
+		void runner.run('a');
+		await drain();
+		expect(signal?.aborted).toBe(false);
+
+		runner.stop();
+		expect(signal?.aborted).toBe(true);
+	});
+});

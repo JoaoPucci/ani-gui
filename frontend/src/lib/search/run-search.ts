@@ -91,6 +91,8 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	/** Where the current search stood when its last page settled, with
 	 *  the results it shows; `null` before a first page has settled. */
 	checkpoint: () => SearchCheckpoint | null;
+	/** End the current search: nothing more of it reaches the page. */
+	stop: () => void;
 	/** Bring back a search the page saved when the reader left it. */
 	resume: (saved: SearchSnapshot, at: { now: number; reload: boolean }) => Promise<void>;
 } {
@@ -292,5 +294,8 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		void fetchMore(search);
 	};
 
-	return { run, loadMore, checkpoint, resume };
+	/** Declared ahead of its rules. */
+	const stop = () => {};
+
+	return { run, loadMore, checkpoint, resume, stop };
 }

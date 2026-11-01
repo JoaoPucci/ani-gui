@@ -368,4 +368,46 @@ describe('back to the search page', () => {
 		expect(asked).toEqual([...askedBefore, 'himmel@0/year']);
 		expect(window.scrollY).toBe(10 * ROW + 100);
 	});
+
+	it('opens empty, with the order and filters back to their defaults, from the bare search link', async () => {
+		await browse();
+		asked.length = 0;
+
+		// The rail's Search link, while the search is on screen.
+		setUrl('/search');
+		await until(() => cards().length === 0, 'the results to go');
+		expect(query()).toBe(m.search_eyebrow_value_empty());
+		expect(target.textContent).toContain(m.search_subtitle_empty());
+
+		setQuery('himmel');
+		await until(() => cards().includes('Show 1'), 'the next search');
+		expect(asked).toEqual(['himmel@0/relevance']);
+		expect(orderChosen(m.search_sort_relevance())).toBe(true);
+		expect(typeOn(subtypeLabel('TV'))).toBe(false);
+	});
+
+	it('opens empty on a back press onto the bare search page', async () => {
+		await browse();
+		const kept = (app as unknown as SnapshotCarrier).snapshot.capture();
+		// The entry behind is the bare search page, which kept an empty search.
+		unmount(app!);
+		app = null;
+		setUrl('/search');
+		mountSearch();
+		const empty = (app as unknown as SnapshotCarrier).snapshot.capture();
+		unmount(app!);
+		app = null;
+		setQuery('frieren');
+		mountSearch();
+		(app as unknown as SnapshotCarrier).snapshot.restore(JSON.parse(JSON.stringify(kept)));
+		navigated('popstate');
+		await until(() => cards().includes('Show 21'), 'the restored search');
+
+		pressingBackTo('');
+		setUrl('/search');
+		(app as unknown as SnapshotCarrier).snapshot.restore(JSON.parse(JSON.stringify(empty)));
+		navigated('popstate');
+		await until(() => cards().length === 0, 'the results to go');
+		expect(query()).toBe(m.search_eyebrow_value_empty());
+	});
 });
