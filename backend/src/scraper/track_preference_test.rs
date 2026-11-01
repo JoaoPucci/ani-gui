@@ -186,13 +186,28 @@ fn the_shows_remembered_language_leads_the_locale() {
     );
 }
 
-/// Within a language, the exact region comes before a track that only
-/// shares the script, and a track's script is read from its region —
-/// as the built-in player starts.
 /// A tag that names neither region nor script is read in its
 /// language's usual script, as the built-in player reads it: a bare
 /// `zh` is Simplified, so a Simplified pick takes it over `zh-TW`, and
 /// a bare `zh` pick takes `zh-Hans` over `zh-Hant`.
+/// Serbian reads as Cyrillic but where Montenegro, Romania and Turkey
+/// write it in Latin, and a former code reads as its language — by the
+/// same table and canon the built-in player uses.
+#[test]
+fn serbian_by_region_and_former_codes_read_as_the_built_in_player_reads_them() {
+    let tracks = vec![
+        track("sr-Cyrl", "Serbian (Cyrillic)", false, 0),
+        track("sr-Latn", "Serbian (Latin)", false, 1),
+    ];
+    assert_eq!(labels_first(&tracks, "sr-ME", 1), ["Serbian (Latin)"]);
+    assert_eq!(labels_first(&tracks, "sr", 1), ["Serbian (Cyrillic)"]);
+    let hebrew = vec![
+        track("en", "English", true, 0),
+        track("iw", "Hebrew", false, 1),
+    ];
+    assert_eq!(labels_first(&hebrew, "he", 1), ["Hebrew"]);
+}
+
 #[test]
 fn a_bare_tag_reads_in_its_languages_usual_script() {
     let first = |tracks: &[SubtitleTrack], remembered| -> String {
@@ -218,6 +233,9 @@ fn a_bare_tag_reads_in_its_languages_usual_script() {
     assert_eq!(first(&scripts, "zh"), "Chinese (Simplified)");
 }
 
+/// Within a language, the exact region comes before a track that only
+/// shares the script, and a track's script is read from its region —
+/// as the built-in player starts.
 #[test]
 fn within_a_language_the_region_then_the_script() {
     let tracks = vec![

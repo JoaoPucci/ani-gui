@@ -66,6 +66,20 @@ describe('startingTrack — region, then script, then language', () => {
 	});
 });
 
+describe('startingTrack — languages written in more than one script', () => {
+	it('reads Serbian as Cyrillic but where its region writes it in Latin', () => {
+		const tracks = [t('sr-Cyrl'), t('sr-Latn')];
+		expect(startingTrack(tracks, 'sr-ME')).toBe(1);
+		expect(startingTrack(tracks, 'sr')).toBe(0);
+	});
+
+	it('reads a bare Chinese tag as Simplified, by the same table the backend uses', () => {
+		expect(startingTrack([t('zh-TW'), t('zh')], '', 'zh-Hans')).toBe(1);
+		expect(startingTrack([t('zh-Hant'), t('zh-Hans')], '', 'zh')).toBe(1);
+		expect(startingTrack([t('zh-Hans'), t('zh-Hant')], 'zh-US')).toBe(0);
+	});
+});
+
 describe('startingTrack — what is not a tag', () => {
 	it('reads a malformed track tag or locale as no language', () => {
 		expect(startingTrack([t('not a tag!'), t('en', true)], 'pt_BR')).toBe(1);
