@@ -47,3 +47,21 @@ export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
 	if (routeId.startsWith('/play')) return [home, { label: m.breadcrumb_watching() }];
 	return [home];
 }
+
+/** Declared ahead of its rules: the trail as given. */
+export function withSearchOrigin(
+	trail: BreadcrumbSegment[],
+	origin: string | null,
+	routeId: string | null
+): BreadcrumbSegment[] {
+	void origin;
+	void routeId;
+	return trail;
+}
+
+/** Declared ahead of its rules: no crumb goes back. */
+export function goesBack(href: string, back: string | null): boolean {
+	void href;
+	void back;
+	return false;
+}
