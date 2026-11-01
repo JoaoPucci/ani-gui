@@ -477,16 +477,29 @@ async fn an_older_full_release_without_this_platforms_package_is_not_offered() {
 async fn an_older_draft_or_pre_release_from_the_fallback_is_not_offered() {
     let mut draft = release_json("0.10.0", false, &every_package("0.10.0"));
     draft["draft"] = serde_json::Value::Bool(true);
-    for stale in [
-        draft,
-        release_json("0.10.0", true, &every_package("0.10.0")),
-    ] {
-        let server = serving(&ten_prereleases()).await;
-        latest_serving(&server, stale, 1).await;
-        let client = reqwest::Client::new();
-        let release =
-            fetch_latest_release(&client, false, Some(Platform::Linux), Some(&server.uri())).await;
-        assert!(release.is_none());
+    // A page with nothing installable on Linux under either setting,
+    // so the fallback is asked whether pre-releases count or not: it
+    // offers a full release only.
+    let page: Vec<_> = (11..21)
+        .rev()
+        .map(|minor| {
+            let version = format!("0.{minor}.0");
+            release_json(&version, true, &windows_package(&version))
+        })
+        .collect();
+    for include in [true, false] {
+        for stale in [
+            draft.clone(),
+            release_json("0.10.0", true, &every_package("0.10.0")),
+        ] {
+            let server = serving(&page).await;
+            latest_serving(&server, stale, 1).await;
+            let client = reqwest::Client::new();
+            let release =
+                fetch_latest_release(&client, include, Some(Platform::Linux), Some(&server.uri()))
+                    .await;
+            assert!(release.is_none());
+        }
     }
 }
 
@@ -547,5 +560,25 @@ async fn an_older_full_release_is_found_when_no_pre_release_on_the_page_installs
     let client = reqwest::Client::new();
     let release =
         fetch_latest_release(&client, true, Some(Platform::Windows), Some(&server.uri())).await;
+    assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.10.0"));
+}
+
+#[tokio::test]
+async fn a_page_github_answers_with_something_unreadable_falls_back_to_the_latest_full_release() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{REPO_PATH}/releases")))
+        .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+        .mount(&server)
+        .await;
+    latest_serving(
+        &server,
+        release_json("0.10.0", false, &every_package("0.10.0")),
+        1,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let release =
+        fetch_latest_release(&client, false, Some(Platform::Linux), Some(&server.uri())).await;
     assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.10.0"));
 }
