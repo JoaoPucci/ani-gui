@@ -78,7 +78,7 @@ pub(super) fn settled(
 /// The stamps a repair heard as `heard` writes over `current`, the
 /// show's stamps now, or `None` to write nothing, noting the repair in
 /// `taken` under `key`. `ours` is what its listing makes of the stamps
-/// it starts from ([`repaired`]).
+/// it starts from (`repaired`).
 pub(super) fn decided(
     taken: &mut BTreeMap<(PathBuf, String), Taken>,
     key: (PathBuf, String),

@@ -30,7 +30,7 @@ use drop::kept_former;
 /// under the store's locks, against the row as it stands there, and
 /// ordered against nothing: a walk's repair, which knows when its
 /// listing was heard, goes through [`retag_from_listing`] or
-/// [`retag_from_resolve`].
+/// [`retag_from_resolve`]; only tests call this one.
 pub fn retag_display(
     state: &AppState,
     slug: &str,

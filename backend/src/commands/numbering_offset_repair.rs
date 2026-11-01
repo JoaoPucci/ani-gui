@@ -14,8 +14,9 @@
 //!   a listing heard after it that decides otherwise;
 //! - a repair whose listing was heard wholly before another's has no
 //!   say once that one is taken, and writes nothing after it;
-//! - a listing that repairs nothing takes no part, and leaves the stamps
-//!   to the listings that do, heard before or after;
+//! - a listing that repairs nothing takes no part in where the stamp
+//!   goes, and leaves it to the listings that do, heard before or
+//!   after;
 //! - a former tag any listing at hand this run carries is not kept,
 //!   repairing or not, heard before or after: a position kept under it
 //!   may be that row's;

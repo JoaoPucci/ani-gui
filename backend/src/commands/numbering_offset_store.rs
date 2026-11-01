@@ -51,7 +51,7 @@ pub(super) struct Row {
     pub(super) offset: u32,
     pub(super) display: Option<(u32, String)>,
     /// The (slot, tag) the display stamp named its row by before a
-    /// repair put it right ([`super::retag_display`]); it describes
+    /// repair put it right (`numbering_offset_repair.rs`); it describes
     /// the stamp's row only while the stamp names the same slot.
     pub(super) former: Option<(u32, String)>,
 }
