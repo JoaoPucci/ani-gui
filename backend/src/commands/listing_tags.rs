@@ -29,7 +29,7 @@ mod record;
 #[cfg(test)]
 pub(crate) use record::tick_for_tests;
 pub use record::Hearing;
-pub(crate) use record::{next_record, Begun, Record};
+pub(crate) use record::{next_record, Begun, Order, Record};
 
 /// Every read-then-write of a record is made under this one lock, so a
 /// hearing compared against the stored one is compared against what is
