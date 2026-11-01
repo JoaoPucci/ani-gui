@@ -1,6 +1,7 @@
 //! What a history row leaves behind, removed with the row.
 //!
-//! A row records the Kitsu id of the show played. The app keeps more
+//! A row records the Kitsu id of the show played, or of the show the
+//! user linked it to. The app keeps more
 //! about the show, keyed by the row's show id or title:
 //!
 //! - the show's watch stamp (`watched-at:`);

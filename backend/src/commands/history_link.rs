@@ -11,20 +11,28 @@
 //! episode, its marker, its watch moment and its place in the file
 //! stay as they were. A link is no watch, so no stamp moves and no
 //! tracker hears of it; the next play of the card is a play of the
-//! linked show, and writes as one. A stored mapping that names another
+//! linked show, and writes as one. To the history guard, though, it is
+//! a write that gives the row its Kitsu id, as a watch's is
+//! ([`crate::history::guard`]): a play or watch whose request began
+//! before the link writes nothing of its own on the row, and the
+//! deferred writes of one in flight stand down — the user's naming of
+//! the show stands. A stored mapping that names another
 //! show for a linked row is dropped, since it is the guess the link
 //! replaces; one that names the linked show stays. No played mark is
 //! written: the mark says a play stored the mapping.
 //!
-//! The id must be one Kitsu serves: the entry is read first, and a
-//! read Kitsu answers with a 404 or 410 refuses the link (and marks
+//! The id must be one Kitsu serves: the entry is read first, from the
+//! cache or from Kitsu, and a read Kitsu answers with a 404 or 410
+//! refuses the link (and marks
 //! the id gone, as any user read does). A row removed while that read
 //! was out is not linked.
 //!
 //! An undo names, for each row, the id the link gave it and the row as
-//! the link left it — its episode and watch moment. A row that still
-//! reads so gets back the id it had before; one written since by a
-//! watch, a resolve or another link is left as it now is. The mapping
+//! the link left it — its episode, watch moment and the id the link
+//! gave it. A row that still reads so gets back the id it had before;
+//! one a watch or another link wrote since reads otherwise, and is left
+//! as it now is. A resolve that rewrote only the row's title is not
+//! told apart, and is undone with the rest. The mapping
 //! the link dropped is not restored: it was a guess, and the next
 //! Continue load guesses again.
 
