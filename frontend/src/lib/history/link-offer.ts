@@ -42,7 +42,6 @@ async function guessedAs(
 	entry: HistoryEntry,
 	pageId: string
 ): Promise<KitsuAnimeRef | null> {
-	if (entry.kitsu_id) return null;
 	const { match, trusted } = await deps.resolve(entry);
 	return match && !trusted && match.id === pageId ? match : null;
 }
@@ -90,17 +89,15 @@ export async function searchCandidates(
 }
 
 /** Every guessed row the offer's card stands for: its own, and each
- *  other row with no recorded id guessed as the same show. A row whose
+ *  other row Continue Watching guesses as the same show. The rows are
+ *  asked side by side, as Continue Watching asks them; a row whose
  *  match cannot be read is left out. */
 export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
-	const rows = await deps.history();
-	const group = [offer.entry.id];
-	for (const entry of rows) {
-		if (entry.id === offer.entry.id || entry.kitsu_id) continue;
-		const same = await guessedAs(deps, entry, offer.current.id).catch(() => null);
-		if (same) group.push(entry.id);
-	}
-	return group;
+	const others = (await deps.history()).filter((e) => e.id !== offer.entry.id);
+	const same = await Promise.all(
+		others.map((e) => guessedAs(deps, e, offer.current.id).catch(() => null))
+	);
+	return [offer.entry.id, ...others.filter((_, i) => same[i] !== null).map((e) => e.id)];
 }
 
 /** Link the offer's card, and every guessed row it stands for, to

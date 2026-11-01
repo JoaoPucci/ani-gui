@@ -1813,7 +1813,7 @@
 					</p>
 
 					<h1 class="title" class:title-noted={guessedRow !== null}>{detail.canonical_title}</h1>
-					{#if guessedRow !== null}
+					{#if guessedRow !== null && !(linkSession.settled && !linkSession.offer)}
 						<!-- Held open from the first paint when a guessed card opened
 						     the page, so the line arriving moves nothing below it. -->
 						<p class="guess-note">
@@ -2418,6 +2418,7 @@
 			failed={linkSession.failed}
 			chosen={linkSession.chosen}
 			warnings={linkSession.warnings}
+			rowCount={linkSession.group?.length ?? 1}
 			busy={linkSession.busy}
 			error={linkSession.error}
 			onSearch={(q) => void linkSession.search(q)}

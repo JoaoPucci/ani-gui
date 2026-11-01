@@ -17,7 +17,7 @@ import { kitsuEntryGone } from './match';
 import { resolveHistoryEntry } from './resolve';
 import { linkWarnings, type LinkCandidate, type LinkWarning } from './link-candidates';
 import {
-	confirmLink,
+	guessedGroup,
 	linkOffer,
 	loadCandidates,
 	searchCandidates,
@@ -54,12 +54,13 @@ export class LinkSession {
 	busy = $state(false);
 	error = $state<string | null>(null);
 	/** Whether the latest arrival's offer is decided. */
-	settled = $state(true);
+	settled = $state(false);
 	/** The history rows the card stands for, once worked out. */
 	group = $state<string[] | null>(null);
 
 	#deps: LinkSessionDeps;
 	#arrival = 0;
+	#query = 0;
 	#pageId = '';
 
 	constructor(deps: LinkSessionDeps) {
@@ -83,8 +84,11 @@ export class LinkSession {
 		this.#pageId = pageId;
 		this.offer = null;
 		this.open = false;
+		this.settled = false;
 		const offer = await linkOffer(this.#deps, row, pageId);
-		if (arrival === this.#arrival) this.offer = offer;
+		if (arrival !== this.#arrival) return;
+		this.offer = offer;
+		this.settled = true;
 	}
 
 	/** Open the picker on the offer's candidates. */
@@ -96,8 +100,15 @@ export class LinkSession {
 		this.error = null;
 		this.failed = false;
 		this.candidates = null;
+		this.group = null;
+		void guessedGroup(this.#deps, offer)
+			.then((group) => {
+				if (this.offer === offer) this.group = group;
+			})
+			.catch(() => {});
+		const query = ++this.#query;
 		const found = await loadCandidates(this.#deps, offer);
-		if (this.open && this.offer === offer) this.candidates = found;
+		if (query === this.#query && this.offer === offer) this.candidates = found;
 	}
 
 	/** The candidates a typed search answers with. */
@@ -106,11 +117,13 @@ export class LinkSession {
 		if (!offer) return;
 		this.candidates = null;
 		this.failed = false;
+		const asked = ++this.#query;
+		const current = () => asked === this.#query && this.offer === offer;
 		try {
 			const found = await searchCandidates(this.#deps, offer, query);
-			if (this.offer === offer) this.candidates = found;
+			if (current()) this.candidates = found;
 		} catch {
-			if (this.offer === offer) {
+			if (current()) {
 				this.candidates = [];
 				this.failed = true;
 			}
@@ -137,7 +150,8 @@ export class LinkSession {
 		this.busy = true;
 		this.error = null;
 		try {
-			const outcome = await confirmLink(this.#deps, offer, chosen.ref.id);
+			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
+			const outcome = await this.#deps.link(rows, chosen.ref.id);
 			this.open = false;
 			this.offer = null;
 			this.#deps.notify({
@@ -146,8 +160,10 @@ export class LinkSession {
 				actionLabel: m.detail_link_undo(),
 				onAction: () => void this.undo(outcome, from, offer.entry.id)
 			});
+			// The page is opened again without the card's row: the row is
+			// linked, so there is nothing left to offer, nor room to hold.
 			if (chosen.ref.id === from) this.#deps.refresh();
-			else this.#deps.showPage(chosen.ref.id, null);
+			this.#deps.showPage(chosen.ref.id, null);
 		} catch (e) {
 			this.error = kitsuEntryGone(e) ? m.detail_link_failed_gone() : m.detail_link_failed();
 		} finally {
@@ -155,8 +171,11 @@ export class LinkSession {
 		}
 	}
 
-	/** Undo `outcome`, made on the page `from` for the card row `row`. */
+	/** Undo `outcome`, made on the page `from` for the card row `row`.
+	 *  The page goes back to `from` only while the user is still on the
+	 *  page the link left them on; anywhere else, they stay. */
 	async undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
+		const stayed = this.#deps.here() === `/anime/${outcome.kitsu_id}`;
 		try {
 			const all = await undoLink(this.#deps, outcome);
 			this.#deps.notify(
@@ -168,6 +187,7 @@ export class LinkSession {
 			this.#deps.notify({ kind: 'error', message: m.detail_link_failed() });
 			return;
 		}
+		if (!stayed) return;
 		this.#deps.refresh();
 		this.#deps.showPage(from, row);
 	}

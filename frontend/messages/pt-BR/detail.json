@@ -171,8 +171,8 @@
 	"link_candidates_empty": "Nenhum anime encontrado. Tente outra busca.",
 	"link_shown_now": "Nesta página",
 	"link_confirm_heading": "Vincular a {title}?",
-	"link_confirm_body": "O card de Continuar assistindo vai abrir {title} e retomar dali. A próxima reprodução por ele atualiza suas listas.",
-	"link_warning_season": "O título salvo indica uma temporada diferente deste anime.",
+	"link_confirm_body": "O card de Continuar assistindo vai abrir {title} e retomar dali, e a próxima reprodução por ele é registrada como este anime.",
+	"link_warning_season": "O título salvo e este anime indicam temporadas diferentes.",
 	"link_warning_episode": "Seu histórico está no episódio {episode}, mas este anime tem {count} episódios.",
 	"link_confirm_button": "Vincular",
 	"link_back_button": "Voltar",
@@ -183,5 +183,6 @@
 	"link_undo_kept_toast": "Não deu para desfazer: o anime foi assistido depois do vínculo.",
 	"link_failed_gone": "Esse anime não está mais no Kitsu.",
 	"link_failed": "Não foi possível vincular o anime. Tente de novo.",
-	"link_linking": "Vinculando…"
+	"link_linking": "Vinculando…",
+	"link_confirm_rows": "As entradas mais antigas do histórico que este card esconde também são vinculadas."
 }

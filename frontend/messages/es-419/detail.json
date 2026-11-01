@@ -166,8 +166,8 @@
 	"link_candidates_empty": "No se encontraron series. Prueba otra búsqueda.",
 	"link_shown_now": "En esta página",
 	"link_confirm_heading": "¿Vincular a {title}?",
-	"link_confirm_body": "La tarjeta de Seguir viendo abrirá {title} y continuará desde ahí. Tu próxima reproducción desde ella actualizará tus listas.",
-	"link_warning_season": "El título guardado nombra una temporada distinta de esta serie.",
+	"link_confirm_body": "La tarjeta de Seguir viendo abrirá {title} y continuará desde ahí, y tu próxima reproducción desde ella se registrará como esta serie.",
+	"link_warning_season": "El título guardado y esta serie indican temporadas distintas.",
 	"link_warning_episode": "Tu historial va en el episodio {episode}, pero esta serie tiene {count} episodios.",
 	"link_confirm_button": "Vincular",
 	"link_back_button": "Volver",
@@ -178,5 +178,6 @@
 	"link_undo_kept_toast": "No se pudo deshacer: la serie se reprodujo después del vínculo.",
 	"link_failed_gone": "Esa serie ya no está en Kitsu.",
 	"link_failed": "No se pudo vincular la serie. Inténtalo de nuevo.",
-	"link_linking": "Vinculando…"
+	"link_linking": "Vinculando…",
+	"link_confirm_rows": "Las entradas más antiguas del historial que oculta esta tarjeta también se vinculan."
 }

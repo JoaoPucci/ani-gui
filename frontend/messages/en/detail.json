@@ -130,8 +130,8 @@
 	"link_candidates_empty": "No shows found. Try another search.",
 	"link_shown_now": "On this page",
 	"link_confirm_heading": "Link to {title}?",
-	"link_confirm_body": "The Continue card will open {title} and resume from there. Your next play from it updates your tracker lists.",
-	"link_warning_season": "The saved title names a different season than this show.",
+	"link_confirm_body": "The Continue card will open {title} and resume from there, and your next play from it is recorded as this show.",
+	"link_warning_season": "The saved title and this show name different seasons.",
 	"link_warning_episode": "Your history is at episode {episode}, but this show lists {count} episodes.",
 	"link_confirm_button": "Link",
 	"link_back_button": "Back",
@@ -142,5 +142,6 @@
 	"link_undo_kept_toast": "Couldn’t undo: the show was played after the link.",
 	"link_failed_gone": "That show is no longer on Kitsu.",
 	"link_failed": "Couldn’t link the show. Try again.",
-	"link_linking": "Linking…"
+	"link_linking": "Linking…",
+	"link_confirm_rows": "The older history entries this card hides are linked too."
 }

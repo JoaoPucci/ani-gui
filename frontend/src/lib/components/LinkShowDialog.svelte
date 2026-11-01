@@ -30,6 +30,8 @@
 		/** The show picked, once one is. */
 		chosen: LinkCandidate | null;
 		warnings: LinkWarning[];
+		/** How many history rows the link moves: the card's and those it hides. */
+		rowCount: number;
 		/** A link in flight. */
 		busy: boolean;
 		/** Why the last link failed, when it did. */
@@ -47,6 +49,7 @@
 		failed,
 		chosen,
 		warnings,
+		rowCount,
 		busy,
 		error,
 		onSearch,
@@ -163,6 +166,9 @@
 			</header>
 
 			{#if chosen}
+				{#if rowCount > 1}
+					<p class="ls-body ls-rows">{m.detail_link_confirm_rows()}</p>
+				{/if}
 				{#if warnings.length > 0}
 					<ul class="ls-warnings">
 						{#if warnings.includes('season')}
@@ -455,6 +461,9 @@
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
+	}
+	.ls-rows {
+		margin: 0 0 var(--space-4);
 	}
 	.ls-status {
 		margin: var(--space-3) 0;
