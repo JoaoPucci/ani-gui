@@ -40,6 +40,12 @@ pub enum Platform {
 }
 
 impl Platform {
+    /// The packaged platform this binary was built for, or `None`
+    /// on one the app does not package.
+    pub fn current() -> Option<Self> {
+        None
+    }
+
     /// Whether a release asset named `asset_name` installs on this
     /// platform.
     pub fn carries(self, asset_name: &str) -> bool {
@@ -85,6 +91,17 @@ struct RawRelease {
     body: Option<String>,
     #[serde(default)]
     draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    assets: Vec<RawAsset>,
+}
+
+/// One downloadable file attached to a release.
+#[derive(Debug, Deserialize)]
+struct RawAsset {
+    #[serde(default)]
+    name: String,
 }
 
 /// Normalise a `RawRelease` into the smaller `ReleaseInfo` or
@@ -105,17 +122,24 @@ fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
     })
 }
 
-/// Parse the response body bytes. The list endpoint returns an
-/// array, the latest endpoint a single object — accept both.
-fn parse_response(body: &[u8], include_prereleases: bool) -> Option<ReleaseInfo> {
-    if include_prereleases {
-        let arr: Vec<RawRelease> = serde_json::from_slice(body).ok()?;
-        let raw = arr.into_iter().next()?;
-        normalise(raw)
-    } else {
-        let raw: RawRelease = serde_json::from_slice(body).ok()?;
-        normalise(raw)
-    }
+/// The release to offer from `releases`, newest first.
+fn select_release(
+    releases: Vec<RawRelease>,
+    platform: Platform,
+    include_prereleases: bool,
+) -> Option<ReleaseInfo> {
+    let _ = (platform, include_prereleases);
+    normalise(releases.into_iter().next()?)
+}
+
+/// Parse the list endpoint's body and pick the release to offer.
+fn parse_response(
+    body: &[u8],
+    platform: Platform,
+    include_prereleases: bool,
+) -> Option<ReleaseInfo> {
+    let releases: Vec<RawRelease> = serde_json::from_slice(body).ok()?;
+    select_release(releases, platform, include_prereleases)
 }
 
 /// Fetch the latest GitHub release for the bundled repo. Returns
@@ -126,8 +150,10 @@ fn parse_response(body: &[u8], include_prereleases: bool) -> Option<ReleaseInfo>
 pub async fn fetch_latest_release(
     client: &reqwest::Client,
     include_prereleases: bool,
+    platform: Option<Platform>,
     base_override: Option<&str>,
 ) -> Option<ReleaseInfo> {
+    let platform = platform.unwrap_or(Platform::Linux);
     let base = base_override.unwrap_or(GITHUB_API);
     let url = if include_prereleases {
         format!("{base}/repos/{REPO_PATH}/releases?per_page=1")
@@ -149,7 +175,7 @@ pub async fn fetch_latest_release(
         return None;
     }
     let bytes = resp.bytes().await.ok()?;
-    parse_response(&bytes, include_prereleases)
+    parse_response(&bytes, platform, include_prereleases)
 }
 
 #[cfg(test)]
