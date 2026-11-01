@@ -20,9 +20,10 @@
 #     is on its command line.
 #
 # What this does not cover: a launch that reaches the binary without
-# the driver — `child_process.spawn` on the packaged path, say — or
-# the driver reached under a name that never spells `_electron`.
-# Neither exists; this check would not notice one.
+# the driver — `child_process.spawn` on the packaged path, say — the
+# driver reached under a name that never spells `_electron`, or a
+# Playwright suite outside electron/, which is the only tree scanned.
+# None exists; this check would not notice one.
 
 set -eu
 
