@@ -127,16 +127,14 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { refreshedRows } from '$lib/history/row-number';
 	import { latestReads } from '$lib/history/latest-call';
+	import { EPISODE_WAIT_CAP_MS, cardText, visibleImage } from '$lib/history/card-look';
 	import {
-		EPISODE_WAIT_CAP_MS,
-		cardText,
-		createCapTimers,
 		createLookBook,
 		lookKey,
 		sessionLooks,
-		visibleImage,
 		type CardLookState
-	} from '$lib/history/card-look';
+	} from '$lib/history/look-book';
+	import { createCapTimers } from '$lib/history/cap-timers';
 	import { revealWhenDecoded } from '$lib/history/reveal-image';
 	import { m } from '$lib/paraglide/messages';
 
@@ -207,8 +205,9 @@
 
 	// Which look each Continue card is in — skeleton until its final
 	// artwork is known, then that artwork for good. The decision is
-	// $lib/history/card-look; the page holds the two inputs only it can
-	// observe: a card's episode wait running out, and an image failing.
+	// $lib/history/card-look, kept per card by look-book; the page holds
+	// the two inputs only it can observe: a card's episode wait running
+	// out, and an image failing.
 	const lookBook = createLookBook(imageProxyUrl, sessionLooks);
 	let capReached = $state<Record<string, true>>({});
 	let failedImages = $state<Record<string, true>>({});

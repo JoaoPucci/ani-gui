@@ -31,7 +31,8 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { EPISODE_WAIT_CAP_MS, sessionLooks } from '../../src/lib/history/card-look';
+import { EPISODE_WAIT_CAP_MS } from '../../src/lib/history/card-look';
+import { sessionLooks } from '../../src/lib/history/look-book';
 import { m } from '../../src/lib/paraglide/messages';
 
 const POSTER = 'https://media.kitsu.app/anime/1/poster/medium.jpg';
