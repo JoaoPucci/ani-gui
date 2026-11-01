@@ -51,7 +51,7 @@ pub(super) fn reach(upstream: &Url, origin: &ProxyOrigin, playlist: bool) -> Rea
 /// port, parsed, are the proxy's. Its text is not read, so neither a
 /// userinfo that spells the proxy's origin (`http://127.0.0.1:<port>@
 /// evil.example/`) nor a port the proxy's is a prefix of passes.
-fn on_proxy(url: &Url, origin: &ProxyOrigin) -> bool {
+pub(super) fn on_proxy(url: &Url, origin: &ProxyOrigin) -> bool {
     Url::parse(&origin.base).is_ok_and(|own| {
         url.scheme() == own.scheme()
             && url.host() == own.host()

@@ -61,6 +61,7 @@ use url::Url;
 
 use crate::error::{AniError, Result};
 use crate::proxy::host_budget_demand::Stream;
+use crate::proxy::m3u8_guard::{keep_player_view_on_proxy, player_lines, reads_as_media};
 use crate::proxy::m3u8_reach::{reach, Reach};
 use crate::proxy::token::{sign_marked, AppSecret, SessionId};
 
@@ -198,7 +199,8 @@ pub fn rewrite_master_naming(
     vars: &str,
 ) -> Result<String> {
     let body =
-        &super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
+        super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
+    let body = &*player_lines(&body);
     let parsed = m3u8_rs::parse_master_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("master parse: {e}"),
     })?;
@@ -252,17 +254,20 @@ pub fn rewrite_master_naming(
     out.write_to(&mut buf).map_err(|e| AniError::ParseFailed {
         detail: format!("master serialize: {e}"),
     })?;
-    String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
-        detail: format!("master utf8: {e}"),
-    })
+    String::from_utf8(buf)
+        .map(|out| keep_player_view_on_proxy(&out, origin))
+        .map_err(|e| AniError::ParseFailed {
+            detail: format!("master utf8: {e}"),
+        })
 }
 
 /// Rewrite what the session's URL served: a master, or — from a source
 /// with a single quality — the media playlist of the main stream
-/// itself. Which one it is goes by its tags, the way a player reads it:
-/// m3u8-rs parses a media playlist as a master without failing, a
-/// master with no variants, so a failed master parse cannot tell them
-/// apart.
+/// itself. Which one it is goes by hls.js's test — any line starting
+/// `#EXTINF:` or `#EXT-X-TARGETDURATION:` makes a media playlist — so
+/// the route rewrites the playlist the player will read. m3u8-rs parses
+/// a media playlist as a master without failing, a master with no
+/// variants, so a failed master parse cannot tell them apart.
 ///
 /// # Errors
 /// As [`rewrite_master`] for a master and [`rewrite_media`] for a media
@@ -275,10 +280,10 @@ pub fn rewrite_served(
     secret: &AppSecret,
     vars: &str,
 ) -> Result<String> {
-    if m3u8_rs::is_master_playlist(body) {
-        rewrite_master_naming(body, url, origin, session, secret, vars)
-    } else {
+    if reads_as_media(&player_lines(body)) {
         rewrite_media(body, url, origin, session, secret)
+    } else {
+        rewrite_master_naming(body, url, origin, session, secret, vars)
     }
 }
 
@@ -357,7 +362,8 @@ pub fn rewrite_media_importing(
     stream: Stream,
     imported: &super::m3u8_define::Variables,
 ) -> Result<String> {
-    let body = &super::m3u8_define::substitute(body, media_url, imported);
+    let body = super::m3u8_define::substitute(body, media_url, imported);
+    let body = &*player_lines(&body);
     let parsed = m3u8_rs::parse_media_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("media parse: {e}"),
     })?;
@@ -398,9 +404,11 @@ pub fn rewrite_media_importing(
     out.write_to(&mut buf).map_err(|e| AniError::ParseFailed {
         detail: format!("media serialize: {e}"),
     })?;
-    String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
-        detail: format!("media utf8: {e}"),
-    })
+    String::from_utf8(buf)
+        .map(|out| keep_player_view_on_proxy(&out, origin))
+        .map_err(|e| AniError::ParseFailed {
+            detail: format!("media utf8: {e}"),
+        })
 }
 
 /// Whether a tag the parser does not know carries a URI — a

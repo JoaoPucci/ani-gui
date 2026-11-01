@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 877ee21d7cea881f523fad94191f61768e10a6513831f0ee9b6f6e1a73af123e # shrinks to lines = ["#EXT-X-KEY:METHOD=AES-128,KEYFORMATVERSIONS=1,URI =https://evil.example/x\n", "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"n\",URI =https://evil.example/x\n"], media = false

@@ -30,6 +30,7 @@ pub mod host_budget;
 pub mod host_budget_demand;
 pub mod m3u8;
 pub mod m3u8_define;
+mod m3u8_guard;
 mod m3u8_reach;
 pub mod token;
 pub mod upstream;
