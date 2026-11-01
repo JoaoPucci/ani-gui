@@ -36,10 +36,8 @@ export interface WrapState {
  * or a same-width resize cannot undo it.
  */
 export function holdWrap(prev: WrapState | null, measured: boolean, width: number): WrapState {
-	void prev;
-	void measured;
-	void width;
-	throw new Error('not implemented');
+	if (prev?.wraps && !(width > prev.width)) return prev;
+	return { wraps: measured, width };
 }
 
 type ResizeObserverLike = { observe(el: Element): void; disconnect(): void };
@@ -56,8 +54,12 @@ export function watchHeaderWrap(
 	onChange: (wraps: boolean) => void,
 	Observer: new (cb: () => void) => ResizeObserverLike = globalThis.ResizeObserver
 ): () => void {
-	const update = () =>
-		onChange(startsNewLine(lead.getBoundingClientRect(), item.getBoundingClientRect()));
+	let state: WrapState | null = null;
+	const update = () => {
+		const measured = startsNewLine(lead.getBoundingClientRect(), item.getBoundingClientRect());
+		state = holdWrap(state, measured, header.getBoundingClientRect().width);
+		onChange(state.wraps);
+	};
 	const ro = new Observer(update);
 	ro.observe(header);
 	update();
