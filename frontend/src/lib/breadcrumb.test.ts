@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defaultTrailFor } from './breadcrumb';
+import { defaultTrailFor, goesBack, withSearchOrigin } from './breadcrumb';
+import fc from 'fast-check';
 import { m } from '$lib/paraglide/messages';
 
 describe('defaultTrailFor', () => {
@@ -41,5 +42,67 @@ describe('defaultTrailFor', () => {
 		expect(defaultTrailFor('/some-future-route')).toEqual([
 			{ label: m.breadcrumb_home(), href: '/' }
 		]);
+	});
+});
+
+describe('withSearchOrigin', () => {
+	const home = { label: m.breadcrumb_home(), href: '/' };
+	const show = { label: 'Frieren' };
+
+	it('names the search a page was opened from, between Home and the page', () => {
+		expect(withSearchOrigin([home, show], '/search?q=frieren', '/anime/[id]')).toEqual([
+			home,
+			{ label: m.breadcrumb_search(), href: '/search?q=frieren' },
+			show
+		]);
+	});
+
+	it('leaves the trail alone when the page was not opened from a search', () => {
+		for (const origin of [null, '/', '/anime/1', '/search', '/search?q=', '/searching?q=a']) {
+			expect(withSearchOrigin([home, show], origin, '/anime/[id]')).toEqual([home, show]);
+		}
+	});
+
+	it('leaves the search page its own trail', () => {
+		const trail = defaultTrailFor('/search');
+		expect(withSearchOrigin(trail, '/search?q=a', '/search')).toEqual(trail);
+	});
+
+	it('leaves an empty trail empty', () => {
+		expect(withSearchOrigin([], '/search?q=a', '/anime/[id]')).toEqual([]);
+	});
+
+	it('does not name the search twice', () => {
+		const trail = [home, { label: m.breadcrumb_search(), href: '/search?q=a' }, show];
+		expect(withSearchOrigin(trail, '/search?q=a', '/anime/[id]')).toEqual(trail);
+	});
+
+	it('only ever adds the one crumb, and keeps the page last', () => {
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({ label: fc.string(), href: fc.option(fc.string(), { nil: undefined }) }),
+					{
+						minLength: 1,
+						maxLength: 5
+					}
+				),
+				fc.option(fc.string(), { nil: null }),
+				(trail, origin) => {
+					const out = withSearchOrigin(trail, origin, '/anime/[id]');
+					expect(out.length - trail.length).toBeGreaterThanOrEqual(0);
+					expect(out.length - trail.length).toBeLessThanOrEqual(1);
+					expect(out.at(-1)).toEqual(trail.at(-1));
+				}
+			)
+		);
+	});
+});
+
+describe('goesBack', () => {
+	it('goes back for the address of the page behind, and only for it', () => {
+		expect(goesBack('/search?q=a', '/search?q=a')).toBe(true);
+		expect(goesBack('/', '/search?q=a')).toBe(false);
+		expect(goesBack('/search?q=a', null)).toBe(false);
 	});
 });
