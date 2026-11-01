@@ -94,11 +94,12 @@
 	const isDiagnostics = $derived(routeId.startsWith('/diagnostics'));
 	const isAbout = $derived(routeId.startsWith('/about'));
 
-	// Back-stack depth tracker. Layout adapter; the rules live in
+	// Back-stack position. Layout adapter; the rules live in
 	// `$lib/history/nav-depth` so they're unit-testable. We hand the
-	// SvelteKit event and the entry's `page.state` to afterNavigation,
-	// and stamp what it returns on forward navs through SvelteKit's
-	// shallow routing so popstate can read it back from `page.state`.
+	// SvelteKit event, the entry's `page.state` and the browser's index
+	// for the entry to afterNavigation, and write the stamp it returns
+	// (the page an entry was opened from) through SvelteKit's shallow
+	// routing so popstate can read it back from `page.state`.
 	let canGoBack = $state(false);
 	let navDepth = 0;
 	// The address of the page behind this one, when the layout knows it.
