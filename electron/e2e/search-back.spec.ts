@@ -74,30 +74,63 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		}
 	});
 	onLaunch(app);
-	const context = app.context();
-	await context.route('**/api/app-info', (r) => r.fulfill(json(appInfo)));
-	await context.route('**/api/history', (r) => r.fulfill(json(emptyHistory)));
-	await context.route('**/api/kitsu/trending', (r) => r.fulfill(json(trending)));
-	await context.route('**/api/kitsu/top-rated', (r) => r.fulfill(json(topRated)));
-	await context.route('**/api/kitsu/search', (r) => r.fulfill(json([])));
-	await context.route('**/api/image*', (r) => r.fulfill({ status: 503 }));
-	await context.route('**/api/availability/batch', async (r) => {
-		const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-		await r.fulfill(
-			json({
-				cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
-				playable_episode_counts: {}
-			})
-		);
-	});
-	// Twenty shows a page, five pages, for any query.
-	await context.route('**/api/kitsu/search/page', async (r) => {
-		const body = r.request().postDataJSON() as { query: string; offset: number; sort?: string };
-		asked.push(`${body.query}@${body.offset}/${body.sort ?? 'relevance'}`);
-		const hits = Array.from({ length: 20 }, (_, i) => show(body.offset + i + 1));
-		await r.fulfill(json({ hits, next_offset: body.offset + 20 < 100 ? body.offset + 20 : null }));
-	});
 	const page = await app.firstWindow();
+
+	// One handler on the PAGE, registered after the first window is up.
+	// Routes on the context registered before the window existed were
+	// not applied to that window's requests on CI: the screenshot of a
+	// failed run showed Kitsu's real results for the stubbed search, as
+	// home-continue.spec.ts records for the same harness. A page route
+	// applies from the moment it is registered, across navigations.
+	let routed: () => void = () => {};
+	let live: Promise<void> = Promise.resolve();
+	await page.route('**/api/**', async (r) => {
+		const p = new URL(r.request().url()).pathname;
+		if (p.endsWith('/api/app-info')) return r.fulfill(json(appInfo));
+		if (p.endsWith('/api/history')) return r.fulfill(json(emptyHistory));
+		// Home asks for trending-anilist; the search page's empty state
+		// still asks for trending.
+		if (p.endsWith('/api/kitsu/trending-anilist') || p.endsWith('/api/kitsu/trending')) {
+			return r.fulfill(json(trending));
+		}
+		if (p.endsWith('/api/kitsu/top-rated')) {
+			routed();
+			return r.fulfill(json(topRated));
+		}
+		if (p.endsWith('/api/kitsu/search')) return r.fulfill(json([]));
+		if (p.includes('/api/image')) return r.fulfill({ status: 503 });
+		if (p.endsWith('/api/availability/batch')) {
+			const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
+			return r.fulfill(
+				json({
+					cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
+					playable_episode_counts: {}
+				})
+			);
+		}
+		if (p.endsWith('/api/kitsu/search/page')) {
+			// Twenty shows a page, five pages, for any query.
+			const body = r.request().postDataJSON() as { query: string; offset: number; sort?: string };
+			asked.push(`${body.query}@${body.offset}/${body.sort ?? 'relevance'}`);
+			const hits = Array.from({ length: 20 }, (_, i) => show(body.offset + i + 1));
+			return r.fulfill(
+				json({ hits, next_offset: body.offset + 20 < 100 ? body.offset + 20 : null })
+			);
+		}
+		return r.fallback();
+	});
+
+	// Remount the app so its requests go through the handler, and act
+	// only once one has: Home asking for the top-rated row is the
+	// positive witness that the stubs are live. A goto to the same URL
+	// would be a client-side no-op, hence the bounce through about:blank.
+	await page.waitForURL((u) => u.protocol !== 'about:');
+	const home = page.url();
+	await page.goto('about:blank');
+	// Armed after the bounce, so only the remounted Home can witness.
+	live = new Promise<void>((resolve) => (routed = resolve));
+	await page.goto(home, { waitUntil: 'domcontentloaded' });
+	await live;
 	return { app, page };
 }
 
