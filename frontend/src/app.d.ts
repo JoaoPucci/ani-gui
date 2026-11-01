@@ -5,7 +5,12 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		/** What the layout keeps on each history entry through
+		 *  SvelteKit's shallow-routing state ($lib/history/nav-depth). */
+		interface PageState {
+			aniGuiDepth?: number;
+			aniGuiFrom?: string;
+		}
 		// interface Platform {}
 	}
 }

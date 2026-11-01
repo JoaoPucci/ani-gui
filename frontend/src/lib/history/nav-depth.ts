@@ -71,3 +71,36 @@ export function nextDepth(step: NavStep): number {
 export function shouldShowBackButton(depth: number): boolean {
 	return depth > 0;
 }
+
+/** What the layout keeps on a history entry, through SvelteKit's
+ *  shallow-routing state (`App.PageState`): the entry's depth in the
+ *  back stack, and the address of the page it was opened from. */
+export interface EntryStamp {
+	aniGuiDepth: number;
+	aniGuiFrom?: string;
+}
+
+/** One navigation, as the layout's `afterNavigate` hook sees it. */
+export interface Navigated {
+	type: NavType;
+	/** `page.state` once the navigation has landed: on a back or
+	 *  forward press, what SvelteKit restored for the entry. */
+	state: Partial<EntryStamp>;
+	from: URL | null;
+	to: URL | null;
+	/** What the layout held before this navigation. */
+	prev: { depth: number; origin: string | null };
+}
+
+/** Where the layout stands after a navigation, and the stamp the new
+ *  entry takes (null: the entry is not stamped). */
+export interface NavOutcome {
+	depth: number;
+	origin: string | null;
+	stamp: EntryStamp | null;
+}
+
+/** Declared ahead of its rules; answers as if nothing moved. */
+export function afterNavigation(nav: Navigated): NavOutcome {
+	return { depth: nav.prev.depth, origin: nav.prev.origin, stamp: null };
+}
