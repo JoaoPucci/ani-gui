@@ -220,7 +220,9 @@ fn listing() -> impl Strategy<Value = Vec<SubtitleTrack>> {
         Just("ja".to_string()),
         Just("zh-Hant".to_string()),
         Just("und".to_string()),
-        "[A-Za-z -]{0,12}",
+        // Free text that names no language: a digit first, so it is
+        // neither a code nor the start of a language's name.
+        "[0-9][A-Za-z -]{0,11}",
     ];
     proptest::collection::vec((lang, any::<bool>()), 0..40).prop_map(|rows| {
         rows.into_iter()

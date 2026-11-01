@@ -5,8 +5,13 @@
 use super::flags_within_budget;
 use proptest::prelude::*;
 
+/// Whether Windows runs `program` through `cmd.exe`: by its extension
+/// once the path is resolved, which strips trailing dots and spaces.
 fn is_batch(program: &str) -> bool {
-    let lower = program.trim().to_ascii_lowercase();
+    let lower = program
+        .trim()
+        .trim_end_matches(['.', ' '])
+        .to_ascii_lowercase();
     lower.ends_with(".bat") || lower.ends_with(".cmd")
 }
 
@@ -21,12 +26,12 @@ fn worst(program: &str, arg: &str) -> usize {
 }
 
 /// The line `program` runs with: itself — for a batch file, as
-/// `cmd.exe /e:ON /v:OFF /d /c "` and the script's resolved path, which
-/// the configured name may not show, so counted at no less than a
-/// 260-unit path — then its arguments.
+/// `cmd.exe /e:ON /v:OFF /d /c "` and the script's resolved path,
+/// quoted and not escaped, which the configured name may not show, so
+/// counted at no less than a 260-unit path — then its arguments.
 fn total(program: &str, fixed: &[String], flags: &[String]) -> usize {
     let head = if is_batch(program) {
-        32 + worst(program, &"x".repeat(program.len().max(260)))
+        32 + program.len().max(260) + 3
     } else {
         worst(program, program)
     };
@@ -102,6 +107,35 @@ fn a_batch_files_percent_signs_are_counted_at_their_escaped_length() {
     let kept = flags_within_budget(r"C:\tools\mpv.bat", &fixed, flags.clone());
     assert!(total(r"C:\tools\mpv.bat", &fixed, &kept) <= 8_191);
     assert!(kept.len() < flags.len());
+}
+
+/// A trailing dot or space is stripped when Windows resolves the
+/// path, so `run.bat.` still runs through `cmd.exe`, and gets its
+/// bound.
+#[test]
+fn a_batch_file_named_with_a_trailing_dot_gets_cmds_bound() {
+    let fixed = vec!["https://cdn.example/master.m3u8".to_string()];
+    let flags: Vec<String> = (0..64).map(|i| flag(i, 300)).collect();
+    for program in ["run.bat.", "run.cmd. ", r"C:\x\run.BAT.."] {
+        let kept = flags_within_budget(program, &fixed, flags.clone());
+        assert!(total(program, &fixed, &kept) <= 8_191, "{program}");
+    }
+}
+
+/// A batch file's own path is quoted on its line, not escaped: a long
+/// path costs its length, not eight times it.
+#[test]
+fn a_batch_files_path_is_counted_at_its_length() {
+    let fixed: Vec<String> = Vec::new();
+    let flags: Vec<String> = (0..2000).map(|i| format!("-s{i:04}")).collect();
+    let short = flags_within_budget("run.bat", &fixed, flags.clone()).len();
+    let long =
+        flags_within_budget(&format!(r"C:\{}\run.bat", "d".repeat(300)), &fixed, flags).len();
+    assert!(short > long, "a longer path leaves less room");
+    assert!(
+        short - long <= 1,
+        "{short} vs {long}: the path is counted unescaped"
+    );
 }
 
 proptest! {

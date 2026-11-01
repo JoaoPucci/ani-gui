@@ -376,3 +376,33 @@ fn syncplays_track_flags_fit_on_windows_command_line() {
     let subs = argv.iter().filter(|a| a.starts_with("--sub-file=")).count();
     assert!(subs > 0 && subs < long.len(), "{subs}");
 }
+
+/// Syncplay starts the player it wraps with the forwarded flags, so a
+/// player that is a batch file runs them through `cmd.exe`, whose
+/// bound is far shorter: the flags are fitted to the shorter of the
+/// two lines.
+#[test]
+fn a_batch_player_behind_syncplay_gets_cmds_bound() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(200)))
+        .collect();
+    let mut launch = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    launch.player_binary = r"C:\tools\mpv.bat".into();
+    launch.subtitle_urls = long.clone();
+    let argv = build_argv(&launch);
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    let forwarded = &argv[sep + 1..];
+    // The player's line: cmd.exe's prefix, the script's path counted at
+    // no less than 260 units, then the forwarded flags at eight units a
+    // byte, each quoted and spaced.
+    let line: usize = 32
+        + launch.player_binary.len().max(260)
+        + 3
+        + forwarded.iter().map(|a| 8 * a.len() + 3).sum::<usize>();
+    assert!(line <= 8_191, "{line}");
+    let subs = forwarded
+        .iter()
+        .filter(|a| a.starts_with("--sub-file="))
+        .count();
+    assert!(subs > 0 && subs < long.len(), "{subs}");
+}
