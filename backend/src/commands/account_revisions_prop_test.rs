@@ -86,3 +86,63 @@ proptest! {
         }
     }
 }
+
+/// A removal's evidence of absence weighed against cached answers by
+/// when each was asked, not when it arrived.
+mod absent_evidence {
+    use super::CacheRevisions;
+    use crate::account::provider::ProviderKind;
+
+    const K: ProviderKind = ProviderKind::AniList;
+
+    #[test]
+    fn an_absent_read_with_nothing_newer_clears_the_row_once() {
+        let r = CacheRevisions::default();
+        let read = r.start_read(K);
+        r.note_read(K, 21, read, true);
+        assert_eq!(r.clear_if_still_absent(K, 21, || ()), Some(()));
+        assert_eq!(r.clear_if_still_absent(K, 21, || ()), None);
+    }
+
+    #[test]
+    fn an_absent_read_sent_before_a_cached_refresh_cannot_clear_its_row() {
+        let r = CacheRevisions::default();
+        let read = r.start_read(K);
+        let since = r.start_refresh(K);
+        r.cache_refresh(K, since, |_| Ok::<(), ()>(()))
+            .expect("the latest refresh")
+            .expect("cached");
+        // The read's answer arrives after the refresh was cached.
+        r.note_read(K, 21, read, true);
+        assert_eq!(r.clear_if_still_absent(K, 21, || ()), None);
+    }
+
+    #[test]
+    fn an_absent_read_sent_before_a_write_cannot_clear_its_row() {
+        let r = CacheRevisions::default();
+        let read = r.start_read(K);
+        r.write_row(K, 21, || ());
+        r.note_read(K, 21, read, true);
+        assert_eq!(r.clear_if_still_absent(K, 21, || ()), None);
+    }
+
+    #[test]
+    fn an_older_absent_read_arriving_after_a_newer_listed_one_cannot_clear() {
+        let r = CacheRevisions::default();
+        let older = r.start_read(K);
+        let newer = r.start_read(K);
+        r.note_read(K, 21, newer, false);
+        r.note_read(K, 21, older, true);
+        assert_eq!(r.clear_if_still_absent(K, 21, || ()), None);
+    }
+
+    #[test]
+    fn a_newer_absent_read_still_clears_after_an_older_listed_one() {
+        let r = CacheRevisions::default();
+        let older = r.start_read(K);
+        let newer = r.start_read(K);
+        r.note_read(K, 21, older, false);
+        r.note_read(K, 21, newer, true);
+        assert_eq!(r.clear_if_still_absent(K, 21, || ()), Some(()));
+    }
+}

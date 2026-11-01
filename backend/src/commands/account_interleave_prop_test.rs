@@ -12,8 +12,11 @@
 //!
 //! A removal's live read and its local clear of the cached row run too.
 //! A live read is an answer the app keeps only through the clear that
-//! follows it: a read that found the row absent, when the clear for it
-//! runs, counts as an answer of absence at the read's time.
+//! follows it: when the clear runs, the latest-sent read of the row whose
+//! answer has arrived, if it found the row absent, counts as an answer of
+//! absence at the time that read was sent. Live reads, like list reads,
+//! are answered in any order, so a read sent before a refresh can arrive
+//! after the refresh is cached — and must still lose to it.
 //!
 //! The model sends a refresh's list read the moment the refresh starts.
 //! In the app the read goes after the owner lookup, and a paginated list
@@ -140,16 +143,19 @@ impl UserListProvider for Tracker {
         _tokens: &Tokens,
         id: ProviderMediaId,
     ) -> Result<Option<CurrentEntry>> {
-        Ok(self
-            .rows
-            .lock()
-            .expect("rows")
-            .get(&id.0)
-            .map(|&status| CurrentEntry {
-                status,
-                progress_episodes: 0,
-                times_rewatched: None,
-            }))
+        // Like a list read: the tracker answers as it stands when the
+        // read is sent, and the answer arrives when the test lets it.
+        let found = self.rows.lock().expect("rows").get(&id.0).copied();
+        self.clock.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = oneshot::channel();
+        self.waiting.lock().expect("waiting").push(tx);
+        let _ = self.events.send(Event::Asked);
+        let _ = rx.await;
+        Ok(found.map(|status| CurrentEntry {
+            status,
+            progress_episodes: 0,
+            times_rewatched: None,
+        }))
     }
     async fn tracked_media(&self, _tokens: &Tokens, _id: ProviderMediaId) -> Result<TrackedMedia> {
         Err(AniError::Metadata)
@@ -176,21 +182,24 @@ enum Step {
     /// The waiting list read at this index (modulo those waiting) is
     /// answered.
     Answer(usize),
-    /// A removal reads the row live from the tracker.
+    /// A removal sends a live read of the row to the tracker; its answer
+    /// arrives with the other waiting reads (`Answer`).
     Read(usize),
     /// A removal clears the row from the cache, by its last live read.
     Clear(usize),
 }
 
 fn step() -> impl Strategy<Value = Step> {
+    // Weighted toward reads, answers and clears, whose orderings against
+    // each other and against refreshes are the rare ones.
     prop_oneof![
-        Just(Step::Refresh),
-        (0..ROWS.len(), 0..STATUSES.len()).prop_map(|(r, s)| Step::Write(r, s)),
-        (0..ROWS.len(), proptest::option::of(0..STATUSES.len()))
+        2 => Just(Step::Refresh),
+        2 => (0..ROWS.len(), 0..STATUSES.len()).prop_map(|(r, s)| Step::Write(r, s)),
+        2 => (0..ROWS.len(), proptest::option::of(0..STATUSES.len()))
             .prop_map(|(r, s)| Step::Website(r, s)),
-        any::<usize>().prop_map(Step::Answer),
-        (0..ROWS.len()).prop_map(Step::Read),
-        (0..ROWS.len()).prop_map(Step::Clear),
+        4 => any::<usize>().prop_map(Step::Answer),
+        3 => (0..ROWS.len()).prop_map(Step::Read),
+        3 => (0..ROWS.len()).prop_map(Step::Clear),
     ]
 }
 
@@ -248,8 +257,9 @@ async fn run(steps: Vec<Step>) -> Outcome {
     });
     // Each write's answer: when it was sent, which row, what it said.
     let mut written: Vec<(u64, u32, ListStatus)> = Vec::new();
-    // Each row's last live read: when, and what it found.
-    let mut last_read: HashMap<u32, (u64, Option<ListStatus>)> = HashMap::new();
+    // Each row's latest-sent live read whose answer has arrived: when it
+    // was sent, and what it found.
+    let last_read: Arc<Mutex<HashMap<u32, (u64, Option<ListStatus>)>>> = Arc::default();
     // Absences the app acted on: a clear after a read that found none.
     let mut cleared: Vec<(u64, u32)> = Vec::new();
     let mut running = 0usize;
@@ -328,18 +338,37 @@ async fn run(steps: Vec<Step>) -> Outcome {
             Step::Answer(at) => answer(&tracker, &mut heard, &mut running, at).await,
             Step::Read(r) => {
                 let id = ROWS[r];
-                let at = clock.fetch_add(1, Ordering::SeqCst);
-                let found = crate::commands::account_edit::read_entry_at(
-                    &state,
-                    KIND,
-                    tracker.as_ref(),
-                    &tokens(),
-                    ProviderMediaId(id),
-                )
-                .await
-                .expect("the read answers")
-                .map(|e| e.status);
-                last_read.insert(id, (at, found));
+                running += 1;
+                // The read is sent at the next tick, inside the tracker.
+                let at = clock.load(Ordering::SeqCst);
+                let (state, tracker, events, last_read) = (
+                    state.clone(),
+                    tracker.clone(),
+                    events.clone(),
+                    last_read.clone(),
+                );
+                tokio::spawn(async move {
+                    let found = crate::commands::account_edit::read_entry_at(
+                        &state,
+                        KIND,
+                        tracker.as_ref(),
+                        &tokens(),
+                        ProviderMediaId(id),
+                    )
+                    .await
+                    .expect("the read answers")
+                    .map(|e| e.status);
+                    let mut last = last_read.lock().expect("reads");
+                    if last.get(&id).is_none_or(|&(sent, _)| sent < at) {
+                        last.insert(id, (at, found));
+                    }
+                    drop(last);
+                    let _ = events.send(Event::Done);
+                });
+                match heard.recv().await.expect("the read reports") {
+                    Event::Asked => {}
+                    Event::Done => running -= 1,
+                }
             }
             Step::Clear(r) => {
                 let id = ROWS[r];
@@ -350,7 +379,7 @@ async fn run(steps: Vec<Step>) -> Outcome {
                     id,
                     USER,
                 );
-                if let Some(&(at, None)) = last_read.get(&id) {
+                if let Some(&(at, None)) = last_read.lock().expect("reads").get(&id) {
                     cleared.push((at, id));
                 }
             }
@@ -392,12 +421,27 @@ async fn run(steps: Vec<Step>) -> Outcome {
     }
 }
 
+/// Each row's cached value against the latest answer, after `steps`;
+/// the first row that disagrees, if any.
+fn first_stale_row(steps: Vec<Step>) -> Option<(u32, Option<ListStatus>, Option<ListStatus>)> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let out = rt.block_on(run(steps));
+    ROWS.into_iter().find_map(|id| {
+        let latest = out.latest.get(&id).copied().flatten();
+        let cached = out.cached.get(&id).copied();
+        (cached != latest).then_some((id, cached, latest))
+    })
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
     #[test]
     fn each_cached_row_is_the_latest_answer_and_each_refresh_reads_once(
-        steps in proptest::collection::vec(step(), 1..24)
+        steps in proptest::collection::vec(step(), 1..32)
     ) {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -417,4 +461,39 @@ proptest! {
         }
         prop_assert_eq!(out.reads, out.refreshes, "a refresh read the list more than once");
     }
+}
+
+/// The orderings the property found hardest to reach, pinned.
+#[test]
+fn a_live_read_sent_before_a_cached_refresh_cannot_clear_the_row_it_lists() {
+    // The removal's read goes out while the row is absent; the show is
+    // planned on the website; a refresh reads the list and is cached;
+    // only then does the removal's read answer, and the clear runs.
+    let steps = vec![
+        Step::Read(0),
+        Step::Website(0, Some(0)),
+        Step::Refresh,
+        Step::Answer(1),
+        Step::Answer(0),
+        Step::Clear(0),
+    ];
+    assert_eq!(first_stale_row(steps), None);
+}
+
+#[test]
+fn a_live_read_answered_after_a_newer_one_cannot_clear_what_that_one_listed() {
+    // The row is cached; a read goes out while the website has it
+    // removed; it is added back and a second read finds it. The second
+    // answers first, the first after it; the clear goes by the newer.
+    let steps = vec![
+        Step::Write(0, 0),
+        Step::Website(0, None),
+        Step::Read(0),
+        Step::Website(0, Some(1)),
+        Step::Read(0),
+        Step::Answer(1),
+        Step::Answer(0),
+        Step::Clear(0),
+    ];
+    assert_eq!(first_stale_row(steps), None);
 }
