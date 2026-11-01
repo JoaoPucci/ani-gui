@@ -19,10 +19,7 @@
 //! Stardust Crusaders entry Kitsu also calls "JoJo's Bizarre Adventure
 //! Part 3".
 
-/// The ten spelled ordinals the cour parsers read.
-const ORDINAL_WORDS: [&str; 10] = [
-    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
-];
+use super::cour_ordinal_form::{ORDINAL_SUFFIXES, ORDINAL_WORDS};
 
 /// Whether `provider_title` is one of `entry_titles`: the same words
 /// once case and punctuation are folded, or the same name before a
@@ -85,7 +82,7 @@ fn ordinal(word: &str) -> Option<u32> {
     }
     let digits = word.trim_end_matches(|c: char| c.is_ascii_alphabetic());
     let suffix = &word[digits.len()..];
-    if digits.is_empty() || !matches!(suffix, "st" | "nd" | "rd" | "th") {
+    if digits.is_empty() || !ORDINAL_SUFFIXES.contains(&suffix) {
         return None;
     }
     digits.parse().ok()
