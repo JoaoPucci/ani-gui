@@ -1,6 +1,7 @@
+import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
-import type { LadderLevel } from './quality-ladder';
+import { ladderOrder, type LadderLevel } from './quality-ladder';
 import { levelLabel, qualityMenu, type QualityView } from './quality-menu';
 
 const LEVELS: LadderLevel[] = [
@@ -39,9 +40,44 @@ describe('levelLabel', () => {
 });
 
 describe('qualityMenu', () => {
-	it('has nothing to offer without a stream or with one level', () => {
+	it('has nothing to show without a stream or before a level', () => {
 		expect(qualityMenu(null)).toBeNull();
-		expect(qualityMenu(view({ levels: [LEVELS[1]] }))).toBeNull();
+		expect(qualityMenu(view({ levels: [] }))).toBeNull();
+	});
+
+	it('shows a stream of one level as that level, checked, with no Auto', () => {
+		const one = [LEVELS[2]];
+		for (const over of [
+			{},
+			{ playing: 0 },
+			// A pin carried from an earlier stream can land on the one level.
+			{ pinned: 0, playing: 0 }
+		]) {
+			const menu = qualityMenu(view({ levels: one, ...over }));
+			expect(menu?.items.map((i) => [i.key, i.label, i.checked])).toEqual([
+				[0, m.play_quality_height({ height: '1080' }), true]
+			]);
+			expect(menu?.current).toBe(m.play_quality_height({ height: '1080' }));
+		}
+	});
+
+	it('names a lone level with no height by its bitrate', () => {
+		const menu = qualityMenu(view({ levels: [{ height: 0, bitrate: 1_500_000 }] }));
+		expect(menu?.current).toBe(m.play_quality_bitrate({ mbps: '1.5' }));
+		expect(menu?.items.map((i) => i.label)).toEqual([m.play_quality_bitrate({ mbps: '1.5' })]);
+	});
+
+	it('waits to show a lone level until something names it', () => {
+		// A media playlist served alone lists neither a height nor a
+		// bandwidth; the row appears once a parsed segment gives its height.
+		expect(qualityMenu(view({ levels: [{ height: 0, bitrate: 0 }] }))).toBeNull();
+		expect(qualityMenu(view({ levels: [{ height: 1080, bitrate: 0 }] }))?.current).toBe(
+			m.play_quality_height({ height: '1080' })
+		);
+	});
+
+	it('shows nothing for a lone level the engine could not load', () => {
+		expect(qualityMenu(view({ levels: [LEVELS[0]], unavailable: [0] }))).toBeNull();
 	});
 
 	it('lists Auto, then the levels highest first, with Auto checked', () => {
@@ -85,5 +121,67 @@ describe('qualityMenu', () => {
 	it('leaves out the levels the engine could not load', () => {
 		const menu = qualityMenu(view({ unavailable: [2] }));
 		expect(menu?.items.map((i) => i.key)).toEqual(['auto', 1, 0]);
+	});
+});
+
+const level = fc.record({
+	height: fc.oneof(fc.constant(0), fc.integer({ min: 144, max: 2160 })),
+	bitrate: fc.integer({ min: 1, max: 20_000_000 })
+});
+
+describe('qualityMenu — properties', () => {
+	it('one level gives one checked item and no Auto', () => {
+		fc.assert(
+			fc.property(
+				level,
+				fc.constantFrom(null, 0),
+				fc.constantFrom(null, 0),
+				(only, pinned, playing) => {
+					const menu = qualityMenu(view({ levels: [only], pinned, playing }));
+					expect(menu?.items).toHaveLength(1);
+					expect(menu?.items[0]).toMatchObject({ key: 0, checked: true });
+					expect(menu?.current).toBe(levelLabel([only], 0));
+				}
+			)
+		);
+	});
+
+	it('two or more levels offer Auto, then the loadable levels highest first, with the choice checked', () => {
+		const stream = fc
+			.array(level, { minLength: 2, maxLength: 6 })
+			.chain((levels) =>
+				fc.record({
+					levels: fc.constant(levels),
+					unavailable: fc.subarray(levels.map((_, i) => i)),
+					playing: fc.option(fc.nat({ max: levels.length - 1 }), { nil: null })
+				})
+			)
+			.chain((s) => {
+				const loadable = s.levels.map((_, i) => i).filter((i) => !s.unavailable.includes(i));
+				const pin =
+					loadable.length > 0
+						? fc.option(fc.constantFrom(...loadable), { nil: null })
+						: fc.constant(null);
+				return pin.map((pinned) => ({ ...s, pinned }));
+			});
+		fc.assert(
+			fc.property(stream, (s) => {
+				const menu = qualityMenu(view(s));
+				const offered = [...ladderOrder(s.levels)]
+					.reverse()
+					.filter((i) => !s.unavailable.includes(i));
+				expect(menu?.items.map((i) => i.key)).toEqual(['auto', ...offered]);
+				expect(menu?.items.filter((i) => i.checked).map((i) => i.key)).toEqual([
+					s.pinned ?? 'auto'
+				]);
+				if (s.pinned === null) {
+					expect(menu?.current).toBe(
+						s.playing === null
+							? m.play_quality_auto()
+							: m.play_quality_auto_playing({ quality: levelLabel(s.levels, s.playing) })
+					);
+				}
+			})
+		);
 	});
 });

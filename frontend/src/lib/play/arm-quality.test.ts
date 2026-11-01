@@ -149,6 +149,36 @@ describe('armQuality — the start', () => {
 		expect(s.logs.join('\n')).toMatch(/one level.*720p/);
 	});
 
+	it('shows a stream of one level in the menu, and its one entry chooses nothing', () => {
+		// A pin carried from a master lands on the lone level below it.
+		qualityPin.set(1080);
+		const s = arm('best', [MASTER[1]]);
+		s.parse();
+		const menu = qualityMenu(s.lastView() ?? null);
+		expect(menu?.items.map((i) => [i.key, i.checked])).toEqual([[0, true]]);
+		expect(menu?.current).toBe(m.play_quality_height({ height: '720' }));
+		const published = s.views.length;
+		s.control.pick(0);
+		// The run's pin stays the master's: the next master starts there.
+		expect(qualityPin.get()).toBe(1080);
+		expect(s.engine.loads).toEqual([]);
+		expect(s.engine.nexts).toEqual([]);
+		expect(s.views.length).toBe(published);
+	});
+
+	it('names a lone level that lists no height once a segment of it is parsed', () => {
+		const s = arm('720', [{ height: 0, bitrate: 0 }]);
+		s.parse();
+		expect(qualityMenu(s.lastView() ?? null)).toBeNull();
+		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 0 },
+			tracks: { video: { metadata: { width: 1920, height: 1080 } } }
+		});
+		expect(qualityMenu(s.lastView() ?? null)?.current).toBe(
+			m.play_quality_height({ height: '1080' })
+		);
+	});
+
 	it('starts at the height pinned earlier in the run', () => {
 		qualityPin.set(720);
 		const s = arm('best');
