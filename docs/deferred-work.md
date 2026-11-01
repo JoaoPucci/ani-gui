@@ -423,10 +423,12 @@ starting it, and delete it when you find it done.
   Picture-in-Picture" is the W3C API's name.
 
   Electron exposes the API but omits the window-creation glue, so it
-  cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the player's
-  video, while the player is open — ships and is described in
-  `README.md` and `docs/architecture.md`.
+  cannot work today: electron/electron#39633, open since 2023. The
+  maintainer chose not to wait for it: an app-owned mini-player window
+  is to replace picture-in-picture instead, studied in
+  [`proposals/mini-player.md`](./proposals/mini-player.md). PiP as it
+  exists now — the player's video, while the player is open — ships
+  and is described in `README.md` and `docs/architecture.md`.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli
