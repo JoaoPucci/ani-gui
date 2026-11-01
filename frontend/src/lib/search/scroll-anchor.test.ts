@@ -14,7 +14,7 @@ function grid(ids: string[], rowHeight = 300, offset = 100) {
 		li.dataset.cardId = id;
 		Object.defineProperty(li, 'offsetTop', { value: offset + i * rowHeight });
 		Object.defineProperty(li, 'offsetHeight', { value: rowHeight - 20 });
-		Object.defineProperty(li, 'offsetParent', { value: null });
+		Object.defineProperty(li, 'offsetParent', { value: null, configurable: true });
 		list.appendChild(li);
 	});
 	const other = document.createElement('li');
