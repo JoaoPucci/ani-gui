@@ -530,9 +530,10 @@ async function continueCardHeight(opts: StubOptions, selector: string): Promise<
 		await waitForStripVisible(page);
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		await expect(strip).toBeVisible({ timeout: 10_000 });
-		// Class locators, not roles: the strip also holds the rail's
-		// kebab and each card's delete chip, so `getByRole('button')`
-		// picks up a 33px chip and compares it against a card.
+		// Class locators, not roles: the strip also holds the row's
+		// Clear history action and each card's delete chip, so
+		// `getByRole('button')` picks up a 33px chip and compares it
+		// against a card.
 		const card = strip.locator(selector).first();
 		await expect(card).toBeVisible({ timeout: 10_000 });
 		return (await card.boundingBox())?.height ?? 0;

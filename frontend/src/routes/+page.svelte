@@ -1942,7 +1942,7 @@
 	}
 
 	/* The row style switch's place: the head of the rows, flush with
-	   their right edge (the strips' gutter). */
+	   their end edge (the strips' gutter). */
 	.row-style-slot {
 		display: flex;
 		justify-content: flex-end;

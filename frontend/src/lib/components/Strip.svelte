@@ -349,8 +349,9 @@
 
 	/* The header is one line of items — title, rule, caption, status,
 	   actions — spaced by one gap. Every rule below that spaces an item
-	   reads --strip-header-gap; none adds a margin of its own, so the
-	   space between any two neighbours on the line is the same. */
+	   reads --strip-header-gap, so the space between any two neighbours
+	   on the line is the same. The one margin is the band's push of its
+	   actions to the row's end, below, which opens the line deliberately. */
 	.strip-header {
 		--strip-header-gap: var(--space-3);
 		display: flex;
@@ -378,9 +379,10 @@
 		color: color-mix(in oklab, var(--bone-100) 40%, transparent);
 	}
 	/* A status pushed onto its own line has nothing to separate it from.
-	   The wrap is held until the header grows (strip-header-wrap), so
-	   the title also takes the whole first line while it holds: the
-	   status then starts the next line whatever its width, and a hidden
+	   Whether it wraps is decided from natural widths (strip-header-wrap),
+	   with the hidden separator counted at its last shown width, so the
+	   title also takes the whole first line while it wraps: the status
+	   then starts the next line whatever its width, and a hidden
 	   separator never sits between caption and status. */
 	.strip-header[data-meta-wraps='true'] .strip-meta-sep {
 		display: none;

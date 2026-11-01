@@ -11,10 +11,11 @@
   `tone="quiet"` is for an action that removes something: it rests in
   the caption's colour so it never outshouts the row, and warms to the
   destructive accent on hover. `busy` makes the action unavailable and
-  turns its icon; the page says what is happening in the row's status
-  line. Unavailable is aria-disabled, not `disabled`: a disabled button
-  drops keyboard focus to the page in Chromium, so a keyboard user who
-  pressed it would start again from the top.
+  turns its icon; where the row has a status line the page says there
+  what is happening (a failed row has none, and relies on the page's
+  announcement). Unavailable is aria-disabled, not `disabled`: a
+  disabled button drops keyboard focus to the page in Chromium, so a
+  keyboard user who pressed it would start again from the top.
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
