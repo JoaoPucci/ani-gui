@@ -76,6 +76,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo clippy
@@ -96,6 +97,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
           shared-key: cargo-deny
       - if: needs.filter.outputs.relevant == 'true'
@@ -127,6 +129,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - name: Install runtime deps (Linux only)
         # The provider transport resolves a curl binary before it can
@@ -137,10 +140,9 @@ jobs:
         # `#![cfg(target_os = "linux")]`, so other matrix legs skip it
         # without needing the deps.
         if: needs.filter.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
-        run: |
-          # Distro sources only: see tests/arch/apt_sources.sh.
-          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
-          sudo apt-get install -y curl mpv ffmpeg aria2
+        uses: ./.github/actions/apt-install
+        with:
+          packages: curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
         name: Fetch the crates before the network is refused
         working-directory: backend
@@ -233,6 +235,7 @@ jobs:
       - if: needs.filter.outputs.picker == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - if: needs.filter.outputs.picker == 'true'
         name: The model's own tests
@@ -289,6 +292,7 @@ jobs:
       - if: needs.filter.outputs.picker == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - if: needs.filter.outputs.picker == 'true'
         name: Draw the pools
@@ -337,6 +341,7 @@ jobs:
       - if: needs.filter.outputs.tracker_map == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - if: needs.filter.outputs.tracker_map == 'true'
         name: The model's own tests
@@ -379,6 +384,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
           shared-key: llvm-cov
       - if: needs.filter.outputs.relevant == 'true'
@@ -394,10 +400,9 @@ jobs:
         # Coverage (tools/rust-lcov.sh) runs the workspace's tests, the
         # same tests as the `test` job — see the matching comment there
         # for what resolves each of these.
-        run: |
-          # Distro sources only: see tests/arch/apt_sources.sh.
-          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
-          sudo apt-get install -y curl mpv ffmpeg aria2
+        uses: ./.github/actions/apt-install
+        with:
+          packages: curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
         name: Fetch the crates and llvm-tools before the network is refused
         working-directory: backend

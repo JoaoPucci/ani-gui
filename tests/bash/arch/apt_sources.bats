@@ -111,3 +111,20 @@ plant() {
     ARCH_REPO_ROOT="$root" run sh "$CHECK"
     [ "$status" -eq 0 ]
 }
+
+@test "a refresh in a local composite action is read too" {
+    # The cached apt install refreshes inside .github/actions/, so the
+    # rule follows it there; a workflow that only calls the action has
+    # no refresh line of its own.
+    root=$(planted_repo)
+    plant "$root" 'echo calls the action'
+    mkdir -p "$root/.github/actions/apt-install"
+    printf 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: |\n        %s\n' \
+        'sudo apt-get update' >"$root/.github/actions/apt-install/action.yml"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *apt-install/action.yml:6* ]]
+    printf 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: |\n        %s\n' \
+        "$CANON" >"$root/.github/actions/apt-install/action.yml"
+    ARCH_REPO_ROOT="$root" run sh "$CHECK"
+    [ "$status" -eq 0 ]
+}

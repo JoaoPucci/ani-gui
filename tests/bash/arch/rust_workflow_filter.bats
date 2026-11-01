@@ -201,3 +201,20 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
     [ "$status" -eq 0 ]
     [ "$output" = "$(outputs false false true)" ]
 }
+
+@test "the cached apt install selects the Rust pipeline only" {
+    # The test and coverage jobs install their runtime packages through
+    # .github/actions/apt-install, so a change touching only the action
+    # has to run the jobs that exercise it.
+    head=$(change .github/actions/apt-install/action.yml)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs true false false)" ]
+}
+
+@test "a composite action the Rust jobs do not use selects neither" {
+    head=$(change .github/actions/pnpm-install/action.yml)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs false false false)" ]
+}

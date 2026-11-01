@@ -19,20 +19,22 @@
 # install that follows still fails the step when a package cannot be
 # had; only the sources we never use stop being able to break the job.
 #
-# The rule is syntactic: every workflow line on which `apt` or
-# `apt-get` is followed by an `update` word — ended by whitespace,
-# punctuation or the end of the line — must be exactly that command,
-# leading indentation and a leading `run:` or `- run:` key aside. A
-# line spelling the refresh any other way — bare, with extra flags,
-# with `|| true`, chained with `;` or `&&` — is a finding, and so is a
-# comment that happens to spell it, so write comments around the
-# refresh without naming the command.
+# The rule is syntactic: every line of a workflow, or of a local
+# composite action (.github/actions/*/action.yml — the cached apt
+# install refreshes there), on which `apt` or `apt-get` is followed by
+# an `update` word — ended by whitespace, punctuation or the end of
+# the line — must be exactly that command, leading indentation and a
+# leading `run:` or `- run:` key aside. A line spelling the refresh
+# any other way — bare, with extra flags, with `|| true`, chained with
+# `;` or `&&` — is a finding, and so is a comment that happens to
+# spell it, so write comments around the refresh without naming the
+# command.
 #
 # What this does NOT check: a refresh reached indirectly (a script
-# the workflow runs, `add-apt-repository` refreshing on its own, an
-# action doing it — a local composite action under .github/actions/
-# included, since only .github/workflows/ is read), or one split across a line continuation in a way
-# that leaves no `update` word on the `apt` line. Deciding what a
+# the workflow runs, `add-apt-repository` refreshing on its own, a
+# third-party action doing it), or one split across a line
+# continuation in a way that leaves no `update` word on the `apt`
+# line. Deciding what a
 # multi-line shell command does means parsing shell, which AGENTS.md
 # §2 puts out of bounds here; a green run says nothing about those.
 
@@ -50,7 +52,8 @@ CANON='sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubunt
 PATTERN='(^|[^[:alnum:]_-])apt(-get)?([[:space:]].*)?[[:space:]]update([^[:alnum:]_-]|$)'
 
 failed=0
-for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+for wf in .github/workflows/*.yml .github/workflows/*.yaml \
+    .github/actions/*/action.yml .github/actions/*/action.yaml; do
     [ -f "$wf" ] || continue
     hits=$(grep -nE "$PATTERN" "$wf" || true)
     [ -n "$hits" ] || continue

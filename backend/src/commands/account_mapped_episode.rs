@@ -31,7 +31,7 @@ pub(super) async fn write_episode(
         score_0_to_100: update.score_0_to_100,
         repeat_count: None,
     };
-    let Some(ours) = reconcile_monotonic(ours, row) else {
+    let Some(ours) = reconcile_for(ask.kind, ours, row) else {
         return Ok(None);
     };
     write_through(
@@ -44,5 +44,4 @@ pub(super) async fn write_episode(
         began,
     )
     .await
-    .map(Some)
 }

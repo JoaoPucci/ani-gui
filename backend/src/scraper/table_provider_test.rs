@@ -13,7 +13,8 @@
 //! Defaults for what no table lists follow what a real client does
 //! with a page the site does not have: a search answers the clean
 //! no-results shape (`Ok(vec![])`), a detail year is the soft `None`,
-//! and everything else is a not-found-shaped upstream status.
+//! a detail page lists [`LISTED_GENRE`] as the site's show pages list
+//! genres, and everything else is a not-found-shaped upstream status.
 //!
 //! Compiled only under `cfg(test)`; nothing in production reaches it.
 
@@ -23,8 +24,14 @@ use std::sync::{Arc, Mutex};
 use crate::error::{AniError, Result};
 use crate::scraper::gate::{ScrapePriority, ScraperGate};
 use crate::scraper::provider::{
-    slug_numeric_id, BrowseHit, EpisodeRef, Provider, ProviderId, StreamSource,
+    slug_numeric_id, BrowseHit, EntryPage, EpisodeRef, Provider, ProviderId, StreamSource,
 };
+
+/// The genre a table's detail pages list unless the table says
+/// otherwise: the site's show pages list genres (319 of the 321 the
+/// picker recordings hold), and a pick takes no listing whose page
+/// lists none.
+pub(crate) const LISTED_GENRE: &str = "Drama";
 
 /// What a table answers for one key: a value, or a failure made
 /// fresh on every ask — [`AniError`] does not clone.
@@ -126,6 +133,8 @@ pub(crate) struct TableProvider {
     playlists_default: Answer<String>,
     years: HashMap<Show, Answer<Option<u32>>>,
     years_default: Answer<Option<u32>>,
+    genres: HashMap<Show, Answer<Vec<String>>>,
+    genres_default: Answer<Vec<String>>,
     log: Mutex<Vec<(Asked, tokio::time::Instant)>>,
     stamp: Option<tokio::time::Instant>,
     stalls: bool,
@@ -158,6 +167,8 @@ impl TableProvider {
             playlists_default: Answer::fails(not_found),
             years: HashMap::new(),
             years_default: Answer::Ok(None),
+            genres: HashMap::new(),
+            genres_default: Answer::Ok(vec![LISTED_GENRE.to_string()]),
             log: Mutex::new(Vec::new()),
             stamp: None,
             stalls: false,
@@ -355,6 +366,14 @@ impl TableProvider {
         self
     }
 
+    /// The genres `show`'s detail page lists — none, for a page whose
+    /// genre the client cannot read.
+    pub(crate) fn genres(mut self, show: impl Into<Show>, genres: &[&str]) -> Self {
+        let genres: Vec<String> = genres.iter().map(|g| (*g).to_string()).collect();
+        self.genres.insert(show.into(), genres.into());
+        self
+    }
+
     /// What every unlisted show's detail page answers.
     pub(crate) fn years_default(mut self, answer: impl Into<Answer<Option<u32>>>) -> Self {
         self.years_default = answer.into();
@@ -509,6 +528,14 @@ impl Provider for TableProvider {
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
         self.note(Asked::Year(slug.to_string())).await;
         Self::by_show(&self.years, &self.years_default, slug)
+    }
+
+    async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
+        Ok(EntryPage {
+            year: self.detail_year(slug).await?,
+            names: Vec::new(),
+            genres: Self::by_show(&self.genres, &self.genres_default, slug)?,
+        })
     }
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {

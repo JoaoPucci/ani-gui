@@ -1,0 +1,69 @@
+name: 'pnpm install, cached'
+description: >
+  Run pnpm install with the pnpm store restored from an Actions cache
+  that only master saves.
+# setup-node's own `cache: pnpm` restores and saves in one, and saves
+# from every ref: a pull request that changes the lockfile stores a
+# copy of the whole store under its own branch, which counts against
+# the repository's cache limit and which nothing else can read. This
+# splits the two halves so a pull request restores master's store and
+# never saves its own.
+#
+# The key is the install's arguments (a filtered install fills the
+# store with less than a workspace one) and the lockfile. A changed
+# lockfile falls back to the newest store for the same arguments, and
+# pnpm downloads only what that store lacks; with no cache at all it
+# downloads everything, as an uncached install always did.
+inputs:
+  args:
+    description: The arguments to pnpm install.
+    required: true
+  working-directory:
+    description: >
+      The directory pnpm install runs in. Every caller passes `.`, the
+      workspace root, and lets the arguments choose what to install;
+      tests/arch/ci_caches.sh holds them to it.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Locate the pnpm store
+      id: store
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+        printf 'path=%s\n' "$(pnpm store path --silent)" >>"$GITHUB_OUTPUT"
+        printf 'args=%s\n' "$(printf '%s' "$ARGS" | sha256sum | cut -c1-16)" >>"$GITHUB_OUTPUT"
+
+    - name: Restore the pnpm store
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: pnpm-store-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.store.outputs.args }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.store.outputs.args }}-
+
+    - name: pnpm install
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ARGS: ${{ inputs.args }}
+      # The arguments split on spaces.
+      run: pnpm install $ARGS
+
+    - name: Drop what this install does not use
+      # A fallback restore carries packages an older lockfile used.
+      if: github.ref == 'refs/heads/master' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: pnpm store prune
+
+    - name: Save the pnpm store
+      if: github.ref == 'refs/heads/master' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}

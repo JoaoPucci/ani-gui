@@ -39,8 +39,10 @@ jobs:
           # suite that runs it; `tests/tools/`
           # carries the node tool tests. Workflows are included because
           # the invocation harness pins their resolved shape against
-          # the recorded snapshot.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
+          # the recorded snapshot, and the composite actions because
+          # arch checks the bats cases run read them and these jobs
+          # install through one.
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$|\.github/actions/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -56,11 +58,13 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: actions/checkout@v4
       - if: needs.filter.outputs.relevant == 'true'
-        name: Install shellcheck + shfmt
+        name: Install shellcheck
+        uses: ./.github/actions/apt-install
+        with:
+          packages: shellcheck
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Install shfmt
         run: |
-          # Distro sources only: see tests/arch/apt_sources.sh.
-          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
-          sudo apt-get install -y shellcheck
           # shfmt is not in 24.04 apt; install the static binary.
           sudo curl -sSL -o /usr/local/bin/shfmt \
             https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64
@@ -120,15 +124,14 @@ jobs:
         uses: actions/checkout@v4
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bash test dependencies
-        run: |
-          # Distro sources only: see tests/arch/apt_sources.sh.
-          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
-          # The invocation harness runs the workflow-snapshot
-          # projection, which reads the workflows through PyYAML. It
-          # has to be the distro package: the harness's shim case
-          # falls back to /usr/bin/python3 and needs yaml importable
-          # there, which a virtualenv install would not provide.
-          sudo apt-get install -y python3-yaml
+        # The invocation harness runs the workflow-snapshot
+        # projection, which reads the workflows through PyYAML. It
+        # has to be the distro package: the harness's shim case
+        # falls back to /usr/bin/python3 and needs yaml importable
+        # there, which a virtualenv install would not provide.
+        uses: ./.github/actions/apt-install
+        with:
+          packages: python3-yaml
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bats-core and plugins
         run: ./tests/bash/helpers/install-bats.sh
