@@ -328,3 +328,34 @@ describe('changing the show', () => {
 		expect(rows.every((r) => r.kitsu_id === undefined)).toBe(true);
 	});
 });
+
+describe('the picker, by keyboard and while it links', () => {
+	it('gives focus back to Change when closed', async () => {
+		await openShowPage(GUESS, { guessed: CARD });
+		await until(hasNote, 'the matched-from line');
+		const change = button(m.detail_link_change())!;
+		change.focus();
+		change.click();
+		await until(() => target.querySelector('[role="dialog"]') !== null, 'the picker');
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		await until(() => target.querySelector('[role="dialog"]') === null, 'the picker to close');
+		await until(() => document.activeElement === button(m.detail_link_change()), 'focus on Change');
+	});
+
+	it('says it is linking while the link is out', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
+				const body = (await request.json()) as { rows: string[]; kitsu_id: string };
+				linkCalls.push(body);
+				await held;
+				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [] });
+			})
+		);
+		await linkToTheRightShow();
+		await until(() => button(m.detail_link_linking()) !== null, 'the linking label');
+		release();
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
+	});
+});

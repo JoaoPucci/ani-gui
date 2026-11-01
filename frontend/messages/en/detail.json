@@ -142,5 +142,6 @@
 	"link_undone_toast": "Link undone.",
 	"link_undo_kept_toast": "Couldn’t undo it all: you’ve played it since.",
 	"link_failed_gone": "That show is no longer on Kitsu.",
-	"link_failed": "Couldn’t link the show. Try again."
+	"link_failed": "Couldn’t link the show. Try again.",
+	"link_linking": "Linking…"
 }

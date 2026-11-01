@@ -183,5 +183,6 @@
 	"link_undone_toast": "Vínculo desfeito.",
 	"link_undo_kept_toast": "Não deu para desfazer tudo: você assistiu depois.",
 	"link_failed_gone": "Esse anime não está mais no Kitsu.",
-	"link_failed": "Não foi possível vincular o anime. Tente de novo."
+	"link_failed": "Não foi possível vincular o anime. Tente de novo.",
+	"link_linking": "Vinculando…"
 }

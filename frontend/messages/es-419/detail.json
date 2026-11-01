@@ -178,5 +178,6 @@
 	"link_undone_toast": "Vínculo deshecho.",
 	"link_undo_kept_toast": "No se pudo deshacer todo: la reprodujiste después.",
 	"link_failed_gone": "Esa serie ya no está en Kitsu.",
-	"link_failed": "No se pudo vincular la serie. Inténtalo de nuevo."
+	"link_failed": "No se pudo vincular la serie. Inténtalo de nuevo.",
+	"link_linking": "Vinculando…"
 }
