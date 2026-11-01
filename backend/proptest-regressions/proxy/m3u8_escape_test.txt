@@ -5,3 +5,5 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 0f295add6bc686385a2b73dc9242b9d701000c0f2021fa85f44c4d43eefd0e9b # shrinks to variant = "data:application/vnd.apple.mpegurl;base64,", audio = "data:application/vnd.apple.mpegurl;base64,", subtitles = "data:application/vnd.apple.mpegurl;base64,", iframe = "data:application/vnd.apple.mpegurl;base64,"
+cc 7b7cd2172af32cb3b5815b8f3e7156ee3558976f98b4593ec447cf0ec2a622fa # shrinks to segment = "data:application/vnd.apple.mpegurl;base64,", key = "http://127.0.0.1:42337@evil.example/", map = "data:application/vnd.apple.mpegurl;base64,"
+cc cba10ce56f9e51beb13e9aee27d1a75b9859fc3d46776ee3ea8b7b1d354594c2 # shrinks to variant = "http://127.0.0.1:42337@evil.example/", audio = "data:application/vnd.apple.mpegurl;base64,", subtitles = "data:application/vnd.apple.mpegurl;base64,", iframe = "data:application/vnd.apple.mpegurl;base64,"

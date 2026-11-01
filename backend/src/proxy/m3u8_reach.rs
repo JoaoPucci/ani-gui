@@ -37,7 +37,7 @@ pub(super) enum Reach {
 /// Where `upstream` goes, for an entry that names a playlist when
 /// `playlist` holds and media otherwise.
 pub(super) fn reach(upstream: &Url, origin: &ProxyOrigin, playlist: bool) -> Reach {
-    if upstream.as_str().starts_with(&origin.base) {
+    if on_proxy(upstream, origin) {
         return Reach::AsWritten;
     }
     match (matches!(upstream.scheme(), "http" | "https"), playlist) {
@@ -45,6 +45,18 @@ pub(super) fn reach(upstream: &Url, origin: &ProxyOrigin, playlist: bool) -> Rea
         (false, false) => Reach::AsWritten,
         (false, true) => Reach::Dropped,
     }
+}
+
+/// Whether `url` is a request to the proxy itself: its scheme, host and
+/// port, parsed, are the proxy's. Its text is not read, so neither a
+/// userinfo that spells the proxy's origin (`http://127.0.0.1:<port>@
+/// evil.example/`) nor a port the proxy's is a prefix of passes.
+fn on_proxy(url: &Url, origin: &ProxyOrigin) -> bool {
+    Url::parse(&origin.base).is_ok_and(|own| {
+        url.scheme() == own.scheme()
+            && url.host() == own.host()
+            && url.port_or_known_default() == own.port_or_known_default()
+    })
 }
 
 #[cfg(test)]
