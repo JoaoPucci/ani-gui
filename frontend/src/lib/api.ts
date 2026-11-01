@@ -530,6 +530,38 @@ export function historyDelete(id: string): Promise<void> {
 	return deleteJson<void>(`/api/history/${encodeURIComponent(id)}`);
 }
 
+/** A history row as a link left it, and the Kitsu id it had before. */
+export interface LinkedRow {
+	row: string;
+	previous: string | null;
+	ep_no: string;
+	watched_at: number | null;
+}
+
+/** What a link wrote: the id the rows now record, and every row. */
+export interface LinkOutcome {
+	kitsu_id: string;
+	linked: LinkedRow[];
+}
+
+/** What an undo did: the rows given back their earlier id, and those a
+ *  write since the link left as they are. */
+export interface UnlinkOutcome {
+	restored: string[];
+	kept: string[];
+}
+
+/** Link history rows to the show the user named for them. Rejects
+ *  with Kitsu's 404/410 for an entry Kitsu deleted. */
+export function historyLink(rows: string[], kitsuId: string): Promise<LinkOutcome> {
+	return postJson<LinkOutcome>('/api/history/link', { rows, kitsu_id: kitsuId });
+}
+
+/** Undo a link, naming the rows as it left them. */
+export function historyUnlink(kitsuId: string, rows: LinkedRow[]): Promise<UnlinkOutcome> {
+	return postJson<UnlinkOutcome>('/api/history/unlink', { kitsu_id: kitsuId, rows });
+}
+
 /** Find the most-recent history entry whose show id maps to this Kitsu
  *  id, via the (show id → kitsu_id) reverse cache the play path stamps
  *  on each successful resolve. Used by the detail page to swap "Play
