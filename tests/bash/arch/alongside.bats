@@ -227,8 +227,7 @@ until_exists() {
     [ $((SECONDS - start)) -lt 3 ]
     [ "$status" -eq 143 ]
     grep -qx '=== \[1\] stopped by SIGTERM' out
+    # Stopped before setsid ran, the command never started.
     sleep 0.5
-    if [ -s cmdpid ]; then
-        run ! kill -0 "$(cat cmdpid)"
-    fi
+    [ ! -e cmdpid ]
 }
