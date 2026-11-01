@@ -1195,7 +1195,7 @@ async fn a_listing_past_the_cap_is_bounded_where_the_resolve_is_built_and_keeps_
         .collect();
     assert_eq!(
         kept, expected,
-        "the first cap-many in listing order, the default in the last slot"
+        "tracks of no known language: the first in listing order, the default kept among them"
     );
     assert!(
         native.subtitles.last().is_some_and(|t| t.default),

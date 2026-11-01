@@ -22,10 +22,11 @@ fn listing() -> impl Strategy<Value = Vec<SubtitleTrack>> {
 }
 
 proptest! {
-    /// The kept list is the listing itself when it fits, and its first
-    /// cap-many in order otherwise — except that a default past the cap
-    /// takes the last kept slot, so the provider's default is never
-    /// dropped and never more than one track moves.
+    /// For tracks of no known language — every one ranks alike, so the
+    /// preference order is the default and then listing order — the
+    /// kept list is the listing itself when it fits, and otherwise its
+    /// first tracks in listing order with the provider's default among
+    /// them wherever the listing put it.
     #[test]
     fn the_first_cap_many_are_kept_in_order_with_the_default_among_them(tracks in listing()) {
         let kept = tracks_within_cap(tracks.clone(), "en");

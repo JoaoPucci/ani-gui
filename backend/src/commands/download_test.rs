@@ -3547,10 +3547,11 @@ mod sidecar_suffix_props {
 
 // ── the sidecar phase is bounded in count and in flight ────────────
 
-/// A listing is a handful of languages; one that lists more tracks
-/// than the cap is malformed or hostile, and only the first cap-many
-/// are fetched — in listing order, so a well-formed listing that is
-/// merely long keeps its first tracks.
+/// The sidecar writer is a backstop behind the resolve, which has
+/// already cut every listing it builds to the cap by the user's
+/// preference: a listing that reaches the writer longer than the cap
+/// did not come through the resolve, and only its first cap-many are
+/// fetched, in listing order.
 #[tokio::test]
 async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;

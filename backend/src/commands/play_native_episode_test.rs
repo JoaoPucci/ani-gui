@@ -647,7 +647,7 @@ async fn the_episode_step_bounds_the_listing_and_keeps_its_default() {
         .collect();
     assert_eq!(
         kept, expected,
-        "the first cap-many in listing order, the default in the last slot"
+        "tracks of no known language: the first in listing order, the default kept among them"
     );
     assert!(
         resolved.subtitles.last().is_some_and(|t| t.default),
