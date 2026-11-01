@@ -19,7 +19,7 @@
 
 import type { KitsuAnimeRef } from '$lib/api';
 
-const TRAILING_YEAR = /\((\d{4})\)\s*$/;
+const TRAILING_YEAR = /\(\s*(\d{4})\s*\)\s*$/;
 
 /** The years a row can name, as the backend's `key_year` reads them. */
 const FIRST_YEAR = 1960;

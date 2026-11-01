@@ -9,15 +9,12 @@ use crate::error::Result;
 use crate::history::HistoryEntry;
 use crate::scraper::provider::{ProviderId, ShowKey};
 
-/// Store a title-match row, with the history held — for a title a
-/// history row carries. Continue Watching stores one when a row's
-/// search settles, and the user can remove the row before it does;
-/// with no row searching that title there is nothing to match, and
-/// storing it would bring back what the removal took. Nor is one
-/// stored for something that is not a Kitsu id.
+/// [`store_title_match_for_year`] for a row that names no year — the
+/// form the tests store with.
 ///
 /// # Errors
 /// History read and cache write failures propagate.
+#[cfg(test)]
 pub(crate) fn store_title_match(
     state: &AppState,
     provider: Option<ProviderId>,
@@ -28,9 +25,14 @@ pub(crate) fn store_title_match(
     store_title_match_for_year(state, provider, title, None, cour, kitsu_id)
 }
 
-/// [`store_title_match`] for a row that names `year`: kept under the
-/// title keyed by it ([`crate::commands::title_match_year::keyed_title`]),
-/// for a title a history row carries.
+/// Store a title-match row, with the history held — for a title a
+/// history row carries. Continue Watching stores one when a row's
+/// search settles, and the user can remove the row before it does;
+/// with no row searching that title there is nothing to match, and
+/// storing it would bring back what the removal took. Nor is one
+/// stored for something that is not a Kitsu id. A row that names
+/// `year` keeps its guess under the title keyed by it
+/// ([`crate::commands::title_match_year::keyed_title`]).
 ///
 /// # Errors
 /// History read and cache write failures propagate.

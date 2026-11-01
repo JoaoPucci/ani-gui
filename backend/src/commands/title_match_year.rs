@@ -13,8 +13,10 @@
 /// with.
 #[must_use]
 pub(crate) fn keyed_title(title: &str, year: Option<u32>) -> String {
-    let _ = year;
-    title.to_string()
+    match year {
+        Some(y) if trailing_year(title) != Some(y) => format!("{title} ({y})"),
+        _ => title.to_string(),
+    }
 }
 
 /// The year a history row's own title names: a trailing "(2009)", on
@@ -23,8 +25,23 @@ pub(crate) fn keyed_title(title: &str, year: Option<u32>) -> String {
 /// both name 2009 — from 1960 to 2039, as a show key's year is read.
 #[must_use]
 pub(crate) fn title_year(title: &str) -> Option<u32> {
-    let _ = title;
-    None
+    let in_range = |y: &u32| (1960..2040).contains(y);
+    trailing_year(title).filter(in_range).or_else(|| {
+        trailing_year(crate::commands::history_title_tail::without_episode_tail(
+            title,
+        ))
+        .filter(in_range)
+    })
+}
+
+/// The four digits a title's trailing parenthesized group holds, spaces
+/// inside it aside.
+fn trailing_year(title: &str) -> Option<u32> {
+    let body = title.trim_end().strip_suffix(')')?;
+    let inner = body[body.rfind('(')? + 1..].trim();
+    (inner.len() == 4 && inner.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| inner.parse().ok())
+        .flatten()
 }
 
 #[cfg(test)]

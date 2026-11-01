@@ -1218,10 +1218,12 @@ export function kitsuTitleMatchGet(
 	provider: StreamProvider | null,
 	year: number | null = null
 ): Promise<string | null> {
-	void year;
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
 	if (provider !== null) qs.set('provider', provider);
+	// A row that names a year keeps its guess apart from a row titled
+	// alike that names another.
+	if (year !== null) qs.set('year', String(year));
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1239,8 +1241,8 @@ export function kitsuTitleMatchPut(
 	provider: StreamProvider | null,
 	year: number | null = null
 ): Promise<void> {
-	void year;
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
+	const body = { title, cour, kitsu_id: kitsuId, provider };
+	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
 }
 
 /**

@@ -228,7 +228,10 @@ export function resolveHistoryEntry(
 		mappingNote,
 		allmangaShowId: entry.id,
 		recordedKitsuId: entry.kitsu_id ?? null,
-		year: rowYear(searchTitle, entry.key_year)
+		// A legacy tail can follow the year ("Show (12 episodes) (2009)")
+		// and the search title drops it, so the title as written is read
+		// first.
+		year: rowYear(entry.title, null) ?? rowYear(searchTitle, entry.key_year)
 	};
 }
 
@@ -665,5 +668,8 @@ export function pickKitsuMatch(
 	const courInTitle = candidates.find((h) => titleRe.test(h.canonical_title ?? ''));
 	if (courInTitle) return courInTitle;
 
+	// The picks this order still gets wrong, and the rules tried against
+	// them: docs/deferred-work.md, "Some guessed Continue cards still
+	// open the wrong show".
 	return candidates[0];
 }

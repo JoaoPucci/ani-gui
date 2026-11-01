@@ -37,9 +37,8 @@ pub(crate) fn own_matches(
 /// ([`retired_title_match_prefixes`]).
 pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
     let provider = ShowKey::parse(id).provider;
-    let mut prefixes = Vec::new();
+    let mut prefixes = current_prefixes(id, title);
     for searched in [title, without_episode_tail(title)] {
-        prefixes.push(title_match_prefix(provider, searched));
         // The versions since the provider segment, each as it wrote it,
         // and the ones before it, which keyed the title alone.
         for version in FIRST_SEGMENTED_TITLE_MATCH_VERSION..TITLE_MATCH_VERSION {
@@ -49,6 +48,25 @@ pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
         prefixes.extend(retired_title_match_prefixes(provider, &normalized));
         for version in 1..FIRST_SEGMENTED_TITLE_MATCH_VERSION {
             prefixes.push(format!("title-match:v{version}:{normalized}:c"));
+        }
+    }
+    prefixes
+}
+
+/// The current version's key prefixes of the row's title matches: its
+/// title as listed and less a legacy episode tail, each as it is and
+/// keyed by the year the row names — its title's, else its key's
+/// ([`crate::commands::title_match_year`]).
+fn current_prefixes(id: &str, title: &str) -> Vec<String> {
+    let key = ShowKey::parse(id);
+    let year = crate::commands::title_match_year::title_year(title)
+        .or_else(|| crate::scraper::provider::key_year(id));
+    let mut prefixes = Vec::new();
+    for searched in [title, without_episode_tail(title)] {
+        prefixes.push(title_match_prefix(key.provider, searched));
+        let keyed = crate::commands::title_match_year::keyed_title(searched, year);
+        if keyed != searched {
+            prefixes.push(title_match_prefix(key.provider, &keyed));
         }
     }
     prefixes
@@ -68,11 +86,10 @@ pub(crate) fn current_title_match_ids(
     id: &str,
     title: &str,
 ) -> Result<Vec<String>> {
-    let provider = ShowKey::parse(id).provider;
     let mut found = Vec::new();
-    for searched in [title, without_episode_tail(title)] {
+    for prefix in current_prefixes(id, title) {
         found.extend(
-            cour_entries(state, &title_match_prefix(provider, searched))?
+            cour_entries(state, &prefix)?
                 .into_iter()
                 .map(|(_, body)| body),
         );
