@@ -31,41 +31,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-/**
- * The `dep` names both platform fetchers stage — their `DEPS` lists.
+/** A fetcher's `DEPS`, imported: an entry's dep, version and URL are
+ *  fields of a parsed object, not text to pick out of the script, and
+ *  the Linux fetcher's `SYSTEM_DEPS` — what it does *not* stage — is a
+ *  separate export this never reads. The fetchers guard their entry
+ *  point, so importing one downloads nothing.
  *
- * Read as text rather than imported: the fetchers live outside the
- * frontend root, so vitest cannot resolve them as modules. `dep` is a
- * declared literal on every entry — `windows_deps.sh` compares the two
- * platforms through that same field — so finding it is a lookup, not
- * an interpretation of what the script does.
- */
-function stagedDeps(): Set<string> {
-	const scripts = path.resolve(
-		path.dirname(fileURLToPath(import.meta.url)),
-		'../../../../electron/scripts'
-	);
-	const found = new Set<string>();
-	for (const file of ['fetch-linux-deps.mjs', 'fetch-windows-deps.mjs']) {
-		const src = readFileSync(path.join(scripts, file), 'utf8');
-		// Only the `DEPS` array, bounded by its column-zero opening and
-		// closing lines: the Linux fetcher's `SYSTEM_DEPS` names ffmpeg
-		// too, as a dependency it does *not* stage, and counting that
-		// would credit Linux's declaration as a staged binary.
-		const start = src.indexOf('\nexport const DEPS = [\n');
-		const end = src.indexOf('\n];\n', start);
-		if (start < 0 || end < 0) {
-			throw new Error(`${file}: no column-zero \`export const DEPS = [\` ... \`];\` to read`);
-		}
-		for (const m of src.slice(start, end).matchAll(/^\t\tdep: '([^']+)',$/gm)) found.add(m[1]);
-	}
-	return found;
-}
-
-/** A fetcher's `DEPS`, imported: the version and URL of an entry are
- *  fields of a parsed object, not text to pick out of the script. The
- *  fetchers guard their entry point, so importing one downloads
- *  nothing. */
+ *  Loaded while the file is collected, not inside the tests that
+ *  compare it: a test's 5 s budget is wall time, and a cold read queued
+ *  behind another build's disk writes can spend it before anything is
+ *  compared. */
 type FetcherDep = { name: string; dep: string; version: string; url: string };
 const SCRIPTS = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
@@ -81,10 +56,8 @@ const FETCHED = {
 };
 const README = readFileSync(path.resolve(SCRIPTS, '../../README.md'), 'utf8');
 
-// Read while the file is collected, not inside the test that compares
-// it: a test's 5 s budget is wall time, and a cold read queued behind
-// another build's disk writes can spend it before anything is compared.
-const STAGED = stagedDeps();
+/** The `dep` names both platform fetchers stage. */
+const STAGED = new Set([...FETCHED.linux, ...FETCHED.windows].map((d) => d.dep));
 
 function assertCommonShape(entry: { name: string; license: string; url: string }, label: string) {
 	expect(entry.name, `${label}: name`).toBeTruthy();
