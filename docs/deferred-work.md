@@ -255,6 +255,26 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
+- **A stamp repair can land inside an older instance's play.** The
+  repair that puts a legacy history row's display stamp back on its
+  slot (`numbering_offset_drift.rs`) can run beside a build from before
+  history rows recorded the app's own number, on the same files. Of
+  those builds, 0.15.1 and older can: 0.16.0 takes the single-instance
+  lock this one does. Such a build writes a play's stamp, then its
+  history row. If the repair reads that stamp as it stands, and the
+  row lands after the repair's last read of the history file, the
+  repair moves the stamp back to the old row's slot, and the new row
+  reads one episode high. The repair reads the stamp as it stands when
+  the stamp was written before its first read, or when a replay of the
+  episode the stamp already names wrote the same value again. What the
+  repair reads is then exactly what a warm moving the stamp leaves, and
+  the older build leaves no marker another process can see between its
+  two writes. The window lasts milliseconds on a play, or until an
+  external player starts on a handoff. The next listing at hand puts
+  the stamp on the new row. A stamp that moved to another value while
+  the repair waited for the lock is left alone. Nothing closes the rest
+  short of a marker those builds never write; it stops mattering once
+  no build of 0.15.1 or older shares a profile with this one.
 - **Two app instances do not share the playback record, the paced
   lanes or the host budget.** The proxy's record of media served, the
   lanes that paced downloads and their subtitle fetches take in turn
