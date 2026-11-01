@@ -570,7 +570,7 @@ fn a_sidecar_unreadable_after_the_writes_still_counts_the_rows_the_sweep_removed
     let dir = tempfile::tempdir().unwrap();
     let state = state_in(dir.path());
     seed_history(&state, dir.path());
-    super::gather::fail_count_read_for_tests();
+    super::apply::fail_count_read_for_tests();
 
     let report = sweep(&state);
 

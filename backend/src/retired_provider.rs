@@ -41,6 +41,7 @@
 //! locks: the history's guard, the numbering store's file lock, and
 //! SQLite's for the cache.
 
+mod apply;
 mod cache;
 mod cache_families;
 mod cache_keys;
@@ -106,7 +107,7 @@ pub fn sweep(state: &AppState) -> RetiredSweepReport {
             return RetiredSweepReport::default();
         }
     };
-    let report = gather::apply(state, work);
+    let report = apply::apply(state, work);
     if !report.is_empty() {
         tracing::info!(
             target: "retired_provider",
