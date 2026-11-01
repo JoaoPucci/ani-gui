@@ -8,6 +8,7 @@
 	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { watchStripOverflow } from '$lib/components/strip-overflow';
+	import { watchHeaderWrap } from '$lib/components/strip-header-wrap';
 
 	interface Props {
 		eyebrow: string;
@@ -66,6 +67,17 @@
 			canScrollLeft = edges.canScrollLeft;
 			canScrollRight = edges.canScrollRight;
 		});
+	});
+
+	// Whether the status was pushed onto a line of its own — see
+	// $lib/components/strip-header-wrap. Its separator hides while so.
+	let headerEl: HTMLElement | undefined = $state();
+	let titleEl: HTMLElement | undefined = $state();
+	let metaEl: HTMLElement | undefined = $state();
+	let metaWraps = $state(false);
+	$effect(() => {
+		if (!headerEl || !titleEl || !metaEl) return;
+		return watchHeaderWrap(headerEl, titleEl, metaEl, (wraps) => (metaWraps = wraps));
 	});
 
 	function nudge(dir: 1 | -1) {
@@ -164,14 +176,14 @@
 	style="--strip-card: {cardWidth}; --strip-pad: {pad}; --strip-pad-block: {padBlock};"
 >
 	{#if !headless}
-		<header class="strip-header">
-			<h2 class="eyebrow strip-title">
+		<header class="strip-header" bind:this={headerEl} data-meta-wraps={metaWraps}>
+			<h2 class="eyebrow strip-title" bind:this={titleEl}>
 				<span class="eyebrow-key">{eyebrow}</span>
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
 			{#if headerMeta}
-				<p class="strip-meta">
+				<p class="strip-meta" bind:this={metaEl}>
 					<span class="strip-meta-sep" aria-hidden="true">·</span>
 					{@render headerMeta()}
 				</p>
@@ -350,6 +362,10 @@
 	}
 	.strip-meta-sep {
 		color: color-mix(in oklab, var(--bone-100) 40%, transparent);
+	}
+	/* A status pushed onto its own line has nothing to separate it from. */
+	.strip-header[data-meta-wraps='true'] .strip-meta-sep {
+		display: none;
 	}
 	.strip-actions {
 		display: inline-flex;

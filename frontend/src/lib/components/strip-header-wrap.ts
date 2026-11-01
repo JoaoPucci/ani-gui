@@ -16,9 +16,7 @@ export interface LineBox {
 /** True when `item` sits on a later line than `lead`: its vertical
  *  centre falls below the bottom of `lead`'s box. */
 export function startsNewLine(lead: LineBox, item: LineBox): boolean {
-	void lead;
-	void item;
-	throw new Error('not implemented');
+	return (item.top + item.bottom) / 2 > lead.bottom;
 }
 
 type ResizeObserverLike = { observe(el: Element): void; disconnect(): void };
@@ -35,10 +33,10 @@ export function watchHeaderWrap(
 	onChange: (wraps: boolean) => void,
 	Observer: new (cb: () => void) => ResizeObserverLike = globalThis.ResizeObserver
 ): () => void {
-	void header;
-	void lead;
-	void item;
-	void onChange;
-	void Observer;
-	throw new Error('not implemented');
+	const update = () =>
+		onChange(startsNewLine(lead.getBoundingClientRect(), item.getBoundingClientRect()));
+	const ro = new Observer(update);
+	ro.observe(header);
+	update();
+	return () => ro.disconnect();
 }
