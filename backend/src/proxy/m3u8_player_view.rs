@@ -7,6 +7,8 @@
 
 use url::Url;
 
+use super::player_attrs::attribute_list;
+
 /// The proxy every test origin is on.
 pub(super) const PROXY: &str = "http://127.0.0.1:42337";
 
@@ -44,31 +46,6 @@ pub(super) fn player_uris(out: &str) -> Vec<Named> {
         }
     }
     found
-}
-
-/// hls.js's attribute regex, applied in sequence.
-fn attribute_list(mut rest: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    while let Some(eq) = rest.get(1..).and_then(|r| r.find('=')).map(|i| i + 1) {
-        let name = rest[..eq].to_owned();
-        let after = &rest[eq + 1..];
-        let quoted = after.starts_with('"').then(|| {
-            after.char_indices().skip(1).find(|&(i, c)| {
-                c == '"' && matches!(after[i + 1..].chars().next(), None | Some(','))
-            })
-        });
-        let (raw, next) = match quoted.flatten() {
-            Some((end, _)) => (&after[..=end], &after[end + 1..]),
-            None => after.split_once(',').map_or((after, ""), |(v, n)| (v, n)),
-        };
-        let value = raw
-            .strip_prefix('"')
-            .and_then(|v| v.strip_suffix('"'))
-            .unwrap_or(raw);
-        out.push((name, value.to_owned()));
-        rest = next.strip_prefix(',').unwrap_or(next);
-    }
-    out
 }
 
 /// Whether the player's fetch of `named` stays off upstream: it

@@ -69,7 +69,8 @@ use url::Url;
 
 use crate::error::{AniError, Result};
 use crate::proxy::host_budget_demand::Stream;
-use crate::proxy::m3u8_guard::{keep_player_view_on_proxy, player_lines, reads_as_media};
+use crate::proxy::m3u8_guard::keep_player_view_on_proxy;
+use crate::proxy::m3u8_lines::{player_lines, reads_as_media};
 use crate::proxy::m3u8_reach::{reach, Reach};
 use crate::proxy::token::{sign_marked, AppSecret, SessionId};
 
@@ -491,6 +492,9 @@ mod define_tests;
 #[cfg(test)]
 #[path = "m3u8_escape_test.rs"]
 mod escape_tests;
+#[cfg(test)]
+#[path = "m3u8_player_attrs.rs"]
+mod player_attrs;
 #[cfg(test)]
 #[path = "m3u8_player_test.rs"]
 mod player_tests;
