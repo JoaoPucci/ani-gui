@@ -17,13 +17,17 @@
 //! package is offered nothing and asks GitHub nothing. The version
 //! comparison against the running app stays in the renderer.
 //!
-//! When the page loads and holds nothing to offer, the lookup also
-//! asks `/releases/latest` for the newest full release, however far
-//! back it sits, and offers it under the same rules. A pre-release
-//! further back than the page reaches is not found.
+//! When the page arrives but offers nothing — no release on it
+//! qualifies, or its body cannot be read as a list of releases — the
+//! lookup also asks `/releases/latest` for the newest full release,
+//! however far back it sits, and offers it if it is published, a
+//! full release, and carries this platform's package, whatever the
+//! pre-release setting. A page that fails to arrive (network error,
+//! non-success status) ends the lookup. A pre-release further back
+//! than the page reaches is not found.
 //!
 //! Failures (network down, GitHub rate limit, malformed payload)
-//! collapse to `Ok(None)` so the renderer can branch on a single
+//! collapse to `None` so the renderer can branch on a single
 //! nullable. We don't propagate transport errors as `AniError` —
 //! the update notifier is best-effort by design.
 
