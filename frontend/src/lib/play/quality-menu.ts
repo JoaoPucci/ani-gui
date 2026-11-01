@@ -61,8 +61,9 @@ export function levelLabel(levels: readonly LadderLevel[], index: number): strin
 /** A stream of one level: that level, checked, and no "Auto" — there
  *  is nothing to adapt between. Null while nothing names it — a media
  *  playlist served alone lists neither a height nor a bandwidth, and
- *  the height arrives with its first parsed segment — or when the
- *  engine could not load it. */
+ *  the height arrives with its first parsed segment, or from the
+ *  picture for fMP4 (`quality-learn.ts`) — or when the engine could
+ *  not load it. */
 function loneLevel({ levels, unavailable }: QualityView): QualityMenu | null {
 	const [{ height, bitrate }] = levels;
 	if (unavailable.includes(0) || (height <= 0 && bitrate <= 0)) return null;
