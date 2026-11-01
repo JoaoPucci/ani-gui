@@ -42,9 +42,10 @@ pub struct PlanRow {
     /// it recorded and Kitsu has not answered gone — the entry both
     /// Continue Watching and the detail page's resume find it by — and
     /// nothing else: a guess makes neither surface certain. For a
-    /// retired row, everything anything names for it, so a walked row
-    /// must cover all of them before it goes. Empty when nothing is
-    /// known.
+    /// retired row, the entry it recorded while Kitsu serves it, which
+    /// both surfaces read it by; otherwise everything anything names
+    /// for it, so a walked row must cover all of them before it goes.
+    /// Empty when nothing is known.
     pub shown_as: Vec<String>,
     /// The moment it was watched: the later of the row's own and the
     /// cache's stamp.
