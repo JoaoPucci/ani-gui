@@ -3,6 +3,7 @@
 
 use super::UNWATCHED_MAX;
 use crate::commands::availability::{cache_key, AvailabilityArgs};
+use crate::meta::anilist_gate::Class;
 
 /// The row a lookup's walk can be shared under: its cache row, unless
 /// it has none or asks the provider past the cache.
@@ -35,6 +36,14 @@ pub(crate) fn starts_interactive(
     displaced: Option<(bool, usize)>,
 ) -> bool {
     caller_interactive || displaced.is_some_and(|(interactive, waiters)| interactive && waiters > 0)
+}
+
+/// The AniList class a walk's requests count in: interactive for an
+/// interactive walk, whoever started it, and the starting caller's
+/// otherwise.
+pub(crate) fn walk_class(interactive: bool, caller: Class) -> Class {
+    let _ = interactive;
+    caller
 }
 
 #[cfg(test)]

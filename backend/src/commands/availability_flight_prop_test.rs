@@ -62,14 +62,36 @@ proptest! {
     }
 
     #[test]
-    fn a_walk_is_interactive_when_its_caller_or_the_callers_moving_onto_it_are(
+    fn a_replacement_walk_is_one_its_caller_and_every_mover_joins_and_no_more(
         caller_interactive: bool,
         displaced in proptest::option::of((any::<bool>(), 0usize..4)),
     ) {
-        let movers_interactive = displaced.is_some_and(|(i, waiters)| i && waiters > 0);
-        prop_assert_eq!(
-            starts_interactive(caller_interactive, displaced),
-            caller_interactive || movers_interactive
-        );
+        let started = starts_interactive(caller_interactive, displaced);
+        prop_assert!(joins(started, caller_interactive), "the caller joins it");
+        if let Some((mover_interactive, waiters)) = displaced {
+            if waiters > 0 {
+                prop_assert!(joins(started, mover_interactive), "every mover joins it");
+            }
+        }
+        let interactive_mover = displaced.is_some_and(|(i, w)| i && w > 0);
+        if !caller_interactive && !interactive_mover {
+            prop_assert!(!started, "nobody waits on it interactively, so it is paced");
+        }
+    }
+
+    #[test]
+    fn an_interactive_walk_counts_as_interactive_at_anilist_whoever_started_it(
+        interactive: bool,
+        caller in prop_oneof![
+            Just(crate::meta::anilist_gate::Class::Interactive),
+            Just(crate::meta::anilist_gate::Class::Background)
+        ],
+    ) {
+        let expected = if interactive {
+            crate::meta::anilist_gate::Class::Interactive
+        } else {
+            caller
+        };
+        prop_assert_eq!(walk_class(interactive, caller), expected);
     }
 }
