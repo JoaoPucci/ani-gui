@@ -9,8 +9,9 @@
 // Season 2", the provider's own title, and a card bound to an entry
 // that carries its title is the show the user played. A card bound to
 // another season's entry — Stone Ocean Part 2 to Part 1 — is still
-// passed over, and so is Slime Season 2, which Kitsu titles only
-// "Slime 2".
+// passed over, and so is Slime Season 2: Kitsu titles that entry "That
+// Time I Got Reincarnated as a Slime 2" and "…2nd Season Part 1", never
+// as the provider does.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -199,9 +200,13 @@ describe('a Continue card bound to a later season by a play', () => {
 		expect(await play(STONE_OCEAN_1.canonical_title)).toEqual({ recorded: null, guess: true });
 	});
 
-	it('stays a guess for Slime Season 2, which Kitsu titles only "Slime 2"', async () => {
+	it('stays a guess for Slime Season 2, which no Kitsu title names as the provider does', async () => {
 		const title = 'That Time I Got Reincarnated as a Slime Season 2';
-		mountWithPlayedMapping('hianime:that-time-i-got-reincarnated-as-a-slime-2-1', title, SLIME_2);
+		mountWithPlayedMapping(
+			'hianime:that-time-i-got-reincarnated-as-a-slime-season-2-1',
+			title,
+			SLIME_2
+		);
 
 		expect(await play(SLIME_2.canonical_title)).toEqual({ recorded: null, guess: true });
 	});

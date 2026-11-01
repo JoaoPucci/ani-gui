@@ -690,39 +690,18 @@ async fn a_season_kitsu_titles_as_the_provider_does_is_recorded() {
     let kitsu = MockServer::start().await;
     let td = tempfile::tempdir().expect("tempdir");
     let state = state_at(td.path(), &kitsu.uri());
-    let detail = KitsuAnimeRef {
-        id: "5971".into(),
-        canonical_title: "Gintama'".into(),
-        titles: [
+    cache_titled(
+        &state,
+        "5971",
+        "gintama-2",
+        "Gintama'",
+        &[
             ("en_jp", "Gintama'"),
             ("en_us", "Gintama Season 2"),
             ("ja_jp", "銀魂'"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
-        abbreviated_titles: vec!["Gintama (2011)".into()],
-        slug: Some("gintama-2".into()),
-        synopsis: None,
-        start_date: None,
-        end_date: None,
-        episode_count: Some(51),
-        average_rating: None,
-        subtype: Some("TV".into()),
-        status: Some("finished".into()),
-        age_rating: None,
-        popularity_rank: None,
-        poster_image: None,
-        anilist_banner: None,
-        cover_image: None,
-    };
-    crate::cache::meta_cache_put(
-        &state.cache_pool,
-        &crate::commands::kitsu::anime_detail_key("5971"),
-        &serde_json::to_string(&detail).expect("ser"),
-        3600,
-    )
-    .expect("seed detail");
+        ],
+        &["Gintama (2011)"],
+    );
     let watch = Watch {
         show_id: "hianime:gintama-season-2-1153".into(),
         title: "Gintama Season 2".into(),
@@ -755,10 +734,17 @@ fn resumed_from(state: &AppState, kitsu_id: &str) -> Option<String> {
 
 /// A Kitsu detail with its titles, cached so the guard reads it
 /// without a request.
-fn cache_titled(state: &AppState, id: &str, slug: &str, titles: &[(&str, &str)], abbr: &[&str]) {
+fn cache_titled(
+    state: &AppState,
+    id: &str,
+    slug: &str,
+    canonical: &str,
+    titles: &[(&str, &str)],
+    abbr: &[&str],
+) {
     let detail = KitsuAnimeRef {
         id: id.into(),
-        canonical_title: titles.first().map(|t| t.1).unwrap_or_default().into(),
+        canonical_title: canonical.into(),
         titles: titles
             .iter()
             .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
@@ -800,6 +786,7 @@ async fn another_season_s_page_play_links_nothing() {
         &state,
         "44294",
         "jojo-no-kimyou-na-bouken-stone-ocean",
+        "JoJo's Bizarre Adventure: Stone Ocean",
         &[
             ("en", "JoJo's Bizarre Adventure: Stone Ocean"),
             ("en_jp", "JoJo no Kimyou na Bouken: Stone Ocean"),
@@ -836,6 +823,7 @@ async fn slime_season_two_s_page_play_still_links_nothing() {
         &state,
         "42196",
         "tensei-shitara-slime-datta-ken-2",
+        "Tensei shitara Slime Datta Ken 2",
         &[
             ("en", "That Time I Got Reincarnated as a Slime 2"),
             ("en_jp", "Tensei shitara Slime Datta Ken 2"),
@@ -854,5 +842,9 @@ async fn slime_season_two_s_page_play_still_links_nothing() {
     record_watch(&state, &watch, Some("42196")).await;
 
     assert_eq!(row_id(&state, &watch.show_id), None);
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &watch.show_id).expect("mapping read"),
+        None
+    );
     assert_eq!(resumed_from(&state, "42196"), None);
 }
