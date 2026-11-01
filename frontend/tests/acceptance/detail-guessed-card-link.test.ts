@@ -39,6 +39,7 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
+import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
@@ -57,6 +58,10 @@ class FakeEventSource {
 		(this.listeners[name] ??= []).push(handler);
 	}
 	close() {}
+	dispatch(name: string, data: string) {
+		const ev = { data, type: name } as unknown as MessageEvent;
+		for (const h of this.listeners[name] ?? []) h(ev);
+	}
 }
 type GlobalLike = { EventSource?: typeof FakeEventSource };
 const g = globalThis as unknown as GlobalLike;
@@ -192,6 +197,7 @@ function serveBackend() {
 				});
 				return HttpResponse.json({ restored: body.rows.map((r) => r.row), kept: [] });
 			}),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
 			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null))
 		])
@@ -366,5 +372,69 @@ describe('the picker, by keyboard and while it links', () => {
 		await until(() => button(m.detail_link_linking()) !== null, 'the linking label');
 		release();
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
+	});
+});
+
+describe('from Home to a relinked card', () => {
+	it('a guessed card’s play leads up to its show page, which relinks the card', async () => {
+		// Home: the guessed card, shown as the guess.
+		setUrl('/');
+		app = mount(HomePage, { target });
+		const card = () =>
+			Array.from(target.querySelectorAll<HTMLButtonElement>('button.resume-card')).find((b) =>
+				(b.textContent ?? '').includes(GUESS_TITLE)
+			) ?? null;
+		await until(() => card() !== null, 'the guessed card');
+		card()!.click();
+		await until(() => FakeEventSource.instances.length > 0, "the card's play");
+		FakeEventSource.instances[0].dispatch(
+			'done',
+			JSON.stringify({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		);
+		await until(
+			() => String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '').startsWith(`/play/${GUESS}`),
+			'the player'
+		);
+		const played = new URL(String(vi.mocked(goto).mock.calls.at(-1)?.[0]), 'http://app.test');
+		expect(played.searchParams.get('guess')).toBe('1');
+		unmount(app);
+		app = null;
+
+		// The player: its link up to the show page carries the card's row.
+		setParams({ id: GUESS });
+		app = mount(PlayPage, { target });
+		const up = () => target.querySelector<HTMLAnchorElement>('a.np-link');
+		await until(() => (up()?.textContent ?? '').includes(GUESS_TITLE), 'the now-playing link');
+		await settle();
+		const href = new URL(up()!.getAttribute('href') ?? '', 'http://app.test');
+		expect(href.pathname).toBe(`/anime/${GUESS}`);
+		expect(href.searchParams.get('guessed')).toBe(CARD);
+		unmount(app);
+		app = null;
+
+		// The show page: the line, Change, the right show, Link.
+		await openShowPage(GUESS, Object.fromEntries(href.searchParams));
+		await until(hasNote, 'the matched-from line');
+		button(m.detail_link_change())!.click();
+		const right = () =>
+			Array.from(target.querySelectorAll<HTMLButtonElement>('[role="dialog"] li button')).find(
+				(b) => /^Black Clover\s+2017\b/.test((b.textContent ?? '').trim())
+			);
+		await until(() => right() !== undefined, 'the right show among the candidates');
+		right()!.click();
+		await until(() => {
+			const link = button(m.detail_link_confirm_button());
+			return link !== null && !link.disabled;
+		}, 'the Link button');
+		button(m.detail_link_confirm_button())!.click();
+		await until(() => linkCalls.length === 1, 'the link');
+		expect(linkCalls[0]).toEqual({ rows: [CARD, HIDDEN], kitsu_id: RIGHT });
+
+		// Home again: the card is the right show.
+		expect(await homeCards()).toEqual([TITLE]);
 	});
 });
