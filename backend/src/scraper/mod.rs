@@ -25,6 +25,7 @@ pub mod provider;
 pub mod redirect;
 mod reservation;
 mod show_key;
+pub mod subtitle_language;
 #[cfg(test)]
 #[path = "table_provider_test.rs"]
 pub(crate) mod table_provider;

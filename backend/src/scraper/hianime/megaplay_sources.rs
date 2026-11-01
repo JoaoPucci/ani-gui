@@ -129,47 +129,38 @@ where
         .collect())
 }
 
-/// The language a track carries: the three-letter code its file name
-/// ends in — after an underscore (`track_0_eng.vtt`,
-/// `track_2_Latin_American_spa.vtt`), or ahead of the track's place
-/// in the listing (`eng-2.vtt`, `por-24.vtt`), the two namings the
-/// site's CDNs use — since the site lists no code, only a label; or
-/// else the label itself, or `und` when there is neither.
+/// The language a track carries, as a BCP 47 tag
+/// ([`crate::scraper::subtitle_language::track_tag`]): read from the
+/// code its file name carries in either of the CDNs' namings, or from
+/// the label, the region and script from the label. `und` when
+/// neither names a language the reader knows — never the label
+/// itself, which is no tag and would reach the player as one.
 #[must_use]
 pub fn lang_of_track(file: &str, label: &str) -> String {
-    let name = file
-        .rsplit('/')
-        .next()
-        .unwrap_or(file)
-        .split(['?', '#'])
-        .next()
-        .unwrap_or_default();
-    let stem = name
-        .strip_suffix(".vtt")
-        .or_else(|| name.strip_suffix(".VTT"))
-        .unwrap_or(name);
-    let stem = without_place(stem);
-    let code = stem.rsplit('_').next().unwrap_or_default();
-    if code.len() == 3 && code.bytes().all(|b| b.is_ascii_lowercase()) {
-        return code.to_string();
-    }
-    let label = label.trim();
-    if label.is_empty() {
-        "und".to_string()
-    } else {
-        label.to_string()
-    }
+    crate::scraper::subtitle_language::track_tag(file, label)
+        .unwrap_or_else(|| UNKNOWN_LANGUAGE.to_string())
 }
 
-/// A stem without the track's place in the listing: `eng-2` is `eng`.
-/// Only a trailing run of digits behind the last hyphen is a place;
-/// any other stem is returned as it is.
-fn without_place(stem: &str) -> &str {
-    match stem.rsplit_once('-') {
-        Some((head, place)) if !place.is_empty() && place.bytes().all(|b| b.is_ascii_digit()) => {
-            head
-        }
-        _ => stem,
+/// The tag of a track whose language the reader could not read.
+pub const UNKNOWN_LANGUAGE: &str = "und";
+
+/// One warning per listing naming every track whose language the
+/// reader could not read, by file and label: the listing carries no
+/// language field, so a new file naming or an unknown label shows up
+/// in the log the first time it is played, rather than as tracks that
+/// quietly lose their language.
+pub(super) fn warn_unread_languages(subtitles: &[SubtitleTrack]) {
+    let unread: Vec<String> = subtitles
+        .iter()
+        .filter(|t| t.lang == UNKNOWN_LANGUAGE)
+        .map(|t| format!("{} ({:?})", t.url, t.label))
+        .collect();
+    if !unread.is_empty() {
+        tracing::warn!(
+            count = unread.len(),
+            tracks = %unread.join(", "),
+            "megaplay sources: subtitle language not recognised from file name or label"
+        );
     }
 }
 
