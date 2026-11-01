@@ -231,3 +231,40 @@ fn three_overlapping_listings_that_disagree_leave_the_stamp_as_it_was_in_any_ord
         assert_eq!(former(&state), None, "order {order:?}");
     }
 }
+
+#[test]
+fn a_listing_heard_after_one_and_alongside_another_that_agrees_stands_in_any_order() {
+    // The recap tagged "12.25" by a listing heard first; "12.5" by one
+    // heard wholly after it, and by one heard alongside both. The first
+    // is outranked, and the two left agree.
+    let orders = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    for order in orders {
+        let state = state();
+        stamped(&state);
+        let (first, alongside) = (Begun::now(), Begun::now());
+        let first = first.picked();
+        let after = Begun::now().picked();
+        let alongside = alongside.picked();
+        let repairs = [
+            (listing_tagging_the_recap("12.25"), first),
+            (listing_tagging_the_recap("12.5"), after),
+            (listing_tagging_the_recap("12.5"), alongside),
+        ];
+        for i in order {
+            repair(&state, &repairs[i].0, repairs[i].1);
+        }
+        assert_eq!(
+            display_stamp(&state, SHOW),
+            Some((13, "12.5".into())),
+            "order {order:?}"
+        );
+        assert_eq!(former(&state), Some((13, "24.5".into())), "order {order:?}");
+    }
+}

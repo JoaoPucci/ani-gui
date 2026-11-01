@@ -279,3 +279,18 @@ fn a_stamp_this_run_s_own_repair_moved_meanwhile_is_ordered_not_left() {
     let body = std::fs::read_to_string(&store).expect("store");
     assert_eq!(body, format!("{SLUG}\t0\t13\t12.5\t13\t24.5\n"));
 }
+
+proptest! {
+    #[test]
+    fn three_repairs_however_heard_end_the_same_in_any_order(
+        base in shown(), a in shown(), b in shown(), c in shown(),
+        ha in hearing(), hb in hearing(), hc in hearing(),
+    ) {
+        let one_run = |h: Hearing| Hearing { run: 1, ..h };
+        let all = [(one_run(ha), &a), (one_run(hb), &b), (one_run(hc), &c)];
+        let first = decided_in_turn(&base, &all);
+        for order in [[0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            prop_assert_eq!(&decided_in_turn(&base, &order.map(|i| all[i])), &first);
+        }
+    }
+}
