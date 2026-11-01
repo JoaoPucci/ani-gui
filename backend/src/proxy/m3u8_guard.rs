@@ -22,7 +22,14 @@
 //!   alone, so the segment after it keeps its duration.
 //!
 //! What may stay off the proxy is what [`super::m3u8_reach`] keeps as
-//! written: an inline key, init segment, session key or session data.
+//! written: a key, init segment, session key or session data — and, in
+//! a media playlist, a segment — under a scheme that is not `http` or
+//! `https`, such as an inline `data:` URI.
+//!
+//! The reading modelled is hls.js 1.6's as the player configures it:
+//! low-latency mode off (parts, preload hints and rendition reports are
+//! not fetched) and EME off (session keys are not loaded). Either
+//! turned on would need this check revisited.
 
 use url::Url;
 
