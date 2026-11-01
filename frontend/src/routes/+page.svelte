@@ -2195,7 +2195,9 @@
 	/* — Continue card skeleton: the tile's own surface with one soft
 	     band of light crossing it. The band waits a beat before its
 	     first pass, so a card whose artwork is a moment away just reads
-	     as an empty tile and never flickers into motion. */
+	     as an empty tile and never flickers into motion. The one sweep
+	     on the page, by request; the poster rows and the search page
+	     keep the opacity pulse. */
 	.look-skeleton {
 		position: absolute;
 		inset: 0;
@@ -2215,6 +2217,10 @@
 		transform: translateX(-100%);
 		animation: look-sheen 1.8s var(--ease-in-out) 220ms infinite;
 	}
+	/* The sweep follows reading direction: mirrors the band and its travel. */
+	.look-skeleton:dir(rtl)::before {
+		scale: -1 1;
+	}
 	@keyframes look-sheen {
 		to {
 			transform: translateX(100%);
@@ -2228,6 +2234,11 @@
 	.resume-poster[data-look='image']:not(:has(:global(img[data-revealed])))::after,
 	.resume-poster[data-look='image']:not(:has(:global(img[data-revealed]))) .resume-ep-tag {
 		opacity: 0;
+	}
+	/* The scrim lands at the artwork's pace, not the hover's. */
+	.resume-poster:has(:global(img[data-revealed='fade']))::after,
+	.resume-poster[data-look='placeholder']:not(.look-instant)::after {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
 	}
 	.resume-poster:has(:global(img[data-revealed])) .look-skeleton {
 		display: none;
@@ -2278,13 +2289,11 @@
 	.resume-body.look-landed {
 		animation: look-in var(--dur-slow) var(--ease-out-soft);
 	}
+	/* The --dur-* tokens are already 0ms here, so the fades are off;
+	   only the sweep has its own duration. */
 	@media (prefers-reduced-motion: reduce) {
 		.look-skeleton::before {
-			animation: none;
 			display: none;
-		}
-		.resume-poster img {
-			transition: filter var(--dur-med) var(--ease-out-soft);
 		}
 	}
 </style>
