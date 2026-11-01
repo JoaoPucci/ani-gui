@@ -241,7 +241,8 @@
 	let saved: SearchSnapshot | null = null;
 	/** The card to put back at the top once the results are up. */
 	let anchor: ScrollAnchor | null = null;
-	/** Cards that came back as they were left: they do not rise in again. */
+	/** Cards the saved search carried: they do not rise in again, whether
+	 *  they come back as they were or from the search run again. */
 	let restoredIds = $state.raw(new Set<string>());
 
 	export const snapshot: Snapshot<SearchSnapshot> = {

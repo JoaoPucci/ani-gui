@@ -21,9 +21,10 @@
  *     stuck — all of which could have been caught by a 10-line unit
  *     test if the rules had been a function.
  *   - Extracting the rules also makes the layout effect a thin
- *     adapter: it pulls type + stampedDepth out of the SvelteKit
- *     event, hands them to nextDepth, writes the result back to
- *     history.state. No conditional logic in the component file.
+ *     adapter: it hands the SvelteKit event and `page.state` to
+ *     afterNavigation and writes the stamp it returns through
+ *     SvelteKit's replaceState. No conditional logic in the
+ *     component file.
  */
 
 /** Subset of SvelteKit's NavigationType we react to. Other variants
@@ -131,7 +132,11 @@ export function afterNavigation(nav: Navigated): NavOutcome {
 /** The address of the page behind the entry a navigation landed on.
  *  A forward navigation records the page it left, except one that stays
  *  on the same page (the detail page's episode pager, the player's
- *  episode switch), which keeps what was behind it. A back or forward
+ *  episode switch), which keeps what was behind it. "The same page" is
+ *  the same path: a push to the address already on screen (picking
+ *  the show on screen again from the topbar dropdown) is treated like
+ *  those replaces and keeps the origin, so its chevron steps back to
+ *  the entry for that same show rather than to the search. A back or forward
  *  press reads what the entry was stamped with.
  *
  *  A replace navigation onto a different page cannot be told from a
