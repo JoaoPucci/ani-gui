@@ -281,6 +281,27 @@ describe("a show's remembered captions", () => {
 		expect(showing(other)).toBe('Português');
 	});
 
+	// A Continue card opened on a guessed match records nothing under
+	// the guessed id (play-origin.ts), and the captions pick is no
+	// exception: the show it names may not be the show playing.
+	it('remembers nothing for a session opened from a guess', async () => {
+		setLocale('pt-BR', { reload: false });
+		handlers();
+		setParams({ id: KITSU_ID });
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4', guess: '1' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => playerVideo().textTracks.length === 3, 'the three tracks attached');
+		await until(
+			() =>
+				document.querySelector(`button[aria-label="${m.play_controls_cc_aria_label()}"]`) !== null,
+			'the captions button'
+		);
+		await pick('Español');
+		const reloaded = await reload('session-2', '2');
+		expect(showing(reloaded)).toBe('Português');
+	});
+
 	it('falls back to the locale where an episode lacks the language, and keeps the memory', async () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();

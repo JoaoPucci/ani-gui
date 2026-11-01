@@ -54,6 +54,18 @@ describe('startingTrack — the locale', () => {
 	});
 });
 
+describe('startingTrack — region, then script, then language', () => {
+	it('takes the exact region over a track that only shares its script', () => {
+		expect(startingTrack([t('zh-Hant'), t('zh-HK')], '', 'zh-HK')).toBe(1);
+		expect(startingTrack([t('pt-Latn-PT'), t('pt-BR')], 'pt-BR')).toBe(1);
+	});
+
+	it("reads a track's script from its region when the tag names none", () => {
+		expect(startingTrack([t('zh-CN'), t('zh-TW')], '', 'zh-Hant')).toBe(1);
+		expect(startingTrack([t('zh-CN'), t('zh-HK')], '', 'zh-TW')).toBe(1);
+	});
+});
+
 describe("startingTrack — the show's remembered choice", () => {
 	it('starts on the remembered language over the locale and the default', () => {
 		expect(startingTrack(listing, 'pt-BR', 'es-419')).toBe(6);
@@ -79,29 +91,44 @@ const TAGS = [
 	'en-US',
 	'pt-BR',
 	'pt-PT',
+	'pt-Latn-PT',
 	'pt',
 	'es-419',
 	'es-ES',
 	'ja',
 	'und',
 	'zh-Hans',
-	'zh-Hant'
+	'zh-Hant',
+	'zh-CN',
+	'zh-TW',
+	'zh-HK'
 ];
 const LOCALES = ['', 'en', 'pt-BR', 'es-419', 'ru', 'ja', 'zh-TW'];
 
 const lang = (tag: string) => tag.split('-')[0].toLowerCase();
-const exact = (track: string, want: string) => {
-	const [l, ...rest] = want.split('-');
-	const [tl, ...trest] = track.split('-');
-	if (l.toLowerCase() !== tl.toLowerCase()) return false;
-	const region = rest.find((s) => s.length === 2 || /^\d{3}$/.test(s));
-	const script =
-		region === 'TW' ? 'Hant' : region === 'CN' ? 'Hans' : rest.find((s) => s.length === 4);
-	return trest.some((s) => s === region || s === script);
+const regionOf = (tag: string) =>
+	tag
+		.split('-')
+		.slice(1)
+		.find((s) => /^[A-Z]{2}$/.test(s) || /^\d{3}$/.test(s));
+/** The script a tag is written in, spelled out here for the tags the
+ *  property draws: every language but Chinese in the one script it
+ *  has, named or not; Chinese by its script or its region. */
+const scriptOf = (tag: string) => {
+	if (lang(tag) !== 'zh') return `the ${lang(tag)} script`;
+	const named = tag
+		.split('-')
+		.slice(1)
+		.find((s) => s.length === 4);
+	if (named) return named;
+	const region = regionOf(tag);
+	if (region === 'TW' || region === 'HK') return 'Hant';
+	if (region === 'CN') return 'Hans';
+	return undefined;
 };
 
 describe('startingTrack — properties', () => {
-	it('remembered beats locale beats default, the exact region first within each', () => {
+	it('remembered beats locale beats default; within each the exact region, then the script, then the language', () => {
 		fc.assert(
 			fc.property(
 				fc.array(fc.record({ lang: fc.constantFrom(...TAGS), default: fc.boolean() }), {
@@ -116,8 +143,19 @@ describe('startingTrack — properties', () => {
 					for (const want of tiers) {
 						const same = tracks.findIndex((x) => lang(x.lang) === lang(want));
 						if (same === -1) continue;
-						const precise = tracks.findIndex((x) => exact(x.lang, want));
-						return got === (precise === -1 ? same : precise);
+						const region = regionOf(want);
+						const exactAt = region
+							? tracks.findIndex((x) => lang(x.lang) === lang(want) && regionOf(x.lang) === region)
+							: -1;
+						if (exactAt !== -1) return got === exactAt;
+						const script = scriptOf(want);
+						const scriptAt =
+							script === undefined
+								? -1
+								: tracks.findIndex(
+										(x) => lang(x.lang) === lang(want) && scriptOf(x.lang) === script
+									);
+						return got === (scriptAt === -1 ? same : scriptAt);
 					}
 					const def = tracks.findIndex((x) => x.default);
 					return got === (def === -1 ? null : def);

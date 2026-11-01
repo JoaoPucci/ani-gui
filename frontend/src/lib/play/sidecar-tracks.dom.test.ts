@@ -44,6 +44,30 @@ describe('attachSidecarTracks', () => {
 	});
 });
 
+describe('the track a session starts on', () => {
+	// A track the stream's own playlist carries — hls.js adds it with
+	// addTextTrack — may already be showing when the sidecar tracks
+	// arrive, and the browser honours a `default` attribute only while
+	// no subtitle track shows. The start is applied to the video's
+	// tracks, so it holds whatever was showing.
+	it('turns off a track already showing when the start is off', () => {
+		const v = video();
+		const inManifest = v.addTextTrack('subtitles', 'Manifest', 'en');
+		inManifest.mode = 'showing';
+		attachSidecarTracks(v, [en, es], 'en', 'off');
+		expect(inManifest.mode).toBe('disabled');
+	});
+
+	it('turns off a track already showing when a sidecar track is the start', () => {
+		const v = video();
+		const inManifest = v.addTextTrack('subtitles', 'Manifest', 'en');
+		inManifest.mode = 'showing';
+		attachSidecarTracks(v, [en, es], 'es');
+		expect(inManifest.mode).toBe('disabled');
+		expect(v.querySelectorAll('track')[1].hasAttribute('default')).toBe(true);
+	});
+});
+
 describe('fetchSidecarTracks', () => {
 	const originalFetch = globalThis.fetch;
 	afterEach(() => {
