@@ -197,7 +197,7 @@ recording (8404, in `UNDATED_REFUSED`); and Ohanashi de Te Koi given
 its hentai's year and title, and again undated with its title alone,
 whose refusals rest on the hit's genre and are pinned by
 `a_hit_filed_under_hentai_is_never_picked`; and the undated "Show: Arc"
-whose listing's page lists no genre, pinned by
+whose listing's page lists no genre and no rating, pinned by
 `an_undated_pick_never_takes_an_unread_page_as_safe` and
 `a_refusal_beside_an_unread_page_is_the_answered_dead_end`. `predict()` answers `NOT_MODELLED` for those shapes,
 and the model's tests assert that where both a predicate and a tabled

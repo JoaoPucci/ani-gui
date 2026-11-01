@@ -771,8 +771,9 @@ pub struct AvailabilityBatchResponse {
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v25: an undated entry's pick reads the entry page of each listing
-    //      it would serve and never takes one filed under Hentai, nor
-    //      one whose page lists no genre; a dated entry's year filter
+    //      it would serve and never takes one filed under Hentai or
+    //      rated Rx, nor one whose page lists no genre and no ordinary
+    //      rating; a dated entry's year filter
     //      drops the latter too, and a pool a listing was dropped from
     //      for an unread page is never the clean miss. A v24 positive
     //      for an undated entry can be a hentai listed under one of its
