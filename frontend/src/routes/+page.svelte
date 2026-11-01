@@ -111,7 +111,7 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
-	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
+	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
 		naturalRatio,
@@ -156,7 +156,6 @@
 	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
 	// in the marketing-page sense; this is a programmed marquee.
 	const HERO_ROTATION_COUNT = 3;
-	const HERO_ROTATE_MS = 6000;
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -580,25 +579,22 @@
 			});
 	});
 
-	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
-	// this effect is the runtime adapter (motion preference + interval
-	// management). The preference is reactive: switching reduced motion
-	// on while Home is open stops the rotation, and off starts it.
-	$effect(() => {
-		if (
-			!shouldRunHeroRotation({
+	// Hero auto-advance. The rules and the interval live in
+	// $lib/hero-rotation; this effect hands it the conditions and the
+	// index to move. The preference is reactive: switching reduced
+	// motion on while Home is open stops the rotation, and off starts it.
+	$effect(() =>
+		startHeroRotation(
+			{
 				rotationLength: heroRotation.length,
 				paused: heroPaused,
 				prefersReducedMotion: reducedMotion.current
-			})
-		) {
-			return;
-		}
-		const id = window.setInterval(() => {
-			heroIndex = nextHeroIndex(heroIndex, heroRotation.length);
-		}, HERO_ROTATE_MS);
-		return () => window.clearInterval(id);
-	});
+			},
+			() => {
+				heroIndex = nextHeroIndex(heroIndex, heroRotation.length);
+			}
+		)
+	);
 
 	/**
 	 * Pluck bearer + user_id pairs from every provider whose stored
