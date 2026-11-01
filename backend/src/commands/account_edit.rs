@@ -202,8 +202,9 @@ async fn remove_entry_via(
 
 /// Clear `kitsu_id`'s cached row from `user_id`'s list, asking the
 /// tracker nothing: the removal's live read found the show absent there,
-/// so only the local copy is stale. Only on that read's evidence, and only
-/// while no write or cached refresh has answered for the row since; the
+/// so only the local copy is stale. Only on the evidence of the row's
+/// latest-sent live read, and only while no write has marked the row since
+/// that read was sent and no refresh started after it has been cached; the
 /// cleared row is marked as of the read, so a refresh that started before
 /// it cannot put the row back. Nothing for an account disconnected since,
 /// or for a show no tracker id maps.
@@ -223,9 +224,9 @@ pub async fn forget_cached_entry(
 }
 
 /// Clear `media`'s cached row from `user_id`'s list, for a request that
-/// arrived in connection epoch `began` — only on the evidence of the last
-/// live read of the row finding it absent, and only while nothing has
-/// answered for the row since (`account_revisions`).
+/// arrived in connection epoch `began` — only if the row's latest-sent live
+/// read found it absent and nothing asked after that read has answered for
+/// the row (`account_revisions`).
 pub(crate) fn clear_cached_row(
     state: &Arc<AppState>,
     kind: ProviderKind,

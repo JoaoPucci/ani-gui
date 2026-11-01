@@ -19,8 +19,10 @@
 //! row on that evidence — but only while no answer asked after it has
 //! reached the cache: no write marked the row since the read was sent,
 //! no refresh started after it was cached, and no read sent after it
-//! found the entry listed. Everything is ordered by when it was asked,
-//! not when it arrived, since answers arrive in any order. The cleared
+//! found the entry listed. Reads and refreshes are ordered by when they
+//! were asked, not when they arrived, since answers arrive in any order;
+//! a write is marked when it is cached, which is no earlier than when it
+//! was sent, so it can only stop a clear more often, never less. The cleared
 //! row is marked as of the read, so a refresh that started before the
 //! read cannot put it back, and one started after it can.
 
