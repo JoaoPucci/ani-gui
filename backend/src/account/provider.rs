@@ -149,6 +149,19 @@ pub struct EntryUpdate {
     pub repeat_count: Option<u32>,
 }
 
+impl EntryUpdate {
+    /// Whether the update carries no field at all. Both trackers' writes
+    /// upsert, so an empty one would create a row of the tracker's
+    /// defaults; it is not sent.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.status.is_none()
+            && self.progress_episodes.is_none()
+            && self.score_0_to_100.is_none()
+            && self.repeat_count.is_none()
+    }
+}
+
 /// Trait every concrete user-list provider implements.
 #[async_trait]
 pub trait UserListProvider: Send + Sync {
@@ -202,10 +215,11 @@ pub trait UserListProvider: Send + Sync {
     ) -> Result<Option<CurrentEntry>>;
 
     /// The same bearer-scoped read as [`Self::current_entry`], plus the
-    /// tracker's own episode total for the media, in one request. The
-    /// mark-watched write-back reads this instead, so it can clamp the
-    /// count it sends to the tracker's total, and decide the finale's
-    /// completed status against it, without a second call.
+    /// tracker's own episode total for the media, in one request — and,
+    /// on MAL, the row's rewatch count, which closing a rewatch counts
+    /// from. The mark-watched write-back reads this instead, so it can
+    /// clamp the count it sends to the tracker's total, and decide the
+    /// finale's completed status against it, without a second call.
     async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia>;
 
     /// The media as the episode map reads it: its total, whether it
@@ -241,13 +255,51 @@ pub struct TrackedMedia {
     pub episodes: Option<u32>,
 }
 
+impl CurrentEntry {
+    /// The row as `kind` keeps it for the write-back's reconcile. MAL has
+    /// no rewatch status of its own: a rewatch there is a Watching row
+    /// with `is_rewatching` set, and "finished" lives in Completed, so a
+    /// finished show's finale on it is to close the rewatch — the
+    /// reconcile sees the Watching row MAL lists, and completes it. AniList's
+    /// REPEATING is a status of its own, which it closes itself at the
+    /// total, and is left as it is.
+    #[must_use]
+    pub fn as_kept_by(self, kind: ProviderKind) -> Self {
+        match (kind, self.status) {
+            (ProviderKind::MyAnimeList, ListStatus::Rewatching) => Self {
+                status: ListStatus::Watching,
+                ..self
+            },
+            _ => self,
+        }
+    }
+
+    /// Whether the row, as `kind` keeps it ([`Self::as_kept_by`]), already
+    /// stands at `total` and finished: Completed, or AniList's rewatch,
+    /// which AniList closes itself. A MAL rewatch is a Watching row and
+    /// does not stand there; its finale is still to close it.
+    #[must_use]
+    pub fn stands_at(self, kind: ProviderKind, total: u32) -> bool {
+        let kept = self.as_kept_by(kind);
+        kept.progress_episodes >= total
+            && matches!(kept.status, ListStatus::Completed | ListStatus::Rewatching)
+    }
+}
+
 /// Lean snapshot of the user's existing list row for one media, read
 /// before a write-back so the reconcile can stay monotonic and
-/// status-preserving. Only the two fields the reconcile needs.
+/// status-preserving. Only the fields the reconcile needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CurrentEntry {
     /// The row's current unified status.
     pub status: ListStatus,
     /// Episodes the user has watched so far.
     pub progress_episodes: u32,
+    /// How many times the user has finished a rewatch of the show, where
+    /// the tracker's read carries it; `None` when it is unknown.
+    pub times_rewatched: Option<u32>,
 }
+
+#[cfg(test)]
+#[path = "provider_kept_test.rs"]
+mod kept_tests;

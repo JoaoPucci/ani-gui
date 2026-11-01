@@ -190,7 +190,13 @@ use crate::proxy::MediaKind;
 // no reading reached (episode_unverified), which a replay hands the
 // renderer so it writes nothing to the trackers. A v24 row reads as
 // verified whatever its reading was; bumping re-resolves.
-const SCHEMA: &str = "v25";
+// v26: an undated entry's pick reads the entry page of each listing it
+// would serve and never takes one filed under Hentai, nor one whose
+// page lists no genre; a dated entry's year filter drops the latter
+// too. A v25 row for an undated entry can hold a hentai's stream — one
+// listed under one of the entry's own names — under the entry's key,
+// and a HEAD-passing hit would keep serving it; bumping re-resolves.
+const SCHEMA: &str = "v26";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

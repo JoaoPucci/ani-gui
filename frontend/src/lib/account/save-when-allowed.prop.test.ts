@@ -178,14 +178,27 @@ describe('saveWhenAllowed once the write is no longer wanted, by property', () =
 });
 
 describe('waitWhileWanted, by property', () => {
+	// The most looks one case may take. The clock is the test's own, so a
+	// case costs one timer fire per look and nothing else; drawing the
+	// step freely let a 300 s wait at a 1 ms step take 300,000 fires,
+	// which ran the property past vitest's timeout on a busy machine.
+	// Each look past the last one `lateness` or `unwantedFrom` can name
+	// (index 60) is another on-time step like the one before it, so a
+	// bound above that loses no case the property distinguishes.
+	const MAX_LOOKS = 100;
+	/** A wait and a step that reaches it in at most MAX_LOOKS looks.
+	 *  A filter rather than a chain, so a failure shrinks both together. */
+	const waitAndStep = fc
+		.tuple(fc.integer({ min: 0, max: 300_000 }), fc.integer({ min: 1, max: 5000 }))
+		.filter(([ms, step]) => Math.ceil(ms / step) <= MAX_LOOKS);
+
 	it('ends at the first look at or past its deadline or that finds it unwanted, however late each timer wakes', async () => {
 		await fc.assert(
 			fc.asyncProperty(
-				fc.integer({ min: 0, max: 300_000 }),
-				fc.integer({ min: 1, max: 5000 }),
+				waitAndStep,
 				fc.array(fc.integer({ min: 0, max: 120_000 }), { maxLength: 50 }),
 				fc.option(fc.integer({ min: 0, max: 60 }), { nil: undefined }),
-				async (ms, step, lateness, unwantedFrom) => {
+				async ([ms, step], lateness, unwantedFrom) => {
 					let clock = 0;
 					const looks: number[] = [];
 					const timer: { fire: (() => void) | null } = { fire: null };
@@ -212,11 +225,19 @@ describe('waitWhileWanted, by property', () => {
 					}).then(() => {
 						done = true;
 					});
-					while (timer.fire) {
+					// No more looks than a step apiece reaches the deadline in: a
+					// look that does not end the wait sleeps a full step (or what
+					// is left of the wait), as `checkEvery` promises, and its timer
+					// wakes at or after that. Fired that many times and no more, so
+					// a wait that looks more often, or never ends, fails here
+					// instead of spinning the loop forever.
+					const bound = Math.max(1, Math.ceil(ms / step));
+					while (timer.fire && looks.length < bound) {
 						const fire = timer.fire;
 						timer.fire = null;
 						fire();
 					}
+					expect(timer.fire).toBeNull();
 					await new Promise((r) => setTimeout(r, 0));
 					expect(done).toBe(true);
 					// The last look ended it; every look before it found the write

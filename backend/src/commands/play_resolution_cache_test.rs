@@ -206,7 +206,23 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v25:"), "got {k}");
+    assert!(k.starts_with("play:v26:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_an_undated_pick_read_its_genre_is_not_served() {
+    // An undated entry's pick read no entry page, so a hentai listed
+    // under one of the entry's own names could be its pick. A v25 row
+    // for such an entry can hold that hentai's stream under the entry's
+    // key, and a HEAD-passing hit would keep serving it; nothing in the
+    // row says which listing it was resolved from.
+    let pool = pool();
+    let current = cache_key("Tsubu Doll", "sub", "best", "1", None, Some(5), None);
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v25:", 1);
+    assert_ne!(previous, current, "the schema must have moved past v25");
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }
 
 #[test]

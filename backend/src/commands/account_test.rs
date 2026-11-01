@@ -807,6 +807,7 @@ fn reconcile_monotonic_clamps_progress_and_reconciles_status() {
         Some(CurrentEntry {
             status,
             progress_episodes: ep,
+            times_rewatched: None,
         })
     };
 
@@ -905,6 +906,7 @@ fn reconcile_monotonic_preserves_rewatching_at_finale() {
         Some(CurrentEntry {
             status,
             progress_episodes: ep,
+            times_rewatched: None,
         })
     };
 

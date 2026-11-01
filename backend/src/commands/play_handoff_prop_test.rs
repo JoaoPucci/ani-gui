@@ -40,6 +40,7 @@ proptest::proptest! {
             version: None,
             former_tags: Vec::new(),
             other_copies: Vec::new(),
+            listing: Vec::new(),
             unread_past: None,
         };
         let args: PlayArgs = serde_json::from_value(serde_json::json!({

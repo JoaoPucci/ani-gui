@@ -51,7 +51,10 @@ async fn mal_server_with_row(
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("GET"))
         .and(path("/anime/21"))
-        .and(query_param("fields", "my_list_status,num_episodes"))
+        .and(query_param(
+            "fields",
+            "my_list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched},num_episodes",
+        ))
         .respond_with(
             wiremock::ResponseTemplate::new(200).set_body_string(format!(
                 r#"{{"id":21,"num_episodes":{total},"my_list_status":{row}}}"#
@@ -171,17 +174,74 @@ async fn mal_the_finale_completes_when_the_total_is_unknown() {
     assert!(push_to_mal(&server, finale(12)).await.is_some());
 }
 
+/// MAL has no rewatch status of its own: a rewatch is a Watching row
+/// with `is_rewatching` set, and "finished" lives in Completed. A
+/// finished show's finale on a row being rewatched closes the rewatch:
+/// the row goes back to Completed, out of the rewatch, and the count of
+/// finished rewatches goes up by one — read first, never lowered.
 #[tokio::test]
-async fn mal_a_rewatchs_finale_sends_its_progress_and_keeps_the_rewatch() {
+async fn mal_a_rewatchs_finale_closes_it_and_counts_it() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":11,"num_times_rewatched":2}"#;
+    let server = mal_server_with_row(
+        12,
+        row,
+        &[
+            "num_watched_episodes=12",
+            "status=completed",
+            "is_rewatching=false",
+            "num_times_rewatched=3",
+        ],
+        1,
+    )
+    .await;
+    assert!(push_to_mal(&server, finale(12)).await.is_some());
+}
+
+/// The same at the finale already counted: a rewatching row at the
+/// finale's number, watched again, is closed and counted too.
+#[tokio::test]
+async fn mal_a_rewatch_at_its_finale_already_is_closed_and_counted() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":12,"num_times_rewatched":0}"#;
+    let server = mal_server_with_row(
+        12,
+        row,
+        &[
+            "status=completed",
+            "is_rewatching=false",
+            "num_times_rewatched=1",
+        ],
+        1,
+    )
+    .await;
+    assert!(push_to_mal(&server, finale(12)).await.is_some());
+}
+
+/// A count the read did not carry is unknown, and an unknown count is
+/// never written over: the rewatch is closed without one.
+#[tokio::test]
+async fn mal_a_rewatch_with_no_count_read_is_closed_without_one() {
     let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":11}"#;
-    let server = mal_server_with_row(12, row, &["num_watched_episodes=12"], 1).await;
+    let server =
+        mal_server_with_row(12, row, &["status=completed", "is_rewatching=false"], 1).await;
     assert!(push_to_mal(&server, finale(12)).await.is_some());
     let bodies = patch_bodies(&server).await;
     assert!(
-        bodies
-            .iter()
-            .all(|b| !b.contains("status=") && !b.contains("is_rewatching=")),
-        "a rewatch keeps its status: {bodies:?}"
+        bodies.iter().all(|b| !b.contains("num_times_rewatched")),
+        "{bodies:?}"
+    );
+}
+
+/// The finale replayed on a row the rewatch already closed counts
+/// nothing again.
+#[tokio::test]
+async fn mal_the_finale_replayed_after_a_closed_rewatch_counts_nothing() {
+    let row = r#"{"status":"completed","num_episodes_watched":12,"num_times_rewatched":3}"#;
+    let server = mal_server_with_row(12, row, &[], 1).await;
+    push_to_mal(&server, finale(12)).await;
+    let bodies = patch_bodies(&server).await;
+    assert!(
+        bodies.iter().all(|b| !b.contains("num_times_rewatched")),
+        "{bodies:?}"
     );
 }
 
@@ -317,4 +377,180 @@ async fn anilist_a_replay_behind_the_row_writes_nothing() {
     let server = anilist_server("12", r#"{"status":"COMPLETED","progress":12}"#).await;
     assert!(push_to_anilist(&server, episode(3)).await.is_none());
     assert!(anilist_saves(&server).await.is_empty());
+}
+
+// ── what the MAL rewatch change must not move ──────────────────────────
+
+#[tokio::test]
+async fn anilist_a_rewatch_mid_series_sends_its_progress_alone() {
+    let server = anilist_server("12", r#"{"status":"REPEATING","progress":5}"#).await;
+    assert!(push_to_anilist(&server, episode(6)).await.is_some());
+    assert_eq!(
+        anilist_saves(&server).await,
+        vec![serde_json::json!({"mediaId": 21, "progress": 6})]
+    );
+}
+
+#[tokio::test]
+async fn anilist_a_planning_row_is_promoted_to_watching() {
+    let server = anilist_server("12", r#"{"status":"PLANNING","progress":0}"#).await;
+    assert!(push_to_anilist(&server, episode(1)).await.is_some());
+    assert_eq!(
+        anilist_saves(&server).await,
+        vec![serde_json::json!({"mediaId": 21, "status": "CURRENT", "progress": 1})]
+    );
+}
+
+#[tokio::test]
+async fn mal_a_planning_row_is_promoted_to_watching() {
+    let row = r#"{"status":"plan_to_watch","num_episodes_watched":0}"#;
+    let server = mal_server_with_row(
+        12,
+        row,
+        &[
+            "status=watching",
+            "is_rewatching=false",
+            "num_watched_episodes=1",
+        ],
+        1,
+    )
+    .await;
+    assert!(push_to_mal(&server, episode(1)).await.is_some());
+}
+
+/// A row MAL already reads as rewatching takes a mid-series episode's
+/// progress alone, and counts nothing: only a finished show's finale
+/// closes it.
+#[tokio::test]
+async fn mal_a_rewatching_row_mid_series_sends_its_progress_alone() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":5,"num_times_rewatched":2}"#;
+    let server = mal_server_with_row(12, row, &["num_watched_episodes=6"], 1).await;
+    assert!(push_to_mal(&server, episode(6)).await.is_some());
+    let bodies = patch_bodies(&server).await;
+    assert!(
+        bodies.iter().all(|b| !b.contains("status=")
+            && !b.contains("is_rewatching=")
+            && !b.contains("num_times_rewatched")),
+        "mid-series, the row's status and count are left alone: {bodies:?}"
+    );
+}
+
+/// A replay behind a row MAL reads as rewatching writes nothing, as it
+/// does behind any row.
+#[tokio::test]
+async fn mal_a_replay_behind_a_rewatching_row_writes_nothing() {
+    let row = r#"{"status":"watching","is_rewatching":true,"num_episodes_watched":8}"#;
+    let server = mal_server_with_row(12, row, &[], 0).await;
+    assert!(push_to_mal(&server, episode(3)).await.is_none());
+}
+
+/// The write-back's own write with nothing in it makes no request
+/// either, and is a no-op.
+#[tokio::test]
+async fn an_empty_write_back_sends_no_request() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"watching","num_episodes_watched":0,"is_rewatching":false}"#,
+        ))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu("http://unused-kitsu");
+    let got = push_progress_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &mal_provider(&server.uri()),
+        &test_tokens(),
+        ProviderMediaId(21),
+        EntryUpdate::default(),
+    )
+    .await
+    .expect("a no-op, not a failure");
+    assert!(got.is_none());
+}
+
+/// The renderer holds a write MAL refuses with a 429 and runs it again
+/// once the wait is over, the backend re-reading the row each time. A
+/// rewatch's finale refused that way is closed by the retry exactly as
+/// it would have been: back at Completed, the count one past the count
+/// read — the same count on every attempt, never one per attempt — and
+/// the finale replayed on the closed row counts nothing.
+#[tokio::test]
+async fn mal_a_rewatch_close_held_by_a_rate_limit_closes_once_on_its_retry() {
+    let server = wiremock::MockServer::start().await;
+    let rewatching = r#"{"id":21,"num_episodes":12,"my_list_status":{"status":"watching","is_rewatching":true,"num_episodes_watched":11,"num_times_rewatched":2}}"#;
+    let closed = r#"{"id":21,"num_episodes":12,"my_list_status":{"status":"completed","is_rewatching":false,"num_episodes_watched":12,"num_times_rewatched":3}}"#;
+    // The row reads as the rewatch until a write lands, then as closed.
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(rewatching))
+        .up_to_n_times(2)
+        // The refused attempt's read and the retry's own.
+        .expect(2)
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(closed))
+        // The replay's read.
+        .expect(1)
+        .mount(&server)
+        .await;
+    // The first write is refused; the next ones land.
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "3"))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"status":"completed","num_episodes_watched":12,"is_rewatching":false}"#,
+        ))
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu("http://unused-kitsu");
+    let provider = mal_provider(&server.uri());
+    let tokens = test_tokens();
+    let push = || {
+        push_progress_via(
+            &state,
+            ProviderKind::MyAnimeList,
+            &provider,
+            &tokens,
+            ProviderMediaId(21),
+            finale(12),
+        )
+    };
+    match push().await {
+        Err(crate::error::AniError::RateLimited {
+            retry_after_secs,
+            refused_by,
+        }) => {
+            assert_eq!(retry_after_secs, Some(3));
+            assert_eq!(refused_by, Some("mal"));
+        }
+        other => panic!("the first write is held back: {other:?}"),
+    }
+    assert!(push().await.expect("the retry lands").is_some());
+    // The finale replayed once the rewatch is closed.
+    push().await.expect("the replay is answered");
+    let bodies = patch_bodies(&server).await;
+    assert_eq!(bodies.len(), 3, "{bodies:?}");
+    for close in &bodies[..2] {
+        for want in [
+            "status=completed",
+            "is_rewatching=false",
+            "num_times_rewatched=3",
+        ] {
+            assert!(close.contains(want), "{want} missing from {close}");
+        }
+    }
+    assert!(
+        !bodies[2].contains("num_times_rewatched"),
+        "the closed row's replay counts nothing: {}",
+        bodies[2]
+    );
 }

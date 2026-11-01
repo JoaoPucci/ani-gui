@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { removeEntryAcrossTrackers, setEntryAcrossTrackers } from './set-entry';
 import { AccountApiError } from './api';
-import type { EntryView, ListEntry, Provider } from './types';
+import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 
 function fakeEntry(provider: Provider): ListEntry {
 	return {
@@ -202,4 +202,62 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 		expect(out.failed).toBe(1);
 		expect(out.rateLimited).toBe(true);
 	});
+});
+
+// A rewatch is set deliberately, so it reaches every tracker as picked —
+// MyAnimeList, which has no rewatch status of its own, holds it as a Watching
+// row being rewatched — whatever row the tracker had.
+describe('setEntryAcrossTrackers — a rewatch reaches every tracker', () => {
+	const rows: [string, EntryView | null][] = [
+		['a Completed row', { status: 'completed', progress: 26 }],
+		['a Watching row', present],
+		['no row', null]
+	];
+	for (const [name, row] of rows) {
+		it(`sends MyAnimeList the rewatch on ${name}`, async () => {
+			const getEntry = vi.fn(async (): Promise<EntryView | null> => row);
+			const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+			const out = await setEntryAcrossTrackers(
+				{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
+				'kitsu-1',
+				{ status: 'rewatching', statusChanged: true, progress: 3, total: 26 }
+			);
+			for (const p of ['anilist', 'mal'] as Provider[]) {
+				expect(setEntry).toHaveBeenCalledWith(p, 'tok', {
+					kitsu_id: 'kitsu-1',
+					status: 'rewatching',
+					progress: 3
+				});
+			}
+			expect(out).toEqual({ written: 2, failed: 0 });
+		});
+	}
+});
+
+// Every other status reaches MyAnimeList as the user picked it too.
+describe('setEntryAcrossTrackers — every other status on MyAnimeList', () => {
+	const cases: [ListStatus, number][] = [
+		['watching', 6],
+		['paused', 6],
+		['dropped', 6],
+		['planning', 0],
+		['completed', 26]
+	];
+	for (const [status, progress] of cases) {
+		it(`sends ${status} as picked`, async () => {
+			const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
+			const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+			const out = await setEntryAcrossTrackers(
+				{ connected: ['mal'], bearerFor: () => 'tok', getEntry, setEntry },
+				'kitsu-1',
+				{ status, statusChanged: true, progress: status === 'planning' ? 0 : 6, total: 26 }
+			);
+			expect(out).toEqual({ written: 1, failed: 0 });
+			expect(setEntry).toHaveBeenCalledWith('mal', 'tok', {
+				kitsu_id: 'kitsu-1',
+				...(status === 'watching' ? {} : { status }),
+				progress
+			});
+		});
+	}
 });

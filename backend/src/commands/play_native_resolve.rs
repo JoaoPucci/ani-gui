@@ -86,6 +86,10 @@ pub struct NativeResolved {
     /// own listing, whichever copy played. Empty for a pick with one
     /// version.
     pub other_copies: Vec<(String, Vec<crate::scraper::provider::EpisodeRef>)>,
+    /// The picked listing itself, every row in its slot: what a history
+    /// row from before rows recorded the app's own number, which holds
+    /// a slot of it, is read against.
+    pub listing: Vec<crate::scraper::provider::EpisodeRef>,
     /// The pick's [`crate::commands::play_native::PickedShow::unread_past`]:
     /// Kitsu's count, when whether the listing's rows past it are
     /// appended extras could not be read.
@@ -346,6 +350,7 @@ where
                             version,
                             former_tags: former_tags_of(&picked.episodes),
                             other_copies,
+                            listing: picked.episodes.clone(),
                             unread_past: picked.unread_past,
                         });
                     }
