@@ -2,6 +2,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { quintOut } from 'svelte/easing';
 
+// The preference comes from the app's one reading of it; the test sets
+// it by hand.
+const motion = vi.hoisted(() => ({ reduced: false }));
+vi.mock('./reduced-motion.svelte', () => ({
+	reducedMotion: {
+		get current() {
+			return motion.reduced;
+		}
+	}
+}));
+
 import { CARD_SCALE, CARD_SHIFT, cardScale, cardShift, STILL } from './card-motion';
 
 const rect = (x: number) => new DOMRect(x, 0, 100, 150);
@@ -32,23 +43,19 @@ describe('card motion', () => {
 
 describe('card motion under prefers-reduced-motion', () => {
 	afterEach(() => {
-		vi.unstubAllGlobals();
+		motion.reduced = false;
 	});
-	const prefersReduced = (matches: boolean) =>
-		vi.stubGlobal(
-			'matchMedia',
-			vi.fn((query: string) => ({ matches: matches && query.includes('reduce') }))
-		);
 
 	it('holds every card still when the user asks for less motion', () => {
-		prefersReduced(true);
+		motion.reduced = true;
 		const node = document.createElement('div');
-		expect(cardScale(node).duration).toBe(0);
-		expect(cardShift(node, { from: rect(220), to: rect(0) }).duration).toBe(0);
+		const out = cardScale(node);
+		const slide = cardShift(node, { from: rect(220), to: rect(0) });
+		expect([out.duration, out.delay]).toEqual([0, 0]);
+		expect([slide.duration, slide.delay]).toEqual([0, 0]);
 	});
 
 	it('moves as usual when the user has not asked', () => {
-		prefersReduced(false);
 		const node = document.createElement('div');
 		expect(cardScale(node).duration).toBe(240);
 		expect(cardShift(node, { from: rect(220), to: rect(0) }).duration).toBe(280);
