@@ -53,3 +53,7 @@ fn tag_shaped(lang: &str) -> Option<String> {
     }
     Some(tag)
 }
+
+#[cfg(test)]
+#[path = "subtitle_language_listed_test.rs"]
+mod tests;
