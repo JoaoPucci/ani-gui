@@ -35,11 +35,16 @@
 	$effect(() => {
 		if (!visible || !container || animation) return;
 		const into = container;
-		void playLottie(into, loadingJson).then((player) => {
-			// Hidden, or remounted, while the runtime loaded.
-			if (!visible || container !== into || animation) player.destroy();
-			else animation = player;
-		});
+		playLottie(into, loadingJson)
+			// The animation is decoration: an overlay whose runtime failed
+			// to load still covers the page and shows its caption.
+			.catch(() => null)
+			.then((player) => {
+				if (!player) return;
+				// Hidden, or remounted, while the runtime loaded.
+				if (!visible || container !== into || animation) player.destroy();
+				else animation = player;
+			});
 	});
 
 	$effect(() => {
