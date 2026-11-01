@@ -86,7 +86,8 @@
 	import {
 		isWatchLaterStale,
 		readLastRefreshed,
-		markRefreshed
+		refreshStamp,
+		markRefreshedSince
 	} from '$lib/account/watch-later-refresh';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import Icon from '$lib/components/Icon.svelte';
@@ -686,10 +687,12 @@
 					// Authoritative tracker pull (no secret-gated fallback): refresh
 					// a near-expiry token first so a long-open session's refresh
 					// doesn't 401 against the provider API.
+					const stamp = refreshStamp(p);
 					const bearer = (await freshBearerFor(p)) ?? cred.bearer;
 					try {
 						await fetchAndCacheList(p, bearer);
-						markRefreshed(p, Date.now());
+						// Not fresh if a write asked for a re-read meanwhile.
+						markRefreshedSince(p, stamp, Date.now());
 					} catch (e) {
 						// Leave the stale snapshot in place; a later refresh
 						// (manual or next TTL window) retries. A refused bearer
