@@ -171,6 +171,19 @@ async fn a_deleted_recorded_entry_gives_way_to_the_title_match_its_year_keyed() 
 }
 
 #[tokio::test]
+async fn a_row_naming_a_year_is_not_named_by_the_guess_of_a_row_naming_none() {
+    // A row naming 2009 keeps its guess under "Show (2009)"; the guess
+    // under "Show" alone is another row's, titled alike but naming no
+    // year, and names a different show.
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, "Show (12 episodes) (2009)").await;
+    crate::commands::kitsu::title_match_put(&state, ShowKey::parse(SHOW).provider, "Show", 1, "1")
+        .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1"), None);
+}
+
+#[tokio::test]
 async fn a_deleted_recorded_entry_with_nothing_else_names_no_show() {
     let (_tmp, _mock, state) = row_recording("999", 404).await;
     assert!(kitsu_anime_detail_fails(&state, "999").await);
