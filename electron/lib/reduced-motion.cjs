@@ -14,16 +14,16 @@
 //
 // So the main process asks the portal itself — through busctl, and
 // again through gdbus when busctl gives no answer — and falls back to
-// the gsettings key when the portal cannot answer. When the answer is "reduce" it hands
-// Chromium its own `--force-prefers-reduced-motion` switch, which
-// every CSS media query and matchMedia call then follows. Any other
-// outcome forces nothing, so Chromium's own reading of
-// `enable-animations` keeps working as before; the opposite switch,
-// which would override it, is never used.
+// the gsettings key when the portal cannot answer. When the answer is
+// "reduce" it hands Chromium its own `--force-prefers-reduced-motion`
+// switch, which every CSS media query and matchMedia call in a window
+// opened afterwards follows. Any other outcome forces nothing, so
+// Chromium's own reading of `enable-animations` keeps working as
+// before; the opposite switch, which would override it, is never used.
 //
 // The answer is read once: a change to the setting takes effect on the
-// next launch. Off Linux nothing is read — Chromium already follows
-// Windows' "Animation effects" and macOS's Reduce motion.
+// next launch. Off Linux nothing is read — on Windows Chromium already
+// follows the system's "Animation effects" setting.
 
 const { execFile } = require("node:child_process");
 
@@ -35,8 +35,9 @@ const REDUCED_MOTION_SWITCH = "force-prefers-reduced-motion";
 const READ_TIMEOUT_MS = 500;
 
 // The wall clock the budget runs on, unless the caller supplies one.
-// Wrapped in arrows: a bare `setTimeout` lifted onto an object throws
-// "Illegal invocation" in Chromium.
+// Wrapped in arrows so the methods work however they are called: a
+// bare `setTimeout` lifted onto an object throws "Illegal invocation"
+// in a renderer, though not in the Node main process this runs in.
 const SYSTEM_CLOCK = {
   now: () => Date.now(),
   setTimeout: (fn, ms) => setTimeout(fn, ms),
