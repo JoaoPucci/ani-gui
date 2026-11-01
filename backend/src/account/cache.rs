@@ -5,6 +5,7 @@
 //! its CCN is already substantial. This module owns just the account
 //! table.
 
+use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::params;
@@ -44,6 +45,19 @@ pub fn write_entries(
     user_id: &str,
     entries: &[ListEntry],
 ) -> Result<()> {
+    write_entries_keeping(pool, kind, user_id, entries, &HashSet::new())
+}
+
+/// [`write_entries`], leaving the rows of the media in `keep` as they are
+/// — present or absent — whatever `entries` says of them: a write landed
+/// on those while the snapshot was being read, and its answer is newer.
+pub fn write_entries_keeping(
+    pool: &SqlitePool,
+    kind: ProviderKind,
+    user_id: &str,
+    entries: &[ListEntry],
+    keep: &HashSet<u32>,
+) -> Result<()> {
     let mut conn = pool.get().map_err(|_| AniError::Cache)?;
     let now = now_secs();
     let tx = conn.transaction().map_err(|_| AniError::Cache)?;
@@ -52,9 +66,15 @@ pub fn write_entries(
         // (or that aged out for any other reason) goes here. Without
         // this, a removed AniList entry would survive in the cache
         // until disconnect cleared the whole user table.
+        let kept: Vec<i64> = keep.iter().map(|&id| i64::from(id)).collect();
         tx.execute(
-            "DELETE FROM user_list_cache WHERE provider = ?1 AND user_id = ?2",
-            params![provider_slug(kind), user_id],
+            "DELETE FROM user_list_cache WHERE provider = ?1 AND user_id = ?2 \
+             AND media_id NOT IN (SELECT value FROM json_each(?3))",
+            params![
+                provider_slug(kind),
+                user_id,
+                serde_json::to_string(&kept).map_err(|_| AniError::Cache)?
+            ],
         )
         .map_err(|_| AniError::Cache)?;
         let mut stmt = tx
@@ -65,7 +85,7 @@ pub fn write_entries(
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )
             .map_err(|_| AniError::Cache)?;
-        for e in entries {
+        for e in entries.iter().filter(|e| !keep.contains(&e.media_id.0)) {
             stmt.execute(params![
                 provider_slug(kind),
                 user_id,
