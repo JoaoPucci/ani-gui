@@ -70,3 +70,11 @@ pub(crate) fn release(_tickets: &[u64]) {}
 pub(crate) async fn wait_any(tickets: &[u64], _limit: Duration) -> Vec<(u64, bool)> {
     tickets.iter().map(|&t| (t, false)).collect()
 }
+
+#[cfg(test)]
+#[path = "held_fill_registry_test.rs"]
+mod registry_tests;
+
+#[cfg(test)]
+#[path = "held_fill_test.rs"]
+mod tests;

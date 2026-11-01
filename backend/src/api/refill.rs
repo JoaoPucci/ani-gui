@@ -127,3 +127,7 @@ async fn post_refills_release(Json(body): Json<WaitBody>) -> axum::http::StatusC
     held_fill::release(&tickets);
     axum::http::StatusCode::NO_CONTENT
 }
+
+#[cfg(test)]
+#[path = "refill_test.rs"]
+mod tests;

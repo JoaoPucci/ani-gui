@@ -1217,6 +1217,67 @@ describe('kitsuEpisodes', () => {
 		await kitsuEpisodes('12', 3);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/episodes/12?page=3`);
 	});
+	it('fetches the page once more when its held-back thumbnails land', async () => {
+		const filled = [{ id: 'e1', number: 1, thumbnail: { original: 'https://x/1.jpg' } }];
+		const fetchMock = refillingFetch([], filled, true);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		const eps = await kitsuEpisodes('12', 2, { refresh: true, onRefill });
+		expect(eps).toEqual([]);
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(filled));
+		const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+		expect(urls).toEqual([
+			`${BASE}/api/kitsu/episodes/12?page=2&refresh=true`,
+			`${BASE}/api/refills/wait`,
+			// The refetch reads the page the first read cached.
+			`${BASE}/api/kitsu/episodes/12?page=2`
+		]);
+		expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ tickets: [7] });
+	});
+	it('does not fetch again when the refill did not land', async () => {
+		const fetchMock = refillingFetch([], [], false);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuEpisodes('12', 1, { onRefill });
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(onRefill).not.toHaveBeenCalled();
+	});
+});
+
+/** A backend whose first read carries refill ticket 7, whose wait
+ *  answers it `landed`, and whose next read answers `then`. */
+function refillingFetch(first: unknown, then: unknown, landed: boolean) {
+	let reads = 0;
+	return vi.fn(async (url: string, init?: RequestInit) => {
+		void init;
+		const isWait = url.endsWith('/api/refills/wait');
+		const payload = isWait ? [{ ticket: 7, landed }] : reads++ === 0 ? first : then;
+		const header = !isWait && reads === 1 ? '7' : null;
+		return {
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name === 'x-ani-gui-refill' ? header : null) },
+			async text() {
+				return JSON.stringify(payload);
+			}
+		} as unknown as Response;
+	});
+}
+
+describe('kitsuAnimeDetail refill', () => {
+	it('hands the detail fetched once more after a held-back banner lands', async () => {
+		const fresh = { id: '12', cover_image: { original: 'https://al/b.jpg' } };
+		globalThis.fetch = refillingFetch(
+			{ id: '12', cover_image: null },
+			fresh,
+			true
+		) as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuAnimeDetail('12', { onRefill });
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(fresh));
+	});
 });
 
 describe('settingsGet', () => {
