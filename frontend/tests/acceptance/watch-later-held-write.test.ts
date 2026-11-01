@@ -263,6 +263,38 @@ describe('Watch Later on Home, while a held write waits', () => {
 		}
 	);
 
+	it('leaves the list due for a re-read when a write settles while a refresh is out', async () => {
+		planned = [ALREADY];
+		backend();
+		const refreshedBefore = Date.now() - 1000;
+		markRefreshed('anilist', refreshedBefore);
+		let answer: (() => void) | null = null;
+		server.use(
+			http.post(`${API_BASE}/api/account/list/anilist`, async () => {
+				// The refresh's list read is out until the write has settled.
+				await new Promise<void>((resolve) => (answer = resolve));
+				return HttpResponse.json(planned.map(listEntry));
+			}),
+			http.post(`${API_BASE}/api/account/set/anilist`, () => {
+				planned = [...planned, NEW];
+				return HttpResponse.json(listEntry(NEW));
+			})
+		);
+		app = mount(HomePage, { target });
+		await settle();
+		target
+			.querySelector<HTMLButtonElement>(`button[aria-label="${m.account_watch_later_refresh()}"]`)!
+			.click();
+		await settle();
+		expect(answer).not.toBeNull();
+		// The write asks for the list to be read again: the refresh already
+		// out started before it, so it cannot count as that read.
+		await save();
+		answer!();
+		await settle();
+		expect(readLastRefreshed('anilist')).toBeNull();
+	});
+
 	it.each([500, 429])(
 		'does not mark a rejected refresh fresh (HTTP %s), and can refresh again',
 		async (status) => {
