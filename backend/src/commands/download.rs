@@ -112,6 +112,7 @@ impl DownloadArgs {
             version: self.version,
             stamps_beside,
             tail,
+            heard: None,
         }
     }
 }
@@ -240,13 +241,16 @@ where
     let locale = crate::config::read_config(&state.config_path)
         .unwrap_or_default()
         .locale;
-    let request = args.native_request(
+    // Every listing the resolve picks is recorded, served or not.
+    let recorder = crate::commands::listing_tags::Recorder(state);
+    let mut request = args.native_request(
         quality,
         &locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
     );
+    request.heard = Some(&recorder);
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
             crate::commands::progress::ProgressLine::LinksFetched { provider } => {

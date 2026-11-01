@@ -32,8 +32,9 @@ export async function refreshedRows(
 	if (!now || !current || !row) return null;
 	const to = parseHistoryEpisode(now.ep_no);
 	const from = parseHistoryEpisode(now.former_ep_no);
-	// Given anew only when a point really moved: a repaired stamp names
-	// its former number for good.
+	// Given anew only when a point really moved: a repaired stamp goes
+	// on naming its former number, until a listing gives that number to
+	// a real episode.
 	const moved = !!move && to !== null && from !== null && from !== to && move(from, to) === true;
 	if (row.ep_no === now.ep_no) return moved ? [...current] : null;
 	const epNo = now.ep_no;
