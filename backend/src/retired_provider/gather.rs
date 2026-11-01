@@ -45,7 +45,15 @@ pub(super) fn gather(state: &AppState) -> Result<Work> {
 /// How many of the `before` retired numbering rows are gone now; none
 /// when the store cannot be read to tell.
 fn numbering_gone(state: &AppState, before: usize) -> usize {
-    match Numbering::try_read(&state.history_path) {
+    #[cfg(test)]
+    let read = if FAIL_COUNT_READ.with(|f| f.replace(false)) {
+        Err(std::io::Error::other("unreadable for the case"))
+    } else {
+        Numbering::try_read(&state.history_path)
+    };
+    #[cfg(not(test))]
+    let read = Numbering::try_read(&state.history_path);
+    match read {
         Ok(store) => before.saturating_sub(numbering::retired(state, &store)),
         Err(e) => {
             tracing::warn!(error = %e, "retired-provider sweep: numbering count unread");
@@ -84,4 +92,16 @@ pub(super) fn apply(state: &AppState, work: Work) -> RetiredSweepReport {
         Err(e) => tracing::warn!(error = ?e, "retired-provider sweep: cache stays"),
     }
     report
+}
+
+#[cfg(test)]
+thread_local! {
+    static FAIL_COUNT_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Make this thread's next count of the numbering that went fail its
+/// read, as a sidecar unreadable once the writes are done would.
+#[cfg(test)]
+pub(super) fn fail_count_read_for_tests() {
+    FAIL_COUNT_READ.with(|f| f.set(true));
 }

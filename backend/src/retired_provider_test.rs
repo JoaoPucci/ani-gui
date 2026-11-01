@@ -561,3 +561,21 @@ fn a_write_that_fails_part_way_still_reports_the_numbering_that_went() {
     assert!(store.contains("the-separation-677"), "{store}");
     assert_eq!(report.numbering_rows, 1, "{report:?}");
 }
+
+#[test]
+fn a_sidecar_unreadable_after_the_writes_still_counts_the_rows_the_sweep_removed() {
+    // The renumbering and the numbering removal both succeed; the read
+    // that would count them fails. The rows the sweep itself removed
+    // are still counted: the kept row's and the rowless key's.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    seed_history(&state, dir.path());
+    super::gather::fail_count_read_for_tests();
+
+    let report = sweep(&state);
+
+    let store = offsets(dir.path());
+    assert!(!store.contains("the-separation-677"), "{store}");
+    assert!(!store.contains("frieren-1663"), "{store}");
+    assert!(report.numbering_rows >= 2, "{report:?}");
+}
