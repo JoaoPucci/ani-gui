@@ -78,6 +78,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
+	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -294,8 +295,8 @@
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
 	// TextTrackList off the page's video so the menu reflects
-	// whatever the current session has attached (today: 0 or 1
-	// track; multi-language sessions land later). `textTracksTick`
+	// whatever the current session has attached — none, one, or one
+	// per language the provider lists. `textTracksTick`
 	// is the reactivity dependency — every addtrack / removetrack /
 	// individual `change` event bumps it so `availableTracks` and
 	// `captionsOn` re-derive.
@@ -504,14 +505,11 @@
 	}
 
 	/** Pick a subtitle track by its index in the TextTrackList, or
-	 *  'off' to hide every track. The chosen one becomes `showing`,
-	 *  everything else `hidden`. */
-	function pickCcTrack(target: number | 'off') {
+	 *  'off' for none — the rule is $lib/play/caption-pick's. */
+	function pickCcTrack(target: CaptionTarget) {
 		ccMenuOpen = false;
 		if (!videoEl) return;
-		for (let i = 0; i < videoEl.textTracks.length; i++) {
-			videoEl.textTracks[i].mode = target === i ? 'showing' : 'hidden';
-		}
+		applyCaptionPick(videoEl.textTracks, target);
 	}
 
 	function setVolume(v: number) {
