@@ -363,7 +363,8 @@ impl<T> Timed<T> {
 
 /// Run `subject` on the real clock until `reached` resolves — the
 /// requests it makes have reached the holds that keep them — then on a
-/// paused clock to its end, and resume the clock. Paused, tokio moves
+/// paused clock to its end, and resume the clock. Panics when the
+/// subject ends before it reaches the hold: it then timed nothing. Paused, tokio moves
 /// time on only to the next timer, so the subject's own deadline is
 /// what ends it, at that deadline exactly, and a deadline that grew is
 /// seen to have. The test must run on a current-thread runtime.
@@ -380,9 +381,10 @@ pub(crate) async fn paused_once<F: std::future::Future>(
     let start = tokio::time::Instant::now();
     tokio::pin!(subject);
     tokio::select! {
-        out = &mut subject => {
-            let took = start.elapsed();
-            Timed { out, took, set_by: took, reached_at: took, started: start }
+        _ = &mut subject => {
+            // Ended before its hold, it timed nothing: a bound read off
+            // it would hold whatever its deadline was.
+            panic!("the subject ended before it reached the hold");
         }
         () = reached => {
             let paused_at = start.elapsed();
@@ -416,11 +418,10 @@ pub(crate) async fn paused_once<F: std::future::Future>(
 /// thread of its own (a [`Held`] answer), not in a blocking task.
 ///
 /// # Panics
-/// When the subject ends before it reaches the hold. A subject that
-/// has not reached it within [`QUEUE_DEADLINE`] of real time gets its
-/// clock back — once no other blocking task runs, the test's own
-/// watchers in `reached` among them — and its deadline then ends it
-/// before the hold.
+/// When the subject ends before it reaches the hold, or reaches it only
+/// after [`QUEUE_DEADLINE`] of real time, when the clock was given back
+/// — once no other blocking task ran, the test's own watchers in
+/// `reached` among them — and could have moved on the way.
 pub(crate) async fn frozen_until<F: std::future::Future>(
     subject: F,
     reached: impl std::future::Future<Output = ()>,
@@ -428,8 +429,13 @@ pub(crate) async fn frozen_until<F: std::future::Future>(
     tokio::time::pause();
     let start = tokio::time::Instant::now();
     let (hold_still, still) = std::sync::mpsc::channel::<()>();
+    // Whether the hold timed out: the clock was given back before the
+    // subject reached the hold.
     let standing = tokio::task::spawn_blocking(move || {
-        let _ = still.recv_timeout(QUEUE_DEADLINE);
+        matches!(
+            still.recv_timeout(QUEUE_DEADLINE),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        )
     });
     tokio::pin!(subject);
     let ended_first = tokio::select! {
@@ -442,7 +448,11 @@ pub(crate) async fn frozen_until<F: std::future::Future>(
         panic!("the subject ended before it reached the hold");
     }
     let reached_at = start.elapsed();
-    standing.await.expect("the clock's hold ends");
+    let gave_up = standing.await.expect("the clock's hold ends");
+    if gave_up {
+        tokio::time::resume();
+        panic!("the subject did not reach the hold within {QUEUE_DEADLINE:?} of real time");
+    }
     let out = subject.await;
     let took = start.elapsed();
     tokio::time::resume();

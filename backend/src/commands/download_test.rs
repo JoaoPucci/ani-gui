@@ -480,8 +480,11 @@ async fn a_range_downloads_pick_stops_at_the_resolution_deadline() {
 /// runtime: a timer would not fire while the clock stands still
 /// ([`crate::held::frozen_until`]). A spawn `busy` sees retried meanwhile
 /// has the clock moved on far enough for its retry's sleep to end.
-/// Bounded, so a tool that never gets there fails its test's assertions
-/// by name.
+///
+/// # Panics
+/// When nothing is written within 30 s of real time: a watch that gave
+/// up and returned would hand the clock back, and let a test that needs
+/// the clock to have stood still pass without it.
 #[cfg(unix)]
 async fn written(mut path: std::path::PathBuf, mut busy: crate::held::Queue) {
     enum Seen {
@@ -508,7 +511,8 @@ async fn written(mut path: std::path::PathBuf, mut busy: crate::held::Queue) {
         });
         let (seen, p, b) = watch.await.expect("the watch ends");
         match seen {
-            Seen::Written | Seen::Never => return,
+            Seen::Written => return,
+            Seen::Never => panic!("{} was never written", p.display()),
             Seen::Busy => {
                 (path, busy) = (p, b.again());
                 // Two ticks past the sleep: tokio rounds a timer up to the
@@ -543,6 +547,12 @@ async fn a_busy_retry_the_watch_sees_gets_past_its_sleep() {
         })
     };
     written(mark.clone(), busy).await;
+    // Seen while the clock still stands: the watch moved it past the
+    // retry's sleep, not the clock given back below.
+    assert!(
+        mark.exists(),
+        "the retry got past its sleep while the clock stood still"
+    );
     drop(hold_still);
     standing.await.expect("the clock's hold ends");
     retry.await.expect("the retry");
@@ -3336,17 +3346,23 @@ async fn a_track_that_answers_in_time_lands_beside_one_that_stalls() {
         // Watched off the runtime: a timer would not fire while the
         // clock stands still.
         tokio::task::spawn_blocking(move || {
-            // Bounded, so a track that never lands fails the assertion
-            // below by name rather than holding the clock for ever.
+            // Bounded, and a track that never lands fails here by name:
+            // a watch that gave up and returned would let the clock run
+            // on without it.
             let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
-            while std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_none())
-                && std::time::Instant::now() < until
-            {
+            loop {
+                if std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()) {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < until,
+                    "the quick track never landed"
+                );
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
         })
         .await
-        .expect("the watch on the quick track ends");
+        .expect("the quick track lands");
     };
     let written = crate::held::frozen_until(
         tokio::time::timeout(

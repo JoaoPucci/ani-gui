@@ -1327,7 +1327,9 @@ pub(crate) mod tests {
         // The track is held until after the check, so its deadline is all
         // that ends it; a check that waited on the track would never
         // return. On the real clock, so the healthy requests are answered
-        // as they would be: the stalled track alone makes the row dead.
+        // as they would be. The check must have asked for the stalled
+        // track: a deadline run out before it did would leave the row
+        // dead without the track having been tried.
         let live = tokio::time::timeout(
             // Only a guard against hanging the suite.
             std::time::Duration::from_secs(10),
@@ -1340,6 +1342,11 @@ pub(crate) mod tests {
         .await
         .expect("the check returned at the deadline, not after the stalled request");
         assert!(!live, "a track that does not answer in time is a dead row");
+        // Kept for whoever awaits it, so a request that came before
+        // resolves at once.
+        tokio::time::timeout(std::time::Duration::ZERO, stalled.asked())
+            .await
+            .expect("the check asked for the stalled track");
         // The deadline the check applies must be the one it is given. A
         // second check, its track held on a server of its own, runs on a
         // clock that stands still until that track is held
