@@ -699,3 +699,41 @@ test("revealInFolder opens a directory and never a file", async () => {
     await app.close();
   }
 });
+
+// ─── Permissions: what the app uses, and nothing else ─────────────
+//
+// Electron grants every permission unless told otherwise. The app's
+// document keeps fullscreen (the player) and clipboard writes (the
+// About page's copy button); everything else is denied
+// (lib/permissions.cjs).
+
+test("fullscreen and copying still work, and other permissions are denied", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const fullscreen = await page.evaluate(() =>
+      document.documentElement.requestFullscreen().then(
+        () => "granted",
+        (e: Error) => `refused: ${e.message}`,
+      ),
+    );
+    expect(fullscreen).toBe("granted");
+    await page.evaluate(() => document.exitFullscreen());
+
+    const denied = await page.evaluate(async () => ({
+      request: await Notification.requestPermission(),
+      query: (await navigator.permissions.query({ name: "notifications" })).state,
+    }));
+    expect(denied).toEqual({ request: "denied", query: "denied" });
+
+    // The About page's copy button, through the real clipboard.
+    await app.evaluate(({ clipboard }) => clipboard.writeText("before"));
+    await page.getByRole("link", { name: /about/i }).first().click();
+    await expect(page).toHaveURL(/\/about\/?$/);
+    await page.getByRole("button", { name: /copy ethereum address/i }).click();
+    await expect(page.getByText(/address copied/i)).toBeVisible();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(/^0x[0-9a-fA-F]{40}$/);
+  } finally {
+    await app.close();
+  }
+});
