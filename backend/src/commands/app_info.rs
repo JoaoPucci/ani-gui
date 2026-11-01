@@ -141,6 +141,23 @@ mod tests {
     }
 
     #[test]
+    fn app_info_reports_what_the_cache_reclaim_deleted() {
+        let mut state = fake_state();
+        let report = crate::cache::reclaim::ReclaimReport {
+            undeclared_rows: 264,
+            expired_rows: 735,
+        };
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(json["cache_reclaim"]["undeclared_rows"], 0);
+        state.legacy_sweep.cache_reclaim = report.clone();
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(
+            json["cache_reclaim"],
+            serde_json::to_value(&report).expect("report")
+        );
+    }
+
+    #[test]
     fn app_info_projects_state_fields() {
         let s = fake_state();
         let info = app_info(&s).unwrap();
