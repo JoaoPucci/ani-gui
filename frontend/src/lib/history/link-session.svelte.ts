@@ -11,9 +11,8 @@
  * to the page the link was made from, which then offers it again.
  */
 
-import { m } from '$lib/paraglide/messages';
 import type { LinkOutcome } from '$lib/api';
-import { kitsuEntryGone } from './match';
+import { linkedNotice, linkFailure, undoAndReturn } from './link-notices';
 import { resolveHistoryEntry } from './resolve';
 import { linkWarnings, type LinkCandidate, type LinkWarning } from './link-candidates';
 import {
@@ -21,7 +20,6 @@ import {
 	linkOffer,
 	loadCandidates,
 	searchCandidates,
-	undoLink,
 	type LinkDeps,
 	type LinkOffer
 } from './link-offer';
@@ -101,11 +99,14 @@ export class LinkSession {
 		this.failed = false;
 		this.candidates = null;
 		this.group = null;
-		void guessedGroup(this.#deps, offer)
-			.then((group) => {
+		// A history that cannot be read now leaves the group to the
+		// confirmation, which asks again.
+		void guessedGroup(this.#deps, offer).then(
+			(group) => {
 				if (this.offer === offer) this.group = group;
-			})
-			.catch(() => {});
+			},
+			() => {}
+		);
 		const query = ++this.#query;
 		const found = await loadCandidates(this.#deps, offer);
 		if (query === this.#query && this.offer === offer) this.candidates = found;
@@ -154,41 +155,26 @@ export class LinkSession {
 			const outcome = await this.#deps.link(rows, chosen.ref.id);
 			this.open = false;
 			this.offer = null;
-			this.#deps.notify({
-				kind: 'success',
-				message: m.detail_link_done_toast({ title: chosen.ref.canonical_title }),
-				actionLabel: m.detail_link_undo(),
-				onAction: () => void this.undo(outcome, from, offer.entry.id)
-			});
+			this.#deps.notify(
+				linkedNotice(
+					chosen.ref.canonical_title,
+					() => void this.undo(outcome, from, offer.entry.id)
+				)
+			);
 			// The page is opened again without the card's row: the row is
 			// linked, so there is nothing left to offer, nor room to hold.
 			if (chosen.ref.id === from) this.#deps.refresh();
 			this.#deps.showPage(chosen.ref.id, null);
 		} catch (e) {
-			this.error = kitsuEntryGone(e) ? m.detail_link_failed_gone() : m.detail_link_failed();
+			this.error = linkFailure(e);
 		} finally {
 			this.busy = false;
 		}
 	}
 
-	/** Undo `outcome`, made on the page `from` for the card row `row`.
-	 *  The page goes back to `from` only while the user is still on the
-	 *  page the link left them on; anywhere else, they stay. */
-	async undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
-		const stayed = this.#deps.here() === `/anime/${outcome.kitsu_id}`;
-		try {
-			const all = await undoLink(this.#deps, outcome);
-			this.#deps.notify(
-				all
-					? { kind: 'info', message: m.detail_link_undone_toast() }
-					: { kind: 'error', message: m.detail_link_undo_kept_toast() }
-			);
-		} catch {
-			this.#deps.notify({ kind: 'error', message: m.detail_link_failed() });
-			return;
-		}
-		if (!stayed) return;
-		this.#deps.refresh();
-		this.#deps.showPage(from, row);
+	/** Undo `outcome`, made on the page `from` for the card row `row`
+	 *  ($lib/history/link-notices.ts). */
+	undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
+		return undoAndReturn(this.#deps, outcome, from, row);
 	}
 }
