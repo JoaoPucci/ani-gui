@@ -112,11 +112,13 @@ what the maintainer described: the picture without the subtitles.
 ### Document Picture-in-Picture
 
 **[data]** electron/electron#39633 ("support new documentPictureInPicture
-M116 Feature") is open, last updated 2026-08-07. In an earlier attempt
-on Electron 33.4.11, `documentPictureInPicture.requestWindow()`
-resolved and no OS window was created. `docs/deferred-work.md` held an
+M116 Feature") is open, last updated 2026-08-07. An earlier attempt
+in this project, on Electron 33.4.11, found that
+`documentPictureInPicture.requestWindow()` resolves and no OS window is
+created; this study did not repeat it. `docs/deferred-work.md` held an
 entry to adopt the API once that issue lands; this proposal supersedes
-it, and the entry now points here.
+it, and the entry now records the mini-player window as the work and
+points here.
 
 ## 2. Options considered
 
@@ -186,22 +188,36 @@ builds its media URL from the session id and the stream lane
 builds the same URL from the same id.
 
 **[proposal]** The mini route must not mount the root layout's app
-chrome. `frontend/src/routes/+layout.svelte` holds the top bar, the
-rail, the download dock, toasts and the update badge, and on mount it
-hydrates accounts and checks for updates (`:231`, `:245`). Two of its
-effects would be wrong in a second window:
+chrome, but it needs part of what that layout sets up.
+`frontend/src/routes/+layout.svelte` imports the design tokens (`:19`),
+holds the top bar, the rail, the download dock, the toast host (`:676`)
+and the update badge, and on mount hydrates accounts and checks for
+updates (`:231`, `:245`). The layout splits in two: a thin root that
+keeps the tokens, the account hydration and a toast surface, and a
+route group for the app chrome, which the mini route is outside of.
+
+- **[data]** Account hydration is needed, not duplicated: the play
+  page sends a watched episode to the connected trackers through
+  `syncWatchedToTrackers` (`+page.svelte:2220`), which reads
+  `accountStore.connected` (`$lib/account/push-watched.ts:145`). A mini
+  window that never hydrated would skip those writes in silence.
+- **[data]** The play page raises stall and recovery toasts
+  (`+page.svelte:1894`, `:2298`); with no toast host they would show
+  nowhere. The mini window needs a compact one, sized for the window.
+
+Two of the layout's effects would be wrong in a second window:
 
 - **[data]** It pushes the active-download count to the main process on
   every change (`+layout.svelte:77–80`), and the main process keeps
   only the last value it received, from any window
   (`electron/main.js:641–644`). A mini window mounting that layout
   would report 0 and switch off the quit prompt while a download runs
-  in the main window. The fix is in two places: the mini route
-  renders without that layout (the chrome moves into a route group the
-  mini route is outside of), and the main process keeps the count per
-  sender and prompts on the sum, so no future window can clobber it.
-- **[inference]** An update check and an account renewal per mini
-  window would duplicate the main window's.
+  in the main window. The fix is in two places: the mini route is
+  outside the chrome group that reports the count, and the main
+  process keeps the count per sender and prompts on the sum, so no
+  future window can clobber it.
+- **[inference]** The update check would run again in every mini
+  window; it stays with the chrome.
 
 ### One engine per window, owned by the player page
 
@@ -219,8 +235,12 @@ pieces already sit in `$lib/play/` (`arm-quality.ts`, `resume-hold.ts`,
 `stall-machine.ts`, `sidecar-tracks.ts`, `watch-position.ts`, …), so
 the extraction gathers wiring that lives in the page today. The §6
 text is amended in the same change to name that module and the
-two-window rule: at most one engine plays across the app, except for
-the moment of a handover.
+two-window rule: at most one engine plays across the app.
+
+**[proposal]** The module must not assume the play route. The
+stale-stream recovery and the episode switch swap the stream by
+navigating to `/play/…` (the `goto` at `+page.svelte:2235`); in the
+mini window they stay on `/mini/…`.
 
 ### What is handed over
 
@@ -262,20 +282,24 @@ Times run from the handover request to the first frame the receiving
 window presents (`requestVideoFrameCallback`). The first frame landed
 within 70 ms of the handed position, with one exception: a point
 inside the stream's first fragment first showed the fragment's start
-(0.08 s for a point at 3.98 s), the flash the app's resume hold already
+(once in the two points that fell there: 0.08 s for a point at
+3.98 s), the flash the app's resume hold already
 hides. A cold window takes about 70–140 ms to load the page. The
 receiving window's renderer holds about 220–250 MB of working set
-while it plays, and 133 MB while hidden and idle.
+while it plays (217–256 MB across the runs), and 133 MB while hidden
+and idle.
 
 On the live source the network dominates. **[data]** In the installed
 0.17.0, playing *Frieren* episode 1, a fresh hls.js engine attached in
 the same page at 60, 300 and 600 seconds past the playhead, through
 the app's proxy, presented its first frame after 1.3, 3.8 and 3.1
-seconds (manifest parsed after 0.3–0.7 s). The page's own engine was
-paused but still buffering, so this is an upper bound: in a real
-handover the main engine is gone first, and the proxy's paced budget
-(a burst of twenty, then one request every 1.5 s, `docs/architecture.md`)
-is the mini window's alone.
+seconds (manifest parsed after 0.3–0.7 s). Three samples on one
+episode bound nothing, but they are likely pessimistic: the page's own
+engine was paused and still buffering, while in a real handover it is
+gone first and the proxy's paced budget (a burst of twenty, then one
+request every 1.5 s, `docs/architecture.md`) is the mini window's
+alone. A mini window also pays for its page load (above) and for the
+sidecar listing.
 
 **[proposal]** So a handover will show a gap of about one to four
 seconds on the live source. It is made invisible rather than removed:
@@ -284,8 +308,9 @@ seconds on the live source. It is made invisible rather than removed:
   element (10–60 ms and about 45 KB as a JPEG at 720p in the spike),
   and the mini window shows it as a still under the player's loading
   treatment until its own first frame lands at the point. The resume
-  hold (`$lib/play/resume-hold.ts`) is that treatment; the engine starts
-  at the point as #305 makes it do, so no earlier frame is fetched.
+  hold (`$lib/play/resume-hold.ts`) is that treatment. Once #305 lands,
+  the engine starts loading at the point, so no earlier frame is
+  fetched; until then the hold hides it.
 - The mini window is kept warm: created hidden once the play page
   opens, so the page is loaded when the viewer clicks.
 
@@ -299,8 +324,10 @@ question 5.
 
 **[data]** One spike finding the implementation must respect: on the
 reused (warm) window, a `<track>` kept across `video.load()` showed no
-cues on the second and third handover, while one created per attach
-always did. The app already attaches sidecar tracks per stream and
+cues on the second and third handover, in all three environments.
+**[inference]** Tracks created per attach avoid it: the spike's cold
+windows, each a fresh document, always showed cues, though no run
+created tracks per attach in a reused window. The app already attaches sidecar tracks per stream and
 removes them when the stream retires (`sidecar-tracks.ts:73–89`); the
 mini page keeps doing that.
 
@@ -311,7 +338,7 @@ mini page keeps doing that.
 **[proposal]** `frame: false`, `alwaysOnTop: true` (level `floating`),
 `resizable: true`, `minWidth: 320`, `minHeight: 180`,
 `setAspectRatio(16 / 9)` re-set to the stream's own ratio once its
-metadata is in, `skipTaskbar: true` where the platform has it,
+metadata is in, `skipTaskbar: true` (it takes effect on Windows only, see below),
 `backgroundColor: '#000'`, and **no `parent`**. The page draws its own
 drag strip with `-webkit-app-region: drag`, as the main window's title
 bar does (`+layout.svelte:1157`).
@@ -331,7 +358,10 @@ mini. Minimizing the main window left the mini window visible; a mini
 window created with `parent: main` was hidden with it
 (`_NET_WM_STATE_HIDDEN`) and marked skip-taskbar, which is why the
 proposal sets no parent. `setBounds` placed the window where asked
-(clamped below GNOME's top bar). `setAspectRatio` writes the aspect
+(clamped below GNOME's top bar). `skipTaskbar: true` set no
+`_NET_WM_STATE_SKIP_TASKBAR`, which matches Electron's documentation of
+`setSkipTaskbar` as macOS and Windows only: on Linux the mini window is
+listed in the taskbar and Alt+Tab like any window. `setAspectRatio` writes the aspect
 into `WM_NORMAL_HINTS` (177/100 for 16:9), which window managers that
 read size hints honour.
 
@@ -357,11 +387,13 @@ starts (`electron/build-resources/after-pack.cjs:45`, comment at
 - Electron's documentation, after electron/electron#50403 was closed
   by the documentation change #50560 (merged 2026-06-08), says of both
   `win.setAlwaysOnTop` and `win.isAlwaysOnTop`: "Not supported on
-  Wayland (Linux)." On that issue an Electron maintainer wrote: "there
+  Wayland (Linux)." On that issue an Electron maintainer wrote:
+  "Correct, even if you have a valid activation token or serial, there
   is no concept of 'always on top' in the Wayland protocol. Apps cannot
   see or control their z-order. KDE and some other environments let
   *users* control this value with window rules, but it's at the
-  compositor level."
+  compositor level and just not something an app can access
+  programmatically."
 - The same documentation says `getBounds()` returns `x: 0, y: 0` on
   Wayland because "introspecting or programmatically changing the
   global window coordinates is prohibited", and that "minimized" is not
@@ -373,6 +405,17 @@ starts (`electron/build-resources/after-pack.cjs:45`, comment at
   window's bounds read `x: 0, y: 0`. Stacking cannot be read from a
   client, and the headless shell refuses screenshots to unlisted
   callers, so the z-order itself was not observed there.
+
+**[data]** Frameless windows have no decorations on Wayland before
+Electron 41. Electron's Wayland write-up: "Prior to Electron 41,
+frameless windows did not support CSD at all, so they looked like
+featureless rectangles on Wayland", and client-side decorations are
+what supply "drop shadows, even resize handles". The app is on Electron
+33. **[unverified]** Whether the mini window can be resized from its
+edges on GNOME Wayland, as the main window's comment expects for its
+own frameless window (`electron/main.js:381–388`): appendix step 2. If
+it cannot, the mini window draws its own resize grip, or resizing on
+Wayland waits for Electron 41.
 
 **[inference]** Chromium's own picture-in-picture is no better on
 GNOME Wayland: it is an ordinary Wayland toplevel too. Keeping it buys
@@ -396,9 +439,10 @@ cannot run on XWayland while the other runs natively. The choices are:
    fractional scaling, as XWayland clients can; and input methods no
    longer on the Wayland path the launcher enables with
    `--enable-wayland-ime`. Electron 38 removed
-   `ELECTRON_OZONE_PLATFORM_HINT` (per the Electron write-up), so the
-   launcher's mechanism changes with the next Electron major in any
-   case. A viewer can already do this today by exporting
+   `ELECTRON_OZONE_PLATFORM_HINT` and defaults `--ozone-platform` to
+   `auto` (Electron's `docs/breaking-changes.md`, "Breaking API Changes
+   (38.0)"), so the launcher's mechanism changes when the app moves to
+   Electron 38 or later in any case. A viewer can already do this today by exporting
    `ELECTRON_OZONE_PLATFORM_HINT=x11` before launching; the launcher
    honours a value already set (`after-pack.cjs:45`).
 3. **A second Electron process for the mini window on XWayland.**
@@ -422,7 +466,7 @@ appendix steps run on a Windows install: on top of other windows,
 dragging, resizing at the ratio, Aero Snap, a second monitor at another
 scale, minimizing the main window, and the taskbar entry.
 
-**[data]** §15: the mini window uses Electron APIs only. It bundles,
+**[proposal]** §15: the mini window uses Electron APIs only. It bundles,
 spawns and probes nothing, so neither fetcher changes and
 `tests/arch/linux_deps.sh` / `windows_deps.sh` are unaffected.
 
@@ -430,8 +474,10 @@ spawns and probes nothing, so neither fetcher changes and
 
 **[proposal]** Remember the mini window's size everywhere and its
 position where the platform allows it (X11, XWayland, Windows): the
-bounds and the display they were on, kept beside the app's other window
-state. On open, a remembered position on a display that is no longer
+bounds and the display they were on. **[data]** Nothing persists window
+bounds today: the main window always opens maximized at the work area's
+size (`electron/main.js:369`). So this needs a small store of its own
+in the app's user-data directory, written by the main process. On open, a remembered position on a display that is no longer
 attached, or one that falls outside every work area, falls back to the
 bottom-right corner of the main window's display, 24 px in from the
 work area's edges. On Wayland only the size applies; the compositor
@@ -444,11 +490,13 @@ places the window. The clamping is a pure function over the displays
 
 **[proposal]** At rest: the picture and the subtitles, nothing else.
 The chrome appears on pointer movement over the window or keyboard
-focus, and leaves after 2.5 s without either. **[data]** That is the
-main player's rule in fullscreen, where the player fills the screen
-and hovering cannot tell the chrome to leave
-(`$lib/play/fullscreen-idle.ts`, `FULLSCREEN_IDLE_HIDE_MS = 2500`); the
-mini window is in the same position. Subtitles are the same native
+focus, and leaves after 2.5 s without either; it stays while the
+video is paused, the timeline is hovered or focus is inside it.
+**[data]** That is the main player's rule in fullscreen, where the
+player fills the screen and hovering cannot tell the chrome to leave
+(`$lib/play/fullscreen-idle.ts`: `FULLSCREEN_IDLE_HIDE_MS = 2500`, and
+the keep-alive cases in `shouldHideControlsInFullscreen`); the mini
+window is in the same position. Subtitles are the same native
 text-track rendering as in the main player, so whatever the cues look
 like there, they look like here.
 
@@ -511,7 +559,8 @@ end playback. Focus is visible on every control.
 
 **[proposal]** The chrome fades in and out over the shortest duration
 (140 ms); under `prefers-reduced-motion` it appears and disappears at
-once, through `$lib/motion` from #339. The window's own opening is the
+once, through the single reduced-motion reading and the
+`$lib/motion` transitions that #339 introduces; this part waits on it. The window's own opening is the
 compositor's animation, which the app cannot change on any platform.
 
 ### Closing, returning, and the main window
@@ -521,11 +570,23 @@ compositor's animation, which the app cannot change on any platform.
 | ⤢ "Back to app", or F | Playback moves back into the main window's player, at the point, with the handed state; the main window comes forward (restored if minimized). | The old "back to tab". |
 | ✕ Close | Playback stops; the position is kept as today. The main window stays where it is and is not brought forward. | The old ×, which paused and left the viewer in place. |
 | Playing an episode in the main window while the mini window plays | The mini window closes first; its position is kept. One engine. | — |
-| Closing the main window | As today: the quit prompt if a download runs, then the app quits and the mini window with it. | — |
+| Closing the main window | The quit prompt if a download runs, then the app quits, the mini window with it. | — |
 | Minimizing the main window | The mini window stays. | — |
 
 **[data]** The close prompt is attached to the main window only
 (`electron/main.js:495`), so closing the mini window never prompts.
+
+**[data]** Closing the main window quits the app today only because it
+is the last window: `window-all-closed` calls `app.quit()`
+(`electron/main.js:989`). A mini window, visible or kept warm and
+hidden, would keep the app running with no library window. The
+prompt's "Quit anyway" also closes only the window it was given
+(`electron/main.js:907–911`), which the quit path picks as the focused
+window or the first one (`:1001–1002`) and could be the mini window.
+**[proposal]** So the main process quits explicitly when the main
+window closes, closing the mini window first, and the single-instance
+keeper never records the mini window as the window to bring forward
+(`electron/lib/single-instance.cjs:73`).
 **[proposal]** The quit path's prompt is parented to the focused window
 today (`electron/main.js:1001`); it is parented to the main window
 instead, so a quit while the mini window has focus does not show the
@@ -608,22 +669,27 @@ behind the previous one. Effort is rough, in working days.
 0. **Design (1–2 days).** Mockups of the window at rest, with chrome,
    at the minimum size, with the captions menu, and the Wayland hint,
    built in the real app per AGENTS.md §8 (designer and critic, §7
-   constraints verbatim). Reviewed by the maintainer before phase 2's
+   constraints verbatim). Reviewed by the maintainer before phase 3's
    interface work.
 1. **Extract the player's attach path (3–5 days).** Engine, sidecar
    tracks, quality control, resume hold, stall recovery and positions
    behind one module; the play page becomes its adapter. No behaviour
-   change; the existing acceptance cases are the guard. The §6 text is
-   amended here.
+   change; the existing acceptance cases are the guard. The module
+   does not assume the play route. The §6 text is amended here.
 2. **The window (2–3 days).** The main-process keeper, the `mini:*`
    IPC, warm creation, placement memory, the per-sender download count,
-   the quit prompt's parent, and the mini route outside the app chrome.
+   the quit prompt's parent, quitting when the main window closes, the
+   keeper never taking the mini window as its window, the main window's
+   per-window handlers (`setWindowOpenHandler`, load-failure logging)
+   applied to the mini window too, and the layout split.
    Manual steps on Wayland, XWayland and Windows in the PR.
 3. **Handover and controls (4–6 days).** The mini page, both
    directions of the handover with the frame still and the resume hold,
    the controls and keyboard, reduced motion, captions carried, the
-   menu item and button, Chromium's picture-in-picture removed. The end
-   to end case.
+   menu item and button, Chromium's picture-in-picture removed (the
+   deferred-work entry about an mp4 resume flashing in
+   picture-in-picture, which #305 adds, goes with it). The end to end
+   case. Waits on #305 and #339.
 4. **Episodes in the mini window (2–3 days).** Previous, next,
    auto-play, the end state, skip buttons.
 5. **Platform answers and docs (1–2 days).** The Wayland hint (or the
@@ -653,20 +719,23 @@ About 13–21 working days in all.
    proxy-side fragment cache can follow if the gap reads badly in
    use.
 6. **Chromium's picture-in-picture.** **Recommended:** remove it,
-   including from the native controls.
+   including from the native controls. The `/play` diagnostic page,
+   which plays a pasted URL with its own element, keeps whatever
+   Chromium offers there; it is a developer tool.
 7. **Entering the mini player on leaving the player.**
    **Recommended:** not in the first version; revisit after it ships.
 8. **The mini window in the taskbar and Alt+Tab.** **Recommended:**
-   skip the taskbar where the platform allows it (X11, Windows); on
-   Wayland it is listed like any window.
+   skip the taskbar on Windows, the one packaged platform where Electron
+   can; on Linux it is listed like any window.
 9. **Native controls.** **Recommended:** the mini window always uses
    the app's own controls, whatever "Custom player controls" says.
 
 ## Appendix: manual checks
 
-Save this as `mini-check.cjs` in the repository root. It opens an
-ordinary window and a frameless, always-on-top 16:9 window with a red
-drag strip; close both to end it.
+Save this as `mini-check.cjs` in the repository root, and delete it
+afterwards. It opens an ordinary dark blue-grey window and a
+frameless, always-on-top 16:9 red window with a brighter red drag
+strip; close both to end it.
 
 ```js
 // Mini-player window check: one ordinary window and one small,
@@ -730,14 +799,16 @@ Then, for each run:
 1. Click another application's window so it overlaps the red window.
    Does the red window stay in front?
 2. Drag the red window by its top strip. Does it move? Resize it from a
-   corner: does it keep 16:9 (the terminal prints the ratio)?
-3. Minimize the blue window. Does the red one stay?
+   corner or an edge: can you, and does it keep 16:9 (the terminal
+   prints the ratio)?
+3. Minimize the blue-grey window (Super+H on GNOME). Does the red one
+   stay?
 4. Wayland only: focus the red window and press Alt+Space. Is there an
    "Always on Top" entry, and with it ticked, does step 1 now keep the
    red window in front?
 5. Windows only: drag the red window to a second monitor with another
    scale, snap it with Win+arrow keys, and note whether it shows in the
-   taskbar.
+   taskbar (the script does not set `skipTaskbar`, so it should).
 
 ## Experiments and live requests made for this study
 
