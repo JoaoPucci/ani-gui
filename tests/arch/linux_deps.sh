@@ -34,7 +34,9 @@
 #   - `electron/package.json` must list `build-resources/linux/bin`
 #     under `build.linux.extraResources` so electron-builder copies
 #     the staged binaries into both AppImage and .deb payloads.
-#   - `build.deb.recommends` must include "ffmpeg".
+#   - `build.deb.recommends` must include "ffmpeg", and every
+#     dependency `fetch-linux-deps.mjs` declares in `SYSTEM_DEPS` —
+#     what Linux takes from the distribution rather than staging.
 #   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
 #     so any invocation path (package, dist, e2e) gets the bin
 #     dir populated before electron-builder runs.
@@ -151,6 +153,27 @@ if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
 if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
 ' "$REPO_ROOT/$PKG"; then
     printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    failed=1
+fi
+
+# 8. Whatever the fetcher declares it takes from the system instead of
+#    staging, the .deb must recommend. `windows_deps.sh` lets a Windows
+#    dependency go unstaged on Linux only through that declaration, so
+#    an entry here that no package names would excuse a dependency
+#    Linux does not provide at all. Both files are read with node — the
+#    module by import, package.json by its JSON parser. The leading
+#    `inventory` argument keeps the fetcher out of `process.argv[1]`,
+#    where its entry guard would take it for the program and run it.
+if ! node --input-type=module -e '
+const [fetcher, pkg] = process.argv.slice(2);
+const { SYSTEM_DEPS } = await import(fetcher);
+const { readFileSync } = await import("node:fs");
+const recommends = (JSON.parse(readFileSync(pkg, "utf8")).build.deb || {}).recommends || [];
+if (!Array.isArray(SYSTEM_DEPS)) { console.error("SYSTEM_DEPS is not exported as an array"); process.exit(1); }
+const bad = SYSTEM_DEPS.filter((d) => typeof d.dep !== "string" || !recommends.includes(d.dep));
+if (bad.length) { console.error(bad.map((d) => String(d.dep)).join(" ")); process.exit(1); }
+' inventory "$REPO_ROOT/$FETCH" "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s declares a dependency Linux takes from the system (above) that build.deb.recommends in %s does not name\n' "$FETCH" "$PKG" >&2
     failed=1
 fi
 

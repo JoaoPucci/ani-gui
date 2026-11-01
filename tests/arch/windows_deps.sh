@@ -23,6 +23,8 @@
 #   - `dist:win` must chain `fetch:win-deps`, so invoking it directly
 #     populates the bin dir the way `dist` does on Linux.
 #   - the impersonating transport must be among the staged binaries.
+#   - ffmpeg must be among them too, and the installer script must
+#     fetch nothing at install time.
 #
 # What this check does NOT establish: that the fetch succeeds, that
 # the archive still contains the entry the dep names, or that the
@@ -89,40 +91,77 @@ esac
 #    parser — node imports the module and reports what it declares.
 #    The fetchers guard their own entry point, so importing one costs
 #    nothing and downloads nothing.
+#
+#    One asymmetry is declared rather than tolerated: Linux takes ffmpeg
+#    from the distribution — the .deb recommends it — and says so in
+#    `SYSTEM_DEPS`. Windows has no package manager to recommend through,
+#    so whatever Linux takes from the system, Windows must stage, and
+#    `linux_deps.sh` holds every such entry to `build.deb.recommends`.
+#    The declaration is a list the parser reads, not a name this check
+#    exempts, so it cannot excuse a dependency Linux neither stages nor
+#    recommends.
 LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
-# The distinct dependencies a fetcher declares, one per line. An entry
-# with no `dep` is an error rather than an anonymous member of the set:
-# a silent `undefined` would compare equal across platforms and hide
-# exactly what this is here to find.
-canonical_deps() {
-    node --input-type=module -e "
-        import { DEPS } from '$REPO_ROOT/$1';
-        const missing = DEPS.filter((d) => typeof d.dep !== 'string' || !d.dep);
-        if (missing.length) {
-            console.error('entries without a dep field: ' + missing.map((d) => d.name).join(', '));
-            process.exit(1);
-        }
-        console.log([...new Set(DEPS.map((d) => d.dep))].sort().join('\n'));
-    "
+# The distinct dependencies a fetcher declares under one export, one
+# per line. An entry with no `dep` is an error rather than an anonymous
+# member of the set: a silent `undefined` would compare equal across
+# platforms and hide exactly what this is here to find. So is a missing
+# export, for the same reason.
+#
+# Run as `node -e "$INVENTORY" inventory <module> <export>`: the
+# arguments travel as argv, so a path is never spliced into the program
+# text. The leading `inventory` is a placeholder, and it is load-bearing:
+# a fetcher runs itself when `process.argv[1]` names it, so the module
+# must never sit in that slot, or reading the inventory downloads it.
+INVENTORY='
+const [file, name] = process.argv.slice(2);
+const mod = await import(file);
+const list = mod[name];
+if (!Array.isArray(list)) {
+    console.error(file + " does not export " + name + " as an array");
+    process.exit(1);
 }
+const missing = list.filter((d) => typeof d.dep !== "string" || !d.dep);
+if (missing.length) {
+    console.error("entries without a dep field: " + missing.map((d) => d.name).join(", "));
+    process.exit(1);
+}
+console.log([...new Set(list.map((d) => d.dep))].sort().join("\n"));
+'
 
 if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then
-    linux_deps=$(canonical_deps "$LINUX_FETCH")
-    windows_deps=$(canonical_deps "$WINDOWS_FETCH")
-    for dep in $linux_deps; do
-        if ! printf '%s\n' "$windows_deps" | grep -qx -- "$dep"; then
-            printf 'arch/windows_deps FAIL: %s is staged for Linux but not for Windows — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
-            failed=1
-        fi
-    done
-    for dep in $windows_deps; do
-        if ! printf '%s\n' "$linux_deps" | grep -qx -- "$dep"; then
-            printf 'arch/windows_deps FAIL: %s is staged for Windows but not for Linux — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
-            failed=1
-        fi
-    done
+    inventory_ok=1
+    linux_deps=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$LINUX_FETCH" DEPS) || inventory_ok=0
+    linux_system=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$LINUX_FETCH" SYSTEM_DEPS) || inventory_ok=0
+    windows_deps=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$WINDOWS_FETCH" DEPS) || inventory_ok=0
+    if [ "$inventory_ok" -eq 0 ]; then
+        printf 'arch/windows_deps FAIL: a fetcher inventory could not be read (see above)\n' >&2
+        failed=1
+    else
+        for dep in $linux_deps; do
+            if ! printf '%s\n' "$windows_deps" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s is staged for Linux but not for Windows — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
+                failed=1
+            fi
+            if printf '%s\n' "$linux_system" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s is both staged for Linux and declared as taken from the system there — one of the two is wrong\n' "$dep" >&2
+                failed=1
+            fi
+        done
+        for dep in $linux_system; do
+            if ! printf '%s\n' "$windows_deps" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s comes from the system on Linux, and Windows has no package manager to recommend it through — the Windows installer must stage it\n' "$dep" >&2
+                failed=1
+            fi
+        done
+        for dep in $windows_deps; do
+            if ! printf '%s\n' "$linux_deps" "$linux_system" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s is staged for Windows but not for Linux — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
+                failed=1
+            fi
+        done
+    fi
 fi
 
 # 5. The impersonating transport must be staged by name. Parity alone
@@ -139,6 +178,37 @@ FETCH=electron/scripts/fetch-windows-deps.mjs
 if [ -f "$FETCH" ]; then
     if ! grep -q "binary: 'curl-impersonate.exe'" "$FETCH"; then
         printf "arch/windows_deps FAIL: %s does not stage 'curl-impersonate.exe' — the native transport falls back to plain curl, which the provider 403s\n" "$FETCH" >&2
+        failed=1
+    fi
+fi
+
+# 6. ffmpeg must be staged by name. Every Windows release through
+#    0.17.0 fetched it from the installer script instead, into the
+#    install directory but outside the package's own files — and
+#    electron-builder's upgrade path runs the old version's uninstaller,
+#    which empties that directory, before the new payload lands. So
+#    each update deleted ffmpeg and downloaded it again (~90 MB), and an
+#    update run offline ended with none. Shipped in the payload, it is
+#    replaced with the rest of the app and never fetched.
+if [ -f "$FETCH" ]; then
+    if ! grep -q "binary: 'ffmpeg.exe'" "$FETCH"; then
+        printf "arch/windows_deps FAIL: %s does not stage 'ffmpeg.exe' — the installer would have to fetch it, and an update deletes whatever the installer fetched\n" "$FETCH" >&2
+        failed=1
+    fi
+fi
+
+# 7. The installer script fetches nothing at install time, for the
+#    reason above: anything it downloads lives in the install directory
+#    outside the package's manifest, and the next update removes it.
+#    Asserted as a constraint on the text, not an interpretation of it:
+#    the file names no NSIS download plug-in and no URL at all, comment
+#    or not. It does not catch a download routed through a spawned
+#    program that is handed a URL built at run time; the installer has
+#    no business building one either.
+NSH=electron/build-resources/installer.nsh
+if [ -f "$NSH" ]; then
+    if grep -nE '(inetc|NSISdl|INetC)::|://' "$NSH" >&2; then
+        printf 'arch/windows_deps FAIL: %s downloads at install time (lines above) — what it fetches is deleted by the next update; stage the file through fetch-windows-deps.mjs instead\n' "$NSH" >&2
         failed=1
     fi
 fi
