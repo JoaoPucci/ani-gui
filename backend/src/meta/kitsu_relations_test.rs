@@ -11,7 +11,14 @@ fn fixture(name: &str) -> Vec<u8> {
     std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-fn relation(role: &str, kind: &str, id: &str, subtype: &str, count: Option<u32>) -> KitsuRelation {
+fn relation(
+    role: &str,
+    kind: &str,
+    id: &str,
+    subtype: &str,
+    count: Option<u32>,
+    start: Option<&str>,
+) -> KitsuRelation {
     KitsuRelation {
         role: role.into(),
         kind: kind.into(),
@@ -19,11 +26,13 @@ fn relation(role: &str, kind: &str, id: &str, subtype: &str, count: Option<u32>)
         subtype: Some(subtype.into()),
         status: Some("finished".into()),
         episode_count: count,
+        start: start.map(str::to_string),
     }
 }
 
 /// Noragami relates its sequel, its OVA, a music video and the manga,
-/// each with the destination's subtype, status and count.
+/// each with the destination's subtype, status and count, and an anime
+/// with the day it started.
 #[test]
 fn noragami_s_relations_read_as_kitsu_lists_them() {
     let got = parse_relationships_response(&fixture("kitsu-relations-7881.json")).expect("parsed");
@@ -31,10 +40,31 @@ fn noragami_s_relations_read_as_kitsu_lists_them() {
     assert_eq!(
         got.entries,
         vec![
-            relation("sequel", "anime", "10800", "TV", Some(13)),
-            relation("side_story", "anime", "8152", "OVA", Some(2)),
-            relation("other", "anime", "11843", "music", Some(1)),
-            relation("adaptation", "manga", "17204", "manga", None),
+            relation(
+                "sequel",
+                "anime",
+                "10800",
+                "TV",
+                Some(13),
+                Some("2015-10-03")
+            ),
+            relation(
+                "side_story",
+                "anime",
+                "8152",
+                "OVA",
+                Some(2),
+                Some("2014-02-17")
+            ),
+            relation(
+                "other",
+                "anime",
+                "11843",
+                "music",
+                Some(1),
+                Some("2014-03-12")
+            ),
+            relation("adaptation", "manga", "17204", "manga", None, None),
         ]
     );
 }
@@ -43,9 +73,14 @@ fn noragami_s_relations_read_as_kitsu_lists_them() {
 fn satsuriku_no_tenshi_relates_its_four_episode_ona() {
     let got = parse_relationships_response(&fixture("kitsu-relations-13715.json")).expect("parsed");
     assert!(got.complete);
-    assert!(got
-        .entries
-        .contains(&relation("sequel", "anime", "41963", "ONA", Some(4))));
+    assert!(got.entries.contains(&relation(
+        "sequel",
+        "anime",
+        "41963",
+        "ONA",
+        Some(4),
+        Some("2018-10-05")
+    )));
 }
 
 /// A page holding fewer relations than Kitsu counts is read in part;
@@ -82,7 +117,10 @@ async fn the_client_asks_for_the_destinations_it_reads() {
     Mock::given(method("GET"))
         .and(path("/anime/7881/media-relationships"))
         .and(query_param("include", "destination"))
-        .and(query_param("fields[anime]", "subtype,status,episodeCount"))
+        .and(query_param(
+            "fields[anime]",
+            "subtype,status,episodeCount,startDate",
+        ))
         .respond_with(
             ResponseTemplate::new(200).set_body_bytes(fixture("kitsu-relations-7881.json")),
         )
@@ -178,12 +216,51 @@ fn a_relation_that_leaves_out_what_the_page_asks_for_is_no_answer() {
     assert!(got.complete);
 }
 
+/// A relation carries the day its destination started, as Kitsu gives
+/// it: Kamitsubaki's series relates its special, which aired on
+/// 2025-07-03, before the series; the special relates the series,
+/// which began on 2025-07-09.
+#[test]
+fn a_relation_carries_the_day_its_destination_started() {
+    let read = |name: &str| {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("tests/fixtures/tracker-map/wire")
+            .join(name);
+        parse_relationships_response(&std::fs::read(&path).expect("fixture")).expect("parsed")
+    };
+    let series = read("kitsu-relationships-49900.json");
+    assert_eq!(
+        series
+            .entries
+            .iter()
+            .map(|e| (e.role.as_str(), e.id.as_str(), e.start.as_deref()))
+            .collect::<Vec<_>>(),
+        [("sequel", "50027", Some("2025-07-03"))]
+    );
+    let special = read("kitsu-relationships-50027.json");
+    assert_eq!(special.entries[0].start.as_deref(), Some("2025-07-09"));
+    // A manga has no start the page asks for.
+    let ubw = read("kitsu-relationships-7882.json");
+    assert!(ubw
+        .entries
+        .iter()
+        .filter(|e| e.kind == "manga")
+        .all(|e| e.start.is_none()));
+    assert!(ubw
+        .entries
+        .iter()
+        .any(|e| e.id == "9718" && e.start.as_deref() == Some("2014-10-05")));
+}
+
 /// The page asks for each destination's subtype and status, and an
 /// anime's episode count: a destination that leaves one out cannot say
 /// what the related entry is, and reading it as "no format, no status,
 /// unknown count" would decide what the relation explains on nothing.
-/// Given as null, each is Kitsu's answer. A manga is not asked for a
-/// count.
+/// Given as null, each is Kitsu's answer. An anime is asked for the day
+/// it started too, which orders Kitsu's parts. A manga is asked for
+/// neither its count nor its start.
 #[test]
 fn a_destination_that_leaves_out_an_asked_attribute_is_no_answer() {
     let page = |kind: &str, attributes: &str| {
@@ -192,9 +269,10 @@ fn a_destination_that_leaves_out_an_asked_attribute_is_no_answer() {
         )
     };
     for attributes in [
-        r#"{"status":"finished","episodeCount":12}"#,
-        r#"{"subtype":"TV","episodeCount":12}"#,
-        r#"{"subtype":"TV","status":"finished"}"#,
+        r#"{"status":"finished","episodeCount":12,"startDate":"2020-01-01"}"#,
+        r#"{"subtype":"TV","episodeCount":12,"startDate":"2020-01-01"}"#,
+        r#"{"subtype":"TV","status":"finished","startDate":"2020-01-01"}"#,
+        r#"{"subtype":"TV","status":"finished","episodeCount":12}"#,
     ] {
         let body = page("anime", attributes);
         assert!(
@@ -209,10 +287,11 @@ fn a_destination_that_leaves_out_an_asked_attribute_is_no_answer() {
     );
     let nulls = page(
         "anime",
-        r#"{"subtype":null,"status":null,"episodeCount":null}"#,
+        r#"{"subtype":null,"status":null,"episodeCount":null,"startDate":null}"#,
     );
     let got = parse_relationships_response(nulls.as_bytes()).expect("nulls are an answer");
     assert_eq!(got.entries[0].episode_count, None);
+    assert_eq!(got.entries[0].start, None);
     let manga = page("manga", r#"{"subtype":"manga","status":"finished"}"#);
     assert!(parse_relationships_response(manga.as_bytes()).is_ok());
 }
