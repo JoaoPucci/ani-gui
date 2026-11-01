@@ -20,7 +20,7 @@
 use crate::app::AppState;
 use crate::cache::ttl::PLAY_RESOLUTION_TTL;
 
-fn key(show_key: &str) -> String {
+pub(crate) fn key(show_key: &str) -> String {
     format!("listing-tags:v3:{show_key}")
 }
 

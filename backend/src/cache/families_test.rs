@@ -56,6 +56,7 @@ fn every_key_this_build_builds_is_declared() {
         crate::commands::kitsu::anime_detail_key("12"),
         crate::commands::kitsu::title_match_prefix(None, "x") + "1",
         crate::commands::availability::cache_key("12", "sub"),
+        crate::commands::listing_tags::key("hianime:x-1"),
         crate::commands::play_resolution_cache::cache_key(
             "T", "sub", "best", "1", None, None, None,
         ),
