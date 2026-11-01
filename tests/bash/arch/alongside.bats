@@ -86,3 +86,30 @@ setup() {
     [ "$status" -eq 2 ]
     printf '%s\n' "$output" | grep -q '^usage: '
 }
+
+@test "an empty command is a usage error, not a command that succeeds" {
+    run sh "$TOOL" 'true' ''
+    [ "$status" -eq 2 ]
+    printf '%s\n' "$output" | grep -q '^usage: '
+}
+
+@test "output with no final newline still ends before the status line" {
+    run sh "$TOOL" 'printf no-newline'
+    [ "$status" -eq 0 ]
+    printf '%s\n' "$output" | grep -qx 'no-newline'
+    printf '%s\n' "$output" | grep -qx '=== \[1\] exited 0'
+}
+
+@test "stopped by a signal, it prints what each command wrote so far and fails" {
+    # A cancelled or timed-out CI step ends this way: what the commands
+    # had written is the only trace of where they stood.
+    sh "$TOOL" 'echo started; sleep 30' 'echo also-started; sleep 30' >out 2>&1 &
+    tool=$!
+    sleep 1
+    kill -TERM "$tool"
+    status=0
+    wait "$tool" || status=$?
+    [ "$status" -ne 0 ]
+    grep -qx 'started' out
+    grep -qx 'also-started' out
+}
