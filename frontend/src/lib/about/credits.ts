@@ -50,8 +50,9 @@ export interface BundledTool {
 /** Tools the packages bundle or recommend so playback and downloads
  *  work without the user installing anything by hand. Versions track
  *  what `fetch-linux-deps.mjs` / `fetch-windows-deps.mjs` pin — the
- *  two stage the same set but for ffmpeg, which Linux takes from the
- *  distribution, so one version here covers both. */
+ *  two stage the same set, so one version here covers both. ffmpeg is
+ *  the exception: Windows stages it and Linux takes the distribution's,
+ *  so its version is `null`. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
 		// The transport the native resolver spawns. The provider

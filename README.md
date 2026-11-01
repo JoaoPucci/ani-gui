@@ -105,7 +105,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd frontend
    pnpm dev
    ```
-   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp) next to it, so playback works:
+   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp, ffmpeg) next to it, so playback and downloads work — the first launch downloads ffmpeg's ~90 MB zip into a cache:
    ```sh
    cd electron
    pnpm dev
