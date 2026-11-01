@@ -30,8 +30,41 @@ pub struct ReclaimReport {
 /// [`AniError::Cache`] when SQLite refuses the read or the write; the
 /// transaction then leaves every row where it was.
 pub fn reclaim(conn: &mut Connection, families: &[Family]) -> Result<ReclaimReport> {
-    let _ = (conn, families);
-    Ok(ReclaimReport::default())
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|_| AniError::Cache)?;
+    let now = super::db::now_secs();
+    let rows: Vec<(String, bool)> = {
+        let mut stmt = tx
+            .prepare("SELECT key, fetched_at, ttl_seconds FROM meta_cache")
+            .map_err(|_| AniError::Cache)?;
+        let rows = stmt
+            .query_map([], |r| {
+                let (fetched_at, ttl): (i64, i64) = (r.get(1)?, r.get(2)?);
+                // The test `meta_cache_get` serves a row by.
+                Ok((
+                    r.get::<_, String>(0)?,
+                    now.saturating_sub(fetched_at) >= ttl,
+                ))
+            })
+            .map_err(|_| AniError::Cache)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|_| AniError::Cache)?;
+        rows
+    };
+    let mut report = ReclaimReport::default();
+    for (key, expired) in rows {
+        let counter = match fate(&key, expired, families) {
+            Fate::Keep => continue,
+            Fate::Undeclared => &mut report.undeclared_rows,
+            Fate::Expired => &mut report.expired_rows,
+        };
+        tx.execute("DELETE FROM meta_cache WHERE key = ?1", [&key])
+            .map_err(|_| AniError::Cache)?;
+        *counter += 1;
+    }
+    tx.commit().map_err(|_| AniError::Cache)?;
+    Ok(report)
 }
 
 #[cfg(test)]
