@@ -407,8 +407,8 @@ async function createWindow(backend) {
       // The backend's lanes go the same way (lib/window-args.cjs).
       additionalArguments: windowArguments(backend, readConfigLocale()),
       // Electron's default, stated: a file or link dropped on the window
-      // must not become a navigation. The navigation guard below refuses
-      // one anyway; this keeps the drop from being attempted.
+      // must not become a navigation. Were one asked for, it would come
+      // from the page and meet the navigation guard below.
       navigateOnDragDrop: false,
     },
   });

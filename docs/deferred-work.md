@@ -828,7 +828,7 @@ starting it, and delete it when you find it done.
   the items on Electron's security checklist the app does not meet.
   Navigation, IPC callers and permissions are already held to the
   app's own document (see architecture.md, "The window holds the app
-  and nothing else"). One other item is known, the sandbox: the
+  and nothing else"). Another known item is the sandbox: the
   AppImage is repacked to start Electron with `--no-sandbox`, because the
   unprivileged FUSE mount an AppImage runs from does not honour
   setuid execution, so Chromium's setuid sandbox helper cannot be

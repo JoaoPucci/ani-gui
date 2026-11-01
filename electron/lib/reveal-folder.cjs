@@ -7,7 +7,9 @@
 // application, and an executable or a shortcut is run. The bridge's
 // one caller, the download dock, passes a finished download's
 // destination directory, so the handler takes an existing absolute
-// directory and nothing else.
+// directory and nothing else. That rules out files on Linux and
+// Windows; on macOS, which runs from source only, an application
+// bundle is a directory and openPath still launches it.
 //
 // `pathModule` and `statSync` are parameters so the Windows path rules
 // can be tested on any host.
