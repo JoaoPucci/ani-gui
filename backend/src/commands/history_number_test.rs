@@ -370,3 +370,59 @@ fn a_former_number_the_last_recorded_listing_leaves_free_is_named() {
         })
     );
 }
+
+mod former_number_props {
+    use super::former_number;
+    use crate::commands::numbering_offset::Numbering;
+    use proptest::prelude::*;
+
+    fn tag() -> impl Strategy<Value = String> {
+        (0u32..30, prop::bool::ANY).prop_map(|(n, half)| {
+            if half {
+                format!("{n}.5")
+            } else {
+                n.to_string()
+            }
+        })
+    }
+
+    proptest! {
+        /// Whatever the store's stamp and former tag, the row's number
+        /// and the recorded tags: with a record, the row names exactly
+        /// the former number it names with none, unless the record
+        /// carries it; and with no record, it names what the store
+        /// alone gives.
+        #[test]
+        fn a_recorded_listing_withholds_exactly_the_former_numbers_it_carries(
+            offset in 0u32..3,
+            slot in 1u32..20,
+            now in tag(),
+            former in tag(),
+            other_row in prop::option::of(tag()),
+            recorded in prop::option::of((prop::collection::vec(tag(), 0..6), prop::bool::ANY)),
+        ) {
+            use crate::commands::numbering_offset::kitsu_ep_no;
+            let numbering = Numbering::from_body(&format!(
+                "s\t{offset}\t{slot}\t{now}\t{slot}\t{former}\n"
+            ));
+            // The row is the stamp's episode unless another is drawn,
+            // and the record carries the former number when drawn so.
+            let ep_no = other_row.unwrap_or_else(|| kitsu_ep_no(&now, offset));
+            let recorded = recorded.map(|(mut tags, with_former)| {
+                if with_former {
+                    tags.push(kitsu_ep_no(&former, offset));
+                }
+                tags
+            });
+            let alone = former_number(&numbering, "s", &ep_no, None);
+            let got = former_number(&numbering, "s", &ep_no, recorded.as_deref());
+            let carried = |f: &str| recorded.as_ref().is_some_and(|t| {
+                crate::commands::play_native_merge::carries_tag(t, f)
+            });
+            match &alone {
+                Some(f) if carried(f) => prop_assert_eq!(got, None),
+                _ => prop_assert_eq!(got, alone),
+            }
+        }
+    }
+}
