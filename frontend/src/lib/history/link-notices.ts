@@ -33,7 +33,6 @@ export async function undoAndReturn(
 	from: string,
 	row: string
 ): Promise<void> {
-	const stayed = deps.here() === `/anime/${outcome.kitsu_id}`;
 	try {
 		const all = await undoLink(deps, outcome);
 		deps.notify(
@@ -45,7 +44,9 @@ export async function undoAndReturn(
 		deps.notify({ kind: 'error', message: m.detail_link_failed() });
 		return;
 	}
-	if (!stayed) return;
+	// Where the user is once the undo is made: one who went elsewhere
+	// while it was out stays there.
+	if (deps.here() !== `/anime/${outcome.kitsu_id}`) return;
 	deps.refresh();
 	deps.showPage(from, row);
 }

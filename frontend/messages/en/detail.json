@@ -143,5 +143,5 @@
 	"link_failed_gone": "That show is no longer on Kitsu.",
 	"link_failed": "Couldn’t link the show. Try again.",
 	"link_linking": "Linking…",
-	"link_confirm_rows": "The older history entries this card hides are linked too."
+	"link_confirm_rows": "The other history entries this card hides are linked too."
 }

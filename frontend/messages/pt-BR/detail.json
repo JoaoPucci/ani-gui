@@ -184,5 +184,5 @@
 	"link_failed_gone": "Esse anime não está mais no Kitsu.",
 	"link_failed": "Não foi possível vincular o anime. Tente de novo.",
 	"link_linking": "Vinculando…",
-	"link_confirm_rows": "As entradas mais antigas do histórico que este card esconde também são vinculadas."
+	"link_confirm_rows": "As outras entradas do histórico que este card esconde também são vinculadas."
 }

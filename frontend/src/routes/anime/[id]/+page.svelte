@@ -2418,7 +2418,7 @@
 			failed={linkSession.failed}
 			chosen={linkSession.chosen}
 			warnings={linkSession.warnings}
-			rowCount={linkSession.group?.length ?? 1}
+			rowCount={linkSession.group?.length ?? null}
 			busy={linkSession.busy}
 			error={linkSession.error}
 			onSearch={(q) => void linkSession.search(q)}

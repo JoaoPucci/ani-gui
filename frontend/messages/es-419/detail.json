@@ -179,5 +179,5 @@
 	"link_failed_gone": "Esa serie ya no está en Kitsu.",
 	"link_failed": "No se pudo vincular la serie. Inténtalo de nuevo.",
 	"link_linking": "Vinculando…",
-	"link_confirm_rows": "Las entradas más antiguas del historial que oculta esta tarjeta también se vinculan."
+	"link_confirm_rows": "Las demás entradas del historial que oculta esta tarjeta también se vinculan."
 }

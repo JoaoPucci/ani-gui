@@ -4,16 +4,17 @@
  *
  * The page offers it only when it was opened from a guessed Continue
  * card ($lib/history/guessed-context.ts), the card's row is still in
- * the history with no Kitsu id recorded, and the row is still matched
- * to this very show by a guess — the match Continue Watching makes
- * (`resolveKitsuMatchWithTrust`). Anything else, and the page says
- * nothing.
+ * the history, and Continue Watching's match for the row
+ * (`resolveKitsuMatchWithTrust`) is still a guess of this very show —
+ * a row with no recorded id, or one whose recorded entry Kitsu has
+ * deleted. Anything else, and the page says nothing.
  *
  * A link covers every guessed row the card stands for: the rows
  * Continue Watching shows as one card because they are guessed as the
  * same show. Linking the shown row alone would leave a hidden sibling
  * guessed as the old show, and it would surface as a card of its own.
- * Rows that recorded an id stay out: a play from a page recorded them.
+ * A row Continue Watching trusts — one whose recorded entry Kitsu
+ * still serves, or one a play's mapping names — stays out.
  */
 
 import type { HistoryEntry, KitsuAnimeRef, LinkedRow, LinkOutcome, UnlinkOutcome } from '$lib/api';

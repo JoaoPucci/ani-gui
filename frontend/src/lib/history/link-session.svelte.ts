@@ -6,9 +6,11 @@
  * and three effects of its own — a notice, a navigation, a refresh of
  * what it reads from the history — and renders its state. Arriving on
  * a page decides the offer; a later arrival outdates an earlier one
- * still out. Linking to the page's own show refreshes the page; to
- * another show, it goes there. An undo gives the rows back and returns
- * to the page the link was made from, which then offers it again.
+ * still out. A link opens the chosen show's page without the card's
+ * row, refreshing it first when it is the page the link was made on.
+ * An undo gives the rows back and, while the user is still on the page
+ * the link left them on, returns to the page it was made from, which
+ * then offers it again ($lib/history/link-notices.ts).
  */
 
 import type { LinkOutcome } from '$lib/api';
@@ -45,6 +47,7 @@ export class LinkSession extends LinkPicker {
 
 	#deps: LinkSessionDeps;
 	#arrival = 0;
+	#groupAsk = 0;
 	#pageId = '';
 
 	constructor(deps: LinkSessionDeps) {
@@ -72,14 +75,15 @@ export class LinkSession extends LinkPicker {
 		if (!offer) return;
 		this.open = true;
 		this.group = null;
-		// A history that cannot be read now leaves the group to the
-		// confirmation, which asks again.
-		void guessedGroup(this.#deps, offer).then(
-			(group) => {
-				if (this.offer === offer) this.group = group;
-			},
-			() => {}
-		);
+		// The latest opening's answer stands; a history that cannot be
+		// read leaves the card's row alone, as a row whose match cannot
+		// be read is left out of the group.
+		const ask = ++this.#groupAsk;
+		void guessedGroup(this.#deps, offer)
+			.catch(() => [offer.entry.id])
+			.then((group) => {
+				if (ask === this.#groupAsk && this.offer === offer) this.group = group;
+			});
 		await this.loadFor(offer);
 	}
 

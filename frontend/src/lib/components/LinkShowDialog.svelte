@@ -30,8 +30,9 @@
 		/** The show picked, once one is. */
 		chosen: LinkCandidate | null;
 		warnings: LinkWarning[];
-		/** How many history rows the link moves: the card's and those it hides. */
-		rowCount: number;
+		/** How many history rows the link moves — the card's and those it
+		 *  hides — or null while that is being worked out. */
+		rowCount: number | null;
 		/** A link in flight. */
 		busy: boolean;
 		/** Why the last link failed, when it did. */
@@ -166,7 +167,7 @@
 			</header>
 
 			{#if chosen}
-				{#if rowCount > 1}
+				{#if rowCount !== null && rowCount > 1}
 					<p class="ls-body ls-rows">{m.detail_link_confirm_rows()}</p>
 				{/if}
 				{#if warnings.length > 0}
@@ -201,7 +202,7 @@
 						type="button"
 						class="ls-btn ls-btn-accent"
 						onclick={onConfirm}
-						disabled={busy}
+						disabled={busy || rowCount === null}
 						aria-busy={busy}
 					>
 						{busy ? m.detail_link_linking() : m.detail_link_confirm_button()}
