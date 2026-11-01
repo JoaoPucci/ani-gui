@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import { startsNewLine, watchHeaderWrap, type LineBox } from './strip-header-wrap';
+import { holdWrap, startsNewLine, watchHeaderWrap, type LineBox } from './strip-header-wrap';
 
 const TITLE: LineBox = { top: 100, bottom: 116 };
 
@@ -92,5 +92,66 @@ describe('watchHeaderWrap', () => {
 
 		stop();
 		expect(ro.disconnected).toBe(true);
+	});
+});
+
+describe('holdWrap', () => {
+	it('takes the first measurement as it is', () => {
+		expect(holdWrap(null, true, 900)).toEqual({ wraps: true, width: 900 });
+		expect(holdWrap(null, false, 900)).toEqual({ wraps: false, width: 900 });
+	});
+
+	it('holds a wrap at the same or a narrower width, whatever is measured', () => {
+		const wrapped = { wraps: true, width: 900 };
+		expect(holdWrap(wrapped, false, 900)).toEqual(wrapped);
+		expect(holdWrap(wrapped, false, 800)).toEqual(wrapped);
+	});
+
+	it('lets a wider header measure again', () => {
+		expect(holdWrap({ wraps: true, width: 900 }, false, 1000)).toEqual({
+			wraps: false,
+			width: 1000
+		});
+	});
+
+	it('follows the measurement while not wrapped', () => {
+		expect(holdWrap({ wraps: false, width: 900 }, true, 900)).toEqual({ wraps: true, width: 900 });
+	});
+});
+
+describe('holdWrap, by property', () => {
+	it('never unwraps without the header growing', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 300, max: 3000 }),
+				fc.array(fc.tuple(fc.boolean(), fc.integer({ min: 0, max: 400 })), { maxLength: 20 }),
+				(start, steps) => {
+					let state = holdWrap(null, true, start);
+					for (const [measured, shrink] of steps) {
+						state = holdWrap(state, measured, start - shrink);
+						expect(state.wraps).toBe(true);
+					}
+				}
+			)
+		);
+	});
+});
+
+describe('watchHeaderWrap, near the edge', () => {
+	it('does not flip back when hiding the separator lets the status fit', () => {
+		const header = el({ top: 0, bottom: 60 });
+		(header as unknown as { getBoundingClientRect: () => object }).getBoundingClientRect = () => ({
+			...header.box,
+			width: 900
+		});
+		const lead = el(TITLE);
+		const item = el({ top: 124, bottom: 156 });
+		const seen: boolean[] = [];
+		watchHeaderWrap(header, lead, item, (w) => seen.push(w), FakeObserver);
+		const ro = FakeObserver.last!;
+		// The separator hid; the status now fits beside the title.
+		item.box = { top: 92, bottom: 124 };
+		ro.cb();
+		expect(seen.at(-1)).toBe(true);
 	});
 });
