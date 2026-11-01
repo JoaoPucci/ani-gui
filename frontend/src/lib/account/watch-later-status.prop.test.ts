@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import { ageOf, nextAgeChange, watchLaterStatus, type Age } from './watch-later-status';
+import {
+	ageOf,
+	nextAgeChange,
+	statusLabel,
+	statusPhrases,
+	watchLaterStatus,
+	type Age,
+	type StatusCopy
+} from './watch-later-status';
 
 const NOW = 1_800_000_000_000;
 const YEAR = 365 * 24 * 60 * 60 * 1000;
@@ -78,6 +86,31 @@ describe('nextAgeChange, by property', () => {
 				expect(wait).toBeGreaterThan(0);
 				expect(ageOf(at, NOW + wait - 1)).toEqual(ageOf(at, NOW));
 				expect(ageOf(at, NOW + wait)).not.toEqual(ageOf(at, NOW));
+			})
+		);
+	});
+});
+
+describe('statusPhrases, by property', () => {
+	const copy: StatusCopy = {
+		refreshing: () => 'Refreshing…',
+		never: () => 'Not updated yet',
+		justNow: () => 'Updated just now',
+		updated: (when) => `Updated ${when}`
+	};
+	const status = fc.oneof(
+		fc.constant({ kind: 'refreshing' as const }),
+		fc.constant({ kind: 'never' as const }),
+		stamp.map((at) => ({ kind: 'updated' as const, at }))
+	);
+	it('shows exactly the label, once, among distinct phrasings', () => {
+		fc.assert(
+			fc.property(status, fc.constantFrom('en', 'es-419', 'pt-BR', 'ru'), (s, locale) => {
+				const phrases = statusPhrases(s, NOW, locale, copy);
+				const shown = phrases.filter((p) => p.shown);
+				expect(shown.map((p) => p.text)).toEqual([statusLabel(s, NOW, locale, copy)]);
+				const texts = phrases.map((p) => p.text);
+				expect(new Set(texts).size).toBe(texts.length);
 			})
 		);
 	});

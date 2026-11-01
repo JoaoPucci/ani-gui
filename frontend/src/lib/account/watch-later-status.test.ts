@@ -4,6 +4,7 @@ import {
 	ageOf,
 	nextAgeChange,
 	statusLabel,
+	statusPhrases,
 	watchLaterStatus,
 	type StatusCopy
 } from './watch-later-status';
@@ -129,5 +130,28 @@ describe('statusLabel', () => {
 		expect(statusLabel({ kind: 'updated', at: NOW - 2 * DAY }, NOW, 'en', copy)).toBe(
 			`Updated ${new Intl.RelativeTimeFormat('en', { numeric: 'always', style: 'short' }).format(-2, 'day')}`
 		);
+	});
+});
+
+describe('statusPhrases', () => {
+	it('has none for no status', () => {
+		expect(statusPhrases(null, NOW, 'en', copy)).toEqual([]);
+	});
+
+	it('shows the current label and holds every other phrasing, once each', () => {
+		const phrases = statusPhrases({ kind: 'updated', at: NOW - 12 * MIN }, NOW, 'en', copy);
+		const shown = phrases.filter((p) => p.shown).map((p) => p.text);
+		expect(shown).toEqual([statusLabel({ kind: 'updated', at: NOW - 12 * MIN }, NOW, 'en', copy)]);
+		const texts = phrases.map((p) => p.text);
+		expect(texts).toContain('Refreshing…');
+		expect(texts).toContain('Not updated yet');
+		expect(texts).toContain('Updated just now');
+		expect(texts.some((t) => t.includes('59'))).toBe(true);
+		expect(new Set(texts).size).toBe(texts.length);
+	});
+
+	it('shows the refreshing phrasing while a pull runs', () => {
+		const phrases = statusPhrases({ kind: 'refreshing' }, NOW, 'en', copy);
+		expect(phrases.filter((p) => p.shown).map((p) => p.text)).toEqual(['Refreshing…']);
 	});
 });

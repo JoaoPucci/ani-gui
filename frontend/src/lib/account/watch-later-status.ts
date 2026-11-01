@@ -91,3 +91,31 @@ export function statusLabel(
 	);
 	return copy.updated(when);
 }
+
+/** One phrasing of the status line, and whether it is the one on show. */
+export interface StatusPhrase {
+	text: string;
+	shown: boolean;
+}
+
+/**
+ * Every phrasing the status line can take, the current one marked
+ * shown. The page stacks them in one cell with the others hidden, so
+ * the line is as wide as its widest phrasing whatever it says, and the
+ * action after it does not move each time the status changes. The
+ * widest "updated" phrasing is stood in for by 59 minutes: hours and
+ * days read no longer in any of the shipped locales. `null` (no tracker
+ * connected) has no phrasings.
+ */
+export function statusPhrases(
+	status: WatchLaterStatus | null,
+	now: number,
+	locale: string,
+	copy: StatusCopy
+): StatusPhrase[] {
+	void status;
+	void now;
+	void locale;
+	void copy;
+	throw new Error('not implemented');
+}

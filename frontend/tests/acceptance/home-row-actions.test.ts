@@ -148,8 +148,14 @@ function action(title: string, label: string): HTMLButtonElement | null {
 		) as HTMLButtonElement | undefined) ?? null
 	);
 }
+/** The status phrase on show. The line also holds its other phrasings,
+ *  hidden, so it keeps one width whatever it says. */
 const status = () =>
-	header(m.account_watch_later_title())?.querySelector('.strip-meta')?.textContent?.trim() ?? '';
+	header(m.account_watch_later_title())
+		?.querySelector('.strip-meta [data-shown]')
+		?.textContent?.trim() ?? '';
+/** What the page has announced to assistive technology. */
+const announced = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
 const short = (n: number, unit: 'minute' | 'hour') =>
 	new Intl.RelativeTimeFormat('en', { numeric: 'always', style: 'short' }).format(-n, unit);
 
@@ -246,22 +252,72 @@ for (const style of ['inline', 'band'] as const) {
 			});
 			await mountHome(style);
 
-			action(WL(), REFRESH())!.click();
+			const refresh = action(WL(), REFRESH())!;
+			refresh.focus();
+			refresh.click();
 			await until(
 				() => status().includes(m.account_watch_later_refreshing()),
 				'the refreshing state'
 			);
 			expect(pulls).toEqual(['anilist']);
-			expect(action(WL(), REFRESH())!.disabled).toBe(true);
+			// Busy, but still where the keyboard left it: a disabled button
+			// drops focus to the page, so the action says it is unavailable
+			// instead, and a second press does nothing.
+			expect(refresh.disabled).toBe(false);
+			expect(refresh.getAttribute('aria-disabled')).toBe('true');
+			expect(document.activeElement).toBe(refresh);
+			refresh.click();
+			await new Promise((r) => setTimeout(r, 50));
+			expect(pulls).toEqual(['anilist']);
+			expect(announced()).toBe(m.account_watch_later_refreshing());
 
 			release();
 			await until(
 				() => status().includes(m.account_watch_later_updated_now()),
 				'the just-updated state'
 			);
-			expect(action(WL(), REFRESH())!.disabled).toBe(false);
+			expect(refresh.hasAttribute('aria-disabled')).toBe(false);
+			expect(document.activeElement).toBe(refresh);
+			expect(announced()).toBe(m.account_watch_later_updated_now());
 			expect(readLastRefreshed('anilist')).not.toBeNull();
 			expect(Date.now() - readLastRefreshed('anilist')!).toBeLessThan(MIN);
+		});
+
+		it('keeps one width whatever the status says, so the action beside it holds still', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			await mountHome(style);
+			const meta = header(WL()).querySelector('.strip-meta')!;
+			const hidden = Array.from(
+				meta.querySelectorAll('[aria-hidden="true"]:not(.strip-meta-sep)')
+			).map((e) => e.textContent?.trim());
+			// Every other phrasing is there, unseen and unread, holding the
+			// line at its widest.
+			expect(hidden).toContain(m.account_watch_later_refreshing());
+			expect(hidden).toContain(m.account_watch_later_not_updated());
+			expect(meta.querySelectorAll('[data-shown]')).toHaveLength(1);
+			// Nothing is announced on load; only a refresh speaks.
+			expect(announced()).toBe('');
+		});
+
+		it('vouches for nothing beside a failed load', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			server.use(
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+					HttpResponse.json({ key: 'error.network.upstream', kind: 'upstream' }, { status: 502 })
+				)
+			);
+			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
+			app = mount(HomePage, { target });
+			await until(
+				() => (header(WL())?.textContent ?? '').includes(m.account_watch_later_failed()),
+				'the failed row'
+			);
+			expect(action(WL(), REFRESH())).not.toBeNull();
+			expect(header(WL()).querySelector('.strip-meta')).toBeNull();
 		});
 
 		it('is not yet updated when a tracker has never been pulled and the pull fails', async () => {
