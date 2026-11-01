@@ -54,8 +54,8 @@ pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 }
 
 /// The current version's key prefixes of the row's title matches: its
-/// title as listed and less a legacy episode tail, each as it is and
-/// keyed by the year the row names — its title's, else its key's
+/// title as listed and less a legacy episode tail, each keyed by the
+/// year the row names — its title's, else its key's — when it names one
 /// ([`crate::commands::title_match_year`]).
 fn current_prefixes(id: &str, title: &str) -> Vec<String> {
     let key = ShowKey::parse(id);
@@ -63,11 +63,11 @@ fn current_prefixes(id: &str, title: &str) -> Vec<String> {
         .or_else(|| crate::scraper::provider::key_year(id));
     let mut prefixes = Vec::new();
     for searched in [title, without_episode_tail(title)] {
-        prefixes.push(title_match_prefix(key.provider, searched));
+        // A row that names a year keeps its guess under the title keyed
+        // by it alone: a guess under the bare title is another row's,
+        // titled alike but naming no year.
         let keyed = crate::commands::title_match_year::keyed_title(searched, year);
-        if keyed != searched {
-            prefixes.push(title_match_prefix(key.provider, &keyed));
-        }
+        prefixes.push(title_match_prefix(key.provider, &keyed));
     }
     prefixes
 }
