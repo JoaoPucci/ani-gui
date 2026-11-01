@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use crate::account::cache_upsert;
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, Tokens, UserListProvider,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
 };
 use crate::app::AppState;
 use crate::commands::account::{provider_for_kind, resolve_native_media_id};
@@ -64,7 +64,24 @@ async fn get_entry_via(
     // And the entry's own lock, which writes reaching it from another
     // Kitsu entry (a part filed under it) take too.
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
-    provider.current_entry(tokens, native).await
+    read_entry_at(state, kind, provider, tokens, native).await
+}
+
+/// The live read of `native`'s entry, with the show's locks held by the
+/// caller.
+pub(crate) async fn read_entry_at(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    provider: &dyn UserListProvider,
+    tokens: &Tokens,
+    native: ProviderMediaId,
+) -> Result<Option<CurrentEntry>> {
+    // Noted, so a removal's local clear acts only on what this read found.
+    let revisions = &state.account_write_locks.cache_revisions;
+    let read = revisions.start_read(kind);
+    let entry = provider.current_entry(tokens, native).await?;
+    revisions.note_read(kind, native.0, read, entry.is_none());
+    Ok(entry)
 }
 
 /// Write an *explicit* user edit (status and/or progress) to a tracker
@@ -113,19 +130,18 @@ async fn set_entry_via(
         return Ok(None);
     };
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
+    // Resolve the cache owner before the mutation: the write may spend
+    // the last allowance, so a profile request afterwards can be refused.
+    let owner = super::account_owner::before_write(provider, tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
+    let owner = super::account_owner::after_write(provider, tokens, owner).await;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
     // rail/editor reflect a downward correction immediately. Best-effort
     // — the authoritative tracker write already succeeded.
-    if let Ok(profile) = provider.me(tokens).await {
-        let _ = state
-            .account_write_locks
-            .epochs
-            .write_if_current(kind, began, || {
-                cache_upsert::upsert_entry_force(&state.cache_pool, kind, &profile.user_id, &entry)
-            });
-    }
+    super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
+        cache_upsert::upsert_entry_force(&state.cache_pool, kind, owner, &entry)
+    });
     Ok(Some(entry))
 }
 
@@ -152,6 +168,7 @@ async fn remove_entry_via(
     tokens: &Tokens,
     kitsu_id: &str,
 ) -> Result<bool> {
+    let began = state.account_write_locks.epochs.current(kind);
     // Per-show lock keyed on the Kitsu id, taken before resolve so the
     // delete serializes with a concurrent mark-watched write / editor read
     // across their whole resolve→write.
@@ -168,17 +185,63 @@ async fn remove_entry_via(
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates.
+    let owner = super::account_owner::before_write(provider, tokens).await?;
     if let Err(e) = provider.delete_entry(tokens, native).await {
         match provider.current_entry(tokens, native).await {
             Ok(None) => {}
             _ => return Err(e),
         }
     }
+    let owner = super::account_owner::after_write(provider, tokens, owner).await;
     // Drop the cache row (best-effort) so the rail stops showing it.
-    if let Ok(profile) = provider.me(tokens).await {
-        let _ = cache_upsert::delete_entry_row(&state.cache_pool, kind, &profile.user_id, native.0);
-    }
+    super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
+        cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, native.0)
+    });
     Ok(true)
+}
+
+/// Clear `kitsu_id`'s cached row from `user_id`'s list, asking the
+/// tracker nothing: the removal's live read found the show absent there,
+/// so only the local copy is stale. Only on the evidence of the row's
+/// latest-sent live read, and only while no write has marked the row since
+/// that read was sent and no refresh started after it has been cached; the
+/// cleared row is marked as of the read, so a refresh that started before
+/// it cannot put the row back. Nothing for an account disconnected since,
+/// or for a show no tracker id maps.
+pub async fn forget_cached_entry(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    kitsu_id: &str,
+    user_id: &str,
+) -> Result<()> {
+    let began = state.account_write_locks.epochs.current(kind);
+    let _write_guard = state.account_write_locks.hold(kind, kitsu_id).await;
+    let Some(native) = resolve_native_media_id(state, kind, kitsu_id, None).await? else {
+        return Ok(());
+    };
+    clear_cached_row(state, kind, began, native.0, user_id);
+    Ok(())
+}
+
+/// Clear `media`'s cached row from `user_id`'s list, for a request that
+/// arrived in connection epoch `began` — only if the row's latest-sent live
+/// read found it absent and nothing asked after that read has answered for
+/// the row (`account_revisions`).
+pub(crate) fn clear_cached_row(
+    state: &Arc<AppState>,
+    kind: ProviderKind,
+    began: u64,
+    media: u32,
+    user_id: &str,
+) {
+    let locks = &state.account_write_locks;
+    let _ = locks.epochs.write_if_current(kind, began, || {
+        locks
+            .cache_revisions
+            .clear_if_still_absent(kind, media, || {
+                cache_upsert::delete_entry_row(&state.cache_pool, kind, user_id, media)
+            })
+    });
 }
 
 #[cfg(test)]

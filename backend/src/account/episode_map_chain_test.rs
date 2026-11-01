@@ -183,8 +183,11 @@ fn dated_exact_chain() -> BoxedStrategy<Evidence> {
         known_date(),
         known_date(),
     )
-        .prop_map(|(shows, ks, ke)| {
+        .prop_map(|(mut shows, ks, ke)| {
             let count: u32 = shows.iter().map(|(n, ..)| n).sum();
+            // In the order they aired: a hop that aired before the one
+            // it follows is no chain.
+            shows.sort_by(|a, b| a.2.cmp(&b.2));
             let mut shows: Vec<TrackerShow> = shows
                 .into_iter()
                 .enumerate()

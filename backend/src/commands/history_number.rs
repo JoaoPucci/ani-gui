@@ -38,16 +38,27 @@ pub fn history_number(state: &AppState, id: &str) -> Result<Option<HistoryNumber
         else {
             return Ok(None);
         };
+        let recorded = crate::commands::listing_tags::get(state, id);
         Ok(Some(HistoryNumber {
-            former_ep_no: former_number(&numbering, id, &row.ep_no),
+            former_ep_no: former_number(&numbering, id, &row.ep_no, recorded.as_deref()),
             ep_no: row.ep_no,
         }))
     })
 }
 
 /// The number a row reading `ep_no` read as before its show's stamp
-/// was put right — while the stamp's row is the episode it reads.
-fn former_number(numbering: &Numbering, slug: &str, ep_no: &str) -> Option<String> {
+/// was put right — while the stamp's row is the episode it reads, and
+/// the show's listing as last recorded (`recorded`, in the entry's
+/// numbering) carries no row by it: a position kept under a number a
+/// real episode has now may be that episode's. With no record, the
+/// store's own former tag decides, which a repair keeps only while the
+/// listing it read leaves the tag free.
+fn former_number(
+    numbering: &Numbering,
+    slug: &str,
+    ep_no: &str,
+    recorded: Option<&[String]>,
+) -> Option<String> {
     use crate::commands::numbering_offset::kitsu_ep_no;
     let (_, now) = numbering.display(slug)?;
     let (_, former) = numbering.former(slug)?;
@@ -56,7 +67,11 @@ fn former_number(numbering: &Numbering, slug: &str, ep_no: &str) -> Option<Strin
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     };
-    same(&kitsu_ep_no(&now, offset), ep_no).then(|| kitsu_ep_no(&former, offset))
+    same(&kitsu_ep_no(&now, offset), ep_no)
+        .then(|| kitsu_ep_no(&former, offset))
+        .filter(|f| {
+            !recorded.is_some_and(|tags| crate::commands::play_native_merge::carries_tag(tags, f))
+        })
 }
 
 #[cfg(test)]
