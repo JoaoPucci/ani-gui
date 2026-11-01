@@ -392,6 +392,10 @@ describe('resumeStep', () => {
 		);
 	});
 
+	it('waits, whatever the page, in a search not aiming for a card', () => {
+		expect(resumeStep(null, { shown: hits(20), pages: 1, phase: 'idle' })).toBe('wait');
+	});
+
 	it('never loads past the pages the reader had', () => {
 		fc.assert(
 			fc.property(
