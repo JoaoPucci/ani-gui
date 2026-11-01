@@ -25,7 +25,7 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
-	import { breadcrumb, defaultTrailFor } from '$lib/breadcrumb';
+	import { breadcrumb, defaultTrailFor, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
 	import {
 		imageProxyUrl,
 		kitsuSearch,
@@ -101,7 +101,8 @@
 	// shallow routing so popstate can read it back from `page.state`.
 	let canGoBack = $state(false);
 	let navDepth = 0;
-	let navOrigin: string | null = null;
+	// The address of the page behind this one, when the layout knows it.
+	let navOrigin = $state<string | null>(null);
 
 	// Availability probes the page just left asked are aborted now
 	// that the next page is up ($lib/availability/probe-scope).
@@ -561,7 +562,10 @@
 	<div class="main-area">
 		<header class="topbar">
 			{#if canGoBack}
-				<Breadcrumb segments={$breadcrumb} />
+				<Breadcrumb
+					segments={withSearchOrigin($breadcrumb, navOrigin, routeId)}
+					back={searchOrigin(navOrigin)}
+				/>
 			{/if}
 			<form
 				class="topbar-search"

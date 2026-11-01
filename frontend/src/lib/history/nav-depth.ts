@@ -119,9 +119,40 @@ export function afterNavigation(nav: Navigated): NavOutcome {
 		stampedDepth: typeof stamped === 'number' ? stamped : null,
 		prevDepth: nav.prev.depth
 	});
+	const origin = nextOrigin(nav);
+	if (!isForward(nav.type)) return { depth, origin, stamp: null };
 	return {
 		depth,
-		origin: null,
-		stamp: isForward(nav.type) ? { aniGuiDepth: depth } : null
+		origin,
+		stamp: origin ? { aniGuiDepth: depth, aniGuiFrom: origin } : { aniGuiDepth: depth }
 	};
+}
+
+/** The address of the page behind the entry a navigation landed on.
+ *  A forward navigation records the page it left, except one that stays
+ *  on the same page (the detail page's episode pager, the player's
+ *  episode switch), which keeps what was behind it. A back or forward
+ *  press reads what the entry was stamped with.
+ *
+ *  A replace navigation onto a different page cannot be told from a
+ *  push here (SvelteKit reports both as `goto`), so it records the page
+ *  it replaced. The app makes one (the player's own fallback to the
+ *  show page), and the address it records is not a search, which is
+ *  the only origin the breadcrumb acts on. */
+function nextOrigin(nav: Navigated): string | null {
+	switch (nav.type) {
+		case 'enter':
+			return null;
+		case 'popstate':
+			return nav.state.aniGuiFrom ?? null;
+		case 'goto':
+		case 'link':
+		case 'form':
+			if (!nav.from) return null;
+			if (nav.to && nav.to.pathname === nav.from.pathname) return nav.prev.origin;
+			return nav.from.pathname + nav.from.search;
+		case 'leave':
+		case 'replaceState':
+			return nav.prev.origin;
+	}
 }
