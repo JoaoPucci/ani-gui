@@ -868,6 +868,10 @@ async fn a_save_files_its_row_once_the_bearer_s_user_is_known_even_when_the_look
     assert_eq!(cached_rows(&state), 1, "the written row is in the cache");
 }
 
+// Writes for a bearer whose user is already known: their own file.
+#[path = "account_owner_known_test.rs"]
+mod owner_known;
+
 // Staleness cases that pair a full-list refresh with a write: their own
 // file, so this one stays readable.
 #[path = "account_staleness_test.rs"]
