@@ -76,13 +76,28 @@ fn row_is(history: &std::path::Path, ep_no: &str) {
     let row = crate::history::parse(&format!("{ep_no}\t{SLUG}\tThe Show\n"))
         .pop()
         .expect("a row");
-    crate::history::upsert_and_write(history, row).expect("the row");
+    write_row(history, row);
+}
+
+/// Put `row` in the history file, replacing the file whole, without
+/// this process's history guard. A write inside [`repair_racing`]'s
+/// `meanwhile` that took the guard could wait on a test elsewhere that
+/// holds it while it waits for the store's mutex, which the queued
+/// repair holds until the file lock this test holds is let go.
+fn write_row(history: &std::path::Path, row: crate::history::HistoryEntry) {
+    let mut rows = crate::history::read_all(history).expect("history read");
+    crate::history::upsert(&mut rows, row);
+    crate::history::write_atomic(history, &rows).expect("the row");
 }
 
 /// Run the repair from `recap_after_three` while another instance holds
 /// the store's file lock; once the repair is queued behind it, that
 /// instance's writes, `meanwhile` (given the history file's path), land,
 /// and the lock is let go. The store's body after the repair.
+///
+/// `meanwhile` takes no lock of this process: the queued repair holds
+/// the store's mutex, so a lock some other test holds while it waits
+/// for that mutex would never be let go.
 fn repair_racing(state: AppState, meanwhile: impl FnOnce(&std::path::Path)) -> String {
     let history = state.history_path.clone();
     let lock_path = history.with_file_name("ani-gui-offsets.lock");
@@ -287,7 +302,7 @@ fn a_row_now_in_the_app_s_own_numbering_leaves_the_stamp_as_it_is() {
             .pop()
             .expect("a row");
         row.own_number = true;
-        crate::history::upsert_and_write(h, row).expect("this instance's row");
+        write_row(h, row);
     };
     assert_eq!(repair_racing(state, own), format!("{SLUG}\t0\t7\t6\n"));
 }
