@@ -78,16 +78,33 @@ impl Harness {
     }
 }
 
-/// Every URI line of `out`, and every `URI="..."` attribute value.
+/// Every URI the player would read from `out`, as hls.js reads it:
+/// lines end at every JavaScript line terminator, and an attribute whose
+/// trimmed name ends in `URI`, `URL` or `-LIST` names something to
+/// fetch, its value running to the next comma or closing quote.
 fn uris(out: &str) -> Vec<String> {
     let mut found = Vec::new();
-    for line in out.lines().filter(|l| !l.trim().is_empty()) {
+    for line in out
+        .split(['\n', '\r', '\u{2028}', '\u{2029}'])
+        .filter(|l| !l.trim().is_empty())
+    {
         if !line.starts_with('#') {
             found.push(line.trim().to_owned());
             continue;
         }
-        for part in line.split("URI=\"").skip(1) {
-            found.push(part.split('"').next().unwrap_or_default().to_owned());
+        for (eq, _) in line.match_indices('=') {
+            let name = line[..eq].trim_end().to_ascii_uppercase();
+            if !["URI", "URL", "-LIST"].iter().any(|s| name.ends_with(s)) {
+                continue;
+            }
+            let value = line[eq + 1..].trim_start_matches('"');
+            found.push(
+                value
+                    .split(['"', ','])
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned(),
+            );
         }
     }
     found
@@ -194,4 +211,26 @@ async fn a_media_playlist_served_where_a_master_is_expected_keeps_its_segments()
     let segment = reqwest::get(&found[0]).await.expect("segment");
     assert_eq!(segment.status(), 200);
     assert_eq!(segment.text().await.expect("bytes"), "segment zero");
+}
+
+/// Text m3u8-rs keeps as written but hls.js reads as a URI — an
+/// attribute name with a space before its `=`, a line ended by U+2028 —
+/// never reaches the player pointing upstream.
+#[tokio::test]
+async fn a_master_spelled_for_the_player_alone_names_nothing_upstream() {
+    let h = start_harness().await;
+    h.serve(
+        "/master.m3u8",
+        "#EXTM3U\n\
+         #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"en\",DEFAULT=YES,URI =\"https://evil.example/a.m3u8\"\n\
+         #EXT-X-CONTENT-STEERING:SERVER-URI =\"https://evil.example/steer.json\"\n\
+         #EXT-X-FOO:a\u{2028}#EXT-X-STREAM-INF:BANDWIDTH=1\u{2028}https://evil.example/v.m3u8\n\
+         #EXT-X-STREAM-INF:BANDWIDTH=1000000,AUDIO=\"aud\"\n\
+         v/index.m3u8\n"
+            .to_owned(),
+    )
+    .await;
+    let out = h.master(h.session("/master.m3u8")).await;
+    assert!(!out.contains("evil.example"), "{out}");
+    assert!(uris(&out).iter().all(|u| h.on_proxy(u)), "{out}");
 }

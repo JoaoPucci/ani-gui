@@ -154,6 +154,8 @@ proptest::proptest! {
         for uri in uris(&out) {
             proptest::prop_assert!(on_proxy(&uri), "{} left in {}", uri, out);
         }
+        let escaped = super::player_view::escapes(&out);
+        proptest::prop_assert!(escaped.is_empty(), "{:?} read by the player in {}", escaped, out);
     }
 
     /// Whatever a media playlist names, every network URI in the
@@ -178,5 +180,7 @@ proptest::proptest! {
             let network = uri.starts_with("http:") || uri.starts_with("https:");
             proptest::prop_assert!(on_proxy(&uri) || !network, "{} left in {}", uri, out);
         }
+        let escaped = super::player_view::escapes(&out);
+        proptest::prop_assert!(escaped.is_empty(), "{:?} read by the player in {}", escaped, out);
     }
 }
