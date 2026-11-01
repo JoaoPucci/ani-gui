@@ -23,7 +23,11 @@
 # when the step execs it, it stops every command still running together
 # with whatever that command started, prints what each had written so
 # far, and exits 130 or 143; a further signal meanwhile is ignored, and
-# a command not yet started when the first came is never started. Each
+# a command not yet started when the first came is never started. The
+# stop sends SIGTERM and waits: a command that ignores it, or one whose
+# runner has not recorded its process id within five seconds of the
+# signal, is waited for rather than stopped, until whatever signalled
+# this kills it outright, as a CI runner does in the end. Each
 # command runs in a session of its own (setsid, from util-linux) so
 # that it leads a process group the stop can signal whole; this is a
 # Linux tool.
