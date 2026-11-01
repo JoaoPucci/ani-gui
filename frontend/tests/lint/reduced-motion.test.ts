@@ -150,13 +150,19 @@ function compliantNames(path: string, ast: SvelteAst): Set<string> {
 	const names = new Set(motionImports.keys());
 	for (const script of scripts) {
 		walk(script, (node) => {
-			if (node.type !== 'VariableDeclarator') return;
-			const id = node.id as { type: string; name?: string };
-			const init = node.init as { type?: string; callee?: { type: string; name?: string } } | null;
-			if (id.type !== 'Identifier' || init?.type !== 'CallExpression') return;
-			const callee = init.callee;
-			if (callee?.type !== 'Identifier') return;
-			if (motionImports.get(callee.name!) === 'reducible') names.add(id.name!);
+			if (node.type !== 'VariableDeclaration' || node.kind !== 'const') return;
+			walk(node.declarations, (node) => {
+				if (node.type !== 'VariableDeclarator') return;
+				const id = node.id as { type: string; name?: string };
+				const init = node.init as {
+					type?: string;
+					callee?: { type: string; name?: string };
+				} | null;
+				if (id.type !== 'Identifier' || init?.type !== 'CallExpression') return;
+				const callee = init.callee;
+				if (callee?.type !== 'Identifier') return;
+				if (motionImports.get(callee.name!) === 'reducible') names.add(id.name!);
+			});
 		});
 	}
 	return names;
@@ -371,6 +377,11 @@ describe('reduced motion: Svelte directives', () => {
 			'a local function',
 			`const pop = (node: Element) => ({ duration: 200 });`,
 			'<div in:pop></div>'
+		],
+		[
+			'a reducible() held in a let, which could be reassigned',
+			`import { reducible, scale } from '$lib/motion/transitions';\nlet pop = reducible((node: Element) => scale(node, {}));\npop = (node: Element) => ({ duration: 200 });`,
+			'<div out:pop></div>'
 		],
 		[
 			'a local wrapper around a motion transition',

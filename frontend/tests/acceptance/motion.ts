@@ -87,10 +87,17 @@ interface HappyDomWindow {
  * listeners on the next `resize`, and the app's one reading of the
  * preference (`$lib/motion/reduced-motion.svelte`) is such a listener,
  * so this also exercises the app following a change while it is open.
+ *
+ * Resolves once the change has been taken in. That listener was
+ * registered when the module loaded, outside any scenario, so the
+ * update it schedules belongs to no scenario either; a page mounted
+ * before that update ran would have its first requests counted as
+ * nobody's by the request guard in ./setup.ts.
  */
-export function setReducedMotion(reduced: boolean): void {
+export async function setReducedMotion(reduced: boolean): Promise<void> {
 	(window as unknown as HappyDomWindow).happyDOM.settings.device.prefersReducedMotion = reduced
 		? 'reduce'
 		: 'no-preference';
 	window.dispatchEvent(new Event('resize'));
+	await new Promise((r) => setTimeout(r, 0));
 }

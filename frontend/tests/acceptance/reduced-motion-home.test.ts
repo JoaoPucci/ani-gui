@@ -3,9 +3,11 @@
 // nothing.
 //
 // The user asks the system for reduced motion and opens the app.
-// The hero, the Continue Watching row — a card deleted from it
-// included — the Watch Later rail and the rails' scroll arrows must
-// all stand still. This tier sees the motion script starts (see
+// The hero's rotation, a card deleted from the Continue Watching row
+// and the rails' scroll arrows must all stand still. (The rows start
+// no motion on load in either mode, so landing is not a scenario here;
+// the e2e samples it with real CSS. Watch Later's own motion has its
+// pair in watch-later-held-write.test.ts.) This tier sees the motion script starts (see
 // ./motion.ts); the CSS half is asserted in a real Chromium by the
 // Electron e2e.
 
@@ -103,11 +105,13 @@ beforeEach(() => {
 	document.body.appendChild(target);
 });
 
-afterEach(() => {
+afterEach(async () => {
 	if (app) unmount(app);
 	app = null;
 	target.remove();
 	motion.stop();
+	// After the page is gone, so no mounted page answers the change.
+	await setReducedMotion(false);
 	restoreLayout();
 	accountStore.setDisconnected('anilist');
 	vi.useRealTimers();
@@ -168,26 +172,11 @@ function mountHome(deleted: string[] = []) {
 	app = mount(HomePage, { target });
 }
 
-afterEach(() => setReducedMotion(false));
-
 describe.each([
 	['under reduced motion', true],
 	['with motion on', false]
 ] as const)('Home %s', (_mode, reduced) => {
 	beforeEach(() => setReducedMotion(reduced));
-
-	it.runIf(reduced)(
-		'lands the hero, the rows and the Watch Later rail without moving',
-		async () => {
-			mountHome();
-			await until(() => heroText().includes('First Feature'), 'the hero');
-			await until(() => continueCards().length === HISTORY.length, 'the Continue Watching cards');
-			await until(() => (target.textContent ?? '').includes(PLANNED.title), 'the Watch Later rail');
-			await until(() => (target.textContent ?? '').includes('Top E'), 'the Top Rated rail');
-
-			expect(motion.animations).toEqual([]);
-		}
-	);
 
 	it(
 		reduced ? 'holds the hero on its first title' : 'rotates the hero, fading between titles',

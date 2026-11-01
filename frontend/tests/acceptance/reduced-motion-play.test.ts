@@ -60,12 +60,14 @@ beforeEach(() => {
 	document.body.appendChild(target);
 });
 
-afterEach(() => {
+afterEach(async () => {
 	if (app) unmount(app);
 	app = null;
 	delete g.EventSource;
 	target.remove();
 	motion.stop();
+	// After the page is gone, so no mounted page answers the change.
+	await setReducedMotion(false);
 });
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
@@ -123,8 +125,6 @@ function mountPlayer() {
 
 const tile = (n: number) =>
 	target.querySelector<HTMLButtonElement>(`li[data-ep-num="${n}"] button`);
-
-afterEach(() => setReducedMotion(false));
 
 describe.each([
 	['under reduced motion', true],

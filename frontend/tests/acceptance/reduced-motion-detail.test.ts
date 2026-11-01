@@ -1,7 +1,8 @@
 // Acceptance: under reduced motion, nothing on a show's page moves.
 //
-// A page of episode tiles is simply there, a jump to an episode lands
-// on it instead of gliding, and the loader that covers the page while
+// With motion on, the same steps do move, so the scenarios cannot pass
+// by watching nothing. A jump to an episode lands on it instead of
+// gliding, and the loader that covers the page while
 // a play starts holds still. The CSS half is asserted in a real
 // Chromium by the Electron e2e; see ./motion.ts.
 
@@ -65,12 +66,14 @@ beforeEach(() => {
 	document.body.appendChild(target);
 });
 
-afterEach(() => {
+afterEach(async () => {
 	if (app) unmount(app);
 	app = null;
 	delete g.EventSource;
 	target.remove();
 	motion.stop();
+	// After the page is gone, so no mounted page answers the change.
+	await setReducedMotion(false);
 });
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
@@ -126,21 +129,11 @@ function mountShow() {
 const tile = (n: number) =>
 	target.querySelector<HTMLButtonElement>(`li[data-ep-num="${n}"] button`);
 
-afterEach(() => setReducedMotion(false));
-
 describe.each([
 	['under reduced motion', true],
 	['with motion on', false]
 ] as const)("a show's page %s", (_mode, reduced) => {
 	beforeEach(() => setReducedMotion(reduced));
-
-	it.runIf(reduced)('lands a page of episode tiles without moving them', async () => {
-		mountShow();
-		await until(() => tile(12) !== null, 'the first page of tiles');
-		await new Promise((r) => setTimeout(r, 100));
-
-		expect(motion.animations).toEqual([]);
-	});
 
 	it('scrolls to a jumped-to episode', async () => {
 		mountShow();

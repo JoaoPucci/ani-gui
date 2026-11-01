@@ -16,6 +16,12 @@
  * zero-length switch: it changes the property at once when the delay
  * ends and draws no frame in between, so it is not counted.
  *
+ * What `getAnimations()` cannot see: the loader's Lottie, which draws
+ * from its own frame loop, and the hero parallax, which is a transform
+ * set from script on scroll. The acceptance tier covers the loader
+ * through its stub (frontend/tests/acceptance/reduced-motion-*.test.ts)
+ * and the unit tests cover the parallax ($lib/motion/parallax).
+ *
  * One scenario runs the same delete with motion on and requires that
  * something does move, so the check cannot pass by looking at a page
  * where nothing could.
@@ -213,7 +219,7 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 
 		await expect(page.getByText(/top rated/i).first()).toBeVisible({ timeout: 15_000 });
 		const strip = page.getByRole('region', { name: /continue watching/i });
-		const card = strip.getByRole('button', { name: /Continue Test Show/ }).first();
+		const card = strip.locator('button.resume-card', { hasText: 'Continue Test Show' });
 		await expect(card).toBeVisible({ timeout: 10_000 });
 		await expectStill(page, 'Home loaded');
 
@@ -241,12 +247,10 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await expect(page.locator('li[data-ep-num="12"]')).toBeVisible({ timeout: 10_000 });
 		await expectStill(page, 'a show’s page loaded');
 
-		const heroImage = page.locator('section.hero img.hero-img').first();
-		const before = await heroImage.getAttribute('style');
+		await page.mouse.move(640, 400);
 		await page.mouse.wheel(0, 400);
-		await page.waitForTimeout(200);
+		await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 		await expectStill(page, 'scrolling a show’s page');
-		if (before !== null) expect(await heroImage.getAttribute('style')).toBe(before);
 	} finally {
 		killTree(app.process().pid);
 		await app.close();
@@ -257,7 +261,7 @@ test('the player and its overlay stand still', async () => {
 	const { app, page } = await launch();
 	try {
 		const strip = page.getByRole('region', { name: /continue watching/i });
-		const card = strip.getByRole('button', { name: /Continue Test Show/ }).first();
+		const card = strip.locator('button.resume-card', { hasText: 'Continue Test Show' });
 		await expect(card).toContainText('6', { timeout: 15_000 });
 		await card.click();
 
@@ -267,8 +271,9 @@ test('the player and its overlay stand still', async () => {
 		await page.locator('section.player-frame').hover();
 		await expectStill(page, 'hovering the player');
 
-		// Another episode from the strip under the player.
-		await page.locator('li[data-ep-num="3"] button').first().click();
+		// Another episode from the strip under the player, which shows the
+		// page of five holding the one playing (6).
+		await page.locator('li[data-ep-num="7"] button').first().click();
 		await expectStill(page, 'switching episodes', 1_000);
 	} finally {
 		killTree(app.process().pid);
@@ -283,10 +288,15 @@ test('with motion on, the same delete does move', async () => {
 			await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
 		).toBe(false);
 		const strip = page.getByRole('region', { name: /continue watching/i });
-		const card = strip.getByRole('button', { name: /Continue Test Show/ }).first();
+		const card = strip.locator('button.resume-card', { hasText: 'Continue Test Show' });
 		await expect(card).toBeVisible({ timeout: 15_000 });
 
-		await page.getByRole('button', { name: 'Remove Continue Test Show from history' }).click();
+		// With motion on the hovered card lifts while the pointer arrives,
+		// and its poster passes over the chip mid-lift; the chip is
+		// clicked directly, since the motion under test is the delete's.
+		await page
+			.getByRole('button', { name: 'Remove Continue Test Show from history' })
+			.dispatchEvent('click');
 		await page.getByRole('button', { name: 'Remove', exact: true }).click();
 		const seen: string[] = [];
 		const deadline = Date.now() + 600;
