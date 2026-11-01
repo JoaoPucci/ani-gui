@@ -19,12 +19,19 @@ export type Settled = Omit<SearchCheckpoint, 'hits'>;
 /** Where a search stands once a page has settled with `r`. A page
  *  loading by itself after an empty one leaves the search idle. */
 export function checkpointAt(
-	s: { mode: 'sub' | 'dub'; seen: Set<string>; next: number | null; loaded: number },
+	s: {
+		mode: 'sub' | 'dub';
+		fetchedAt: number;
+		seen: Set<string>;
+		next: number | null;
+		loaded: number;
+	},
 	r: AfterPage
 ): Settled {
 	const kind = r.phase.kind;
 	return {
 		mode: s.mode,
+		fetchedAt: s.fetchedAt,
 		seen: [...s.seen],
 		next: s.next,
 		emptyStreak: r.emptyStreak,
@@ -53,6 +60,8 @@ export function restoredState(kept: SearchCheckpoint) {
 		next: kept.next,
 		emptyStreak: kept.emptyStreak,
 		loaded: kept.pages,
+		// A search with no fetch time is never reused, so 0 is never read.
+		fetchedAt: kept.fetchedAt ?? 0,
 		settled
 	};
 }

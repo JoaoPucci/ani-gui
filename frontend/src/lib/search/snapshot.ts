@@ -106,7 +106,10 @@ export function pickAnchor(cards: CardPosition[]): ScrollAnchor | null {
 }
 
 /**
- * Whether saved results may be shown again as they are. Only on a back
+ * Whether saved results may be shown again as they are, judged by
+ * when they were fetched (not when the page was left, which would let
+ * a search left open for hours, or one taken back and forth, renew
+ * itself without asking). Only on a back
  * or forward press, not a reload (which asks for the page afresh);
  * only for the audio setting they were judged for, since the
  * availability filter chose them by it; and only within
@@ -119,8 +122,9 @@ export function canReuse(
 	saved: SearchSnapshot,
 	at: { now: number; mode: 'sub' | 'dub'; reload: boolean }
 ): boolean {
-	if (at.reload || saved.results === null || saved.results.mode !== at.mode) return false;
-	const age = at.now - saved.capturedAt;
+	const results = saved.results;
+	if (at.reload || results?.mode !== at.mode || results.fetchedAt === undefined) return false;
+	const age = at.now - results.fetchedAt;
 	return age >= 0 && age < FRESH_FOR_MS;
 }
 

@@ -46,6 +46,9 @@ export interface SearchRunnerDeps {
 
 /** One run's search: the pages it has shown and where it goes next. */
 export interface Search {
+	/** When its first page was fetched; a restored search keeps the
+	 *  saved one. */
+	fetchedAt: number;
 	q: string;
 	order: SearchOrder;
 	mode: 'sub' | 'dub';
@@ -176,6 +179,7 @@ export function createSearchCore(deps: SearchRunnerDeps) {
 			next: 0,
 			emptyStreak: 0,
 			loaded: 0,
+			fetchedAt: (deps.now ?? Date.now)(),
 			probes,
 			settled: null,
 			target

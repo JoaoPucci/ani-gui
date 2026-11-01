@@ -41,7 +41,8 @@ const RESULTS: Record<string, Check> = {
 	next: countOrNull,
 	emptyStreak: isCount,
 	pages: isCount,
-	phase: oneOf('idle', 'end', 'held')
+	phase: oneOf('idle', 'end', 'held'),
+	fetchedAt: (v) => v === undefined || isNumber(v)
 };
 
 const ANCHOR: Record<string, Check> = { id: isString, top: isNumber };
@@ -58,7 +59,8 @@ function readResults(v: unknown): SearchCheckpoint | null {
 		next: r.next,
 		emptyStreak: r.emptyStreak,
 		pages: r.pages,
-		phase: r.phase
+		phase: r.phase,
+		...(r.fetchedAt === undefined ? {} : { fetchedAt: r.fetchedAt })
 	};
 }
 
