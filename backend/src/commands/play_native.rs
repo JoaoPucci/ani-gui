@@ -172,8 +172,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   not a clean miss; a listing that spans this entry and
 ///   the next is cut to this entry's episodes (see
 ///   `play_native_wide_listing`).
-/// - No listing its own entry page files under Hentai is picked, nor
-///   one whose page lists no genre, dated or undated: an undated pick
+/// - No listing its own entry page files under Hentai or rates Rx is
+///   picked, nor
+///   one whose page lists no genre and no rating on the site's scale, dated or undated: an undated pick
 ///   reads the page of each listing it would serve and is made again
 ///   without one its page refuses (see `play_native_genre`), and a pool
 ///   a listing was left out of for an unread page is never the clean

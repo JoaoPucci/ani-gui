@@ -85,6 +85,7 @@ async fn a_range_starts_from_the_version_it_names() {
             quality: "best",
             answered_by: None,
             tail: None,
+            heard: None,
         };
         let (picked, served, _) = attempt.run(&provider).await.expect("started");
         assert_eq!(picked.hit.slug, slug, "{version:?}");
@@ -138,6 +139,7 @@ async fn a_range_in_a_mode_only_the_plain_copy_carries_starts_from_it() {
         quality: "best",
         answered_by: None,
         tail: None,
+        heard: None,
     };
     let (picked, served, first) = attempt.run(&provider).await.expect("started");
     // The first episode streams from the copy that carries the dub,
@@ -146,4 +148,50 @@ async fn a_range_in_a_mode_only_the_plain_copy_carries_starts_from_it() {
     assert_eq!(first.master_url, "https://cdn.example/plain/master.m3u8");
     assert_eq!(served.hit.slug, "the-show-1");
     assert_eq!(picked.hit.slug, "the-show-2");
+}
+
+/// A range whose first episode the pick does not carry fails to start —
+/// but the pick's listings were at hand, and both versions' are on
+/// record for a replay's check of a former number.
+#[tokio::test]
+async fn a_range_that_fails_to_start_still_records_the_listings_it_picked() {
+    use crate::scraper::provider::BrowseHit;
+    use crate::scraper::table_provider::{listing_of, TableProvider};
+    let card = |slug: &str, title: &str| BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    let provider = TableProvider::new()
+        .search_default(vec![
+            card("the-show-1", "The Show"),
+            card("the-show-2", "The Show (Uncensored)"),
+        ])
+        .listing(1, listing_of(1, 3))
+        .listing(2, listing_of(2, 3))
+        .year(1, Some(2020))
+        .year(2, Some(2020));
+    let mut state = crate::commands::play::tests::state_with_proxy_origin();
+    state.providers.set_stub(std::sync::Arc::new(provider));
+    let args: super::DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show", "episode": "9-10", "mode": "sub",
+        "episode_count": 3, "year": 2020, "subtype": "TV",
+    }))
+    .expect("args");
+    let dest = tempfile::tempdir().expect("dest");
+    let started =
+        super::download_range(&state, &args, 9, 10, "best", dest.path(), "", &mut |_| {}).await;
+    assert!(started.is_err(), "episode 9 is not listed");
+    for slug in ["the-show-1", "the-show-2"] {
+        let key = crate::scraper::provider::ShowKey::new(
+            crate::provider_set::ProviderSet::TEST_DEFAULT,
+            slug,
+        )
+        .to_string();
+        assert!(
+            crate::commands::listing_tags::get(&state, &key).is_some(),
+            "{slug}'s listing is recorded"
+        );
+    }
 }

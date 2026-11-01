@@ -208,8 +208,14 @@ pub(crate) async fn try_serve_cached(
     // The episode the resolve behind the row played; a row from before
     // the field names none.
     resp.episode.clone_from(&cached.played);
-    resp.former_episode.clone_from(&cached.former_episode);
     resp.episode_unverified = cached.episode_unverified;
+    // The former number the row kept, while the listing the app last had
+    // at hand for the row's show leaves it free.
+    let tags = crate::commands::listing_tags::get(state, &cached.show_id);
+    resp.former_episode = crate::commands::play_native_merge::former_on_replay(
+        cached.former_episode.as_deref(),
+        tags.as_deref(),
+    );
     Some(resp)
 }
 
@@ -276,19 +282,21 @@ pub(crate) fn cached_watch(
 /// The launch a cached resolution describes: the row's stream and
 /// referer, its sidecar tracks with the provider's default first —
 /// as the fresh resolve lists them — and the user's player settings.
+/// The title names the episode the watch records ([`cached_watch`]).
 pub(crate) fn cached_launch_args(
     cached: play_resolution_cache::CachedResolution,
     args: &super::play::PlayArgs,
     cfg: &crate::config::Config,
 ) -> LaunchArgs {
+    let played = cached_watch(&cached, &args.episode).ep_no;
     LaunchArgs {
+        title: Some(super::play_handoff::window_title(&args.title, &played)),
         stream_url: cached.upstream_url,
         referer: if cached.referer.is_empty() {
             None
         } else {
             Some(cached.referer)
         },
-        title: Some(format!("{} · ep {}", args.title, args.episode)),
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
@@ -299,3 +307,7 @@ pub(crate) fn cached_launch_args(
 #[cfg(test)]
 #[path = "play_cache_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_cache_replay_prop_test.rs"]
+mod replay_prop_tests;
