@@ -149,6 +149,7 @@
 	import {
 		claimPlay,
 		playArgsFor,
+		playedRecord,
 		playMode,
 		playQuality,
 		recordPlayed,
@@ -178,6 +179,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
+		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
@@ -2079,7 +2081,10 @@
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
-				version
+				version,
+				// The click may take this warm's session: it answers for the
+				// guessed card's row as the click would.
+				guessRow: guessRow(fromGuess, fromRow)
 			});
 			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
 				playStream(args, emit, signal)
@@ -2138,7 +2143,8 @@
 			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
-			version
+			version,
+			guessRow: guessRow(guess, row)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2204,17 +2210,26 @@
 			// is the clicked show's even when the viewer has moved on.
 			// The tracker mirror is renderer-driven — the backend is
 			// stateless — and a guessed match writes nothing to the
-			// user's trackers.
+			// user's trackers unless its play landed on the card's own
+			// listing.
 			// The episode the session plays: the request may have named it
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, targetEp);
+			// A guess whose play landed on the card's own listing is recorded
+			// and mirrored as a play from the show's page is.
+			const record = playedRecord(
+				{ ...playArgs, episode: String(played) },
+				owner.showId,
+				guess,
+				outcome.session
+			);
 			recordPlayed(
 				{
-					args: { ...playArgs, episode: String(played) },
+					args: record.args,
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: !guess,
+					mirror: record.mirror,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }

@@ -28,6 +28,7 @@ import {
 	type PlayArgs,
 	type VersionKind
 } from '$lib/api';
+import { guessBinds, recordableId } from './play-origin';
 
 /** A play's claim on the show and the route visit it was started for. */
 export interface PlayOwner {
@@ -110,21 +111,24 @@ export function playArgsFor(input: {
 	if (input.kitsuId !== undefined) args.kitsu_id = input.kitsuId;
 	if (input.prefetch) args.prefetch = true;
 	if (input.version) args.version = input.version;
+	if (input.guessRow) args.guess_row = input.guessRow;
 	return args;
 }
 
 /** What a session's play records: `args` carrying the show's Kitsu id
- *  when the play may record it, and whether it is mirrored to the
- *  trackers. */
+ *  when the play may record it — a session no guess opened, or a
+ *  guessed one whose play landed on the card's own listing
+ *  (`guessBinds` in `./play-origin`) — and whether it is mirrored to
+ *  the trackers, which is the same answer. */
 export function playedRecord(
 	args: PlayArgs,
 	showId: string,
 	guess: boolean,
 	session: { own_listing?: boolean }
 ): { args: PlayArgs; mirror: boolean } {
-	void showId;
-	void session;
-	return { args, mirror: !guess };
+	const binds = guessBinds(guess, session);
+	const kitsuId = recordableId(showId, !binds);
+	return { args: kitsuId ? { ...args, kitsu_id: kitsuId } : args, mirror: binds };
 }
 
 /** The audio a play asks for: anything but "dub" reads as sub. */
