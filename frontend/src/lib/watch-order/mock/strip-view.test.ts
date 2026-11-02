@@ -80,6 +80,49 @@ describe('franchiseSummary', () => {
 		expect(ids(franchiseSummary(run('fate')).posters)).toEqual(['6028', '4788', '6928']);
 		expect(ids(franchiseSummary(run('monogatari')).posters)).toEqual(['3919', '49128', '6546']);
 	});
+
+	it('fans only entries that have a poster, and none when no entry has one', () => {
+		const fate = run('fate');
+		const blank = (e: MockEntry): MockEntry => ({ ...e, poster: null });
+		const noFirst: MockRun = {
+			...fate,
+			entries: fate.entries.map((e) => (e.id === fate.nameId ? blank(e) : e))
+		};
+		expect(ids(franchiseSummary(noFirst).posters)).toEqual(['4788', '6928', '7658']);
+		const none: MockRun = {
+			...fate,
+			entries: fate.entries.map(blank),
+			versions: fate.versions.map(blank),
+			films: fate.films.map(blank),
+			sides: fate.sides.map(blank),
+			recaps: fate.recaps.map(blank)
+		};
+		expect(franchiseSummary(none).posters).toEqual([]);
+	});
+});
+
+describe('stripView in release order', () => {
+	it("puts every Monogatari entry on one numbered line, 'N of 16'", () => {
+		const mono = run('monogatari');
+		const positions = mono.entries.map((e) => stripView(mono, e.id, 'released'));
+		for (const v of positions) {
+			expect(v.total).toBe(16);
+			expect(v.position).not.toBeNull();
+			expect(v.inCycle).toBe(false);
+			expect(v.before.length).toBeLessThanOrEqual(1);
+			expect(v.after.length).toBeLessThanOrEqual(1);
+		}
+		expect(positions.map((v) => v.position).sort((a, b) => a! - b!)).toEqual(
+			Array.from({ length: 16 }, (_, i) => i + 1)
+		);
+		// Nisemonogatari is second by date.
+		expect(stripView(mono, '6546', 'released')).toMatchObject({ position: 2, total: 16 });
+	});
+
+	it('gives no total in link order, where the run is a loop', () => {
+		const mono = run('monogatari');
+		for (const e of mono.entries) expect(stripView(mono, e.id, 'linked').total).toBeNull();
+	});
 });
 
 describe('watchingFor', () => {

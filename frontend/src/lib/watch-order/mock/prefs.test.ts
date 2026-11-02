@@ -52,6 +52,29 @@ describe('watch-order mockup prefs', () => {
 		expect(p).toMatchObject({ wording: 'watch', cta: 'stack', resume: 'sentence', strip: 'rail' });
 	});
 
+	it("starts the third round on the maintainer's poster stack, centred in the footer, with every poster", () => {
+		expect(parseMockPrefs(null)).toMatchObject({
+			cta: 'stack',
+			stackHover: 'surface',
+			footer: 'center',
+			stackPosters: '3'
+		});
+	});
+
+	it("keeps the third round's choices", () => {
+		for (const [stackHover, footer, stackPosters] of [
+			['underline', 'axis', '2'],
+			['border', 'ends', '1'],
+			['surface', 'center', '0']
+		]) {
+			expect(parseMockPrefs(JSON.stringify({ stackHover, footer, stackPosters }))).toMatchObject({
+				stackHover,
+				footer,
+				stackPosters
+			});
+		}
+	});
+
 	it('round-trips through storage', () => {
 		const s = memory();
 		const next = { ...MOCK_PREFS_DEFAULT, enabled: true, upNext: 'still' as const };

@@ -12,6 +12,9 @@ export type StackCard =
 	| { readonly kind: 'poster'; readonly entry: MockEntry }
 	| { readonly kind: 'blank' };
 
+/** The radius, in rem, of the arc a two- or three-card fan stands on. */
+export const FAN_RADIUS_REM = 1;
+
 /** At rest, or fanned out (hover, focus, reduced motion). */
 export type FanState = 'rest' | 'open';
 
