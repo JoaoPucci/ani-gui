@@ -277,6 +277,83 @@ describe('Continue Watching card artwork', () => {
 		await until(() => look() === 'placeholder', 'the placeholder');
 	});
 
+	it('takes a held-back still over the poster it shows, in the same image', async () => {
+		// The episode's still was held back by AniList's pacing: its
+		// page comes back without one and a refill ticket, and the still
+		// lands when the ticket does.
+		const TICKET = 41;
+		let land: () => void = () => {};
+		const landed = new Promise<void>((r) => (land = r));
+		let hasLanded = false;
+		void landed.then(() => (hasLanded = true));
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json(
+					[episode(4, hasLanded ? THUMB : null)],
+					hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
+				)
+			),
+			http.post(`${API_BASE}/api/refills/wait`, async () => {
+				await landed;
+				return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+			}),
+			http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
+			...rowHandlers()
+		);
+		app = mount(HomePage, { target });
+		await until(() => imageSource() === POSTER, 'the card to settle on the poster');
+		const shown = image();
+		shown?.dispatchEvent(new Event('load'));
+		await until(() => shown?.dataset.revealed === 'fade', 'the poster to be shown');
+		const looks = watchLooks();
+
+		land();
+		await until(() => imageSource() === THUMB, 'the still to land');
+		looks.stop();
+		// The poster stays up until the still replaces it: the same
+		// element, still shown, the card never back to a skeleton.
+		expect(image()).toBe(shown);
+		expect(image()?.dataset.revealed).toBe('fade');
+		expect(looks.seen).toEqual([
+			`image | ${POSTER} | Cowboy Bebop Episode title 4`,
+			`image | ${THUMB} | Cowboy Bebop Episode title 4`
+		]);
+	});
+
+	it('takes a held-back still over the two-letter placeholder, which stays under it until shown', async () => {
+		const TICKET = 42;
+		let land: () => void = () => {};
+		const landed = new Promise<void>((r) => (land = r));
+		let hasLanded = false;
+		void landed.then(() => (hasLanded = true));
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json(
+					[episode(4, hasLanded ? THUMB : null)],
+					hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
+				)
+			),
+			http.post(`${API_BASE}/api/refills/wait`, async () => {
+				await landed;
+				return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+			}),
+			http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
+			...rowHandlers({ search: () => [show('1', 'Cowboy Bebop', null)] })
+		);
+		app = mount(HomePage, { target });
+		await until(() => look() === 'placeholder', 'the card to settle on the placeholder');
+
+		land();
+		await until(() => imageSource() === THUMB, 'the still to land');
+		// Until the still has decoded, the card still shows its initials,
+		// not a skeleton.
+		expect(artwork()?.querySelector('.look-skeleton')).toBeNull();
+		expect(artwork()?.querySelector('.resume-poster-placeholder')?.textContent).toContain('CO');
+		expect(artwork()?.hasAttribute('data-under')).toBe(true);
+		image()?.dispatchEvent(new Event('load'));
+		await until(() => image()?.dataset.revealed === 'fade', 'the still to fade in');
+	});
+
 	it('draws a card in its final look at once on a return to Home', async () => {
 		server.use(...rowHandlers());
 		app = mount(HomePage, { target });

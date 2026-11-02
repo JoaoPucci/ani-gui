@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
-import { decideLook, type CardText, type LookInputs } from './card-look';
+import {
+	decideLook,
+	offeredEpisode,
+	type CardText,
+	type LookInputs,
+	type SettledLook
+} from './card-look';
 import { createLookBook, lookKey, type RememberedCard } from './look-book';
 
 const proxy = (u: string | null) => (u ? `proxy:${u}` : null);
@@ -233,6 +239,84 @@ describe('createLookBook', () => {
 		expect(after.instant).toBe(true);
 	});
 
+	it('takes a still that lands later for the episode it settled on without one', () => {
+		const book = createLookBook(proxy, new Map());
+		const m = ref('1');
+		const settled = book.look('a', 'a|1', inputs({ match: m, episode: ep(null) }));
+		expect(settled.look?.image?.src).toBe('proxy:https://img/1.jpg');
+		// A still AniList's pacing held back lands on the same episode.
+		const landed = book.look('a', 'a|1', inputs({ match: m, episode: ep('https://t/1.jpg') }));
+		expect(landed.look).toEqual({
+			image: { src: 'proxy:https://t/1.jpg', fallback: 'proxy:https://img/1.jpg' },
+			matchId: '1',
+			episode: 4
+		});
+		expect(landed.landedOver).toEqual(settled.look);
+		expect(landed.instant).toBe(false);
+	});
+
+	it('takes a landed still after settling at the cap, once the details had none', () => {
+		const book = createLookBook(proxy, new Map());
+		const m = ref('1');
+		book.look('a', 'a|1', inputs({ match: m, capReached: true }));
+		const details = book.look(
+			'a',
+			'a|1',
+			inputs({ match: m, capReached: true, episode: ep(null) })
+		);
+		expect(details.look?.image?.src).toBe('proxy:https://img/1.jpg');
+		const landed = book.look(
+			'a',
+			'a|1',
+			inputs({ match: m, capReached: true, episode: ep('https://t/1.jpg') })
+		);
+		expect(landed.look?.image?.src).toBe('proxy:https://t/1.jpg');
+	});
+
+	it('takes a landed still over the two-letter placeholder, which stays under it', () => {
+		const book = createLookBook(proxy, new Map());
+		const m = ref('1', null);
+		const settled = book.look('a', 'a|1', inputs({ match: m, episode: ep(null) }));
+		expect(settled.look?.image).toBeNull();
+		expect(settled.landedOver).toBeNull();
+		const landed = book.look('a', 'a|1', inputs({ match: m, episode: ep('https://t/1.jpg') }));
+		expect(landed.look?.image).toEqual({ src: 'proxy:https://t/1.jpg', fallback: null });
+		expect(landed.landedOver?.image).toBeNull();
+	});
+
+	it('keeps the still it shows when another one turns up, and never drops it', () => {
+		const book = createLookBook(proxy, new Map());
+		const m = ref('1');
+		const shown = book.look('a', 'a|1', inputs({ match: m, episode: ep('https://t/1.jpg') }));
+		const other = book.look('a', 'a|1', inputs({ match: m, episode: ep('https://t/2.jpg') }));
+		expect(other.look).toEqual(shown.look);
+		const gone = book.look('a', 'a|1', inputs({ match: m, episode: ep(null) }));
+		expect(gone.look).toEqual(shown.look);
+	});
+
+	it('takes a still landing over a remembered look only once this visit has seen it without one', () => {
+		const remembered = new Map<string, RememberedCard>();
+		createLookBook(proxy, remembered).look('a', 'a|1', inputs({ match: ref('1'), episode: null }));
+		const book = createLookBook(proxy, remembered);
+		const drawn = book.look('a', 'a|1', inputs());
+		// The live details already carry a still: that is no landing, the
+		// card keeps what it drew.
+		expect(
+			book.look('a', 'a|1', inputs({ match: ref('1'), episode: ep('https://t/1.jpg') })).look
+		).toEqual(drawn.look);
+		// Another visit, remembered on the poster again: this time the
+		// live details come without a still, and the still lands after.
+		const seeded = new Map<string, RememberedCard>();
+		createLookBook(proxy, seeded).look('a', 'a|1', inputs({ match: ref('1'), episode: null }));
+		const again = createLookBook(proxy, seeded);
+		expect(again.look('a', 'a|1', inputs()).look?.image?.src).toBe('proxy:https://img/1.jpg');
+		again.look('a', 'a|1', inputs({ match: ref('1'), episode: ep(null) }));
+		expect(
+			again.look('a', 'a|1', inputs({ match: ref('1'), episode: ep('https://t/1.jpg') })).look
+				?.image?.src
+		).toBe('proxy:https://t/1.jpg');
+	});
+
 	it('keeps each card to itself', () => {
 		const book = createLookBook(proxy, new Map());
 		book.look('a', 'a|1', inputs({ match: ref('1'), capReached: true }));
@@ -315,15 +399,57 @@ function identity(s: LookInputs): string {
 	return s.match === undefined ? 'unmatched' : `${s.match?.id ?? 'none'}|${s.offered}`;
 }
 
+/** A still is an episode's thumbnail, not the show's poster. */
+const isStill = (src: string | undefined) => src?.startsWith('proxy:https://t/') ?? false;
+
+/**
+ * Whether `after` is `before` with a still that landed for the episode
+ * the card offers: the details for that episode had none and now have
+ * one, and the card had none on show.
+ */
+function stillLanded(
+	before: SettledLook | null,
+	after: SettledLook | null,
+	was: LookInputs,
+	now: LookInputs
+): boolean {
+	if (before === null || after === null || isStill(before.image?.src)) return false;
+	if (!isStill(after.image?.src)) return false;
+	const had = offeredEpisode(was.episode, was.offered, was.episodeFor);
+	const has = offeredEpisode(now.episode, now.offered, now.episodeFor);
+	return (
+		had !== undefined &&
+		!had?.thumbnail?.original &&
+		after.image?.src === proxy(has?.thumbnail?.original ?? null)
+	);
+}
+
 describe('card look properties', () => {
-	it('a card never changes artwork while it offers the same show and episode', () => {
+	it('a card never changes artwork while it offers the same show and episode, but to take a still that lands', () => {
 		fc.assert(
 			fc.property(fc.array(eventArb, { maxLength: 12 }), (events) => {
 				const { looks, states } = drive(events);
 				for (let i = 1; i < looks.length; i++) {
 					if (looks[i - 1].look === null) continue;
 					if (identity(states[i - 1]) !== identity(states[i])) continue;
+					if (stillLanded(looks[i - 1].look, looks[i].look, states[i - 1], states[i])) continue;
 					expect(looks[i].look).toEqual(looks[i - 1].look);
+				}
+			})
+		);
+	});
+
+	it('a card takes a still only for the episode it offers, in place of a look without one', () => {
+		fc.assert(
+			fc.property(fc.array(eventArb, { maxLength: 12 }), (events) => {
+				const { looks, states } = drive(events);
+				for (let i = 1; i < looks.length; i++) {
+					const before = looks[i - 1].look;
+					const after = looks[i].look;
+					if (before === null || identity(states[i - 1]) !== identity(states[i])) continue;
+					if (JSON.stringify(before) === JSON.stringify(after)) continue;
+					expect(stillLanded(before, after, states[i - 1], states[i])).toBe(true);
+					expect(looks[i].landedOver).toEqual(before);
 				}
 			})
 		);
@@ -404,8 +530,11 @@ describe('card look properties', () => {
 					(e) =>
 						(e.kind !== 'match' || e.value?.id === '1') && (e.kind !== 'offer' || e.value === 4)
 				);
-				const { looks } = drive(agreeing, createLookBook(proxy, remembered));
-				for (const l of looks) expect(l.look).toEqual(looks[0].look);
+				const { looks, states } = drive(agreeing, createLookBook(proxy, remembered));
+				for (let i = 1; i < looks.length; i++) {
+					if (stillLanded(looks[i - 1].look, looks[i].look, states[i - 1], states[i])) continue;
+					expect(looks[i].look).toEqual(looks[i - 1].look);
+				}
 			})
 		);
 	});

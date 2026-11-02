@@ -52,6 +52,9 @@ export function revealWhenDecoded(img: RevealTarget, options: RevealOptions = {}
 	img.addEventListener('error', fail);
 	if (img.complete && img.naturalWidth > 0) reveal('instant');
 	return {
+		update(next: RevealOptions) {
+			void next;
+		},
 		destroy() {
 			live = false;
 			img.removeEventListener('load', onLoad);

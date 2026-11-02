@@ -78,6 +78,27 @@ describe('revealWhenDecoded', () => {
 		expect(img.dataset.revealed).toBeUndefined();
 	});
 
+	it('reports a failure to the latest options when the image is given another source', () => {
+		const img = fakeImage();
+		const first = vi.fn();
+		const second = vi.fn();
+		const action = revealWhenDecoded(img, { onError: first });
+		action.update({ onError: second });
+		img.fire('error');
+		expect(first).not.toHaveBeenCalled();
+		expect(second).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps a shown image shown while its next source loads', async () => {
+		const img = fakeImage({ complete: true, naturalWidth: 320 });
+		const action = revealWhenDecoded(img);
+		expect(img.dataset.revealed).toBe('instant');
+		action.update({});
+		img.fire('load');
+		await settle();
+		expect(img.dataset.revealed).toBe('instant');
+	});
+
 	it('does nothing once the card is gone', async () => {
 		const img = fakeImage({ decode: () => Promise.resolve() });
 		const onError = vi.fn();

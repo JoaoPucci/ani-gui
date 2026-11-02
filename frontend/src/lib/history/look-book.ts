@@ -27,6 +27,8 @@ export interface CardLookState {
 	/** The look and text were known when the card first drew, so they
 	 *  draw at once; an image the browser has yet to load still fades in. */
 	instant: boolean;
+	/** The look a still that landed later took the place of; null otherwise. */
+	landedOver: SettledLook | null;
 }
 
 /** The cards' remembered final looks, kept across visits to Home. */
@@ -97,11 +99,11 @@ export function createLookBook(proxy: ProxyUrl, remembered: Map<string, Remember
 				// until the live details catch up, so the line does not
 				// step back to "Episode N" in between.
 				const text = pin.instant && !detailsIn(inputs) ? pin.text : (inputs.text ?? pin.text);
-				return { look: pin.look, text, instant: pin.instant };
+				return { look: pin.look, text, instant: pin.instant, landedOver: null };
 			}
 			const look = decideLook(inputs, proxy);
 			if (look) pins.set(entryId, { look, text: null, instant: false });
-			return { look, text: inputs.text, instant: false };
+			return { look, text: inputs.text, instant: false, landedOver: null };
 		}
 	};
 }
