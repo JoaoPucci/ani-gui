@@ -1,10 +1,4 @@
 {
-	"test_section_title": "Diagnostics",
-	"test_title": "Test stream",
-	"test_hint": "Paste a public HLS (.m3u8) or MP4 URL to verify hls.js + the streaming proxy path. Bypasses the search → session resolution chain.",
-	"test_submit_button": "Play",
-	"test_url_placeholder": "https://example.com/master.m3u8",
-	"test_label": "Stream URL",
 	"error_no_session": "No session in URL — return to the show page and pick an episode.",
 	"error_stream_headline": "Can't play this stream",
 	"error_stream_body": "The video link may have expired. Reload to try again.",
@@ -134,9 +128,6 @@
 	"error_playback_technical": "Playback error: {detail}",
 	"error_hls_unsupported": "HLS playback is not supported in this webview.",
 	"error_no_show_id": "The address is missing the show's id.",
-	"test_error_hls_fatal": "HLS fatal: {detail}",
-	"test_error_play_failed": "Play failed: {detail}",
-	"test_error_setup_failed": "Setup failed: {detail}",
 	"error_load_failed": "Couldn't load this title. {reason}",
 	"play_failure_source_error": "The streaming source answered with an error. Try again later."
 }

@@ -1702,11 +1702,11 @@
 			<section class="masthead">
 				<div class="poster-frame poster-skeleton"></div>
 				<div class="masthead-text">
-					<div class="line line-skeleton" style="inline-size: 70%; block-size: 2.5rem;"></div>
-					<div class="line line-skeleton" style="inline-size: 40%; block-size: 1rem;"></div>
-					<div class="line line-skeleton" style="inline-size: 90%; block-size: 0.8rem;"></div>
-					<div class="line line-skeleton" style="inline-size: 80%; block-size: 0.8rem;"></div>
-					<div class="line line-skeleton" style="inline-size: 60%; block-size: 0.8rem;"></div>
+					<div class="line line-skeleton w-70 h-2_5rem"></div>
+					<div class="line line-skeleton w-40 h-1rem"></div>
+					<div class="line line-skeleton w-90 h-0_8rem"></div>
+					<div class="line line-skeleton w-80 h-0_8rem"></div>
+					<div class="line line-skeleton w-60 h-0_8rem"></div>
 				</div>
 			</section>
 		</div>
@@ -3587,5 +3587,33 @@
 		font-size: var(--type-body);
 		color: var(--bone-300);
 		max-inline-size: 60ch;
+	}
+
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.h-0_8rem {
+		block-size: 0.8rem;
+	}
+	.line.h-1rem {
+		block-size: 1rem;
+	}
+	.line.h-2_5rem {
+		block-size: 2.5rem;
+	}
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-60 {
+		inline-size: 60%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
+	}
+	.line.w-80 {
+		inline-size: 80%;
+	}
+	.line.w-90 {
+		inline-size: 90%;
 	}
 </style>

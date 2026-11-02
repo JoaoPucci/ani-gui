@@ -135,7 +135,7 @@ Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/ar
 - Every user-visible string goes through Paraglide. The `no-hardcoded-strings` ESLint rule enforces this; it allowlists only `aria-*`, `data-testid`, and dev-only strings.
 - Use logical CSS properties (`margin-inline-start`, not `margin-left`) so adding RTL locales later is translation-only.
 - No DOM-snapshot tests. Assert behavior: rendered text via `i18n.m`, role queries, user events.
-- hls.js is used as a singleton inside `Player.svelte`; no `new Hls()` outside that component.
+- hls.js is used as a singleton inside the player page (`routes/play/[id]/+page.svelte`); no `new Hls()` outside it.
 
 ## 7. Design direction guard rails
 

@@ -380,8 +380,8 @@
 			{#each Array.from({ length: 12 }, (_, k) => k) as i (i)}
 				<li class="card card-skeleton" style="--i: {i}">
 					<div class="poster poster-skeleton"></div>
-					<div class="line line-skeleton" style="inline-size: 70%"></div>
-					<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+					<div class="line line-skeleton w-70"></div>
+					<div class="line line-skeleton line-thin w-40"></div>
 				</li>
 			{/each}
 		</ul>
@@ -483,8 +483,8 @@
 				{#each Array.from({ length: 12 }, (_, k) => k) as k (k)}
 					<li class="card card-skeleton" style="--i: {k}">
 						<div class="poster poster-skeleton"></div>
-						<div class="line line-skeleton" style="inline-size: 70%"></div>
-						<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+						<div class="line line-skeleton w-70"></div>
+						<div class="line line-skeleton line-thin w-40"></div>
 					</li>
 				{/each}
 			</ul>
@@ -1056,5 +1056,15 @@
 	}
 	.chip-clear {
 		border-style: dashed;
+	}
+
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
 	}
 </style>

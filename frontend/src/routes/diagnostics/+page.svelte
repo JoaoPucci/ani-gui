@@ -192,14 +192,6 @@
 			>{m.diagnostics_open_search_link_hint()}
 		</p>
 	</section>
-
-	<section>
-		<h2>{m.diagnostics_section_test_stream()}</h2>
-		<p>
-			<a href={resolve('/play')}>{m.diagnostics_open_test_stream_link_text()}</a
-			>{m.diagnostics_open_test_stream_link_hint()}
-		</p>
-	</section>
 </main>
 
 <style>

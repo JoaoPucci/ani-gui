@@ -27,6 +27,7 @@ const {
   protocol,
   safeStorage,
   screen,
+  session,
   shell,
 } = require("electron");
 const { spawn } = require("node:child_process");
@@ -56,9 +57,27 @@ const {
   openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
+const {
+  devOriginFrom,
+  policedResponse,
+  rendererPolicy,
+  withPolicyHeader,
+} = require("./lib/renderer-csp.cjs");
+const { bundleTarget } = require("./lib/bundle-path.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
+
+// The renderer's content security policy: the header half, written for
+// this launch from the backend's handshake (lib/renderer-csp.cjs); the
+// bundle's <meta> carries the script half. Until a window is created
+// against a handshake, the policy names no loopback origin at all —
+// fail closed, never a wildcard.
+const DEV_ORIGIN = IS_DEV ? devOriginFrom(VITE_DEV_URL) : null;
+let policyBackend = null;
+function rendererPolicyNow() {
+  return rendererPolicy({ backend: policyBackend, devOrigin: DEV_ORIGIN });
+}
 
 // Dev builds run against a separate data profile so they never read or
 // migrate the installed app's data. The backend resolves its config /
@@ -358,6 +377,8 @@ function signalBackendGroup(pid) {
 }
 
 async function createWindow(backend) {
+  // The page this window loads is policed against this backend's lanes.
+  policyBackend = backend;
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
   // work-area size avoids the "open at 1280×800, then animate to
@@ -537,35 +558,53 @@ async function createWindow(backend) {
  * Resolution rules:
  *   - `/_app/...` and other extensioned paths → file in the bundle.
  *   - any extensionless path → `index.html` (SvelteKit SPA fallback).
- *   - 404 if the resolved path escapes the bundle dir (defence in
- *     depth — the URL parser shouldn't permit `..` traversal, but
- *     it's cheap to check).
+ *   - 403 if the resolved path escapes the bundle dir, 400 if it does
+ *     not decode (lib/bundle-path.cjs).
  */
 function registerAppProtocol() {
   const bundleDir = path.join(process.resourcesPath, "frontend", "build");
   protocol.handle(APP_SCHEME, async (request) => {
-    const url = new URL(request.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (!pathname || pathname === "/") pathname = "/index.html";
-    const target = path.normalize(path.join(bundleDir, pathname));
-    if (!target.startsWith(bundleDir)) {
-      return new Response("forbidden", { status: 403 });
-    }
-    try {
-      await fs.promises.access(target);
-      return net.fetch(pathToFileURL(target).toString());
-    } catch {
-      // SPA fallback — anything routerly (no file extension)
-      // hands back the index so SvelteKit's client router takes
-      // over. A real missing asset (image, css) returns 404.
-      if (!path.extname(pathname)) {
-        return net.fetch(
-          pathToFileURL(path.join(bundleDir, "index.html")).toString(),
-        );
-      }
-      return new Response("not found", { status: 404 });
-    }
+    // Every answer carries the renderer's policy — the index, the SPA
+    // fallback, every asset and every error — so no path, however
+    // spelled, serves a document without it (lib/renderer-csp.cjs).
+    const target = bundleTarget(bundleDir, new URL(request.url).pathname, path);
+    return policedResponse(await serveBundlePath(bundleDir, target), rendererPolicyNow());
   });
+}
+
+async function serveBundlePath(bundleDir, target) {
+  if (target.kind === "bad") return new Response("bad request", { status: 400 });
+  if (target.kind === "forbidden") return new Response("forbidden", { status: 403 });
+  try {
+    await fs.promises.access(target.file);
+    return await net.fetch(pathToFileURL(target.file).toString());
+  } catch {
+    // SPA fallback — anything routerly (no file extension)
+    // hands back the index so SvelteKit's client router takes
+    // over. A real missing asset (image, css) returns 404.
+    if (target.route) {
+      return net.fetch(pathToFileURL(path.join(bundleDir, "index.html")).toString());
+    }
+    return new Response("not found", { status: 404 });
+  }
+}
+
+/**
+ * Development: the Vite server's main-frame responses get the header
+ * half of the policy, appended to the policy SvelteKit's dev server
+ * sends itself. Electron keeps one onHeadersReceived listener per
+ * session; this is the default session's only one.
+ */
+function policeDevServer() {
+  if (!DEV_ORIGIN) {
+    console.error(`[main] VITE_DEV_URL ${VITE_DEV_URL} is not a plain http(s) origin; no policy header`);
+    return;
+  }
+  session.defaultSession.webRequest.onHeadersReceived(
+    { urls: [`${DEV_ORIGIN}/*`] },
+    (details, callback) =>
+      callback(withPolicyHeader(details, { devOrigin: DEV_ORIGIN, policy: rendererPolicyNow() })),
+  );
 }
 
 // Window controls for the renderer's custom (frameless) titlebar.
@@ -961,7 +1000,8 @@ app.whenReady().then(() =>
       // the platform menu was just adding a strip of system chrome the
       // app doesn't use.
       Menu.setApplicationMenu(null);
-      if (!IS_DEV) registerAppProtocol();
+      if (IS_DEV) policeDevServer();
+      else registerAppProtocol();
       return spawnBackend();
     },
     createWindow: async (backend) => {

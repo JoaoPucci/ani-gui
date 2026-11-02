@@ -1,10 +1,4 @@
 {
-	"test_section_title": "Диагностика",
-	"test_title": "Тестовый поток",
-	"test_hint": "Вставьте публичный HLS (.m3u8) или MP4 URL, чтобы проверить hls.js и стриминг-прокси. Минует цепочку поиск → сессия.",
-	"test_submit_button": "Запустить",
-	"test_url_placeholder": "https://example.com/master.m3u8",
-	"test_label": "URL потока",
 	"error_no_session": "В URL нет сессии — вернитесь на страницу тайтла и выберите эпизод.",
 	"error_stream_headline": "Не удаётся воспроизвести этот поток",
 	"error_stream_body": "Возможно, ссылка на видео устарела. Нажмите «Перезагрузить», чтобы попробовать снова.",
@@ -135,9 +129,6 @@
 	"error_playback_technical": "Ошибка воспроизведения: {detail}",
 	"error_hls_unsupported": "Этот webview не поддерживает воспроизведение HLS.",
 	"error_no_show_id": "В адресе нет id тайтла.",
-	"test_error_hls_fatal": "Критическая ошибка HLS: {detail}",
-	"test_error_play_failed": "Не удалось воспроизвести: {detail}",
-	"test_error_setup_failed": "Ошибка настройки: {detail}",
 	"error_load_failed": "Не удалось загрузить тайтл. {reason}",
 	"play_failure_source_error": "Источник видео ответил ошибкой. Попробуйте позже."
 }

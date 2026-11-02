@@ -1005,9 +1005,9 @@
 		</div>
 		<div class="hero-body">
 			<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
-			<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
-			<div class="line line-skel" style="inline-size: 70%;"></div>
-			<div class="line line-skel" style="inline-size: 60%;"></div>
+			<div class="line line-skel w-50 h-3rem"></div>
+			<div class="line line-skel w-70"></div>
+			<div class="line line-skel w-60"></div>
 		</div>
 	{/if}
 </section>
@@ -1371,8 +1371,8 @@
 		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
 			<div class="skel-card" style="--i: {i};">
 				<div class="skel-poster"></div>
-				<div class="line line-skel" style="inline-size: 80%; block-size: 0.7rem;"></div>
-				<div class="line line-skel" style="inline-size: 40%; block-size: 0.6rem;"></div>
+				<div class="line line-skel w-80 h-0_7rem"></div>
+				<div class="line line-skel w-40 h-0_6rem"></div>
 			</div>
 		{/each}
 	</Strip>
@@ -1393,8 +1393,8 @@
 		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
 			<div class="skel-card" style="--i: {i};">
 				<div class="skel-poster"></div>
-				<div class="line line-skel" style="inline-size: 80%; block-size: 0.7rem;"></div>
-				<div class="line line-skel" style="inline-size: 40%; block-size: 0.6rem;"></div>
+				<div class="line line-skel w-80 h-0_7rem"></div>
+				<div class="line line-skel w-40 h-0_6rem"></div>
 			</div>
 		{/each}
 	</Strip>
@@ -2175,5 +2175,32 @@
 
 	.resume-card-loading .resume-poster-placeholder {
 		animation: pulse 1.6s var(--ease-in-out) infinite;
+	}
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.h-0_6rem {
+		block-size: 0.6rem;
+	}
+	.line.h-0_7rem {
+		block-size: 0.7rem;
+	}
+	.line.h-3rem {
+		block-size: 3rem;
+	}
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-50 {
+		inline-size: 50%;
+	}
+	.line.w-60 {
+		inline-size: 60%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
+	}
+	.line.w-80 {
+		inline-size: 80%;
 	}
 </style>
