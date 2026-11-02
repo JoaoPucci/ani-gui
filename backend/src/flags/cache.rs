@@ -44,22 +44,42 @@ pub struct CacheEntry {
 /// not dated after `now`, and no older than `window`.
 #[must_use]
 pub fn is_fresh(fetched_at: u64, now: u64, window: Duration) -> bool {
-    let _ = (fetched_at, now, window);
-    false
+    now.checked_sub(fetched_at)
+        .is_some_and(|age| age <= window.as_secs())
 }
+
+/// The largest cache file read: a document at its cap, plus room for
+/// the envelope and the escaping a re-serialised document can add.
+const MAX_FILE_BYTES: u64 = 4 * MAX_BYTES as u64;
 
 /// Read the cache file. `None` when it is missing, unreadable, larger
 /// than a document plus its envelope could be, or not an entry.
 pub async fn read(path: &Path) -> Option<CacheEntry> {
-    let _ = path;
-    None
+    let meta = tokio::fs::metadata(path).await.ok()?;
+    if meta.len() > MAX_FILE_BYTES {
+        return None;
+    }
+    let bytes = tokio::fs::read(path).await.ok()?;
+    serde_json::from_slice(&bytes).ok()
 }
 
 /// Replace the cache file with `entry`, through a temporary file so a
 /// launch ended mid-write never leaves a torn one. A failure is
 /// logged and otherwise ignored: the cache is a convenience.
 pub async fn write(path: &Path, entry: &CacheEntry) {
-    let _ = (path, entry, MAX_BYTES);
+    if let Err(error) = try_write(path, entry).await {
+        tracing::warn!(target: "flags", %error, path = %path.display(), "could not cache the flags file");
+    }
+}
+
+async fn try_write(path: &Path, entry: &CacheEntry) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let bytes = serde_json::to_vec(entry)?;
+    let tmp = path.with_extension("json.tmp");
+    tokio::fs::write(&tmp, &bytes).await?;
+    tokio::fs::rename(&tmp, path).await
 }
 
 #[cfg(test)]
