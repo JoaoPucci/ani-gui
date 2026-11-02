@@ -58,6 +58,8 @@ function splashWindowOptions() {
  *   the boot failed.
  */
 function splashController({ createWindow, logError }) {
+  const state = fresh();
+  current = state;
   let win = null;
   let suppressed = false;
   // Set once the boot is past the splash: shown its window, or failed.
@@ -79,6 +81,7 @@ function splashController({ createWindow, logError }) {
       // screen (splash.js falls back to a timer), so the opening plays
       // once the window manager has mapped the window.
       splash.once("show", () => {
+        state.shown = true;
         Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL)).catch((err) =>
           logError("[main] could not tell the splash it is shown:", err),
         );
@@ -90,26 +93,40 @@ function splashController({ createWindow, logError }) {
         if (win === splash) win = null;
       });
       win = splash;
+      state.opened = true;
       Promise.resolve(splash.loadFile(SPLASH_PAGE)).catch((err) =>
         logError("[main] the splash failed to load:", err),
       );
     },
     close() {
       over = true;
-      if (alive()) win.close();
+      if (alive()) {
+        state.closed = true;
+        win.close();
+      }
       win = null;
     },
     suppress() {
       over = true;
       suppressed = true;
+      state.suppressed = true;
       if (alive()) win.hide();
     },
   };
 }
 
-/** What the most recently made controller's splash went through. Stub. */
+/** What the most recently made controller's splash went through:
+ *  opened, shown on screen, closed after the boot's window showed, or
+ *  suppressed by a failed boot. Read by the end-to-end suite, which
+ *  cannot catch the splash on screen in a test run's fast start. */
+let current = fresh();
+
+function fresh() {
+  return { opened: false, shown: false, closed: false, suppressed: false };
+}
+
 function lastSplashState() {
-  return {};
+  return { ...current };
 }
 
 module.exports = {
