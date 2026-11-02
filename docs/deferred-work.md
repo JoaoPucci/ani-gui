@@ -1097,14 +1097,6 @@ Three things are worth knowing before starting:
 
 ## Housekeeping
 
-- **The Windows dev launcher re-stages ffmpeg on every launch.** The
-  launcher runs `fetch-windows-deps.mjs` each time, and staging always
-  re-hashes the cached archive and re-extracts and copies the binary,
-  which is cheap for yt-dlp and the transport but for ffmpeg means
-  about 90 MB hashed and 87 MB extracted and copied up to three times
-  before Electron starts. Skipping a dep whose staged copies already
-  match would remove it; packaging is unaffected.
-
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
   a script ever needs it.
 - **`paths::logs_dir()` has no consumer.** The helper and its doc

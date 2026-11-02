@@ -185,9 +185,10 @@ where
     std::fs::create_dir_all(&dest).map_err(|_| AniError::Io)?;
 
     // The bundled-binary directory joins the search ahead of PATH —
-    // packaged builds ship their own yt-dlp (Windows: ffmpeg too),
-    // and the bundle is the tool the package validated, exactly as
-    // the curl resolver ranks its bundled directory first.
+    // packaged builds ship their own yt-dlp (and the Windows installer
+    // downloads ffmpeg into it), and the bundle is the tool the package
+    // validated, exactly as the curl resolver ranks its bundled
+    // directory first.
     let path_env = tool_search_path(state, path_env);
     let path_env = path_env.as_str();
 
@@ -1854,7 +1855,8 @@ where
 /// The downloader's tool-search path: the bundled-binary directory
 /// (when packaging ships one) ahead of the caller's PATH. Also what
 /// the spawned tool itself sees as PATH, so a bundled yt-dlp finds
-/// the bundled ffmpeg for its own repackaging.
+/// the ffmpeg beside it — on Windows, the one the installer downloads
+/// into that directory — for its own repackaging.
 fn tool_search_path(state: &AppState, path_env: &str) -> String {
     match &state.bundled_bin {
         Some(dir) => std::env::join_paths(

@@ -24,7 +24,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, bundled in the Windows installer, system PATH on AppImage). |
+| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, downloaded by the Windows installer at install time, system PATH on AppImage). |
 | **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched — resuming where you left it, or from its start if you left in its first 15 seconds — unless you finished it (its last 90 seconds, or to its end), when it goes on to the next episode. It also goes on when the app has no record of that episode: points are kept for the 200 most recently played episodes, in local storage that can be unavailable. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
@@ -57,9 +57,9 @@ Platform support tiers:
 
 NSIS installer (`.exe`). Run it; it installs per-user by default and creates Start menu and desktop shortcuts.
 
-The installer carries everything the app runs — the impersonating transport, yt-dlp, and ffmpeg — so it needs no network while it installs, and an update replaces them with the rest of the app. The bundled copies are the ones the app uses, even when you have your own ffmpeg or yt-dlp on `PATH`.
+The installer carries the impersonating transport and yt-dlp. It downloads ffmpeg (a ~90 MB zip) while it installs, so the download feature works out of the box without the installer carrying it. If the download fails — offline, say — the install still completes, playback works, and running the installer again online fetches it. Updates keep the downloaded ffmpeg and download it again only when a release pins a different ffmpeg version, so an update needs no network. If the installer has not placed a copy and an `ffmpeg.exe` is already on `PATH`, it skips the download and the app uses that one; a copy the installer placed is the one the app uses, even when you have your own on `PATH`.
 
-The installer redistributes ffmpeg 7.1.1 as built by gyan.dev ([7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1)), under the GNU GPL v3. FFmpeg's source code for that version is at [n7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1); the build description installed in `resources\licenses\ffmpeg.txt` names the external libraries the build links. The license texts of the bundled tools, with the notices of the libraries built into them, are installed in `resources\licenses\` in the install directory.
+The installer downloads ffmpeg from gyan.dev's [7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1); FFmpeg's source code for that version is at [n7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1). ani-gui does not redistribute it. The license texts of the tools the installer carries, with the notices of the libraries built into them, are installed in `resources\licenses\` in the install directory.
 
 </details>
 
@@ -107,7 +107,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd frontend
    pnpm dev
    ```
-   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp, ffmpeg) next to it, so playback and downloads work — the first launch downloads ffmpeg's ~90 MB zip into a cache:
+   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp) next to it, so playback works:
    ```sh
    cd electron
    pnpm dev

@@ -12,7 +12,7 @@ piece to land was the bar the proposal sets for reachability — a
 provider counts only once both packaged platforms have pulled a
 stream through it — and the packaged Windows build has since made
 that run: with anidb.app down, the installed v0.14.0 build played,
-completed a download (riding the ffmpeg that installer fetched at
+completed a download (riding the ffmpeg the installer fetches at
 install time), and handed off to an external player, all through
 hianime. The candidate survey describes a landscape that rots
 quickly — re-verify every claim in it before building on one.
