@@ -101,7 +101,7 @@
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import RowAction from '$lib/components/RowAction.svelte';
 	import RowStyleSwitch from '$lib/rows/RowStyleSwitch.svelte';
-	import { loadRowPrefs, saveRowPrefs, type RowPrefs } from '$lib/rows/prefs';
+	import { actionShape, loadRowPrefs, saveRowPrefs, type RowPrefs } from '$lib/rows/prefs';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
@@ -779,6 +779,7 @@
 		saveRowPrefs(browserStorage(), next);
 	}
 	const rowSurface = $derived(rowPrefs.style === 'band' ? 'band' : 'plain');
+	const rowActionShape = $derived(actionShape(rowPrefs.style));
 
 	// One-shot TTL check after the first cached render: if any connected
 	// provider's snapshot is past the TTL, re-pull in the background.
@@ -1095,7 +1096,12 @@
 </section>
 
 {#snippet continueActions()}
-	<RowAction label={m.home_clear_history_action()} tone="quiet" onclick={openClearConfirm} />
+	<RowAction
+		label={m.home_clear_history_action()}
+		tone="quiet"
+		shape={rowActionShape}
+		onclick={openClearConfirm}
+	/>
 {/snippet}
 
 <!-- The row style switch, while the diagnostics page's toggle is on:
@@ -1386,6 +1392,7 @@
 	<RowAction
 		label={m.account_watch_later_refresh_action()}
 		icon="refresh"
+		shape={rowActionShape}
 		busy={refreshingWatchLater}
 		onclick={refreshWatchLater}
 	/>

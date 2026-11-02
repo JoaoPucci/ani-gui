@@ -68,3 +68,13 @@ export function saveRowPrefs(storage: StorageLike | null, prefs: RowPrefs): void
 		// Not persisted: this session still uses it.
 	}
 }
+
+/** How a row action is drawn in a row style: `label` is the labelled
+ *  pill, its words always shown. */
+export type RowActionShape = 'icon' | 'label';
+
+/** The shape a row's header actions take in `style`. */
+export function actionShape(style: RowStyle): RowActionShape {
+	void style;
+	return 'label';
+}

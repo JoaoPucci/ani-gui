@@ -19,18 +19,21 @@
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import type { RowActionShape } from '$lib/rows/prefs';
 
 	let {
 		label,
 		icon = null,
 		tone = 'default',
 		busy = false,
+		shape = 'label',
 		onclick
 	}: {
 		label: string;
 		icon?: 'refresh' | null;
 		tone?: 'default' | 'quiet';
 		busy?: boolean;
+		shape?: RowActionShape;
 		onclick: () => void;
 	} = $props();
 </script>
@@ -40,6 +43,7 @@
 	class="row-action"
 	class:quiet={tone === 'quiet'}
 	class:busy
+	data-shape={shape}
 	aria-disabled={busy ? 'true' : undefined}
 	onclick={() => {
 		if (!busy) onclick();
