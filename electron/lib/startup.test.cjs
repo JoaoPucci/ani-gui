@@ -24,6 +24,7 @@ const {
   loadFirstPage,
   openFirstPage,
 } = require("./startup.cjs");
+const { FLAGS_WAIT_MS, waitForLaunchFlags } = require("./launch-flags.cjs");
 
 // Electron's loadURL rejections carry the net error name as `code`.
 const loadError = (code, errno, url) =>
@@ -508,4 +509,81 @@ test("a clean boot opens the window with the backend's handshake and never exits
     logError: () => {},
   });
   assert.deepEqual(events, ["window"]);
+});
+
+test("the splash is up before the backend starts, and closes once the window is open", async () => {
+  const events = [];
+  const backend = { apiBase: "http://127.0.0.1:1" };
+  const flags = { origin: "file", flags: { a: false } };
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => {
+      events.push("spawn");
+      return backend;
+    },
+    fetchFlags: async (got) => {
+      events.push(got === backend ? "flags" : "wrong");
+      return flags;
+    },
+    createWindow: async (gotBackend, gotFlags) =>
+      events.push(gotBackend === backend && gotFlags === flags ? "window" : "wrong"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash", "spawn", "flags", "window", "close-splash"]);
+});
+
+test("a failed boot leaves the splash to the failure report, which hides it", async () => {
+  const events = [];
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake");
+    },
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    reportFailure: async () => events.push("report"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash", "stop", "report", "exit:1"]);
+});
+
+test("a splash that cannot be shown does not stop the boot", async () => {
+  const events = [];
+  await bootApp({
+    showSplash: () => {
+      throw new Error("no display for a second window");
+    },
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    createWindow: async () => events.push("window"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => events.push("logged"),
+  });
+  assert.deepEqual(events, ["logged", "window"]);
+});
+
+test("a backend that never answers for its flags holds the window back no longer than the wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const events = [];
+  const booted = bootApp({
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    fetchFlags: (backend) =>
+      waitForLaunchFlags(backend.apiBase, { fetch: () => new Promise(() => {}) }),
+    createWindow: async (_backend, flags) => events.push(`window:${JSON.stringify(flags)}`),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(FLAGS_WAIT_MS - 1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.deepEqual(events, []);
+  t.mock.timers.tick(1);
+  await booted;
+  assert.deepEqual(events, ["window:null"]);
 });

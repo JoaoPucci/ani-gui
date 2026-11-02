@@ -58,3 +58,38 @@ test("a window opened with no lanes has none, and the renderer falls back to the
   assert.equal(typeof bridge.lanes, "object");
   assert.deepEqual(Object.keys(bridge.lanes), []);
 });
+
+const flagsArg = (flags) => `--ani-gui-flags=${encodeURIComponent(JSON.stringify(flags))}`;
+
+test("the launch's flags come off their flag, frozen, with their origin", () => {
+  const bridge = exposedWith([
+    "electron",
+    "--ani-gui-api-base=http://127.0.0.1:1",
+    flagsArg({ a: false, b: "old" }),
+    "--ani-gui-flags-origin=cache",
+  ]);
+  assert.deepEqual({ ...bridge.flags }, { a: false, b: "old" });
+  assert.ok(Object.isFrozen(bridge.flags));
+  assert.equal(bridge.flagsOrigin, "cache");
+});
+
+test("a window opened without flags has none, and every flag takes its default", () => {
+  const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"]);
+  assert.deepEqual({ ...bridge.flags }, {});
+  assert.ok(Object.isFrozen(bridge.flags));
+  assert.equal(bridge.flagsOrigin, null);
+});
+
+test("a flags flag that is not a flat object of booleans and strings counts as none", () => {
+  for (const arg of [
+    "--ani-gui-flags=%7B",
+    "--ani-gui-flags=not-json",
+    flagsArg([true]),
+    flagsArg({ a: 1 }),
+    flagsArg({ a: { b: true } }),
+    flagsArg(null),
+  ]) {
+    const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1", arg]);
+    assert.deepEqual({ ...bridge.flags }, {}, arg);
+  }
+});

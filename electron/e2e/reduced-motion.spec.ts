@@ -48,7 +48,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary } from './launch';
 
 /** Two rows: the first resolves to the stubbed show and is the one
  *  deleted, so the second has a gap to close. */
@@ -83,7 +83,7 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	let rows = [...history];
 	await page.route('**/api/**', async (r) => {

@@ -20,7 +20,7 @@ import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { appInfo, emptyHistory, topRated, trending } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -66,7 +66,7 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	// One handler on the PAGE, registered after the first window is up.
 	// Routes on the context registered before the window existed were

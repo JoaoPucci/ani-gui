@@ -20,7 +20,7 @@ import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { launchPackagedApp, packagedBinary } from "./launch";
+import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -102,7 +102,7 @@ async function launchAppWithStubsOnce(
   // Block image fetches; the renderer's placeholder takes over.
   await context.route("**/api/image*", (r) => r.fulfill({ status: 503 }));
 
-  const page = await app.firstWindow();
+  const page = await appWindow(app);
   return { app, page, context };
 }
 
@@ -191,6 +191,36 @@ test("a test launch is muted", async () => {
       electronApp.commandLine.hasSwitch("mute-audio"),
     );
     expect(muted).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch takes its flags from the test, not from GitHub", async () => {
+  // The launch helper makes every launch a test run, and a test run's
+  // backend never fetches the live flags file (backend/src/flags/
+  // launch.rs, and backend/tests/flags_launch.rs, which watches the
+  // network to prove it). The window was opened with the flags the
+  // backend decided, before its first page rendered.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const seen = await page.evaluate(() => ({
+      origin: window.aniGui?.flagsOrigin,
+      flags: window.aniGui?.flags,
+    }));
+    expect(seen).toEqual({ origin: "test", flags: {} });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash is gone once the app's window has shown", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
   } finally {
     await app.close();
   }

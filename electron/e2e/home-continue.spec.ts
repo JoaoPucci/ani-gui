@@ -37,7 +37,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -119,7 +119,7 @@ async function launchAppWithContinueStubsOnce(
 	const app = await launchPackagedApp(cleanEnv);
 	onLaunch(app);
 	const context = app.context();
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	const watchedAt: Record<string, number> = {};
 	for (const h of opts.history) watchedAt[h.id] = 1_700_000_000;
