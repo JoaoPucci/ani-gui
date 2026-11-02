@@ -1063,8 +1063,9 @@
 </section>
 
 <!-- A Continue card's artwork. A skeleton until the card's look is
-     settled; then the image, kept hidden over the skeleton until it has
-     decoded and faded in whole, or the two-letter placeholder. The EP
+     settled; then the image, kept hidden over the skeleton (or over the
+     initials a landing still replaces) until it has decoded and faded in
+     whole, or the two-letter placeholder. The EP
      tag is null for single-video shows (movies, finished one-episode
      OVAs and specials): the poster IS the video, there is no episode
      number to surface. -->
