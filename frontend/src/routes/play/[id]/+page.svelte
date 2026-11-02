@@ -33,7 +33,8 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
-	import { settle } from '$lib/transitions/settle';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
+	import { settle } from '$lib/motion/settle';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -1541,20 +1542,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return;
-			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	function teardown() {
@@ -4306,7 +4296,6 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.bars span {
-			animation: none;
 			transform: scaleY(0.7);
 		}
 	}
@@ -5015,26 +5004,16 @@
 			inset-inline-start: 100%;
 		}
 	}
-	/* Reduced motion: nothing travels. The whole track takes the
-	   accent and breathes slowly in opacity, so the frame still reads
-	   as working rather than stopped. The search bar holds a static
-	   bar instead; that one rides the topbar's edge, where a still
-	   line reads as chrome, while this one is alone in a dark frame. */
+	/* Reduced motion: nothing moves (tokens.css takes the sweep off).
+	   The whole track takes the accent at part strength instead, a
+	   still bar across the frame's foot, as the search page's progress
+	   bar does under the topbar. */
 	@media (prefers-reduced-motion: reduce) {
 		.player-spinner-sweep {
 			inset-inline-start: 0;
 			inline-size: 100%;
 			background: var(--accent);
-			animation: player-spinner-breathe 2.4s var(--ease-in-out) infinite;
-		}
-	}
-	@keyframes player-spinner-breathe {
-		0%,
-		100% {
-			opacity: 0.35;
-		}
-		50% {
-			opacity: 0.85;
+			opacity: 0.6;
 		}
 	}
 
@@ -5357,9 +5336,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ep-row > li.ep-highlight .ep-card-thumb {
-			animation: none;
-		}
 		.ep-row:has(li.ep-highlight) > li:not(.ep-highlight) .ep-card {
 			opacity: 1;
 		}
@@ -5633,12 +5609,6 @@
 				0 4px 14px color-mix(in oklab, var(--accent) 50%, transparent),
 				0 1px 2px rgb(0 0 0 / 0.4),
 				0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.ep-card-thumb-flag,
-		.ep-card-thumb-flag::before {
-			animation: none;
 		}
 	}
 </style>
