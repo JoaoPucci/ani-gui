@@ -15,13 +15,19 @@
  *     the search pill and the window controls. The trail would not
  *     shrink, so at the smallest window a long title pushed the window
  *     controls, and the page with them, past the edge for as long as
- *     the page stayed open.
+ *     the page stayed open. The trail now gives way, and it gives
+ *     way from the title: the short labels beside it stay whole. The
+ *     search pill still narrows first, as it did before the trail
+ *     could shrink, so the title is only cut once the pill can give
+ *     no more.
  *
  * So the reader arrives the way a reader does — searching, then
- * opening the show — at the app's smallest window and at a common
- * desktop width, with motion on. The page's overflow is sampled on
- * every frame from the click through the entry animation, and read
- * again once everything has settled.
+ * opening the show — at the app's smallest window, at a width where
+ * the pill and the trail share the squeeze, and at a common desktop
+ * width, with motion on. The page's overflow is sampled on every
+ * frame from the click through the entry animation (and the sampler
+ * must have seen the hero's entry running, or the check proves
+ * nothing), and read again once everything has settled.
  *
  * Every /api/* request is stubbed (see home-continue.spec.ts for why
  * the route sits on the page and the bounce that follows it), and the
@@ -40,8 +46,9 @@ import zlib from 'node:zlib';
 import { appInfo, defaultSettings } from './fixtures/kitsu';
 import { launchPackagedApp, packagedBinary } from './launch';
 
-/** The app's minimum window, and a common desktop width. */
-const WIDTHS = [960, 1280];
+/** The app's minimum window; a width where the topbar is short of
+ *  room but the search pill can still narrow; a common desktop width. */
+const WIDTHS = [960, 1100, 1280];
 
 /** Long enough to fill the breadcrumb's cap on a title. */
 const TITLE = 'JoJo no Kimyou na Bouken Part 6: Stone Ocean';
@@ -216,6 +223,8 @@ async function follow(page: Page, href: string) {
 /** What the per-frame sampler below leaves on the window. */
 type Sampled = {
 	__worst: { over: number; past: string[] };
+	/** Frames sampled while the loaded hero's entry animation ran. */
+	__entryFrames: number;
 	__sampling: boolean;
 };
 
@@ -246,9 +255,20 @@ test('the show page does not scroll sideways while it opens or once it has', asy
 			await page.evaluate(() => {
 				const w = window as unknown as Sampled;
 				w.__worst = { over: 0, past: [] };
+				w.__entryFrames = 0;
 				w.__sampling = true;
 				const tick = () => {
 					const root = document.documentElement;
+					const entering = document.getAnimations().some((a) => {
+						if (!(a instanceof CSSAnimation) || a.playState !== 'running') return false;
+						const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
+						return (
+							a.animationName.endsWith('detail-hero-enter') &&
+							el?.classList.contains('hero') === true &&
+							!el.classList.contains('hero-skeleton')
+						);
+					});
+					if (entering) w.__entryFrames++;
 					const over = root.scrollWidth - root.clientWidth;
 					if (over > w.__worst.over) {
 						const past = [...document.querySelectorAll<HTMLElement>('body *')]
@@ -287,8 +307,11 @@ test('the show page does not scroll sideways while it opens or once it has', asy
 			const entry = await page.evaluate(() => {
 				const w = window as unknown as Sampled;
 				w.__sampling = false;
-				return w.__worst;
+				return { ...w.__worst, frames: w.__entryFrames };
 			});
+			expect
+				.soft(entry.frames, `at ${width}px no frame was sampled while the hero entered`)
+				.toBeGreaterThan(0);
 			expect
 				.soft(
 					entry.over,
@@ -308,6 +331,50 @@ test('the show page does not scroll sideways while it opens or once it has', asy
 					`at ${width}px the open page scrolls sideways; past the edge: ${rest.past.join(', ')}`
 				)
 				.toBeLessThanOrEqual(0);
+
+			// The trail makes its room from the title; the short labels
+			// beside it stay whole.
+			const cut = await page.evaluate(() =>
+				[...document.querySelectorAll<HTMLElement>('.crumbs li a, .crumbs li span')]
+					.filter((el) => el.scrollWidth > el.clientWidth)
+					.map((el) => el.textContent?.trim() ?? '')
+			);
+			expect
+				.soft(
+					cut.filter((label) => label !== TITLE),
+					`at ${width}px labels cut short`
+				)
+				.toEqual([]);
+
+			// The pill narrows first: if the trail is narrower than its
+			// full width, the pill is already at its narrowest.
+			const squeeze = await page.evaluate(() => {
+				const crumbs = document.querySelector<HTMLElement>('.crumbs')!;
+				const pill = document.querySelector<HTMLElement>('.topbar-search')!;
+				// The box's width at `width`, out of the row's shrinking.
+				const natural = (el: HTMLElement, width: string) => {
+					const was = el.style.cssText;
+					el.style.width = width;
+					el.style.flex = 'none';
+					const w = el.getBoundingClientRect().width;
+					el.style.cssText = was;
+					return w;
+				};
+				return {
+					crumbs: crumbs.getBoundingClientRect().width,
+					crumbsFull: natural(crumbs, 'max-content'),
+					pill: pill.getBoundingClientRect().width,
+					pillMin: natural(pill, 'min-content')
+				};
+			});
+			if (squeeze.crumbs < squeeze.crumbsFull - 0.5) {
+				expect
+					.soft(
+						squeeze.pill,
+						`at ${width}px the trail was cut while the search pill could still narrow`
+					)
+					.toBeLessThanOrEqual(squeeze.pillMin + 0.5);
+			}
 		}
 	} finally {
 		await app.close();
