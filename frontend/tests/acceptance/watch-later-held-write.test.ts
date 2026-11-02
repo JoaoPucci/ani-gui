@@ -37,8 +37,8 @@ vi.mock('$app/navigation', () => ({
 const { scaled } = vi.hoisted(() => ({
 	scaled: [] as { id: string; duration: number; easing?: (t: number) => number }[]
 }));
-vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
-	const real = await importOriginal<typeof import('../../src/lib/transitions/card-motion')>();
+vi.mock('../../src/lib/motion/card-motion', async (importOriginal) => {
+	const real = await importOriginal<typeof import('../../src/lib/motion/card-motion')>();
 	return {
 		...real,
 		cardScale: (
@@ -56,7 +56,7 @@ vi.mock('../../src/lib/transitions/card-motion', async (importOriginal) => {
 	};
 });
 
-import { CARD_SCALE } from '../../src/lib/transitions/card-motion';
+import { CARD_SCALE } from '../../src/lib/motion/card-motion';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import {
@@ -70,6 +70,7 @@ import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import type { ListEntry } from '../../src/lib/account/types';
 import { m } from '../../src/lib/paraglide/messages';
+import { recordMotion, setReducedMotion } from './motion';
 
 const ALREADY = { malId: 11, title: 'Already Planned', updated: 1_700_000_000 };
 const NEW = { malId: 12, title: 'Just Planned', updated: 1_700_000_500 };
@@ -550,5 +551,35 @@ describe('Watch Later on Home, while a held write waits', () => {
 		await settle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		expect(scaled).toEqual([]);
+	});
+});
+
+describe.each([
+	['under reduced motion', true],
+	['with motion on', false]
+] as const)('Watch Later on Home %s', (_mode, reduced) => {
+	it('grows a show whose held add lands into the row', async () => {
+		await setReducedMotion(reduced);
+		const motion = recordMotion();
+		try {
+			planned = [ALREADY];
+			backend();
+			const pending = save();
+			app = mount(HomePage, { target });
+			await settle();
+			await pending;
+			await settle();
+			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
+
+			if (reduced) expect(motion.animations).toEqual([]);
+			else expect(motion.animations.some((a) => a.includes('watch-later-cell'))).toBe(true);
+		} finally {
+			motion.stop();
+			// After the page is gone: the change reaches every listener,
+			// and a mounted Home would answer it.
+			if (app) unmount(app);
+			app = null;
+			await setReducedMotion(false);
+		}
 	});
 });

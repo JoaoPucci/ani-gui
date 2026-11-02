@@ -184,12 +184,33 @@
 	initial-value: #0c0a09;
 }
 
+/* — Reduced motion. Under `prefers-reduced-motion: reduce` nothing in
+   the app moves; the app's motion is soft already, so there is no
+   gentler version to fall back to. This rule is what holds that for
+   CSS: every animation comes off every element, every transition lands
+   at once, and scrolling jumps. It is `!important` so a component's own
+   declaration cannot outrank it, and
+   `tests/lint/reduced-motion.test.ts` refuses any `!important` on these
+   properties that could. A transition's delay is kept: with no duration
+   it is a pause before a jump, not motion, and the player's spinner
+   relies on it to stay hidden through a fast load.
+
+   Script motion goes through `$lib/motion/`, which reads the same
+   preference. The duration tokens collapse too, for anything that
+   reads them outside a transition or an animation. */
 @media (prefers-reduced-motion: reduce) {
 	:root {
 		--dur-fast: 0ms;
 		--dur-med: 0ms;
 		--dur-slow: 0ms;
 		--dur-stagger: 0ms;
+	}
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+		transition-duration: 0s !important;
+		scroll-behavior: auto !important;
 	}
 }
 
@@ -308,7 +329,6 @@ img {
 @media (prefers-reduced-motion: reduce) {
 	.btn-glass::before {
 		transform: none;
-		transition: opacity var(--dur-fast) linear;
 	}
 	.btn-glass:hover::before {
 		transform: none;
