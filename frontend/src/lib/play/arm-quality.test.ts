@@ -63,6 +63,7 @@ class FakeEngine {
 
 class FakeVideo extends EventTarget {
 	currentTime = 0;
+	videoHeight = 0;
 	seeking = false;
 	ahead = 0;
 	get buffered() {
@@ -147,6 +148,82 @@ describe('armQuality — the start', () => {
 		expect(s.engine.loads).toEqual([]);
 		expect(s.engine.autoLevelEnabled).toBe(true);
 		expect(s.logs.join('\n')).toMatch(/one level.*720p/);
+	});
+
+	it('shows a stream of one level in the menu, and its one entry chooses nothing', () => {
+		// A pin carried from a master lands on the lone level below it.
+		qualityPin.set(1080);
+		const s = arm('best', [MASTER[1]]);
+		s.parse();
+		const menu = qualityMenu(s.lastView() ?? null);
+		expect(menu?.items.map((i) => [i.key, i.checked])).toEqual([[0, true]]);
+		expect(menu?.current).toBe(m.play_quality_height({ height: '720' }));
+		const published = s.views.length;
+		s.control.pick(0);
+		// The run's pin stays the master's: the next master starts there.
+		expect(qualityPin.get()).toBe(1080);
+		expect(s.engine.loads).toEqual([]);
+		expect(s.engine.nexts).toEqual([]);
+		expect(s.views.length).toBe(published);
+	});
+
+	it('names a lone level that lists no height once a segment of it is parsed', () => {
+		const s = arm('720', [{ height: 0, bitrate: 0 }]);
+		s.parse();
+		expect(qualityMenu(s.lastView() ?? null)).toBeNull();
+		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 0 },
+			tracks: { video: { metadata: { width: 1920, height: 1080 } } }
+		});
+		expect(qualityMenu(s.lastView() ?? null)?.current).toBe(
+			m.play_quality_height({ height: '1080' })
+		);
+	});
+
+	it("names a lone level from the picture's height when its segments carry none", () => {
+		// hls.js reports no picture size for an fMP4 init segment; the
+		// video element knows it once its metadata has loaded.
+		for (const event of ['loadedmetadata', 'resize']) {
+			const s = arm('720', [{ height: 0, bitrate: 0 }]);
+			s.parse();
+			s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+				frag: { type: 'main', level: 0 },
+				tracks: { video: { container: 'video/mp4' } }
+			});
+			expect(qualityMenu(s.lastView() ?? null)).toBeNull();
+			s.video.videoHeight = 1080;
+			s.video.dispatchEvent(new Event(event));
+			expect(qualityMenu(s.lastView() ?? null)?.current).toBe(
+				m.play_quality_height({ height: '1080' })
+			);
+			s.control.dispose();
+		}
+	});
+
+	it("reads the picture's height for a lone level only, and only while the stream is live", () => {
+		const before = arm('best', [{ height: 0, bitrate: 0 }]);
+		before.video.videoHeight = 1080;
+		before.video.dispatchEvent(new Event('resize'));
+		expect(before.views).toEqual([]);
+
+		const multi = arm('best');
+		multi.parse();
+		const published = multi.views.length;
+		multi.video.videoHeight = 480;
+		multi.video.dispatchEvent(new Event('resize'));
+		expect(multi.views.length).toBe(published);
+		expect(multi.lastView()?.levels.map((l) => l.height)).toEqual([360, 720, 1080]);
+
+		const lone = arm('720', [{ height: 0, bitrate: 0 }]);
+		lone.parse();
+		// No picture yet: the element reports a height of zero.
+		lone.video.dispatchEvent(new Event('resize'));
+		expect(qualityMenu(lone.lastView() ?? null)).toBeNull();
+		lone.control.dispose();
+		const retired = lone.views.length;
+		lone.video.videoHeight = 1080;
+		lone.video.dispatchEvent(new Event('resize'));
+		expect(lone.views.length).toBe(retired);
 	});
 
 	it('starts at the height pinned earlier in the run', () => {
@@ -1223,6 +1300,22 @@ describe('armQuality — levels hls.js removes', () => {
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, { details: D.FRAG_LOAD_ERROR, fatal: false, frag: { type: 'main' } });
 		expect(s.engine.autoLevelEnabled).toBe(true);
+	});
+
+	it('a removal that leaves one level turns the menu into that level, and a pick there chooses nothing', () => {
+		const s = armObjects();
+		s.control.pick(1);
+		expect(qualityPin.get()).toBe(720);
+		s.remove(0, 1);
+		const menu = qualityMenu(s.lastView() ?? null);
+		expect(menu?.items.map((i) => [i.key, i.checked])).toEqual([[0, true]]);
+		expect(menu?.current).toBe(m.play_quality_height({ height: '1080' }));
+		const nexts = [...s.engine.nexts];
+		const published = s.views.length;
+		s.control.pick(0);
+		expect(s.engine.nexts).toEqual(nexts);
+		expect(s.views.length).toBe(published);
+		expect(qualityPin.get()).toBe(720);
 	});
 
 	it('a removal before the levels are known, or after the stream retires, changes nothing', () => {

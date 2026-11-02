@@ -117,10 +117,10 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | Workflow | Triggers | Gating |
 |---|---|---|
 | `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, a script the suites execute, a workflow, or a composite action under `.github/actions/` | yes |
-| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json`, `tests/tracker-map-oracle/fixtures-golden.json`, `tools/hostile-tmpdir.sh`, `tools/rust-lcov.sh`, `.github/actions/apt-install/` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
-| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | yes |
+| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json`, `tests/picker-oracle/cases/**`, `tests/tracker-map-oracle/fixtures-golden.json`, `tools/hostile-tmpdir.sh`, `tools/rust-lcov.sh`, `.github/actions/apt-install/` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
+| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md`, `tools/alongside.sh` or the workflow — the same script | yes |
 | `rust.yml`, job `picker oracle fuzz` | the same changes as `picker oracle agreement`; draws 20000 pools from the run number as its seed and prints the seed | yes |
-| `rust.yml`, job `episode map oracle agreement` | PR touches `backend/**`, `tests/fixtures/tracker-map/**`, `tests/tracker-map-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | not in the ruleset's required list yet |
+| `rust.yml`, job `episode map oracle agreement` | PR touches `backend/**`, `tests/fixtures/tracker-map/**`, `tests/tracker-map-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | yes |
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
