@@ -79,8 +79,10 @@ async function launchAppWithStubsOnce(
     // `--no-sandbox` because chrome-sandbox in the unpackaged
     // linux-unpacked dir isn't SUID. The .deb's postinst fixes
     // that for installed copies; this test runs against the
-    // pre-install artifact.
-    args: ["--no-sandbox"],
+    // pre-install artifact. `--mute-audio`: a headless launch still
+    // opens the host's audio device, and test runs must not play sound
+    // on the desktop of whoever runs them.
+    args: ["--no-sandbox", "--mute-audio"],
     env: cleanEnv,
   });
   onLaunch(app);
@@ -289,6 +291,455 @@ test("home page hides the Continue Watching strip when history is empty", async 
     await expect(
       page.getByRole("heading", { name: /continue watching/i }),
     ).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── The window stays on the app's own document ───────────────────
+//
+// The main process refuses every navigation that would leave the app's
+// document (lib/window-guard.cjs). Any document the window loads gets
+// the preload bridge, so a web page or about:blank the window was sent
+// to ran with it. These cases drive renderer-initiated navigations,
+// and a drop delivered through Chromium's own drag handling (CDP
+// Input.dispatchDragEvent) rather than a synthetic DOM event. Electron
+// keeps a drop from navigating by default (`navigateOnDragDrop`); the
+// drop case holds that in place.
+
+async function waitForHome(page: import("@playwright/test").Page) {
+  await expect(page.getByText(/top rated/i).first()).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/** A harmless page on disk, the kind of file a user might drop. */
+function droppedPage(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-e2e-drop-"));
+  const file = path.join(dir, "dropped.html");
+  fs.writeFileSync(file, "<!doctype html><title>dropped</title><h1>dropped page</h1>");
+  return file;
+}
+
+/** Record shell.openExternal in the main process instead of launching a browser. */
+async function stubOpenExternal(app: ElectronApplication) {
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { __opened: string[] };
+    g.__opened = [];
+    shell.openExternal = async (url: string) => {
+      g.__opened.push(url);
+    };
+  });
+}
+
+async function openedExternally(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as unknown as { __opened: string[] }).__opened);
+}
+
+/**
+ * Record, in the main process, every navigation the window is asked to
+ * make. The listener is added after the app's own guard, so by the time
+ * a URL is recorded the guard has already ruled on it: the record is
+ * the positive witness a refusal can be asserted after (docs/testing.md,
+ * "Asserting that something did not happen").
+ */
+async function recordNavigations(app: ElectronApplication) {
+  await app.evaluate(({ BrowserWindow }) => {
+    const g = globalThis as unknown as { __navigations: string[] };
+    g.__navigations = [];
+    const win = BrowserWindow.getAllWindows()[0];
+    win.webContents.on("will-navigate", (event: { url?: string }, url: string) => {
+      g.__navigations.push(event.url ?? url);
+    });
+  });
+}
+
+async function navigationsAsked(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as unknown as { __navigations: string[] }).__navigations);
+}
+
+let navigationWitnesses = 0;
+
+/** Ask the page to navigate itself. Swallows the error a committed navigation causes. */
+async function pageNavigatesTo(page: import("@playwright/test").Page, url: string) {
+  await page
+    .evaluate((u) => {
+      window.location.href = u;
+    }, url)
+    .catch(() => {});
+}
+
+test("a navigation off the app's document is refused and the app stays", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await recordNavigations(app);
+    const consoleLines: string[] = [];
+    page.on("console", (msg) => consoleLines.push(msg.text()));
+    const home = page.url();
+
+    // Chromium itself refuses a page's navigation to a local file or a
+    // top-level data: document, before any main-process hook is asked;
+    // the line it logs is the witness that it ruled.
+    const file = `file://${droppedPage()}`;
+    await pageNavigatesTo(page, file);
+    await expect.poll(() => consoleLines.some((l) => l.includes("Not allowed to load local resource"))).toBe(true);
+    expect(page.url(), `navigated to ${file}`).toBe(home);
+
+    await pageNavigatesTo(page, "data:text/html,<h1>data page</h1>");
+    await expect.poll(() => consoleLines.some((l) => /Not allowed to navigate top frame to data URL/.test(l))).toBe(true);
+    expect(page.url(), "navigated to a data: page").toBe(home);
+
+    // Another host on the app's scheme reaches the guard: the protocol
+    // handler serves the bundle whatever the host, so this would load
+    // the app under a document the bridge was never meant for.
+    //
+    // about:blank is not here. Chromium commits it without the
+    // navigation hooks Electron's will-navigate hangs off, so no
+    // main-process guard sees it; it takes the origin of the document
+    // that asked for it, which is the app's own, and calls from it
+    // across the bridge are refused by the IPC sender check.
+    await pageNavigatesTo(page, "app://elsewhere/");
+    await expect.poll(() => navigationsAsked(app)).toContain("app://elsewhere/");
+    expect(page.url(), "navigated to app://elsewhere/").toBe(home);
+
+    // Read the live document rather than through a locator: Playwright
+    // counts a refused navigation as one still in flight, and a locator
+    // would wait on it until it timed out.
+    await expect
+      .poll(() => page.evaluate(() => /top rated/i.test(document.body.innerText)))
+      .toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a file or link dropped on the window does not replace the app", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await recordNavigations(app);
+    const home = page.url();
+    const file = droppedPage();
+    // Witness that each drag reached the page at all.
+    await page.evaluate(() => {
+      const g = window as unknown as { __dragovers: number };
+      g.__dragovers = 0;
+      window.addEventListener("dragover", () => {
+        g.__dragovers += 1;
+      });
+    });
+    const cdp = await page.context().newCDPSession(page);
+    for (const data of [
+      {
+        items: [{ mimeType: "text/uri-list", data: `file://${file}` }],
+        files: [file],
+        dragOperationsMask: 1 | 2 | 16,
+      },
+      {
+        items: [{ mimeType: "text/uri-list", data: "https://example.com/dropped" }],
+        dragOperationsMask: 1 | 2 | 16,
+      },
+    ]) {
+      const before = await page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers);
+      for (const type of ["dragEnter", "dragOver", "drop"] as const) {
+        await cdp.send("Input.dispatchDragEvent", { type, x: 400, y: 300, data });
+      }
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers))
+        .toBeGreaterThan(before);
+      // A drop that became a navigation would be one the page asks its
+      // browser for, like any other. Ask for one more after it — to a
+      // place the guard refuses — and wait for that one to arrive: a
+      // navigation from the same frame asked for earlier arrives
+      // first, so by then the drop's would have been recorded too.
+      const witness = `app://elsewhere/after-drop-${navigationWitnesses++}`;
+      await pageNavigatesTo(page, witness);
+      await expect.poll(() => navigationsAsked(app)).toContain(witness);
+      expect((await navigationsAsked(app)).filter((u) => !u.startsWith("app://elsewhere/after-drop-"))).toEqual([]);
+      expect(page.url()).toBe(home);
+    }
+    expect(await page.evaluate(() => document.body.innerText.includes("dropped page"))).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's own routes still load in full, and reload", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    // A full-document navigation inside the app — SvelteKit falls back
+    // to one on an unknown route or a failed chunk load.
+    const loaded = page.waitForEvent("load");
+    await pageNavigatesTo(page, "/settings");
+    await loaded;
+    await expect(page).toHaveURL(/^app:\/\/localhost\/settings\/?$/);
+    await expect(page.getByRole("combobox", { name: /locale/i })).toBeVisible();
+    await page.reload();
+    await expect(page).toHaveURL(/^app:\/\/localhost\/settings\/?$/);
+    await expect(page.getByRole("combobox", { name: /locale/i })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("a web link opens in the system browser and the window stays", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await stubOpenExternal(app);
+    const home = page.url();
+    // A link that asks for a new window, like the app's own external links.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.href = "https://example.com/new-window";
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.textContent = "external";
+      a.id = "e2e-external";
+      document.body.append(a);
+    });
+    await page.locator("#e2e-external").click();
+    // And a navigation of the window itself to a web page.
+    await pageNavigatesTo(page, "https://example.com/same-window");
+    // The open is the witness: the guard hands the URL out in the same
+    // step that refuses the navigation.
+    await expect
+      .poll(() => openedExternally(app))
+      .toEqual(["https://example.com/new-window", "https://example.com/same-window"]);
+    expect(page.url()).toBe(home);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── The bridge answers the app's document only ───────────────────
+//
+// Every IPC handler in main checks that the call came from the main
+// frame holding the app's document (lib/ipc-guard.cjs). A page that
+// does get into the window — the guard above is meant to make that
+// impossible — still gets nothing from the bridge.
+
+/** Main-process stderr, line by line, from this point on. */
+function collectStderr(app: ElectronApplication): string[] {
+  const lines: string[] = [];
+  app.process().stderr?.on("data", (chunk: Buffer) => {
+    lines.push(...chunk.toString().split("\n"));
+  });
+  return lines;
+}
+
+test("every IPC channel refuses a sender that is not the app's document", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const stderr = collectStderr(app);
+    // Call every handler the running app registered, the way Electron
+    // would for a call from a frame holding about:blank. The channels
+    // come from ipcMain itself, so a handler added later is covered
+    // without editing this list.
+    const outcome = await app.evaluate(async ({ ipcMain }) => {
+      const forged = () => {
+        const event: Record<string, unknown> = {
+          senderFrame: { url: "about:blank", parent: null },
+          touched: [] as string[],
+        };
+        // A refused call reads senderFrame and nothing else; a handler
+        // that ran would reach for the sender's window.
+        Object.defineProperty(event, "sender", {
+          get() {
+            (event.touched as string[]).push("sender");
+            throw new Error("handler reached for the sender");
+          },
+        });
+        return event;
+      };
+      const settle = <T,>(p: Promise<T>) =>
+        Promise.race([p, new Promise((r) => setTimeout(() => r("no answer"), 2_000))]);
+
+      // ipcMain keeps each invoke handler as registered, keyed by
+      // channel; Electron calls it with the event and turns a return
+      // into the reply and a throw into the rejection.
+      const invoke = (ipcMain as unknown as {
+        _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => unknown>;
+      })._invokeHandlers;
+      const handled: Record<string, string> = {};
+      for (const [channel, fn] of invoke) {
+        const event = forged();
+        const answer = await settle(
+          Promise.resolve()
+            .then(() => fn(event))
+            .then(
+              (v) => `replied ${JSON.stringify(v)}`,
+              (err) => `threw ${String((err as Error)?.message ?? err)}`,
+            ),
+        );
+        handled[channel] = String(answer);
+      }
+      const listened: Record<string, { returnValue: unknown; touched: string[] }> = {};
+      for (const channel of ipcMain.eventNames()) {
+        if (typeof channel !== "string" || !channel.startsWith("ani-gui:")) continue;
+        const event = forged();
+        for (const fn of ipcMain.listeners(channel)) {
+          try {
+            // No arguments: a count reaching the active-downloads
+            // handler would make the app prompt before it quits.
+            (fn as (e: unknown) => void)(event);
+          } catch {
+            // A handler that ran and failed is recorded by `touched`.
+          }
+        }
+        listened[channel] = { returnValue: event.returnValue, touched: event.touched as string[] };
+      }
+      return { handled, listened };
+    });
+
+    const handledChannels = Object.keys(outcome.handled);
+    const listenedChannels = Object.keys(outcome.listened);
+    // Not vacuous: the bridge's channels are all there.
+    expect(handledChannels).toEqual(
+      expect.arrayContaining([
+        "ani-gui:pick-directory",
+        "ani-gui:pick-file",
+        "ani-gui:reveal-in-folder",
+        "ani-gui:account:open-oauth",
+        "ani-gui:account:cancel-oauth",
+        "ani-gui:account:set-token",
+        "ani-gui:account:clear-token",
+        "ani-gui:open-external",
+      ]),
+    );
+    expect(listenedChannels).toEqual(
+      expect.arrayContaining([
+        "ani-gui:window:minimize",
+        "ani-gui:window:toggle-maximize",
+        "ani-gui:window:close",
+        "ani-gui:window:is-maximized",
+        "ani-gui:active-downloads",
+        "ani-gui:read-config-locale",
+        "ani-gui:account:get-token",
+      ]),
+    );
+    for (const channel of handledChannels) {
+      expect(outcome.handled[channel], channel).toMatch(/^threw .*refused/);
+    }
+    for (const channel of listenedChannels) {
+      expect(outcome.listened[channel].touched, channel).toEqual([]);
+    }
+    // The sync channels answer with a refusal, never a token or a locale.
+    expect(outcome.listened["ani-gui:account:get-token"].returnValue).toEqual({
+      ok: false,
+      kind: "refused",
+    });
+    expect(outcome.listened["ani-gui:read-config-locale"].returnValue).toBeNull();
+    expect(outcome.listened["ani-gui:window:is-maximized"].returnValue).toBe(false);
+    // Every refusal is logged, the async messages included.
+    await expect
+      .poll(() => listenedChannels.filter((ch) => !stderr.some((l) => l.includes(`[ipc] refused ${ch} `))))
+      .toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's own document still reaches the bridge", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await stubOpenExternal(app);
+    const answers = await page.evaluate(async () => {
+      const bridge = (window as unknown as {
+        aniGui: {
+          windowControls: { isMaximized(): boolean };
+          openExternal(url: string): Promise<boolean>;
+          account: { getToken(p: string): { ok: boolean; kind?: string } };
+        };
+      }).aniGui;
+      return {
+        maximized: typeof bridge.windowControls.isMaximized(),
+        opened: await bridge.openExternal("https://example.com/privacy"),
+        token: bridge.account.getToken("anilist"),
+      };
+    });
+    expect(answers.maximized).toBe("boolean");
+    expect(answers.opened).toBe(true);
+    // No token was stored in this fresh profile; what matters is that
+    // the handler ran rather than refusing.
+    expect(answers.token.kind).not.toBe("refused");
+    expect(await openedExternally(app)).toEqual(["https://example.com/privacy"]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("revealInFolder opens a directory and never a file", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { __openedPaths: string[] };
+      g.__openedPaths = [];
+      shell.openPath = async (p: string) => {
+        g.__openedPaths.push(p);
+        return "";
+      };
+    });
+    const file = droppedPage();
+    const dir = path.dirname(file);
+    const answers = await page.evaluate(
+      async ([f, d]) => {
+        const bridge = (window as unknown as {
+          aniGui: { revealInFolder(p: string): Promise<boolean> };
+        }).aniGui;
+        return { file: await bridge.revealInFolder(f), dir: await bridge.revealInFolder(d) };
+      },
+      [file, dir],
+    );
+    expect(answers).toEqual({ file: false, dir: true });
+    expect(
+      await app.evaluate(() => (globalThis as unknown as { __openedPaths: string[] }).__openedPaths),
+    ).toEqual([dir]);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── Permissions: what the app uses, and nothing else ─────────────
+//
+// Electron grants every permission unless told otherwise. The app's
+// document keeps fullscreen (the player) and clipboard writes (the
+// About page's copy button); everything else is denied
+// (lib/permissions.cjs).
+
+test("fullscreen and copying still work, and other permissions are denied", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const fullscreen = await page.evaluate(() =>
+      document.documentElement.requestFullscreen().then(
+        () => "granted",
+        (e: Error) => `refused: ${e.message}`,
+      ),
+    );
+    expect(fullscreen).toBe("granted");
+    await page.evaluate(() => document.exitFullscreen());
+
+    const denied = await page.evaluate(async () => ({
+      request: await Notification.requestPermission(),
+      query: (await navigator.permissions.query({ name: "notifications" })).state,
+    }));
+    expect(denied).toEqual({ request: "denied", query: "denied" });
+
+    // The About page's copy button, through the real clipboard.
+    await app.evaluate(({ clipboard }) => clipboard.writeText("before"));
+    await page.getByRole("link", { name: /about/i }).first().click();
+    await expect(page).toHaveURL(/\/about\/?$/);
+    await page.getByRole("button", { name: /copy ethereum address/i }).click();
+    // The toast renders its message twice: once on screen, once for
+    // screen readers.
+    await expect(page.getByText(/address copied/i).first()).toBeVisible();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(/^0x[0-9a-fA-F]{40}$/);
   } finally {
     await app.close();
   }
