@@ -122,6 +122,8 @@
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
+	import { refillEpisodes } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import { formatTime, progressLabel, skipLabel } from '$lib/play/format';
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
@@ -1421,11 +1423,24 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone — the page closed, or
+	// moved to another show: a refill landing after it is not fetched
+	// ($lib/refill/refill). Renewed per show below.
+	let refills = new AbortController();
+	onDestroy(() => refills.abort());
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refills.signal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -1957,6 +1972,8 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		id;
 		resetEpisodePageCache(kitsuPageCache);
+		refills.abort();
+		refills = new AbortController();
 	});
 
 	onMount(() => {
@@ -3845,7 +3862,7 @@
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
-											<img src={epThumb} alt="" loading="lazy" />
+											<img class="img-fade" use:fadeOnLoad src={epThumb} alt="" loading="lazy" />
 										{:else if air.unaired}
 											<span class="ep-card-thumb-placeholder ep-card-airs" aria-hidden="true">
 												{unairedLabel(air.airsAt)}
@@ -5414,9 +5431,11 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.92);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
 		transition:
 			transform var(--dur-med) var(--ease-out-soft),
-			filter var(--dur-med) var(--ease-out-soft);
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-card:hover:not(:disabled) .ep-card-thumb img {
 		transform: scale(1.04);

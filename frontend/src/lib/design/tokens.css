@@ -355,3 +355,16 @@ img {
 	font-weight: 500;
 	color: color-mix(in oklab, var(--bone-100) 70%, transparent);
 }
+
+/* — Fading image: an episode still or a Continue card's image fades in
+   once its pixels arrive (`$lib/images/fade-on-load` adds .img-loaded on
+   load), including one a held-back fill brings later. Its box is already
+   sized, so nothing moves; under prefers-reduced-motion --dur-med is 0,
+   so it just appears. */
+.img-fade {
+	opacity: 0;
+	transition: opacity var(--dur-med) var(--ease-out-soft);
+}
+.img-fade.img-loaded {
+	opacity: 1;
+}

@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import { fade, reducible } from '$lib/motion/transitions';
 	import { cardScale, cardShift, STILL } from '$lib/motion/card-motion';
 	import { heroParallaxTransform } from '$lib/motion/parallax';
@@ -225,9 +226,14 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
+	// Aborted when Home is left: a Continue card's refill landing after
+	// is not fetched ($lib/refill/refill).
+	const refills = new AbortController();
+	onDestroy(() => refills.abort());
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
+		signal: refills.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
@@ -236,6 +242,12 @@
 		},
 		setEpisode: (id, ep) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
+		},
+		// A held-back still landing: onto the card's own episode, in
+		// place, so the card keeps everything but its image.
+		fillThumbnail: (id, episodeId, thumbnail) => {
+			const ep = historyEpisodes[id];
+			if (ep && ep.id === episodeId && !ep.thumbnail?.original) ep.thumbnail = { ...thumbnail };
 		},
 		leftPartWay
 	});
@@ -1133,7 +1145,14 @@
 					>
 						<span class="resume-poster">
 							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
+								<img
+									class="img-fade"
+									use:fadeOnLoad
+									src={image}
+									alt=""
+									loading="lazy"
+									decoding="async"
+								/>
 							{:else}
 								<span class="resume-poster-placeholder" aria-hidden="true">
 									{target.displayTitle.slice(0, 2).toUpperCase()}
@@ -1204,7 +1223,14 @@
 					>
 						<span class="resume-poster">
 							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
+								<img
+									class="img-fade"
+									use:fadeOnLoad
+									src={image}
+									alt=""
+									loading="lazy"
+									decoding="async"
+								/>
 							{:else}
 								<span class="resume-poster-placeholder" aria-hidden="true">
 									{target.displayTitle.slice(0, 2).toUpperCase()}
@@ -2053,7 +2079,10 @@
 		object-fit: cover;
 		object-position: center 30%;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.resume-card:hover .resume-poster img {
 		filter: brightness(1);
