@@ -1,0 +1,107 @@
+use std::time::Duration;
+
+use proptest::prelude::*;
+
+use super::{is_fresh, read, write, CacheEntry, FRESH_FOR};
+
+const DAY: u64 = 24 * 60 * 60;
+
+fn entry(fetched_at: u64) -> CacheEntry {
+    let doc = serde_json::json!({ "test_kill": false });
+    CacheEntry {
+        fetched_at,
+        flags: doc.as_object().expect("object").clone(),
+    }
+}
+
+#[test]
+fn the_window_is_seven_days() {
+    assert_eq!(FRESH_FOR, Duration::from_secs(7 * DAY));
+}
+
+#[test]
+fn an_entry_is_fresh_up_to_the_window_and_not_after() {
+    let now = 1_800_000_000;
+    assert!(is_fresh(now, now, FRESH_FOR));
+    assert!(is_fresh(now - 7 * DAY, now, FRESH_FOR));
+    assert!(!is_fresh(now - 7 * DAY - 1, now, FRESH_FOR));
+}
+
+#[test]
+fn an_entry_dated_in_the_future_is_not_fresh() {
+    let now = 1_800_000_000;
+    assert!(!is_fresh(now + 1, now, FRESH_FOR));
+}
+
+proptest! {
+    #[test]
+    fn freshness_is_age_within_the_window(
+        now in (1u64 << 32)..(1u64 << 62),
+        age in 0u64..(28 * DAY),
+        future in any::<bool>(),
+        window in 0u64..(14 * DAY),
+    ) {
+        let fetched_at = if future { now + age + 1 } else { now - age };
+        let expect = !future && age <= window;
+        prop_assert_eq!(is_fresh(fetched_at, now, Duration::from_secs(window)), expect);
+    }
+
+    #[test]
+    fn freshness_never_panics_at_the_extremes(fetched_at in any::<u64>(), now in any::<u64>(), window in any::<u64>()) {
+        let expect = fetched_at <= now && now - fetched_at <= window;
+        prop_assert_eq!(is_fresh(fetched_at, now, Duration::from_secs(window)), expect);
+    }
+}
+
+#[tokio::test]
+async fn a_written_entry_reads_back() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("nested").join("remote-flags.json");
+    write(&path, &entry(42)).await;
+    assert_eq!(read(&path).await, Some(entry(42)));
+}
+
+#[tokio::test]
+async fn a_rewrite_replaces_the_entry() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    write(&path, &entry(1)).await;
+    write(&path, &entry(2)).await;
+    assert_eq!(read(&path).await, Some(entry(2)));
+}
+
+#[tokio::test]
+async fn a_missing_or_corrupt_file_reads_as_nothing() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    assert_eq!(read(&path).await, None);
+    for body in [
+        "",
+        "{",
+        "[]",
+        r#"{"fetched_at":"x","flags":{}}"#,
+        r#"{"flags":{}}"#,
+    ] {
+        std::fs::write(&path, body).expect("write");
+        assert_eq!(read(&path).await, None, "{body:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_oversized_file_reads_as_nothing() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let pad = " ".repeat(4 * super::MAX_BYTES);
+    std::fs::write(&path, format!(r#"{{"fetched_at":1,"flags":{{}}}}{pad}"#)).expect("write");
+    assert_eq!(read(&path).await, None);
+}
+
+#[tokio::test]
+async fn a_write_that_cannot_land_is_ignored() {
+    let td = tempfile::tempdir().expect("tempdir");
+    // A regular file where the parent directory should be.
+    let blocker = td.path().join("blocker");
+    std::fs::write(&blocker, "").expect("write");
+    write(&blocker.join("remote-flags.json"), &entry(1)).await;
+    assert_eq!(read(&blocker.join("remote-flags.json")).await, None);
+}
