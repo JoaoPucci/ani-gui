@@ -198,6 +198,37 @@ for (const style of ['inline', 'band'] as const) {
 			expect(target.querySelector('[role="menu"]')).toBeNull();
 		});
 
+		it('draws each action in its style’s shape, the label its name either way', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			await mountHome(style);
+			for (const [title, label] of [
+				[WL(), REFRESH()],
+				[CW(), CLEAR()]
+			] as const) {
+				const b = action(title, label)!;
+				const slot = b.closest('.row-action-slot') as HTMLElement;
+				// Inline rows rest on the icon and open to the label on
+				// hover and keyboard focus; banded rows keep the label.
+				expect(slot.dataset.shape, label).toBe(style === 'inline' ? 'icon' : 'label');
+				// Every action has an icon to rest on.
+				expect(b.querySelector('svg'), label).not.toBeNull();
+				// The label stays in the button, read whether or not it is
+				// on show: collapsed is clipped, never hidden from the
+				// accessibility tree.
+				const words = b.querySelector('.row-action-label') as HTMLElement;
+				expect(words.textContent?.trim(), label).toBe(label);
+				expect(words.closest('[aria-hidden="true"]'), label).toBeNull();
+				expect(words.hidden, label).toBe(false);
+				// The width the open label needs is held by the slot, so
+				// opening moves nothing beside it. It is drawn from an
+				// attribute, not a second copy of the words.
+				expect(slot.dataset.label, label).toBe(label);
+				expect(slot.textContent?.trim(), label).toBe(label);
+			}
+		});
+
 		it('marks every home row with the chosen style', async () => {
 			connect('anilist');
 			markRefreshed('anilist', Date.now() - 12 * MIN);

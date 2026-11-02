@@ -52,3 +52,62 @@ describe('the refresh glyph', () => {
 		expect(glyph).toContain('d="M18 3.5 V7.5 H14"');
 	});
 });
+
+// The inline row's icon-only action. Opening is a cascade change, so it
+// too is read as constraints on the style block.
+describe('an icon-shaped row action', () => {
+	const ICON = ".row-action-slot[data-shape='icon']";
+
+	it('rests as a 32px circle over the width its label will need', () => {
+		const rest = rule(`${ICON} .row-action`);
+		expect(rest).toContain('position: absolute;');
+		expect(rest).toContain('inline-size: var(--space-6);');
+		expect(rest).toContain('overflow: hidden;');
+		// The slot holds the open width, from the label itself.
+		const sizer = rule(`${ICON}::after`);
+		expect(sizer).toContain('content: attr(data-label);');
+		expect(sizer).toContain('visibility: hidden;');
+	});
+
+	it('opens to its label on hover and on keyboard focus alike', () => {
+		const open = rule(`${ICON} .row-action:is(:hover, :focus-visible)`);
+		expect(open).toContain('inline-size: 100%;');
+		expect(rule(`${ICON} .row-action:is(:hover, :focus-visible) .row-action-label`)).toContain(
+			'opacity: 1;'
+		);
+	});
+
+	it('shrinks its icon to the labelled pill’s size as it opens', () => {
+		expect(rule(`${ICON} .row-action :global(svg)`)).toMatch(/scale: 1\.\d+;/);
+		expect(rule(`${ICON} .row-action:is(:hover, :focus-visible) :global(svg)`)).toContain(
+			'scale: 1;'
+		);
+	});
+
+	it('never hides its label from a screen reader', () => {
+		for (const [at] of STYLE.matchAll(/[^{}]*\.row-action-label[^{]*\{[^}]*\}/g)) {
+			expect(at).not.toMatch(/visibility:\s*hidden|display:\s*none/);
+		}
+	});
+
+	it('times every transition from the duration tokens, which reduced motion zeroes', () => {
+		const transitions = [...STYLE.matchAll(/transition:([^;]*);/g)].map((m) => m[1]);
+		expect(transitions.length).toBeGreaterThan(0);
+		for (const t of transitions) expect(t).not.toMatch(/\d(ms|s)\b/);
+		const tokens = readFileSync(resolve(process.cwd(), 'src/lib/design/tokens.css'), 'utf8');
+		const reduced = tokens.slice(tokens.indexOf('prefers-reduced-motion: reduce'));
+		expect(reduced).toContain('--dur-fast: 0ms;');
+		expect(reduced).toContain('--dur-med: 0ms;');
+	});
+});
+
+describe('the clear-history glyph', () => {
+	it('is a clock whose rim gives way to an ×', () => {
+		const icon = readFileSync(resolve(process.cwd(), 'src/lib/components/Icon.svelte'), 'utf8');
+		const at = icon.indexOf("name === 'clear-history'");
+		expect(at).toBeGreaterThan(-1);
+		const glyph = icon.slice(at, icon.indexOf('</svg>', at));
+		expect(glyph).toContain('d="M12.94 18.24 A7.5 7.5 0 1 1 18.24 12.94"');
+		expect(glyph).toContain('d="M15.5 15.5 L20.5 20.5"');
+	});
+});

@@ -5,6 +5,7 @@ import {
 	ROW_PREFS_DEFAULT,
 	ROW_PREFS_STORAGE_KEY,
 	ROW_STYLES,
+	actionShape,
 	loadRowPrefs,
 	parseRowPrefs,
 	saveRowPrefs,
@@ -99,6 +100,23 @@ describe('parseRowPrefs, by property', () => {
 				const s = new MemStorage();
 				saveRowPrefs(s, { style, controls });
 				expect(loadRowPrefs(s)).toEqual({ style, controls });
+			})
+		);
+	});
+});
+
+describe('actionShape', () => {
+	it('draws an inline row’s actions as icons that open on hover and focus', () => {
+		expect(actionShape('inline')).toBe('icon');
+	});
+	it('keeps a banded row’s actions labelled: the band already marks the row out', () => {
+		expect(actionShape('band')).toBe('label');
+	});
+	it('gives every style one of the two shapes, the icon only to inline', () => {
+		fc.assert(
+			fc.property(fc.constantFrom(...ROW_STYLES), (style) => {
+				expect(['icon', 'label']).toContain(actionShape(style));
+				expect(actionShape(style) === 'icon').toBe(style === 'inline');
 			})
 		);
 	});
