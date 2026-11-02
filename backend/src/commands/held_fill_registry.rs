@@ -64,10 +64,14 @@ impl Registry {
     /// The ticket a fill held back under `key` waits on, and whether it
     /// is new — a key already waiting keeps its ticket, so one item held
     /// twice is retried once. `None` when [`MAX_PENDING`] fills already
-    /// wait. A new ticket counts as on screen from `now`: the page it
-    /// was served to is about to wait on it.
+    /// wait. The ticket counts as on screen from `now`, a new one or one
+    /// served again after a release: the page it was served to is about
+    /// to wait on it.
     pub(crate) fn hold(&mut self, key: &str, now: Instant) -> Option<(u64, bool)> {
         if let Some(&ticket) = self.pending.get(key) {
+            if let Some(w) = self.watched.get_mut(&ticket) {
+                w.seen = Some(now);
+            }
             return Some((ticket, false));
         }
         if self.pending.len() >= MAX_PENDING {
@@ -110,7 +114,11 @@ impl Registry {
     /// The pages showing `ticket`'s fill have gone: it is off screen at
     /// once — waits still open on it included, which the renderer has
     /// dropped but the backend may hold a while longer — until a page
-    /// waits on it again.
+    /// waits on it again. Every wait open on it counts as let go: the
+    /// renderer has one wait for all its pages, releases only tickets no
+    /// page of it still shows, and issues the release before any later
+    /// wait on them. A second renderer waiting on its own would break
+    /// that: its release would let go of the other's waits too.
     pub(crate) fn release(&mut self, ticket: u64) {
         if let Some(w) = self.watched.get_mut(&ticket) {
             w.pages = 0;
