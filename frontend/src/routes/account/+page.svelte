@@ -18,13 +18,12 @@
 	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import { applyPrimarySelection } from '$lib/account/set-primary';
-	import { markRefreshed } from '$lib/account/watch-later-refresh';
+	import { seedConnectedList } from '$lib/account/connect-seed';
 	import { pkceForProvider } from '$lib/account/pkce-for-provider';
 	import {
 		buildAuthUrl,
 		cancelOAuth,
 		exchangeCode,
-		fetchAndCacheList,
 		fetchMe,
 		openOAuth,
 		openExternal,
@@ -130,14 +129,7 @@
 			// is already persisted; if this errors the connection is
 			// still valid — we just leave the cache empty and the next
 			// rail/sync mount will warm it. Best-effort, not fatal.
-			try {
-				await fetchAndCacheList(provider, r.account.access_token);
-				// Connect just pulled a fresh snapshot — stamp it so the
-				// home rail's TTL doesn't immediately re-pull.
-				markRefreshed(provider, Date.now());
-			} catch {
-				/* non-fatal — next mount warms the cache */
-			}
+			await seedConnectedList(provider, r.account.access_token);
 			return;
 		}
 		applyRestoreState(provider, restoreAfterFailedConnect(prev));

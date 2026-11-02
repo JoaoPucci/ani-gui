@@ -1123,8 +1123,17 @@ async fn anime_detail_read(
             Some(b) => Some(b),
             None => anilist_banner_for(state, id, anilist_base)
                 .await
-                .unwrap_or_else(|()| {
+                .unwrap_or_else(|e| {
                     answered = false;
+                    // Held back by the gate: retried once the pause
+                    // ends, and the page told so (`held_fill`).
+                    super::held_fill::on_unanswered(
+                        state,
+                        super::held_fill::Fill::Detail,
+                        id,
+                        anilist_base,
+                        &e,
+                    );
                     None
                 }),
         }
@@ -1164,10 +1173,8 @@ async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> std::result::Result<Option<String>, ()> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id)
-        .await
-        .map_err(|_| ())?;
+) -> Result<Option<String>> {
+    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
     // The detail renders without it: a background fill.
     crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
         &state.meta_http,
@@ -1176,7 +1183,6 @@ async fn anilist_banner_for(
         anilist_base,
     ))
     .await
-    .map_err(|_| ())
 }
 
 #[cfg(test)]
