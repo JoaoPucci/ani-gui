@@ -1098,6 +1098,7 @@
 {#snippet continueActions()}
 	<RowAction
 		label={m.home_clear_history_action()}
+		icon="clear-history"
 		tone="quiet"
 		shape={rowActionShape}
 		onclick={openClearConfirm}

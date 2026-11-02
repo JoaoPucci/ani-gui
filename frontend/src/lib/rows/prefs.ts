@@ -69,12 +69,17 @@ export function saveRowPrefs(storage: StorageLike | null, prefs: RowPrefs): void
 	}
 }
 
-/** How a row action is drawn in a row style: `label` is the labelled
- *  pill, its words always shown. */
+/** How a row action is drawn in a row style:
+ *   - `icon`:  at rest only its icon, in a 32px circle; on hover and
+ *              keyboard focus it widens to the labelled pill. Beside
+ *              the title the row has no surface of its own, so the
+ *              header line stays quiet until an action is reached for.
+ *   - `label`: the labelled pill, its words always shown. A band
+ *              already marks the row out, and its actions sit at the
+ *              band's end with room to spare. */
 export type RowActionShape = 'icon' | 'label';
 
 /** The shape a row's header actions take in `style`. */
 export function actionShape(style: RowStyle): RowActionShape {
-	void style;
-	return 'label';
+	return style === 'inline' ? 'icon' : 'label';
 }

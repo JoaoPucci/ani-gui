@@ -23,7 +23,8 @@
 		| 'arrow-back'
 		| 'arrow-right'
 		| 'update'
-		| 'refresh';
+		| 'refresh'
+		| 'clear-history';
 
 	let { name, size = 18 }: { name: IconName; size?: number } = $props();
 </script>
@@ -217,5 +218,26 @@
 	>
 		<path d="M19.5 12 A7.5 7.5 0 1 1 18 7.5" />
 		<path d="M18 3.5 V7.5 H14" />
+	</svg>
+{:else if name === 'clear-history'}
+	<!-- Clear history: a clock — the mark for history — whose rim gives
+	     way, bottom right, to an ×: "this history, removed". The gap and
+	     the × sit opposite Refresh's arrowhead (top right), so the two
+	     never read alike at 16px. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<path d="M12.94 18.24 A7.5 7.5 0 1 1 18.24 12.94" />
+		<path d="M11 6.5 V11 H14.5" />
+		<path d="M15.5 15.5 L20.5 20.5" />
+		<path d="M20.5 15.5 L15.5 20.5" />
 	</svg>
 {/if}
