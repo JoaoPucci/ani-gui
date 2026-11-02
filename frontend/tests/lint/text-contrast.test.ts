@@ -30,11 +30,14 @@
 //
 // What it does not see, deliberately:
 //
-// - `opacity` on an element that holds text. Whether a rule's opacity
-//   dims text, an image or a decoration is a question about the markup
-//   the selector reaches, which no syntactic rule answers; review holds
-//   it. The rail's small links and the dimmed episode tiles were fixed
-//   by hand for that reason.
+// - `opacity` on an element that holds text, in general. Whether a
+//   rule's opacity dims text, an image or a decoration is a question
+//   about the markup the selector reaches, which no syntactic rule
+//   answers; review holds it. What is held here is narrower: the rules
+//   in DIMMED_WITHOUT_OPACITY each style an element that holds active
+//   text (an episode that can still be clicked to re-check, the rail's
+//   Debug link), each once dimmed it with `opacity`, which took its
+//   text below AA, and each must still exist and set no `opacity`.
 // - Colours that are not bone tiers: the accents, the brand colour,
 //   white with an alpha on the player's own chrome, and any mix other
 //   than the one form above. They are read by review, not here.
@@ -74,6 +77,20 @@ const EXEMPT: Record<string, string> = {
 	'routes/play/[id]/+page.svelte .np-em-dash': 'em dash between episode number and title',
 	'routes/search/+page.svelte .eyebrow-sep': 'separator dot in the results eyebrow'
 };
+
+/**
+ * Rules that style an element holding active text, and must dim it
+ * some other way than `opacity` — which multiplies into every glyph
+ * inside. Keyed like EXEMPT: file, then the selector exactly as
+ * written.
+ */
+const DIMMED_WITHOUT_OPACITY = [
+	'routes/anime/[id]/+page.svelte .ep-tile-recheck',
+	'routes/anime/[id]/+page.svelte .ep-tile-unaired',
+	'routes/play/[id]/+page.svelte .ep-card-unaired',
+	'routes/play/[id]/+page.svelte .ep-card-recheck',
+	'routes/+layout.svelte .nav li.small .nav-link'
+];
 
 // ---- tokens.css --------------------------------------------------------------
 
@@ -124,10 +141,21 @@ interface TranslucentText {
 }
 
 const translucent: TranslucentText[] = [];
+/** Every rule's declared opacity, by `file selector`; null where it sets none. */
+const ruleOpacity = new Map<string, string | null>();
 for (const path of files.filter((p) => /\.(svelte|css)$/.test(p))) {
 	const css = styleOf(path);
 	if (!css) continue;
-	postcss.parse(css).walkDecls('color', (decl) => {
+	const root = postcss.parse(css);
+	root.walkRules((rule) => {
+		const key = `${relative(SRC, path)} ${rule.selector.replace(/\s+/g, ' ')}`;
+		let opacity: string | null = ruleOpacity.get(key) ?? null;
+		rule.each((node) => {
+			if (node.type === 'decl' && node.prop === 'opacity') opacity = node.value;
+		});
+		ruleOpacity.set(key, opacity);
+	});
+	root.walkDecls('color', (decl) => {
 		const match = TRANSLUCENT_BONE.exec(decl.value.trim());
 		if (!match) return;
 		const rule = decl.parent as Rule;
@@ -171,6 +199,15 @@ describe('text contrast', () => {
 					`${key}: ${tier} at ${Math.round(alpha * 100)}% on ${surface} is ${ratio.toFixed(2)}:1`
 			);
 		expect(failures, `below ${AA_TEXT}:1`).toEqual([]);
+	});
+
+	it('dimmed states that hold active text do not dim it with opacity', () => {
+		const missing = DIMMED_WITHOUT_OPACITY.filter((key) => !ruleOpacity.has(key));
+		expect(missing, 'rules no longer found; update the list').toEqual([]);
+		const dimmed = DIMMED_WITHOUT_OPACITY.filter((key) => ruleOpacity.get(key) != null).map(
+			(key) => `${key} { opacity: ${ruleOpacity.get(key)} }`
+		);
+		expect(dimmed, 'opacity on a rule that holds active text').toEqual([]);
 	});
 
 	it('every exemption still names a declaration below AA', () => {
