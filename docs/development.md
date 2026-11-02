@@ -293,6 +293,84 @@ dev launcher's `ELECTRON_DEV=1` or `ANI_GUI_DEV` is set, so `pnpm dev`
 runs beside an installed copy. A bare `electron .` with neither set uses
 the installed app's shell profile, and hands over to it if it is running.
 
+## Remote flags
+
+The maintainer can switch a declared flag without a release by editing
+one file on the repository's `flags` branch. What a flag may do, and
+why the file is not signed, is in
+[`architecture.md`](./architecture.md#remote-flags). Only a flag
+declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
+build ignores names it does not declare and values its declaration
+does not list.
+
+**Creating the branch (once).** The branch holds `flags.json` and
+nothing else. It is not the default branch, so the `master` ruleset
+does not cover it. These commands create it in a separate worktree
+next to the checkout. Run them in bash from the repository root:
+
+```sh
+git worktree add --detach ../ani-gui-flags
+cd ../ani-gui-flags
+git switch --orphan flags
+printf '{ "flags": {} }\n' > flags.json
+git add flags.json
+git commit -m "chore: start the remote flags file"
+git push -u origin flags
+```
+
+Until the branch exists, every launch gets a 404 and uses the
+defaults, which is also what an empty `flags` object does.
+
+**The format.** One JSON object with a `flags` object inside. A kill
+switch takes `false`; a fallback takes the name of one of the earlier
+behaviours its declaration lists:
+
+```json
+{
+  "flags": {
+    "some_kill_switch": false,
+    "some_fallback": "previous"
+  }
+}
+```
+
+**Flipping a flag.** Edit `flags.json` on the `flags` branch, either in
+the worktree above or in GitHub's web editor, and commit. From the
+worktree, in bash:
+
+```sh
+cd ../ani-gui-flags
+git pull
+python3 -m json.tool flags.json
+git commit -am "chore: switch some_kill_switch off"
+git push
+```
+
+`python3 -m json.tool` fails on malformed JSON. Check the file before
+pushing: a launch that cannot parse it treats the fetch as failed and
+falls back to the copy it cached, so a typo neither applies the change
+nor lifts an earlier one.
+
+**Lifting a retreat.** Set the flag back to its default (`true`, or
+the current behaviour's name), or remove its entry, and push. Removing
+the whole file, or the branch, also works in the end. But installs then
+get a 404, which counts as a failed fetch, so each one keeps the copy it
+cached for up to seven days.
+
+**How long until installs see it.** `raw.githubusercontent.com` serves
+the file with `Cache-Control: max-age=300`, so the CDN can return the
+old copy for up to five minutes after a push. After that, each install
+picks up the change the next time it launches. An app already running
+keeps the flags it read at launch until it is restarted. An install
+that cannot reach GitHub keeps its cached copy for up to seven days,
+then uses the defaults.
+
+To see what a running backend resolved, read
+`GET <api base>/api/flags`. It returns every declared flag's value,
+and `settled: true` once the launch fetch has finished. The backend
+logs the outcome at `info` under the `flags` target, including whether
+the values came from the file, the cache or the defaults.
+
 ## Code style
 
 - **Rust**: `cargo fmt` (settings in `rustfmt.toml`); `cargo clippy -D warnings` enforced by CI.
