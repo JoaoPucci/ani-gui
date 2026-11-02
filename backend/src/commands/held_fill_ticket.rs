@@ -50,6 +50,18 @@ pub(crate) fn release(tickets: &[u64]) {
     }
 }
 
+/// The ticket a fill pending under `key` waits on, if one does. When a
+/// page's read is being served ([`super::collect`]), the page is about
+/// to wait on it: it counts as on screen again, after a release too.
+pub(super) fn serve_pending(key: &str) -> Option<u64> {
+    let mut registry = registry();
+    let ticket = registry.pending(key)?;
+    if super::NOTED.try_with(|_| ()).is_ok() {
+        registry.served(ticket, Instant::now());
+    }
+    Some(ticket)
+}
+
 /// While alive, a page waits on its tickets: they count as on screen
 /// until it ends or a release lets them go.
 pub(super) struct Watching(Vec<(u64, u64)>);

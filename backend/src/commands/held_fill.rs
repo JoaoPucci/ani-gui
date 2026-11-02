@@ -101,17 +101,13 @@ pub(crate) async fn collect<F: Future>(f: F) -> (F::Output, Vec<u64>) {
         .await
 }
 
-/// The request being served carries `ticket`. `false` when no page is
-/// being served ([`collect`] is not running).
-fn note(ticket: u64) -> bool {
-    NOTED
-        .try_with(|noted| {
-            let mut noted = noted.borrow_mut();
-            if !noted.contains(&ticket) {
-                noted.push(ticket);
-            }
-        })
-        .is_ok()
+fn note(ticket: u64) {
+    let _ = NOTED.try_with(|noted| {
+        let mut noted = noted.borrow_mut();
+        if !noted.contains(&ticket) {
+            noted.push(ticket);
+        }
+    });
 }
 
 /// The key a fill is deduped under: per app state (two tests' states
@@ -136,11 +132,8 @@ pub(crate) fn note_pending(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) {
-    let mut registry = registry();
-    if let Some(ticket) = registry.pending(&key(state, fill, kitsu_id, anilist_base)) {
-        if note(ticket) {
-            registry.served(ticket, Instant::now());
-        }
+    if let Some(ticket) = ticket::serve_pending(&key(state, fill, kitsu_id, anilist_base)) {
+        note(ticket);
     }
 }
 
