@@ -308,27 +308,26 @@ describe('refetchOnRefill', () => {
 		expect(apply).not.toHaveBeenCalled();
 	});
 
-	it('lets go of the tickets a landing leaves unwaited, whether or not the refetch happens', async () => {
+	it('lets go of the tickets a landing leaves unwaited, whether or not the refetch is applied', async () => {
 		// One of the read's two refills landed: the page stops waiting on
-		// the other, and lets it go even when it closes before the
-		// refetch or the refetch fails.
+		// the other, and lets it go even when it closes while the refetch
+		// is out or the refetch fails.
 		for (const outcome of ['closed', 'failed', 'applied'] as const) {
 			const release = vi.fn();
 			const waiter = new RefillWaiter(async () => [{ ticket: 1, landed: true }], noSleep, release);
 			const page = new AbortController();
+			const apply = vi.fn();
 			const refetch = vi.fn(async () => {
+				if (outcome === 'closed') page.abort();
 				if (outcome === 'failed') throw new Error('offline');
 				return 'filled';
 			});
-			const settled = refetchOnRefill(
+			await refetchOnRefill(
 				{ data: 'empty', refills: [1, 2] },
-				{ waiter, refetch, apply: vi.fn(), signal: page.signal }
+				{ waiter, refetch, apply, signal: page.signal }
 			);
-			if (outcome === 'closed') {
-				await flush();
-				page.abort();
-			}
-			await settled;
+			expect(refetch).toHaveBeenCalledTimes(1);
+			expect(apply).toHaveBeenCalledTimes(outcome === 'applied' ? 1 : 0);
 			expect(release.mock.calls.flat(2)).toContain(2);
 		}
 	});
