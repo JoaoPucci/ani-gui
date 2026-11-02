@@ -37,11 +37,15 @@
 //! The backend owns the request; the renderer reads the resolved
 //! values through `GET /api/flags`.
 
+pub mod cache;
 pub mod decl;
+pub mod remote;
 pub mod resolve;
+pub mod store;
 
 pub use decl::{FlagDecl, FlagKind, FlagValue};
 pub use resolve::Resolved;
+pub use store::FlagStore;
 
 /// Every flag this build declares. Empty until the first consumer
 /// lands: a declaration comes with the code that reads it.
