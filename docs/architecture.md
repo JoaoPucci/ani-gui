@@ -68,6 +68,32 @@ The handshake the backend prints at startup announces each lane as `ANI_GUI_LANE
 
 Lanes bound how long one class can make another wait; they do not bound a class against itself, so the renderer also holds availability probes to four at once across every surface, background ones to three so a probe the user is waiting on always finds a slot, and aborts a page's probes once the user has left it. The backend, in turn, shares walks of an availability row — a show in one audio mode. A lookup of a row whose walk is already out, from another surface, a page mounted again or the warm, waits on that walk instead of starting another, unless the walk set off before a cache-skipping refresh last wrote the row; an interactive lookup does not wait behind a background walk, but takes its place, and the background walk's callers move onto it. A refresh, and a lookup with no Kitsu id, walk on their own. A probe the renderer aborts stops waiting, and a walk nobody waits on any more ends, except a background one while fewer than three others walk on with nobody waiting: a page mounted again joins it rather than starting over, and its verdict is cached. The list views' warm feeds one worker through a queue that holds each row once and at most 256 rows, and the renderer hands an uncached id to it once per session, and again only once two minutes have passed since it last did. Downloads start at most six at once — as many connections as Chromium opens to their lane, since each holds one for its progress stream and the backend starts a download only when that stream arrives — and the rest wait in the download dock as queued, in order, cancellable before they start.
 
+## The renderer's content security policy
+
+The renderer runs under a content security policy in two halves, and every resource it loads has to pass both.
+
+- **The bundle's half** is a `<meta http-equiv>` SvelteKit writes into the page at build time (`kit.csp` in `frontend/svelte.config.js`). It allows scripts from the app itself plus SvelteKit's inline bootstrap script, by a hash that changes with every build. It also refuses plugins and `<base>`.
+- **The shell's half** is a response header. It names the lanes, whose ports are known only at launch, so the shell writes it from the handshake (`electron/lib/renderer-csp.cjs`):
+  - styles come from the app;
+  - images come from the app, `data:` and the lanes;
+  - connections go to the app and the lanes;
+  - media comes from `blob:` (hls.js attaches through a MediaSource) and the lanes;
+  - fonts come from the app;
+  - workers, frames, plugins, manifests, `<base>`, form submissions and framing the app are refused.
+
+A lane origin enters the header only if it is exactly `http://127.0.0.1:<port>` and belongs to the API or one of the five lanes the renderer knows. Anything else the handshake carries is dropped, so an extra announced line cannot add a source. The header names no script source, so it neither widens nor narrows what the meta allows to run.
+
+Two rules follow for the frontend:
+
+- **Nothing may evaluate a string as code**, in either build. The play loader's Lottie animation uses lottie-web's light build, which has no expression engine, and its JSON carries its motion as keyframes rather than expressions.
+- **Style attributes are refused**, except SvelteKit's route announcer, which is allowed by its hash. Svelte applies every style that holds an expression through the CSSOM, which the policy does not govern. A static `style="…"` in a template is parsed as markup and refused, so it has to be a class (`frontend/tests/lint/no-static-style-attr.test.ts`).
+
+In a packaged build the `app://` protocol handler adds the header to every response it serves: the index, the SPA fallback, every asset and every error. It keeps each response's content type; a module script served without its JavaScript type would not run. Until the window opens against the handshake, the header names no loopback origin at all.
+
+In development the shell appends the header to the Vite dev server's main-frame responses, beside SvelteKit's own policy, and allows what Vite needs on top: inline `<style>` elements and its hot-reload WebSocket. The browser-only dev flow (`VITE_ANI_GUI_API_BASE`, no Electron) gets only SvelteKit's half.
+
+Every Electron e2e test fails on a violation it did not declare (`electron/e2e/policy-guard.ts`), including ones on the first load, which the guard reads from the shell's relayed console.
+
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.

@@ -240,6 +240,8 @@ pnpm --dir electron dev
 
 There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
 
+The renderer runs under a content security policy ([architecture](./architecture.md#the-renderers-content-security-policy)). A refusal shows up on the terminal as a `[renderer:error] Refused to …` line naming the directive. A dev window that stays blank, or a poster, stream or animation that quietly never loads, is worth checking against those lines first.
+
 A packaged build whose startup fails — the backend does not start, or the window never gets its first page — says so in an error dialog before it exits with code 1: in the app's language, with the failure's own message as the detail (the same text the `[main] startup failed:` log line carries). The dialog closes by itself after a minute. A dev launch shows no dialog; the reason is on its terminal.
 
 The player logs which level of an HLS stream it loads and plays with `console.debug`, which the shell relays as `[renderer:verbose]` lines:
@@ -308,4 +310,4 @@ The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is on
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
 
 **Why does the dev server work in a browser tab too?**
-By design — opening `http://localhost:5173` in any browser shows the same UI the Electron renderer loads. Useful for fast iteration. Production builds always run inside Electron because the streaming proxy + native window matter for the shipped product; standalone-browser dev only works against a separately-running backend (set `VITE_ANI_GUI_API_BASE` to its loopback URL).
+By design — opening `http://localhost:5173` in any browser shows the same UI the Electron renderer loads. Useful for fast iteration. Production builds always run inside Electron because the streaming proxy + native window matter for the shipped product; standalone-browser dev only works against a separately-running backend (set `VITE_ANI_GUI_API_BASE` to its loopback URL), and runs under only the half of the content security policy the bundle carries; the half that names the backend's lanes comes from the Electron shell.
