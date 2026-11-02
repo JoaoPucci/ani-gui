@@ -186,6 +186,21 @@ describe('captionEntries — what each track reads as in the menu', () => {
 		]);
 	});
 
+	it('qualifies by what tells the tracks apart, not by what they share', () => {
+		const tracks = [
+			{ index: 0, lang: 'es-419', label: 'Spanish (- Latin America)' },
+			{ index: 1, lang: 'es-419', label: 'Spanish (- Latin America | Forced)' }
+		];
+		expect(captionEntries(tracks, 'pt-BR', format).map((e) => e.name)).toEqual([
+			'Espanhol (América Latina)',
+			'Espanhol (América Latina) · Forced'
+		]);
+		expect(captionEntries(tracks, 'en', format).map((e) => e.name)).toEqual([
+			'Spanish (Latin America)',
+			'Spanish (Latin America) · Forced'
+		]);
+	});
+
 	it('numbers entries that would otherwise read the same', () => {
 		const entries = captionEntries(
 			[
