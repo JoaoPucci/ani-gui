@@ -1,0 +1,65 @@
+import { describe, expect, it } from 'vitest';
+import { MOCK_RUNS } from './fixtures';
+import { placement } from './order';
+import { emptyColumn, franchiseSummary, stripRunFor, stripView } from './strip-view';
+import type { MockEntry, MockRun } from './types';
+
+const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
+const ids = (list: readonly MockEntry[]) => list.map((e) => e.id);
+
+describe('stripRunFor', () => {
+	it("finds a member's run, and a side story's through its parents", () => {
+		expect(stripRunFor('46598')?.key).toBe('jojo');
+		expect(stripRunFor('6928')?.key).toBe('fate');
+		expect(stripRunFor('11759')?.key).toBe('gintama');
+		expect(stripRunFor('12064')?.key).toBe('jojo');
+	});
+
+	it('finds nothing for an entry with no strip', () => {
+		// A Bleach film: around the run, but no parent story recorded.
+		expect(stripRunFor('1515')).toBeNull();
+		expect(stripRunFor('999999')).toBeNull();
+	});
+});
+
+describe('stripView', () => {
+	it("is a member's placement in its run", () => {
+		for (const order of ['linked', 'released'] as const) {
+			const p = placement(run('fate'), '7658', order);
+			expect(stripView(run('fate'), '7658', order)).toEqual({ kind: 'run', ...p });
+		}
+	});
+
+	it("shows a side story's parent stories before it, nothing after, and no number", () => {
+		for (const order of ['linked', 'released'] as const) {
+			const v = stripView(run('fate'), '6928', order);
+			expect(v.kind).toBe('side');
+			expect(ids(v.before)).toEqual(['6028', '7658']);
+			expect(v.after).toEqual([]);
+			expect(v.position).toBeNull();
+			expect(v.total).toBeNull();
+			expect(v.inCycle).toBe(false);
+		}
+		expect(ids(stripView(run('gintama'), '11759', 'linked').before)).toEqual(['10083']);
+	});
+});
+
+describe('emptyColumn', () => {
+	it('says the run starts or ends, or that nothing follows a side story', () => {
+		expect(emptyColumn(stripView(run('bleach'), '244', 'linked'), 'before')).toBe('first');
+		expect(emptyColumn(stripView(run('bleach'), '49444', 'linked'), 'after')).toBe('last');
+		expect(emptyColumn(stripView(run('jojo'), '12064', 'linked'), 'after')).toBe('side_end');
+	});
+});
+
+describe('franchiseSummary', () => {
+	it('counts the main story, films with other versions, and side stories', () => {
+		expect(franchiseSummary(run('fate'))).toMatchObject({ main: 6, films: 3, sides: 1 });
+		expect(franchiseSummary(run('bleach'))).toMatchObject({ main: 5, films: 4, sides: 3 });
+	});
+
+	it('fans the first entry, a film and a side story, filling from the main story', () => {
+		expect(ids(franchiseSummary(run('fate')).posters)).toEqual(['6028', '4788', '6928']);
+		expect(ids(franchiseSummary(run('monogatari')).posters)).toEqual(['3919', '49128', '6546']);
+	});
+});

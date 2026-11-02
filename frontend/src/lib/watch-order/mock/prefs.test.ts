@@ -36,6 +36,22 @@ describe('watch-order mockup prefs', () => {
 		expect(p).toMatchObject({ enabled: true, switcher: false, strip: 'trio', order: 'linked' });
 	});
 
+	it("starts the strip in the maintainer's chosen arrangement, with the new options' first choices", () => {
+		expect(parseMockPrefs(null)).toMatchObject({
+			strip: 'trio',
+			wording: 'role',
+			cta: 'button',
+			resume: 'chip'
+		});
+	});
+
+	it("keeps the second round's choices", () => {
+		const p = parseMockPrefs(
+			JSON.stringify({ wording: 'watch', cta: 'stack', resume: 'sentence', strip: 'rail' })
+		);
+		expect(p).toMatchObject({ wording: 'watch', cta: 'stack', resume: 'sentence', strip: 'rail' });
+	});
+
 	it('round-trips through storage', () => {
 		const s = memory();
 		const next = { ...MOCK_PREFS_DEFAULT, enabled: true, upNext: 'still' as const };
