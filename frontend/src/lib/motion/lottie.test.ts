@@ -7,7 +7,7 @@ import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 
 const loadAnimation = vi.hoisted(() => vi.fn());
-vi.mock('lottie-web', () => ({ default: { loadAnimation } }));
+vi.mock('lottie-web/build/player/lottie_light', () => ({ default: { loadAnimation } }));
 
 import {
 	followMotionPreference,
