@@ -263,13 +263,4 @@
 			transform: translateY(0) scale(1);
 		}
 	}
-	@media (prefers-reduced-motion: reduce) {
-		.backdrop,
-		.card {
-			animation: none;
-		}
-		.dismiss {
-			transition: none;
-		}
-	}
 </style>
