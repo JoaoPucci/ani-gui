@@ -1095,14 +1095,16 @@ them introduces a new widget style.
 ### The franchise page
 
 - **Placement and anatomy.** The page reuses the show page's frame.
-  - **Hero:** the run's latest-watched entry, or else its first, in
-    the hero band.
+  - **Hero:** the entry the franchise is named after (the run's first
+    in link order, whatever the order setting), in the hero band and the masthead's poster, so the artwork
+    beside the name is that entry's. The entry being watched has its
+    own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
     "Franchise · 15 entries" eyebrow (every entry the page lists, the
-    count the strip's "Whole franchise" button shows), with a Resume
+    total the strip's "Whole franchise" link stands for), with a Resume
     button styled and
     glowing like the show page's Play. The page takes the accent of the
-    entry the hero shows.
+    entry the hero shows; Resume goes to the entry being watched.
   - **Main story:** a vertical list rather than a rail, so long titles
     have room, numbered along the path from the run's first entry
     (section 4, "Position numbers"). Each row shows the oversized mono
@@ -1321,10 +1323,12 @@ The rules below hold on every surface:
   entry of the franchise would then read the same, ignoring case; the
   suffix then stays, since it is what tells the two apart. *JoJo no
   Kimyou na Bouken (TV)* keeps it, because the franchise's 1993 OVA is
-  titled *JoJo no Kimyou na Bouken*. The hero shows the entry the viewer
-  is on, or the first entry, as section 5 says; a note under the
-  Resume button says which order the list follows, with a link to
-  Settings.
+  titled *JoJo no Kimyou na Bouken*. The hero and the masthead's poster
+  show the entry the name comes from (the first round showed the entry
+  being watched, which put *Steel Ball Run*'s artwork beside the 2012
+  series' name); the entry being watched has its own line beside the
+  Resume button. A note under the button says which order the list
+  follows, with a link to Settings.
 - **Missing data and keyboard** as on the show page; the recaps stay
   folded behind a "Show recaps" button that reports its state.
 
@@ -1423,7 +1427,8 @@ variant below is one of the switch's options.
     focus. No border, so it does not read as a twin of the watching
     card.
 
-  **Recommended: button.** It is the app's own control, at the size of
+  **Recommended: button** (the maintainer chose the stack; see the
+  second round's decisions). It is the app's own control, at the size of
   the page's other buttons, and the count tells the viewer there is
   more than the strip shows. The stack shows *what* there is, which
   the button cannot, but it is a widget no other page has; it is the
@@ -1449,28 +1454,118 @@ variant below is one of the switch's options.
   **Recommended: card.** The poster says "this is a show" before the
   words are read, which is the confusion the round set out to fix.
 
+### Decisions recorded (second review round)
+
+The maintainer answered the second round's six questions:
+
+1. **Column wording: Relation.** In Brazilian Portuguese "Prequela"
+   goes: it reads as translated or European, and is not what a
+   Brazilian viewer says. A prequel is "Anterior" (plural
+   "Anteriores") and a sequel "Continuação"; a side story's parent is
+   "História principal" ("Histórias principais"), beside the existing
+   "História paralela". "Lançado antes / depois" stays for release
+   order. Russian and Latin American Spanish keep their reviewed words.
+   In Portuguese the relation wording and the "Previous / Next" option
+   now share "Anterior" for the column before, and a parent story's
+   key reads as the franchise page's "História principal" section; a
+   side story's parents are main-story entries, so the two agree.
+2. **"Whole franchise": the poster stack**, not the button. Its third
+   round is below: the fan on hover, a highlight on the whole link,
+   focus, reduced motion, and one, two or no posters.
+3. **The entry being watched: the card.** When it and the stack share
+   the footer, both are centred at matching widths (third round,
+   below).
+4. **A parent story's strip does not list its side stories.** It would
+   repeat "Similar titles"; what that row does with a franchise's side
+   stories is a separate discussion.
+5. **No "of N" at forks, joins and loops** stays. In "As released"
+   order every run is one line, and the strip says "N of total" there:
+   *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
+   Episode*, which has no date and sorts last, "16 of 16".
+6. **The franchise page's masthead** takes its artwork from the entry
+   the name comes from, the run's first in link order (on JoJo, the 2012 series, not
+   *Steel Ball Run*, which the viewer is watching); the entry being
+   watched keeps its own line beside Resume. The name keeps Kitsu's
+   "(TV)" where dropping it would clash with another entry's title,
+   as decided in the first round. The maintainer first asked for the
+   year in its place ("JoJo no Kimyou na Bouken (2012)") and then
+   reversed it: the year would read as naming only the first season,
+   not the franchise. The franchise-name function is unchanged.
+
+### The poster stack and the footer, third round
+
+The third round revises the strip's footer only.
+
+- **The fan.** The posters stand on one arc, as if pinned at a point
+  below the stack: each is drawn by rotating it about the arc's centre
+  (`stack-fan.ts`, a pure function with fast-check properties), so the
+  transition between the two poses moves each card along the arc,
+  outwards, with the app's elastic card easing. At rest three cards
+  are 6.5° apart; on hover or focus 9° apart, the second round's
+  hovered fan, with a deeper shadow. The way back to rest uses the
+  soft easing, so the cards do not overshoot inwards. Two cards split
+  half a step to each side of the middle; one stands upright and
+  lifts.
+- **No poster.** A franchise none of whose entries has a poster shows
+  three blank frames in the same fan, the front one carrying the
+  number of entries the franchise page lists, upright, in the strip's
+  numeral face. The posters the stack fans are only entries that have
+  one, and a poster that fails to load is drawn as a blank frame, so
+  a missing image never leaves an empty card among real ones.
+- **The whole link is the target.** The link's padding is the area a
+  highlight marks; three options:
+  - *Surface*: a faint plate one step up the page's ink appears under
+    the whole link, the hover the strip's own entry tiles use;
+  - *Underline*: the label's underline, faint at rest, turns full;
+  - *Border*: a hairline ring appears round the whole link.
+
+  Keyboard focus shows the same state as hover (the highlight, the
+  fan open, the arrow forward) under the app's focus ring.
+- **Reduced motion.** The stack is drawn fanned out and does not move;
+  the highlight still appears on hover and focus, without a
+  transition. The preference is read through `$lib/motion`.
+- **The footer.** Three arrangements:
+  - *Centred*: the card and the stack side by side in the middle of
+    the band at one width (24rem at most); one above the other, at
+    the same width, where the band is under 50rem (a 1100 px window
+    and below);
+  - *On the centre line*: on the strip's own columns, the card under
+    the entries before, towards the centre, and the stack under the
+    entries after, at one width (22rem at most); centred, one above
+    the other, where the band is under 56rem (about a 1210 px
+    window);
+  - *Opposite ends*: the second round's arrangement, for comparison.
+
+  One above the other, the card comes first, in reading order; the
+  second round put the franchise link on the upper row. In the first
+  two the card drops its resting border and takes the surface plate
+  on hover and focus (the stack's own, with the surface highlight), so the two read as one matched
+  pair rather than a framed card beside unframed text; its episode
+  number keeps its place and the title gives way when the width is
+  short. Without the card (on *Stone Ocean Part 3*, where *Steel Ball
+  Run* is already a tile) the stack sits alone in the middle, at its
+  own width.
+
 ### Open design questions
 
 Each with a recommendation; the maintainer decides.
 
-1. **Column wording.** Relation (recommended), Previous / Next, Watch
-   before / after, or Before / After. The design critic preferred
-   "Watch before / Watch after": one pair of words for every case,
-   with no second vocabulary for release order and side stories.
-2. **"Whole franchise".** Button (recommended) or poster stack.
-3. **The entry being watched.** Card (recommended) or sentence.
-4. **A side story's strip.** The second round gives a side story a
-   strip naming its parent stories. Should the parent's strip also
-   list its side stories? Recommended: no; the franchise page lists
-   them, and the strip stays about the main story.
-5. **A numeral with no total.** Where the run is not one line (a
-   join, a fork, a loop), the strip shows the position along this
-   entry's path ("10") and no "of N", while the franchise control
-   counts every entry ("21 entries"). Recommended: keep it; a total
-   would be false where paths differ in length.
-6. **JoJo's franchise name.** The clash guard keeps *JoJo no Kimyou na
-   Bouken (TV)*. Recommended: accept it; any other name would be one
-   the app made up.
+1. **The stack's highlight.** Surface (recommended), underline or
+   border. Surface is the only one that marks the whole link as one
+   target, and it is the hover the strip's own tiles already use.
+   Underline marks only the label; border reads as a second framed
+   card beside the watching card, and under the focus ring as two
+   rings. The design critic agreed.
+2. **The footer.** Centred (recommended), on the centre line, or
+   opposite ends. Centred is what was asked for and holds at every
+   width; the centre-line version ties the pair to the strip's
+   columns but only fits side by side from about a 1210 px window,
+   and below that stacks them, centred. The design critic agreed.
+3. **The watching card's border.** In the centred footers the card
+   loses its resting border so it pairs with the stack (both bare at
+   rest, the same plate on hover and focus). Recommended: keep that;
+   the alternative is a border on both, which makes the stack read as
+   a second card. This one came from the design critic's review.
 
 ## 6. Recommendation and plan for 0.19.0
 

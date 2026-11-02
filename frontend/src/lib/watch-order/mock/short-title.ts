@@ -1,7 +1,8 @@
 /**
  * A card title without the words the run's entries share (the
- * proposal's open question 2): the longest leading part, ending at a
- * separator, that another member's title also starts with is dropped.
+ * proposal's "short titles", decided in its first review round): the
+ * longest leading part, ending at a separator, that another member's
+ * title also starts with is dropped.
  * A title with no such part is kept whole.
  */
 const SEPARATORS = [': ', ' - ', ' – '];

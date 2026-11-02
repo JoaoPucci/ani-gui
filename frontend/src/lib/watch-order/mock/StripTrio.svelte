@@ -360,8 +360,8 @@
 		margin-inline-start: auto;
 	}
 
-	/* center: the two side by side in the middle, at one width, the
-	   wider one's (capped); one above the other where a row cannot
+	/* center: the two side by side in the middle, at one width (24rem
+	   where there is room); one above the other where a row cannot
 	   hold both. */
 	.footer-center {
 		display: grid;
