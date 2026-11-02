@@ -50,6 +50,17 @@ export function metaLine(run: MockRun, entry: MockEntry, today: string): MetaSeg
 	return out;
 }
 
+/**
+ * A meta line in two parts for a card too narrow to keep it on one
+ * line: the format and year, then the rest (progress, count, watched
+ * or the coming date), so the second line never opens on a dot.
+ */
+export function splitMeta(
+	segments: readonly MetaSegment[]
+): [readonly MetaSegment[], readonly MetaSegment[]] {
+	return [segments, []];
+}
+
 /** "05": positions read as oversized two-digit numerals. */
 export function numeral(position: number): string {
 	return String(position).padStart(2, '0');

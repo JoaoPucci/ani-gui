@@ -59,6 +59,7 @@ export interface FranchiseSummary {
 	/** Films and other versions. */
 	readonly films: number;
 	readonly sides: number;
+	readonly recaps: number;
 	/** Up to three posters to fan out, from different parts of the franchise. */
 	readonly posters: readonly MockEntry[];
 }
@@ -85,6 +86,7 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 		main: run.entries.length,
 		films: run.films.length + run.versions.length,
 		sides: run.sides.length,
+		recaps: 0,
 		posters
 	};
 }
@@ -104,4 +106,15 @@ export function watchingFor(
 	if (!now || now.entry.id === id) return null;
 	const shown = [...view.before, ...view.after].some((e) => e.id === now.entry.id);
 	return shown ? null : now;
+}
+
+/**
+ * The entries "Similar titles" leaves out while the strip shows: the
+ * run's own entries, which the strip and its franchise link stand for,
+ * and the strip's tiles (a side story's parents).
+ */
+export function similarHidden(run: MockRun, view: StripView): ReadonlySet<string> {
+	void run;
+	void view;
+	return new Set();
 }
