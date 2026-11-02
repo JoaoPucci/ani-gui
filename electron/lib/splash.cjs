@@ -38,4 +38,11 @@ function splashWindowOptions() {
   };
 }
 
-module.exports = { SPLASH_MARK, SPLASH_PAGE, splashWindowOptions };
+/** Show, close and suppress the splash. Stub. */
+function splashController({ createWindow, logError }) {
+  void createWindow;
+  void logError;
+  return { show() {}, close() {}, suppress() {} };
+}
+
+module.exports = { SPLASH_MARK, SPLASH_PAGE, splashController, splashWindowOptions };

@@ -535,10 +535,11 @@ test("the splash is up before the backend starts, and closes once the window is 
   assert.deepEqual(events, ["splash", "spawn", "flags", "window", "close-splash"]);
 });
 
-test("a failed boot leaves the splash to the failure report, which hides it", async () => {
+test("a failed boot puts the splash away before it reports, and never closes it", async () => {
   const events = [];
   await bootApp({
     showSplash: () => events.push("splash"),
+    suppressSplash: () => events.push("suppress"),
     spawnBackend: async () => {
       throw new Error("backend exited before handshake");
     },
@@ -549,7 +550,7 @@ test("a failed boot leaves the splash to the failure report, which hides it", as
     exit: (code) => events.push(`exit:${code}`),
     logError: () => {},
   });
-  assert.deepEqual(events, ["splash", "stop", "report", "exit:1"]);
+  assert.deepEqual(events, ["splash", "suppress", "stop", "report", "exit:1"]);
 });
 
 test("a splash that cannot be shown does not stop the boot", async () => {
@@ -586,4 +587,24 @@ test("a backend that never answers for its flags holds the window back no longer
   t.mock.timers.tick(1);
   await booted;
   assert.deepEqual(events, ["window:null"]);
+});
+
+test("a quit asked for while the flags were awaited opens no window", async () => {
+  const events = [];
+  let quitting = false;
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    fetchFlags: async () => {
+      quitting = true; // the splash closed from the taskbar, say
+      return null;
+    },
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    quitting: () => quitting,
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash"]);
 });
