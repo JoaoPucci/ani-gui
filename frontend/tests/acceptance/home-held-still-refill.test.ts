@@ -1,6 +1,7 @@
 // Acceptance: a Continue Watching card whose episode still AniList's
 // pacing held back takes the still once its retry lands — the card
-// stays the same card, and only its image changes, fading in.
+// stays the same card, and only its image changes, fading in once it
+// has loaded and decoded.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -118,6 +119,10 @@ describe('home Continue Watching — a held-back still', () => {
 		// Fetched once more, not on and on.
 		expect(readsAfter).toBe(1);
 		expect(card()).toBe(before);
-		expect(cardImg()?.classList.contains('img-fade')).toBe(true);
+		// Fading in: the card shows the still once it has loaded and
+		// decoded, and fades it in (reveal-image.ts sets data-revealed).
+		expect(cardImg()?.dataset.revealed).toBeUndefined();
+		cardImg()?.dispatchEvent(new Event('load'));
+		await vi.waitFor(() => expect(cardImg()?.dataset.revealed).toBe('fade'), { timeout: 3000 });
 	});
 });
