@@ -109,6 +109,8 @@ describe('the start shows alone', () => {
 					return mode;
 				},
 				set mode(next: string) {
+					// As a real TextTrack, a set to the mode it has is no change.
+					if (next === mode) return;
 					mode = next;
 					if (tracks.includes(track)) changed.push(`${track.label}:${next}`);
 				}
@@ -186,7 +188,7 @@ describe('the start shows alone', () => {
 		attachSidecarTracks(v, [en, es], 'es');
 		expect(changed).toEqual([]);
 		load('Español');
-		expect(changed.at(-1)).toBe('Español:showing');
+		expect(changed).toEqual(['Español:hidden', 'Español:showing']);
 		expect(tracks.map((t) => t.mode)).toEqual(['disabled', 'showing']);
 		expect(noteCaptionChange(v, v.textTracks)).toBeNull();
 	});

@@ -30,8 +30,10 @@
 // The model draws a showing track's cues only while the flag is up
 // ({@link paintsCaptions}). The browser fetches a track's file once
 // the track is joined and not disabled, and fires `load` on its
-// element when the file is in — always a task after the selection,
-// which runs with no fetch to wait on; the model fires it then.
+// element when the file is in. Nothing orders that against the
+// selection, which runs with no fetch to wait on, but a fetch through
+// the proxy takes far longer than a zero-delay task; the model fires
+// it after the selection.
 //
 // The model turns on the first track left alone where Chromium may
 // prefer the user's language; scenarios assert how many tracks show,

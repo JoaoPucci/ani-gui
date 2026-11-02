@@ -232,9 +232,7 @@ async function painted(page: Page): Promise<string[]> {
     const text = (n: DomNode): string =>
       n.nodeType === 3
         ? n.nodeValue
-        : [...(n.children ?? []), ...(n.shadowRoots ?? [])]
-            .map(text)
-            .join("");
+        : [...(n.children ?? []), ...(n.shadowRoots ?? [])].map(text).join("");
     const cues: string[] = [];
     const walk = (n: DomNode) => {
       if (pseudo(n) === "cue") {
