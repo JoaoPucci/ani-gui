@@ -346,10 +346,19 @@ git commit -am "chore: switch some_kill_switch off"
 git push
 ```
 
-`python3 -m json.tool` fails on malformed JSON. Check the file before
-pushing: a launch that cannot parse it treats the fetch as failed and
-falls back to the copy it cached, so a typo neither applies the change
-nor lifts an earlier one.
+`python3 -m json.tool` checks only that the file is JSON. Two other
+mistakes get past it and fail differently:
+
+- **The wrong shape** (no `flags` object at the top, for example) is
+  treated like malformed JSON. Each launch counts it as a failed fetch
+  and keeps the copy it cached, so the change does not apply, and an
+  earlier retreat stays in force for up to seven days.
+- **A wrong name or value** (a misspelt flag, `"false"` as a string, a
+  behaviour the declaration does not list) puts that flag back at its
+  default. That lifts any retreat already in force for it.
+
+So after pushing, wait out the five-minute CDN cache, launch the app,
+and confirm the values with `GET /api/flags` (below).
 
 **Lifting a retreat.** Set the flag back to its default (`true`, or
 the current behaviour's name), or remove its entry, and push. Removing

@@ -281,15 +281,21 @@ from the file.
 **Only safe directions.** A flag may only move the app toward the safer
 or older side: switching a feature off, or going back to an earlier
 behaviour. It may never switch off something protective or silence a
-notice. The kinds enforce the direction: no declaration can name a value
-riskier than the build's own default. What the types cannot check is
-whether "off" really is the safer side for a given feature, so each
-declaration states why in `safe_because`, and a test refuses a
-declaration that leaves it empty. A kill switch on the update notifier
-itself, or on any check or warning, is not a valid flag.
+notice. The kinds guarantee half of that: the default is the build's own
+behaviour, and the file can only pick a value the declaration lists. They
+cannot check whether the listed values really are the safer side. For a
+fallback, that depends on which earlier behaviours the declaration names.
+For a kill switch, it depends on which feature the switch gates, and on
+the code that reads it treating `false` as "off". Review carries that
+part, so each declaration states its case in `safe_because`, and a test
+refuses a declaration that leaves it empty. A kill switch on the update
+notifier itself, or on any check or warning, is not a valid flag.
+Consumers read a flag through its declaration (`Resolved::enabled`,
+`Resolved::choice`), never through a name typed out again. A misspelt
+or undeclared flag then reads as its declaration's default.
 
-**Why the file is not signed.** No value the file can select is riskier
-than the default, so someone who rewrote the file in transit, or got
+**Why the file is not signed.** With every declaration held to that
+rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
 write access to the branch, could only switch features off or bring
 back older behaviour. A future flag that needs a riskier value, such as
 turning something on or relaxing a check, must not be declared until
@@ -323,6 +329,11 @@ reach GitHub. A week covers a stretch of launches without the network,
 such as a trip, a captive portal or a blocked CDN, so a feature switched
 off for a bad release stays off through it. And even on a machine that
 never reaches the file again, a lifted retreat clears within the week.
+
+Development and test runs read the same live file as installed builds.
+Once a flag is declared, flipping it on the `flags` branch also changes
+what `pnpm dev` and the packaged end-to-end runs do on their next
+launch.
 
 **Rate limits.** `raw.githubusercontent.com` is GitHub's content CDN,
 not the REST API. The request does not count against the 60 requests
