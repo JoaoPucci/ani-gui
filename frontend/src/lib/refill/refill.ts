@@ -69,7 +69,12 @@ export async function refetchOnRefill<T>(
 ): Promise<void> {
 	if (served.refills.length === 0) return;
 	const landed = await opts.waiter.landed(served.refills, opts.signal);
-	if (!landed || opts.signal?.aborted) return;
+	if (!landed) return;
+	// The page waits on none of the read's other tickets any more,
+	// whatever comes of the refetch. (A read with one ticket has no
+	// other; the landed one has ended and needs no release.)
+	if (served.refills.length > 1) opts.waiter.letGo(served.refills);
+	if (opts.signal?.aborted) return;
 	let data: T;
 	try {
 		data = await opts.refetch();
