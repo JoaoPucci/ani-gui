@@ -522,6 +522,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   const firstPage = {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
+    // The splash, once on its way, is on screen before this window is
+    // (lib/splash.cjs); a later window finds no splash and waits for
+    // nothing.
+    beforeShow: () => splash.whenShown(),
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });

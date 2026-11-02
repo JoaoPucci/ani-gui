@@ -60,6 +60,9 @@ function splashWindowOptions() {
 function splashController({ createWindow, logError }) {
   const state = fresh();
   current = state;
+  // Settles once the splash is on screen, or can no longer get there.
+  let markUp = () => {};
+  const up = new Promise((resolve) => (markUp = resolve));
   let win = null;
   let suppressed = false;
   // Set once the boot is past the splash: shown its window, or failed.
@@ -73,15 +76,20 @@ function splashController({ createWindow, logError }) {
         splash = createWindow(splashWindowOptions());
       } catch (err) {
         logError("[main] could not show the splash:", err);
+        markUp();
         return;
       }
-      if (!splash) return;
+      if (!splash) {
+        markUp();
+        return;
+      }
       splash[SPLASH_MARK] = true;
       // The page holds its motion until it is told the window is on
       // screen (splash.js falls back to a timer), so the opening plays
       // once the window manager has mapped the window.
       splash.once("show", () => {
         state.shown = true;
+        markUp();
         Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL)).catch((err) =>
           logError("[main] could not tell the splash it is shown:", err),
         );
@@ -90,6 +98,7 @@ function splashController({ createWindow, logError }) {
         if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
       });
       splash.on("closed", () => {
+        markUp();
         if (win === splash) win = null;
       });
       win = splash;
@@ -106,8 +115,14 @@ function splashController({ createWindow, logError }) {
       }
       win = null;
     },
+    // Resolves once the splash is on screen — or there is none to wait
+    // for (never asked to open, failed to, put away, gone) — and in any
+    // case within SPLASH_SHOW_WAIT_MS.
     whenShown() {
-      return Promise.resolve();
+      if (!state.opened || over || !alive()) return Promise.resolve();
+      let timer;
+      const late = new Promise((resolve) => (timer = setTimeout(resolve, SPLASH_SHOW_WAIT_MS)));
+      return Promise.race([up, late]).finally(() => clearTimeout(timer));
     },
     suppress() {
       over = true;
@@ -132,8 +147,10 @@ function lastSplashState() {
   return { ...current };
 }
 
-/** Stub. */
-const SPLASH_SHOW_WAIT_MS = 0;
+/** The longest the app's window waits for the splash to be on screen.
+ *  The splash is a light static page and paints well within this; the
+ *  bound is for one that never does. */
+const SPLASH_SHOW_WAIT_MS = 1000;
 
 module.exports = {
   SPLASH_SHOW_WAIT_MS,

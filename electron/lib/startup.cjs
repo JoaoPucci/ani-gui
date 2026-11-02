@@ -156,12 +156,16 @@ function awaitFirstShow(win, { timeoutMs }) {
  * already quitting over its last window. That is a quit, and the open
  * resolves with nothing to report.
  */
-async function openFirstPage(win, url, { timeoutMs, logError }) {
+async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async () => {} }) {
   const contents = win.webContents;
   let failed = false;
-  const shown = awaitFirstShow(win, { timeoutMs }).then(() => {
-    if (!failed) win.show();
-  });
+  // `beforeShow` is what must be on screen first — the splash, which a
+  // fast start would otherwise close before it had painted.
+  const shown = awaitFirstShow(win, { timeoutMs })
+    .then(() => beforeShow())
+    .then(() => {
+      if (!failed) win.show();
+    });
   try {
     await Promise.all([loadFirstPage(win, url, logError), shown]);
   } catch (err) {
