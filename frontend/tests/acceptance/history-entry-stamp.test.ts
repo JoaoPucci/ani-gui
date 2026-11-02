@@ -1,7 +1,11 @@
 // Acceptance: the topbar's breadcrumb knows whether there is a page
-// behind the one on screen, and the layout keeps what it needs for that
-// on each history entry through SvelteKit's own state, never by writing
-// `history.state` itself.
+// behind the one on screen, and the layout keeps what else it needs
+// about an entry (the page it was opened from) through SvelteKit's own
+// state, never by writing `history.state` itself.
+//
+// Whether there is a page behind is the browser's to say: the
+// Navigation API's index for the current entry, which it keeps across
+// a replace and a reload. The layout writes no depth of its own.
 //
 // SvelteKit owns `history.state`: every entry it writes carries its own
 // keys, and its dev runtime warns that a direct `history.pushState` or
@@ -10,10 +14,10 @@
 // `replaceState('', state)` from `$app/navigation`, read back on a back
 // or forward press as `page.state`.
 //
-// With the router mocked, the scenario plays SvelteKit: it reports each
-// navigation to the layout's `afterNavigate` hooks, and on a back press
-// it puts the entry's state back on `page.state`, as SvelteKit restores
-// it.
+// With the router mocked, the scenario plays SvelteKit and the browser
+// through ./session-history: it reports each navigation to the
+// layout's `afterNavigate` hooks, and on a back press it puts the
+// entry's state back on `page.state`, as SvelteKit restores it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -21,6 +25,7 @@ import { mount, unmount, createRawSnippet, tick } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setPageState, setUrl } from './page-state.svelte';
+import { sessionHistory } from './session-history';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -49,28 +54,6 @@ let target: HTMLElement;
 let layout: ReturnType<typeof mount> | null = null;
 let historyWrites: ReturnType<typeof vi.spyOn>;
 
-/** Report a navigation to the layout as SvelteKit does once it lands.
- *  `state` is what SvelteKit restored onto `page.state`: on a back or
- *  forward press, the entry's own; on any other navigation, nothing. */
-function land(
-	type: 'link' | 'goto' | 'popstate' | 'enter',
-	from: string | null,
-	to: string,
-	state: App.PageState = {}
-) {
-	const url = new URL(to, 'http://127.0.0.1:31337');
-	setUrl(url.pathname, Object.fromEntries(url.searchParams));
-	setPageState(state);
-	for (const [callback] of vi.mocked(afterNavigate).mock.calls) {
-		(callback as (nav: unknown) => void)({
-			type,
-			from: from ? { url: new URL(from, 'http://127.0.0.1:31337') } : null,
-			to: { url },
-			willUnload: false
-		});
-	}
-}
-
 const breadcrumb = () =>
 	target.querySelector(`nav[aria-label="${m.app_nav_breadcrumb_aria_label()}"]`);
 
@@ -86,6 +69,7 @@ beforeEach(async () => {
 	vi.mocked(replaceState).mockImplementation((_url, state) => setPageState(state));
 	historyWrites = vi.spyOn(window.history, 'replaceState');
 	server.use(...quietBackend);
+	sessionHistory.install('/');
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
@@ -100,45 +84,68 @@ afterEach(() => {
 	layout = null;
 	target.remove();
 	historyWrites.mockRestore();
+	sessionHistory.uninstall();
 	setPageState({});
 	setUrl('/search');
 	(window as unknown as { aniGui?: unknown }).aniGui = undefined;
 });
 
-describe('the layout keeps its back-stack depth on the history entry', () => {
+describe('the layout keeps what it knows about an entry on the entry', () => {
 	it('writes it through SvelteKit, never through history.replaceState', async () => {
-		land('enter', null, '/');
+		sessionHistory.open();
 		await tick();
 		expect(breadcrumb(), 'nothing is behind the page the app opened on').toBeNull();
 
-		land('link', '/', '/search?q=frieren');
+		sessionHistory.push('link', '/search?q=frieren');
 		await tick();
 		expect(vi.mocked(replaceState)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(replaceState)).toHaveBeenCalledWith(
-			'',
-			expect.objectContaining({ aniGuiDepth: 1 })
-		);
+		expect(vi.mocked(replaceState)).toHaveBeenCalledWith('', { aniGuiFrom: '/' });
 		expect(historyWrites).not.toHaveBeenCalled();
 		expect(breadcrumb(), 'Home is behind the search page').not.toBeNull();
 	});
 
 	it('reads it back from page.state on a back press, and writes nothing', async () => {
-		land('enter', null, '/');
-		land('link', '/', '/search?q=frieren');
-		const searchEntry = { ...page.state };
-		land('link', '/search?q=frieren', '/anime/46474');
+		sessionHistory.open();
+		sessionHistory.push('link', '/search?q=frieren');
+		sessionHistory.push('link', '/anime/46474');
 		await tick();
 		expect(breadcrumb()).not.toBeNull();
 
 		vi.mocked(replaceState).mockClear();
-		land('popstate', '/anime/46474', '/search?q=frieren', searchEntry);
+		sessionHistory.back();
 		await tick();
 		expect(breadcrumb(), 'Home is still behind the search page').not.toBeNull();
 
-		land('popstate', '/search?q=frieren', '/', {});
+		sessionHistory.back();
 		await tick();
 		expect(breadcrumb(), 'nothing is behind Home').toBeNull();
 		expect(vi.mocked(replaceState)).not.toHaveBeenCalled();
 		expect(historyWrites).not.toHaveBeenCalled();
+	});
+});
+
+describe('the breadcrumb across a reload', () => {
+	it('stays while the browser keeps a page behind the reloaded one', async () => {
+		sessionHistory.open();
+		sessionHistory.push('link', '/search?q=frieren');
+		sessionHistory.push('link', '/anime/46474');
+		await tick();
+		expect(breadcrumb()).not.toBeNull();
+
+		// A reload starts a new document over the same history: a fresh
+		// layout, and SvelteKit restores no page.state onto it.
+		unmount(layout!);
+		vi.mocked(afterNavigate).mockClear();
+		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
+		layout = mount(Layout, { target, props: { children } });
+		sessionHistory.open();
+		// The new document's boot reads answer before the scenario ends.
+		for (let i = 0; i < 40; i++) await new Promise((r) => setTimeout(r, 5));
+		expect(breadcrumb(), 'the search is still behind the show').not.toBeNull();
+
+		sessionHistory.back();
+		sessionHistory.back();
+		await tick();
+		expect(breadcrumb(), 'nothing is behind Home').toBeNull();
 	});
 });
