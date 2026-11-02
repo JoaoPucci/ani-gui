@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-05_
+_Last updated: 2026-11-03_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -156,12 +156,17 @@ ani-gui keeps the following on your computer only:
   example the database is momentarily unavailable), the rows are left
   on disk. Reconnecting the **same** account and re-syncing replaces
   them; otherwise they remain until you delete the local database.
+- **Remote flags cache** — the last copy of the project's remote flags
+  file the app fetched (see below), and when it was fetched, in
+  `remote-flags.json` under your OS's cache directory. It holds only
+  the maintainer's switches, nothing about you.
 
 ## What ani-gui transmits to public services
 
 Most outbound traffic happens only when you take an action that
-requires it; the exception is the update check that runs on launch
-(below). For each kind of request:
+requires it. The exceptions are two requests made on every launch,
+the update check and the remote flags file (below). For each kind of
+request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogue playback resolves
@@ -266,13 +271,26 @@ requires it; the exception is the update check that runs on launch
   bundled copy of the `ani-cli` script fetched its own latest version
   from upstream at every launch. The app no longer carries or runs
   that script, so that request is gone.
+- **Remote flags (automatic, on launch)** — once per launch, ani-gui
+  downloads a small file of switches from the project's GitHub
+  repository, through GitHub's content server
+  (`raw.githubusercontent.com`). The maintainer uses it to switch off a
+  feature that turned out to be broken, without waiting for a release.
+  Like the update check, the request tells GitHub your IP address,
+  when the app was started, and that the request comes from ani-gui.
+  Nothing else is sent: no account
+  information, nothing about what you watch, and no identifier of your
+  install. The file holds only the switches; GitHub's own privacy
+  statement governs the request:
+  <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
 - **Aniskip OP/ED timing** — when the auto-skip toggle is on, ani-gui
   asks the Aniskip community service for crowd-sourced opening /
   ending timestamps for the episode you're watching. No account
   information is sent.
 
-There is no analytics or telemetry. ani-gui does not "phone home" on
-launch or on any other schedule.
+There is no analytics or telemetry. Apart from the two launch requests
+above, which carry nothing about you or how you use the app, ani-gui
+does not "phone home" on launch or on any other schedule.
 
 ## Connecting and disconnecting an account
 
