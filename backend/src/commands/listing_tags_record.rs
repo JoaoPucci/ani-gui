@@ -95,15 +95,11 @@ pub(crate) fn next_record(stored: Result<Option<Record>, ()>, new: Record) -> Op
     let Ok(stored) = stored else {
         return None;
     };
-    let Some(old) = stored.filter(|o| o.heard.run == new.heard.run) else {
-        return Some(new);
+    let old = match new.heard.against(stored.as_ref().map(|o| o.heard)) {
+        Order::Later => return Some(new),
+        Order::Earlier => return None,
+        Order::Overlapping => stored?,
     };
-    if new.heard.start >= old.heard.at {
-        return Some(new);
-    }
-    if new.heard.at <= old.heard.start {
-        return None;
-    }
     let mut tags = old.tags;
     for t in new.tags {
         if !tags.contains(&t) {
@@ -111,11 +107,49 @@ pub(crate) fn next_record(stored: Result<Option<Record>, ()>, new: Record) -> Op
         }
     }
     Some(Record {
-        heard: Hearing {
-            run: new.heard.run,
-            start: old.heard.start.min(new.heard.start),
-            at: old.heard.at.max(new.heard.at),
-        },
+        heard: new.heard.spanning(old.heard),
         tags,
     })
+}
+
+/// How a hearing stands against the one a store last took.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Order {
+    /// Heard wholly after it, or there is none this run took: what it
+    /// heard replaces what is stored.
+    Later,
+    /// Heard wholly before it: what it heard is older than what is
+    /// stored, and is dropped.
+    Earlier,
+    /// The spans overlap, and neither can be ordered before the other.
+    Overlapping,
+}
+
+impl Hearing {
+    /// How this hearing stands against `stored`, the one a store last
+    /// took: no hearing, or one an earlier run made — older than any
+    /// hearing now — is [`Order::Later`]; otherwise the spans decide.
+    #[must_use]
+    pub(crate) fn against(self, stored: Option<Self>) -> Order {
+        let Some(old) = stored.filter(|o| o.run == self.run) else {
+            return Order::Later;
+        };
+        if self.start >= old.at {
+            Order::Later
+        } else if self.at <= old.start {
+            Order::Earlier
+        } else {
+            Order::Overlapping
+        }
+    }
+
+    /// The span of this hearing and `other`, of the same run.
+    #[must_use]
+    pub(crate) fn spanning(self, other: Self) -> Self {
+        Self {
+            run: self.run,
+            start: self.start.min(other.start),
+            at: self.at.max(other.at),
+        }
+    }
 }

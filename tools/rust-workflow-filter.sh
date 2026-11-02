@@ -37,21 +37,23 @@ changed=$(git diff --name-only --no-renames "$base" "$head")
 
 # The Rust pipeline: the sources, every fixture the tests read, the
 # toolchain pin, the two goldens the fixture tests compare against,
-# the tool that makes the temporary directory the tests run under, the
-# script the coverage job runs, the workflow itself, and the cached
-# apt install the test and coverage jobs call.
+# the picker oracle's hand-written pools (the threaded-walk test walks
+# them), the tool that makes the temporary directory the tests run
+# under, the script the coverage job runs, the workflow itself, and the
+# cached apt install the test and coverage jobs call.
 if printf '%s\n' "$changed" |
-    grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/(picker|tracker-map)-oracle/fixtures-golden\.json$|tools/hostile-tmpdir\.sh$|tools/rust-lcov\.sh$|\.github/workflows/rust\.yml$|\.github/actions/apt-install/)'; then
+    grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/(picker|tracker-map)-oracle/fixtures-golden\.json$|tests/picker-oracle/cases/|tools/hostile-tmpdir\.sh$|tools/rust-lcov\.sh$|\.github/workflows/rust\.yml$|\.github/actions/apt-install/)'; then
     echo 'relevant=true'
 else
     echo 'relevant=false'
 fi
 
 # The picker oracle reads the picker, its recorded pools, its own model
-# and cases, the document the model transcribes, and the workflow; a
-# change to the document alone is no reason to run the rest.
+# and cases, the document the model transcribes, the runner its jobs
+# start their steps with, and the workflow; a change to the document
+# alone is no reason to run the rest.
 if printf '%s\n' "$changed" |
-    grep -qE '^(backend/|tests/fixtures/hianime/picker/|tests/picker-oracle/|docs/title-resolution\.md$|\.github/workflows/rust\.yml$)'; then
+    grep -qE '^(backend/|tests/fixtures/hianime/picker/|tests/picker-oracle/|docs/title-resolution\.md$|tools/alongside\.sh$|\.github/workflows/rust\.yml$)'; then
     echo 'picker=true'
 else
     echo 'picker=false'

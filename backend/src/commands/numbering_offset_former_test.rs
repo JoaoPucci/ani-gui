@@ -90,3 +90,83 @@ fn a_repair_keeps_no_former_tag_a_row_carries_now() {
     assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
     assert_eq!(former_stamp(&state, SHOW), None);
 }
+
+#[test]
+fn a_former_tag_a_later_listing_carries_is_dropped() {
+    // The repair kept "24.5" because no row carried it then. A listing
+    // at hand since tags a row "24.5": a position or a file under it may
+    // be that row's, so the stamp names no former tag from now on. The
+    // stamp itself stays.
+    let state = state();
+    repaired(&state);
+    retag_display(&state, SHOW, &[], &|f| f == "24.5");
+    assert_eq!(former_stamp(&state, SHOW), None);
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+}
+
+#[test]
+fn a_former_tag_a_later_listing_leaves_free_is_kept() {
+    let state = state();
+    repaired(&state);
+    retag_display(&state, SHOW, &[], &|f| f == "14.5");
+    assert_eq!(former_stamp(&state, SHOW), Some((13, "24.5".to_string())));
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+}
+
+mod kept_former_props {
+    use super::kept_former;
+    use proptest::prelude::*;
+
+    fn tag() -> impl Strategy<Value = String> {
+        (0u32..40, prop::bool::ANY).prop_map(|(n, half)| {
+            if half {
+                format!("{n}.5")
+            } else {
+                n.to_string()
+            }
+        })
+    }
+
+    proptest! {
+        /// Whatever the former tag and whichever tags the listing
+        /// carries, a former tag is dropped exactly when the listing
+        /// carries it, and is otherwise kept as it was; no former tag
+        /// stays none.
+        #[test]
+        fn a_former_tag_is_dropped_exactly_when_the_listing_carries_it(
+            former in prop::option::of((0u32..40, tag())),
+            carried in prop::collection::vec(tag(), 0..8),
+        ) {
+            let shared = |t: &str| carried.iter().any(|c| c == t);
+            let kept = kept_former(former.clone(), &shared);
+            match &former {
+                None => prop_assert_eq!(kept, None),
+                Some((_, t)) if carried.contains(t) => prop_assert_eq!(kept, None),
+                Some(_) => prop_assert_eq!(kept, former),
+            }
+        }
+    }
+}
+
+#[test]
+fn a_former_tag_a_later_listing_carries_is_dropped_under_a_continuation_offset() {
+    // The stamp is kept under an offset of 12; the former tag "24.5" is
+    // the listing's own tag, and a listing at hand tagging a row "24.5"
+    // drops it whatever the offset.
+    let state = state();
+    crate::commands::numbering_offset::put_display(&state, SHOW, 12, 13, "24.5");
+    retag_display(&state, SHOW, &[(13, "24.5".into(), "12.5".into())], &|_| {
+        false
+    });
+    assert_eq!(former_stamp(&state, SHOW), Some((13, "24.5".to_string())));
+    let ep = |n: u32, tag: &str| crate::scraper::provider::EpisodeRef {
+        id: u64::from(n),
+        number: n,
+        number2: Some(tag.to_string()),
+        former_tag: None,
+        title: None,
+    };
+    retag_from_listing(&state, SHOW, &[ep(13, "12.5"), ep(26, "24.5")], None, None);
+    assert_eq!(former_stamp(&state, SHOW), None);
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+}

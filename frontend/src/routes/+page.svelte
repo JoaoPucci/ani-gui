@@ -10,9 +10,10 @@
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { fade, scale } from 'svelte/transition';
-	import { flip } from 'svelte/animate';
-	import { quintOut } from 'svelte/easing';
+	import { fade, reducible } from '$lib/motion/transitions';
+	import { cardScale, cardShift, STILL } from '$lib/motion/card-motion';
+	import { heroParallaxTransform } from '$lib/motion/parallax';
+	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
@@ -27,16 +28,29 @@
 	// animates ids the user explicitly deleted; cwFlip animates the
 	// survivors that physically shift to close the gap.
 	const deleteAnimationGate = createAnimationGate();
-	function cwOutScale(node: Element) {
+	const cwOutScale = reducible((node: Element) => {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return { duration: 0 };
-		return scale(node, { duration: 240, start: 0.6, opacity: 0, easing: quintOut });
-	}
-	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return STILL;
+		return cardScale(node);
+	});
+	const cwFlip = reducible((node: Element, animation: { from: DOMRect; to: DOMRect }) => {
 		const id = (node as HTMLElement).dataset.entryId;
-		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return { duration: 0 };
-		return flip(node, animation, { duration: 280, easing: quintOut });
-	}
+		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return STILL;
+		return cardShift(node, animation);
+	});
+	// The Watch Later row moves its cards the same way, for the ones a
+	// settled tracker write added or removed — and only those.
+	const watchLaterMotion = createRailMotionGate();
+	const cellId = (node: Element) => (node as HTMLElement).dataset.animeId ?? '';
+	const wlIn = reducible((node: Element) =>
+		watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL
+	);
+	const wlOut = reducible((node: Element) =>
+		watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL
+	);
+	const wlFlip = reducible((node: Element, animation: { from: DOMRect; to: DOMRect }) =>
+		watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL
+	);
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
@@ -68,11 +82,15 @@
 	import { isBearerRefused } from '$lib/account/renewal-failure';
 	import { fetchCachedList, fetchAndCacheList } from '$lib/account/api';
 	import { loadWatchLater } from '$lib/account/watch-later-loader';
+	import { listChanges, railNeedsReread } from '$lib/account/list-changes';
+	import { createRailMotionGate, railDelta } from '$lib/account/watch-later-motion';
+	import { createRailLoads } from '$lib/account/watch-later-loads';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
 	import {
 		isWatchLaterStale,
 		readLastRefreshed,
-		markRefreshed
+		refreshStamp,
+		markRefreshedSince
 	} from '$lib/account/watch-later-refresh';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import Icon from '$lib/components/Icon.svelte';
@@ -93,7 +111,7 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
-	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
+	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
 		naturalRatio,
@@ -152,7 +170,6 @@
 	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
 	// in the marketing-page sense; this is a programmed marquee.
 	const HERO_ROTATION_COUNT = 3;
-	const HERO_ROTATE_MS = 6000;
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -174,11 +191,11 @@
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
-	// Monotonic load token. Every rail load (mount effect + refresh)
-	// captures the next value and only writes its result if still the
-	// latest — so a slow initial load can't clobber a newer refresh, and
-	// vice versa.
-	let watchLaterLoadSeq = 0;
+	// Which rail load is the latest (`$lib/account/watch-later-loads`).
+	// Every load (mount effect + refresh) takes a ticket and only writes
+	// its result if still the latest — so a slow initial load can't
+	// clobber a newer refresh, and vice versa.
+	const watchLaterLoads = createRailLoads();
 	// Watch Later refresh: in-flight guard for the manual button, and a
 	// one-shot latch so the TTL auto-refresh fires at most once per mount
 	// (the rail effect re-runs on account/mode changes).
@@ -246,9 +263,14 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
+	// Aborted when Home is left: a Continue card's refill landing after
+	// is not fetched ($lib/refill/refill).
+	const refills = new AbortController();
+	onDestroy(() => refills.abort());
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
+		signal: refills.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
@@ -258,6 +280,12 @@
 		setEpisode: (id, ep, forEpisode) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
 			historyEpisodeFor = { ...historyEpisodeFor, [id]: forEpisode };
+		},
+		// A held-back still landing: onto the card's own episode, in
+		// place, so the card keeps everything but its image.
+		fillThumbnail: (id, episodeId, thumbnail) => {
+			const ep = historyEpisodes[id];
+			if (ep && ep.id === episodeId && !ep.thumbnail?.original) ep.thumbnail = { ...thumbnail };
 		},
 		leftPartWay
 	});
@@ -580,14 +608,14 @@
 	$effect(() => {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const deps = buildWatchLaterDeps();
-		const seq = ++watchLaterLoadSeq;
+		const ticket = watchLaterLoads.start(true);
 		void loadWatchLater(deps)
 			.then((refs) => filterAvailable(refs, filterMode))
 			.then((refs) => {
-				if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
 				watchLaterFailed = false;
-				maybeAutoRefreshWatchLater(deps);
+				if (watchLaterLoads.landed(ticket)) maybeAutoRefreshWatchLater(deps);
 			})
 			.catch((e: unknown) => {
 				// Loader's per-provider try/catch already swallowed
@@ -595,33 +623,28 @@
 				// provider failed (or the bridge died). Flag the failure
 				// (distinct from a genuinely empty list) so the rail shows
 				// a retry affordance rather than "nothing planned".
-				if (seq !== watchLaterLoadSeq) return;
+				if (!watchLaterLoads.current(ticket)) return;
 				watchLaterError = e;
 				watchLaterFailed = true;
 			});
 	});
 
-	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
-	// this effect is the runtime adapter (matchMedia probe + interval
-	// management).
-	$effect(() => {
-		const reduced =
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		if (
-			!shouldRunHeroRotation({
+	// Hero auto-advance. The rules and the interval live in
+	// $lib/hero-rotation; this effect hands it the conditions and the
+	// index to move. The preference is reactive: switching reduced
+	// motion on while Home is open stops the rotation, and off starts it.
+	$effect(() =>
+		startHeroRotation(
+			{
 				rotationLength: heroRotation.length,
 				paused: heroPaused,
-				prefersReducedMotion: !!reduced
-			})
-		) {
-			return;
-		}
-		const id = window.setInterval(() => {
-			heroIndex = nextHeroIndex(heroIndex, heroRotation.length);
-		}, HERO_ROTATE_MS);
-		return () => window.clearInterval(id);
-	});
+				prefersReducedMotion: reducedMotion.current
+			},
+			() => {
+				heroIndex = nextHeroIndex(heroIndex, heroRotation.length);
+			}
+		)
+	);
 
 	/**
 	 * Pluck bearer + user_id pairs from every provider whose stored
@@ -654,26 +677,47 @@
 	}
 
 	// Re-read the cached snapshot and re-render the rail. Shared by the
-	// initial load path and post-refresh.
-	async function reloadWatchLaterRail() {
+	// initial load path, post-refresh, and a settled tracker write — the
+	// one caller that moves the cards it changed (`moved`).
+	async function reloadWatchLaterRail(moved = false) {
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const seq = ++watchLaterLoadSeq;
+		const ticket = watchLaterLoads.start(false);
+		const deps = buildWatchLaterDeps();
 		try {
-			const refs = await loadWatchLater(buildWatchLaterDeps());
+			const refs = await loadWatchLater(deps);
 			const filtered = await filterAvailable(refs, filterMode);
-			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
+			if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
+			if (moved && watchLater) {
+				watchLaterMotion.open(
+					railDelta(
+						watchLater.map((a) => a.id),
+						filtered.map((a) => a.id)
+					)
+				);
+			}
 			watchLater = filtered;
 			watchLaterFailed = false;
+			if (watchLaterLoads.landed(ticket)) maybeAutoRefreshWatchLater(deps);
 		} catch (e) {
 			// Refresh-path reload failed (bridge / availability). Flag it
 			// rather than blanking the rail or leaking an unhandled
 			// rejection: a populated rail keeps showing its cards (the
 			// length>0 branch wins), an empty one shows the retry state.
-			if (seq !== watchLaterLoadSeq) return;
+			if (!watchLaterLoads.current(ticket)) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
 		}
 	}
+
+	// A tracker write that settled while the row is on screen — one held
+	// back by the tracker lands long after the user left the editor — is
+	// read again here, as the editor reads its own entry again.
+	$effect(() =>
+		listChanges.subscribe((change) => {
+			const shown = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
+			if (railNeedsReread(change, shown)) void reloadWatchLaterRail(true);
+		})
+	);
 
 	// Re-pull each connected provider's list from the tracker (picking up
 	// entries added on the provider's website), then re-render. Drives
@@ -692,10 +736,12 @@
 					// Authoritative tracker pull (no secret-gated fallback): refresh
 					// a near-expiry token first so a long-open session's refresh
 					// doesn't 401 against the provider API.
+					const stamp = refreshStamp(p);
 					const bearer = (await freshBearerFor(p)) ?? cred.bearer;
 					try {
 						await fetchAndCacheList(p, bearer);
-						markRefreshed(p, Date.now());
+						// Not fresh if a write asked for a re-read meanwhile.
+						markRefreshedSince(p, stamp, Date.now());
 					} catch (e) {
 						// Leave the stale snapshot in place; a later refresh
 						// (manual or next TTL window) retries. A refused bearer
@@ -877,18 +923,10 @@
 		return trimmed.length > 280 ? trimmed.slice(0, 277) + '…' : trimmed;
 	}
 
+	// The parallax holds still under reduced motion; reading the
+	// preference here makes the transform follow a change to it.
 	function heroTransform(y: number, isCover: boolean): string {
-		// Honor prefers-reduced-motion: when the user opts out of motion,
-		// the hero stays still even on scroll.
-		if (
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-		) {
-			return `translate3d(0, 0, 0) scale(${isCover ? 1.02 : 1.15})`;
-		}
-		const offset = Math.min(y * 0.25, 80);
-		const scale = isCover ? 1.02 : 1.15;
-		return `translate3d(0, ${offset}px, 0) scale(${scale})`;
+		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
@@ -1332,15 +1370,27 @@
 	</button>
 {/snippet}
 
-{#if watchLater && watchLater.length > 0}
+{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
+	     empty — the empty row with its header and refresh, so newly-added
+	     tracker titles can be pulled in before the TTL. One strip for both,
+	     so the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card. -->
 	<Strip
 		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_caption()}
+		caption={watchLater.length > 0
+			? m.account_watch_later_caption()
+			: m.account_watch_later_empty()}
 		headerTrailing={watchLaterRefresh}
 	>
 		{#each watchLater as anime (anime.id)}
-			<PosterCard {anime} />
+			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+				<PosterCard {anime} />
+			</div>
 		{/each}
+		{#if watchLater.length === 0}
+			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{/if}
 	</Strip>
 {:else if accountStore.hasAny && watchLaterFailed}
 	<!-- Connected but the last load failed (bridge/availability down). Show
@@ -1354,17 +1404,6 @@
 		<p class="watch-later-empty">
 			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
 		</p>
-	</Strip>
-{:else if accountStore.hasAny && watchLater !== null}
-	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
-	     surface the header + refresh so newly-added tracker titles can be
-	     pulled in before the TTL. -->
-	<Strip
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_empty()}
-		headerTrailing={watchLaterRefresh}
-	>
-		<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
 	</Strip>
 {/if}
 
@@ -1792,13 +1831,6 @@
 			opacity: 0.55;
 		}
 	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero-skel-img,
-		.skel-poster,
-		.line-skel {
-			animation: none;
-		}
-	}
 
 	/* — Continue Watching cards. The poster gives identity, the EP tag
 	     is the editorial overlay, the title + Resume CTA close the card. */
@@ -1806,6 +1838,9 @@
 	   own --accent variable so the chip inherits the same hue. */
 	.resume-cell {
 		position: relative;
+		display: block;
+	}
+	.watch-later-cell {
 		display: block;
 	}
 	/* X chip — top-right of the rounded poster, fades in with the
@@ -1923,11 +1958,6 @@
 	@keyframes rail-refresh-spin {
 		to {
 			transform: rotate(360deg);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.rail-refresh.is-refreshing :global(svg) {
-			animation: none;
 		}
 	}
 	.continue-menu-btn:hover,
@@ -2302,12 +2332,5 @@
 	/* Lands with the artwork. */
 	.resume-body.look-landed {
 		animation: look-in var(--dur-slow) var(--ease-out-soft);
-	}
-	/* The --dur-* tokens are already 0ms here, so the fades are off;
-	   only the sweep has its own duration. */
-	@media (prefers-reduced-motion: reduce) {
-		.look-skeleton::before {
-			display: none;
-		}
 	}
 </style>

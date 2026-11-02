@@ -8,9 +8,9 @@ use crate::scraper::provider::EpisodeRef;
 /// becomes: the row's slot with its tag now, and the tag an earlier
 /// version gave that row, where it had one no row carries now.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Restamp {
-    pub(super) display: (u32, String),
-    pub(super) former: Option<(u32, String)>,
+pub(in super::super) struct Restamp {
+    pub(in super::super) display: (u32, String),
+    pub(in super::super) former: Option<(u32, String)>,
 }
 
 /// The stamp a legacy row holding `row_ep` reads through, from
@@ -28,7 +28,7 @@ pub(super) struct Restamp {
 /// A slot past `unread_past` — Kitsu's count, when no reading reached
 /// the rows the listing runs past it — is an appended extra or a whole
 /// episode, unknown which, and its tag is not kept for it.
-pub(super) fn restamp(
+pub(in super::super) fn restamp(
     row_ep: &str,
     offset: u32,
     stamp: &(u32, String),
