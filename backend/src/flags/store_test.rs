@@ -217,6 +217,26 @@ async fn settled_never_waits_past_its_limit() {
     assert!(started.elapsed() < SETTLE_LIMIT + Duration::from_secs(1));
 }
 
+#[tokio::test]
+async fn a_fresh_cache_is_published_before_the_fetch_finishes() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let (_server, url) = serve(file_body().set_delay(Duration::from_secs(2))).await;
+    let mut src = source(&url, td.path());
+    src.timeout = Duration::from_secs(5);
+    seed_cache(&src, NOW - DAY, cached_flags()).await;
+    let store = FlagStore::pending(TEST_DECLS);
+    let task = {
+        let (store, src) = (store.clone(), src.clone());
+        tokio::spawn(async move { refresh(&store, &reqwest::Client::new(), &src, NOW).await })
+    };
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(pair(&store), FROM_CACHE);
+    assert!(!store.is_settled());
+    task.await.expect("join");
+    assert_eq!(pair(&store), FROM_FILE);
+    assert!(store.is_settled());
+}
+
 #[test]
 fn the_shipped_source_is_the_flags_branch_file_within_the_fetch_timeout() {
     let src = Source::shipped(Some("/c/remote-flags.json".into()));
