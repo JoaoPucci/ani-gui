@@ -521,23 +521,24 @@ starting it, and delete it when you find it done.
   path still offers that the custom one does not — the setting's own
   hint names picture-in-picture and the native captions menu — and
   decide from that.
-- **Native-menu captions picks on a playlist-only stream.** With the
-  custom controls off, a pick in Chromium's own captions menu is
-  remembered for the show only once the app has applied the
-  session's start, and it applies one only where the session lists
-  sidecar subtitle tracks. A stream whose subtitles exist only inside
-  its own playlist never gets a start — neither the remembered or
-  locale track nor a remembered Off; hls.js's own choice plays — so a
-  pick there is not remembered either.
+- **The starting captions on a playlist-only stream.** The app
+  applies a session's starting captions — the language last picked on
+  the show (Off included), else the app's language — only where the
+  session lists sidecar subtitle tracks. A stream whose subtitles
+  exist only inside its own playlist never gets one, whichever player
+  controls are on: hls.js's own choice plays, a language or Off
+  picked in the app's captions menu is remembered but not applied on
+  the show's next such episode, and with the custom controls off a
+  pick in Chromium's own menu is not remembered at all, since that is
+  recorded only once the app has applied a start.
 
   It waits because no episode seen has that shape — every one lists
   its tracks beside the stream — and because the obvious fix, taking
   the captions as they stand when such a session starts, would let
   hls.js's own switching of playlist tracks read as the viewer's pick.
 
-  The gap is not in the menu but in where the start is applied, and it
-  exists only on the native-controls path, so choosing one set of
-  player controls (above) may remove it.
+  The gap is in where the start is applied, not in either menu, so
+  choosing one set of player controls (above) would not remove it.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
