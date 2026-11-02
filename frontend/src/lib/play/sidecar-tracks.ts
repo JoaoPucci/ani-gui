@@ -98,7 +98,15 @@ export async function fetchSidecarTracks(
  *   track joins disabled, never fetched;
  * - the tracks are switched off before they are removed, so the next
  *   session's tracks do not join a video that last showed one — with
- *   no start of its own, that session would get one anyway.
+ *   no start of its own, that session would get one anyway;
+ * - once the start's file is in, the start is set again on the video
+ *   ({@link redrawOnLoad}). Chromium draws captions only once a mode
+ *   change on a joined track has found one showing, and a start that
+ *   joined already showing is changed by nothing after: its cues went
+ *   active and none was drawn. The file arrives a fetch after the
+ *   tracks joined, by when the selection — a zero-delay task — has
+ *   run, and the start, set by a script since joining, is left alone
+ *   by any later one.
  */
 export function attachSidecarTracks(
 	video: HTMLVideoElement,
@@ -122,6 +130,7 @@ export function attachSidecarTracks(
 		video.appendChild(el);
 		return el;
 	});
+	if (start !== null) redrawOnLoad(video, elements[start]);
 	// What the app set, so the browser's own captions menu can be told
 	// from it ($lib/play/caption-watch).
 	expectCaptions(video, showingCaption(video.textTracks));
@@ -133,6 +142,25 @@ export function attachSidecarTracks(
 			el.remove();
 		}
 	};
+}
+
+/**
+ * When the start's file is in, switch the start off and on again on
+ * the video, so the browser draws it. Only while it is still the one
+ * showing on this video: a track the viewer has moved off, or one
+ * that has left with its session, is not touched. The mode it ends on
+ * is the one the app set, so no caption change is reported as a pick.
+ */
+function redrawOnLoad(video: HTMLVideoElement, el: HTMLTrackElement): void {
+	el.addEventListener(
+		'load',
+		() => {
+			if (el.parentNode !== video || el.track.mode !== 'showing') return;
+			el.track.mode = 'hidden';
+			el.track.mode = 'showing';
+		},
+		{ once: true }
+	);
 }
 
 /**
