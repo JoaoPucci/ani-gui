@@ -27,6 +27,10 @@
  * something does move, so the check cannot pass by looking at a page
  * where nothing could.
  *
+ * Standing still must not mean hidden: one scenario checks that the
+ * Continue Watching cards, once landed, show their artwork and text with
+ * the animations that reveal them taken off.
+ *
  * The backend's API is stubbed per request, as in home-continue.spec.ts,
  * so nothing depends on Kitsu or the provider being reachable.
  */
@@ -71,7 +75,17 @@ test.beforeAll(() => {
 	}
 });
 
-async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication) => void) {
+/** A 1×1 PNG: artwork that loads and decodes, so a card can show it. */
+const PIXEL = Buffer.from(
+	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+	'base64'
+);
+
+async function launchOnce(
+	reduced: boolean,
+	onLaunch: (app: ElectronApplication) => void,
+	images = false
+) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-reduced-motion-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
 	const app = await launchPackagedApp({
@@ -97,7 +111,11 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 		if (p === '/api/settings') return j(defaultSettings);
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
-		if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
+		if (p.startsWith('/api/image')) {
+			return images
+				? r.fulfill({ status: 200, contentType: 'image/png', body: PIXEL })
+				: r.fulfill({ status: 503 });
+		}
 		if (p === '/api/history') return j(rows);
 		if (p.startsWith('/api/history/') && method === 'DELETE') {
 			const id = decodeURIComponent(p.split('/')[3] ?? '');
@@ -148,13 +166,17 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 	return { app, page };
 }
 
-async function launch(reduced = true) {
+async function launch(reduced = true, images = false) {
 	let pending: ElectronApplication | null = null;
 	return withColdLaunchRetry(
 		async () => {
-			const launched = await launchOnce(reduced, (app) => {
-				pending = app;
-			});
+			const launched = await launchOnce(
+				reduced,
+				(app) => {
+					pending = app;
+				},
+				images
+			);
 			pending = null;
 			return launched;
 		},
@@ -245,6 +267,65 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await page.mouse.wheel(0, 400);
 		await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 		await expectStill(page, 'scrolling a show’s page');
+	} finally {
+		killTree(app.process().pid);
+		await app.close();
+	}
+});
+
+test('a Continue Watching card that has landed shows its artwork and text', async () => {
+	// The card's artwork, number, scrim and text fade in with keyframes
+	// that start from transparent. With the animations taken off, what
+	// shows is each element's own style, which must be the visible one:
+	// a reveal that only an animation finishes would leave the card
+	// blank. One card lands on its image (served here), the other,
+	// matched to nothing, on its initials.
+	const { app, page } = await launch(true, true);
+	try {
+		const strip = page.getByRole('region', { name: /continue watching/i });
+		const imageCard = strip.locator('.resume-poster[data-look="image"]');
+		const initialsCard = strip.locator('.resume-poster[data-look="placeholder"]');
+		await expect(imageCard.locator('img[data-revealed]')).toHaveCount(1, { timeout: 15_000 });
+		await expect(initialsCard).toHaveCount(1, { timeout: 10_000 });
+		await expectStill(page, 'Continue Watching landed');
+
+		const seen = await page.evaluate(() => {
+			const out: { what: string; opacity: string; visibility: string; display: string }[] = [];
+			const note = (what: string, el: Element, pseudo?: string) => {
+				const cs = getComputedStyle(el, pseudo);
+				out.push({ what, opacity: cs.opacity, visibility: cs.visibility, display: cs.display });
+			};
+			const strip = document.querySelector('.resume-poster')?.closest('section') ?? document;
+			for (const poster of strip.querySelectorAll('.resume-poster:not([data-look="pending"])')) {
+				const kind = poster.getAttribute('data-look');
+				note(`${kind} scrim`, poster, '::after');
+				for (const sel of ['img', '.resume-poster-placeholder', '.resume-ep-tag']) {
+					const el = poster.querySelector(sel);
+					if (el) note(`${kind} ${sel}`, el);
+				}
+				const body = poster.parentElement?.querySelector('.resume-body');
+				if (body) note(`${kind} .resume-body`, body);
+			}
+			return out;
+		});
+		const kinds = seen.map((s) => s.what);
+		for (const required of [
+			'image img',
+			'image .resume-ep-tag',
+			'image scrim',
+			'image .resume-body',
+			'placeholder .resume-poster-placeholder',
+			'placeholder .resume-ep-tag',
+			'placeholder scrim',
+			'placeholder .resume-body'
+		]) {
+			expect(kinds, `a landed card shows its ${required}`).toContain(required);
+		}
+		for (const s of seen) {
+			expect(Number(s.opacity), `${s.what} is not transparent`).toBeGreaterThan(0.5);
+			expect(s.visibility, `${s.what} is visible`).toBe('visible');
+			expect(s.display, `${s.what} is displayed`).not.toBe('none');
+		}
 	} finally {
 		killTree(app.process().pid);
 		await app.close();
