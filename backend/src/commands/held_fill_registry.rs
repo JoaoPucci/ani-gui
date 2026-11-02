@@ -123,10 +123,12 @@ impl Registry {
     /// dropped but the backend may hold a while longer — until a page
     /// waits on it again. Every wait open on it counts as let go: the
     /// renderer has one wait for all its pages, releases only tickets no
-    /// page of it still waits on, and sends the release before any later
-    /// wait on them. A release that arrives after such a wait — or one
-    /// from a second renderer waiting on its own — lets go of that wait
-    /// too, until its next wait (at most the wait route's 20 s limit).
+    /// page of it is waiting on, and mostly sends the release before any
+    /// later wait on them. A release that arrives after such a wait — a
+    /// read no page waits on letting go of a ticket another page's read
+    /// is still bringing, or a second renderer waiting on its own — lets
+    /// go of that wait too, until its next wait (at most the wait
+    /// route's 20 s limit).
     pub(crate) fn release(&mut self, ticket: u64) {
         if let Some(w) = self.watched.get_mut(&ticket) {
             w.pages = 0;
