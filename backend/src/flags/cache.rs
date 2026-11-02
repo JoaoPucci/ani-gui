@@ -52,14 +52,26 @@ pub fn is_fresh(fetched_at: u64, now: u64, window: Duration) -> bool {
 /// the envelope and the escaping a re-serialised document can add.
 const MAX_FILE_BYTES: u64 = 4 * MAX_BYTES as u64;
 
-/// Read the cache file. `None` when it is missing, unreadable, larger
-/// than a document plus its envelope could be, or not an entry.
+/// Read the cache file. `None` when it is missing, not a regular file,
+/// unreadable, larger than a document plus its envelope could be, or
+/// not an entry.
 pub async fn read(path: &Path) -> Option<CacheEntry> {
-    let meta = tokio::fs::metadata(path).await.ok()?;
-    if meta.len() > MAX_FILE_BYTES {
+    use tokio::io::AsyncReadExt;
+    // Not followed: a link, a device or a pipe is not a cache file, and
+    // a device or a pipe reports a length of 0 that a size check would
+    // trust.
+    if !tokio::fs::symlink_metadata(path).await.ok()?.is_file() {
         return None;
     }
-    let bytes = tokio::fs::read(path).await.ok()?;
+    let file = tokio::fs::File::open(path).await.ok()?;
+    let mut bytes = Vec::new();
+    file.take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .ok()?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return None;
+    }
     serde_json::from_slice(&bytes).ok()
 }
 
