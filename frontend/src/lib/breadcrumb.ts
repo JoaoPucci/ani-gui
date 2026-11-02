@@ -94,9 +94,9 @@ const WIDE =
 /** How many monospace cells `label` takes: one per code point, two
  *  for a wide one. */
 export function labelCells(label: string): number {
-	void label;
-	void WIDE;
-	return 0;
+	let cells = 0;
+	for (const ch of label) cells += WIDE.test(ch) ? 2 : 1;
+	return cells;
 }
 
 /** The segment that gives way when the topbar runs short of room: the
@@ -105,6 +105,14 @@ export function labelCells(label: string): number {
  *  while it ellipsises. Of equally wide labels, the last, nearest the
  *  page. -1 for an empty trail. */
 export function yieldingSegment(trail: BreadcrumbSegment[]): number {
-	void trail;
-	return -1;
+	let at = -1;
+	let widest = -1;
+	trail.forEach((seg, i) => {
+		const cells = labelCells(seg.label);
+		if (cells >= widest) {
+			widest = cells;
+			at = i;
+		}
+	});
+	return at;
 }
