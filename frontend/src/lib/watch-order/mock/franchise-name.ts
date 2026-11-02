@@ -16,6 +16,8 @@ export function withoutFormatSuffix(title: string): string {
  * dropped, ignoring case.
  */
 export function franchiseName(title: string, others: readonly string[] = []): string {
-	void others;
-	return withoutFormatSuffix(title);
+	const bare = withoutFormatSuffix(title);
+	const key = bare.toLowerCase();
+	const clash = others.some((o) => withoutFormatSuffix(o).toLowerCase() === key);
+	return clash ? title : bare;
 }

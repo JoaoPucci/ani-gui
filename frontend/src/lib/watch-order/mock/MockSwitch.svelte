@@ -25,7 +25,10 @@
 		upNext: m.watchorder_mock_upnext,
 		franchise: m.watchorder_mock_franchise,
 		setting: m.watchorder_mock_setting,
-		handoff: m.watchorder_mock_handoff
+		handoff: m.watchorder_mock_handoff,
+		wording: m.watchorder_mock_wording,
+		cta: m.watchorder_mock_cta,
+		resume: m.watchorder_mock_resume
 	};
 	const optionLabel: Record<string, () => string> = {
 		linked: m.watchorder_setting_linked,
@@ -43,7 +46,15 @@
 		segmented: m.watchorder_mock_setting_segmented,
 		radio: m.watchorder_mock_setting_radio,
 		next: m.watchorder_mock_handoff_next,
-		episode: m.watchorder_mock_handoff_episode
+		episode: m.watchorder_mock_handoff_episode,
+		role: m.watchorder_mock_wording_role,
+		previous: m.watchorder_mock_wording_previous,
+		watch: m.watchorder_mock_wording_watch,
+		plain: m.watchorder_mock_wording_plain,
+		button: m.watchorder_mock_cta_button,
+		stack: m.watchorder_mock_cta_stack,
+		chip: m.watchorder_mock_resume_chip,
+		sentence: m.watchorder_mock_resume_sentence
 	};
 </script>
 

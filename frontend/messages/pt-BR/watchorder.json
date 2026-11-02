@@ -39,6 +39,9 @@
 	"meta_progress_open": "EP {episode}",
 	"meta_watched": "Assistido",
 	"mock_badge": "Protótipo",
+	"mock_cta": "Link da franquia",
+	"mock_cta_button": "Botão",
+	"mock_cta_stack": "Pilha de pôsteres",
 	"mock_franchise": "Franquia",
 	"mock_franchise_list": "Lista",
 	"mock_franchise_shelf": "Estante",
@@ -50,6 +53,9 @@
 	"mock_placement": "Posição",
 	"mock_placement_bottom": "Acima de títulos semelhantes",
 	"mock_placement_top": "Sob o título",
+	"mock_resume": "Assistindo",
+	"mock_resume_chip": "Cartão",
+	"mock_resume_sentence": "Frase",
 	"mock_setting": "Configuração",
 	"mock_setting_radio": "Opções com dicas",
 	"mock_setting_segmented": "Botões",
@@ -62,8 +68,13 @@
 	"mock_upnext": "A seguir",
 	"mock_upnext_poster": "Pôster",
 	"mock_upnext_still": "Imagem",
+	"mock_wording": "Termos",
+	"mock_wording_plain": "Antes / Depois",
+	"mock_wording_previous": "Anterior / Próximo",
+	"mock_wording_role": "Relação",
+	"mock_wording_watch": "Assista antes / depois",
 	"setting_aria": "Ordem para assistir",
-	"setting_hint": "Como as temporadas, filmes e especiais de uma série são ordenados: como as bases de dados de anime os vinculam, o que muitas vezes segue a história, ou por data de lançamento.",
+	"setting_hint": "Como as temporadas, filmes e especiais de uma série são ordenados: como as bases de dados de anime os vinculam, ou por data de lançamento. Os vínculos geralmente seguem a história, mas são mantidos pela comunidade de cada base e podem estar errados.",
 	"setting_key": "Ordem para assistir",
 	"setting_linked": "Por vínculo",
 	"setting_linked_desc": "Como as bases de dados de anime os vinculam, o que muitas vezes segue a história",
@@ -74,12 +85,36 @@
 	"strip_eyebrow": "Ordem para assistir",
 	"strip_first": "Início da sequência",
 	"strip_franchise_link": "Franquia inteira",
+	"strip_franchise_stack_films": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} filme ou versão",
+				"countPlural=*": "{count} filmes e versões"
+			}
+		}
+	],
+	"strip_franchise_stack_main": "{count} na história principal",
+	"strip_franchise_stack_sides": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} história paralela",
+				"countPlural=*": "{count} histórias paralelas"
+			}
+		}
+	],
+	"strip_franchise_stack_title": "Ver a franquia inteira",
 	"strip_join": "Vem depois destes {count}",
 	"strip_last": "Fim da sequência",
 	"strip_leads_into": "Leva a {title}",
 	"strip_of_total": "de {total}",
 	"strip_position": "{position} de {total}",
 	"strip_resume": "Continuar",
+	"strip_side_end": "Nada continua a partir daqui",
+	"strip_side_story": "História paralela",
 	"strip_unnumbered_branch": "Um dos caminhos para continuar",
 	"strip_unnumbered_cycle": [
 		{
@@ -91,6 +126,10 @@
 			}
 		}
 	],
+	"strip_watching_aria": "Ir para {title}, que você está assistindo, no episódio {episode}",
+	"strip_watching_go": "Ir para a página",
+	"strip_watching_key": "Você está assistindo",
+	"strip_watching_sentence": "Você está assistindo {title} · EP {episode}.",
 	"strip_way": "Caminho {n} de {count}",
 	"strip_ways": [
 		{
@@ -102,6 +141,18 @@
 			}
 		}
 	],
+	"strip_word_next": "Próximo",
+	"strip_word_parent": "História principal",
+	"strip_word_parents": "Histórias principais",
+	"strip_word_prequel": "Prequel",
+	"strip_word_prequels": "Prequels",
+	"strip_word_previous": "Anterior",
+	"strip_word_released_after": "Lançado depois",
+	"strip_word_released_before": "Lançado antes",
+	"strip_word_sequel": "Continuação",
+	"strip_word_sequels": "Continuações",
+	"strip_word_watch_after": "Assista depois",
+	"strip_word_watch_before": "Assista antes",
 	"strip_youre_on": "Você está em {title} · EP {episode}",
 	"upnext_announce": "A seguir: {title}",
 	"upnext_choices": "Caminhos para continuar",

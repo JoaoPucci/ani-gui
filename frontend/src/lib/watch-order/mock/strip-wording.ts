@@ -42,9 +42,15 @@ export function columnKey(
 	side: 'before' | 'after',
 	count: number
 ): ColumnKey {
-	void wording;
-	void order;
-	void kind;
-	void count;
-	return { word: side, plural: false };
+	const before = side === 'before';
+	if (wording === 'previous') return { word: before ? 'previous' : 'next', plural: false };
+	if (wording === 'watch') return { word: before ? 'watch_before' : 'watch_after', plural: false };
+	if (wording === 'plain') return { word: side, plural: false };
+	return { word: roleWord(order, kind, before), plural: count > 1 };
+}
+
+function roleWord(order: WatchOrder, kind: 'run' | 'side', before: boolean): ColumnWord {
+	if (kind === 'side' && before) return 'parent';
+	if (kind === 'run' && order === 'released') return before ? 'released_before' : 'released_after';
+	return before ? 'prequel' : 'sequel';
 }

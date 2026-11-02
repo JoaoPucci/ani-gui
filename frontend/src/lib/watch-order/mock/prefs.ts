@@ -5,6 +5,7 @@
  * rest. `order` stands in for the app setting the feature will add.
  */
 import type { StorageLike } from '$lib/hero/prefs';
+import { STRIP_WORDINGS } from './strip-wording';
 
 export const MOCK_OPTIONS = {
 	order: ['linked', 'released'],
@@ -14,7 +15,10 @@ export const MOCK_OPTIONS = {
 	upNext: ['poster', 'still'],
 	franchise: ['list', 'shelf'],
 	setting: ['segmented', 'radio'],
-	handoff: ['next', 'episode']
+	handoff: ['next', 'episode'],
+	wording: STRIP_WORDINGS,
+	cta: ['button', 'stack'],
+	resume: ['chip', 'sentence']
 } as const;
 
 type Options = typeof MOCK_OPTIONS;
@@ -30,13 +34,16 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	enabled: false,
 	switcher: false,
 	order: 'linked',
-	strip: 'rail',
+	strip: 'trio',
 	placement: 'top',
 	titles: 'full',
 	upNext: 'poster',
 	franchise: 'list',
 	setting: 'segmented',
-	handoff: 'next'
+	handoff: 'next',
+	wording: 'role',
+	cta: 'button',
+	resume: 'chip'
 };
 export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';
 
