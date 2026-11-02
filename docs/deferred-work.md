@@ -815,8 +815,9 @@ starting it, and delete it when you find it done.
   installs**, and everything that exists to report it: the sweep
   module, the field it carries onto app-info, and the diagnostics
   notice that renders it. The maintainer has tied this removal to
-  v1.0 — it is the last piece of the app that exists because of what
-  the app used to be, and shipping without it is what 1.0 means here.
+  v1.0 — it is one of the last pieces of the app that exist because of
+  what the app used to be, and shipping without them is what 1.0 means
+  here.
 
   Why it waits: the sweep serves installs upgrading from before 0.12,
   which kept a maintained copy of the script in the cache. Removing
@@ -824,6 +825,28 @@ starting it, and delete it when you find it done.
   version to a post-removal one — the file just stays, unreported.
   The judgment of when that cost is acceptable is the whole decision,
   which is why it is a version call and not a cleanup.
+
+## Retiring the legacy-history stamp repair — the v1.0 marker
+
+- **Remove the repair that puts a legacy history row's display stamp
+  back on its slot** (`backend/src/commands/numbering_offset_drift.rs`,
+  its rule module and its tests), together with the guard that leaves
+  alone a stamp that moved while the repair waited for the lock, and
+  the entry "A stamp repair can land inside an older instance's play"
+  under "Correctness in the app (continued)". The maintainer has tied
+  this removal to v1.0, with the legacy-script sweep.
+
+  Why it waits: the repair serves rows written before history rows
+  recorded the app's own number, carrying drift left by builds from
+  before that marker. A row is put right only when its show is next
+  resolved, probed or downloaded against a listing that agrees with
+  the numbering sidecar, so a show not touched since upgrading still
+  carries the drift. Removing the repair leaves such a row reading one
+  episode high where the show has a single recap, for good. The guard
+  and the window it narrows matter only while a build of 0.15.1 or
+  older can share a profile with this one. When that cost is
+  acceptable is the decision, which is why it is a version call and
+  not a cleanup.
 
 ## Recovering a download's abandoned claim automatically
 
