@@ -96,3 +96,21 @@ test("closing or suppressing a splash that never opened, or is gone, does nothin
   splash.suppress();
   assert.deepEqual(win.calls, ["load:index.html"]);
 });
+
+test("a splash asked to show after the boot closed or suppressed it opens nothing", () => {
+  // main.js opens the splash once the reduced-motion read settles, so a
+  // boot can be over — window shown, or failed — before it asks.
+  for (const end of ["close", "suppress"]) {
+    let created = 0;
+    const splash = splashController({
+      createWindow: () => {
+        created += 1;
+        return fakeSplash();
+      },
+      logError: () => {},
+    });
+    splash[end]();
+    splash.show();
+    assert.equal(created, 0, end);
+  }
+});
