@@ -308,6 +308,31 @@ describe('refetchOnRefill', () => {
 		expect(apply).not.toHaveBeenCalled();
 	});
 
+	it('lets go of the tickets a landing leaves unwaited, whether or not the refetch happens', async () => {
+		// One of the read's two refills landed: the page stops waiting on
+		// the other, and lets it go even when it closes before the
+		// refetch or the refetch fails.
+		for (const outcome of ['closed', 'failed', 'applied'] as const) {
+			const release = vi.fn();
+			const waiter = new RefillWaiter(async () => [{ ticket: 1, landed: true }], noSleep, release);
+			const page = new AbortController();
+			const refetch = vi.fn(async () => {
+				if (outcome === 'failed') throw new Error('offline');
+				return 'filled';
+			});
+			const settled = refetchOnRefill(
+				{ data: 'empty', refills: [1, 2] },
+				{ waiter, refetch, apply: vi.fn(), signal: page.signal }
+			);
+			if (outcome === 'closed') {
+				await flush();
+				page.abort();
+			}
+			await settled;
+			expect(release.mock.calls.flat(2)).toContain(2);
+		}
+	});
+
 	it('does not refetch when the refill did not land', async () => {
 		const refetch = vi.fn(async () => 'x');
 		await refetchOnRefill(
