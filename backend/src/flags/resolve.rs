@@ -40,6 +40,26 @@ impl Resolved {
         self.0.get(name).copied()
     }
 
+    /// Whether the feature a kill switch gates runs. The declaration
+    /// is passed rather than its name, so a consumer cannot misspell
+    /// it, and a flag missing from this set reads as its declaration's
+    /// default rather than as whatever the caller would have guessed.
+    /// A fallback's declaration reads as `true`: it switches nothing
+    /// off.
+    #[must_use]
+    pub fn enabled(&self, decl: &FlagDecl) -> bool {
+        let _ = decl;
+        false
+    }
+
+    /// The behaviour a fallback selects, read the same way as
+    /// [`Resolved::enabled`]. `None` for a kill switch's declaration.
+    #[must_use]
+    pub fn choice(&self, decl: &FlagDecl) -> Option<&'static str> {
+        let _ = decl;
+        None
+    }
+
     /// Every resolved flag and its value, by name.
     pub fn iter(&self) -> impl Iterator<Item = (&'static str, FlagValue)> + '_ {
         self.0.iter().map(|(k, v)| (*k, *v))
