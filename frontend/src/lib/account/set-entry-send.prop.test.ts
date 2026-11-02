@@ -72,6 +72,7 @@ describe('sendRemoval, by property', () => {
 		await fc.assert(
 			fc.asyncProperty(current, fields, async (row, left) => {
 				let removed = 0;
+				let forgot = 0;
 				let reads = 0;
 				const deps = {
 					getEntry: async () => {
@@ -80,6 +81,9 @@ describe('sendRemoval, by property', () => {
 					},
 					removeEntry: async () => {
 						removed += 1;
+					},
+					forgetCached: async () => {
+						forgot += 1;
 					}
 				};
 				const to = {
@@ -96,7 +100,10 @@ describe('sendRemoval, by property', () => {
 					expect(outcome).toBe(row === null ? 'neither' : 'ok');
 					expect(reads).toBe(1);
 				}
+				// A row the tracker has is deleted there; one it does not
+				// have is cleared from the local cache alone.
 				expect(removed).toBe(outcome === 'ok' ? 1 : 0);
+				expect(forgot).toBe(outcome === 'neither' ? 1 : 0);
 			})
 		);
 	});
@@ -164,6 +171,7 @@ describe('the re-check after the read, by property', () => {
 			fc.asyncProperty(current, fields, fields, async (row, before, after) => {
 				const { held, markRead } = heldAcross(before, after);
 				let removed = 0;
+				let forgot = 0;
 				let reads = 0;
 				const deps = {
 					getEntry: async () => {
@@ -173,6 +181,9 @@ describe('the re-check after the read, by property', () => {
 					},
 					removeEntry: async () => {
 						removed += 1;
+					},
+					forgetCached: async () => {
+						forgot += 1;
 					}
 				};
 				const to = { provider: 'anilist' as const, bearer: 't', kitsuId: '12', held };
@@ -180,14 +191,15 @@ describe('the re-check after the read, by property', () => {
 				if (before.length < 2) {
 					expect(outcome).toBeInstanceOf(SupersededError);
 					expect(reads).toBe(0);
-				} else if (row === null) {
-					expect(outcome).toBe('neither');
 				} else if (after.length < 2) {
 					expect(outcome).toBeInstanceOf(SupersededError);
 				} else {
-					expect(outcome).toBe('ok');
+					expect(outcome).toBe(row === null ? 'neither' : 'ok');
 				}
+				// A row the tracker has is deleted there; one it does not
+				// have is cleared from the local cache alone.
 				expect(removed).toBe(outcome === 'ok' ? 1 : 0);
+				expect(forgot).toBe(outcome === 'neither' ? 1 : 0);
 			})
 		);
 	});

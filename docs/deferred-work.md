@@ -257,7 +257,8 @@ starting it, and delete it when you find it done.
 
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
-  slot (`numbering_offset_drift.rs`) can run beside a build from before
+  slot (the rule in `numbering_offset_drift.rs`, the repair in
+  `numbering_offset_repair.rs`) can run beside a build from before
   history rows recorded the app's own number, on the same files. Of
   those builds, 0.15.1 and older can: 0.16.0 takes the single-instance
   lock this one does. Such a build writes a play's stamp, then its
@@ -368,6 +369,15 @@ starting it, and delete it when you find it done.
   made removal thorough chose not to add new records.
 
 ## Interface
+
+- **GNOME's newer Reduced Motion preference does not reach the renderer.**
+  On GNOME 50.1 with Electron 33, the accessibility preference was
+  `reduce` while the older global animation switch remained enabled;
+  Electron still reported `prefers-reduced-motion: no-preference`.
+  The rail animations honor that media query, so on such a system they
+  still play. What Electron reported matched the older switch, not the
+  new preference. The preference could be read another way and handed
+  to the renderer, or a later Electron may expose it to the query.
 
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
