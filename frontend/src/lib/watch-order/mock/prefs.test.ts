@@ -36,11 +36,10 @@ describe('watch-order mockup prefs', () => {
 		expect(p).toMatchObject({ enabled: true, switcher: false, strip: 'trio', order: 'linked' });
 	});
 
-	it("starts the strip in the maintainer's chosen arrangement, with the new options' first choices", () => {
+	it("starts the strip in the maintainer's chosen arrangement, with the second round's other choices", () => {
 		expect(parseMockPrefs(null)).toMatchObject({
 			strip: 'trio',
 			wording: 'role',
-			cta: 'button',
 			resume: 'chip'
 		});
 	});
