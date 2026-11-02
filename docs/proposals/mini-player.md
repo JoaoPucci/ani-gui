@@ -417,9 +417,11 @@ own frameless window (`electron/main.js:381–388`): appendix step 2. If
 it cannot, the mini window draws its own resize grip, or resizing on
 Wayland waits for Electron 41.
 
-**[inference]** Chromium's own picture-in-picture is no better on
-GNOME Wayland: it is an ordinary Wayland toplevel too. Keeping it buys
-nothing there.
+**[data]** Chromium's own picture-in-picture is no better on GNOME
+Wayland. The maintainer reported it from his own use: clicking the app's main window
+covers it. Chromium's Wayland code makes it an ordinary toplevel; see
+"Wayland: keeping the window on top" below. Keeping it buys nothing
+there.
 
 **[data]** The Ozone platform is chosen once for the whole Electron
 process before any window exists (`after-pack.cjs` explains why it
@@ -433,8 +435,9 @@ cannot run on XWayland while the other runs natively. The choices are:
    window rules. **[unverified]** whether GNOME's menu opens on, and
    applies to, Electron's frameless Wayland window: appendix, step 4.
 2. **Run the whole app on XWayland**, by a setting that relaunches it
-   with the X11 platform. Always-on-top then works, as measured above.
-   Costs: a change to how the app launches, which the maintainer
+   with the X11 platform. **Ruled out by the maintainer**, who does not
+   run the app under X11 or XWayland. It stays here as context.
+   Always-on-top would then work, as measured above. Costs: a change to how the app launches, which the maintainer
    decides; **[inference]** text that may render blurred under
    fractional scaling, as XWayland clients can; and input methods no
    longer on the Wayland path the launcher enables with
@@ -453,7 +456,8 @@ cannot run on XWayland while the other runs natively. The choices are:
 
 **[proposal]** Option 1, with a one-time hint in the mini window on
 Wayland that names the window menu, if step 4 confirms it. Open
-question 1.
+question 1. What exists upstream, and what to track, is in "Wayland:
+keeping the window on top" below.
 
 ### Windows
 
@@ -700,11 +704,11 @@ About 13–21 working days in all.
 
 ## 9. Open questions for the maintainer
 
-1. **Wayland.** Accept a mini window that is not kept on top under
-   native Wayland, with a hint pointing at GNOME's window menu, or add a
-   setting that relaunches the app on XWayland? **Recommended:** accept
-   it and show the hint (once step 4 of the appendix confirms the menu
-   works); no launch change.
+1. **Wayland.** The maintainer has ruled out XWayland, so under native
+   Wayland the mini window is not kept on top. Still open: whether it
+   shows a one-time hint that points at GNOME's window menu.
+   **Recommended:** show the hint once step 4 of the appendix confirms
+   the menu works; no launch change.
 2. **What ✕ does.** **Recommended:** stop playback, keep the position,
    leave the main window as it is, as the old × did.
 3. **Playing in the main window while the mini window plays.**
@@ -729,6 +733,110 @@ About 13–21 working days in all.
    can; on Linux it is listed like any window.
 9. **Native controls.** **Recommended:** the mini window always uses
    the app's own controls, whatever "Custom player controls" says.
+
+## Wayland: keeping the window on top
+
+This addendum records what exists upstream, checked on 2026-11-03, for
+keeping a window above others under native Wayland, GNOME first.
+**The maintainer has ruled out running the app under X11 or XWayland**,
+so the XWayland measurements in section 4 are context, not an option.
+
+**[data]** No app-side mechanism exists on GNOME today:
+
+- Wayland has no shipped request for "keep above". A request of that
+  kind for `xdg_toplevel`
+  ([wayland-protocols!369](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/369))
+  was withdrawn and closed on 2024-12-19. Reviewers held that a client
+  says what kind of window it has, not where to stack it. The
+  dedicated picture-in-picture role, `xdg-pip`
+  ([wayland-protocols!132](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/132)),
+  has been open since 2021-12-22. In 2025-09 a mutter developer
+  proposed a compromise design; KDE, COSMIC and the wlroots maintainer
+  agreed to it. The protocol is not in wayland-protocols 1.50.
+- Mutter has no PiP role. A mutter developer wrote in
+  [mutter#1258](https://gitlab.gnome.org/GNOME/mutter/-/work_items/1258)
+  that this "is not something that can be done without Wayland protocol
+  aiming explicitly at a 'picture-in-picture' use case". GNOME has
+  rejected layer-shell
+  ([mutter#1922](https://gitlab.gnome.org/GNOME/mutter/-/work_items/1922);
+  [compositor table](https://wayland.app/protocols/wlr-layer-shell-unstable-v1)).
+  No portal exists either: the overlay request was closed as not portal
+  material
+  ([xdg-desktop-portal#612](https://github.com/flatpak/xdg-desktop-portal/issues/612)).
+- Chromium's Wayland window ignores z-order. `SetZOrderLevel` only
+  stores the value under a "Linux/Wayland doesn't support zorder level"
+  TODO
+  ([`wayland_toplevel_window.cc`](https://raw.githubusercontent.com/chromium/chromium/main/ui/ozone/platform/wayland/host/wayland_toplevel_window.cc)).
+  It never sends `xdg_toplevel.set_parent`
+  ([`xdg_toplevel.cc`](https://raw.githubusercontent.com/chromium/chromium/main/ui/ozone/platform/wayland/host/xdg_toplevel.cc)).
+  **[inference]** So Electron's `parent` option would not keep the mini
+  window above the main window on Wayland either. The proposal sets no
+  parent for its own reasons (section 4).
+- Electron documents `setAlwaysOnTop` and `isAlwaysOnTop` as "Not
+  supported on Wayland (Linux)"
+  ([`base-window.md`](https://raw.githubusercontent.com/electron/electron/main/docs/api/base-window.md)).
+  No Electron issue or PR mentions a PiP protocol. Document
+  Picture-in-Picture in Electron
+  ([electron#39633](https://github.com/electron/electron/issues/39633))
+  is still open.
+
+**[data]** What works today is the user's own choice. GNOME's window
+menu (Alt+Space, the `activate-window-menu` default) has "Always on
+Top"
+([`windowMenu.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/raw/main/js/ui/windowMenu.js)), and the unbound `toggle-above` action can be given a shortcut
+([keybinding schema](https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas/-/raw/master/schemas/org.gnome.desktop.wm.keybindings.gschema.xml.in)).
+Firefox gives the same advice for its own PiP window
+([bug 1621261](https://bugzilla.mozilla.org/show_bug.cgi?id=1621261)).
+KWin has a "Keep above" window rule
+([attributes](https://docs.kde.org/trunk_kf6/en/kwin/kcontrol/windowspecific/attributes.html)).
+Hyprland's `pin` and sway's `sticky` show a floating window on every
+workspace
+([Hyprland](https://wiki.hypr.land/configuring/core/rules/window-rules/),
+[sway(5)](https://raw.githubusercontent.com/swaywm/sway/master/sway/sway.5.scd)).
+**[unverified]** whether either also keeps it above other windows.
+The "PiP on top" GNOME Shell extension pins windows whose title matches
+a list ("Picture-in-Picture" and others) and supports Shell 45–50
+([extension](https://extensions.gnome.org/extension/4691/pip-on-top/),
+[source](https://github.com/Rafostar/gnome-shell-extension-pip-on-top)).
+**[unverified]** whether the window menu works on Electron 33's
+frameless Wayland window: appendix, step 4.
+
+**[data]** Elsewhere, KWin ships `xx-pip-v1`, an experimental copy of
+`xdg-pip`. A KWin developer says it is not enabled by default and gives
+the variable `KWIN_WAYLAND_SUPPORT_XX_PIP_V1=1`
+([KDE bug 509726](https://bugs.kde.org/show_bug.cgi?id=509726)).
+Firefox 141 has a client for it
+([bug 1970372](https://bugzilla.mozilla.org/show_bug.cgi?id=1970372)).
+Chromium's client is a do-not-merge prototype
+([CL 6471703](https://chromium-review.googlesource.com/c/chromium/src/+/6471703)).
+Firefox closed its own always-on-top "Mini Window" bug on Ubuntu 26 as
+WONTFIX
+([bug 2078250](https://bugzilla.mozilla.org/show_bug.cgi?id=2078250)).
+mpv's `--ontop` does not work on Wayland
+([mpv#3832](https://github.com/mpv-player/mpv/issues/3832), open since 2016).
+
+**To track.** None of these reaches the app before Chromium lands a
+client and Electron rolls to that Chromium:
+
+- `xdg-pip`
+  ([!132](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/132)),
+  then a Mutter implementation, and Chromium's client
+  ([CL 6471703](https://chromium-review.googlesource.com/c/chromium/src/+/6471703)).
+  **[inference]** Chromium would use it for its own PiP windows, not
+  for an arbitrary `BrowserWindow`, so the mini window would need an
+  Electron API on top.
+- `xdg-toplevel-groups`
+  ([!471](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/471),
+  open). It keeps one of an app's toplevels above another of the same
+  app. That covers the reported case, the main window covering the mini
+  window, though not other apps' windows.
+
+**[proposal]** Unchanged: option 1 and open question 1. Under native
+Wayland the mini window can be covered. A one-time hint names Alt+Space
+→ "Always on Top", once step 4 confirms it. The window still asks for
+`alwaysOnTop`, which holds on Windows. The app never reads
+`isAlwaysOnTop()` back on Wayland, where it reports the flag and not the
+state.
 
 ## Appendix: manual checks
 
