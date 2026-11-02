@@ -48,4 +48,4 @@
 
 # MPEG transport-stream segments the e2e fixtures carry share the
 # TypeScript extension; they are video, not text.
-electron/e2e/fixtures/**/*.ts binary
+electron/e2e/fixtures/captions/*.ts binary

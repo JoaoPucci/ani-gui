@@ -26,7 +26,18 @@
 // prefer the user's language; scenarios assert how many tracks show,
 // not which extra one. happy-dom's `track` getter also builds a new
 // TextTrack on every read, so each element here keeps the first it
-// builds, as a browser's does, holding any of the three modes.
+// builds, as a browser's does, holding any of the three modes. And
+// happy-dom starts a `default` track showing; here, as in Chromium,
+// every track starts disabled until a script or the selection turns
+// it on — a mode set before the track joins is the script's, but not
+// a change to a joined track.
+//
+// What the model cannot show: happy-dom builds a new TextTrackList on
+// every read of `textTracks`, so the change event the browser fires
+// after its selection never reaches the page's listener here. Whether
+// the start joins already showing — which keeps the selection from
+// changing anything the page would have to hear — is held by the
+// unit tests in sidecar-tracks.dom.test.ts.
 
 interface Installed {
 	uninstall(): void;
@@ -83,7 +94,7 @@ export function installBrowserTrackSelection(): Installed {
 		let track = owned.get(el);
 		if (!track) {
 			const built = build!.call(el) as TextTrack;
-			let mode: TextTrackMode = built.mode;
+			let mode: TextTrackMode = 'disabled';
 			Object.defineProperty(built, 'mode', {
 				configurable: true,
 				get: () => mode,

@@ -13,7 +13,7 @@
  * The stream is a local two-level HLS fixture played through the
  * backend's own stream proxy; its sidecar listing (Arabic first, then
  * English, the provider's default, then French) is answered at the
- * stream lane's URLs, as the CSP-era e2e does, because the public
+ * stream lane's URLs, by the test itself, because the public
  * session route takes no caller-supplied tracks.
  */
 import {
@@ -237,7 +237,7 @@ test("the track a session starts on shows alone through playback, a seek and a q
       .poll(async () => (await shown(page))?.time ?? 0, { timeout: 30_000 })
       .toBeGreaterThan(1);
 
-    // English — the UI locale's language — shows, alone, its cues on
+    // English — the UI locale's language, else the provider's default — shows, alone, its cues on
     // screen, and stays alone while it plays.
     await expect
       .poll(async () => (await shown(page))?.cues ?? [], { timeout: 10_000 })
