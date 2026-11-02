@@ -48,7 +48,8 @@ ani-gui keeps the following on your computer only:
   times are found by the Kitsu ids the history knows for the show:
   times under an id another show still in your history claims stay
   with that show, and times fetched under an id the history never
-  linked to the show stay until you clear your history. Clearing your
+  linked to the show stay until they expire, which the app deletes
+  when it starts, or you clear your history. Clearing your
   history deletes every row, all of these for every show, every cached
   stream address and every cached opening and ending time, including
   ones a page resolved ahead for a show you never played. Clearing
@@ -88,8 +89,9 @@ ani-gui keeps the following on your computer only:
   write the file that holds the numbering, the numbering is missed:
   the show's own stays, and so does the other catalogue's, whose
   stream addresses are removed all the same, so trying again no longer
-  finds it. A stream address that is missed stays until you clear your
-  history; numbering that is missed stays as that of any show a page
+  finds it. A stream address that is missed stays until it expires —
+  the app deletes expired stream addresses when it starts — or you
+  clear your history; numbering that is missed stays as that of any show a page
   resolved and you never played does. Catalogue data shared with
   browsing — anime details, artwork, episode lists and which catalogue
   carries a show — is not part of your history and stays in the cache,
@@ -97,8 +99,10 @@ ani-gui keeps the following on your computer only:
   entry a show in your history names no longer exists, the app notes
   that for up to a year, so the show can be found under its new entry;
   deleting the show removes the note for the entries it was known by
-  that no other show in your history names, and clearing your history
-  removes every note.
+  that no other show in your history names — though not for an entry
+  the show was known by only through a link an earlier version of the
+  app stored, which the app no longer keeps; that note stays out its
+  year — and clearing your history removes every note.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its

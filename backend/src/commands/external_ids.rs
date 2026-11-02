@@ -47,7 +47,7 @@ fn in_flight(kitsu_id: &str) -> Arc<tokio::sync::Mutex<()>> {
 /// with no ids may have been kept from a reply that was not that
 /// document at all, and reads the same as a show with no mappings.
 fn external_ids_key(kitsu_id: &str) -> String {
-    format!("kitsu:external-ids:v2:k{kitsu_id}")
+    format!("{}{kitsu_id}", crate::cache::families::KITSU_EXTERNAL_IDS)
 }
 
 /// How long an answer from Kitsu's mappings is trusted. What is
