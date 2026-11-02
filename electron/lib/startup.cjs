@@ -156,17 +156,34 @@ function awaitFirstShow(win, { timeoutMs }) {
  * already quitting over its last window. That is a quit, and the open
  * resolves with nothing to report.
  */
+/**
+ * Wait for `beforeShow`, keeping the first-show guard's watch on the
+ * renderer meanwhile: one that dies during the wait fails the boot, as
+ * it would before ready-to-show. A wait that fails is logged and ends.
+ */
+async function waitBeforeShow(contents, beforeShow, logError) {
+  let gone = null;
+  const onGone = (_event, details) => {
+    gone = details || {};
+  };
+  contents.on("render-process-gone", onGone);
+  try {
+    await Promise.resolve()
+      .then(beforeShow)
+      .catch((err) => logError("[main] waiting to show the window:", err));
+  } finally {
+    contents.removeListener("render-process-gone", onGone);
+  }
+  if (gone) throw new Error(`renderer gone before the first show (${gone.reason})`);
+}
+
 async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async () => {} }) {
   const contents = win.webContents;
   let failed = false;
   // `beforeShow` is what must be on screen first — the splash, which a
   // fast start would otherwise close before it had painted.
   const shown = awaitFirstShow(win, { timeoutMs })
-    .then(() =>
-      Promise.resolve()
-        .then(beforeShow)
-        .catch((err) => logError("[main] waiting to show the window:", err)),
-    )
+    .then(() => waitBeforeShow(contents, beforeShow, logError))
     .then(() => {
       if (!failed) win.show();
     });
