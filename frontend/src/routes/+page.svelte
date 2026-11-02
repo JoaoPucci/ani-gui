@@ -11,8 +11,10 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
-	import { fade } from 'svelte/transition';
-	import { cardScale, cardShift, STILL } from '$lib/transitions/card-motion';
+	import { fade, reducible } from '$lib/motion/transitions';
+	import { cardScale, cardShift, STILL } from '$lib/motion/card-motion';
+	import { heroParallaxTransform } from '$lib/motion/parallax';
+	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
@@ -27,29 +29,29 @@
 	// animates ids the user explicitly deleted; cwFlip animates the
 	// survivors that physically shift to close the gap.
 	const deleteAnimationGate = createAnimationGate();
-	function cwOutScale(node: Element) {
+	const cwOutScale = reducible((node: Element) => {
 		const id = (node as HTMLElement).dataset.entryId;
 		if (!id || !deleteAnimationGate.shouldAnimateRemoval(id)) return STILL;
 		return cardScale(node);
-	}
-	function cwFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
+	});
+	const cwFlip = reducible((node: Element, animation: { from: DOMRect; to: DOMRect }) => {
 		const id = (node as HTMLElement).dataset.entryId;
 		if (!id || !deleteAnimationGate.shouldAnimateShift(id)) return STILL;
 		return cardShift(node, animation);
-	}
+	});
 	// The Watch Later row moves its cards the same way, for the ones a
 	// settled tracker write added or removed — and only those.
 	const watchLaterMotion = createRailMotionGate();
 	const cellId = (node: Element) => (node as HTMLElement).dataset.animeId ?? '';
-	function wlIn(node: Element) {
-		return watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL;
-	}
-	function wlOut(node: Element) {
-		return watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL;
-	}
-	function wlFlip(node: Element, animation: { from: DOMRect; to: DOMRect }) {
-		return watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL;
-	}
+	const wlIn = reducible((node: Element) =>
+		watchLaterMotion.arrives(cellId(node)) ? cardScale(node) : STILL
+	);
+	const wlOut = reducible((node: Element) =>
+		watchLaterMotion.leaves(cellId(node)) ? cardScale(node) : STILL
+	);
+	const wlFlip = reducible((node: Element, animation: { from: DOMRect; to: DOMRect }) =>
+		watchLaterMotion.shifts(cellId(node)) ? cardShift(node, animation) : STILL
+	);
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
@@ -110,7 +112,7 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
-	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
+	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
 		naturalRatio,
@@ -155,7 +157,6 @@
 	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
 	// in the marketing-page sense; this is a programmed marquee.
 	const HERO_ROTATION_COUNT = 3;
-	const HERO_ROTATE_MS = 6000;
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -590,27 +591,22 @@
 			});
 	});
 
-	// Hero auto-advance. Decision rules live in $lib/hero-rotation;
-	// this effect is the runtime adapter (matchMedia probe + interval
-	// management).
-	$effect(() => {
-		const reduced =
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		if (
-			!shouldRunHeroRotation({
+	// Hero auto-advance. The rules and the interval live in
+	// $lib/hero-rotation; this effect hands it the conditions and the
+	// index to move. The preference is reactive: switching reduced
+	// motion on while Home is open stops the rotation, and off starts it.
+	$effect(() =>
+		startHeroRotation(
+			{
 				rotationLength: heroRotation.length,
 				paused: heroPaused,
-				prefersReducedMotion: !!reduced
-			})
-		) {
-			return;
-		}
-		const id = window.setInterval(() => {
-			heroIndex = nextHeroIndex(heroIndex, heroRotation.length);
-		}, HERO_ROTATE_MS);
-		return () => window.clearInterval(id);
-	});
+				prefersReducedMotion: reducedMotion.current
+			},
+			() => {
+				heroIndex = nextHeroIndex(heroIndex, heroRotation.length);
+			}
+		)
+	);
 
 	/**
 	 * Pluck bearer + user_id pairs from every provider whose stored
@@ -889,18 +885,10 @@
 		return trimmed.length > 280 ? trimmed.slice(0, 277) + '…' : trimmed;
 	}
 
+	// The parallax holds still under reduced motion; reading the
+	// preference here makes the transform follow a change to it.
 	function heroTransform(y: number, isCover: boolean): string {
-		// Honor prefers-reduced-motion: when the user opts out of motion,
-		// the hero stays still even on scroll.
-		if (
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-		) {
-			return `translate3d(0, 0, 0) scale(${isCover ? 1.02 : 1.15})`;
-		}
-		const offset = Math.min(y * 0.25, 80);
-		const scale = isCover ? 1.02 : 1.15;
-		return `translate3d(0, ${offset}px, 0) scale(${scale})`;
+		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
@@ -1824,13 +1812,6 @@
 			opacity: 0.55;
 		}
 	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero-skel-img,
-		.skel-poster,
-		.line-skel {
-			animation: none;
-		}
-	}
 
 	/* — Continue Watching cards. The poster gives identity, the EP tag
 	     is the editorial overlay, the title + Resume CTA close the card. */
@@ -1958,11 +1939,6 @@
 	@keyframes rail-refresh-spin {
 		to {
 			transform: rotate(360deg);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.rail-refresh.is-refreshing :global(svg) {
-			animation: none;
 		}
 	}
 	.continue-menu-btn:hover,
@@ -2228,10 +2204,5 @@
 
 	.resume-card-loading .resume-poster-placeholder {
 		animation: pulse 1.6s var(--ease-in-out) infinite;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.resume-card-loading .resume-poster-placeholder {
-			animation: none;
-		}
 	}
 </style>

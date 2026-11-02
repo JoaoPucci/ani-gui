@@ -13,7 +13,7 @@
   appear at once.
 -->
 <script lang="ts">
-	import { fly } from 'svelte/transition';
+	import { fly } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import Toast from './Toast.svelte';
 	import { toastStore } from '$lib/toasts/store.svelte';
