@@ -63,6 +63,7 @@ const {
   rendererPolicy,
   withPolicyHeader,
 } = require("./lib/renderer-csp.cjs");
+const { bundleTarget } = require("./lib/bundle-path.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -557,36 +558,31 @@ async function createWindow(backend) {
  * Resolution rules:
  *   - `/_app/...` and other extensioned paths → file in the bundle.
  *   - any extensionless path → `index.html` (SvelteKit SPA fallback).
- *   - 404 if the resolved path escapes the bundle dir (defence in
- *     depth — the URL parser shouldn't permit `..` traversal, but
- *     it's cheap to check).
+ *   - 403 if the resolved path escapes the bundle dir, 400 if it does
+ *     not decode (lib/bundle-path.cjs).
  */
 function registerAppProtocol() {
   const bundleDir = path.join(process.resourcesPath, "frontend", "build");
   protocol.handle(APP_SCHEME, async (request) => {
-    const url = new URL(request.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (!pathname || pathname === "/") pathname = "/index.html";
-    const target = path.normalize(path.join(bundleDir, pathname));
     // Every answer carries the renderer's policy — the index, the SPA
     // fallback, every asset and every error — so no path, however
     // spelled, serves a document without it (lib/renderer-csp.cjs).
-    return policedResponse(await serveBundlePath(bundleDir, target, pathname), rendererPolicyNow());
+    const target = bundleTarget(bundleDir, new URL(request.url).pathname, path);
+    return policedResponse(await serveBundlePath(bundleDir, target), rendererPolicyNow());
   });
 }
 
-async function serveBundlePath(bundleDir, target, pathname) {
-  if (!target.startsWith(bundleDir)) {
-    return new Response("forbidden", { status: 403 });
-  }
+async function serveBundlePath(bundleDir, target) {
+  if (target.kind === "bad") return new Response("bad request", { status: 400 });
+  if (target.kind === "forbidden") return new Response("forbidden", { status: 403 });
   try {
-    await fs.promises.access(target);
-    return await net.fetch(pathToFileURL(target).toString());
+    await fs.promises.access(target.file);
+    return await net.fetch(pathToFileURL(target.file).toString());
   } catch {
     // SPA fallback — anything routerly (no file extension)
     // hands back the index so SvelteKit's client router takes
     // over. A real missing asset (image, css) returns 404.
-    if (!path.extname(pathname)) {
+    if (target.route) {
       return net.fetch(pathToFileURL(path.join(bundleDir, "index.html")).toString());
     }
     return new Response("not found", { status: 404 });
