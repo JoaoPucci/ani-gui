@@ -1,13 +1,13 @@
 /**
  * Which changes to the video's captions are the viewer's own picks.
  *
- * The captions change three ways: the app sets them — the session's
- * start ({@link import('./sidecar-tracks')}) and a pick in the app's
- * own captions menu ({@link import('./caption-pick')}); the browser
- * sets them by itself while the tracks are being attached; and the
- * viewer sets them through the browser's own captions menu, which
- * shows when the app's custom controls are turned off. Only the last
- * is a pick the app has not seen, and the show's memory
+ * The captions change two ways: the app sets them — the session's
+ * start and its tracks switched off as they go
+ * ({@link import('./sidecar-tracks')}), and a pick in the app's own
+ * captions menu ({@link import('./caption-pick')}); and the viewer
+ * sets them through the browser's own captions menu, which shows when
+ * the app's custom controls are turned off. Only the second is a pick
+ * the app has not seen, and the show's memory
  * ({@link import('./caption-choice')}) should take it.
  *
  * The app notes what it set, per video ({@link expectCaptions}); a
@@ -56,7 +56,7 @@ export function viewerPick(expected: CaptionState | null, now: CaptionState): Ca
 const expected = new WeakMap<object, CaptionState | null>();
 
 /** Note what the app set the video's captions to — or `null` while it
- *  is not in charge of them (tracks being attached or removed). */
+ *  is not in charge of them (tracks being removed). */
 export function expectCaptions(video: object, state: CaptionState | null): void {
 	expected.set(video, state);
 }

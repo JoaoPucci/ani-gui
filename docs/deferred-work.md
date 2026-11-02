@@ -474,11 +474,15 @@ starting it, and delete it when you find it done.
   (`SubtitleTrackController.toggleTrackModes`), the app's sidecar
   `<track>`s included, and it reads the captions again on every
   change to them. On a stream whose playlist lists subtitle
-  renditions as well as sidecar tracks, then, the playlist's default
-  track replaces the session's start, and a sidecar track picked from the captions menu
-  goes off the moment it is picked: showing it reads to hls.js as
-  "none of mine", so it switches to none. Both were measured on the
-  packaged app with a fixture stream of that shape.
+  renditions as well as sidecar tracks, then, a sidecar track picked
+  from the captions menu goes off the moment it is picked: showing it
+  reads to hls.js as "none of mine", so it switches to none. The
+  session's start fares the same way. When hls.js picks its playlist
+  track after the sidecar tracks attach, that track replaces the
+  start; when it picked before, the start's own change makes it
+  switch to none, and every track goes off. The pick and the first
+  order were measured on the packaged app with a fixture stream of
+  that shape; the second follows from the same code.
 
   It waits because the provider serves no such stream. Episodes
   resolved across sub and dub in November 2026 carried no

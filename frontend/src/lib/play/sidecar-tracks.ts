@@ -89,7 +89,10 @@ export async function fetchSidecarTracks(
  * a nine-language episode. So:
  *
  * - whatever shows is turned off first — a track the stream's playlist
- *   carries may be — so nothing shows when the new tracks join;
+ *   carries may be — so nothing shows when the new tracks join (hls.js
+ *   then switches its own tracks against the start: logged in
+ *   docs/deferred-work.md as "Sidecar subtitles on a stream that also
+ *   carries its own");
  * - the start's track is switched on before it joins, which the
  *   selection does not count as a script's change, and every other
  *   track joins disabled, never fetched;
