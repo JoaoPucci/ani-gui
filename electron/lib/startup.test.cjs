@@ -659,3 +659,20 @@ test("a first page that fails while the window waits to show is never shown", as
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(win.shows, 0);
 });
+
+test("a renderer that dies while the window waits to show fails the boot, and the window is not shown", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  release();
+  await assert.rejects(opened, /renderer gone/);
+  assert.equal(win.shows, 0);
+});
