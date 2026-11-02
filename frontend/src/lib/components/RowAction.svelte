@@ -23,6 +23,8 @@
   the icon shrinking to its size in the pill as it goes. The label is
   in the button throughout, clipped at rest, never hidden, so the
   accessible name is the full label whether or not it is on show.
+  The `icon` shape needs an `icon`: without one it would rest as an
+  empty circle. Both home rows pass one.
 
   The open width is reserved, not overlaid: the slot is as wide as the
   open pill (its ::after sets the label from `data-label`, unpainted)
@@ -95,6 +97,7 @@
 		--ra-weight: 600;
 		--ra-tracking: 0.14em;
 		--ra-case: uppercase;
+		--ra-border: 1px;
 	}
 	.row-action {
 		display: inline-flex;
@@ -108,7 +111,7 @@
 		/* The edge is what marks this as a button on a line of uppercase
 		   text: 40% bone is about 3.4:1 on the page and on a band. */
 		--row-action-border: color-mix(in oklab, var(--bone-100) 40%, transparent);
-		border: 1px solid var(--row-action-border);
+		border: var(--ra-border) solid var(--row-action-border);
 		border-radius: var(--radius-pill);
 		background: transparent;
 		color: var(--bone-200);
@@ -164,7 +167,7 @@
 		box-sizing: border-box;
 		block-size: var(--space-6);
 		padding-inline: calc(var(--ra-pad) + var(--ra-icon) + var(--ra-gap)) var(--ra-pad);
-		border: 1px solid transparent;
+		border: var(--ra-border) solid transparent;
 		font-family: var(--ra-face);
 		font-size: var(--ra-type-size);
 		font-weight: var(--ra-weight);
@@ -173,23 +176,25 @@
 		text-transform: var(--ra-case);
 		white-space: nowrap;
 	}
-	/* At rest. Its transitions are the closing ones: the label leaves
-	   first, then the shape draws in on an in-out curve whose slow start
-	   keeps a pointer grazing off and back from making it flicker. */
+	/* At rest. Its transitions are the closing ones: the shape waits for
+	   the label's fade (below) to finish, then draws in on an in-out
+	   curve whose slow start keeps a pointer grazing off and back from
+	   making it flicker. */
 	.row-action-slot[data-shape='icon'] .row-action {
 		position: absolute;
 		inset-block: 0;
 		inset-inline-start: 0;
 		inline-size: var(--space-6);
-		/* 8px start: 1px edge + 8px + the icon's 16px at rest centre it
-		   in the 32px circle. */
+		/* 8px start puts the icon's 14px layout box at 9–23px, centred in
+		   the 32px circle; `scale` leaves layout alone, so the 16px glyph
+		   drawn at rest spans 8–24px around the same centre. */
 		padding-inline: var(--space-2) var(--ra-pad);
 		gap: var(--ra-gap);
 		justify-content: flex-start;
 		overflow: hidden;
 		transition:
-			inline-size var(--dur-med) var(--ease-in-out),
-			padding-inline-start var(--dur-med) var(--ease-in-out),
+			inline-size var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2),
+			padding-inline-start var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2),
 			background-color var(--dur-fast) var(--ease-out-soft),
 			border-color var(--dur-fast) var(--ease-out-soft),
 			color var(--dur-fast) var(--ease-out-soft);
@@ -200,10 +205,11 @@
 	.row-action-slot[data-shape='icon'] .row-action :global(svg) {
 		flex: none;
 		scale: 1.1429;
-		transition: scale var(--dur-med) var(--ease-in-out);
+		transition: scale var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2);
 	}
-	/* Closing, the label fades in half the hover time, so it is gone
-	   before the shrinking edge reaches words still on show. */
+	/* Closing, the label fades in half the hover time, and the shape
+	   holds still for that long, so the label is gone before the edge
+	   moves. */
 	.row-action-slot[data-shape='icon'] .row-action-label {
 		flex: none;
 		opacity: 0;
