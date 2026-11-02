@@ -96,7 +96,9 @@ async function bridge(page: Page): Promise<{ apiBase: string; lanes: Record<stri
 	}));
 }
 
-/** Both halves of the policy on the document now loaded. */
+/** Both halves of the policy for the document now loaded: the meta
+ *  read off the document itself, the header as the protocol handler
+ *  answers the same URL again (it answers every request the same way). */
 async function policies(page: Page) {
 	return page.evaluate(async () => {
 		const res = await fetch(location.href);

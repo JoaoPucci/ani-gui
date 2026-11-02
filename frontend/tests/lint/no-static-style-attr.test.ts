@@ -2,9 +2,10 @@
 //
 // The renderer's content security policy has no 'unsafe-inline' for
 // styles. Svelte parses a template's static markup (attributes
-// included) as HTML and clones it, and Chromium reports and refuses an
-// inline style attribute met that way: the element loses the style,
-// and the policy guard in the e2e suite fails the run. A style written
+// included) as HTML and clones it, and Chromium reports an inline
+// style attribute met that way as a violation — the cloned element
+// keeps its style, but the report fails the e2e suite's policy guard,
+// and an attribute set any other way is refused outright. A style written
 // with an expression in it is applied through the CSSOM
 // (`element.style`), which the policy does not govern, so only fully
 // static attributes are a problem — give those a class instead.

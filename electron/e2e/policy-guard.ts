@@ -10,7 +10,9 @@
  *   - the app's own stdout and stderr, where the main process forwards
  *     every renderer console line (`console-message`). Chromium writes
  *     each refusal to the console, and this path sees the first load
- *     too, before Playwright has attached anything to the page;
+ *     too, before Playwright has attached anything to the page. (It is
+ *     attached once the launch resolves; the first page loads only
+ *     after the backend's handshake, which comes later.)
  *   - a `securitypolicyviolation` listener installed on every later
  *     document, which reports through the console as well;
  *   - the page's console and its uncaught errors (a refused `eval`
@@ -61,6 +63,8 @@ export function guardPolicy(app: ElectronApplication): PolicyGuard {
 				buf = buf.slice(nl + 1);
 			}
 		});
+		// A last line the app printed with no newline after it.
+		stream?.on('end', () => note(buf));
 	}
 	void app
 		.context()
