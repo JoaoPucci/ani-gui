@@ -60,6 +60,7 @@ async fn resolve(
             version,
             stamps_beside: None,
             tail: None,
+            heard: None,
         },
         &mut |_| {},
     )
@@ -264,6 +265,7 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
         other_copies: Vec::new(),
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     };
     let mut resp = crate::commands::session::CreateSessionResponse {
         session_id: "s".into(),
@@ -318,6 +320,7 @@ async fn resolve_in(
             version,
             stamps_beside: None,
             tail: None,
+            heard: None,
         },
         &mut |_| {},
     )

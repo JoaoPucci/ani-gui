@@ -33,7 +33,8 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
-	import { settle } from '$lib/transitions/settle';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
+	import { settle } from '$lib/motion/settle';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -121,6 +122,8 @@
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
+	import { refillEpisodes } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import { formatTime, progressLabel, skipLabel } from '$lib/play/format';
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
@@ -1423,11 +1426,24 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone — the page closed, or
+	// moved to another show: a refill landing after it is not fetched
+	// ($lib/refill/refill). Renewed per show below.
+	let refills = new AbortController();
+	onDestroy(() => refills.abort());
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refills.signal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -1544,20 +1560,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return;
-			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	function teardown() {
@@ -1711,7 +1716,10 @@
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
 		// Armed AFTER the flush, which retires the previous source's.
-		armSourceScopedListeners({
+		// It also says where the stream starts: an hls engine begins
+		// loading at a resume point's fragment, below, so nothing
+		// before that fragment is fetched or shown.
+		const { startAt } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1719,7 +1727,9 @@
 			row: fromRow,
 			onResumeHold: (holding) => {
 				resumeHolding = holding;
-			}
+			},
+			// Only hls.js is handed the start, below.
+			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
 		playerError = null;
 		failedStreamError = null;
@@ -1815,6 +1825,7 @@
 				video: videoEl,
 				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
 				holdsStart: true,
+				startAt,
 				onView: (view) => {
 					qualityView = view;
 					// A stream retiring takes its levels with it; the next
@@ -1970,6 +1981,8 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		id;
 		resetEpisodePageCache(kitsuPageCache);
+		refills.abort();
+		refills = new AbortController();
 	});
 
 	onMount(() => {
@@ -3872,7 +3885,7 @@
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
-											<img src={epThumb} alt="" loading="lazy" />
+											<img class="img-fade" use:fadeOnLoad src={epThumb} alt="" loading="lazy" />
 										{:else if air.unaired}
 											<span class="ep-card-thumb-placeholder ep-card-airs" aria-hidden="true">
 												{unairedLabel(air.airsAt)}
@@ -4323,7 +4336,6 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.bars span {
-			animation: none;
 			transform: scaleY(0.7);
 		}
 	}
@@ -5032,26 +5044,16 @@
 			inset-inline-start: 100%;
 		}
 	}
-	/* Reduced motion: nothing travels. The whole track takes the
-	   accent and breathes slowly in opacity, so the frame still reads
-	   as working rather than stopped. The search bar holds a static
-	   bar instead; that one rides the topbar's edge, where a still
-	   line reads as chrome, while this one is alone in a dark frame. */
+	/* Reduced motion: nothing moves (tokens.css takes the sweep off).
+	   The whole track takes the accent at part strength instead, a
+	   still bar across the frame's foot, as the search page's progress
+	   bar does under the topbar. */
 	@media (prefers-reduced-motion: reduce) {
 		.player-spinner-sweep {
 			inset-inline-start: 0;
 			inline-size: 100%;
 			background: var(--accent);
-			animation: player-spinner-breathe 2.4s var(--ease-in-out) infinite;
-		}
-	}
-	@keyframes player-spinner-breathe {
-		0%,
-		100% {
-			opacity: 0.35;
-		}
-		50% {
-			opacity: 0.85;
+			opacity: 0.6;
 		}
 	}
 
@@ -5374,9 +5376,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ep-row > li.ep-highlight .ep-card-thumb {
-			animation: none;
-		}
 		.ep-row:has(li.ep-highlight) > li:not(.ep-highlight) .ep-card {
 			opacity: 1;
 		}
@@ -5455,9 +5454,11 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.92);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
 		transition:
 			transform var(--dur-med) var(--ease-out-soft),
-			filter var(--dur-med) var(--ease-out-soft);
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-card:hover:not(:disabled) .ep-card-thumb img {
 		transform: scale(1.04);
@@ -5650,12 +5651,6 @@
 				0 4px 14px color-mix(in oklab, var(--accent) 50%, transparent),
 				0 1px 2px rgb(0 0 0 / 0.4),
 				0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.ep-card-thumb-flag,
-		.ep-card-thumb-flag::before {
-			animation: none;
 		}
 	}
 </style>

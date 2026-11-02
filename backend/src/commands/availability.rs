@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::availability_refresh::hold_if_still_ours;
-use crate::commands::play_native_walk::pick_native_walk;
+use crate::commands::play_native_walk::pick_native_walk_heard;
 use crate::error::Result;
 
 /// Cache TTL for positive results on FINISHED shows — 30 days.
@@ -769,6 +769,10 @@ pub struct AvailabilityBatchResponse {
     pub playable_episode_counts: HashMap<String, u32>,
 }
 
+/// The version of the verdicts this build reads; see the history
+/// above [`cache_key`].
+pub(crate) const CACHE_VERSION: u32 = 25;
+
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v25: an undated entry's pick reads the entry page of each listing
     //      it would serve and never takes one filed under Hentai or
@@ -925,7 +929,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v25:{kitsu_id}:{m}")
+    format!("{}{kitsu_id}:{m}", crate::cache::families::availability())
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -997,6 +1001,7 @@ pub async fn check_availability(
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut attempt = ProbeAttempt {
         args,
         mode,
@@ -1004,6 +1009,7 @@ pub async fn check_availability(
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
         answered_by: None,
+        heard: &recorder,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
     let (available, episode_count, extra_episodes, provider, versions, count_unread) = match probed
@@ -1029,12 +1035,15 @@ pub async fn check_availability(
             // of the pick keys stamps of its own, each put right from its
             // own listing.
             for (hit, episodes) in p.copies() {
+                let key =
+                    crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
+                        .to_string();
                 crate::commands::numbering_offset::retag_from_listing(
                     state,
-                    &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
-                        .to_string(),
+                    &key,
                     episodes,
                     p.unread_past,
+                    recorder.hearing(&key),
                 );
             }
             if present {
@@ -1273,8 +1282,9 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     args: &AvailabilityArgs,
     mode: &str,
     tail: Option<&dyn super::play_native_appended::TailSource>,
+    heard: &dyn crate::commands::listing_tags::ListingSink,
 ) -> std::result::Result<ShowModes, crate::commands::play_native_resolve::NativeError> {
-    let picked = pick_native_walk(
+    let picked = pick_native_walk_heard(
         client,
         &args.title,
         &args.alt_titles,
@@ -1282,8 +1292,12 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.year,
         args.subtype.as_deref(),
         tail,
+        Some(heard),
     )
     .await?;
+    // The walk recorded the pick's listings as it made the pick, whatever
+    // the probe goes on to answer — a mode read that fails, or one the
+    // walk moves on from as inconclusive, included.
     let fail = |error| crate::commands::play_native_resolve::NativeError {
         error,
         clean_miss: false,
@@ -1328,6 +1342,9 @@ struct ProbeAttempt<'r> {
     /// The provider whose miss the walk returned — set by the walk,
     /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
+    /// Where each listing a provider's probe picks is recorded, whatever
+    /// the walk then makes of its answer ([`crate::commands::listing_tags`]).
+    heard: &'r dyn crate::commands::listing_tags::ListingSink,
 }
 
 #[async_trait::async_trait]
@@ -1338,7 +1355,7 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
-        probe_show(provider, self.args, self.mode, self.tail).await
+        probe_show(provider, self.args, self.mode, self.tail, self.heard).await
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
@@ -1521,7 +1538,7 @@ fn cached_airing(
     state: &AppState,
     kitsu_id: &str,
 ) -> Option<crate::meta::anilist_airing::AiringStatus> {
-    let key = format!("airing:v2:{kitsu_id}");
+    let key = format!("{}{kitsu_id}", crate::cache::families::AIRING);
     let body = meta_cache_get(&state.cache_pool, &key).ok().flatten()?;
     serde_json::from_str(&body).ok()
 }

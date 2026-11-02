@@ -92,7 +92,7 @@ proptest! {
     ) {
         let b = if same { a.clone() } else { b };
         let ka = map_key(a.0, &a.1, a.2);
-        let prefix = format!("tracker-map:v2:{}:", a.0.slug());
+        let prefix = format!("tracker-map:v3:{}:", a.0.slug());
         prop_assert!(ka.starts_with(&prefix));
         prop_assert_eq!(ka == map_key(b.0, &b.1, b.2), a == b);
     }

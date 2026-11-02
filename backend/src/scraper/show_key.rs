@@ -73,8 +73,8 @@ pub fn same_listing(row: &str, played: &str) -> bool {
 /// string form. Every provider's carries its label as a prefix, so the
 /// read side can tell them apart. A bare id names no provider: it is
 /// what every row anidb.app's resolves wrote holds, and the
-/// allanime-era rows before them — nothing migrates, and nothing the
-/// app walks claims them.
+/// allanime-era rows before them. Nothing the app walks claims them;
+/// the launch sweep settles what they left ([`crate::retired_provider`]).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShowKey {
     /// The provider whose slug this is; `None` for a bare id.

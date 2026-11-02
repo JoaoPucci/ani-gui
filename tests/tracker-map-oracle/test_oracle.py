@@ -36,9 +36,9 @@ class CaseTable(unittest.TestCase):
         m = predict(ranma())
         self.assertEqual(m["shape"], "chain")
         t = targets(m, 161)
-        self.assertEqual(t[17], [210, 18, True, []])
-        self.assertEqual(t[18], [149939, 1, False, [[210, 18, True]]])
-        self.assertEqual(t[160], [149939, 143, True, [[210, 18, True]]])
+        self.assertEqual(t[17], [210, 18, True, [], None])
+        self.assertEqual(t[18], [149939, 1, False, [[210, 18, True]], None])
+        self.assertEqual(t[160], [149939, 143, True, [[210, 18, True]], None])
         self.assertIsNone(t[161])
 
     def test_a_chain_outside_kitsu_s_run_is_identity(self):
@@ -85,23 +85,23 @@ class CaseTable(unittest.TestCase):
         parts = [kitsu(47132, 1, "2023-11-04", "2023-11-04"), kitsu(46038, 1, "2023-03-03", "2023-03-03")]
         first = predict(evidence(parts[1], show(51535, 2), sharing=parts))
         second = predict(evidence(parts[0], show(51535, 2), sharing=parts))
-        self.assertEqual(targets(first, 1)[0], [51535, 1, False, []])
-        self.assertEqual(targets(second, 1)[0], [51535, 2, True, []])
+        self.assertEqual(targets(first, 1)[0], [51535, 1, False, [], None])
+        self.assertEqual(targets(second, 1)[0], [51535, 2, True, [], None])
 
     def test_split_parts_take_the_entry_after_the_parts_before(self):
         parts = [kitsu(46312, 13, "2024-07-07", ""), kitsu(49244, 13, "2024-10-06", "")]
         m = predict(evidence(parts[1], show(153406, 26), parts=parts))
         self.assertEqual(m["shape"], "split_parts")
-        self.assertEqual(targets(m, 13)[0], [153406, 14, False, []])
-        self.assertEqual(targets(m, 13)[12], [153406, 26, True, []])
+        self.assertEqual(targets(m, 13)[0], [153406, 14, False, [], None])
+        self.assertEqual(targets(m, 13)[12], [153406, 26, True, [], None])
 
     def test_a_prologue_shifts_every_episode_and_the_finale_completes(self):
         listed = ["0"] + [str(i) for i in range(1, 26)]
         m = predict(evidence(kitsu(7882, 12), show(19603, 13), listed=listed))
         self.assertEqual(m["shape"], "extras")
         t = targets(m, 12)
-        self.assertEqual(t[0], [19603, 2, False, []])
-        self.assertEqual(t[11], [19603, 13, True, []])
+        self.assertEqual(t[0], [19603, 2, False, [], None])
+        self.assertEqual(t[11], [19603, 13, True, [], None])
 
     def test_several_recaps_shift_the_episodes_after_each(self):
         listed = [str(i) for i in range(1, 25)] + ["0", "6.5", "12.5", "18.5", "18.5"]
@@ -151,7 +151,7 @@ class CaseTable(unittest.TestCase):
     def test_an_unfinished_entry_is_not_completed(self):
         ev = ranma()
         ev["chain"][0]["finished"] = False
-        self.assertEqual(targets(predict(ev), 161)[160], [149939, 143, False, [[210, 18, True]]])
+        self.assertEqual(targets(predict(ev), 161)[160], [149939, 143, False, [[210, 18, True]], None])
 
 
     def test_only_ascii_digits_read_as_a_date_or_a_number(self):
@@ -168,6 +168,47 @@ class CaseTable(unittest.TestCase):
         self.assertIsNone(oracle.listed_number("\u0663"))
         self.assertIsNone(oracle.listed_number("3.\u0665"))
 
+class Specials(unittest.TestCase):
+    """The docs' fifth rule, against Unlimited Blade Works' prologue."""
+
+    def ubw(self, special_start="2014-10-05", listed=None, contested=False):
+        season = oracle.kitsu(7882, 12, "2014-10-12", "2014-12-28")
+        entry = oracle.show(19603, 13, True, "2014-10-05", "2014-12-28")
+        ev = oracle.evidence(season, entry, listed=listed or ["0"] + [str(n) for n in range(1, 13)])
+        return {
+            "special": oracle.kitsu(9718, 1, special_start, special_start),
+            "related": [{"related": season, "evidence": ev, "contested": contested}],
+        }
+
+    def test_the_prologue_is_the_entry_s_first_episode_never_its_last(self):
+        m = oracle.predict_special(self.ubw())
+        self.assertEqual(m["shape"], "special_extras")
+        self.assertEqual(oracle.targets(m, 1), [[19603, 1, False, [], None], None])
+
+    def test_a_half_episode_is_the_episode_after_the_one_it_follows(self):
+        m = oracle.predict_special(self.ubw(special_start="2014-11-16", listed=[str(n) for n in range(1, 13)] + ["6.5"]))
+        self.assertEqual(oracle.targets(m, 1)[0], [19603, 7, False, [], 6])
+
+    def test_an_epilogue_after_the_season_is_the_entry_s_last_and_needs_the_season(self):
+        listed = [str(n) for n in range(1, 13)] + ["12.5"]
+        m = oracle.predict_special(self.ubw(special_start="2014-12-30", listed=listed))
+        self.assertEqual(oracle.targets(m, 1)[0], [19603, 13, True, [], 12])
+        early = oracle.predict_special(self.ubw(special_start="2014-12-20", listed=listed))
+        self.assertEqual(early, oracle.identity("unexplained"))
+
+    def test_short_of_the_rule_the_special_is_filed_nowhere(self):
+        for sp in (
+            self.ubw(contested=True),
+            self.ubw(special_start="2014-10"),
+            self.ubw(special_start="2014-09-30"),
+            self.ubw(special_start="2014-10-20"),
+            self.ubw(special_start="2014-10-05", listed=[str(n) for n in range(1, 13)] + ["6.5"]),
+            self.ubw(listed=[str(n) for n in range(1, 13)] + ["12.5"]),
+            self.ubw(listed=["0", "6.5"] + [str(n) for n in range(1, 13)]),
+        ):
+            self.assertEqual(oracle.predict_special(sp), oracle.identity("unexplained"))
+
+
 class Generation(unittest.TestCase):
     def test_the_set_is_reproducible_and_ids_unique(self):
         a, b = oracle.gen(), oracle.gen()
@@ -178,14 +219,14 @@ class Generation(unittest.TestCase):
     def test_every_family_is_generated_and_every_shape_predicted(self):
         cases = oracle.gen()
         families = {c["family"].split("-")[0] for c in cases}
-        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull", "split_overfull", "chain_rival"):
+        for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed", "later_part", "shared_overfull", "split_overfull", "chain_rival", "special"):
             self.assertIn(f, families)
         full = {c["family"] for c in cases}
         for f in ("chain-dated-both", "chain-dated-start_only", "chain-slack-1", "chain-slack-3",
                   "chain-early-dated-both", "chain-start-slack-2", "chain-middle-dated"):
             self.assertIn(f, full)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
-        self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})
+        self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras", "special_extras"})
         self.assertTrue(any(c["family"] == "extras-multi-ok" for c in cases))
 
 
