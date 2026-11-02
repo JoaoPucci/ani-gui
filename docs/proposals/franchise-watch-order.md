@@ -682,12 +682,12 @@ your progress (from the local history: "Watched", "EP 9 of 13",
 nothing). The current entry is marked in the show's accent colour;
 its position in the run uses the app's large tabular numerals ("05"
 for *The Calamity*, counted from *Bleach*, the run's first entry).
-Once the franchise page (c) exists, a trailing link — "Side stories,
-films and other versions (5)", counted from `around` and `chain`'s
-other versions — opens it; before
-then the strip has no trailing link. If you have progress elsewhere in
+Once the franchise page (c) exists, a link opens it; before then the
+strip has no such link (section 5, "The strip, second round", has its
+two forms). If you have progress elsewhere in
 the franchise, the strip says so: "You're watching *Golden Wind* ·
-EP 12", a link to that entry's page (section 5 has its final form).
+EP 12", a link to that entry's page (section 5, "The strip, second
+round", compares its forms).
 That one line answers the JoJo request on whichever JoJo
 page the viewer lands.
 
@@ -984,18 +984,21 @@ them introduces a new widget style.
 ### The watch-order strip (show page)
 
 - **Placement.** The strip comes right after the masthead, above the
-  synopsis, as a full-width rail with its own eyebrow ("Watch order —
-  05"; a total, "of 05", only for a run with no fork, join or
-  cycle). The
+  synopsis, under its own eyebrow ("Watch order"), as what comes
+  before this entry, its position ("05"; a total, "of 05", only for a
+  run with no fork, join or cycle) and what comes after (the
+  maintainer chose this arrangement over a rail of the whole run;
+  "The strip, second round" below has its layout). The
   masthead's eyebrow gains the position in its value
   slot ("TV · Finished · 05 of 09"), only for a run that is one line:
   a bare "05" there reads as nothing in particular. The reason
   for this spot: "where am I, and did I miss something" is answered
-  before choosing an episode, not after scrolling past them. The rail
-  is one row of compact cards, so it costs little height. Entries
+  before choosing an episode, not after scrolling past them. The strip
+  is one row of entries, so it costs little height. Entries
   already in the strip are removed from the "Similar titles" rail
   below, so no poster appears twice on the page. Whether the strip
-  should sit lower, just above "Similar titles", is open question 1.
+  should sit lower, just above "Similar titles", was decided: under
+  the masthead ("Decisions recorded", 1).
 - **At a glance.** Each card follows `PosterCard`'s anatomy at a
   smaller width:
   - a 5:7 poster with the accent rule;
@@ -1012,7 +1015,7 @@ them introduces a new widget style.
   "unavailable". A line for the entry the viewer is part-way
   through, when it is another entry of the run, links to that entry's
   page; it never plays. Its form is chosen in the second mockup round
-  (Phase 0, below).
+  ("The strip, second round", below).
 - **On hover or focus.** The card lifts on hover like any poster card,
   draws its accent rule on hover or focus, and shows the full title.
   Long titles are clamped to two lines on the card, so a name like
@@ -1020,17 +1023,18 @@ them introduces a new widget style.
   Silver Soul Arc – Second Half War" never breaks the row height. The
   full title is always the card's accessible name and tooltip. Whether
   cards should drop the part of the name the run shares and show only
-  the distinguishing part ("Stone Ocean Part 3") is open question 2.
+  the distinguishing part ("Stone Ocean Part 3") was decided: yes
+  ("Decisions recorded", 2).
 - **Readability.** Titles and meta keep `PosterCard`'s sizes and tones
   so the strip sits with the rails below it. Progress is the one new
   piece of text on these cards; it follows the poster card's meta (the
   figure bright, the word faint), and the mockup review checks that "EP
   9 of 13" reads at that size. The accent is used only for the
   rule and the marker, never as a text colour on dark.
-- **Keyboard and motion.** The strip is a `Strip`, so it inherits that
-  rail's focus and arrow-key behaviour. Each card is a link with the
-  poster card's focus ring, and Enter opens it. The resume line is a
-  separate tab stop. Under reduced motion there is no lift and no
+- **Keyboard and motion.** Each entry is a link with the poster
+  card's focus ring, and Enter opens it, in reading order: before,
+  then after. The line for the entry being watched and the franchise
+  link are separate tab stops. Under reduced motion there is no lift and no
   entrance; the tokens already do this.
 - **When data is missing.**
   - No relations, or Kitsu unreachable: no strip, no position in the
@@ -1059,7 +1063,8 @@ them introduces a new widget style.
   credits and after the video ends, until it is used or dismissed.
   With no skip data, it appears in the final seconds instead. Showing
   the sequel in the now-playing header's "next" button (below the
-  player) on a finale is open question 3.
+  player) on a finale was decided: no, the button stays within the
+  entry ("Decisions recorded", 3).
 - **On hover or focus.** On hover the card fills with the accent, as
   the skip pill does; on focus it shows the focus ring. The full title
   shows on hover and is the card's accessible name.
@@ -1093,7 +1098,9 @@ them introduces a new widget style.
   - **Hero:** the run's latest-watched entry, or else its first, in
     the hero band.
   - **Masthead:** the run's name in the italic display serif under a
-    "Franchise · 9 entries" eyebrow, with a Resume button styled and
+    "Franchise · 15 entries" eyebrow (every entry the page lists, the
+    count the strip's "Whole franchise" button shows), with a Resume
+    button styled and
     glowing like the show page's Play. The page takes the accent of the
     entry the hero shows.
   - **Main story:** a vertical list rather than a rail, so long titles
@@ -1333,7 +1340,7 @@ The rules below hold on every surface:
 
 The maintainer answered the eight questions the first mockups asked:
 
-1. **Strip.** Before and after, under the title. The whole-run rail
+1. **Strip.** Before and after, under the title (the masthead). The whole-run rail
    was liked, but forks and joins break it up. The strip needed a
    second round, below.
 2. **Short titles** on cards: yes, with the full title as tooltip and
@@ -1421,15 +1428,15 @@ variant below is one of the switch's options.
   more than the strip shows. The stack shows *what* there is, which
   the button cannot, but it is a widget no other page has; it is the
   option to take if the button reads as too quiet in use.
-- **The entry being watched.** The first round's "You're on
-  *Gintama°* · EP 12 — Resume" read as a second play button. Two
+- **The entry being watched.** The first round's "You're on *Steel
+  Ball Run* · EP 1 · Resume" (on *Golden Wind*) read as a second play
+  button. Two
   variants, both linking to that entry's show page, neither playing:
   - *Card*: a small link with the entry's poster, "You're watching",
     its title and episode, and an arrow. Its visible text is its
     accessible name.
-  - *Sentence*: "You're watching *Gintama°* · EP 12." followed by a
-    text link, "Go to its page", which the sentence describes for
-    screen readers.
+  - *Sentence*: "You're watching *Steel Ball Run* · EP 1." followed by a
+    text link, "Go to its page".
 
   Either way the line shows only when the entry being watched is not
   already one of the strip's tiles: on *Stone Ocean Part 3* the sequel
