@@ -23,8 +23,8 @@
  *
  * So the reader arrives the way a reader does — searching, then
  * opening the show — at the app's smallest window, at a width where
- * the pill and the trail share the squeeze, and at a common desktop
- * width, with motion on. The page's overflow is sampled on every
+ * the topbar is short of room and the pill narrows to make it, and at
+ * a common desktop width, with motion on. The page's overflow is sampled on every
  * frame from the click through the entry animation (and the sampler
  * must have seen the hero's entry running, or the check proves
  * nothing), and read again once everything has settled.
@@ -47,8 +47,10 @@ import { appInfo, defaultSettings } from './fixtures/kitsu';
 import { launchPackagedApp, packagedBinary } from './launch';
 
 /** The app's minimum window; a width where the topbar is short of
- *  room but the search pill can still narrow; a common desktop width. */
+ *  room, so the order in which pill and trail give way shows (the spec
+ *  asserts that the row is short there); a common desktop width. */
 const WIDTHS = [960, 1100, 1280];
+const SQUEEZED = 1100;
 
 /** Long enough to fill the breadcrumb's cap on a title. */
 const TITLE = 'JoJo no Kimyou na Bouken Part 6: Stone Ocean';
@@ -364,9 +366,16 @@ test('the show page does not scroll sideways while it opens or once it has', asy
 					crumbs: crumbs.getBoundingClientRect().width,
 					crumbsFull: natural(crumbs, 'max-content'),
 					pill: pill.getBoundingClientRect().width,
-					pillMin: natural(pill, 'min-content')
+					pillMin: natural(pill, 'min-content'),
+					pillMax: parseFloat(getComputedStyle(pill).maxInlineSize)
 				};
 			});
+			if (width === SQUEEZED) {
+				// The row has to be short here, or the order below never shows.
+				expect
+					.soft(squeeze.pill, `at ${width}px the search pill had all the room it wanted`)
+					.toBeLessThan(squeeze.pillMax - 0.5);
+			}
 			if (squeeze.crumbs < squeeze.crumbsFull - 0.5) {
 				expect
 					.soft(
