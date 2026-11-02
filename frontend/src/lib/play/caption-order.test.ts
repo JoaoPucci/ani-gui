@@ -54,6 +54,21 @@ describe("captionOrder — the viewer's languages, then the rest", () => {
 		]);
 	});
 
+	it('puts the script remembered ahead of the other script of its language', () => {
+		const chinese = [
+			e(0, 'zh-Hans', 'Chinese (Simplified)'),
+			e(1, 'zh-Hant', 'Chinese (Traditional)')
+		];
+		expect(names(captionOrder(chinese, { locale: 'en', remembered: 'zh-Hant' }).yours)).toEqual([
+			'Chinese (Traditional)',
+			'Chinese (Simplified)'
+		]);
+		expect(names(captionOrder(chinese, { locale: 'zh-TW' }).yours)).toEqual([
+			'Chinese (Traditional)',
+			'Chinese (Simplified)'
+		]);
+	});
+
 	it('reads Off remembered as no language', () => {
 		const { yours } = captionOrder(listing, { locale: 'en', remembered: 'off' });
 		expect(names(yours)).toEqual(['English']);

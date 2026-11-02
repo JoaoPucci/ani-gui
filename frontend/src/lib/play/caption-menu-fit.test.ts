@@ -16,6 +16,42 @@ describe('menuHeight — the captions menu fits inside the player', () => {
 		expect(menuHeight({ frameTop: 100, anchorTop: 90, gap: 8, margin: 8 })).toBe(0);
 	});
 
+	it('stops at the top bar when the page has scrolled the player up under it', () => {
+		// Player scrolled to y=-200; the top bar ends at y=84.
+		expect(menuHeight({ frameTop: -200, ceiling: 84, anchorTop: 420, gap: 8, margin: 8 })).toBe(
+			320
+		);
+		expect(menuHeight({ frameTop: 100, ceiling: 84, anchorTop: 420, gap: 8, margin: 8 })).toBe(304);
+	});
+
+	it('keeps a floor, so a player too short for the menu still caps it', () => {
+		expect(menuHeight({ frameTop: 100, anchorTop: 90, gap: 8, margin: 8, floor: 96 })).toBe(96);
+		expect(menuHeight({ frameTop: 84, anchorTop: 420, gap: 8, margin: 8, floor: 96 })).toBe(320);
+	});
+
+	it('never reaches above the player or the top bar, unless only the floor fits', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: -2000, max: 2000 }),
+				fc.integer({ min: -2000, max: 2000 }),
+				fc.integer({ min: -2000, max: 2000 }),
+				fc.nat(50),
+				fc.nat(50),
+				fc.nat(200),
+				(frameTop, ceiling, anchorTop, gap, margin, floor) => {
+					const h = menuHeight({ frameTop, ceiling, anchorTop, gap, margin, floor });
+					expect(h).toBeGreaterThanOrEqual(floor);
+					expect(Number.isInteger(h)).toBe(true);
+					if (h > floor) {
+						expect(anchorTop - gap - h).toBeGreaterThanOrEqual(
+							Math.max(frameTop, ceiling) + margin
+						);
+					}
+				}
+			)
+		);
+	});
+
 	it('never reaches above the player', () => {
 		fc.assert(
 			fc.property(

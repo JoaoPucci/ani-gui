@@ -4,8 +4,20 @@ import { captionEntries, cleanLabel, isSdh, languageName } from './caption-label
 
 const format = {
 	numbered: (name: string, n: number) => `${name} ${n}`,
-	untitled: (position: number) => `Track ${position}`
+	untitled: (position: number) => `Track ${position}`,
+	qualified: (name: string, detail: string) => `${name} · ${detail}`
 };
+
+/** Whether every bracket in `text` closes, in order and in kind. */
+function balanced(text: string): boolean {
+	const open: string[] = [];
+	for (const ch of text) {
+		if (ch === '(' || ch === '[') open.push(ch);
+		else if (ch === ')' && open.pop() !== '(') return false;
+		else if (ch === ']' && open.pop() !== '[') return false;
+	}
+	return open.length === 0;
+}
 
 describe('isSdh — a track for the deaf and hard of hearing', () => {
 	it('reads the SDH mark the provider puts in a label', () => {
@@ -42,6 +54,13 @@ describe("cleanLabel — the provider's label without its punctuation", () => {
 		expect(cleanLabel('English')).toBe('English');
 	});
 
+	it('drops a bracket the label never closes or never opened', () => {
+		expect(cleanLabel('Thai (- SDH')).toBe('Thai');
+		expect(cleanLabel('(SDH')).toBe('');
+		expect(cleanLabel('English) (Forced')).toBe('English Forced');
+		expect(cleanLabel('Signs ((Forced))')).toBe('Signs ((Forced))');
+	});
+
 	it('joins the qualifiers a label lists', () => {
 		expect(cleanLabel('Spanish (- Latin America | Forced)')).toBe(
 			'Spanish (Latin America, Forced)'
@@ -71,6 +90,7 @@ describe("cleanLabel — the provider's label without its punctuation", () => {
 				expect(cleanLabel(once)).toBe(once);
 				expect(isSdh(once)).toBe(false);
 				expect(once).not.toMatch(/\(\s*\)|\[\s*\]|\(\s*[-–]|^[\s\-–|,;]|[\s\-–|,;]$/);
+				expect(balanced(once)).toBe(true);
 			})
 		);
 	});
@@ -95,6 +115,12 @@ describe('languageName — a tag named in the app language', () => {
 		expect(languageName('', 'en')).toBeNull();
 		expect(languageName('not a tag', 'en')).toBeNull();
 		expect(languageName('qaa', 'en')).toBeNull();
+	});
+
+	it('names a tag that carries an extension or a private-use part by its language', () => {
+		expect(languageName('en-x-foo', 'en')).toBe('English');
+		expect(languageName('en-u-nu-thai', 'en')).toBe('English');
+		expect(languageName('pt-BR-t-ja', 'en')).toBe('Portuguese (Brazil)');
 	});
 
 	it('falls back to the default language for a locale it cannot read', () => {
@@ -139,11 +165,32 @@ describe('captionEntries — what each track reads as in the menu', () => {
 		]);
 	});
 
+	it("tells tracks of one language apart by the provider's qualifier before numbering them", () => {
+		const entries = captionEntries(
+			[
+				{ index: 0, lang: 'en', label: 'English' },
+				{ index: 1, lang: 'en', label: 'English (Signs & Songs)' },
+				{ index: 2, lang: 'en', label: 'English [Forced]' },
+				{ index: 3, lang: 'pt-BR', label: 'Portuguese (- Brazil)' },
+				{ index: 4, lang: 'pt-BR', label: 'Portuguese (Portuguese - Brazilian)' }
+			],
+			'en',
+			format
+		);
+		expect(entries.map((e) => e.name)).toEqual([
+			'English',
+			'English · Signs & Songs',
+			'English · Forced',
+			'Portuguese (Brazil)',
+			'Portuguese (Brazil) · Portuguese - Brazilian'
+		]);
+	});
+
 	it('numbers entries that would otherwise read the same', () => {
 		const entries = captionEntries(
 			[
 				{ index: 0, lang: 'pt-BR', label: 'Portuguese (- Brazil)' },
-				{ index: 1, lang: 'pt-BR', label: 'Portuguese (Portuguese - Brazilian)' },
+				{ index: 1, lang: 'pt-BR', label: 'Portuguese (Brazil)' },
 				{ index: 2, lang: 'th', label: 'Thai' },
 				{ index: 3, lang: 'th', label: 'Thai (- SDH)' }
 			],
@@ -159,7 +206,18 @@ describe('captionEntries — what each track reads as in the menu', () => {
 	});
 
 	it('keeps every track, in order, with a name no other entry with the same mark shares', () => {
-		const lang = fc.constantFrom('en', 'pt-BR', 'pt-PT', 'es-419', 'und', '', 'zz-ZZ', 'th');
+		const lang = fc.constantFrom(
+			'en',
+			'pt-BR',
+			'pt-PT',
+			'es-419',
+			'und',
+			'',
+			'zz-ZZ',
+			'th',
+			'en-x-foo',
+			'en-u-nu-thai'
+		);
 		const label = fc.constantFrom('', 'English', 'Thai (- SDH)', 'SDH', 'X (- Y)', 'Track');
 		fc.assert(
 			fc.property(

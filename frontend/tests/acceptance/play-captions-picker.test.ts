@@ -420,6 +420,29 @@ describe('the captions menu with many languages', () => {
 		expect(menu?.style.maxBlockSize).toBe('304px');
 	});
 
+	it('stops at the top bar when the page has scrolled the player up under it', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		const frame = document.querySelector<HTMLElement>('.player-frame');
+		if (!frame) throw new Error('no player frame');
+		// The player scrolled 200 px above the window; the app's top
+		// bar, sticky, ends 84 px down.
+		const topbar = document.createElement('header');
+		topbar.className = 'topbar';
+		topbar.getBoundingClientRect = () => new DOMRect(0, 0, 1280, 84);
+		document.body.prepend(topbar);
+		try {
+			frame.getBoundingClientRect = () => new DOMRect(0, -200, 1280, 700);
+			ccButton().getBoundingClientRect = () => new DOMRect(1080, 420, 48, 48);
+			await openMenu();
+			const menu = document.querySelector<HTMLElement>('#pc-cc-menu');
+			// 420 − 84, less the gap under the menu and the margin over it.
+			expect(menu?.style.maxBlockSize).toBe('320px');
+		} finally {
+			topbar.remove();
+		}
+	});
+
 	it('opens on the selected entry, and arrow keys move through the entries, not the volume', async () => {
 		handlers();
 		const video = await mountAt('many-1', '1', MANY.length);
