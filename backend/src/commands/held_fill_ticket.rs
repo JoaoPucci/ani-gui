@@ -50,26 +50,29 @@ pub(crate) fn release(tickets: &[u64]) {
     }
 }
 
-/// While alive, a page waits on its tickets: they count as on screen.
-pub(super) struct Watching<'a>(&'a [u64]);
+/// While alive, a page waits on its tickets: they count as on screen
+/// until it ends or a release lets them go.
+pub(super) struct Watching(Vec<(u64, u64)>);
 
-impl<'a> Watching<'a> {
-    pub(super) fn new(tickets: &'a [u64]) -> Self {
+impl Watching {
+    pub(super) fn new(tickets: &[u64]) -> Self {
         let now = Instant::now();
         let mut registry = registry();
-        for &t in tickets {
-            registry.watch(t, now);
-        }
-        Self(tickets)
+        Self(
+            tickets
+                .iter()
+                .map(|&t| (t, registry.watch(t, now)))
+                .collect(),
+        )
     }
 }
 
-impl Drop for Watching<'_> {
+impl Drop for Watching {
     fn drop(&mut self) {
         let now = Instant::now();
         let mut registry = registry();
-        for &t in self.0 {
-            registry.unwatch(t, now);
+        for &(t, era) in &self.0 {
+            registry.unwatch(t, era, now);
         }
     }
 }

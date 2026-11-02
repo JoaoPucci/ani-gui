@@ -99,10 +99,10 @@ fn a_waiting_page_keeps_its_ticket_on_screen_and_a_release_takes_it_off() {
     let mut r = Registry::default();
     let t0 = Instant::now();
     let (t, _) = r.hold("k", t0).expect("room");
-    r.watch(t, t0);
+    let era = r.watch(t, t0);
     let later = t0 + ON_SCREEN_GRACE * 10;
     assert!(r.on_screen(t, later), "a page still waits");
-    r.unwatch(t, later);
+    r.unwatch(t, era, later);
     assert!(
         r.on_screen(t, later + Duration::from_secs(1)),
         "between two waits"
@@ -232,11 +232,16 @@ proptest::proptest! {
         for k in 0..6 {
             tickets.push(r.hold(&format!("k{k}"), t0).expect("room").0);
         }
+        let mut open: Vec<Vec<u64>> = vec![Vec::new(); tickets.len()];
         for (k, op) in ops {
             let t = tickets[k as usize];
             match op {
-                0 => r.watch(t, t0),
-                1 => r.unwatch(t, t0),
+                0 => open[k as usize].push(r.watch(t, t0)),
+                1 => {
+                    if let Some(era) = open[k as usize].pop() {
+                        r.unwatch(t, era, t0);
+                    }
+                }
                 _ => r.release(t),
             }
         }
