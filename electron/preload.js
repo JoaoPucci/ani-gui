@@ -60,10 +60,37 @@ for (const a of process.argv) {
 	if (lane) lanes[lane[1]] = lane[2];
 }
 
+// The launch's remote flags, decided by the backend before this window
+// opened and fixed for the session: `--ani-gui-flags=` carries them as
+// URI-encoded JSON, `--ani-gui-flags-origin=` where they came from (see
+// lib/window-args.cjs). Anything but a flat object of booleans and
+// strings counts as none, and every flag then takes its default.
+const flagsFlag = '--ani-gui-flags=';
+const flagsOriginFlag = '--ani-gui-flags-origin=';
+function readFlags() {
+	const a = process.argv.find((x) => x.startsWith(flagsFlag));
+	if (!a) return {};
+	try {
+		const v = JSON.parse(decodeURIComponent(a.slice(flagsFlag.length)));
+		if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
+		const scalar = (x) => typeof x === 'boolean' || typeof x === 'string';
+		return Object.values(v).every(scalar) ? v : {};
+	} catch {
+		return {};
+	}
+}
+const flags = Object.freeze(readFlags());
+const flagsOriginArg = process.argv.find((a) => a.startsWith(flagsOriginFlag));
+const flagsOrigin = flagsOriginArg
+	? decodeURIComponent(flagsOriginArg.slice(flagsOriginFlag.length))
+	: null;
+
 contextBridge.exposeInMainWorld('aniGui', {
 	apiBase,
 	internalSecret,
 	lanes,
+	flags,
+	flagsOrigin,
 
 	// Surface `process.platform` so renderer-side UI can tailor copy
 	// per OS (Windows installer vs Linux package manager vs macOS

@@ -16,7 +16,8 @@ export type LaunchFlags = Readonly<Record<string, boolean | string>>;
 type FlagsWindow = { aniGui?: { flags?: LaunchFlags } } | undefined;
 
 /** The window's launch flags; an empty set when it has none. */
+const NONE: LaunchFlags = Object.freeze({});
+
 export function launchFlags(win: FlagsWindow = globalThis.window): LaunchFlags {
-	void win;
-	return {};
+	return win?.aniGui?.flags ?? NONE;
 }

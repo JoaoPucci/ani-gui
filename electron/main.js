@@ -50,6 +50,8 @@ const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { SPLASH_MARK, SPLASH_PAGE, splashWindowOptions } = require("./lib/splash.cjs");
+const { waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const {
   bootApp,
   firstShowTimeoutMs,
@@ -357,7 +359,29 @@ function signalBackendGroup(pid) {
   }
 }
 
-async function createWindow(backend) {
+/** The splash, while the backend starts and the launch's flags are
+ *  decided (lib/splash.cjs). Null once closed, or if it never opened. */
+let splashWindow = null;
+
+function showSplash() {
+  const splash = new BrowserWindow(splashWindowOptions());
+  splash[SPLASH_MARK] = true;
+  splash.once("ready-to-show", () => {
+    if (!splash.isDestroyed()) splash.show();
+  });
+  splash.on("closed", () => {
+    if (splashWindow === splash) splashWindow = null;
+  });
+  splash.loadFile(SPLASH_PAGE).catch((err) => console.error("[main] splash failed to load:", err));
+  splashWindow = splash;
+}
+
+function closeSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+  splashWindow = null;
+}
+
+async function createWindow(backend, launchFlags = backend.launchFlags ?? null) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
   // work-area size avoids the "open at 1280×800, then animate to
@@ -398,7 +422,7 @@ async function createWindow(backend) {
       // preload falls through to Paraglide's preferredLanguage /
       // baseLocale strategies instead of seeding garbage.
       // The backend's lanes go the same way (lib/window-args.cjs).
-      additionalArguments: windowArguments(backend, readConfigLocale()),
+      additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
     },
   });
 
@@ -964,11 +988,18 @@ app.whenReady().then(() =>
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    createWindow: async (backend) => {
-      await createWindow(backend);
+    showSplash,
+    // The launch's remote flags, decided by the backend within its
+    // two-second cap; the window opens with them, so the renderer has
+    // them before its first page (lib/launch-flags.cjs).
+    fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
+    closeSplash,
+    createWindow: async (backend, launchFlags) => {
+      await createWindow(backend, launchFlags);
       // The boot's window is open: what it was opened against is what
-      // a later window needs (see windowKeeper) — its lanes included.
-      keeper.booted(backend);
+      // a later window needs (see windowKeeper) — its lanes included,
+      // and the launch's flags, which stay the session's.
+      keeper.booted({ ...backend, launchFlags });
     },
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,

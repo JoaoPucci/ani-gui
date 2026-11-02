@@ -174,8 +174,12 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
 }
 
 /**
- * Spawn the backend, then open the window against it. A failure ends
- * the process with code 1, in this order:
+ * Put the splash up, spawn the backend, wait for the launch's flags
+ * (lib/launch-flags.cjs, bounded), then open the window against the
+ * backend with those flags, and take the splash down once the window
+ * has shown. A splash that cannot be shown is logged and the boot goes
+ * on without it. A failure ends the process with code 1, in this order
+ * — the splash left to the failure report, which hides every window:
  *
  *   1. The backend tree is stopped. `app.exit` skips `before-quit`,
  *      which is where a normal quit stops it, and the backend's own
@@ -200,8 +204,11 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
  * quit's own exit code.
  */
 async function bootApp({
+  showSplash = () => {},
   spawnBackend,
+  fetchFlags = async () => null,
   createWindow,
+  closeSplash = () => {},
   stopBackend,
   reportFailure = async () => {},
   onQuitAsked = () => {},
@@ -210,8 +217,15 @@ async function bootApp({
   logError,
 }) {
   try {
+    showSplash();
+  } catch (err) {
+    logError("[main] could not show the splash:", err);
+  }
+  try {
     const backend = await spawnBackend();
-    await createWindow(backend);
+    const flags = await fetchFlags(backend);
+    await createWindow(backend, flags);
+    closeSplash();
   } catch (err) {
     if (quitting()) return;
     logError("[main] startup failed:", err);
