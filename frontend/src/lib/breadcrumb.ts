@@ -58,7 +58,12 @@ export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
  *  names and steps back to. */
 export function searchOrigin(origin: string | null): string | null {
 	if (!origin) return null;
-	const url = new URL(origin, 'http://app.invalid');
+	let url: URL;
+	try {
+		url = new URL(origin, 'http://app.invalid');
+	} catch {
+		return null; // not an address the page behind can have
+	}
 	const ran = url.pathname.endsWith('/search') && (url.searchParams.get('q') ?? '').trim() !== '';
 	return ran ? origin : null;
 }
