@@ -14,15 +14,13 @@
  * page's own requests are left to the backend, since the scenario only
  * needs to leave the search page and come back.
  */
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { appInfo, emptyHistory, topRated, trending } from './fixtures/kitsu';
-
-const electronDir = path.resolve(__dirname, '..');
-const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
+import { launchPackagedApp, packagedBinary } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -59,19 +57,13 @@ const json = (body: unknown) => ({
 async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-search-back-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
-	const app = await electron.launch({
-		executablePath: packagedBinary,
-		// --mute-audio: nothing here plays sound, and a headless test
-		// run must never reach the machine's speakers.
-		args: ['--no-sandbox', '--mute-audio'],
-		env: {
-			...process.env,
-			XDG_STATE_HOME: path.join(tmp, 'state'),
-			XDG_CONFIG_HOME: path.join(tmp, 'config'),
-			XDG_CACHE_HOME: path.join(tmp, 'cache'),
-			XDG_DATA_HOME: path.join(tmp, 'data'),
-			ANI_GUI_UNATTENDED: '1'
-		}
+	const app = await launchPackagedApp({
+		...process.env,
+		XDG_STATE_HOME: path.join(tmp, 'state'),
+		XDG_CONFIG_HOME: path.join(tmp, 'config'),
+		XDG_CACHE_HOME: path.join(tmp, 'cache'),
+		XDG_DATA_HOME: path.join(tmp, 'data'),
+		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
 	const page = await app.firstWindow();
