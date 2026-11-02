@@ -680,3 +680,172 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
 
     assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
 }
+
+/// Gintama Season 2 played from its own page: Kitsu's entry is
+/// Gintama' under the slug `gintama-2`, which carries no cour suffix,
+/// and titles it "Gintama Season 2" — the provider's card title. The
+/// entry names the watch's season, so the row records its id and the
+/// mapping is stored, with no Kitsu request.
+#[tokio::test]
+async fn a_season_kitsu_titles_as_the_provider_does_is_recorded() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    cache_titled(
+        &state,
+        "5971",
+        "gintama-2",
+        "Gintama'",
+        &[
+            ("en_jp", "Gintama'"),
+            ("en_us", "Gintama Season 2"),
+            ("ja_jp", "銀魂'"),
+        ],
+        &["Gintama (2011)"],
+    );
+    let watch = Watch {
+        show_id: "hianime:gintama-season-2-1153".into(),
+        title: "Gintama Season 2".into(),
+        ep_no: "1".into(),
+    };
+
+    record_watch(&state, &watch, Some("5971")).await;
+
+    assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("5971"));
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &watch.show_id).expect("mapping read"),
+        Some("5971".to_string())
+    );
+    // The show page's resume lookup finds the row by the entry's id.
+    assert_eq!(resumed_from(&state, "5971"), Some(watch.show_id.clone()));
+    assert!(kitsu
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .is_empty());
+}
+
+/// The row the show page for `kitsu_id` resumes from, as its lookup
+/// (`/api/history/by-kitsu/:id`) answers it.
+fn resumed_from(state: &AppState, kitsu_id: &str) -> Option<String> {
+    crate::commands::history::history_by_kitsu(state, kitsu_id)
+        .expect("resume lookup")
+        .map(|r| r.id)
+}
+
+/// A Kitsu detail with its titles, cached so the guard reads it
+/// without a request.
+fn cache_titled(
+    state: &AppState,
+    id: &str,
+    slug: &str,
+    canonical: &str,
+    titles: &[(&str, &str)],
+    abbr: &[&str],
+) {
+    let detail = KitsuAnimeRef {
+        id: id.into(),
+        canonical_title: canonical.into(),
+        titles: titles
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect(),
+        abbreviated_titles: abbr.iter().map(|s| (*s).to_string()).collect(),
+        slug: Some(slug.into()),
+        synopsis: None,
+        start_date: None,
+        end_date: None,
+        episode_count: Some(12),
+        average_rating: None,
+        subtype: Some("TV".into()),
+        status: Some("finished".into()),
+        age_rating: None,
+        popularity_rank: None,
+        poster_image: None,
+        anilist_banner: None,
+        cover_image: None,
+    };
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key(id),
+        &serde_json::to_string(&detail).expect("ser"),
+        3600,
+    )
+    .expect("seed detail");
+}
+
+/// Stone Ocean Part 2 played from Part 1's page: Part 1's entry
+/// carries no title naming Part 2, so the pairing stays refused — no
+/// id on the row, no mapping, and Part 1's page offers no resume
+/// from it.
+#[tokio::test]
+async fn another_season_s_page_play_links_nothing() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    cache_titled(
+        &state,
+        "44294",
+        "jojo-no-kimyou-na-bouken-stone-ocean",
+        "JoJo's Bizarre Adventure: Stone Ocean",
+        &[
+            ("en", "JoJo's Bizarre Adventure: Stone Ocean"),
+            ("en_jp", "JoJo no Kimyou na Bouken: Stone Ocean"),
+        ],
+        &["Jojo part 6"],
+    );
+    let watch = Watch {
+        show_id: "hianime:jojos-bizarre-adventure-stone-ocean-part-2-1464".into(),
+        title: "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2".into(),
+        ep_no: "1".into(),
+    };
+
+    record_watch(&state, &watch, Some("44294")).await;
+
+    assert_eq!(row_id(&state, &watch.show_id), None);
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &watch.show_id).expect("mapping read"),
+        None
+    );
+    assert_eq!(resumed_from(&state, "44294"), None);
+}
+
+/// Slime Season 2 played from its own page stays unlinked, as before
+/// the name comparison: Kitsu titles the entry "That Time I Got
+/// Reincarnated as a Slime 2" and "2nd Season Part 1", never as the
+/// provider does, and its slug's bare `-2` is no cour suffix. Recorded
+/// in docs/deferred-work.md.
+#[tokio::test]
+async fn slime_season_two_s_page_play_still_links_nothing() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    cache_titled(
+        &state,
+        "42196",
+        "tensei-shitara-slime-datta-ken-2",
+        "Tensei shitara Slime Datta Ken 2",
+        &[
+            ("en", "That Time I Got Reincarnated as a Slime 2"),
+            ("en_jp", "Tensei shitara Slime Datta Ken 2"),
+        ],
+        &[
+            "TenSura 2",
+            "Tensei Shitara Slime Datta Ken 2nd Season Part 1",
+        ],
+    );
+    let watch = Watch {
+        show_id: "hianime:that-time-i-got-reincarnated-as-a-slime-season-2-1".into(),
+        title: "That Time I Got Reincarnated as a Slime Season 2".into(),
+        ep_no: "1".into(),
+    };
+
+    record_watch(&state, &watch, Some("42196")).await;
+
+    assert_eq!(row_id(&state, &watch.show_id), None);
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &watch.show_id).expect("mapping read"),
+        None
+    );
+    assert_eq!(resumed_from(&state, "42196"), None);
+}

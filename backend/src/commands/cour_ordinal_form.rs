@@ -10,10 +10,10 @@ use super::cour::is_cour_keyword;
 
 /// The suffixes a numeric ordinal carries — any of them on any
 /// number, as the page reads it, so "2th" names cour 2 like "2nd".
-const ORDINAL_SUFFIXES: &[&str] = &["st", "nd", "rd", "th"];
+pub(super) const ORDINAL_SUFFIXES: &[&str] = &["st", "nd", "rd", "th"];
 
 /// The spelled ordinals the page reads, cour 1 first.
-const ORDINAL_WORDS: &[&str] = &[
+pub(super) const ORDINAL_WORDS: &[&str] = &[
     "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
 ];
 

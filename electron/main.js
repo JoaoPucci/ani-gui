@@ -52,6 +52,7 @@ const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { splashController } = require("./lib/splash.cjs");
 const { waitForLaunchFlags } = require("./lib/launch-flags.cjs");
+const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
   bootApp,
   firstShowTimeoutMs,
@@ -962,8 +963,20 @@ function reportBootFailure(err) {
   );
 }
 
-app.whenReady().then(() =>
-  bootApp({
+app.whenReady().then(() => {
+  // GNOME's Reduced Motion switch never reaches Chromium on its own
+  // (see lib/reduced-motion.cjs). The read runs beside the backend's
+  // start and settles within its own short budget; the first window
+  // waits for it, because a window takes the preference it opens with.
+  // Appending after ready is not the Ozone case above: Chromium reads
+  // this switch each time a window's preferences are computed, not once
+  // at process start.
+  const reducedMotion = applyReducedMotion({
+    platform: process.platform,
+    exec: execText,
+    appendSwitch: (name) => app.commandLine.appendSwitch(name),
+  });
+  return bootApp({
     spawnBackend: async () => {
       // Drop Electron's default app menu (File / Edit / View / Window /
       // Help) — the in-window topbar + rail are the navigation surface;
@@ -973,7 +986,12 @@ app.whenReady().then(() =>
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    showSplash: () => splash.show(),
+    // The splash, like any window, takes the reduced-motion preference
+    // it opens with, so it opens once that read has settled (within its
+    // own short budget).
+    showSplash: () => {
+      reducedMotion.then(() => splash.show());
+    },
     suppressSplash: () => splash.suppress(),
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
@@ -981,6 +999,7 @@ app.whenReady().then(() =>
     fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
     closeSplash: () => splash.close(),
     createWindow: async (backend, launchFlags) => {
+      await reducedMotion;
       await createWindow(backend, launchFlags);
       // The boot's window is open: what it was opened against is what
       // a later window needs (see windowKeeper) — its lanes included,
@@ -1000,8 +1019,8 @@ app.whenReady().then(() =>
     quitting: () => quitGoingAhead,
     exit: (code) => app.exit(code),
     logError: console.error,
-  }),
-);
+  });
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
