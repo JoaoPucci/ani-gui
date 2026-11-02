@@ -104,9 +104,10 @@ export async function fetchSidecarTracks(
  *   change on a joined track has found one showing, and a start that
  *   joined already showing is changed by nothing after: its cues went
  *   active and none was drawn. The file arrives a fetch after the
- *   tracks joined, by when the selection — a zero-delay task — has
- *   run, and the start, set by a script since joining, is left alone
- *   by any later one.
+ *   tracks joined; the selection is a zero-delay task, so in practice
+ *   it has run by then — nothing in the browser orders the two — and
+ *   the start, set by a script since joining, is left alone by any
+ *   later one.
  */
 export function attachSidecarTracks(
 	video: HTMLVideoElement,
