@@ -20,8 +20,8 @@
  * menu, and a change the app did not make is hls.js's. The start is
  * set where a session has sidecar tracks, so on a stream that carries
  * its subtitles only in its playlist a pick in the browser's menu is
- * not remembered — logged in docs/deferred-work.md as "Native-menu
- * captions picks on a playlist-only stream".
+ * not remembered — logged in docs/deferred-work.md as "The starting
+ * captions on a playlist-only stream".
  */
 
 /** Which subtitle track shows: its index in the TextTrackList, or off. */
