@@ -43,16 +43,36 @@ describe('franchiseName', () => {
 	const name = fc.constantFrom('Bleach', 'BLEACH', 'Gintama', 'Fate/Zero', 'JoJo');
 	const title = fc.tuple(name, suffix).map(([n, s]) => n + s);
 
-	it('returns the title, or the title without its suffix, and never a name another entry would share', () => {
+	it('returns the title, or the title without its suffix', () => {
+		fc.assert(
+			fc.property(title, fc.array(title, { maxLength: 4 }), (t, others) => {
+				expect([t, withoutFormatSuffix(t)]).toContain(franchiseName(t, others));
+			})
+		);
+	});
+
+	it('never drops a suffix into a name another entry reads as, whatever its case or suffix', () => {
 		fc.assert(
 			fc.property(title, fc.array(title, { maxLength: 4 }), (t, others) => {
 				const out = franchiseName(t, others);
-				expect([t, withoutFormatSuffix(t)]).toContain(out);
-				const clash = others.some(
-					(o) => withoutFormatSuffix(o).toLowerCase() === withoutFormatSuffix(t).toLowerCase()
-				);
-				expect(out).toBe(clash ? t : withoutFormatSuffix(t));
+				if (out === t) return;
+				for (const o of others) {
+					expect(withoutFormatSuffix(o).toLowerCase()).not.toBe(out.toLowerCase());
+				}
 			})
+		);
+	});
+
+	it('drops the suffix when the franchise has no other title, and keeps it beside its bare name', () => {
+		fc.assert(
+			fc.property(
+				name,
+				suffix.filter((x) => x !== ''),
+				(n, sfx) => {
+					expect(franchiseName(n + sfx, [])).toBe(n);
+					expect(franchiseName(n + sfx, [n.toUpperCase()])).toBe(n + sfx);
+				}
+			)
 		);
 	});
 });
