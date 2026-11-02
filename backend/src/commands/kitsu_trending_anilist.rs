@@ -56,7 +56,7 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     //     null covers for those entries; bumping forces a refresh.
     // v6: each ref keeps AniList's bannerImage as `anilist_banner`
     //     beside Kitsu's cover; v5 rows were built without it.
-    const KEY: &str = "kitsu:v6:trending_anilist";
+    const KEY: &str = crate::cache::families::ANILIST_TRENDING;
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);

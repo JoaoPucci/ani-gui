@@ -549,13 +549,17 @@ async fn a_row_past_the_count_named_as_a_last_episode_refuses_without_any_read()
 
 /// The budget is what bounds a read in production: a read still out
 /// when it runs out is no evidence, and the reading kept from before
-/// stands. Kitsu's entry is held unanswered; once the request reaches
-/// it the clock is paused, so the budget ends the fit at the budget
-/// exactly, however slow the machine.
+/// stands. Kitsu's entry is held unanswered, and the clock stands still
+/// until the request reaches it ([`crate::held::frozen_until`]). The
+/// way there — the cache read, the history lock the entry's read takes,
+/// the connection to the mock — took seconds of the budget on a loaded
+/// run of the suite, and on a running clock the budget could run out
+/// before the entry was asked for. Frozen, the budget ends the fit at
+/// the budget exactly, however slow the machine.
 #[tokio::test]
 async fn a_read_the_budget_runs_out_on_is_no_evidence() {
     use crate::commands::play_native_appended::TAIL_BUDGET;
-    use crate::held::{gate, paused_once, Held};
+    use crate::held::{frozen_until, gate, Held};
     let answers = Answers::recorded();
     let kitsu = serve(&answers, &["detail"]).await;
     let (hold, gate) = gate();
@@ -583,7 +587,7 @@ async fn a_read_the_budget_runs_out_on_is_no_evidence() {
     // Bounded twice over, so a source that lost its budget fails here,
     // by name, instead of waiting on the held read for ever.
     let fit = tokio::time::timeout(2 * TAIL_BUDGET, fit_appended(show, Some(12), Some(&source)));
-    let fitted = paused_once(fit, gate.asked())
+    let fitted = frozen_until(fit, gate.asked())
         .await
         .ended_by(TAIL_BUDGET, "the fit")
         .expect("the source's own budget ends the fit");

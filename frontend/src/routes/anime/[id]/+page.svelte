@@ -20,6 +20,8 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -89,7 +91,10 @@
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
-	import { settle, settleOut } from '$lib/transitions/settle';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
+	import { heroParallaxTransform } from '$lib/motion/parallax';
+	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
+	import { settle, settleOut } from '$lib/motion/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
@@ -129,6 +134,7 @@
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
+	import { entryNeedsReread, listChanges } from '$lib/account/list-changes';
 	import { readEntryWithRetry, readFailureNotice } from '$lib/account/list-entry-read';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
@@ -684,11 +690,22 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone: a refill landing
+	// after it is not fetched ($lib/refill/refill).
+	let refillSignal: AbortSignal | undefined;
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refillSignal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -811,20 +828,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return; // not rendered yet; effect re-runs when episodes changes
-			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	let configError = $state<string | null>(null);
@@ -1015,6 +1021,10 @@
 	//    loading/disabled flicker; on failure keep the optimistic value (the
 	//    write already toasted) and let the next read reconcile.
 	function readListEntry(quiet: boolean) {
+		// A read still loading — one the page opened with, waiting out a
+		// rate limit — ends only through the read that supersedes it, so a
+		// quiet reconcile that comes meanwhile takes over loud.
+		if (quiet && listEntryLoading) quiet = false;
 		const seq = ++listEntryReadSeq;
 		const kitsuId = id;
 		const connected = accountStore.connected;
@@ -1076,6 +1086,16 @@
 			listEntryReadSeq += 1; // cancel any in-flight read on teardown
 		};
 	});
+
+	// A watched episode's progress write for this show that settles while
+	// the page is open — one held back by the tracker can land minutes
+	// after the play — is read again quietly, as the editor reconciles its
+	// own save. `id` is read when the change comes, not tracked.
+	$effect(() =>
+		listChanges.subscribe((change) => {
+			if (entryNeedsReread(change, id || null)) readListEntry(true);
+		})
+	);
 
 	// Episodes-fallback derivations live in script so they can be used in
 	// the markup without {@const} (which only accepts Svelte-block parents).
@@ -1139,7 +1159,17 @@
 		resumeEntry = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const detailServed = kitsuAnimeDetail(currentId);
+		const refills = new AbortController();
+		refillSignal = refills.signal;
+		const detailServed = kitsuAnimeDetail(currentId, {
+			signal: refills.signal,
+			// A banner AniList's pacing held back, put on the hero once
+			// it lands.
+			onRefill: (fresh) => {
+				const images = refilledImages(detail, fresh);
+				if (images && detail && id === currentId) Object.assign(detail, images);
+			}
+		});
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
@@ -1203,6 +1233,7 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
+			refills.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
@@ -1406,18 +1437,10 @@
 		if (s === 'upcoming') return m.detail_status_upcoming();
 		return s;
 	}
+	// The parallax holds still under reduced motion; reading the
+	// preference here makes the transform follow a change to it.
 	function heroTransform(y: number, isCover: boolean): string {
-		// Honor prefers-reduced-motion: when set, the hero doesn't translate
-		// on scroll. Scale (which doesn't move) is kept for visual polish.
-		if (
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-		) {
-			return `translate3d(0, 0, 0) scale(${isCover ? 1.02 : 1.15})`;
-		}
-		const offset = Math.min(y * 0.25, 80);
-		const scale = isCover ? 1.02 : 1.15;
-		return `translate3d(0, ${offset}px, 0) scale(${scale})`;
+		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
 	async function setMode(mode: 'sub' | 'dub') {
@@ -2279,7 +2302,14 @@
 										>
 											<span class="ep-thumb">
 												{#if thumb}
-													<img src={thumb} alt="" loading="lazy" decoding="async" />
+													<img
+														class="img-fade"
+														use:fadeOnLoad
+														src={thumb}
+														alt=""
+														loading="lazy"
+														decoding="async"
+													/>
 												{:else if air.unaired}
 													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
 														{unairedLabel(air.airsAt)}
@@ -2457,9 +2487,8 @@
 		   on `.content` below. */
 		padding-block-end: var(--space-8);
 		/* Page-enter animation — a soft fade + lift so navigating into a
-		   detail page doesn't feel like a hard cut. The reduced-motion
-		   token already zeroes --dur-slow so this is inert when the user
-		   opts out. */
+		   detail page doesn't feel like a hard cut. Under reduced motion
+		   tokens.css takes it off. */
 		animation: detail-page-enter var(--dur-slow) var(--ease-out-soft) both;
 	}
 
@@ -3281,9 +3310,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ep-grid li.ep-highlight .ep-tile {
-			animation: none;
-		}
 		.ep-grid:has(li.ep-highlight) li:not(.ep-highlight) .ep-tile {
 			opacity: 1;
 		}
@@ -3323,7 +3349,10 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-thumb-placeholder {
 		display: grid;
@@ -3425,11 +3454,6 @@
 	.ep-foot-skel {
 		block-size: 4rem;
 		background: var(--ink-050);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.ep-thumb-skel {
-			animation: none;
-		}
 	}
 
 	/* Caption beneath the grid — sentence chrome (body sans, normal case)
@@ -3697,13 +3721,6 @@
 		}
 		50% {
 			opacity: 0.55;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero-skeleton-img,
-		.poster-skeleton,
-		.line {
-			animation: none;
 		}
 	}
 
