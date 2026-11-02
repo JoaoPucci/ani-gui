@@ -30,7 +30,8 @@ describe('a row action', () => {
 		expect(base).toContain(
 			'--row-action-border: color-mix(in oklab, var(--bone-100) 40%, transparent);'
 		);
-		expect(base).toContain('border: 1px solid var(--row-action-border);');
+		expect(base).toContain('border: var(--ra-border) solid var(--row-action-border);');
+		expect(rule('.row-action-slot')).toContain('--ra-border: 1px;');
 		expect(rule('.row-action.quiet')).not.toContain('border-color');
 	});
 
