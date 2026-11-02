@@ -63,11 +63,16 @@ pub use store::FlagStore;
 /// Declare each flag as a `pub const FlagDecl`, list it here, and read
 /// it through that same constant with [`Resolved::enabled`] or
 /// [`Resolved::choice`] — never through a name typed out again, which
-/// a typo would turn into a silent default.
+/// a typo would turn into a silent default. Then register a test case
+/// for its default and for every retreat in `matrix::CASES`: a test
+/// fails while any value of a declared flag has none.
 pub const DECLARED: &[FlagDecl] = &[];
 
 #[cfg(test)]
 pub(crate) mod test_decls;
+
+#[cfg(test)]
+pub(crate) mod matrix;
 
 #[cfg(test)]
 #[path = "declared_test.rs"]
