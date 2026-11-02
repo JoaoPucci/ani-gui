@@ -14,14 +14,27 @@ const url = new SvelteURL('http://127.0.0.1:31337/search');
  *  and search routes never look. */
 const params = $state<Record<string, string>>({});
 
+/** The history entry's shallow-routing state, as SvelteKit restores it
+ *  onto `page.state` when the viewer steps back or forward onto it. */
+let entryState = $state<App.PageState>({});
+
 export const page = {
 	get url() {
 		return url;
 	},
 	get params() {
 		return params;
+	},
+	get state() {
+		return entryState;
 	}
 };
+
+/** Point the stub at an entry's state, as SvelteKit does when it lands
+ *  on that entry, or as its `replaceState` does when the page writes one. */
+export function setPageState(next: App.PageState): void {
+	entryState = next;
+}
 
 /** Point the stub at a route param, as SvelteKit does on navigation. */
 export function setParams(next: Record<string, string>): void {

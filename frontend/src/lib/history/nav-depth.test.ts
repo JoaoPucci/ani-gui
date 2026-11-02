@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { nextDepth, shouldShowBackButton, type NavType } from './nav-depth';
+import fc from 'fast-check';
+import {
+	afterNavigation,
+	nextDepth,
+	shouldShowBackButton,
+	type Navigated,
+	type NavType
+} from './nav-depth';
 
 const step = (type: NavType, prevDepth: number, stampedDepth: number | null = null) => ({
 	type,
@@ -85,5 +92,149 @@ describe('navigation traces — full sessions', () => {
 		expect(shouldShowBackButton(depth)).toBe(true);
 		depth = nextDepth(step('popstate', depth, null)); // back to home (un-stamped)
 		expect(shouldShowBackButton(depth)).toBe(false);
+	});
+});
+
+const HOME = new URL('http://app.test/');
+const SEARCH = new URL('http://app.test/search?q=frieren');
+const SHOW = new URL('http://app.test/anime/46474');
+
+function nav(type: NavType, over: Partial<Navigated> = {}): Navigated {
+	return {
+		type,
+		state: {},
+		from: HOME,
+		to: SEARCH,
+		prev: { depth: 0, origin: null },
+		...over
+	};
+}
+
+describe('afterNavigation: the depth an entry is stamped with', () => {
+	it('stamps a forward navigation with its depth, one past the page it left', () => {
+		for (const type of ['link', 'goto', 'form'] as const) {
+			const out = afterNavigation(nav(type, { prev: { depth: 2, origin: null } }));
+			expect(out.depth).toBe(3);
+			expect(out.stamp).toMatchObject({ aniGuiDepth: 3 });
+		}
+	});
+
+	it('reads a back or forward press from the state SvelteKit restored, and writes nothing', () => {
+		const out = afterNavigation(
+			nav('popstate', { state: { aniGuiDepth: 1 }, prev: { depth: 4, origin: null } })
+		);
+		expect(out.depth).toBe(1);
+		expect(out.stamp).toBeNull();
+	});
+
+	it('steps back one on a press onto an entry nothing stamped', () => {
+		expect(afterNavigation(nav('popstate', { prev: { depth: 2, origin: null } })).depth).toBe(1);
+	});
+
+	it('starts at the root on launch or reload, and writes nothing', () => {
+		const out = afterNavigation(
+			nav('enter', { state: { aniGuiDepth: 5 }, from: null, prev: { depth: 3, origin: null } })
+		);
+		expect(out).toEqual({ depth: 0, origin: null, stamp: null });
+	});
+
+	it('neither moves nor writes on a leave or a shallow replace', () => {
+		for (const type of ['leave', 'replaceState'] as const) {
+			const out = afterNavigation(nav(type, { prev: { depth: 2, origin: null } }));
+			expect(out.depth).toBe(2);
+			expect(out.stamp).toBeNull();
+		}
+	});
+
+	it('stamps exactly the forward navigations, always with the depth it answers', () => {
+		const types: NavType[] = ['enter', 'popstate', 'goto', 'link', 'form', 'leave', 'replaceState'];
+		fc.assert(
+			fc.property(
+				fc.constantFrom(...types),
+				fc.nat(50),
+				fc.option(fc.nat(50), { nil: undefined }),
+				(type, depth, stamped) => {
+					const out = afterNavigation(
+						nav(type, {
+							state: stamped === undefined ? {} : { aniGuiDepth: stamped },
+							prev: { depth, origin: null }
+						})
+					);
+					const forward = type === 'goto' || type === 'link' || type === 'form';
+					expect(out.stamp !== null).toBe(forward);
+					if (out.stamp) expect(out.stamp.aniGuiDepth).toBe(out.depth);
+					expect(out.depth).toBeGreaterThanOrEqual(0);
+				}
+			)
+		);
+	});
+});
+
+describe('afterNavigation: the page an entry was opened from', () => {
+	it('records the address a forward navigation left, and stamps it on the new entry', () => {
+		const out = afterNavigation(nav('link', { from: SEARCH, to: SHOW }));
+		expect(out.origin).toBe('/search?q=frieren');
+		expect(out.stamp).toEqual({ aniGuiDepth: 1, aniGuiFrom: '/search?q=frieren' });
+	});
+
+	it('keeps the origin it had across a navigation that stays on the same page', () => {
+		// The detail page's episode pager and the player's episode switch
+		// change only the query; the page behind is still the one before.
+		const to = new URL('http://app.test/anime/46474?page=2');
+		const out = afterNavigation(
+			nav('goto', { from: SHOW, to, prev: { depth: 2, origin: '/search?q=frieren' } })
+		);
+		expect(out.origin).toBe('/search?q=frieren');
+		expect(out.stamp?.aniGuiFrom).toBe('/search?q=frieren');
+	});
+
+	it('reads the origin back from the entry on a back or forward press', () => {
+		const out = afterNavigation(
+			nav('popstate', {
+				state: { aniGuiDepth: 2, aniGuiFrom: '/search?q=frieren' },
+				prev: { depth: 3, origin: '/anime/46474' }
+			})
+		);
+		expect(out.origin).toBe('/search?q=frieren');
+	});
+
+	it('has no origin on launch, reload, or a press onto an entry nothing stamped', () => {
+		expect(afterNavigation(nav('enter', { prev: { depth: 1, origin: '/x' } })).origin).toBeNull();
+		expect(
+			afterNavigation(nav('popstate', { prev: { depth: 1, origin: '/x' } })).origin
+		).toBeNull();
+	});
+
+	it('keeps its origin on a leave or a shallow replace', () => {
+		for (const type of ['leave', 'replaceState'] as const) {
+			expect(afterNavigation(nav(type, { prev: { depth: 1, origin: '/x' } })).origin).toBe('/x');
+		}
+	});
+
+	it('stamps no origin when the navigation came from nowhere', () => {
+		const out = afterNavigation(nav('goto', { from: null }));
+		expect(out.origin).toBeNull();
+		expect(out.stamp).toEqual({ aniGuiDepth: 1 });
+	});
+
+	it('round-trips: a press back onto a stamped entry answers what the stamp said', () => {
+		const path = fc.stringMatching(/^\/[a-z]{1,8}$/);
+		fc.assert(
+			fc.property(path, path, fc.nat(20), (a, b, depth) => {
+				fc.pre(a !== b);
+				const pushed = afterNavigation(
+					nav('link', {
+						from: new URL(a, 'http://app.test'),
+						to: new URL(b, 'http://app.test'),
+						prev: { depth, origin: null }
+					})
+				);
+				const back = afterNavigation(
+					nav('popstate', { state: pushed.stamp!, prev: { depth: 99, origin: '/elsewhere' } })
+				);
+				expect(back.depth).toBe(pushed.depth);
+				expect(back.origin).toBe(pushed.origin);
+			})
+		);
 	});
 });
