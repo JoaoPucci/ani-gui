@@ -133,7 +133,7 @@ fn main() -> std::process::ExitCode {
         // no request and reads the test's own file instead.
         flags::launch::start(
             state.flags.clone(),
-            state.meta_http.clone(),
+            flags::remote::client(),
             flags::launch::plan_from_env(ani_gui::config::paths::flags_cache()),
         );
 

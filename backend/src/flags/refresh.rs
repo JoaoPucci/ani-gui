@@ -88,17 +88,34 @@ where
     R: Future<Output = Option<CacheEntry>>,
     Fut: Future<Output = Option<Document>>,
 {
-    let cached = read.await;
+    let deadline = tokio::time::Instant::now() + SETTLE_CAP;
+    tokio::pin!(read);
     tokio::pin!(first);
-    match tokio::time::timeout(SETTLE_CAP, &mut first).await {
-        Ok(result) => {
-            decide(store, result.as_ref(), cached.as_ref());
-            result
+    let early = tokio::select! {
+        cached = &mut read => Ok(cached),
+        fetched = &mut first => Err(fetched),
+    };
+    match early {
+        // The file came before the cache read: nothing to wait for.
+        Err(Some(doc)) => {
+            decide(store, Some(&doc), None);
+            Some(doc)
         }
-        Err(_) => {
-            decide(store, None, cached.as_ref());
-            first.await
+        // The attempt failed before the cache read ended.
+        Err(None) => {
+            decide(store, None, read.await.as_ref());
+            None
         }
+        Ok(cached) => match tokio::time::timeout_at(deadline, &mut first).await {
+            Ok(result) => {
+                decide(store, result.as_ref(), cached.as_ref());
+                result
+            }
+            Err(_) => {
+                decide(store, None, cached.as_ref());
+                first.await
+            }
+        },
     }
 }
 

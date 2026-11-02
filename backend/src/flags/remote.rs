@@ -24,18 +24,27 @@ pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui
 /// and some packet loss — a congested mobile connection, a satellite
 /// hop — finish all of them, where a tighter bound would fail the very
 /// users the background attempt is for. A connection that cannot
-/// finish in 45 seconds is retried later instead. The connect step
-/// alone stays bound by the client's own connect timeout (10 seconds
-/// on the metadata client).
+/// finish in 45 seconds is retried later instead. Of the 45, up to
+/// [`CONNECT_TIMEOUT`] may go on connecting (see [`client`]).
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// The bound on DNS, the TCP connect and the TLS handshake together.
-pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// On a lossy link a SYN retransmitted at 1, 2, 4 and 8 seconds is
+/// already past ten before TLS starts, so the metadata client's ten
+/// seconds would fail exactly the links the background attempt is
+/// for. Thirty leaves the rest of [`FETCH_TIMEOUT`] for the request.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The client the flags file is fetched with.
+/// The client the flags file is fetched with: its own, for the
+/// connect timeout above. Falls back to the default client if the
+/// builder fails, which it does not in practice.
 #[must_use]
 pub fn client() -> reqwest::Client {
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(FETCH_TIMEOUT)
+        .build()
+        .unwrap_or_default()
 }
 
 /// Fetch and parse the flags file. `None` on every failure: a
@@ -51,8 +60,8 @@ pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Op
 /// The body of a 200 response, read no further than one byte past the
 /// cap, so an oversized body is refused without being held whole.
 async fn fetch_body(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Vec<u8>> {
-    // The client's own total timeout is shorter (the metadata client
-    // allows 30 s); this request carries the longer one it is given.
+    // A client's own total timeout may be shorter; this request
+    // carries the one it is given.
     let mut resp = client
         .get(url)
         .timeout(timeout)
