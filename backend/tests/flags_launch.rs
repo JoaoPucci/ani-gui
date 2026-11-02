@@ -8,10 +8,9 @@
 //! raw.githubusercontent.com — so the silence of a test run is the
 //! test run's doing.
 //!
-//! Unix only: on Windows the proxy also comes from the registry,
-//! which a test should not touch. `flags::launch`'s own tests prove
-//! the same on every platform, through an explicit proxy.
-#![cfg(unix)]
+//! It runs on Windows too: there the registry's proxy settings fill only
+//! what the environment leaves empty, and the test sets the HTTPS
+//! proxy in the environment.
 
 mod common;
 
@@ -103,6 +102,10 @@ async fn a_test_run_makes_no_request_for_the_flags_file() {
     assert_eq!(heard, None);
 }
 
+/// The shipped build declares no flags yet, so the file's values cannot
+/// show here; what this proves is that naming a file keeps the run a
+/// test run and off the network. That a test run's file decides the
+/// flags is `flags::launch`'s own tests, with test declarations.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_run_takes_the_file_the_test_names() {
     let home = tempfile::tempdir().expect("tempdir");
