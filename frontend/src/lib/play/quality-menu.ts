@@ -1,7 +1,8 @@
 /**
  * The player's quality menu: "Auto" and the stream's levels, highest
  * first, each named by its picture's height, with the choice in force
- * checked and the row's own value saying what plays.
+ * checked and the row's own value saying what plays. A stream of one
+ * level lists that level alone, checked, with no "Auto".
  *
  * A level is named by the height its picture is encoded at once the
  * engine has parsed one of its segments, and by its playlist's
@@ -57,10 +58,24 @@ export function levelLabel(levels: readonly LadderLevel[], index: number): strin
 		: m.play_quality_height({ height: String(height) });
 }
 
-/** The menu, or null when there is nothing to choose: no stream, or a
- *  stream of one level. */
+/** A stream of one level: that level, checked, and no "Auto" — there
+ *  is nothing to adapt between. Null while nothing names it — a media
+ *  playlist served alone lists neither a height nor a bandwidth, and
+ *  the height arrives with its first parsed segment, or from the
+ *  picture for fMP4 (`quality-learn.ts`) — or when the engine could
+ *  not load it. */
+function loneLevel({ levels, unavailable }: QualityView): QualityMenu | null {
+	const [{ height, bitrate }] = levels;
+	if (unavailable.includes(0) || (height <= 0 && bitrate <= 0)) return null;
+	const label = levelLabel(levels, 0);
+	return { items: [{ key: 0, label, checked: true }], current: label };
+}
+
+/** The menu, or null when there is nothing to show: no stream, no
+ *  level yet, or a lone level nothing names. */
 export function qualityMenu(view: QualityView | null): QualityMenu | null {
-	if (!view || view.levels.length < 2) return null;
+	if (!view || view.levels.length === 0) return null;
+	if (view.levels.length === 1) return loneLevel(view);
 	const { levels, pinned, playing, unavailable } = view;
 	const offered = [...(view.order ?? ladderOrder(levels))]
 		.reverse()
