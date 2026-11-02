@@ -23,9 +23,12 @@
 #   - `dist:win` must chain `fetch:win-deps`, so invoking it directly
 #     populates the bin dir the way `dist` does on Linux.
 #   - the impersonating transport must be among the staged binaries.
-#   - ffmpeg must be among them too, and the installer script must
-#     fetch nothing at install time.
-#   - every staged binary ships its licence text in the package.
+#   - ffmpeg must not be: the installer downloads it at install time,
+#     as the fetcher's `INSTALL_TIME_DEPS` declares, and the installer
+#     script must pin exactly what that declares and download nothing
+#     else.
+#   - every staged binary ships its licence text in the package, and
+#     no licence text ships for a binary no package carries.
 #
 # What this check does NOT establish: that the fetch succeeds, that
 # the archive still contains the entry the dep names, or that the
@@ -93,14 +96,24 @@ esac
 #    The fetchers guard their own entry point, so importing one costs
 #    nothing and downloads nothing.
 #
-#    One asymmetry is declared rather than tolerated: Linux takes ffmpeg
-#    from the distribution — the .deb recommends it — and says so in
-#    `SYSTEM_DEPS`. Windows has no package manager to recommend through,
-#    so whatever Linux takes from the system, Windows must stage, and
-#    `linux_deps.sh` holds every such entry to `build.deb.recommends`.
-#    The declaration is a list the parser reads, not a name this check
-#    exempts, so it cannot excuse a dependency Linux neither stages nor
-#    recommends.
+#    Two asymmetries are declared rather than tolerated, both for
+#    ffmpeg. Linux takes it from the distribution — the .deb recommends
+#    it — and says so in the Linux fetcher's `SYSTEM_DEPS`. Windows has
+#    no package manager to recommend through, and the package does not
+#    carry it either: redistributing gyan.dev's GPL build would oblige
+#    an offer of corresponding source that cannot be made, because that
+#    build does not publish the versions of the libraries it links. So
+#    the installer downloads it at install time, and the Windows
+#    fetcher says so in `INSTALL_TIME_DEPS`. Whatever Linux takes from
+#    the system, Windows must stage or download; whatever Windows
+#    downloads, Linux must stage or take from the system; and nothing is
+#    both staged and downloaded on Windows, or both staged and taken
+#    from the system on Linux. `linux_deps.sh` holds every `SYSTEM_DEPS`
+#    entry to `build.deb.recommends`, and check 7 below holds every
+#    `INSTALL_TIME_DEPS` entry to the installer script. The
+#    declarations are lists the parser reads, not names this check
+#    exempts, so neither can excuse a dependency a platform does not
+#    provide at all.
 LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
@@ -131,11 +144,13 @@ if (missing.length) {
 console.log([...new Set(list.map((d) => d.dep))].sort().join("\n"));
 '
 
+windows_install_time=
 if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then
     inventory_ok=1
     linux_deps=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$LINUX_FETCH" DEPS) || inventory_ok=0
     linux_system=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$LINUX_FETCH" SYSTEM_DEPS) || inventory_ok=0
     windows_deps=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$WINDOWS_FETCH" DEPS) || inventory_ok=0
+    windows_install_time=$(node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$WINDOWS_FETCH" INSTALL_TIME_DEPS) || inventory_ok=0
     if [ "$inventory_ok" -eq 0 ]; then
         printf 'arch/windows_deps FAIL: a fetcher inventory could not be read (see above)\n' >&2
         failed=1
@@ -151,14 +166,24 @@ if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then
             fi
         done
         for dep in $linux_system; do
-            if ! printf '%s\n' "$windows_deps" | grep -qx -- "$dep"; then
-                printf 'arch/windows_deps FAIL: %s comes from the system on Linux, and Windows has no package manager to recommend it through — the Windows installer must stage it\n' "$dep" >&2
+            if ! printf '%s\n' "$windows_deps" "$windows_install_time" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s comes from the system on Linux, and Windows has no package manager to recommend it through — the Windows package must stage it or its installer download it\n' "$dep" >&2
                 failed=1
             fi
         done
         for dep in $windows_deps; do
             if ! printf '%s\n' "$linux_deps" "$linux_system" | grep -qx -- "$dep"; then
                 printf 'arch/windows_deps FAIL: %s is staged for Windows but not for Linux — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
+                failed=1
+            fi
+            if printf '%s\n' "$windows_install_time" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s is both staged for Windows and downloaded by its installer — one of the two is wrong\n' "$dep" >&2
+                failed=1
+            fi
+        done
+        for dep in $windows_install_time; do
+            if ! printf '%s\n' "$linux_deps" "$linux_system" | grep -qx -- "$dep"; then
+                printf 'arch/windows_deps FAIL: %s is downloaded by the Windows installer but neither staged for Linux nor taken from the system there — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
                 failed=1
             fi
         done
@@ -183,36 +208,62 @@ if [ -f "$FETCH" ]; then
     fi
 fi
 
-# 6. ffmpeg must be staged by name. Every Windows release through
-#    0.17.0 fetched it from the installer script instead, into the
-#    install directory but outside the package's own files — and
-#    electron-builder's upgrade path runs the old version's uninstaller,
-#    which empties that directory, before the new payload lands. So
-#    each update deleted ffmpeg and downloaded it again (~90 MB), and an
-#    update run offline ended with none. Shipped in the payload, it is
-#    replaced with the rest of the app and never fetched.
-if [ -f "$FETCH" ]; then
-    if ! grep -q "binary: 'ffmpeg.exe'" "$FETCH"; then
-        printf "arch/windows_deps FAIL: %s does not stage 'ffmpeg.exe' — the installer would have to fetch it, and an update deletes whatever the installer fetched\n" "$FETCH" >&2
+# 6. ffmpeg is downloaded at install time, by name, and never staged.
+#    The package must not carry it: gyan.dev's essentials build is GPL
+#    and does not publish the versions of the libraries it links, so
+#    the corresponding-source offer redistribution obliges cannot be
+#    made. Keeping it out of the installer was also the original reason
+#    for the install-time download — the zip is ~90 MB. Read from the
+#    inventory above, and from package.json by its JSON parser: no
+#    `build.win` resource or file entry may name it either, since a
+#    stray entry would carry it past the fetcher.
+if [ -f "$WINDOWS_FETCH" ]; then
+    if ! printf '%s\n' "$windows_install_time" | grep -qx -- ffmpeg; then
+        printf "arch/windows_deps FAIL: %s does not declare ffmpeg in INSTALL_TIME_DEPS — a Windows install would have no ffmpeg, and downloads need it\n" "$WINDOWS_FETCH" >&2
+        failed=1
+    fi
+    if node --input-type=module -e "$INVENTORY" inventory "$REPO_ROOT/$WINDOWS_FETCH" DEPS 2>/dev/null | grep -qx ffmpeg; then
+        printf "arch/windows_deps FAIL: %s stages ffmpeg into the Windows package — that redistributes gyan.dev's GPL build, whose corresponding source cannot be offered; the installer downloads it at install time instead\n" "$WINDOWS_FETCH" >&2
         failed=1
     fi
 fi
+if ! node -e '
+const win = (require(process.argv[1]).build || {}).win || {};
+const entries = [].concat(win.extraResources || [], win.extraFiles || [], win.files || []);
+process.exit(/ffmpeg/i.test(JSON.stringify(entries)) ? 1 : 0);
+' "$REPO_ROOT/$PKG"; then
+    printf 'arch/windows_deps FAIL: %s build.win names ffmpeg in a resource or file entry — the package must not carry it; the installer downloads it at install time\n' "$PKG" >&2
+    failed=1
+fi
 
-# 7. The installer script fetches nothing at install time, for the
-#    reason above: anything it downloads lives in the install directory
-#    outside the package's manifest, and the next update removes it.
-#    Asserted as constraints on the text, not an interpretation of it:
-#    package.json (parsed) points `nsis.include` at installer.nsh and
-#    sets no `nsis.script`; installer.nsh pulls in no further file
-#    (`!include`, `!addincludedir`); and it names none of the NSIS
-#    download plug-ins (inetc, NSISdl, NScurl, INetLoad — matched
-#    without regard to case, as NSIS resolves them) and no URL at all,
-#    comment or not.
+# 7. The installer script downloads what `INSTALL_TIME_DEPS` declares,
+#    at the declared pin, and nothing else. Asserted as constraints on
+#    the text, not an interpretation of it:
+#
+#    - package.json (parsed) points `nsis.include` at installer.nsh and
+#      sets no `nsis.script`, so the file read here is the one that
+#      ships; and installer.nsh pulls in no further file (`!include`,
+#      `!addincludedir`), where a download could sit unread.
+#    - For each entry, with KEY its `dep` upper-cased and `-` turned to
+#      `_`, installer.nsh carries exactly one line
+#      `!define KEY_VERSION "<version>"`, one `!define KEY_URL "<url>"`
+#      and one `!define KEY_ARCHIVE_PATH "<archivePath>"` (with `/` as
+#      `\`), each at column zero — so the pin the fetcher declares, and
+#      the credits and the README are held to, is the pin the installer
+#      fetches.
+#    - Every line naming one of the NSIS download plug-ins (inetc,
+#      NSISdl, NScurl, INetLoad — matched without regard to case, as
+#      NSIS resolves them) names a declared `${KEY_URL}`, and every line
+#      with a URL in it, comment or not, is one of the `KEY_URL` lines.
 #
 #    What it does not catch: a download routed through a spawned
-#    program that is handed a URL built at run time, and a plug-in
-#    outside that list. A green run means the script carries none of
-#    the usual markers of a download, not that it cannot download.
+#    program that is handed a URL built at run time, a plug-in outside
+#    that list, and whether the macros around the download do what
+#    their comments say — that the update keeps the copy, that the stamp
+#    is honoured. Only Windows runs NSIS; those are the PR's manual
+#    steps. A green run means the script pins what the fetcher declares
+#    and carries no other usual marker of a download, not that the
+#    download works.
 NSH=electron/build-resources/installer.nsh
 if ! node -e '
 const n = (require(process.argv[1]).build || {}).nsis || {};
@@ -221,13 +272,48 @@ process.exit(n.include === "build-resources/installer.nsh" && n.script === undef
     printf 'arch/windows_deps FAIL: %s nsis.include is not exactly build-resources/installer.nsh, or nsis.script is set — the checks below would not be reading the installer script that ships\n' "$PKG" >&2
     failed=1
 fi
-if [ -f "$NSH" ]; then
+if [ ! -f "$NSH" ]; then
+    printf 'arch/windows_deps FAIL: %s is missing — nothing downloads what INSTALL_TIME_DEPS declares\n' "$NSH" >&2
+    failed=1
+else
     if grep -niE '^[[:space:]]*!(include|addincludedir)' "$NSH" >&2; then
         printf 'arch/windows_deps FAIL: %s pulls in another file (lines above) — keep the installer hooks in this one file, where the check below can read them\n' "$NSH" >&2
         failed=1
     fi
-    if grep -niE '(inetc|nsisdl|nscurl|inetload)::|://' "$NSH" >&2; then
-        printf 'arch/windows_deps FAIL: %s downloads at install time (lines above) — what it fetches is deleted by the next update; stage the file through fetch-windows-deps.mjs instead\n' "$NSH" >&2
+    if [ -f "$WINDOWS_FETCH" ] && ! node --input-type=module -e '
+const [fetcher, nsh] = process.argv.slice(2);
+const { INSTALL_TIME_DEPS } = await import(fetcher);
+const { readFileSync } = await import("node:fs");
+const lines = readFileSync(nsh, "utf8").split(/\r?\n/);
+const bad = [];
+const urlLines = new Set();
+const urlRefs = [];
+for (const d of Array.isArray(INSTALL_TIME_DEPS) ? INSTALL_TIME_DEPS : []) {
+    const key = String(d.dep).toUpperCase().replace(/-/g, "_");
+    const want = {
+        VERSION: d.version,
+        URL: d.url,
+        ARCHIVE_PATH: typeof d.archivePath === "string" ? d.archivePath.replace(/\//g, "\\") : d.archivePath,
+    };
+    for (const [field, value] of Object.entries(want)) {
+        if (typeof value !== "string" || !value) {
+            bad.push(d.dep + ": INSTALL_TIME_DEPS entry has no " + field.toLowerCase());
+            continue;
+        }
+        const line = "!define " + key + "_" + field + " \"" + value + "\"";
+        const n = lines.filter((l) => l === line).length;
+        if (n !== 1) bad.push("expected exactly one line [" + line + "], found " + n);
+        if (field === "URL") urlLines.add(line);
+    }
+    urlRefs.push("$" + "{" + key + "_URL}");
+}
+lines.forEach((l, i) => {
+    if (l.includes("://") && !urlLines.has(l)) bad.push("line " + (i + 1) + " names a URL INSTALL_TIME_DEPS does not declare: " + l.trim());
+    if (/(inetc|nsisdl|nscurl|inetload)::/i.test(l) && !urlRefs.some((r) => l.includes(r))) bad.push("line " + (i + 1) + " calls a download plug-in on no declared URL: " + l.trim());
+});
+if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+' inventory "$REPO_ROOT/$WINDOWS_FETCH" "$REPO_ROOT/$NSH"; then
+        printf 'arch/windows_deps FAIL: %s does not download exactly what %s INSTALL_TIME_DEPS declares (above)\n' "$NSH" "$WINDOWS_FETCH" >&2
         failed=1
     fi
 fi
@@ -242,6 +328,12 @@ fi
 #    beside it. Read with node: DEPS by import, package.json by its
 #    JSON parser.
 #
+#    The other direction holds too: every file in that directory is the
+#    licence of something a fetcher stages, for Linux or for Windows. A
+#    licence text shipped for a binary no package carries — ffmpeg's,
+#    say, which the installer downloads rather than carries — would tell
+#    the reader the package redistributes it.
+#
 #    The filter is held to a constraint rather than evaluated: it may
 #    be absent (everything is copied), or a name or list of names with
 #    no `!` exclusion, and each licence file must be named in it
@@ -251,25 +343,33 @@ fi
 #    which the arch job has no node_modules to load. Not checked: that
 #    a file's text is the right licence.
 if ! node --input-type=module -e '
-const [fetcher, pkg, root] = process.argv.slice(2);
+const [fetcher, linuxFetcher, pkg, root] = process.argv.slice(2);
 const { DEPS } = await import(fetcher);
-const { readFileSync, statSync } = await import("node:fs");
+const { DEPS: LINUX_DEPS } = await import(linuxFetcher);
+const { readFileSync, statSync, readdirSync } = await import("node:fs");
 const extra = ((JSON.parse(readFileSync(pkg, "utf8")).build || {}).win || {}).extraResources || [];
 const entry = extra.find((e) => typeof e === "object" && e.from === "build-resources/licenses" && e.to === "licenses");
 const bad = [];
 if (!entry) bad.push("no extraResources entry copies build-resources/licenses to licenses");
 const filter = entry && entry.filter !== undefined ? [].concat(entry.filter) : null;
 if (filter && filter.some((f) => typeof f !== "string" || f.startsWith("!"))) bad.push("the licenses filter has an exclusion or a non-string entry");
+const dir = root + "/electron/build-resources/licenses";
 for (const dep of new Set(DEPS.map((d) => d.dep))) {
     const file = dep + ".txt";
     let ok = false;
-    try { const st = statSync(root + "/electron/build-resources/licenses/" + file); ok = st.isFile() && st.size > 0; } catch {}
+    try { const st = statSync(dir + "/" + file); ok = st.isFile() && st.size > 0; } catch {}
     if (!ok) bad.push(file + " is missing, empty, or not a file");
     if (filter && !filter.includes(file)) bad.push(file + " is not named in the filter");
 }
+const staged = new Set([...DEPS, ...LINUX_DEPS].map((d) => d.dep + ".txt"));
+let present = [];
+try { present = readdirSync(dir); } catch {}
+for (const file of present) {
+    if (!staged.has(file)) bad.push(file + " is a licence for something no fetcher stages — no package carries that binary");
+}
 if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
-' inventory "$REPO_ROOT/electron/scripts/fetch-windows-deps.mjs" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
-    printf 'arch/windows_deps FAIL: a bundled binary does not ship its licence text (above)\n' >&2
+' inventory "$REPO_ROOT/$WINDOWS_FETCH" "$REPO_ROOT/$LINUX_FETCH" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
+    printf 'arch/windows_deps FAIL: a bundled binary does not ship its licence text, or a licence text ships for a binary no package carries (above)\n' >&2
     failed=1
 fi
 
