@@ -3,20 +3,24 @@
  *
  * A provider labels its tracks in its own words and punctuation —
  * "Portuguese (- Brazil)", "Spanish (- Latin America | SDH)" — in
- * English whatever the app's language. Every listed track carries a
- * BCP 47 tag ({@link import('./caption-tag')}), so the menu names the
- * track from that, in the app's language: "Português (Brasil)" for a
+ * English whatever the app's language. Every sidecar track the
+ * session lists carries a BCP 47 tag ({@link import('./caption-tag')}),
+ * and a playlist's own subtitle track usually does, so the menu names
+ * the track from that, in the app's language: "Português (Brasil)" for a
  * viewer in Portuguese. A track for the deaf and hard of hearing
  * reads as its language plus a short mark the menu translates, rather
  * than the provider's "SDH" spelled into the name. A track whose tag
  * names no language falls back to its label, cleaned of the
  * provider's punctuation, and then to its position in the list.
  *
- * Two tracks can still read the same — one language listed twice
- * under different labels — so entries that would are numbered.
+ * Two tracks can still read the same — one language listed twice,
+ * once full and once signs-only, or under two labels — so entries that
+ * would are told apart by what the provider's label qualifies them
+ * with ("English · Signs & Songs"), and whatever still reads the same
+ * is numbered.
  */
 
-import { cleanLabel, isSdh } from './caption-label-clean';
+import { cleanLabel, isSdh, labelDetail } from './caption-label-clean';
 import { readTag } from './caption-tag';
 
 export { cleanLabel, isSdh };
@@ -37,9 +41,11 @@ export type CaptionEntry<T extends CaptionSource = CaptionSource> = T & {
 	sdh: boolean;
 };
 
-/** How the menu words what the module cannot: a numbered duplicate
- *  and a track with nothing to name it by. */
+/** How the menu words what the module cannot: a duplicate told apart
+ *  by the provider's qualifier, a numbered duplicate, and a track with
+ *  nothing to name it by. */
 export interface CaptionWording {
+	qualified: (name: string, detail: string) => string;
 	numbered: (name: string, n: number) => string;
 	untitled: (position: number) => string;
 }
@@ -59,10 +65,36 @@ function displayNames(locale: string): Intl.DisplayNames {
 export function languageName(lang: string, locale: string): string | null {
 	if (!readTag(lang)) return null;
 	const names = displayNames(locale);
-	const name = names.of(lang.trim());
+	// Named by its language, script and region alone: DisplayNames
+	// refuses a tag with an extension or a private-use part.
+	const name = names.of(new Intl.Locale(lang.trim()).baseName);
 	if (!name) return null;
 	const head = name.slice(0, 1).toLocaleUpperCase(names.resolvedOptions().locale);
 	return head + name.slice(1);
+}
+
+const keyOf = (e: { name: string; sdh: boolean }) => `${e.sdh}\u0000${e.name}`;
+
+function counts(list: readonly { name: string; sdh: boolean }[]): Map<string, number> {
+	const groups = new Map<string, number>();
+	for (const e of list) groups.set(keyOf(e), (groups.get(keyOf(e)) ?? 0) + 1);
+	return groups;
+}
+
+/** Entries that read the same as another, told apart by what their
+ *  provider label qualifies the language with — "Signs & Songs",
+ *  "Forced" — where the name does not already say it. */
+function qualify<T extends CaptionSource>(
+	entries: CaptionEntry<T>[],
+	wording: CaptionWording
+): CaptionEntry<T>[] {
+	const groups = counts(entries);
+	return entries.map((e) => {
+		const detail = labelDetail(e.label);
+		const said = e.name.toLocaleLowerCase().includes(detail.toLocaleLowerCase());
+		if (groups.get(keyOf(e)) === 1 || said) return e;
+		return { ...e, name: wording.qualified(e.name, detail) };
+	});
 }
 
 /** Number each run of entries that read the same, until none do. */
@@ -70,12 +102,6 @@ function disambiguate<T extends CaptionSource>(
 	entries: CaptionEntry<T>[],
 	wording: CaptionWording
 ): CaptionEntry<T>[] {
-	const keyOf = (e: CaptionEntry<T>) => `${e.sdh}\u0000${e.name}`;
-	const counts = (list: CaptionEntry<T>[]) => {
-		const groups = new Map<string, number>();
-		for (const e of list) groups.set(keyOf(e), (groups.get(keyOf(e)) ?? 0) + 1);
-		return groups;
-	};
 	let current = entries;
 	// A numbered name can collide with another track's own name ("A 1"
 	// listed beside two "A"s), so numbering repeats until no two read
@@ -97,7 +123,9 @@ function disambiguate<T extends CaptionSource>(
 	return current;
 }
 
-/** Each track as the menu shows it, in the order given. */
+/** Each track as the menu shows it, in the order given. Entries that
+ *  would read the same are told apart by the provider's qualifier,
+ *  then numbered. */
 export function captionEntries<T extends CaptionSource>(
 	tracks: readonly T[],
 	locale: string,
@@ -111,5 +139,5 @@ export function captionEntries<T extends CaptionSource>(
 			wording.untitled(track.index + 1),
 		sdh: isSdh(track.label)
 	}));
-	return disambiguate(entries, wording);
+	return disambiguate(qualify(entries, wording), wording);
 }

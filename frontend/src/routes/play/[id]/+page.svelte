@@ -333,6 +333,7 @@
 	const ccMenu = $derived.by(() => {
 		const locale = uiLocale();
 		const entries = captionEntries(availableTracks, locale, {
+			qualified: (name, detail) => m.play_controls_cc_qualified({ name, detail }),
 			numbered: (name, n) => m.play_controls_cc_numbered({ name, number: String(n) }),
 			untitled: (position) => m.play_track_fallback_label({ number: String(position) })
 		});
@@ -536,19 +537,24 @@
 	}
 
 	/** The captions menu, as it mounts: capped at the room above the
-	 *  captions button inside the player — again on every resize while
-	 *  it is open — and opened on the selected entry. */
+	 *  captions button inside the player and below the app's top bar —
+	 *  again on every resize while it is open — and opened on the
+	 *  selected entry. */
 	function fitCcMenu(menu: HTMLElement) {
 		const fit = () => {
 			const frame = ccMenuAnchor?.closest('.player-frame');
 			if (!ccMenuAnchor || !frame) return;
+			// In fullscreen the player covers the top bar.
+			const topbar = document.fullscreenElement ? null : document.querySelector('.topbar');
 			const height = menuHeight({
 				frameTop: frame.getBoundingClientRect().top,
+				ceiling: topbar?.getBoundingClientRect().bottom,
 				anchorTop: ccMenuAnchor.getBoundingClientRect().top,
 				gap: 8, // the menu's 0.5rem offset above the button
-				margin: 8
+				margin: 8,
+				floor: 96 // about two entries and the heading
 			});
-			menu.style.setProperty('max-block-size', height > 0 ? `${height}px` : '');
+			menu.style.setProperty('max-block-size', `${height}px`);
 		};
 		fit();
 		const checked = menu.querySelector<HTMLElement>('[aria-checked="true"]');
@@ -557,8 +563,9 @@
 		return { destroy: () => window.removeEventListener('resize', fit) };
 	}
 
-	/** Arrow keys, Home and End move through the menu's entries; the
-	 *  player's own arrow shortcuts (seek, volume) do not see them. */
+	/** ArrowUp, ArrowDown, Home and End move through the menu's
+	 *  entries, and the player's volume shortcuts on the up and down
+	 *  arrows do not see them. */
 	function onCcMenuKey(e: KeyboardEvent) {
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));

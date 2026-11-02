@@ -32,6 +32,7 @@
 	"controls_cc_sdh": "CC",
 	"controls_cc_sdh_title": "Subtítulos para personas sordas o con dificultades auditivas",
 	"controls_cc_numbered": "{name} {number}",
+	"controls_cc_qualified": "{name} · {detail}",
 	"controls_fullscreen_aria_label": "Alternar pantalla completa",
 	"controls_menu_aria_label": "Más",
 	"controls_menu_speed_label": "Velocidad",

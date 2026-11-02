@@ -32,6 +32,7 @@
 	"controls_cc_sdh": "CC",
 	"controls_cc_sdh_title": "Субтитры для глухих и слабослышащих",
 	"controls_cc_numbered": "{name} {number}",
+	"controls_cc_qualified": "{name} · {detail}",
 	"controls_fullscreen_aria_label": "Полноэкранный режим",
 	"controls_menu_aria_label": "Ещё",
 	"controls_menu_speed_label": "Скорость",

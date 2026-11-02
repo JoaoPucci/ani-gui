@@ -32,6 +32,7 @@
 	"controls_cc_sdh": "SDH",
 	"controls_cc_sdh_title": "Subtitles for the deaf and hard of hearing",
 	"controls_cc_numbered": "{name} {number}",
+	"controls_cc_qualified": "{name} · {detail}",
 	"controls_fullscreen_aria_label": "Toggle fullscreen",
 	"controls_menu_aria_label": "More",
 	"controls_menu_speed_label": "Speed",

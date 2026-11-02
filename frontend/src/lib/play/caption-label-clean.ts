@@ -26,9 +26,25 @@ function qualifier(inner: string, open: string, close: string): string {
 	return parts.length === 0 ? ' ' : `${open}${parts.join(', ')}${close}`;
 }
 
+const CLOSING: Record<string, string> = { ')': '(', ']': '[' };
+
+/** `text` without the brackets that never close or never opened. */
+function dropUnbalanced(text: string): string {
+	const chars = [...text];
+	const open: number[] = [];
+	const unmatched = new Set<number>();
+	chars.forEach((ch, i) => {
+		if (ch === '(' || ch === '[') open.push(i);
+		else if (CLOSING[ch] === undefined) return;
+		else if (open.length > 0 && chars[open[open.length - 1]] === CLOSING[ch]) open.pop();
+		else unmatched.add(i);
+	});
+	for (const i of open) unmatched.add(i);
+	return chars.map((ch, i) => (unmatched.has(i) ? ' ' : ch)).join('');
+}
+
 function cleanOnce(label: string): string {
-	return label
-		.replace(SDH, ' ')
+	return dropUnbalanced(label.replace(SDH, ' '))
 		.replace(ROUND, (_, inner: string) => qualifier(inner, '(', ')'))
 		.replace(SQUARE, (_, inner: string) => qualifier(inner, '[', ']'))
 		.replace(/([([])[\s\-–]+/g, '$1')
@@ -37,7 +53,8 @@ function cleanOnce(label: string): string {
 }
 
 /** `label` without the SDH mark, the dash a provider opens a
- *  qualifier with, or a qualifier left empty. */
+ *  qualifier with, a qualifier left empty, or a bracket that never
+ *  closes. */
 export function cleanLabel(label: string): string {
 	let current = label;
 	for (;;) {
@@ -45,4 +62,13 @@ export function cleanLabel(label: string): string {
 		if (next === current) return next;
 		current = next;
 	}
+}
+
+/** What `label`'s brackets qualify its language with, cleaned:
+ *  "Signs & Songs" of "English (Signs & Songs)"; empty for a label
+ *  with none. */
+export function labelDetail(label: string): string {
+	const clean = cleanLabel(label);
+	const inner = (pattern: RegExp) => [...clean.matchAll(pattern)].map((m) => m[1]);
+	return [...inner(ROUND), ...inner(SQUARE)].join(', ');
 }

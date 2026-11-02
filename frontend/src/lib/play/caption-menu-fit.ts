@@ -5,7 +5,9 @@
  * The menu opens upward from the captions button. With a provider
  * that lists thirty-odd languages it ran past the top of the player
  * and under the app's top bar, so its height is capped at the room
- * between the player's top edge and the button, and the menu scrolls.
+ * between the player's top edge — or the top bar, where the page has
+ * scrolled the player under it — and the button, and the menu
+ * scrolls.
  * The play page measures the two edges when the menu opens and on
  * every resize while it is open, and hands them here.
  */
@@ -20,11 +22,26 @@ export interface MenuRoom {
 	gap: number;
 	/** The space kept between the menu and the player's top edge. */
 	margin: number;
+	/** The lowest edge above the player that covers it — the app's
+	 *  sticky top bar, which the page can scroll the player under. */
+	ceiling?: number;
+	/** The least height the menu keeps, however little room there is. */
+	floor?: number;
 }
 
-/** The menu's greatest height, in whole pixels, never negative. */
-export function menuHeight({ frameTop, anchorTop, gap, margin }: MenuRoom): number {
-	return Math.max(0, Math.floor(anchorTop - gap - frameTop - margin));
+/** The menu's greatest height, in whole pixels: the room below the
+ *  player's top edge, or the top bar where that covers it, and never
+ *  less than `floor`. */
+export function menuHeight({
+	frameTop,
+	anchorTop,
+	gap,
+	margin,
+	ceiling = -Infinity,
+	floor = 0
+}: MenuRoom): number {
+	const top = Math.max(frameTop, ceiling);
+	return Math.max(floor, Math.floor(anchorTop - gap - top - margin));
 }
 
 /** A scroll position and an entry's place, in the menu's own pixels. */
