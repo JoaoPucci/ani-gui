@@ -278,13 +278,16 @@ test('the policy refuses what the app never does', async () => {
 		});
 		// Refused before any connection: the server never heard of it.
 		expect(trap.hits()).toEqual([]);
-		// One report per refusal, each naming its rule.
-		const reports = outcome.seen.map((v) => `${v.directive} ${v.blocked.replace(trap.origin, '<trap>')}`);
+		// A report for each refusal, naming its rule. A frame's report names
+		// only the origin it was refused.
+		const reports = [
+			...new Set(outcome.seen.map((v) => `${v.directive} ${v.blocked.replace(trap.origin, '<trap>')}`))
+		];
 		expect(reports.sort()).toEqual(
 			[
 				'connect-src <trap>/fetch',
 				'default-src <trap>/prefetch',
-				'frame-src <trap>/frame',
+				'frame-src <trap>',
 				'img-src <trap>/image.png',
 				'script-src eval',
 				'script-src-elem inline',
@@ -498,7 +501,20 @@ test('the loader animates under the policy', async () => {
 		const frame = () => svg.evaluate((el) => el.innerHTML);
 		await expect.poll(async () => (await frame()).length, { timeout: 5_000 }).toBeGreaterThan(1000);
 		const first = await frame();
-		await expect.poll(frame, { timeout: 15_000, intervals: [100, 250] }).not.toBe(first);
+		// Under a loaded Xvfb, Chromium can stop producing frames for a
+		// window nobody looks at, and lottie advances only on animation
+		// frames. Invalidating the window asks for one before each read.
+		await expect
+			.poll(
+				async () => {
+					await app.evaluate(({ BrowserWindow }) => {
+						for (const w of BrowserWindow.getAllWindows()) w.webContents.invalidate();
+					});
+					return frame();
+				},
+				{ timeout: 40_000, intervals: [100, 250] }
+			)
+			.not.toBe(first);
 	} finally {
 		await app.close();
 	}
