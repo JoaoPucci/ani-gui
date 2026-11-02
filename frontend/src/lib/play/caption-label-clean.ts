@@ -64,11 +64,11 @@ export function cleanLabel(label: string): string {
 	}
 }
 
-/** What `label`'s brackets qualify its language with, cleaned:
- *  "Signs & Songs" of "English (Signs & Songs)"; empty for a label
- *  with none. */
-export function labelDetail(label: string): string {
+/** What `label`'s brackets qualify its language with, cleaned and
+ *  one part per entry: ["Latin America", "Forced"] of "Spanish (-
+ *  Latin America | Forced)"; none for a label without brackets. */
+export function labelDetails(label: string): string[] {
 	const clean = cleanLabel(label);
 	const inner = (pattern: RegExp) => [...clean.matchAll(pattern)].map((m) => m[1]);
-	return [...inner(ROUND), ...inner(SQUARE)].join(', ');
+	return [...inner(ROUND), ...inner(SQUARE)].flatMap((part) => part.split(', '));
 }

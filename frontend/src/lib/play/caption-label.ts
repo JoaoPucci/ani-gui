@@ -20,7 +20,7 @@
  * is numbered.
  */
 
-import { cleanLabel, isSdh, labelDetail } from './caption-label-clean';
+import { cleanLabel, isSdh, labelDetails } from './caption-label-clean';
 import { readTag } from './caption-tag';
 
 export { cleanLabel, isSdh };
@@ -83,17 +83,28 @@ function counts(list: readonly { name: string; sdh: boolean }[]): Map<string, nu
 
 /** Entries that read the same as another, told apart by what their
  *  provider label qualifies the language with — "Signs & Songs",
- *  "Forced" — where the name does not already say it. */
+ *  "Forced" — leaving out what every entry reading the same carries
+ *  and what the name already says. */
 function qualify<T extends CaptionSource>(
 	entries: CaptionEntry<T>[],
 	wording: CaptionWording
 ): CaptionEntry<T>[] {
+	const details = entries.map((e) => labelDetails(e.label));
+	const shared = new Map<string, string[]>();
+	entries.forEach((e, i) => {
+		const before = shared.get(keyOf(e));
+		shared.set(keyOf(e), before ? before.filter((p) => details[i].includes(p)) : details[i]);
+	});
 	const groups = counts(entries);
-	return entries.map((e) => {
-		const detail = labelDetail(e.label);
-		const said = e.name.toLocaleLowerCase().includes(detail.toLocaleLowerCase());
-		if (groups.get(keyOf(e)) === 1 || said) return e;
-		return { ...e, name: wording.qualified(e.name, detail) };
+	return entries.map((e, i) => {
+		if (groups.get(keyOf(e)) === 1) return e;
+		const name = e.name.toLocaleLowerCase();
+		const common = shared.get(keyOf(e)) as string[];
+		const telling = details[i].filter(
+			(p) => !common.includes(p) && !name.includes(p.toLocaleLowerCase())
+		);
+		if (telling.length === 0) return e;
+		return { ...e, name: wording.qualified(e.name, telling.join(', ')) };
 	});
 }
 
