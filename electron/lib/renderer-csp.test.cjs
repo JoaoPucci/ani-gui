@@ -58,6 +58,8 @@ test("the packaged policy, directive by directive", () => {
   assert.equal(
     rendererPolicy({ backend: HANDSHAKE, devOrigin: null }),
     [
+      "default-src 'none'",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self'",
       "style-src-attr 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='",
       `img-src 'self' data: ${lanes}`,
@@ -76,11 +78,22 @@ test("the packaged policy, directive by directive", () => {
   );
 });
 
-test("it names no script source: the bundle's meta owns scripts", () => {
-  const d = parse(rendererPolicy({ backend: HANDSHAKE, devOrigin: null }));
-  for (const name of ["script-src", "script-src-elem", "script-src-attr", "default-src"]) {
-    assert.equal(d[name], undefined, `${name} would intersect with the meta's script rule`);
+test("everything it does not name is refused: default-src is 'none'", () => {
+  // Chromium rules some loads by default-src alone — <link rel=prefetch>
+  // among them — so a header without one leaves them open.
+  for (const devOrigin of [null, "http://localhost:5173"]) {
+    assert.deepEqual(parse(rendererPolicy({ backend: HANDSHAKE, devOrigin }))["default-src"], ["'none'"]);
   }
+});
+
+test("its script rule only keeps default-src off scripts: the bundle's meta narrows it", () => {
+  // The meta's script-src is 'self' plus the bootstrap's hash. A hash
+  // in a policy disables that policy's 'unsafe-inline', and a script has
+  // to pass both policies, so what runs is the meta's rule. The header's
+  // own rule names nothing but the app.
+  const d = parse(rendererPolicy({ backend: HANDSHAKE, devOrigin: null }));
+  assert.deepEqual(d["script-src"], ["'self'", "'unsafe-inline'"]);
+  for (const name of ["script-src-elem", "script-src-attr"]) assert.equal(d[name], undefined, name);
 });
 
 test("nothing is ever allowed to evaluate strings, in either build", () => {
@@ -92,7 +105,8 @@ test("nothing is ever allowed to evaluate strings, in either build", () => {
 });
 
 test("the packaged policy allows no inline style", () => {
-  assert.ok(!rendererPolicy({ backend: HANDSHAKE, devOrigin: null }).includes("unsafe-inline"));
+  const d = parse(rendererPolicy({ backend: HANDSHAKE, devOrigin: null }));
+  assert.deepEqual(d["style-src"], ["'self'"]);
 });
 
 test("one style attribute is allowed, by its hash: SvelteKit's route announcer", () => {
@@ -200,8 +214,8 @@ test("property: every source is a keyword, a scheme the app needs, or a valid an
       (backend, dev) => {
         const policy = rendererPolicy({ backend, devOrigin: dev ? "http://localhost:5173" : null });
         const d = parse(policy);
-        assert.equal(Object.keys(d).length, 14);
-        const allowed = new Set(["'self'", "'none'", "data:", "blob:", ...d["style-src-attr"]]);
+        assert.equal(Object.keys(d).length, 16);
+        const allowed = new Set(["'self'", "'none'", "'unsafe-inline'", "data:", "blob:", ...d["style-src-attr"]]);
         if (dev) allowed.add("'unsafe-inline'").add("ws://localhost:5173");
         const announced = [backend.apiBase, ...Object.entries(backend.lanes)
           .filter(([n]) => ["stream", "image", "probe", "resolve", "download"].includes(n))

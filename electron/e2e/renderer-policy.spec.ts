@@ -180,25 +180,56 @@ test('both halves of the policy reach the document on every load', async () => {
 	}
 });
 
+/** A loopback server the policy does not name, counting what reaches it. */
+async function trapServer(): Promise<{ origin: string; hits: () => string[]; close: () => void }> {
+	const hits: string[] = [];
+	const server = http.createServer((req, res) => {
+		hits.push(req.url ?? '');
+		res.writeHead(200, { 'content-type': 'text/plain' }).end('reached');
+	});
+	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+	const { port } = server.address() as net.AddressInfo;
+	return { origin: `http://127.0.0.1:${port}`, hits: () => [...hits], close: () => server.close() };
+}
+
+/** A violation line, as Chromium logs it or as the guard's listener
+ *  reports it (JSON, escaped once more when relayed through stdout). */
+function reported(directive: string, blocked: string): RegExp {
+	const q = '\\\\?"';
+	const esc = blocked.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+	return new RegExp(`${q}directive${q}:${q}${directive}${q},${q}blocked${q}:${q}${esc}`);
+}
+
 test('the policy refuses what the app never does', async () => {
+	const trap = await trapServer();
 	const { app, page, guard } = await launch();
 	try {
 		await bridge(page);
 		await expect(page.locator('#app')).not.toBeEmpty({ timeout: 15_000 });
-		guard.expectViolation(/127\.0\.0\.1:1\//);
-		guard.expectViolation(/example\.invalid/);
-		guard.expectViolation(/inline script|script-src/);
-		guard.expectViolation(/inline style|style-src/);
-		guard.expectViolation(/unsafe-eval|EvalError|evaluate a string/);
-		guard.expectViolation(/frame-src|child-src|frame '/);
+		const trapPattern = new RegExp(trap.origin.replace(/[.:/]/g, '\\$&'));
+		// Chromium's own lines for the trap name its origin; the rest are
+		// matched by directive and what was blocked.
+		guard.expectViolation(trapPattern);
+		guard.expectViolation(/Refused to execute inline script/);
+		guard.expectViolation(reported('script-src-elem', 'inline'));
+		guard.expectViolation(/Refused to apply inline style/);
+		guard.expectViolation(reported('style-src-elem', 'inline'));
+		guard.expectViolation(/Refused to evaluate a string as JavaScript/);
+		guard.expectViolation(reported('script-src', 'eval'));
+		guard.expectViolation(/violates the document's Content Security Policy/);
 
-		const outcome = await page.evaluate(async () => {
+		const outcome = await page.evaluate(async (trapOrigin) => {
+			const seen: { directive: string; blocked: string }[] = [];
+			document.addEventListener('securitypolicyviolation', (e) =>
+				seen.push({ directive: e.effectiveDirective, blocked: e.blockedURI })
+			);
 			const settle = (p: Promise<unknown>) =>
 				p.then(
 					() => 'allowed',
 					() => 'refused'
 				);
-			const w = window as unknown as { __inlineRan?: number };
+			const w = window as unknown as { __inlineRan?: number; __timerRan?: number };
+
 			const script = document.createElement('script');
 			script.textContent = 'window.__inlineRan = 1';
 			document.head.append(script);
@@ -210,43 +241,59 @@ test('the policy refuses what the app never does', async () => {
 			// Strings handed to the page's own timers: an evaluation inside
 			// page.evaluate itself runs in DevTools' context, which the
 			// page's policy does not govern.
-			const t = window as unknown as { __timerRan?: number };
 			(setTimeout as unknown as (code: string, ms: number) => number)('window.__timerRan = 1', 0);
 
 			const image = await new Promise<string>((resolve) => {
 				const img = new Image();
 				img.onload = () => resolve('allowed');
 				img.onerror = () => resolve('refused');
-				img.src = 'https://example.invalid/poster.png';
+				img.src = `${trapOrigin}/image.png`;
 			});
+			const prefetch = document.createElement('link');
+			prefetch.rel = 'prefetch';
+			prefetch.href = `${trapOrigin}/prefetch`;
+			document.head.append(prefetch);
 			const frame = document.createElement('iframe');
-			frame.src = 'https://example.invalid/';
+			frame.src = `${trapOrigin}/frame`;
 			document.body.append(frame);
-			await new Promise((r) => setTimeout(r, 300));
-			const evalResult = t.__timerRan === 1 ? 'ran' : 'refused';
+			const connect = await settle(fetch(`${trapOrigin}/fetch`));
+			await new Promise((r) => setTimeout(r, 500));
 			return {
-				// A loopback port outside the six lanes: refused without a
-				// connection being tried.
-				otherLoopbackPort: await settle(fetch('http://127.0.0.1:1/')),
-				outsideHost: await settle(fetch('https://example.invalid/')),
+				connect,
 				image,
 				inlineScriptRan: w.__inlineRan === 1,
 				inlineStyleApplied: getComputedStyle(document.getElementById('app')!).outlineWidth === '7px',
-				evalResult
+				timerStringRan: w.__timerRan === 1,
+				seen
 			};
-		});
-		expect(outcome).toEqual({
-			otherLoopbackPort: 'refused',
-			outsideHost: 'refused',
+		}, trap.origin);
+
+		expect({ ...outcome, seen: undefined }).toEqual({
+			connect: 'refused',
 			image: 'refused',
 			inlineScriptRan: false,
 			inlineStyleApplied: false,
-			evalResult: 'refused'
+			timerStringRan: false,
+			seen: undefined
 		});
-		// Each refusal was reported, which is what the guard listens for.
-		await expect.poll(() => guard.seen.length).toBeGreaterThanOrEqual(5);
+		// Refused before any connection: the server never heard of it.
+		expect(trap.hits()).toEqual([]);
+		// One report per refusal, each naming its rule.
+		const reports = outcome.seen.map((v) => `${v.directive} ${v.blocked.replace(trap.origin, '<trap>')}`);
+		expect(reports.sort()).toEqual(
+			[
+				'connect-src <trap>/fetch',
+				'default-src <trap>/prefetch',
+				'frame-src <trap>/frame',
+				'img-src <trap>/image.png',
+				'script-src eval',
+				'script-src-elem inline',
+				'style-src-elem inline'
+			].sort()
+		);
 	} finally {
 		await app.close();
+		trap.close();
 	}
 });
 
