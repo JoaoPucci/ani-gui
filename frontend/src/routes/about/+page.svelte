@@ -200,14 +200,14 @@
 					<span class="dep-note">{bundledToolNote(dep.noteId)}</span>
 					{#if dep.provenance}
 						<p class="dep-offer">
-							{m.about_source_offer({ name: dep.name, version: dep.provenance.version })}
+							{m.about_install_download({ name: dep.name, version: dep.provenance.version })}
 							<!-- eslint-disable svelte/no-navigation-without-resolve -->
 							<a
 								class="dep-offer-link"
 								href={dep.provenance.buildUrl}
 								target="_blank"
 								rel="noopener noreferrer"
-								>{m.about_source_offer_build_link({ version: dep.provenance.version })}</a
+								>{m.about_install_download_build_link({ version: dep.provenance.version })}</a
 							>
 							<span aria-hidden="true">·</span>
 							<a
@@ -215,7 +215,7 @@
 								href={dep.provenance.sourceUrl}
 								target="_blank"
 								rel="noopener noreferrer"
-								>{m.about_source_offer_source_link({
+								>{m.about_install_download_source_link({
 									name: dep.name,
 									version: dep.provenance.version
 								})}</a

@@ -2,8 +2,8 @@
  * Hand-curated credits surfaced by the About page.
  *
  * Scope: the bits the About page is actually about — the upstream
- * binaries the packages ship so playback and downloads work without
- * the user installing anything, and editorial assets (Lottie
+ * binaries the packages ship or fetch so playback and downloads work
+ * without the user installing anything, and editorial assets (Lottie
  * animation, eventually fonts / illustrations). Frontend + backend
  * dep lists are not credited here — they are dev-facing, and
  * surfacing them turned the page into a build dashboard rather than
@@ -33,7 +33,8 @@ export interface BundledTool {
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
 	 *  the platforms don't ship one version (ffmpeg: the Windows
-	 *  installer pins one, Linux takes whatever the distro ships). */
+	 *  installer downloads a pinned build, Linux takes whatever the
+	 *  distro ships). */
 	version: string | null;
 	/** SPDX license id (or a free-text combo for dual-licensed
 	 *  upstreams). */
@@ -45,26 +46,27 @@ export interface BundledTool {
 	 *  `about_bundled_tool_note_<noteId>` key in every locale's
 	 *  about.json. */
 	noteId: BundledToolNoteId;
-	/** Where a copyleft binary a package redistributes was built, and
-	 *  its upstream source. Present only for those. */
+	/** Where a binary the Windows installer downloads at install time
+	 *  is built, and its upstream source. Present only for those. */
 	provenance?: BuildProvenance;
 }
 
-/** The published build and the upstream source for one redistributed
- *  copyleft binary. */
+/** The published build and the upstream source for one binary the
+ *  Windows installer downloads at install time. */
 export interface BuildProvenance {
 	/** The build's version, as the fetcher pins it. */
 	version: string;
-	/** The page the build is published on — the one the fetcher
-	 *  downloads it from. */
+	/** The page the build is published on — the release the
+	 *  installer downloads it from. */
 	buildUrl: string;
 	/** The upstream source at the matching tag. */
 	sourceUrl: string;
 }
 
-/** The ffmpeg build the Windows installer carries. Must equal the
- *  version `fetch-windows-deps.mjs` pins; credits.test.ts imports the
- *  fetcher and holds the two together. */
+/** The ffmpeg build the Windows installer downloads at install time.
+ *  Must equal the version `INSTALL_TIME_DEPS` in fetch-windows-deps.mjs
+ *  pins; credits.test.ts imports the fetcher and holds the two
+ *  together. */
 export const FFMPEG_WINDOWS_BUILD = '7.1.1';
 
 /** The build page and source for gyan.dev's ffmpeg essentials build `version`:
@@ -82,7 +84,8 @@ export function ffmpegProvenance(version: string): BuildProvenance {
  *  work without the user installing anything by hand. Versions track
  *  what `fetch-linux-deps.mjs` / `fetch-windows-deps.mjs` pin — the
  *  two stage the same set, so one version here covers both. ffmpeg is
- *  the exception: Windows stages it and Linux takes the distribution's,
+ *  the exception: no package carries it — the Windows installer
+ *  downloads it at install time, and Linux takes the distribution's —
  *  so its version is `null`. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
@@ -112,8 +115,8 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		license: 'LGPL-2.1+ / GPL',
 		url: 'https://ffmpeg.org/',
 		noteId: 'ffmpeg',
-		// The Windows installer redistributes a GPL build (Linux takes
-		// the distribution's, which the distribution answers for).
+		// The build the Windows installer downloads at install time
+		// (Linux takes the distribution's).
 		provenance: ffmpegProvenance(FFMPEG_WINDOWS_BUILD)
 	}
 ];

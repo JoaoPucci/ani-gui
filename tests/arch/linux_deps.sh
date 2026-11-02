@@ -10,7 +10,8 @@
 # every download dies without a downloader. Bundling the small fast
 # ones removes that dependency on the user's environment; ffmpeg Linux
 # takes from the distribution instead, hence the `Recommends:` (the
-# Windows installer, with no package manager to lean on, bundles it).
+# Windows installer, with no package manager to lean on, downloads it
+# at install time).
 #
 # This once described the script's dependencies — `dep_ch fzf`
 # aborting at startup, aria2c for downloads. Those went when the app
