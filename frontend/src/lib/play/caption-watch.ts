@@ -13,8 +13,8 @@
  * The app notes what it set, per video ({@link expectCaptions}); a
  * change the video's TextTrackList reports is the viewer's when the
  * app had set the captions and they now differ — except a track the
- * browser turned on beside the one the app expects, which the
- * browser's menu never leaves ({@link extraBeside}). Before the start
+ * browser turned on beside the one the app expects
+ * ({@link extraBeside}). Before the start
  * is set, and once the session goes, nothing is. The page asks only
  * while its own controls are off: with them on there is no browser
  * menu, and a change the app did not make is hls.js's. The start is
@@ -49,9 +49,11 @@ export function showingCaption(list: WatchableTrackList): CaptionState {
 }
 
 /** The caption tracks showing beside the one the app expects, while
- *  that one shows: tracks the browser turned on itself. Its own
- *  captions menu leaves one track showing, or none, so a viewer's pick
- *  never looks like this. */
+ *  that one shows: tracks the browser's own selection turned on. A
+ *  pick in the browser's captions menu is taken to leave one track
+ *  showing, or none, so never to look like this; that premise is
+ *  unverified against Chromium's media controls, and a pick that did
+ *  leave the expected track showing would be switched back off. */
 export function extraBeside(expected: CaptionState | null, list: WatchableTrackList): number[] {
 	if (typeof expected !== 'number' || expected >= list.length) return [];
 	const isCaption = (t: WatchableTrack) => t.kind === 'subtitles' || t.kind === 'captions';
