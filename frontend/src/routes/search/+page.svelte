@@ -960,13 +960,7 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.card,
-		.card-skeleton .poster-skeleton,
-		.line {
-			animation: none;
-		}
 		.folio-rule-drawing::after {
-			animation: none;
 			opacity: 0.6;
 		}
 	}
