@@ -256,4 +256,48 @@ proptest::proptest! {
             }
         }
     }
+
+    /// Whatever the order of waits starting, waits ending and releases,
+    /// a ticket is on screen exactly while a wait that started after the
+    /// last release is still open — or, within the grace, one such wait
+    /// started or ended (or the ticket was issued) and no release came
+    /// since. A wait still open across a release never keeps it there.
+    #[test]
+    fn on_screen_follows_the_waits_no_release_has_let_go(
+        ops in proptest::collection::vec((0u8..3, 0usize..8, 0u64..3_000), 0..64),
+    ) {
+        let mut now = Instant::now();
+        let mut r = Registry::default();
+        let (t, _) = r.hold("k", now).expect("room");
+        // Each open wait: the era `watch` gave it, and whether a release
+        // has let it go since it started.
+        let mut open: Vec<(u64, bool)> = Vec::new();
+        let mut seen = Some(now);
+        for (op, pick, gap_ms) in ops {
+            now += Duration::from_millis(gap_ms);
+            match op {
+                0 => {
+                    open.push((r.watch(t, now), false));
+                    seen = Some(now);
+                }
+                1 if !open.is_empty() => {
+                    let (era, released) = open.remove(pick % open.len());
+                    r.unwatch(t, era, now);
+                    if !released {
+                        seen = Some(now);
+                    }
+                }
+                1 => {}
+                _ => {
+                    r.release(t);
+                    open.iter_mut().for_each(|w| w.1 = true);
+                    seen = None;
+                }
+            }
+            let live = open.iter().any(|&(_, released)| !released);
+            let recent = seen.is_some_and(|s| now.saturating_duration_since(s) < ON_SCREEN_GRACE);
+            proptest::prop_assert_eq!(r.on_screen(t, now), live || recent);
+            proptest::prop_assert_eq!(r.on_screen(t, now + ON_SCREEN_GRACE), live);
+        }
+    }
 }
