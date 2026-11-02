@@ -43,6 +43,7 @@ import {
 	playSyncplay,
 	playStream,
 	proxyBaseUrl,
+	refillsRelease,
 	settingsGet,
 	settingsPut,
 	watchedAtAll,
@@ -1216,6 +1217,143 @@ describe('kitsuEpisodes', () => {
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuEpisodes('12', 3);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/episodes/12?page=3`);
+	});
+	it('fetches the page once more when its held-back thumbnails land', async () => {
+		const filled = [{ id: 'e1', number: 1, thumbnail: { original: 'https://x/1.jpg' } }];
+		const fetchMock = refillingFetch([], filled, true);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		const eps = await kitsuEpisodes('12', 2, { refresh: true, onRefill });
+		expect(eps).toEqual([]);
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(filled));
+		const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+		expect(urls).toEqual([
+			`${BASE}/api/kitsu/episodes/12?page=2&refresh=true`,
+			`${BASE}/api/refills/wait`,
+			// The refetch reads the page the first read cached.
+			`${BASE}/api/kitsu/episodes/12?page=2`
+		]);
+		expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ tickets: [7] });
+	});
+	it('does not fetch again when the refill did not land', async () => {
+		const fetchMock = refillingFetch([], [], false);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuEpisodes('12', 1, { onRefill });
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(onRefill).not.toHaveBeenCalled();
+	});
+});
+
+/** A backend whose first read carries refill ticket 7, whose wait
+ *  answers it `landed`, and whose next read answers `then`. */
+function refillingFetch(first: unknown, then: unknown, landed: boolean) {
+	let reads = 0;
+	return vi.fn(async (url: string, init?: RequestInit) => {
+		void init;
+		const isWait = url.endsWith('/api/refills/wait');
+		const payload = isWait ? [{ ticket: 7, landed }] : reads++ === 0 ? first : then;
+		const header = !isWait && reads === 1 ? '7' : null;
+		return {
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name === 'x-ani-gui-refill' ? header : null) },
+			async text() {
+				return JSON.stringify(payload);
+			}
+		} as unknown as Response;
+	});
+}
+
+/** A backend whose reads carry the next of `tickets` each (none once
+ *  they run out), whose wait answers the first one landed, and which
+ *  records every release. */
+function ticketedFetch(tickets: number[]) {
+	const released: number[][] = [];
+	let reads = 0;
+	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+		if (url.endsWith('/api/refills/release')) {
+			released.push(JSON.parse(init?.body as string).tickets);
+			return {
+				ok: true,
+				status: 204,
+				async text() {
+					return '';
+				}
+			} as unknown as Response;
+		}
+		const isWait = url.endsWith('/api/refills/wait');
+		const header = isWait ? null : (tickets[reads++]?.toString() ?? null);
+		const payload = isWait ? [{ ticket: tickets[0], landed: true }] : [];
+		return {
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name === 'x-ani-gui-refill' ? header : null) },
+			async text() {
+				return JSON.stringify(payload);
+			}
+		} as unknown as Response;
+	});
+	return { fetchMock, released };
+}
+
+describe('tickets no page waits on', () => {
+	it('are let go when the page closed before its read came back', async () => {
+		const { fetchMock, released } = ticketedFetch([41]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const page = new AbortController();
+		const read = kitsuEpisodes('12', 1, { onRefill: vi.fn(), signal: page.signal });
+		page.abort();
+		await read;
+		await vi.waitFor(() => expect(released).toEqual([[41]]));
+		const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+		expect(urls.some((u) => u.endsWith('/api/refills/wait'))).toBe(false);
+	});
+	it('are let go for a read that does not wait on its refill', async () => {
+		const { fetchMock, released } = ticketedFetch([42]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuAnimeDetail('12');
+		await vi.waitFor(() => expect(released).toEqual([[42]]));
+	});
+	it('are let go when the read fetched once more is itself held back', async () => {
+		const { fetchMock, released } = ticketedFetch([43, 44]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuAnimeDetail('12', { onRefill });
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalled());
+		await vi.waitFor(() => expect(released).toEqual([[44]]));
+	});
+});
+
+describe('refillsRelease', () => {
+	it('posts the tickets a closed page let go, and shrugs off a failure', async () => {
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			void init;
+			throw new Error('offline');
+		});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		refillsRelease([3, 4]);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/refills/release`);
+		expect(JSON.parse(init?.body as string)).toEqual({ tickets: [3, 4] });
+		await new Promise((r) => setTimeout(r, 0));
+	});
+});
+
+describe('kitsuAnimeDetail refill', () => {
+	it('hands the detail fetched once more after a held-back banner lands', async () => {
+		const fresh = { id: '12', cover_image: { original: 'https://al/b.jpg' } };
+		globalThis.fetch = refillingFetch(
+			{ id: '12', cover_image: null },
+			fresh,
+			true
+		) as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuAnimeDetail('12', { onRefill });
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(fresh));
 	});
 });
 

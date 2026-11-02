@@ -8,7 +8,7 @@
   trying to interpret rendered HTML in-app.
 -->
 <script lang="ts">
-	import { fly, fade } from 'svelte/transition';
+	import { fly, fade } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { m } from '$lib/paraglide/messages';
 	import { updateStore } from '$lib/update/store.svelte';

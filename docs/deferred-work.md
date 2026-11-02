@@ -374,8 +374,8 @@ starting it, and delete it when you find it done.
   On GNOME 50.1 with Electron 33, the accessibility preference was
   `reduce` while the older global animation switch remained enabled;
   Electron still reported `prefers-reduced-motion: no-preference`.
-  The rail animations honor that media query, so on such a system they
-  still play. What Electron reported matched the older switch, not the
+  The app's motion honours that media query, so on such a system it
+  still plays. What Electron reported matched the older switch, not the
   new preference. The preference could be read another way and handed
   to the renderer, or a later Electron may expose it to the query.
 
