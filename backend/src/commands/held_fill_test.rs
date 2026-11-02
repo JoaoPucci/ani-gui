@@ -390,3 +390,24 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
         "the refusal, three fresh fills, two retries: {ids:?}"
     );
 }
+
+/// A page that takes a copy of another read's held-back lookup is served
+/// that lookup's ticket. After a release, that ticket is on screen again
+/// from the moment it is served, as one served by its own hold is.
+#[tokio::test]
+async fn a_released_ticket_a_page_takes_a_copy_of_is_on_screen_until_it_waits() {
+    let state = state("http://127.0.0.1:9");
+    let base = Some("http://held-fill-copy.invalid");
+    let key = super::key(&state, super::Fill::Thumbs, "copy", base);
+    let now = std::time::Instant::now;
+    let (ticket, _) = super::registry().hold(&key, now()).expect("room");
+    super::release(&[ticket]);
+    let ((), tickets) = collect(async {
+        super::note_pending(&state, super::Fill::Thumbs, "copy", base);
+    })
+    .await;
+    let on_screen = super::registry().on_screen(ticket, now());
+    super::registry().end(&key, ticket, false);
+    assert_eq!(tickets, vec![ticket]);
+    assert!(on_screen, "served to the page on screen");
+}
