@@ -250,7 +250,7 @@ describe("a show's remembered captions", () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		await nextEpisode(video, 'session-2', '2');
 		expect(showing(video)).toBe('Español');
 	});
@@ -267,7 +267,7 @@ describe("a show's remembered captions", () => {
 	it('survives a reload', async () => {
 		handlers();
 		await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Spanish (Latin America)');
 		const reloaded = await reload('session-2', '2');
 		expect(showing(reloaded)).toBe('Español');
 	});
@@ -276,7 +276,7 @@ describe("a show's remembered captions", () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
 		await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		const other = await reload('session-9', '1', OTHER_SHOW);
 		expect(showing(other)).toBe('Português');
 	});
@@ -297,7 +297,7 @@ describe("a show's remembered captions", () => {
 				document.querySelector(`button[aria-label="${m.play_controls_cc_aria_label()}"]`) !== null,
 			'the captions button'
 		);
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		const reloaded = await reload('session-2', '2');
 		expect(showing(reloaded)).toBe('Português');
 	});
@@ -306,7 +306,7 @@ describe("a show's remembered captions", () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		await nextEpisode(video, 'session-2-no-es', '2');
 		expect(showing(video)).toBe('Português');
 		await nextEpisode(video, 'session-3', '3');
