@@ -212,7 +212,7 @@ AniList refusing this client, or being down, is no answer: what it would have sa
 | AniList banner per Kitsu id (from the trending feed) | SQLite `meta_cache` | 30 days; rewritten or dropped by each trending answer that lists the show, and dropped by a detail read once the image proxy has found the URL gone |
 | Image URL the upstream answered 404 or 410 for | SQLite `meta_cache` | 30 days, or until a fetch of it succeeds |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
-| The last good remote flags file ([Remote flags](#remote-flags)) | Filesystem `remote-flags.json` in the cache root | Replaced by every successful launch fetch; stands in for a failed one for 7 days |
+| The last good remote flags file ([Remote flags](#remote-flags)) | Filesystem `remote-flags.json` in the cache root | Replaced by every successful fetch, in the launch or later in its session; decides the next launch's flags when the file misses the cap, for 7 days |
 
 Only the probe passes the show's status when it writes an availability row, so a negative row's lifetime, like a positive one's, depends on what wrote it last. A play, a download, a hand-off or a page's warm whose walk ended in a clean miss stamps that miss through the resolve path, which writes without a status, so the negative row it writes — over a probe's row, or where none stood — gets the window of an ongoing show whatever the show's status: 24 hours at most, dated from that operation, a finished show's seven days and an unreleased show's premiere-sized window included. The row is served as any negative row is, under the read rule above, for as long as it lasts, and the status-sized window comes back only when a probe runs and writes the row again.
 
@@ -260,8 +260,9 @@ repository's `flags` branch:
 
 The backend reads it from
 `https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json`.
-The renderer never fetches it. `GET /api/flags` returns the resolved
-values and whether the launch fetch has finished (`settled`).
+The renderer never fetches it. `GET /api/flags` answers, once the
+launch's flags are decided, with their values and where they came from
+(`origin`: `file`, `cache`, `defaults`, or `test` in a test run).
 
 **Every flag is declared in code**, in `flags::DECLARED`, with a name, a
 kind and a stated reason. The kind fixes the built-in default and the
@@ -294,6 +295,14 @@ Consumers read a flag through its declaration (`Resolved::enabled`,
 `Resolved::choice`), never through a name typed out again. A misspelt
 or undeclared flag then reads as its declaration's default.
 
+**Every value is tested.** A flag sits at its default until something
+breaks, so the value it is flipped to is the one least likely to have
+run. Each consumer registers a test case for its flag's default and for
+every retreat in `flags::matrix::CASES`, a check that receives the
+flags with that value in force. A test over `DECLARED` fails while any
+value of a declared flag has no case, or a case names a flag or value
+no longer declared.
+
 **Why the file is not signed.** With every declaration held to that
 rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
 write access to the branch, could only switch features off or bring
@@ -303,21 +312,53 @@ the file is verified. The verifier to adopt then is the minisign
 signature check proposed for the in-app updater (#342) and the
 notification center (#351).
 
-**Once per launch, never in the way.** The store starts at the
-defaults. The binary spawns the fetch as a separate task after the
-state is built, so neither startup nor any request waits for it. The
-whole request, from connect to body, has a 5-second limit. Only a 200
-whose body is at most 64 KiB and is a `{"flags": {...}}` object counts
-as the file. Anything else counts as a failed fetch: a transport error,
-the timeout, any other status (404 included), a larger body, or
-malformed JSON. A backend consumer that must not act before the fetch
-finishes can call `FlagStore::settled()`. It waits for the fetch, but
-never longer than 7 seconds.
+**Decided once per launch, behind the splash.** The flags are decided
+once, within two seconds of the backend starting, and do not change for
+the rest of the session.
+
+1. The Electron main process puts up a splash before it spawns the
+   backend.
+2. The backend starts the fetch in a task of its own as soon as its
+   state is built. If the file arrives within two seconds (the cap), it
+   decides the flags. Otherwise the cached copy decides them (below), or
+   the defaults when there is none.
+3. Once the backend has announced itself, the main process asks
+   `GET /api/flags`, which answers when the flags are decided. It opens
+   the app's window with them, so the preload puts them on
+   `window.aniGui.flags` before the first page renders. The main process
+   waits at most four seconds for that answer, and opens the window
+   without flags (every flag at its default) if none comes.
+4. The splash closes once the app's window has shown.
+
+The store accepts one decision and refuses every later one. A backend
+consumer reads the flags with `FlagStore::settled()`, which waits for
+that decision. Past three seconds it decides the defaults itself, so no
+reader ever sees a value that changes afterwards. `FlagStore::current()`
+does not wait and is for diagnostics only.
+
+**The cap bounds the wait, not the fetch.** After the cap, the fetch
+goes on in the background. Its whole request, connect to body, has 45
+seconds: the file is tiny, so the time goes on DNS, the TLS handshake
+and round trips, and 45 seconds lets a link with multi-second latency
+and some packet loss finish them. When the file arrives it is cached for
+the next launch. When that attempt fails, the file is fetched again
+later in the session, after 3, 10 and 30 minutes and then hourly, until
+one attempt succeeds and is cached. None of this changes the running
+session's flags. Worst case: one launch delay; never stuck unless the
+file can't be downloaded at all during an entire session. A connection
+that always misses the cap still gets a switch-off on its next launch,
+as long as the file arrives at any point during the previous session.
+
+Only a 200 whose body is at most 64 KiB and is a `{"flags": {...}}`
+object counts as the file. Anything else counts as a failed fetch: a
+transport error, the timeout, any other status (404 included), a larger
+body, or malformed JSON.
 
 **The last good copy.** Each successful fetch is cached as
 `remote-flags.json` in the cache root, together with the time it was
-fetched. When a fetch fails, the cached copy is used if it is at most
-seven days old, and the defaults are used otherwise. A copy dated in the
+fetched. When the file does not arrive within the cap, the cached copy
+decides the flags if it is at most seven days old, and the defaults
+decide them otherwise. A copy dated in the
 future (a clock set back) counts as too old. The cached copy goes
 through the same resolution as a fetched file, so a cache written by
 another build, or edited by hand, still resolves only to values this
@@ -330,17 +371,25 @@ such as a trip, a captive portal or a blocked CDN, so a feature switched
 off for a bad release stays off through it. And even on a machine that
 never reaches the file again, a lifted retreat clears within the week.
 
-Development and test runs read the same live file as installed builds.
-Once a flag is declared, flipping it on the `flags` branch also changes
-what `pnpm dev` and the packaged end-to-end runs do on their next
-launch.
+**Test runs bring their own flags.** A test run is a launch with
+`ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the
+backend's integration tests always set. A test run's backend never
+fetches the live file, so a flipped flag or a slow or rate-limited CDN
+cannot change a test's result. It takes its flags from the file
+`ANI_GUI_TEST_FLAGS_FILE` names, resolved like the live one, or the
+defaults when that names none. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
+it by watching the network: a test run never asks for
+raw.githubusercontent.com, and a normal launch does. Development runs
+(`pnpm dev`) are normal launches and read the live file.
 
 **Rate limits.** `raw.githubusercontent.com` is GitHub's content CDN,
 not the REST API. The request does not count against the 60 requests
 an hour that GitHub allows unauthenticated REST callers, which the
 update check uses. GitHub publishes no figure for the CDN's own limit.
-One request per launch is far below any plausible one. A rate-limited
-answer is a failed fetch like any other.
+One request per launch, and at most one an hour after the first few
+retries of a session whose fetch keeps failing, is far below any
+plausible one. A rate-limited answer is a failed fetch like any other.
 
 ## Embedded playback
 

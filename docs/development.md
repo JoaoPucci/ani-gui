@@ -273,7 +273,8 @@ curl -sI http://127.0.0.1:42337/healthz
 | `RUST_LOG` | tracing filter |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
-| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e suites do): a packaged build whose startup fails then exits at once instead of showing its error dialog |
+| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
+| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
@@ -369,16 +370,33 @@ cached for up to seven days.
 **How long until installs see it.** `raw.githubusercontent.com` serves
 the file with `Cache-Control: max-age=300`, so the CDN can return the
 old copy for up to five minutes after a push. After that, each install
-picks up the change the next time it launches. An app already running
-keeps the flags it read at launch until it is restarted. An install
-that cannot reach GitHub keeps its cached copy for up to seven days,
-then uses the defaults.
+picks up the change the next time it launches, when the file arrives
+within that launch's two-second cap. A launch on a slow connection that
+misses the cap keeps fetching in the background and caches the file,
+so it applies from the launch after. Worst case: one launch delay;
+never stuck unless the file can't be downloaded at all during an entire
+session. An app already running keeps the flags it decided at launch
+until it is restarted. An install that cannot reach GitHub at all keeps
+its cached copy for up to seven days, then uses the defaults.
 
-To see what a running backend resolved, read
-`GET <api base>/api/flags`. It returns every declared flag's value,
-and `settled: true` once the launch fetch has finished. The backend
-logs the outcome at `info` as `remote flags settled`, including whether
-the values came from the file, the cache or the defaults.
+To see what a running backend decided, read
+`GET <api base>/api/flags`. It returns every declared flag's value and
+where they came from (`origin`: `file`, `cache` or `defaults`). The
+backend logs the decision at `info` as `remote flags settled`, with the
+same origin. The app's window gets the same values from the preload, as
+`window.aniGui.flags`.
+
+**Development and test runs.** `pnpm dev` is a normal launch: it reads
+the live file, so a flag flipped on the branch reaches a dev run too.
+Test runs never do. The end-to-end launch helper and the backend's
+integration tests set `ANI_GUI_UNATTENDED=1`, and their flags come from
+`ANI_GUI_TEST_FLAGS_FILE` or the defaults (see the table of
+environment variables above).
+
+**Declaring a flag** (for the change that adds one). Declare it as a
+`pub const FlagDecl`, list it in `DECLARED`, read it through that
+constant, and register a test case for its default and for each retreat
+in `flags::matrix::CASES`. A test fails until every value has one.
 
 ## Code style
 

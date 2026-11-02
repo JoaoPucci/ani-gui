@@ -274,10 +274,12 @@ request:
 - **Remote flags (automatic, on launch)** — once per launch, ani-gui
   downloads a small file of switches from the project's GitHub
   repository, through GitHub's content server
-  (`raw.githubusercontent.com`). The maintainer uses it to switch off a
+  (`raw.githubusercontent.com`). If that download fails, it is tried
+  again later in the same session (after a few minutes, then at most
+  hourly) until it succeeds. The maintainer uses it to switch off a
   feature that turned out to be broken, without waiting for a release.
-  Like the update check, the request tells GitHub your IP address,
-  when the app was started, and that the request comes from ani-gui.
+  Like the update check, each request tells GitHub your IP address,
+  when it was made, and that it comes from ani-gui.
   Nothing else is sent: no account
   information, nothing about what you watch, and no identifier of your
   install. The file holds only the switches; GitHub's own privacy
