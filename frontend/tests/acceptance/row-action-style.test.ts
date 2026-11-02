@@ -95,6 +95,21 @@ describe('an icon-shaped row action', () => {
 			expect(inButton, prop).toMatch(/^var\(--ra-/);
 			expect(decl.exec(sizer)?.[1], prop).toBe(inButton);
 		}
+		// Its edge and spacing too: the sizer pads for the open pill's
+		// start, icon, gap and end, and both draw the same border, each
+		// from the one declaration on the slot.
+		expect(sizer).toContain(
+			'padding-inline: calc(var(--ra-pad) + var(--ra-icon) + var(--ra-gap)) var(--ra-pad);'
+		);
+		expect(sizer).toContain('border: var(--ra-border) solid transparent;');
+		expect(base).toContain('border: var(--ra-border) solid var(--row-action-border);');
+		expect(base).toContain('padding-inline: var(--ra-pad);');
+		expect(base).toContain('gap: var(--ra-gap);');
+		expect(rule('.row-action-slot')).toContain('--ra-border: 1px;');
+		const open = rule(`${ICON} .row-action:is(:hover, :focus-visible)`);
+		expect(open).toContain('padding-inline-start: var(--ra-pad);');
+		expect(open).not.toMatch(/padding-inline-end|gap:/);
+		expect(rule(`${ICON} .row-action`)).toContain('gap: var(--ra-gap);');
 		// The icon's width in the reserve is the size the icon is drawn
 		// at, from one constant.
 		expect(SOURCE).toContain('size={ICON_PX}');
@@ -123,10 +138,19 @@ describe('an icon-shaped row action', () => {
 
 	it('lets its label go before the closing edge reaches the words', () => {
 		// At rest the label's transition is the closing one: it fades in
-		// half the hover time, so the shrinking edge never cuts through
-		// words still on show.
+		// half the hover time, and the shape waits that long before it
+		// starts to close, so the label is gone before the edge moves.
 		expect(rule(`${ICON} .row-action-label`)).toContain(
 			'transition: opacity calc(var(--dur-fast) / 2) var(--ease-out-soft);'
+		);
+		const rest = rule(`${ICON} .row-action`);
+		for (const prop of ['inline-size', 'padding-inline-start']) {
+			expect(rest, prop).toContain(
+				`${prop} var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2)`
+			);
+		}
+		expect(rule(`${ICON} .row-action :global(svg)`)).toContain(
+			'transition: scale var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2);'
 		);
 	});
 
@@ -138,7 +162,11 @@ describe('an icon-shaped row action', () => {
 	});
 
 	it('never hides its label from a screen reader', () => {
-		for (const [at] of STYLE.matchAll(/[^{}]*\.row-action-label[^{]*\{[^}]*\}/g)) {
+		const rules = [...STYLE.matchAll(/[^{}]*\.row-action-label[^{]*\{[^}]*\}/g)];
+		// The rest and the open rule at least: a renamed class must not
+		// leave this passing over nothing.
+		expect(rules.length).toBeGreaterThanOrEqual(2);
+		for (const [at] of rules) {
 			expect(at).not.toMatch(/visibility:\s*hidden|display:\s*none/);
 		}
 	});
