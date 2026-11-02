@@ -39,6 +39,17 @@ const LANE_NAMES = Object.freeze(["stream", "image", "probe", "resolve", "downlo
  *  space or `,` would add a source or a policy. */
 const LOOPBACK = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/;
 
+/** The one inline style attribute the app renders: SvelteKit's route
+ *  announcer (`#svelte-announcer`, @sveltejs/kit
+ *  src/core/sync/write_root.js), which reads each new page's title to
+ *  screen readers while staying off screen. Refused, it would sit in the
+ *  page and print the title after every navigation. It is allowed by its
+ *  hash and nothing else; a SvelteKit that changes it shows up as a
+ *  violation in the e2e suite's policy guard. */
+const ANNOUNCER_STYLE =
+  "position: absolute; left: 0; top: 0; clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap; width: 1px; height: 1px";
+const ANNOUNCER_HASH = `'sha256-${require("node:crypto").createHash("sha256").update(ANNOUNCER_STYLE).digest("base64")}'`;
+
 function loopbackOrigin(value) {
   if (typeof value !== "string") return null;
   const m = LOOPBACK.exec(value);
@@ -90,6 +101,10 @@ function rendererPolicy({ backend, devOrigin }) {
   const directives = [
     // Bundled CSS. Vite injects each module's CSS as a <style> in dev.
     ["style-src", ["'self'", ...(dev ? ["'unsafe-inline'"] : [])]],
+    // Style attributes: SvelteKit's announcer and nothing else. Svelte
+    // writes every other style through the CSSOM, which this does not
+    // govern.
+    ["style-src-attr", ["'unsafe-hashes'", ANNOUNCER_HASH]],
     // Posters and every other image go through the image lane (with the
     // API's origin as the renderer's fallback); `data:` is the grain
     // texture written into the stylesheets.
