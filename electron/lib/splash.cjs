@@ -47,6 +47,8 @@ function splashWindowOptions() {
  * - `show` opens it, marked, and shows it once it has painted.
  * - `close` closes it: the boot's window has shown, so it is not the
  *   last window and no quit follows.
+ * - `show` after `close` or `suppress` opens nothing: the boot is
+ *   already past the splash.
  * - `suppress` puts it away for good when the boot fails: hidden, not
  *   closed, and a paint that arrives later does not show it again —
  *   it would come back always on top, over the dialog that says why
@@ -55,9 +57,12 @@ function splashWindowOptions() {
 function splashController({ createWindow, logError }) {
   let win = null;
   let suppressed = false;
+  // Set once the boot is past the splash: shown its window, or failed.
+  let over = false;
   const alive = () => win && !win.isDestroyed();
   return {
     show() {
+      if (over) return;
       const splash = createWindow(splashWindowOptions());
       if (!splash) return;
       splash[SPLASH_MARK] = true;
@@ -73,10 +78,12 @@ function splashController({ createWindow, logError }) {
       );
     },
     close() {
+      over = true;
       if (alive()) win.close();
       win = null;
     },
     suppress() {
+      over = true;
       suppressed = true;
       if (alive()) win.hide();
     },
