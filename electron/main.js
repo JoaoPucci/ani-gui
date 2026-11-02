@@ -522,9 +522,11 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   const firstPage = {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
-    // The splash, once on its way, is on screen before this window is
-    // (lib/splash.cjs); a later window finds no splash and waits for
-    // nothing.
+    // The boot's window waits, up to a second, for the splash to have
+    // painted before its show completes the boot and the splash is put
+    // away (lib/splash.cjs). The window itself is mapped earlier, by
+    // maximize() above, beneath the always-on-top splash. A later
+    // window finds no splash and waits for nothing.
     beforeShow: () => splash.whenShown(),
   };
   if (IS_DEV) {

@@ -236,8 +236,10 @@ test("the splash shows while the app starts, and is gone once the app's window h
 });
 
 test("the renderer cannot change the launch's flags", async () => {
-  // The flags are the session's: the preload freezes them, and the
-  // bridge keeps both them and window.aniGui read-only to the page.
+  // The flags are the session's. The bridge hands the page frozen
+  // copies of what the preload exposes, so neither the flags nor
+  // window.aniGui can be written from the page (the preload freezes its
+  // own copy too; preload.test.cjs checks that half).
   const { app, page } = await launchAppWithStubs();
   try {
     const seen = await page.evaluate(() => {
