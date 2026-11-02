@@ -1,10 +1,4 @@
 {
-	"test_section_title": "Diagnóstico",
-	"test_title": "Teste de stream",
-	"test_hint": "Cole uma URL HLS (.m3u8) ou MP4 pública para verificar o hls.js + o caminho do proxy de streaming. Pula a cadeia busca → resolução de sessão.",
-	"test_submit_button": "Reproduzir",
-	"test_url_placeholder": "https://example.com/master.m3u8",
-	"test_label": "URL do stream",
 	"error_no_session": "Sem sessão na URL — volte para a página do título e escolha um episódio.",
 	"error_stream_headline": "Não foi possível reproduzir este stream",
 	"error_stream_body": "O link do vídeo pode ter expirado. Recarregue para tentar de novo.",
@@ -135,9 +129,6 @@
 	"error_playback_technical": "Erro de reprodução: {detail}",
 	"error_hls_unsupported": "Este webview não reproduz HLS.",
 	"error_no_show_id": "O endereço não traz o id do título.",
-	"test_error_hls_fatal": "Erro fatal de HLS: {detail}",
-	"test_error_play_failed": "Falha ao reproduzir: {detail}",
-	"test_error_setup_failed": "Falha na configuração: {detail}",
 	"error_load_failed": "Não foi possível carregar este título. {reason}",
 	"play_failure_source_error": "A fonte de streaming respondeu com um erro. Tente novamente mais tarde."
 }

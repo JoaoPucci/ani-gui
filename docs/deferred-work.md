@@ -984,9 +984,7 @@ the shape against the app as it is then.
   the kinds it knows are `m3u8` and `mp4`; anything else, `webm`
   included, falls to HLS and is handed to the manifest parser, so
   a session for a theme is not only wiring but a media kind the
-  classifier learns or the caller sets outright (the manual
-  diagnostic route does not go through the proxy at all: it hands
-  its pasted URL straight to the player).
+  classifier learns or the caller sets outright.
   The alternative — cutting openings
   out of episodes with the skip intervals the player already has —
   was looked at and set aside: the intervals are crowd-sourced and
