@@ -295,3 +295,61 @@ test("there is nothing to wait for without a splash on its way", async () => {
   gone.suppress();
   await gone.whenShown();
 });
+
+/** Settles `p` with no time allowed to pass: true if it settled. */
+async function settlesAtOnce(t, p) {
+  let done = false;
+  p.then(() => (done = true));
+  for (let i = 0; i < 5; i++) await tick();
+  return done;
+}
+
+test("every way the splash cannot reach the screen releases the wait at once, not after its bound", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  // Closed while the signal is out (real disposal never answers it).
+  const closing = fakeSplash();
+  closing.webContents.executeJavaScript = () => new Promise(() => {});
+  const a = splashController({ createWindow: () => closing, logError: () => {} });
+  a.show();
+  const aWait = a.whenShown();
+  closing.emit("ready-to-show");
+  closing.destroyed = true;
+  closing.emit("closed");
+  assert.equal(await settlesAtOnce(t, aWait), true, "closed");
+  // The signal fails.
+  const failing = fakeSplash();
+  failing.webContents.executeJavaScript = async () => {
+    throw new Error("render frame was disposed");
+  };
+  const b = splashController({ createWindow: () => failing, logError: () => {} });
+  b.show();
+  const bWait = b.whenShown();
+  failing.emit("ready-to-show");
+  assert.equal(await settlesAtOnce(t, bWait), true, "signal failed");
+  // The signal answers.
+  const fine = fakeSplash();
+  const c = splashController({ createWindow: () => fine, logError: () => {} });
+  c.show();
+  const cWait = c.whenShown();
+  fine.emit("ready-to-show");
+  assert.equal(await settlesAtOnce(t, cWait), true, "painted");
+  // The window cannot be made, or none is.
+  for (const createWindow of [
+    () => {
+      throw new Error("no display");
+    },
+    () => null,
+  ]) {
+    const d = splashController({ createWindow, logError: () => {} });
+    d.show();
+    assert.equal(await settlesAtOnce(t, d.whenShown()), true, "never made");
+  }
+  // Still waiting while the signal is out and nothing has happened.
+  const pending = fakeSplash();
+  pending.webContents.executeJavaScript = () => new Promise(() => {});
+  const e = splashController({ createWindow: () => pending, logError: () => {} });
+  e.show();
+  const eWait = e.whenShown();
+  pending.emit("ready-to-show");
+  assert.equal(await settlesAtOnce(t, eWait), false, "still out");
+});
