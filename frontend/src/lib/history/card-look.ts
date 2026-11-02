@@ -13,7 +13,9 @@
 //
 // The first look a card settles on is pinned for as long as the card
 // offers the same show and episode, so a thumbnail that lands after the
-// cap does not swap it. The look the card settles on without the cap
+// cap does not swap it. The one exception is a still AniList's pacing
+// held back: details that settled without one take it when it lands
+// (./look-book). The look the card settles on without the cap
 // (its episode details, or no match) is remembered for the session, so
 // the next visit to Home draws the card in its final look at once.
 

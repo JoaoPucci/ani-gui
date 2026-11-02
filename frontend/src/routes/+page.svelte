@@ -1070,24 +1070,30 @@
      number to surface. -->
 {#snippet cardFace(card: CardLookState, initials: string)}
 	{@const src = card.look ? visibleImage(card.look.image, failedImages) : null}
+	<!-- A still that landed over the placeholder keeps the initials under
+	     it, not the skeleton, until it is shown. -->
+	{@const overInitials = src !== null && card.landedOver !== null && !card.landedOver.image}
 	<span
 		class="resume-poster"
 		class:look-instant={card.instant}
 		data-look={card.look === null ? 'pending' : src ? 'image' : 'placeholder'}
+		data-under={overInitials ? 'placeholder' : undefined}
 	>
-		{#if card.look === null || src}
+		{#if overInitials}
+			<span class="resume-poster-placeholder" aria-hidden="true">{initials}</span>
+		{:else if card.look === null || src}
 			<span class="look-skeleton" aria-hidden="true"></span>
 		{/if}
 		{#if src}
-			{#key src}
-				<img
-					{src}
-					alt=""
-					loading="lazy"
-					decoding="async"
-					use:revealWhenDecoded={{ onError: () => markImageFailed(src) }}
-				/>
-			{/key}
+			<!-- One element across sources: an image on show stays up while
+			     the next one (a still that landed, a fallback) loads. -->
+			<img
+				{src}
+				alt=""
+				loading="lazy"
+				decoding="async"
+				use:revealWhenDecoded={{ onError: () => markImageFailed(src) }}
+			/>
 		{:else if card.look}
 			<span class="resume-poster-placeholder" aria-hidden="true">{initials}</span>
 		{/if}
@@ -2274,13 +2280,15 @@
 	.resume-poster[data-look='pending']::after {
 		opacity: 0;
 	}
-	/* The scrim and the EP number arrive with the artwork they sit on. */
-	.resume-poster[data-look='image']:not(:has(:global(img[data-revealed])))::after,
-	.resume-poster[data-look='image']:not(:has(:global(img[data-revealed]))) .resume-ep-tag {
+	/* The scrim and the EP number arrive with the artwork they sit on;
+	   over the initials a landing still finds them there already. */
+	.resume-poster[data-look='image']:not([data-under]):not(:has(:global(img[data-revealed])))::after,
+	.resume-poster[data-look='image']:not([data-under]):not(:has(:global(img[data-revealed])))
+		.resume-ep-tag {
 		opacity: 0;
 	}
 	/* The scrim lands at the artwork's pace, not the hover's. */
-	.resume-poster:has(:global(img[data-revealed='fade']))::after,
+	.resume-poster:not([data-under]):has(:global(img[data-revealed='fade']))::after,
 	.resume-poster[data-look='placeholder']:not(.look-instant)::after {
 		animation: look-in var(--dur-slow) var(--ease-out-soft);
 	}

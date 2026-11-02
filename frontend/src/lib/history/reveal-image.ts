@@ -28,11 +28,12 @@ export interface RevealOptions {
  */
 export function revealWhenDecoded(img: RevealTarget, options: RevealOptions = {}) {
 	let live = true;
+	let current = options;
 	const reveal = (how: 'instant' | 'fade') => {
 		if (live && !img.dataset.revealed) img.dataset.revealed = how;
 	};
 	const fail = () => {
-		if (live) options.onError?.();
+		if (live) current.onError?.();
 	};
 	const onLoad = () => {
 		// A decode can reject for reasons that are not a broken image
@@ -52,8 +53,12 @@ export function revealWhenDecoded(img: RevealTarget, options: RevealOptions = {}
 	img.addEventListener('error', fail);
 	if (img.complete && img.naturalWidth > 0) reveal('instant');
 	return {
-		update(next: RevealOptions) {
-			void next;
+		// The card gives the element another source (a still that
+		// landed, a fallback after a failure) rather than a new element,
+		// so an image on show stays up while the next one loads; a
+		// failure from here on is the new source's.
+		update(next: RevealOptions = {}) {
+			current = next;
 		},
 		destroy() {
 			live = false;
