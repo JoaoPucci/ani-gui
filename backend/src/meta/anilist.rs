@@ -148,6 +148,38 @@ pub(crate) async fn post_graphql_public(
     url: &str,
     body: &serde_json::Value,
 ) -> Result<bytes::Bytes> {
+    // The same query sent again before the first answered — two views
+    // filling the same show — waits for that answer instead of spending
+    // a request of its own. Keyed by class too: a background fill the
+    // gate holds back must not hand its refusal to a caller the user is
+    // waiting on.
+    let key = request_key(crate::meta::anilist_gate::current_class(), url, body);
+    PUBLIC_IN_FLIGHT
+        .run(key, || post_graphql_public_once(client, url, body))
+        .await
+}
+
+/// The public queries in flight, shared by identical requests.
+static PUBLIC_IN_FLIGHT: std::sync::LazyLock<
+    crate::meta::inflight::Inflight<Result<bytes::Bytes>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// What makes two public requests the same request: the class they
+/// count as, the endpoint, and the body.
+pub(crate) fn request_key(
+    class: crate::meta::anilist_gate::Class,
+    url: &str,
+    body: &serde_json::Value,
+) -> String {
+    format!("{class:?}\u{0}{url}\u{0}{body}")
+}
+
+/// One public request, sent through the gate.
+async fn post_graphql_public_once(
+    client: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<bytes::Bytes> {
     let send = || {
         client
             .post(url)
@@ -360,3 +392,7 @@ fn overflowing(ids: &[u32]) -> AniError {
 #[cfg(test)]
 #[path = "anilist_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_shared_test.rs"]
+mod shared_tests;
