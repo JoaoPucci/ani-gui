@@ -44,8 +44,11 @@ export class RefillWaiter {
 	/**
 	 * Resolves `true` once one of `tickets` landed, `false` once all
 	 * of them ended unlanded, the waiter gave up, or `signal` aborted.
+	 * A page that closed before its read came back lets its tickets go
+	 * at once.
 	 */
 	landed(tickets: number[], signal?: AbortSignal): Promise<boolean> {
+		if (signal?.aborted) this.letGo(tickets);
 		if (tickets.length === 0 || signal?.aborted) return Promise.resolve(false);
 		return new Promise<boolean>((resolve) => {
 			const listener: Listener = {

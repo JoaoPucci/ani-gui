@@ -241,11 +241,24 @@ async function getJsonRefilled<T>(
 			// Every read of this page waiting on the same refill fetches
 			// it once between them.
 			refetch: () =>
-				shareRefetch(`${refetchPath}#${served.refills.join(',')}`, () => getJson<T>(refetchPath)),
+				shareRefetch(`${refetchPath}#${served.refills.join(',')}`, () =>
+					getJsonLettingGo<T>(refetchPath)
+				),
 			apply,
 			signal: opts.signal
 		});
+	} else {
+		refillWaiter.letGo(served.refills);
 	}
+	return served.data;
+}
+
+/** GET `path` for a read that waits on no refill: the tickets it is
+ *  served with are let go, so their retries rank after every fill a
+ *  page on screen waits for. */
+async function getJsonLettingGo<T>(path: string): Promise<T> {
+	const served = await getJsonServed<T>(path);
+	refillWaiter.letGo(served.refills);
 	return served.data;
 }
 
