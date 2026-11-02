@@ -64,9 +64,9 @@ impl Registry {
     /// The ticket a fill held back under `key` waits on, and whether it
     /// is new — a key already waiting keeps its ticket, so one item held
     /// twice is retried once. `None` when [`MAX_PENDING`] fills already
-    /// wait. The ticket counts as on screen from `now`, a new one or one
-    /// served again after a release: the page it was served to is about
-    /// to wait on it.
+    /// wait. The ticket counts as on screen for [`ON_SCREEN_GRACE`] from
+    /// `now` ([`Registry::served`]), a new one or one served again after
+    /// a release; a page that waits on it keeps it there.
     pub(crate) fn hold(&mut self, key: &str, now: Instant) -> Option<(u64, bool)> {
         if let Some(&ticket) = self.pending.get(key) {
             self.served(ticket, now);
@@ -87,8 +87,9 @@ impl Registry {
         Some((self.last, true))
     }
 
-    /// `ticket` was served to a page, which is about to wait on it: it
-    /// counts as on screen from `now`, after a release too.
+    /// `ticket` was served to a page's read: it counts as on screen for
+    /// [`ON_SCREEN_GRACE`] from `now`, after a release too, as a new
+    /// ticket does; a page that waits on it keeps it there.
     pub(crate) fn served(&mut self, ticket: u64, now: Instant) {
         if let Some(w) = self.watched.get_mut(&ticket) {
             w.seen = Some(now);
@@ -122,9 +123,10 @@ impl Registry {
     /// dropped but the backend may hold a while longer — until a page
     /// waits on it again. Every wait open on it counts as let go: the
     /// renderer has one wait for all its pages, releases only tickets no
-    /// page of it still shows, and issues the release before any later
-    /// wait on them. A second renderer waiting on its own would break
-    /// that: its release would let go of the other's waits too.
+    /// page of it still waits on, and sends the release before any later
+    /// wait on them. A release that arrives after such a wait — or one
+    /// from a second renderer waiting on its own — lets go of that wait
+    /// too, until its next wait (at most the wait route's 20 s limit).
     pub(crate) fn release(&mut self, ticket: u64) {
         if let Some(w) = self.watched.get_mut(&ticket) {
             w.pages = 0;

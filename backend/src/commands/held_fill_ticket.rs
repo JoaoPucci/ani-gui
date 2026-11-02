@@ -51,8 +51,9 @@ pub(crate) fn release(tickets: &[u64]) {
 }
 
 /// The ticket a fill pending under `key` waits on, if one does. When a
-/// page's read is being served ([`super::collect`]), the page is about
-/// to wait on it: it counts as on screen again, after a release too.
+/// page's read is being served ([`super::collect`]), it is served that
+/// ticket, which counts as on screen for the grace again, after a
+/// release too ([`super::Registry::served`]).
 pub(super) fn serve_pending(key: &str) -> Option<u64> {
     let mut registry = registry();
     let ticket = registry.pending(key)?;
