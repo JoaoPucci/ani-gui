@@ -18,17 +18,11 @@ import { QualityGovernor } from './quality-governor';
 import { parseQualitySetting } from './quality-ladder';
 import type { QualityView } from './quality-menu';
 import { qualityPin, rememberPick } from './quality-pin';
-import {
-	consoleQualityLog,
-	healthyMove,
-	pageNow,
-	reactTo,
-	readError,
-	readInitSegment
-} from './quality-report';
-import { pickMove } from './quality-choice';
+import { consoleQualityLog, healthyMove, pageNow, reactTo, readError } from './quality-report';
+import { choosable, pickMove } from './quality-choice';
 import { afterError, engineMover, levelsUpdated, startEngine, whenSettled } from './quality-sink';
 import { RemapWindow } from './quality-remap';
+import { learnEncoded, learnPicture } from './quality-learn';
 import { QualityTrack } from './quality-track';
 
 export { qualityPin } from './quality-pin';
@@ -50,6 +44,7 @@ export interface QualityVideo extends EventTarget {
 	readonly buffered: BufferedRanges;
 	readonly currentTime: number;
 	readonly seeking: boolean;
+	readonly videoHeight: number;
 }
 
 /** The quality setting's value, unknown when the settings failed. */
@@ -154,23 +149,26 @@ export function armQuality(input: {
 		publish(governor);
 	});
 
-	engine.on(events.FRAG_PARSING_INIT_SEGMENT, (_event, data) => {
-		const g = governor;
-		if (!g) return;
-		const news = track.noteEncoded(readInitSegment(data));
-		if (!news) return;
-		if (news.listed > 0 && news.listed !== news.height) {
-			log(`level ${news.level} encodes ${news.height}p; its playlist says ${news.listed}p`);
-		}
-		publish(g);
-	});
+	// A level's height learned after its playlist reaches the menu.
+	const learned = (news: boolean): void => {
+		if (governor && news) publish(governor);
+	};
+
+	engine.on(events.FRAG_PARSING_INIT_SEGMENT, (_event, data) =>
+		learned(learnEncoded(track, data, log))
+	);
 
 	const onSeeking = () => governor?.seeking(now());
 	video.addEventListener('seeking', onSeeking);
+	// A lone level's height, which hls.js reads from no fMP4 segment:
+	// the picture's, once the element has loaded its metadata.
+	const onPicture = () => learned(learnPicture(track, video.videoHeight));
+	video.addEventListener('loadedmetadata', onPicture);
+	video.addEventListener('resize', onPicture);
 
 	return {
 		pick(choice) {
-			const g = governor;
+			const g = choosable(governor, track);
 			if (!g) return;
 			// A choice already in force still switches at once when the
 			// level playing is another — segments from before a climb.
@@ -182,6 +180,8 @@ export function armQuality(input: {
 		},
 		dispose() {
 			video.removeEventListener('seeking', onSeeking);
+			video.removeEventListener('loadedmetadata', onPicture);
+			video.removeEventListener('resize', onPicture);
 			retired = true;
 			removal.close();
 			governor = null;

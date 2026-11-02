@@ -8,7 +8,8 @@
 // segment, a Quality row in the player's menu naming what plays, the
 // levels by height under it, and a choice that reaches the engine at
 // once and is what the row names afterwards. A stream of one level
-// has nothing to choose and gets no row.
+// shows its row too, naming that level, with the level as its one
+// entry and no Auto.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -97,7 +98,7 @@ vi.mock('hls.js', () => {
 import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { playerVideoInSlot } from './player-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	config: Record<string, unknown>;
@@ -301,14 +302,72 @@ describe('play route — the quality the setting names, and the menu that change
 		await until(() => answered, 'the held settings to be answered');
 	});
 
-	it('offers no quality row for a stream of one level', async () => {
+	it('shows the one level of a single-level stream, checked, with no Auto', async () => {
 		const hls = await mountHls();
-		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[1]] });
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[2]] });
 		await until(() => hls.starts === 1, 'the engine to start');
+		// One level: the engine is left alone.
 		expect(hls.loads).toEqual([]);
+		await tick();
+
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		expect(qualityRow()?.textContent).toContain(label(1080));
+		expect(qualityRow()?.textContent).not.toContain(m.play_quality_auto());
+
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the one level'
+		);
+		const radios = menuItems().filter((el) => el.getAttribute('role') === 'menuitemradio');
+		expect(radios.map((el) => el.textContent?.replace('✓', '').trim())).toEqual([label(1080)]);
+		expect(radios.map((el) => el.getAttribute('aria-checked'))).toEqual(['true']);
+
+		radios[0].click();
+		await until(() => target.querySelector('#pc-overflow-menu') === null, 'the menu to close');
+		expect(hls.nexts).toEqual([]);
+		expect(hls.loads).toEqual([]);
+	});
+
+	it('names a lone level its playlist lists no height for once a segment of it is parsed', async () => {
+		// A height setting is served as one media playlist, which names
+		// neither a height nor a bandwidth: the row waits for the height
+		// the first parsed segment is encoded at.
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [{ height: 0, width: 0, bitrate: 0 }] });
+		await until(() => hls.starts === 1, 'the engine to start');
 		await tick();
 		menuButton().click();
 		await until(() => menuItems().length > 0, 'the menu');
 		expect(qualityRow()).toBeUndefined();
+		menuButton().click();
+
+		hls.emit(EVENTS.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 0 },
+			tracks: { video: { metadata: { width: 1920, height: 1080 } } }
+		});
+		await tick();
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		expect(qualityRow()?.textContent).toContain(label(1080));
+	});
+
+	it("names a lone fMP4 level from the picture's height, which its segments do not carry", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [{ height: 0, width: 0, bitrate: 0 }] });
+		await until(() => hls.starts === 1, 'the engine to start');
+		// hls.js reports an fMP4 init segment with no picture size.
+		hls.emit(EVENTS.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 0 },
+			tracks: { video: { container: 'video/mp4' } }
+		});
+		const video = playerVideo();
+		Object.defineProperty(video, 'videoHeight', { configurable: true, value: 1080 });
+		video.dispatchEvent(new Event('loadedmetadata'));
+		await tick();
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		expect(qualityRow()?.textContent).toContain(label(1080));
 	});
 });
