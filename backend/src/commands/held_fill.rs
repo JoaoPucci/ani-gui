@@ -26,9 +26,11 @@
 //!   screen, and do not refill the window the pause just emptied.
 //! - **On screen first.** A fill counts as on screen while a page waits
 //!   on its ticket ([`wait_any`]). A page that closes lets its tickets go
-//!   ([`release`]); their retries still go — one answer per show is
-//!   cached for a day, so it serves the next view — but only when no
-//!   fill on screen waits for a retry.
+//!   ([`release`]), at once — a wait still open on them, which the
+//!   renderer dropped but this end may hold until [`wait_any`]'s limit,
+//!   no longer counts — and a later wait puts them back. Their retries
+//!   still go — one answer per show is cached for a day, so it serves
+//!   the next view — but only when no fill on screen waits for a retry.
 //! - **Bounded.** At most [`registry::MAX_PENDING`] fills wait at once;
 //!   one held back past that gets no retry, as before this existed. Only
 //!   a read served to a page is retried: one no page asked for is asked
