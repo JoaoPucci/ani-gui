@@ -11,8 +11,13 @@ const path = require("node:path");
  *  the app's window (electron/e2e/launch.ts). */
 const SPLASH_MARK = "aniGuiSplash";
 
-/** What the main process runs in the splash once its window shows. */
-const SHOWN_SIGNAL = "document.body.classList.add('shown')";
+/** What the main process runs in the splash once its window shows:
+ *  start the motion, then answer after two animation frames — once a
+ *  frame with the splash in it has been drawn, which the window's
+ *  "show" event (emitted when the window is mapped) does not mean. */
+const SHOWN_SIGNAL =
+  "document.body.classList.add('shown');" +
+  " new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))";
 
 /** The page the splash loads. */
 const SPLASH_PAGE = path.join(__dirname, "..", "splash", "index.html");
@@ -88,11 +93,12 @@ function splashController({ createWindow, logError }) {
       // screen (splash.js falls back to a timer), so the opening plays
       // once the window manager has mapped the window.
       splash.once("show", () => {
-        state.shown = true;
-        markUp();
-        Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL)).catch((err) =>
-          logError("[main] could not tell the splash it is shown:", err),
-        );
+        Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL))
+          .then(() => {
+            state.shown = true;
+          })
+          .catch((err) => logError("[main] could not tell the splash it is shown:", err))
+          .finally(markUp);
       });
       splash.once("ready-to-show", () => {
         if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();

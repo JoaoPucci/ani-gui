@@ -162,7 +162,11 @@ async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async
   // `beforeShow` is what must be on screen first — the splash, which a
   // fast start would otherwise close before it had painted.
   const shown = awaitFirstShow(win, { timeoutMs })
-    .then(() => beforeShow())
+    .then(() =>
+      Promise.resolve()
+        .then(beforeShow)
+        .catch((err) => logError("[main] waiting to show the window:", err)),
+    )
     .then(() => {
       if (!failed) win.show();
     });
