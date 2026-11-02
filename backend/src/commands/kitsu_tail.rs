@@ -38,6 +38,20 @@ impl<'a> KitsuTail<'a> {
         })
     }
 
+    /// The reading kept for the entry, as `remembered` serves it, with
+    /// a cache that cannot be read an error rather than no reading.
+    ///
+    /// # Errors
+    /// The cache's read failure.
+    pub(crate) fn kept(&self) -> crate::error::Result<Option<Remembered>> {
+        let Some(body) =
+            crate::cache::meta_cache_get(&self.state.cache_pool, &kept_key(self.kitsu_id))?
+        else {
+            return Ok(None);
+        };
+        Ok(serde_json::from_str(&body).ok())
+    }
+
     /// The same source asking a mock AniList at `base`.
     #[cfg(test)]
     #[must_use]
@@ -98,9 +112,7 @@ impl TailSource for KitsuTail<'_> {
     }
 
     fn remembered(&self) -> Option<Remembered> {
-        let body = crate::cache::meta_cache_get(&self.state.cache_pool, &kept_key(self.kitsu_id))
-            .ok()??;
-        serde_json::from_str(&body).ok()
+        self.kept().ok().flatten()
     }
 
     fn remember(&self, reading: Option<&Remembered>) {

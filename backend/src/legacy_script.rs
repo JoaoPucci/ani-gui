@@ -16,11 +16,14 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-/// What one sweep removed. Empty on every launch after the first.
+/// What the boot sweeps removed. Empty on every launch after the first.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SweepReport {
     /// Paths actually deleted, in the order they were removed.
     pub removed: Vec<PathBuf>,
+    /// What the sweep over a retired provider's rows changed
+    /// ([`crate::retired_provider`]), which runs once the state exists.
+    pub retired_provider: crate::retired_provider::RetiredSweepReport,
 }
 
 /// Delete whatever the retired script machinery left in `cache_dir`
@@ -46,7 +49,10 @@ pub fn sweep_legacy_files(cache_dir: &Path, state_dir: &Path) -> SweepReport {
         }
     }
     removed.extend(sweep_staging_copies(cache_dir));
-    SweepReport { removed }
+    SweepReport {
+        removed,
+        ..SweepReport::default()
+    }
 }
 
 /// Remove the per-pid staging copies an interrupted update left behind.

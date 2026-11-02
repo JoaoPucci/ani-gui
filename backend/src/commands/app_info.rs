@@ -21,6 +21,10 @@ pub struct AppInfo {
     /// the diagnostics page reads nothing else that could report a
     /// file the app removed on the user's behalf.
     pub removed_legacy_paths: Vec<String>,
+    /// What the boot sweep over a retired provider's rows changed (see
+    /// `crate::retired_provider`): empty on every launch that found
+    /// nothing such a provider left.
+    pub retired_provider_sweep: crate::retired_provider::RetiredSweepReport,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -39,6 +43,7 @@ pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
             .iter()
             .map(|p| p.display().to_string())
             .collect(),
+        retired_provider_sweep: state.legacy_sweep.retired_provider.clone(),
     })
 }
 
@@ -98,6 +103,7 @@ mod tests {
         let mut state = fake_state();
         state.legacy_sweep = crate::legacy_script::SweepReport {
             removed: vec![PathBuf::from("/home/u/.cache/ani-gui/ani-cli")],
+            ..crate::legacy_script::SweepReport::default()
         };
         let info = app_info(&state).expect("info");
         assert_eq!(
@@ -113,6 +119,25 @@ mod tests {
         // the page renders nothing, rather than absent so it breaks.
         let info = app_info(&fake_state()).expect("info");
         assert!(info.removed_legacy_paths.is_empty());
+    }
+
+    #[test]
+    fn app_info_reports_what_the_retired_provider_sweep_changed() {
+        // The sweep removes history rows a newer provider's row
+        // supersedes and rewrites the rest; the page says so.
+        let mut state = fake_state();
+        let report = crate::retired_provider::RetiredSweepReport {
+            superseded: vec!["Naruto Shippuden".into()],
+            renumbered: vec!["The Separation".into()],
+            numbering_rows: 2,
+            cache_rows: 51,
+        };
+        state.legacy_sweep.retired_provider = report.clone();
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(
+            json["retired_provider_sweep"],
+            serde_json::to_value(&report).expect("report")
+        );
     }
 
     #[test]
