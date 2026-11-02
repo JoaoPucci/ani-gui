@@ -55,8 +55,8 @@ export function revealWhenDecoded(img: RevealTarget, options: RevealOptions = {}
 	return {
 		// The card gives the element another source (a still that
 		// landed, a fallback after a failure) rather than a new element,
-		// so an image on show stays up while the next one loads; a
-		// failure from here on is the new source's.
+		// so an image on show stays up until the browser has the next
+		// one; a failure from here on is the new source's.
 		update(next: RevealOptions = {}) {
 			current = next;
 		},

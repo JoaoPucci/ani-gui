@@ -1070,12 +1070,18 @@
      number to surface. -->
 {#snippet cardFace(card: CardLookState, initials: string)}
 	{@const src = card.look ? visibleImage(card.look.image, failedImages) : null}
-	<!-- A still that landed over the placeholder keeps the initials under
-	     it, not the skeleton, until it is shown. -->
-	{@const overInitials = src !== null && card.landedOver !== null && !card.landedOver.image}
+	<!-- A still that landed where the card showed its initials (the
+	     placeholder, or a poster that failed to load) keeps them under it,
+	     not the skeleton, until it is shown. -->
+	{@const overInitials =
+		src !== null &&
+		card.landedOver !== null &&
+		visibleImage(card.landedOver.image, failedImages) === null}
+	<!-- After a landing the card has been on show all along: falling back
+	     to its initials draws them as they were, without the first fades. -->
 	<span
 		class="resume-poster"
-		class:look-instant={card.instant}
+		class:look-instant={card.instant || card.landedOver !== null}
 		data-look={card.look === null ? 'pending' : src ? 'image' : 'placeholder'}
 		data-under={overInitials ? 'placeholder' : undefined}
 	>
@@ -1085,8 +1091,9 @@
 			<span class="look-skeleton" aria-hidden="true"></span>
 		{/if}
 		{#if src}
-			<!-- One element across sources: an image on show stays up while
-			     the next one (a still that landed, a fallback) loads. -->
+			<!-- One element across sources (a still that landed, a fallback):
+			     an image on show stays up until the browser has the next one,
+			     and the card never drops back to a skeleton in between. -->
 			<img
 				{src}
 				alt=""
