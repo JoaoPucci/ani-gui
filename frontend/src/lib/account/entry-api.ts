@@ -6,6 +6,7 @@
  */
 
 import { AccountApiError, apiBase, deleteEndpoint, postJson, readErrorBody } from './api';
+import { internalSecretHeader } from './backend-origin';
 import type { EntryView, ListEntry, Provider } from './types';
 
 async function getJson<T>(path: string, bearer: string): Promise<T> {
@@ -58,5 +59,23 @@ export function removeEntry(provider: Provider, bearer: string, kitsuId: string)
 	return deleteEndpoint(
 		`/api/account/entry/${provider}?kitsu_id=${encodeURIComponent(kitsuId)}`,
 		bearer
+	);
+}
+
+/**
+ * Clear a show's cached row from `userId`'s list for `provider`, asking
+ * the tracker nothing — for a removal whose live read found the show
+ * already absent there, so only the local copy is stale. Carries no
+ * bearer; the renderer-only internal secret authenticates it.
+ */
+export function forgetCachedEntry(
+	provider: Provider,
+	kitsuId: string,
+	userId: string
+): Promise<void> {
+	return deleteEndpoint(
+		`/api/account/entry/${provider}/cached?kitsu_id=${encodeURIComponent(kitsuId)}&user_id=${encodeURIComponent(userId)}`,
+		undefined,
+		internalSecretHeader()
 	);
 }
