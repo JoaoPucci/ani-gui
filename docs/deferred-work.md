@@ -92,6 +92,20 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
+- **A later season Kitsu titles only with a bare number is refused
+  by the cross-cour guard.** "That Time I Got Reincarnated as a Slime
+  Season 2" is Kitsu's `tensei-shitara-slime-datta-ken-2`, titled
+  "That Time I Got Reincarnated as a Slime 2" and "Tensei Shitara Slime
+  Datta Ken 2nd Season Part 1" — no title names it as the provider
+  does, and the guard reads neither a slug's bare trailing number nor
+  a title's as a season, so a play from its page records no id on its
+  history row and stores no mapping. It waited because both obvious
+  readings accept wrong pairings: read as a season, the slug's bare
+  trailing number accepts the "Slime 2nd Season Part 2" listing
+  against this Part 1 entry, and a title's bare trailing number
+  collides with names that end in one (Mob Psycho 100). The 2nd-Season-Part-1 alias suggests reading a season and a
+  part together rather than one trailing cour.
+
 - **Decide the resolution cache's final shape after the opt-in
   trial.** Caching play resolutions is a setting now
   (`cache_resolutions`), default off: every play resolves fresh, the
