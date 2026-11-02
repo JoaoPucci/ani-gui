@@ -2,8 +2,9 @@
 
 // The splash: the window on screen while the backend starts and the
 // launch's flags are decided, before the app's own window has painted.
-// It sits above the app's window until that window shows, then
-// closes (see bootApp in lib/startup.cjs).
+// It sits above the app's window where the platform keeps a window on
+// top (X11, Windows; native Wayland ignores that), and closes once the
+// app's window shows (see bootApp in lib/startup.cjs).
 
 const path = require("node:path");
 
@@ -12,9 +13,11 @@ const path = require("node:path");
 const SPLASH_MARK = "aniGuiSplash";
 
 /** What the main process runs in the splash once its window shows:
- *  start the motion, then answer after two animation frames — once a
- *  frame with the splash in it has been drawn, which the window's
- *  "show" event (emitted when the window is mapped) does not mean. */
+ *  start the motion, then answer after two animation frames — once the
+ *  renderer has produced a frame with the splash in it, which the
+ *  window's "show" event (emitted when the window is mapped) does not
+ *  mean. A hidden or covered splash may never answer; the wait on it
+ *  is bounded (SPLASH_SHOW_WAIT_MS). */
 const SHOWN_SIGNAL =
   "document.body.classList.add('shown');" +
   " new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))";
@@ -104,6 +107,9 @@ function splashController({ createWindow, logError }) {
         if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
       });
       splash.on("closed", () => {
+        // Load-bearing: a splash destroyed while its shown signal is
+        // out never answers it (the call neither resolves nor rejects),
+        // so this is what releases a wait on a closed splash.
         markUp();
         if (win === splash) win = null;
       });

@@ -342,12 +342,16 @@ three-second limit below.
    session. The preload marks that case with `window.aniGui.flagsOrigin`
    set to null, so a renderer consumer that must agree with the backend
    can ask `GET /api/flags` itself.
-4. The splash is put away only once it has been drawn on screen: the
-   boot's window waits up to a second for the splash to answer that it
-   has painted before its own show completes the boot, so even a fast
-   start draws the splash rather than closing it unseen. (The app's
-   window itself is mapped earlier, blank and frameless, beneath the
-   splash, which stays on top.) The splash then closes.
+4. The splash is put away only once it has rendered a frame: the boot's
+   window waits up to a second for the splash to answer that it has
+   painted before its own show completes the boot, so even a fast start
+   renders the splash rather than closing it unseen. The app's window
+   itself is mapped earlier, blank and frameless; on X11 and Windows
+   the splash stays above it, but on native Wayland, which ignores
+   always-on-top, the app's window may cover the splash, and the wait
+   then lasts its full second (see `docs/deferred-work.md`). A splash
+   that is minimized is not waited on past that second either. The
+   splash then closes.
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate
 a frame at a time, beside a reel title and a frame counter

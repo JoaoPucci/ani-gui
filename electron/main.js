@@ -523,10 +523,12 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
     // The boot's window waits, up to a second, for the splash to have
-    // painted before its show completes the boot and the splash is put
-    // away (lib/splash.cjs). The window itself is mapped earlier, by
-    // maximize() above, beneath the always-on-top splash. A later
-    // window finds no splash and waits for nothing.
+    // rendered a frame before its show completes the boot and the
+    // splash is put away (lib/splash.cjs). The window itself is mapped
+    // earlier, by maximize() above: beneath the always-on-top splash
+    // on X11 and Windows, possibly above it on native Wayland, which
+    // ignores always-on-top. A later window finds no splash and waits
+    // for nothing.
     beforeShow: () => splash.whenShown(),
   };
   if (IS_DEV) {

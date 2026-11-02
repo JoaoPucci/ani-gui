@@ -384,6 +384,18 @@ starting it, and delete it when you find it done.
 
 ## Interface
 
+- **On native Wayland the launch splash can sit beneath the app's
+  window, and its hold then waits for nothing.** The splash
+  (`electron/splash/`, `electron/lib/splash.cjs`) is always on top on
+  X11 and Windows, but Wayland compositors ignore always-on-top, and
+  the app's window is mapped early by its pre-show `maximize()` (the
+  pattern that makes it open maximized reliably). On a fast start the
+  boot then waits up to its one-second bound for a covered splash to
+  answer that it has painted, which a covered surface may never do.
+  Not mapping the app's window until the splash has answered, or
+  skipping the hold on Wayland, would end this; either changes how the
+  app's window opens, which is the maintainer's call.
+
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**
   On GNOME 50.1 with Electron 33, the accessibility preference was
   `reduce` while the older global animation switch remained enabled;
