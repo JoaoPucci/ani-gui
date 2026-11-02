@@ -610,3 +610,60 @@ async fn the_enrichment_resolve_stores_nothing_for_a_show_with_no_history_row() 
         "nothing is mapped for a show not in history"
     );
 }
+
+/// A search body whose entries carry their own titles, as Kitsu serves
+/// them: `(id, slug, canonical, en_us)`.
+fn search_body_titled(entries: &[(&str, &str, &str, &str)]) -> Vec<u8> {
+    let fixture: serde_json::Value = serde_json::from_slice(SEARCH_FIXTURE).expect("fixture");
+    let template = fixture["data"][0].clone();
+    let data: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(id, slug, canonical, en_us)| {
+            let mut entry = template.clone();
+            entry["id"] = serde_json::Value::from(*id);
+            entry["attributes"]["slug"] = serde_json::Value::from(*slug);
+            entry["attributes"]["canonicalTitle"] = serde_json::Value::from(*canonical);
+            entry["attributes"]["titles"] =
+                serde_json::json!({ "en_jp": canonical, "en_us": en_us });
+            entry["attributes"]["abbreviatedTitles"] = serde_json::json!([]);
+            entry
+        })
+        .collect();
+    serde_json::to_vec(&serde_json::json!({ "data": data })).expect("json")
+}
+
+/// A Continue row for Gintama Season 2 with no mapping resolves by its
+/// slug's words. Kitsu's entry for that season is Gintama', slug
+/// `gintama-2` — no cour suffix, so the slug alone reads as the first
+/// season — titled "Gintama Season 2", which is what the words say. It
+/// is answered and persisted; the first season, ranked first, is
+/// passed over.
+#[tokio::test]
+async fn the_enrichment_resolve_takes_a_season_kitsu_titles_as_the_slug_words_do() {
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "gintama season 2",
+        search_body_titled(&[
+            ("818", "gintama", "Gintama", "Gintama"),
+            ("5971", "gintama-2", "Gintama'", "Gintama Season 2"),
+        ]),
+    )
+    .await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(
+        state_with_kitsu_at(&mock.uri()),
+        td.path(),
+        "hianime:gintama-season-2-1153",
+    );
+    let got = resolve_allmanga_show_id(&state, "hianime:gintama-season-2-1153", true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got.expect("the season resolves").id, "5971");
+    assert_eq!(
+        allmanga_kitsu_get(&state, "hianime:gintama-season-2-1153")
+            .expect("cache read")
+            .as_deref(),
+        Some("5971")
+    );
+}

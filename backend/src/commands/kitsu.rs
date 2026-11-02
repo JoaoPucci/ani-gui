@@ -691,7 +691,10 @@ async fn drop_mapping_the_title_disagrees_with(
 /// `-part-N` suffix. So a slug that's present but has no suffix is
 /// POSITIVE evidence (cour 1), not missing evidence — that's the
 /// signal that catches the original Stone Ocean Part 2 → Part 1
-/// poison. Only an absent `slug` field counts as no evidence.
+/// poison. Only an absent `slug` field counts as no evidence. A slug
+/// can mark a later season without a suffix (`gintama-2`), so an
+/// entry whose own titles include `show_title` agrees whatever its
+/// slug says ([`crate::commands::cour_pairing::entry_disagrees`]).
 pub(crate) async fn cour_pairing_disagrees(
     state: &AppState,
     show_title: &str,
@@ -706,7 +709,7 @@ pub(crate) async fn cour_pairing_disagrees(
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    slug_cour_disagrees(provider_cour, &detail)
+    crate::commands::cour_pairing::entry_disagrees(show_title, provider_cour, &detail)
 }
 
 /// [`cour_pairing_disagrees`] answered from the cache alone: `None`
@@ -722,18 +725,11 @@ pub(crate) fn cached_cour_pairing_verdict(
     };
     let body = meta_cache_get(&state.cache_pool, &anime_detail_key(kitsu_id)).ok()??;
     let detail: KitsuAnimeRef = serde_json::from_str(&body).ok()?;
-    Some(slug_cour_disagrees(provider_cour, &detail))
-}
-
-/// Whether the detail's slug names another cour than `provider_cour`.
-/// Kitsu's slug convention leaves cour 1 unmarked, so a slug without a
-/// suffix is cour 1; a detail without a slug is no evidence.
-fn slug_cour_disagrees(provider_cour: u32, detail: &KitsuAnimeRef) -> bool {
-    detail
-        .slug
-        .as_deref()
-        .map(|slug| crate::commands::cour::cour_from_slug(slug).unwrap_or(1))
-        .is_some_and(|kitsu_cour| kitsu_cour != provider_cour)
+    Some(crate::commands::cour_pairing::entry_disagrees(
+        show_title,
+        provider_cour,
+        &detail,
+    ))
 }
 
 /// Whether a Kitsu `subtype` is a music video. A provider that indexes
@@ -841,8 +837,9 @@ pub async fn resolve_allmanga_show_id(
 /// Kitsu answers words it does not carry with its closest entry, and
 /// "there is also a hole in the student organization" brings back Here
 /// is Greenwood. So is a hit whose slug disagrees with
-/// `source_cour`, the cour the source carries
-/// ([`cour::hit_cour_disagrees`]) — read off the stored slug by the
+/// `source_cour`, the cour the source carries, and whose titles do
+/// not include the term ([`crate::commands::cour_pairing::hit_agrees`])
+/// — the cour read off the stored slug by the
 /// caller, since a slug's cour forms include a bare number the
 /// term's words would not carry: Kitsu ranking the parent cour first
 /// is the poison the mapping guard refuses on the play path, so the
@@ -862,7 +859,7 @@ async fn first_kitsu_match(
         };
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
-                && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
+                && crate::commands::cour_pairing::hit_agrees(source_cour, &term, h)
                 && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
             // The guess answers this request; whether it is stored as
