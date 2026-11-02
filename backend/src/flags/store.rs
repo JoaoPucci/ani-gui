@@ -106,11 +106,10 @@ impl Source {
     /// The shipped file, with its timeout, cached at `cache_path`.
     #[must_use]
     pub fn shipped(cache_path: Option<PathBuf>) -> Self {
-        let _ = cache_path;
         Self {
-            url: String::new(),
-            cache_path: None,
-            timeout: Duration::ZERO,
+            url: FLAGS_URL.to_string(),
+            cache_path,
+            timeout: FETCH_TIMEOUT,
         }
     }
 }
@@ -118,12 +117,11 @@ impl Source {
 /// Fill `store` for this launch: the fresh cache first, then the
 /// fetched file, then settle. `now` is seconds since the Unix epoch.
 pub async fn refresh(store: &FlagStore, client: &reqwest::Client, source: &Source, now: u64) {
-    let Some(cache_path) = &source.cache_path else {
-        return;
-    };
-    let cached = cache::read(cache_path)
-        .await
-        .filter(|e| cache::is_fresh(e.fetched_at, now, FRESH_FOR));
+    let cached = match &source.cache_path {
+        Some(path) => cache::read(path).await,
+        None => None,
+    }
+    .filter(|e| cache::is_fresh(e.fetched_at, now, FRESH_FOR));
     if let Some(entry) = &cached {
         store.publish(Some(&entry.flags), false);
     }
@@ -136,12 +134,12 @@ pub async fn refresh(store: &FlagStore, client: &reqwest::Client, source: &Sourc
     let doc = fetched.as_ref().or(cached.as_ref().map(|e| &e.flags));
     store.publish(doc, true);
     tracing::info!(target: "flags", origin, flags = ?store.current(), "remote flags settled");
-    if let Some(flags) = fetched {
+    if let (Some(flags), Some(path)) = (fetched, &source.cache_path) {
         let entry = CacheEntry {
             fetched_at: now,
             flags,
         };
-        cache::write(cache_path, &entry).await;
+        cache::write(path, &entry).await;
     }
 }
 
@@ -152,8 +150,12 @@ pub fn spawn_launch_refresh(
     client: reqwest::Client,
     source: Source,
 ) -> tokio::task::JoinHandle<()> {
-    let _ = (store, client, source);
-    tokio::spawn(async {})
+    tokio::spawn(async move {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        refresh(&store, &client, &source, now).await;
+    })
 }
 
 #[cfg(test)]
