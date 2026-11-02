@@ -50,16 +50,35 @@ impl Resolved {
 /// of JSON whose top level is an object holding a `flags` object.
 #[must_use]
 pub fn parse_document(bytes: &[u8]) -> Option<Document> {
-    let _ = bytes;
-    None
+    if bytes.len() > MAX_BYTES {
+        return None;
+    }
+    let top: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    match top {
+        serde_json::Value::Object(mut map) => match map.remove("flags") {
+            Some(serde_json::Value::Object(flags)) => Some(flags),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Resolve every declared flag against `doc`; with no document, every
 /// flag takes its default.
 #[must_use]
-pub fn resolve(decls: &'static [FlagDecl], doc: Option<&Document>) -> Resolved {
-    let _ = (decls, doc);
-    Resolved::default()
+pub fn resolve(decls: &[FlagDecl], doc: Option<&Document>) -> Resolved {
+    Resolved(
+        decls
+            .iter()
+            .map(|decl| {
+                let value = doc
+                    .and_then(|d| d.get(decl.name))
+                    .and_then(|raw| decl.accept(raw))
+                    .unwrap_or_else(|| decl.default_value());
+                (decl.name, value)
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]

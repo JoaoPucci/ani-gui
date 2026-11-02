@@ -67,23 +67,39 @@ impl FlagDecl {
     /// flag.
     #[must_use]
     pub fn default_value(&self) -> FlagValue {
-        let _ = self;
-        FlagValue::Bool(false)
+        match self.kind {
+            FlagKind::KillSwitch => FlagValue::Bool(true),
+            FlagKind::Fallback { current, .. } => FlagValue::Choice(current),
+        }
     }
 
     /// Every value this flag can resolve to, the default first.
     #[must_use]
     pub fn allowed(&self) -> Vec<FlagValue> {
-        let _ = self;
-        Vec::new()
+        match self.kind {
+            FlagKind::KillSwitch => vec![FlagValue::Bool(true), FlagValue::Bool(false)],
+            FlagKind::Fallback { current, earlier } => std::iter::once(current)
+                .chain(earlier.iter().copied())
+                .map(FlagValue::Choice)
+                .collect(),
+        }
     }
 
     /// The declared value `raw` selects, or `None` when `raw` is of
-    /// the wrong type or names a value this flag does not allow.
+    /// the wrong type or names a value this flag does not allow. The
+    /// value returned is one of [`FlagDecl::allowed`], never built
+    /// from `raw`.
     #[must_use]
     pub fn accept(&self, raw: &serde_json::Value) -> Option<FlagValue> {
-        let _ = (self, raw);
-        None
+        self.allowed().into_iter().find(|v| matches(*v, raw))
+    }
+}
+
+/// Whether `raw` spells the declared value `v`, type included.
+fn matches(v: FlagValue, raw: &serde_json::Value) -> bool {
+    match v {
+        FlagValue::Bool(b) => raw.as_bool() == Some(b),
+        FlagValue::Choice(c) => raw.as_str() == Some(c),
     }
 }
 
@@ -94,7 +110,44 @@ impl FlagDecl {
 /// # Errors
 /// A description of the first problem found.
 pub fn validate(decls: &[FlagDecl]) -> Result<(), String> {
-    let _ = decls;
+    let mut seen = std::collections::BTreeSet::new();
+    for decl in decls {
+        check_one(decl)?;
+        if !seen.insert(decl.name) {
+            return Err(format!("{} is declared twice", decl.name));
+        }
+    }
+    Ok(())
+}
+
+fn check_one(decl: &FlagDecl) -> Result<(), String> {
+    let name = decl.name;
+    let well_formed = !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+    if !well_formed {
+        return Err(format!("{name:?} is not a lower-case snake_case name"));
+    }
+    if decl.safe_because.trim().is_empty() {
+        return Err(format!("{name} does not say why its retreat is safe"));
+    }
+    if let FlagKind::Fallback { current, earlier } = decl.kind {
+        check_fallback(name, current, earlier)?;
+    }
+    Ok(())
+}
+
+fn check_fallback(name: &str, current: &str, earlier: &[&str]) -> Result<(), String> {
+    if earlier.is_empty() {
+        return Err(format!("{name} names no earlier behaviour to fall back to"));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for value in std::iter::once(current).chain(earlier.iter().copied()) {
+        if value.is_empty() || !seen.insert(value) {
+            return Err(format!("{name} has an empty or repeated value {value:?}"));
+        }
+    }
     Ok(())
 }
 
