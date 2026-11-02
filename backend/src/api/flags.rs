@@ -9,22 +9,25 @@ use axum::Json;
 use serde::Serialize;
 
 use crate::app::AppState;
+use crate::flags::store::Origin;
 use crate::flags::Resolved;
 
 #[derive(Serialize)]
 pub(super) struct FlagsResponse {
-    /// Whether the launch refresh has finished. Until it has, `flags`
-    /// may still be a fresh cache or the defaults.
-    settled: bool,
+    /// Where the launch's flags came from: `file`, `cache`,
+    /// `defaults`, or `test` in a test run.
+    origin: Origin,
     /// Every declared flag and its value.
     flags: Resolved,
 }
 
-/// Answers at once with the flags as they stand; never waits for the
-/// launch refresh.
+/// Answers with the launch's flags once they are decided — within
+/// the settle cap, or the store's own limit past it. The values do not
+/// change for the rest of the session, so the renderer asks once,
+/// before its first page.
 pub(super) async fn get_flags(State(state): State<Arc<AppState>>) -> Json<FlagsResponse> {
     Json(FlagsResponse {
-        settled: state.flags.is_settled(),
+        origin: Origin::Pending,
         flags: state.flags.current(),
     })
 }

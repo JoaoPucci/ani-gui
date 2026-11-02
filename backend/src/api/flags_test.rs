@@ -11,6 +11,7 @@ use tower::ServiceExt;
 use super::build_api_router;
 use super::tests::{body_string, test_app_state};
 use crate::app::AppState;
+use crate::flags::store::{Origin, SETTLE_LIMIT};
 use crate::flags::test_decls::TEST_DECLS;
 use crate::flags::FlagStore;
 
@@ -35,7 +36,7 @@ async fn get_flags(state: AppState) -> (StatusCode, serde_json::Value) {
 }
 
 #[tokio::test]
-async fn the_route_returns_the_resolved_flags_once_settled() {
+async fn the_route_returns_the_decided_flags_and_their_origin() {
     let td = TempDir::new().expect("tempdir");
     let state = AppState {
         flags: FlagStore::fixed(TEST_DECLS),
@@ -46,14 +47,33 @@ async fn the_route_returns_the_resolved_flags_once_settled() {
     assert_eq!(
         body,
         serde_json::json!({
-            "settled": true,
+            "origin": "defaults",
             "flags": { "test_kill": true, "test_fallback": "new" }
         })
     );
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_route_answers_at_once_while_the_refresh_is_pending() {
+async fn the_route_waits_for_the_decision() {
+    let td = TempDir::new().expect("tempdir");
+    let store = FlagStore::pending(TEST_DECLS);
+    let state = AppState {
+        flags: store.clone(),
+        ..test_app_state(&td)
+    };
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        let doc = crate::flags::resolve::parse_document(br#"{"flags":{"test_kill":false}}"#);
+        store.settle(doc.as_ref(), Origin::File);
+    });
+    let (status, body) = get_flags(state).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["origin"], serde_json::json!("file"));
+    assert_eq!(body["flags"]["test_kill"], serde_json::json!(false));
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_route_never_waits_past_the_stores_limit() {
     let td = TempDir::new().expect("tempdir");
     let state = AppState {
         flags: FlagStore::pending(TEST_DECLS),
@@ -62,9 +82,8 @@ async fn the_route_answers_at_once_while_the_refresh_is_pending() {
     let started = tokio::time::Instant::now();
     let (status, body) = get_flags(state).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["settled"], serde_json::json!(false));
-    assert_eq!(body["flags"]["test_kill"], serde_json::json!(true));
-    assert_eq!(started.elapsed(), std::time::Duration::ZERO);
+    assert_eq!(body["origin"], serde_json::json!("defaults"));
+    assert!(started.elapsed() <= SETTLE_LIMIT + std::time::Duration::from_millis(100));
 }
 
 #[tokio::test]

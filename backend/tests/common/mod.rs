@@ -32,7 +32,7 @@ pub struct Backend {
 
 /// A command for the backend at `exe`, its data under `home`, stdin a
 /// pipe the test holds the way Electron does, logging at the level it
-/// ships with. Whether the backend watches that pipe is the caller's
+/// ships with, as a test run (`ANI_GUI_UNATTENDED=1`). Whether the backend watches that pipe is the caller's
 /// to set. Stderr is a pipe [`start`] drains, so a backend that never
 /// completes its handshake reports what it wrote there; a caller that
 /// redirects it gives that up.
@@ -50,6 +50,12 @@ pub fn command(exe: &Path, home: &Path) -> Command {
         // rely on it logging at its default level — quieter and they
         // prove nothing, louder and an unread pipe can fill.
         .env("RUST_LOG", "ani_gui=info")
+        // A test run: the backend takes its flags from the test (none
+        // here, so the defaults) and never asks GitHub for the live
+        // file, which a flipped flag or a slow CDN would otherwise let
+        // into the result. See `flags::launch`.
+        .env("ANI_GUI_UNATTENDED", "1")
+        .env_remove("ANI_GUI_TEST_FLAGS_FILE")
         .env_remove("ANI_GUI_PARENT_STDIN");
     cmd
 }

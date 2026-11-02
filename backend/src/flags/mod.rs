@@ -15,9 +15,13 @@
 //!   declared value per declared flag;
 //! - [`cache`] — the last good copy kept on disk, and how long it
 //!   stands in for an unreachable file;
-//! - [`remote`] — the one request per launch;
-//! - [`store`] — what the rest of the backend reads, and the launch
-//!   refresh that fills it.
+//! - [`remote`] — the request for the file;
+//! - [`refresh`] — the launch's decision within two seconds, and the
+//!   background attempts that cache the file for the next launch;
+//! - [`launch`] — the live file for a normal launch, the test's own
+//!   file for a test run;
+//! - [`store`] — what the rest of the backend reads: the flags decided
+//!   once per launch.
 //!
 //! **The safety rule.** A flag may only move behaviour toward the
 //! safer or older side: a kill switch turning a feature off, or a
@@ -43,6 +47,8 @@
 
 pub mod cache;
 pub mod decl;
+pub mod launch;
+pub mod refresh;
 pub mod remote;
 pub mod resolve;
 pub mod store;

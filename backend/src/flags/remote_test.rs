@@ -25,7 +25,7 @@ fn the_file_is_read_from_the_flags_branch_on_githubs_content_cdn() {
         FLAGS_URL,
         "https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json"
     );
-    assert_eq!(FETCH_TIMEOUT, Duration::from_secs(5));
+    assert_eq!(FETCH_TIMEOUT, Duration::from_secs(45));
 }
 
 #[tokio::test]
@@ -112,4 +112,21 @@ async fn an_unreachable_host_is_no_document() {
     )
     .await;
     assert_eq!(got, None);
+}
+
+#[tokio::test]
+async fn the_requests_own_timeout_outlasts_a_shorter_client_timeout() {
+    // A client whose total timeout is shorter than the one the fetch
+    // is given, as the metadata client's 30 s is shorter than 45 s.
+    let (_s, url) = serve(
+        ResponseTemplate::new(200)
+            .set_body_string(r#"{"flags":{"test_kill":false}}"#)
+            .set_delay(Duration::from_millis(600)),
+    )
+    .await;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(200))
+        .build()
+        .expect("client");
+    assert!(fetch(&client, &url, Duration::from_secs(5)).await.is_some());
 }
