@@ -15,6 +15,7 @@
  */
 import { _electron, type ElectronApplication } from '@playwright/test';
 import path from 'node:path';
+import { guardPolicy } from './policy-guard';
 
 /** electron-builder's pre-AppImage output — the production code path:
  *  the `app://` protocol handler, the bundled SvelteKit assets and the
@@ -33,13 +34,17 @@ export const packagedBinary = path.join(
  *  `--mute-audio` so a test run makes no sound. */
 export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
 
-/** Launch the packaged app with `env` as its whole environment. */
-export function launchPackagedApp(
+/** Launch the packaged app with `env` as its whole environment. Every
+ *  launch is guarded: a content security policy violation the test did
+ *  not declare fails it (./policy-guard.ts). */
+export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env']
 ): Promise<ElectronApplication> {
-	return _electron.launch({
+	const app = await _electron.launch({
 		executablePath: packagedBinary,
 		args: [...testLaunchSwitches],
 		env
 	});
+	guardPolicy(app);
+	return app;
 }

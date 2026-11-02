@@ -20,7 +20,8 @@
  * kitsu-anime-detail it points to is enough to drive a deterministic
  * match. Live `kitsuSearch` is stubbed for the orphan case only.
  */
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';

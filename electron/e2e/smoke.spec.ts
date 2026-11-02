@@ -14,7 +14,8 @@
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
-import { expect, test, type ElectronApplication } from "@playwright/test";
+import { type ElectronApplication } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
