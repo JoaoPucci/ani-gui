@@ -90,22 +90,44 @@ describe('the start shows alone', () => {
 	}
 
 	/** Track elements whose TextTrack keeps its mode, and a video that
-	 *  notes each track's mode as it joins. */
+	 *  notes each track's mode as it joins, and each change to the mode
+	 *  of a track it holds. `load(label)` is that track's file arriving. */
 	function fakeVideo() {
 		const tracks: FakeTrack[] = [];
 		const joined: string[] = [];
+		const changed: string[] = [];
+		const onLoad = new Map<string, Array<() => void>>();
 		const create = document.createElement.bind(document);
 		vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
 			if (tag !== 'track') return create(tag);
 			const attrs = new Map<string, string>();
-			const track: FakeTrack = { kind: 'subtitles', label: '', mode: 'disabled' };
+			let mode = 'disabled';
+			const track: FakeTrack = {
+				kind: 'subtitles',
+				label: '',
+				get mode() {
+					return mode;
+				},
+				set mode(next: string) {
+					mode = next;
+					if (tracks.includes(track)) changed.push(`${track.label}:${next}`);
+				}
+			};
 			const el = {
 				track,
+				get parentNode() {
+					return tracks.includes(track) ? v : null;
+				},
 				setAttribute(name: string, value: string) {
 					attrs.set(name, value);
 					if (name === 'label') track.label = value;
 				},
 				hasAttribute: (name: string) => attrs.has(name),
+				addEventListener(type: string, listener: () => void) {
+					if (type !== 'load') return;
+					onLoad.set(track.label, [...(onLoad.get(track.label) ?? []), listener]);
+				},
+				removeEventListener() {},
 				remove() {
 					tracks.splice(tracks.indexOf(track), 1);
 				}
@@ -120,7 +142,12 @@ describe('the start shows alone', () => {
 				return el;
 			}
 		};
-		return { v: v as unknown as HTMLVideoElement, tracks, joined };
+		const load = (label: string) => {
+			const listeners = onLoad.get(label) ?? [];
+			onLoad.delete(label);
+			for (const l of listeners) l();
+		};
+		return { v: v as unknown as HTMLVideoElement, tracks, joined, changed, load };
 	}
 
 	afterEach(() => {
@@ -147,6 +174,41 @@ describe('the start shows alone', () => {
 		remove();
 		expect(tracks).toEqual([]);
 		expect(attached.map((t) => t.mode)).toEqual(['disabled', 'disabled']);
+	});
+
+	// Chromium draws captions only once a mode change on a joined track
+	// has found one showing. A start already showing as it joined is
+	// one no change ever finds: its cues go active and none is drawn.
+	// So once its file is in — after the browser's own selection, which
+	// it no longer joins — the start is set again on the video.
+	it('the start is set again on the video once its file is in, and still shows alone', () => {
+		const { v, tracks, changed, load } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es');
+		expect(changed).toEqual([]);
+		load('Español');
+		expect(changed.at(-1)).toBe('Español:showing');
+		expect(tracks.map((t) => t.mode)).toEqual(['disabled', 'showing']);
+		expect(noteCaptionChange(v, v.textTracks)).toBeNull();
+	});
+
+	it('a start the viewer has moved off by the time its file is in is left off', () => {
+		const { v, tracks, changed, load } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es');
+		tracks[1].mode = 'disabled';
+		tracks[0].mode = 'showing';
+		changed.length = 0;
+		load('Español');
+		expect(changed).toEqual([]);
+		expect(tracks.map((t) => t.mode)).toEqual(['showing', 'disabled']);
+	});
+
+	it('a start whose tracks have gone by the time its file is in is left alone', () => {
+		const { v, changed, load } = fakeVideo();
+		const remove = attachSidecarTracks(v, [en, es], 'es');
+		remove();
+		changed.length = 0;
+		load('Español');
+		expect(changed).toEqual([]);
 	});
 
 	it('the start is what the app expects, so the browser showing it is no pick', () => {

@@ -1,12 +1,14 @@
 // Acceptance: the subtitle track a session starts on is the only one
 // that shows, once the browser has run its own track selection — and a
-// session that starts on none shows none.
+// session that starts on none shows none. What shows is also drawn:
+// a track can show, its cues active, with nothing on screen.
 //
 // The browser here is a model of Chromium's selection
 // (browser-track-selection.ts): measured on the shipped Electron, a
 // start turned on after its tracks joined the video left a second
 // language showing beside it, Arabic over English on a nine-language
-// episode.
+// episode; a start already showing as it joined showed alone, and was
+// never drawn.
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -18,7 +20,9 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { setLocale } from '../../src/lib/paraglide/runtime';
 import { storedCaption } from '../../src/lib/play/caption-choice';
 import { playerVideo, playerVideoInSlot } from './player-video';
-import { installBrowserTrackSelection } from './browser-track-selection';
+import { installBrowserTrackSelection, paintsCaptions } from './browser-track-selection';
+import { m } from '../../src/lib/paraglide/messages';
+import { tick } from 'svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 
 vi.mock('$app/state', () => ({
@@ -191,5 +195,62 @@ describe('the track a session starts on', () => {
 		const video = await mountAt('session-1', '1');
 		expect(showing(video)).toBe('English');
 		expect(storedCaption(KITSU_ID)).toBeUndefined();
+	});
+});
+
+/** Open the app's captions menu and pick the item named `name`. */
+async function pick(name: string) {
+	const button = document.querySelector<HTMLButtonElement>(
+		`button[aria-label="${m.play_controls_cc_aria_label()}"]`
+	);
+	if (!button) throw new Error('no captions button');
+	button.click();
+	await until(() => document.querySelector('#pc-cc-menu') !== null, 'the captions menu');
+	const item = Array.from(
+		document.querySelectorAll<HTMLButtonElement>('#pc-cc-menu [role="menuitemradio"]')
+	).find((b) => b.textContent?.trim().endsWith(name));
+	if (!item) throw new Error(`no captions item named ${name}`);
+	item.click();
+	await tick();
+	await browserSettles();
+}
+
+describe('the track that shows is drawn', () => {
+	it('when the session starts on it', async () => {
+		handlers();
+		const video = await mountAt('session-1', '1');
+		expect(showing(video)).toBe('English');
+		expect(paintsCaptions(video)).toBe(true);
+	});
+
+	it("when the session starts on it in the user's language", async () => {
+		setLocale('pt-BR', { reload: false });
+		handlers();
+		const video = await mountAt('session-1', '1');
+		expect(showing(video)).toBe('Português');
+		expect(paintsCaptions(video)).toBe(true);
+	});
+
+	it("when the session starts on it with the browser's own controls", async () => {
+		handlers(false);
+		const video = await mountAt('session-1', '1');
+		expect(showing(video)).toBe('English');
+		expect(paintsCaptions(video)).toBe(true);
+	});
+
+	it('when the next episode starts on it', async () => {
+		handlers();
+		const video = await mountAt('session-1', '1');
+		await nextEpisode(video, 'session-2', '2');
+		expect(showing(video)).toBe('English');
+		expect(paintsCaptions(video)).toBe(true);
+	});
+
+	it("when it is picked from the app's captions menu", async () => {
+		handlers();
+		const video = await mountAt('session-1', '1');
+		await pick('Arabic');
+		expect(showing(video)).toBe('العربية');
+		expect(paintsCaptions(video)).toBe(true);
 	});
 });

@@ -20,7 +20,18 @@
 //   after joining, or that the browser turned on itself: a track
 //   shows anyway, the flag having outlived the tracks;
 // - the same, with the earlier episode's tracks switched off before
-//   they were removed: none shows.
+//   they were removed: none shows;
+// - the start already showing when it joined, and nothing changed on a
+//   joined track since: its cues go active but none is drawn. The
+//   video draws captions only once a mode change on a joined track has
+//   found one showing — the flag again — and a selection that finds
+//   the start already on changes nothing, so it never raises it.
+//
+// The model draws a showing track's cues only while the flag is up
+// ({@link paintsCaptions}). The browser fetches a track's file once
+// the track is joined and not disabled, and fires `load` on its
+// element when the file is in — always a task after the selection,
+// which runs with no fetch to wait on; the model fires it then.
 //
 // The model turns on the first track left alone where Chromium may
 // prefer the user's language; scenarios assert how many tracks show,
@@ -41,6 +52,14 @@
 
 interface Installed {
 	uninstall(): void;
+}
+
+let paints: (video: Node) => boolean = () => false;
+
+/** Whether the video draws the cues of the track showing: a track
+ *  shows, and the flag is up. */
+export function paintsCaptions(video: Node): boolean {
+	return paints(video);
 }
 
 export function installBrowserTrackSelection(): Installed {
@@ -65,23 +84,40 @@ export function installBrowserTrackSelection(): Installed {
 	function select(video: Node) {
 		pending.delete(video);
 		const tracks = joined(video);
+		let changed: { el: HTMLTrackElement; track: TextTrack } | undefined;
 		browserActing = true;
 		try {
 			if (flagUp.get(video)) {
-				const extra = tracks.find((t) => !setByScript.has(t.track) && t.track.mode !== 'showing');
-				if (extra) extra.track.mode = 'showing';
+				changed = tracks.find((t) => !setByScript.has(t.track) && t.track.mode !== 'showing');
 			} else if (!tracks.some((t) => t.track.mode === 'showing')) {
-				const byDefault = tracks.find((t) => t.el.default);
-				if (byDefault) byDefault.track.mode = 'showing';
+				changed = tracks.find((t) => t.el.default);
 			}
+			if (changed) changed.track.mode = 'showing';
 		} finally {
 			browserActing = false;
 		}
-		flagUp.set(
-			video,
-			tracks.some((t) => t.track.mode === 'showing')
-		);
+		// Only a change moves the flag: a selection that finds the start
+		// already on leaves it where it was.
+		if (changed)
+			flagUp.set(
+				video,
+				tracks.some((t) => t.track.mode === 'showing')
+			);
+		for (const t of tracks) fetchIfWanted(t.el);
 	}
+
+	/** A joined track that is not disabled has its file fetched; its
+	 *  element fires `load` a task later. */
+	const loaded = new WeakSet<HTMLTrackElement>();
+	function fetchIfWanted(el: HTMLTrackElement) {
+		if (loaded.has(el) || ownTrack(el).mode === 'disabled') return;
+		if (!(el.parentNode instanceof HTMLMediaElement)) return;
+		loaded.add(el);
+		setTimeout(() => el.dispatchEvent(new Event('load')), 0);
+	}
+
+	paints = (video: Node) =>
+		flagUp.get(video) === true && joined(video).some((t) => t.track.mode === 'showing');
 
 	Object.defineProperty(HTMLTrackElement.prototype, 'track', {
 		configurable: true,
@@ -109,6 +145,7 @@ export function installBrowserTrackSelection(): Installed {
 							video,
 							joined(video).some((t) => t.track.mode === 'showing')
 						);
+						fetchIfWanted(el);
 					}
 				}
 			});
@@ -137,6 +174,7 @@ export function installBrowserTrackSelection(): Installed {
 
 	return {
 		uninstall() {
+			paints = () => false;
 			if (descriptor) Object.defineProperty(HTMLTrackElement.prototype, 'track', descriptor);
 			if (appendDescriptor) Object.defineProperty(Node.prototype, 'appendChild', appendDescriptor);
 		}

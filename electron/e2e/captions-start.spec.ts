@@ -10,6 +10,13 @@
  * unit and acceptance tiers run under happy-dom, which has no such
  * selection; this is where the real one runs.
  *
+ * What shows must also be drawn. Chromium draws captions only once a
+ * mode change on a joined track has found one showing, so a start
+ * already showing as it joined, with nothing changed since, had its
+ * cues go active with none on screen. `activeCues` cannot tell the
+ * two apart; the cue boxes the video draws, in its user-agent shadow
+ * tree, can, and only the DevTools protocol reaches them.
+ *
  * The stream is a local two-level HLS fixture played through the
  * backend's own stream proxy; its sidecar listing (Arabic first, then
  * English, the provider's default, then French) is answered at the
@@ -201,6 +208,49 @@ function shown(page: Page) {
   });
 }
 
+/** The text of the cue boxes the video draws: the `cue` boxes in its
+ *  user-agent shadow tree, which page scripts cannot read. */
+async function painted(page: Page): Promise<string[]> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const { root } = await cdp.send("DOM.getDocument", {
+      depth: -1,
+      pierce: true,
+    });
+    interface DomNode {
+      nodeType: number;
+      nodeValue: string;
+      attributes?: string[];
+      children?: DomNode[];
+      shadowRoots?: DomNode[];
+    }
+    const pseudo = (n: DomNode) => {
+      const a = n.attributes ?? [];
+      const at = a.indexOf("pseudo");
+      return at === -1 ? "" : a[at + 1];
+    };
+    const text = (n: DomNode): string =>
+      n.nodeType === 3
+        ? n.nodeValue
+        : [...(n.children ?? []), ...(n.shadowRoots ?? [])]
+            .map(text)
+            .join("");
+    const cues: string[] = [];
+    const walk = (n: DomNode) => {
+      if (pseudo(n) === "cue") {
+        cues.push(text(n));
+        return;
+      }
+      for (const c of [...(n.children ?? []), ...(n.shadowRoots ?? [])])
+        walk(c);
+    };
+    walk(root as DomNode);
+    return cues;
+  } finally {
+    await cdp.detach();
+  }
+}
+
 /** Over `ms`, read what shows every 250 ms; every read must show the
  *  track labelled `label` alone. */
 async function showsAloneThroughout(page: Page, label: string, ms: number) {
@@ -242,6 +292,10 @@ test("the track a session starts on shows alone through playback, a seek and a q
     await expect
       .poll(async () => (await shown(page))?.cues ?? [], { timeout: 10_000 })
       .toEqual([expect.stringMatching(/^English at /)]);
+    // And drawn.
+    await expect
+      .poll(() => painted(page), { timeout: 10_000 })
+      .toEqual([expect.stringMatching(/^English at /)]);
     await showsAloneThroughout(page, "English", 3_000);
 
     // A seek keeps it.
@@ -276,6 +330,54 @@ test("the track a session starts on shows alone through playback, a seek and a q
       .poll(async () => (await shown(page))?.height ?? 0, { timeout: 20_000 })
       .toBe(before === 72 ? 36 : 72);
     await showsAloneThroughout(page, "English", 2_000);
+  } finally {
+    await app.close();
+    media.close();
+  }
+});
+
+test("a track picked from the captions menu shows alone and is drawn", async () => {
+  test.setTimeout(120_000);
+  const media = await mediaServer();
+  const { app, page } = await launch();
+  try {
+    const { apiBase, lanes } = await bridge(page);
+    await stubMetadata(page, apiBase);
+    const sid = await session(
+      page,
+      apiBase,
+      lanes.stream,
+      `${media.origin}/master.m3u8`,
+    );
+    const url = new URL(page.url());
+    url.pathname = `/play/${continueKitsuMatch.id}`;
+    url.search = `?session=${sid}&episode=1&kind=hls`;
+    await page.goto(url.toString());
+    await expect
+      .poll(async () => (await shown(page))?.time ?? 0, { timeout: 30_000 })
+      .toBeGreaterThan(1);
+    await expect
+      .poll(async () => (await shown(page))?.showing ?? [], {
+        timeout: 10_000,
+      })
+      .toEqual(["English"]);
+
+    await page
+      .locator('button.pc-cc[aria-label="Captions"]')
+      .dispatchEvent("click");
+    await page
+      .locator('#pc-cc-menu [role="menuitemradio"]', { hasText: "French" })
+      .dispatchEvent("click");
+
+    await expect
+      .poll(async () => (await shown(page))?.showing ?? [], {
+        timeout: 10_000,
+      })
+      .toEqual(["Français"]);
+    await expect
+      .poll(() => painted(page), { timeout: 10_000 })
+      .toEqual([expect.stringMatching(/^Français at /)]);
+    await showsAloneThroughout(page, "Français", 2_000);
   } finally {
     await app.close();
     media.close();
