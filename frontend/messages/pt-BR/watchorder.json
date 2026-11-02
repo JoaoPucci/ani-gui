@@ -1,0 +1,111 @@
+{
+	"diag_description": "Protótipos de design do recurso de ordem para assistir, feitos com dados de exemplo fixos: uma faixa de ordem nas páginas de Bleach, Attack on Titan, JoJo, Gintama, Fate/Zero e Monogatari; um cartão A seguir no player; cartões A seguir no início de Continuar assistindo; uma página de franquia; e a configuração Ordem para assistir.",
+	"diag_section": "Protótipos de ordem para assistir",
+	"diag_switcher": "Mostrar o seletor de opções dos protótipos",
+	"diag_toggle": "Mostrar os protótipos de ordem para assistir",
+	"franchise_after_loop": "Depois do ciclo, sem número: o ciclo não lhes dá um lugar único",
+	"franchise_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} título",
+				"countPlural=*": "{count} títulos"
+			}
+		}
+	],
+	"franchise_cycle_hint": "Estes títulos se vinculam uns aos outros em ciclo, então não têm uma ordem única. Eles estão listados seguindo os vínculos, a partir de onde a sequência entra no ciclo.",
+	"franchise_eyebrow": "Franquia",
+	"franchise_films": "Filmes",
+	"franchise_here": "Você está aqui",
+	"franchise_main": "História principal",
+	"franchise_off": "Esta página é um protótipo de design. Ative os protótipos em Diagnóstico para vê-la.",
+	"franchise_order_change": "Alterar em Configurações",
+	"franchise_order_note_linked": "Na ordem em que as bases de dados de anime os vinculam.",
+	"franchise_order_note_released": "Em ordem de lançamento.",
+	"franchise_recaps": "Recapitulações",
+	"franchise_recaps_hide": "Ocultar recapitulações",
+	"franchise_recaps_show": "Mostrar recapitulações",
+	"franchise_resume": "Continuar",
+	"franchise_sides": "Histórias paralelas e especiais",
+	"franchise_start": "Começar do início",
+	"franchise_versions": "Outras versões",
+	"handoff_after": "Depois de {title}",
+	"handoff_aria": "A seguir: {title}, depois de {finished}",
+	"handoff_next": "Próximo",
+	"meta_coming": "Estreia em {date}",
+	"meta_no_date": "Data não anunciada",
+	"meta_progress": "EP {episode} de {total}",
+	"meta_progress_open": "EP {episode}",
+	"meta_watched": "Assistido",
+	"mock_badge": "Protótipo",
+	"mock_franchise": "Franquia",
+	"mock_franchise_list": "Lista",
+	"mock_franchise_shelf": "Estante",
+	"mock_group_aria": "Opções do protótipo de ordem para assistir",
+	"mock_handoff": "Continuar",
+	"mock_handoff_episode": "EP 1",
+	"mock_handoff_next": "Próximo",
+	"mock_order": "Ordem",
+	"mock_placement": "Posição",
+	"mock_placement_bottom": "Acima de títulos semelhantes",
+	"mock_placement_top": "Sob o título",
+	"mock_setting": "Configuração",
+	"mock_setting_radio": "Opções com dicas",
+	"mock_setting_segmented": "Botões",
+	"mock_strip": "Faixa",
+	"mock_strip_rail": "Sequência inteira",
+	"mock_strip_trio": "Antes e depois",
+	"mock_titles": "Títulos",
+	"mock_titles_full": "Completos",
+	"mock_titles_short": "Curtos",
+	"mock_upnext": "A seguir",
+	"mock_upnext_poster": "Pôster",
+	"mock_upnext_still": "Imagem",
+	"setting_aria": "Ordem para assistir",
+	"setting_hint": "Como as temporadas, filmes e especiais de uma série são ordenados: como as bases de dados de anime os vinculam, o que muitas vezes segue a história, ou por data de lançamento.",
+	"setting_key": "Ordem para assistir",
+	"setting_linked": "Por vínculo",
+	"setting_linked_desc": "Como as bases de dados de anime os vinculam, o que muitas vezes segue a história",
+	"setting_released": "Por lançamento",
+	"setting_released_desc": "Por data de lançamento",
+	"strip_after": "Depois",
+	"strip_before": "Antes",
+	"strip_eyebrow": "Ordem para assistir",
+	"strip_first": "Início da sequência",
+	"strip_franchise_link": "Franquia inteira",
+	"strip_join": "Vem depois destes {count}",
+	"strip_last": "Fim da sequência",
+	"strip_leads_into": "Leva a {title}",
+	"strip_of_total": "de {total}",
+	"strip_position": "{position} de {total}",
+	"strip_resume": "Continuar",
+	"strip_unnumbered_branch": "Um dos caminhos para continuar",
+	"strip_unnumbered_cycle": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Parte de um ciclo de {count} título",
+				"countPlural=*": "Parte de um ciclo de {count} títulos"
+			}
+		}
+	],
+	"strip_way": "Caminho {n} de {count}",
+	"strip_ways": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} caminho para continuar",
+				"countPlural=*": "{count} caminhos para continuar"
+			}
+		}
+	],
+	"strip_youre_on": "Você está em {title} · EP {episode}",
+	"upnext_announce": "A seguir: {title}",
+	"upnext_choices": "Caminhos para continuar",
+	"upnext_coming": "A seguir, quando estrear",
+	"upnext_dismiss": "Dispensar",
+	"upnext_eyebrow": "A seguir"
+}

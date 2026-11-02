@@ -126,6 +126,14 @@
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
+	import HandoffCard from '$lib/watch-order/mock/HandoffCard.svelte';
+	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
+	import {
+		loadMockPrefs,
+		saveMockPrefs,
+		type WatchOrderMockPrefs
+	} from '$lib/watch-order/mock/prefs';
+	import { handoffs as mockHandoffs } from '$lib/watch-order/mock/view';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -893,6 +901,34 @@
 
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
 	// $lib/history/resolve.ts (target.displayEpisode / displayTitle).
+
+	// Watch-order mockups (0.19.0 design review): Continue Watching's
+	// hand-off cards, from fixture data, while Diagnostics turns the
+	// mockups on — see $lib/watch-order/mock.
+	let mockPrefs = $state(loadMockPrefs(browserStorage()));
+	function chooseMockPrefs(next: WatchOrderMockPrefs) {
+		mockPrefs = next;
+		saveMockPrefs(browserStorage(), next);
+	}
+	// A hand-off replaces the finished entry's own card, and gives way
+	// to the next entry's card once that has a history row.
+	const mockRowIds = $derived(
+		new Set(dedupedHistory.map((e) => historyMatches[e.id]?.id).filter((x) => x !== undefined))
+	);
+	const mockCards = $derived(
+		mockPrefs.enabled
+			? mockHandoffs(mockPrefs.order, new Date().toISOString().slice(0, 10)).filter(
+					(h) => !mockRowIds.has(h.next.id)
+				)
+			: []
+	);
+	const continueRows = $derived(
+		mockCards.length === 0
+			? dedupedHistory
+			: dedupedHistory.filter(
+					(e) => !mockCards.some((h) => h.finished.id === historyMatches[e.id]?.id)
+				)
+	);
 </script>
 
 <svelte:head>
@@ -1064,6 +1100,11 @@
 {/snippet}
 
 <!-- Continue Watching: only when history is non-empty -->
+{#if mockPrefs.enabled && mockPrefs.switcher}
+	<div class="mock-switch-row">
+		<MockSwitch prefs={mockPrefs} keys={['order', 'handoff']} onchoose={chooseMockPrefs} />
+	</div>
+{/if}
 {#if history && history.length > 0}
 	<Strip
 		eyebrow={m.home_strip_continue_eyebrow()}
@@ -1072,7 +1113,12 @@
 		padBlock="var(--space-4) var(--space-3)"
 		headerTrailing={continueHeaderTrailing}
 	>
-		{#each dedupedHistory as entry (entry.id)}
+		{#each mockCards as card (card.next.id)}
+			<div class="resume-cell">
+				<HandoffCard handoff={card} variant={mockPrefs.handoff} />
+			</div>
+		{/each}
+		{#each continueRows as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
@@ -1995,6 +2041,10 @@
 		color: var(--accent-oxblood);
 	}
 
+	.mock-switch-row {
+		padding-inline: var(--space-8);
+		margin-block-end: var(--space-4);
+	}
 	.resume-card {
 		scroll-snap-align: start;
 		display: grid;

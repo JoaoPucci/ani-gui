@@ -3,7 +3,6 @@
  * like the hero framing switch's ($lib/hero/prefs). The diagnostics
  * page owns `enabled` and `switcher`; the on-page switch sets the
  * rest. `order` stands in for the app setting the feature will add.
- * Signatures only: every read gives the defaults, and nothing is kept.
  */
 import type { StorageLike } from '$lib/hero/prefs';
 
@@ -44,16 +43,39 @@ export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';
 export const MOCK_OPTION_KEYS = Object.keys(MOCK_OPTIONS) as MockOptionKey[];
 
 export function parseMockPrefs(raw: string | null): WatchOrderMockPrefs {
-	void raw;
-	return MOCK_PREFS_DEFAULT;
+	let v: unknown;
+	try {
+		v = JSON.parse(raw ?? 'null');
+	} catch {
+		v = null;
+	}
+	if (typeof v !== 'object' || v === null) return MOCK_PREFS_DEFAULT;
+	const o = v as Record<string, unknown>;
+	const out: Record<string, unknown> = {
+		enabled: o.enabled === true,
+		switcher: o.switcher === true
+	};
+	for (const key of MOCK_OPTION_KEYS) {
+		const allowed: readonly string[] = MOCK_OPTIONS[key];
+		out[key] = allowed.find((a) => a === o[key]) ?? MOCK_PREFS_DEFAULT[key];
+	}
+	return out as unknown as WatchOrderMockPrefs;
 }
 
 export function loadMockPrefs(storage: StorageLike | null): WatchOrderMockPrefs {
-	void storage;
-	return MOCK_PREFS_DEFAULT;
+	let stored: string | null;
+	try {
+		stored = storage?.getItem(MOCK_PREFS_STORAGE_KEY) ?? null;
+	} catch {
+		stored = null;
+	}
+	return parseMockPrefs(stored);
 }
 
 export function saveMockPrefs(storage: StorageLike | null, prefs: WatchOrderMockPrefs): void {
-	void storage;
-	void prefs;
+	try {
+		storage?.setItem(MOCK_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+	} catch {
+		// Not persisted: this session still uses it.
+	}
 }

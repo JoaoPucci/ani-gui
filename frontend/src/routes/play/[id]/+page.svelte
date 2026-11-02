@@ -34,6 +34,15 @@
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { settle } from '$lib/transitions/settle';
+	import { browserStorage as mockStorage } from '$lib/hero/prefs';
+	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
+	import UpNextCard from '$lib/watch-order/mock/UpNextCard.svelte';
+	import {
+		loadMockPrefs,
+		saveMockPrefs,
+		type WatchOrderMockPrefs
+	} from '$lib/watch-order/mock/prefs';
+	import { runFor as mockRunFor, upNextFor as mockUpNextFor } from '$lib/watch-order/mock/view';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -186,6 +195,21 @@
 	} from '$lib/play/play-origin';
 
 	const id = $derived(page.params.id ?? '');
+
+	// Watch-order mockups (0.19.0 design review): the finale's "Up next"
+	// card, shown at once on a run member's last episode while
+	// Diagnostics turns the mockups on — see $lib/watch-order/mock.
+	let mockPrefs = $state(loadMockPrefs(mockStorage()));
+	function chooseMockPrefs(next: WatchOrderMockPrefs) {
+		mockPrefs = next;
+		saveMockPrefs(mockStorage(), next);
+	}
+	let mockDismissed = $state(false);
+	const mockRun = $derived(mockPrefs.enabled ? mockRunFor(id) : null);
+	const mockToday = new Date().toISOString().slice(0, 10);
+	const mockUpNext = $derived(
+		mockRun ? mockUpNextFor(mockRun, id, mockPrefs.order, mockToday) : null
+	);
 	// A session opened from a guessed Continue match records the guess
 	// nowhere — not on the history row, not on tracker accounts
 	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
@@ -199,6 +223,12 @@
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
+	// The mockup's card waits for an entry's last episode, as the
+	// feature's will.
+	const mockAtFinale = $derived.by(() => {
+		const count = mockRun?.entries.find((e) => e.id === id)?.episodes ?? null;
+		return count === null || episodeNum >= count;
+	});
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
 	// detail page now always appends &kind=<hls|mp4>, so this default
 	// only kicks in when a refresh on a stale URL drops the param.
@@ -3374,9 +3404,21 @@
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
 			</span>
 		{/if}
+		{#if mockRun && mockUpNext && mockUpNext.kind !== 'none' && mockAtFinale && !mockDismissed}
+			<UpNextCard
+				run={mockRun}
+				upNext={mockUpNext}
+				variant={mockPrefs.upNext}
+				today={mockToday}
+				ondismiss={() => (mockDismissed = true)}
+			/>
+		{/if}
 	</section>
 
 	<div class="watch-column">
+		{#if mockRun}
+			<MockSwitch prefs={mockPrefs} keys={['order', 'upNext']} onchoose={chooseMockPrefs} />
+		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode

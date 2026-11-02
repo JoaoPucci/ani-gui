@@ -22,6 +22,30 @@
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
+	import { browserStorage } from '$lib/hero/prefs';
+	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
+	import {
+		loadMockPrefs,
+		saveMockPrefs,
+		type WatchOrderMockPrefs
+	} from '$lib/watch-order/mock/prefs';
+
+	// Watch-order mockups (0.19.0 design review): the "Watch order"
+	// setting, kept with the mockups' own preferences rather than the
+	// app config while it is a mockup — see $lib/watch-order/mock.
+	let mockPrefs = $state(loadMockPrefs(browserStorage()));
+	function chooseMockPrefs(next: WatchOrderMockPrefs) {
+		mockPrefs = next;
+		saveMockPrefs(browserStorage(), next);
+	}
+	const WATCH_ORDERS = [
+		{ key: 'linked', label: m.watchorder_setting_linked, desc: m.watchorder_setting_linked_desc },
+		{
+			key: 'released',
+			label: m.watchorder_setting_released,
+			desc: m.watchorder_setting_released_desc
+		}
+	] as const;
 
 	let cfg = $state<Config | null>(null);
 	let info = $state<AppInfo | null>(null);
@@ -481,6 +505,58 @@
 				</label>
 			</div>
 
+			{#if mockPrefs.enabled}
+				{#if mockPrefs.switcher}
+					<div class="mock-switch-row">
+						<MockSwitch prefs={mockPrefs} keys={['setting']} onchoose={chooseMockPrefs} />
+					</div>
+				{/if}
+				{#if mockPrefs.setting === 'segmented'}
+					<div class="field" data-testid="watch-order-setting">
+						<div class="field-label">
+							<span class="field-key">{m.watchorder_setting_key()}</span>
+							<span class="field-hint">{m.watchorder_setting_hint()}</span>
+						</div>
+						<div class="seg" role="group" aria-label={m.watchorder_setting_aria()}>
+							{#each WATCH_ORDERS as o (o.key)}
+								<button
+									type="button"
+									class="seg-btn"
+									class:active={mockPrefs.order === o.key}
+									aria-pressed={mockPrefs.order === o.key}
+									onclick={() => chooseMockPrefs({ ...mockPrefs, order: o.key })}
+								>
+									{o.label()}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{:else}
+					<fieldset class="field field-stack watch-order-field" data-testid="watch-order-setting">
+						<legend class="field-label">
+							<span class="field-key">{m.watchorder_setting_key()}</span>
+						</legend>
+						<div class="radio-list">
+							{#each WATCH_ORDERS as o (o.key)}
+								<label class="radio-row" class:active={mockPrefs.order === o.key}>
+									<input
+										type="radio"
+										name="watch-order"
+										value={o.key}
+										checked={mockPrefs.order === o.key}
+										onchange={() => chooseMockPrefs({ ...mockPrefs, order: o.key })}
+									/>
+									<span class="radio-text">
+										<span class="radio-label">{o.label()}</span>
+										<span class="field-hint">{o.desc()}</span>
+									</span>
+								</label>
+							{/each}
+						</div>
+					</fieldset>
+				{/if}
+			{/if}
+
 			<div class="field">
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_cache_resolutions_key()}</span>
@@ -878,6 +954,56 @@
 	}
 
 	/* Segmented control. */
+	.mock-switch-row {
+		padding-block: var(--space-3);
+	}
+	.watch-order-field {
+		margin: 0;
+		padding-inline: 0;
+		border-inline: 0;
+		border-block-end: 0;
+		min-inline-size: 0;
+	}
+	.watch-order-field legend {
+		float: inline-start;
+		inline-size: 100%;
+		padding: 0;
+	}
+	.radio-list {
+		display: grid;
+		gap: var(--space-2);
+		inline-size: 100%;
+	}
+	.radio-row {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		gap: var(--space-3);
+		align-items: start;
+		padding: var(--space-3);
+		border: 1px solid var(--ink-200);
+		border-radius: var(--radius-control);
+		cursor: pointer;
+		transition: border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	.radio-row:hover,
+	.radio-row.active {
+		border-color: var(--ink-300);
+	}
+	.radio-row.active {
+		background: var(--ink-050);
+	}
+	.radio-row input {
+		margin: 0.2em 0 0;
+		accent-color: var(--bone-100);
+	}
+	.radio-text {
+		display: grid;
+		gap: var(--space-1);
+	}
+	.radio-label {
+		font-weight: 500;
+		color: var(--bone-100);
+	}
 	.seg {
 		display: inline-flex;
 		border: 1px solid var(--ink-300);
