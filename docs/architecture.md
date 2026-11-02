@@ -83,7 +83,7 @@ The renderer runs under a content security policy in two halves, and every resou
   - fonts come from the app;
   - workers, frames, plugins, manifests, `<base>`, form submissions and framing the app are refused.
 
-A lane origin enters the header only if it is exactly `http://127.0.0.1:<port>` and belongs to the API or one of the five lanes the renderer knows. Anything else the handshake carries is dropped, so an extra announced line cannot add a source. The script rule leans on every HTML document the app serves carrying the meta; the bundle has one, `index.html`, which also answers every route.
+A lane origin enters the header only if it is exactly `http://127.0.0.1:<port>` and belongs to the API or one of the five lanes the renderer knows. Anything else the handshake carries is dropped, so an extra announced line cannot add a source. The script rule leans on every document the app serves carrying the meta. The bundle's only HTML document is `index.html`, which also answers every route, and its SVGs carry no script; a lint test keeps `frontend/static` that way (`frontend/tests/lint/static-documents.test.ts`).
 
 Two rules follow for the frontend:
 

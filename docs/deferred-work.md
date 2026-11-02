@@ -816,8 +816,9 @@ starting it, and delete it when you find it done.
   it navigates to gets the preload bridge, the internal secret
   included. The content security policy does not govern navigation.
   The app's own links open external pages with `target="_blank"`, so
-  no path in the app does this today. It closes in a few lines of the
-  main process.
+  no path in the app does this today. Pull request #346 adds the
+  guard, along with checks on IPC callers and permissions; this entry
+  goes when it lands.
 
 ## The AppImage runs without Chromium's sandbox
 
