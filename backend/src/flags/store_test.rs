@@ -296,3 +296,63 @@ async fn the_spawned_launch_refresh_fills_and_settles_the_store() {
         .as_secs();
     assert!(cache::is_fresh(cached.fetched_at, now, FRESH_FOR));
 }
+
+/// Everything a scoped subscriber wrote.
+#[derive(Clone, Default)]
+struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("lock").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+    type Writer = Self;
+    fn make_writer(&'a self) -> Self {
+        self.clone()
+    }
+}
+
+#[test]
+fn the_outcome_is_logged_under_the_backends_default_filter() {
+    // The binary's filter when RUST_LOG is unset.
+    let captured = Captured::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("ani_gui=info"))
+        .with_ansi(false)
+        .with_writer(captured.clone())
+        .finish();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    // See `meta::anilist_gate_test`: a second live dispatcher makes
+    // callsite registration ask this test's subscriber too.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::callsite::rebuild_interest_cache();
+        runtime.block_on(async {
+            let td = tempfile::tempdir().expect("tempdir");
+            let (_server, url) = serve(ResponseTemplate::new(404)).await;
+            let store = FlagStore::pending(TEST_DECLS);
+            refresh(
+                &store,
+                &reqwest::Client::new(),
+                &source(&url, td.path()),
+                NOW,
+            )
+            .await;
+        });
+    });
+    let out = String::from_utf8(captured.0.lock().expect("lock").clone()).expect("utf8");
+    assert!(
+        out.lines()
+            .any(|l| l.contains("remote flags settled") && l.contains("defaults")),
+        "{out}"
+    );
+}
