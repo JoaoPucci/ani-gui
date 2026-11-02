@@ -166,7 +166,7 @@ fn a_former_tag_a_later_listing_carries_is_dropped_under_a_continuation_offset()
         former_tag: None,
         title: None,
     };
-    retag_from_listing(&state, SHOW, &[ep(13, "12.5"), ep(26, "24.5")], None);
+    retag_from_listing(&state, SHOW, &[ep(13, "12.5"), ep(26, "24.5")], None, None);
     assert_eq!(former_stamp(&state, SHOW), None);
     assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
 }

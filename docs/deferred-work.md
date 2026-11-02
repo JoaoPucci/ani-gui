@@ -92,6 +92,20 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
+- **A later season Kitsu titles only with a bare number is refused
+  by the cross-cour guard.** "That Time I Got Reincarnated as a Slime
+  Season 2" is Kitsu's `tensei-shitara-slime-datta-ken-2`, titled
+  "That Time I Got Reincarnated as a Slime 2" and "Tensei Shitara Slime
+  Datta Ken 2nd Season Part 1" — no title names it as the provider
+  does, and the guard reads neither a slug's bare trailing number nor
+  a title's as a season, so a play from its page records no id on its
+  history row and stores no mapping. It waited because both obvious
+  readings accept wrong pairings: read as a season, the slug's bare
+  trailing number accepts the "Slime 2nd Season Part 2" listing
+  against this Part 1 entry, and a title's bare trailing number
+  collides with names that end in one (Mob Psycho 100). The 2nd-Season-Part-1 alias suggests reading a season and a
+  part together rather than one trailing cour.
+
 - **Decide the resolution cache's final shape after the opt-in
   trial.** Caching play resolutions is a setting now
   (`cache_resolutions`), default off: every play resolves fresh, the
@@ -257,7 +271,8 @@ starting it, and delete it when you find it done.
 
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
-  slot (`numbering_offset_drift.rs`) can run beside a build from before
+  slot (the rule in `numbering_offset_drift.rs`, the repair in
+  `numbering_offset_repair.rs`) can run beside a build from before
   history rows recorded the app's own number, on the same files. Of
   those builds, 0.15.1 and older can: 0.16.0 takes the single-instance
   lock this one does. Such a build writes a play's stamp, then its
@@ -369,6 +384,15 @@ starting it, and delete it when you find it done.
 
 ## Interface
 
+- **GNOME's newer Reduced Motion preference does not reach the renderer.**
+  On GNOME 50.1 with Electron 33, the accessibility preference was
+  `reduce` while the older global animation switch remained enabled;
+  Electron still reported `prefers-reduced-motion: no-preference`.
+  The app's motion honours that media query, so on such a system it
+  still plays. What Electron reported matched the older switch, not the
+  new preference. The preference could be read another way and handed
+  to the renderer, or a later Electron may expose it to the query.
+
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
   episode, and Kitsu sometimes gives a double-length episode its
@@ -391,6 +415,28 @@ starting it, and delete it when you find it done.
   `startDate` and `averageRating` in either direction. Name any further
   filters wanted before starting, rather than reading this as filters
   being missing.
+- **A search result the provider turns out not to carry vanishes
+  from under the user.** The search page renders each page of
+  results first and checks it against the provider afterwards
+  (`frontend/src/lib/availability/progressive.ts`). Cached verdicts
+  and those that settle within two seconds shape the first render. A
+  later "not carried" for a finished show removes its card from a
+  grid the user is already reading, on any page loaded so far, with
+  no motion and no explanation. The other surfaces that hide such
+  cards never remove one in view: Home's rows, a show page's
+  similar-titles strip, the search page's own discovery rows and the
+  topbar's live results filter against verdicts before rendering, so
+  a card known to be unplayable never appears there in the first
+  place. Continue Watching never hides a card on an availability
+  verdict. What search should do instead is undecided. One option is
+  the exit motion Continue Watching plays when the user deletes a
+  card. The other, which the maintainer leans towards, is to keep the
+  card and mark it, so a show the user searched for by name doesn't
+  silently disappear and the reason is visible. That raises questions
+  a design pass has to settle: what the mark says and where it sits,
+  whether a marked card still opens its page, whether the grid's
+  order or count changes, and whether the surfaces that hide such
+  cards before rendering should show them marked too.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages
@@ -417,6 +463,30 @@ starting it, and delete it when you find it done.
   re-attempt until that lands. PiP as it exists now — the player's
   video, while the player is open — ships and is described in
   `README.md` and `docs/architecture.md`.
+- **An mp4 stream resumed at a point can still show its first frame
+  in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
+  hides the picture with the page's CSS until the resume seek lands,
+  and picture-in-picture and a `<video>` that is itself fullscreen
+  show the element, not the page. An hls stream closes that gap by
+  starting its engine at the fragment that holds the point, so
+  nothing before it is fetched. An mp4 stream is played from `src`,
+  and there Chromium starts the stream at 0 and decodes and shows the
+  frame there unless the seek reaches the media pipeline first. Every way the page can
+  say "start here" becomes that same seek, issued from the main
+  thread when the metadata arrives: `currentTime` set before the
+  metadata, a `#t=` media fragment, and `preload="metadata"` all
+  race. Measured in Electron 33 by noting every frame the element
+  presented (`requestVideoFrameCallback`) across an episode switch
+  in picture-in-picture, with segment latency and a busy main thread:
+  each of the three still showed frame 0 in some switches — in
+  setups where hls never did, and where the hold without any of them
+  showed it every time. The two fixes that do not race are making the
+  proxy serve an mp4 that starts at the point (a backend change that
+  has to ship on Linux and Windows alike, AGENTS.md §15), or playing
+  mp4 sessions through Media Source Extensions with a remuxer, so the
+  page appends only what follows the point. When this entry was
+  written the maintainer's recorded plays were all hls, so the gap
+  reaches only sources the provider serves as mp4.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli
@@ -792,8 +862,9 @@ starting it, and delete it when you find it done.
   installs**, and everything that exists to report it: the sweep
   module, the field it carries onto app-info, and the diagnostics
   notice that renders it. The maintainer has tied this removal to
-  v1.0 — it is the last piece of the app that exists because of what
-  the app used to be, and shipping without it is what 1.0 means here.
+  v1.0 — it is one of the last pieces of the app that exist because of
+  what the app used to be, and shipping without them is what 1.0 means
+  here.
 
   Why it waits: the sweep serves installs upgrading from before 0.12,
   which kept a maintained copy of the script in the cache. Removing
@@ -801,6 +872,28 @@ starting it, and delete it when you find it done.
   version to a post-removal one — the file just stays, unreported.
   The judgment of when that cost is acceptable is the whole decision,
   which is why it is a version call and not a cleanup.
+
+## Retiring the legacy-history stamp repair — the v1.0 marker
+
+- **Remove the repair that puts a legacy history row's display stamp
+  back on its slot** (`backend/src/commands/numbering_offset_drift.rs`,
+  its rule module and its tests), together with the guard that leaves
+  alone a stamp that moved while the repair waited for the lock, and
+  the entry "A stamp repair can land inside an older instance's play"
+  under "Correctness in the app (continued)". The maintainer has tied
+  this removal to v1.0, with the legacy-script sweep.
+
+  Why it waits: the repair serves rows written before history rows
+  recorded the app's own number, carrying drift left by builds from
+  before that marker. A row is put right only when its show is next
+  resolved, probed or downloaded against a listing that agrees with
+  the numbering sidecar, so a show not touched since upgrading still
+  carries the drift. Removing the repair leaves such a row reading one
+  episode high where the show has a single recap, for good. The guard
+  and the window it narrows matter only while a build of 0.15.1 or
+  older can share a profile with this one. When that cost is
+  acceptable is the decision, which is why it is a version call and
+  not a cleanup.
 
 ## Recovering a download's abandoned claim automatically
 

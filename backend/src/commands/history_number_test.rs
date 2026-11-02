@@ -291,6 +291,7 @@ fn a_former_number_a_later_listing_gives_a_real_episode_is_not_named() {
         SHOW,
         &listing_with_a_real_two_point_five(),
         None,
+        None,
     );
     assert_eq!(
         history_number(&state, SHOW).expect("read"),
@@ -311,6 +312,7 @@ fn a_legacy_row_s_former_number_a_later_listing_gives_a_real_episode_is_not_name
         &state,
         SHOW,
         &listing_with_a_real_two_point_five(),
+        None,
         None,
     );
     assert_eq!(
