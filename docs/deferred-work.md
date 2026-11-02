@@ -714,6 +714,23 @@ starting it, and delete it when you find it done.
   the canonical domain is filtered per ISP, and the origin is a
   constant with a test override only.
 
+- **Subtitles burned into the picture (hardsub).** Every stream the
+  app plays today carries its subtitles as separate files beside the
+  video, which the player switches on and off. A provider, or hianime
+  itself, could instead serve video with the subtitles drawn into the
+  picture. The app would not know, and would then offer its own
+  captions over them: two sets of text on screen, a captions menu
+  that cannot turn the burned-in ones off, and a remembered "Off"
+  that appears to be ignored. Handling it needs the stream to say so
+  (a provider label such as hardsub or softsub, or a server that only
+  serves one kind), the player to start with its own captions off and
+  say why, and the external-player hand-off to pass no subtitle file.
+  It waited because no stream seen so far has been burned in, so
+  there is nothing to detect yet. Subtitles carried inside the
+  stream's own playlist are a separate case, logged by the subtitle
+  stack's last part (#356) as its own entry,
+  "Sidecar subtitles on a stream that also carries its own".
+
 ## Following a provider's legitimate domain move
 
 - **Let a provider's move to another domain reach the app without a
