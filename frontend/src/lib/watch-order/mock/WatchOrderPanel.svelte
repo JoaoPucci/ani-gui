@@ -8,8 +8,9 @@
   - `trio`: what comes before, this entry's place, and what comes
     after, mirrored about the centre (StripTrio).
 
-  The rail keeps the first round's header line and link; the trio
-  carries the second round's variants of both.
+  The rail's header carries the second round's line for the entry
+  being watched and a text link to the franchise page; the trio
+  carries both in its footer.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -18,6 +19,7 @@
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
 	import StripTrio from './StripTrio.svelte';
+	import StripWatching from './StripWatching.svelte';
 	import { numeral, railKeyText } from './meta';
 	import { loopSize, railItems } from './order';
 	import type { WatchOrderMockPrefs } from './prefs';
@@ -81,14 +83,7 @@
 
 {#snippet trailing()}
 	{#if onNow && onNow.entry.id !== id}
-		<span class="on-now">
-			<span class="on-now-text"
-				>{m.watchorder_strip_youre_on({ title: label(onNow.entry), episode: onNow.episode })}</span
-			>
-			<a class="text-btn" href={resolve('/anime/[id]', { id: onNow.entry.id })}
-				>{m.watchorder_strip_resume()}</a
-			>
-		</span>
+		<StripWatching entry={onNow.entry} episode={onNow.episode} variant={prefs.resume} {label} />
 	{/if}
 	<a class="text-btn" href={resolve('/anime/[id]/franchise', { id })}
 		>{m.watchorder_strip_franchise_link()}</a
@@ -155,20 +150,6 @@
 	.watch-order :global(.strip) {
 		margin-block-end: 0;
 	}
-	.on-now {
-		display: inline-flex;
-		align-items: baseline;
-		gap: var(--space-3);
-		min-inline-size: 0;
-	}
-	.on-now-text {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-inline-size: 28rem;
-		font-size: var(--type-meta);
-		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
-	}
 	.text-btn {
 		flex: none;
 		font-size: var(--type-meta);
@@ -181,8 +162,5 @@
 	}
 	.text-btn:hover {
 		text-decoration-color: var(--bone-100);
-	}
-	.on-now + .text-btn {
-		margin-inline-start: var(--space-4);
 	}
 </style>

@@ -26,8 +26,8 @@
 			m.watchorder_strip_franchise_stack_main({ count: summary.main }),
 			summary.films > 0 ? m.watchorder_strip_franchise_stack_films({ count: summary.films }) : null,
 			summary.sides > 0 ? m.watchorder_strip_franchise_stack_sides({ count: summary.sides }) : null,
-			run.recaps.length > 0
-				? m.watchorder_strip_franchise_stack_recaps({ count: run.recaps.length })
+			summary.recaps > 0
+				? m.watchorder_strip_franchise_stack_recaps({ count: summary.recaps })
 				: null
 		].filter((p) => p !== null)
 	);

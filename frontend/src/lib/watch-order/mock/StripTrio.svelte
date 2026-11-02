@@ -71,7 +71,7 @@
 		<span class="tile-text">
 			<span class="tile-title">{label(e)}</span>
 			{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
-			<MetaLine segments={metaLine(run, e, today)} />
+			<span class="tile-meta"><MetaLine segments={metaLine(run, e, today)} stacked /></span>
 		</span>
 	</a>
 {/snippet}
@@ -259,10 +259,10 @@
 	.tile.mirror :global(.meta) {
 		justify-content: flex-end;
 	}
-	/* The meta line stays one line in the strip, so a wrapped line
-	   never starts on a dot; the title takes the clamp. */
-	.tile :global(.meta) {
-		flex-wrap: nowrap;
+	/* Format and year, then progress or count on a line of its own,
+	   so no width wraps the meta line onto a dot. */
+	.tile-meta {
+		display: grid;
 	}
 	.tile:hover {
 		background: var(--ink-100);

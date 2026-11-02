@@ -24,6 +24,7 @@
 	import WatchOrderPanel from '$lib/watch-order/mock/WatchOrderPanel.svelte';
 	import { numeral as mockNumeral } from '$lib/watch-order/mock/meta';
 	import {
+		similarHidden as mockSimilarHidden,
 		stripRunFor as mockRunFor,
 		stripView as mockStripView
 	} from '$lib/watch-order/mock/strip-view';
@@ -1393,15 +1394,10 @@
 	// "08 of 09" in the masthead eyebrow, only where the run is one
 	// line: a bare number there reads as nothing in particular.
 	const mockPlace = $derived(mockRun ? mockStripView(mockRun, id, mockPrefs.order) : null);
-	const similarShown = $derived(
-		mockRun && mockPlace
-			? (similar ?? []).filter(
-					(s) =>
-						!mockRun.entries.some((e) => e.id === s.id) &&
-						!mockPlace.before.some((e) => e.id === s.id)
-				)
-			: (similar ?? [])
+	const mockHidden = $derived(
+		mockRun && mockPlace ? mockSimilarHidden(mockRun, mockPlace) : new Set<string>()
 	);
+	const similarShown = $derived((similar ?? []).filter((s) => !mockHidden.has(s.id)));
 
 	// `raw` is the upstream URL `url` proxies; a load failure is noted
 	// against it, and the next pick passes it over.

@@ -4,41 +4,46 @@
   "Watched". A unit ("EP") joins the figure before it, without a dot.
   The dot sits inside the segment it introduces, so a wrapped line
   never ends on one; "Watched" takes none, its check already sets it
-  apart.
+  apart. `stacked` sets the format and year on one line and the rest on
+  the next (splitMeta), for tiles too narrow to keep one line.
 -->
 <script lang="ts">
-	import type { MetaSegment } from './meta';
+	import { splitMeta, type MetaSegment } from './meta';
 
-	let { segments }: { segments: readonly MetaSegment[] } = $props();
+	let { segments, stacked = false }: { segments: readonly MetaSegment[]; stacked?: boolean } =
+		$props();
+	const lines = $derived(stacked ? splitMeta(segments) : [segments]);
 </script>
 
-<span class="meta">
-	{#each segments as seg, i (i)}
-		<span
-			class="seg"
-			class:num={seg.kind === 'num' || seg.kind === 'watched'}
-			class:unit={seg.kind === 'unit'}
-		>
-			{#if i > 0 && seg.kind !== 'unit' && seg.kind !== 'watched'}<span
-					class="dot"
-					aria-hidden="true">·</span
-				>{/if}
-			{#if seg.kind === 'watched'}
-				<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-					<path
-						d="M3 8.5l3 3 7-7"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-				</svg>
-			{/if}
-			{seg.text}
-		</span>
-	{/each}
-</span>
+{#each lines as line, l (l)}
+	<span class="meta">
+		{#each line as seg, i (i)}
+			<span
+				class="seg"
+				class:num={seg.kind === 'num' || seg.kind === 'watched'}
+				class:unit={seg.kind === 'unit'}
+			>
+				{#if i > 0 && seg.kind !== 'unit' && seg.kind !== 'watched'}<span
+						class="dot"
+						aria-hidden="true">·</span
+					>{/if}
+				{#if seg.kind === 'watched'}
+					<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+						<path
+							d="M3 8.5l3 3 7-7"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				{/if}
+				{seg.text}
+			</span>
+		{/each}
+	</span>
+{/each}
 
 <style>
 	.meta {

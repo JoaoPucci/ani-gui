@@ -101,8 +101,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} recapitulación",
-				"countPlural=*": "{count} recapitulaciones"
+				"countPlural=one": "{count} resumen",
+				"countPlural=*": "{count} resúmenes"
 			}
 		}
 	],
@@ -122,7 +122,6 @@
 	"strip_leads_into": "Lleva a {title}",
 	"strip_of_total": "de {total}",
 	"strip_position": "{position} de {total}",
-	"strip_resume": "Reanudar",
 	"strip_side_end": "Nada continúa desde aquí",
 	"strip_side_story": "Historia paralela",
 	"strip_unnumbered_branch": "Una de las formas de continuar",
@@ -162,7 +161,6 @@
 	"strip_word_sequels": "Secuelas",
 	"strip_word_watch_after": "Ver después",
 	"strip_word_watch_before": "Ver antes",
-	"strip_youre_on": "Vas en {title} · EP {episode}",
 	"upnext_announce": "A continuación: {title}",
 	"upnext_choices": "Formas de continuar",
 	"upnext_coming": "A continuación, cuando se estrene",

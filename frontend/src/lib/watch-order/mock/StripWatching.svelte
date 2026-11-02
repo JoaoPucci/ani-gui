@@ -40,10 +40,10 @@
 		</span>
 		<span class="chip-text">
 			<span class="chip-key">{m.watchorder_strip_watching_key()}</span>
-			<span class="chip-title"
-				>{label(entry)}<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span
-				></span
-			>
+			<span class="chip-title">
+				{label(entry)}
+				<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span>
+			</span>
 		</span>
 		<span class="arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span>
 	</a>
@@ -63,7 +63,8 @@
 		align-items: center;
 		gap: var(--space-3);
 		max-inline-size: min(100%, 26rem);
-		padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
+		padding-block: var(--space-1);
+		padding-inline: var(--space-1) var(--space-3);
 		border: 1px solid var(--ink-300);
 		border-radius: var(--radius-control);
 		color: inherit;
@@ -116,7 +117,7 @@
 		color: var(--bone-100);
 	}
 	.chip-ep {
-		margin-inline-start: var(--space-2);
+		margin-inline-start: var(--space-1);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-size: var(--type-micro);

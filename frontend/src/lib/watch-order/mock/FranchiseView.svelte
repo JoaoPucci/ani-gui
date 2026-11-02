@@ -19,6 +19,7 @@
 	import { pathNote, placement, railItems, segments } from './order';
 	import type { WatchOrderMockPrefs } from './prefs';
 	import { shortTitle } from './short-title';
+	import { franchiseSummary } from './strip-view';
 	import type { MockEntry, MockRun } from './types';
 	import { asRef, currentIn, franchiseName, progressOf, progressShare } from './view';
 
@@ -75,7 +76,7 @@
 					<span class="eyebrow-key">{m.watchorder_franchise_eyebrow()}</span>
 					<span class="eyebrow-rule" aria-hidden="true"></span>
 					<span class="eyebrow-value"
-						>{m.watchorder_franchise_count({ count: run.entries.length })}</span
+						>{m.watchorder_franchise_count({ count: franchiseSummary(run).total })}</span
 					>
 				</p>
 				<h1 class="title">{franchiseName(first.title, franchiseTitles)}</h1>

@@ -12,12 +12,12 @@
 		saveMockPrefs,
 		type WatchOrderMockPrefs
 	} from '$lib/watch-order/mock/prefs';
-	import { runFor } from '$lib/watch-order/mock/view';
+	import { stripRunFor } from '$lib/watch-order/mock/strip-view';
 
 	const id = $derived(page.params.id ?? '');
 	const today = new Date().toISOString().slice(0, 10);
 	let prefs = $state(loadMockPrefs(browserStorage()));
-	const run = $derived(prefs.enabled ? runFor(id) : null);
+	const run = $derived(prefs.enabled ? stripRunFor(id) : null);
 	function choose(next: WatchOrderMockPrefs) {
 		prefs = next;
 		saveMockPrefs(browserStorage(), next);

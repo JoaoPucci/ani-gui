@@ -58,7 +58,9 @@ export function metaLine(run: MockRun, entry: MockEntry, today: string): MetaSeg
 export function splitMeta(
 	segments: readonly MetaSegment[]
 ): [readonly MetaSegment[], readonly MetaSegment[]] {
-	return [segments, []];
+	const yearAt = segments.findIndex((s, i) => i > 0 && s.kind === 'num' && /^\d{4}$/.test(s.text));
+	const cut = yearAt === -1 ? 1 : yearAt + 1;
+	return [segments.slice(0, cut), segments.slice(cut)];
 }
 
 /** "05": positions read as oversized two-digit numerals. */

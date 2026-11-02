@@ -86,7 +86,7 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 		main: run.entries.length,
 		films: run.films.length + run.versions.length,
 		sides: run.sides.length,
-		recaps: 0,
+		recaps: run.recaps.length,
 		posters
 	};
 }
@@ -114,7 +114,5 @@ export function watchingFor(
  * and the strip's tiles (a side story's parents).
  */
 export function similarHidden(run: MockRun, view: StripView): ReadonlySet<string> {
-	void run;
-	void view;
-	return new Set();
+	return new Set([...run.entries, ...view.before, ...view.after].map((e) => e.id));
 }
