@@ -4,15 +4,18 @@
   intent is to communicate "we're working on it" without competing with
   the show metadata that's still visible underneath.
 
-  Lottie is imported lazily (`import('lottie-web')`) so the 70 KB
-  runtime only enters the bundle when an overlay actually mounts. The
+  Lottie is loaded lazily through `$lib/motion/lottie`, so the 70 KB
+  runtime only enters the bundle when an overlay actually mounts, and
+  plays under the motion preference: under reduced motion it holds a
+  single frame. The
   animation JSON is bundled as a JSON module — small enough that
   inlining it beats a runtime fetch, and packaged Electron's file://
   loader has no idea what to do with `/anim/loading.json` paths.
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { fly } from 'svelte/transition';
+	import { fly } from '$lib/motion/transitions';
+	import { loaderAnimation, playLottie } from '$lib/motion/lottie';
 	import loadingJson from '$lib/anim/loading.json';
 	import { m } from '$lib/paraglide/messages';
 
@@ -26,37 +29,16 @@
 	}>();
 
 	let container: HTMLDivElement | undefined = $state();
-	type LottieInstance = { destroy: () => void };
-	let animation: LottieInstance | null = null;
+	// The load and teardown race lives in `loaderAnimation`; this only
+	// tells it when the overlay is up and where.
+	const animation = loaderAnimation((into) => playLottie(into, loadingJson));
 
 	$effect(() => {
-		if (!visible || !container || animation) return;
-		void (async () => {
-			const lottie = (await import('lottie-web')).default;
-			if (!container) return;
-			animation = lottie.loadAnimation({
-				container,
-				renderer: 'svg',
-				loop: true,
-				autoplay: true,
-				animationData: loadingJson
-			});
-		})();
+		if (visible && container) animation.show(container);
+		else animation.hide();
 	});
 
-	$effect(() => {
-		if (!visible && animation) {
-			animation.destroy();
-			animation = null;
-		}
-	});
-
-	onDestroy(() => {
-		if (animation) {
-			animation.destroy();
-			animation = null;
-		}
-	});
+	onDestroy(() => animation.hide());
 </script>
 
 {#if visible}
@@ -144,11 +126,6 @@
 		}
 		to {
 			opacity: 1;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.backdrop {
-			animation: none;
 		}
 	}
 </style>

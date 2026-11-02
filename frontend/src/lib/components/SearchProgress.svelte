@@ -112,7 +112,6 @@
 		.search-progress-bar {
 			/* Static accent bar when the OS asks us not to animate.
 			   Still visible, just not slithering. */
-			animation: none;
 			transform: translateX(0);
 			inline-size: 100%;
 			opacity: 0.6;
