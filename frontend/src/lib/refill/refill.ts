@@ -9,9 +9,11 @@
  * the user left and came back; with it, the page waits on the ticket
  * and fetches the read once more when the retry lands.
  *
- * A page that closes lets its tickets go: the retry still goes, since
- * the answer is cached for the next view, but after every fill a page
- * on screen waits for.
+ * A page that closes lets its tickets go, also when it closed before its
+ * read came back, and so does a read no page waits on — the read
+ * fetched once more after a landing among them: the retry still goes,
+ * since the answer is cached for the next view, but after every fill a
+ * page on screen waits for.
  *
  * One {@link RefillWaiter} serves the whole renderer: it keeps a single
  * wait request open for every ticket any page is waiting on, so waiting
