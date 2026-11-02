@@ -47,11 +47,19 @@ export function showingCaption(list: WatchableTrackList): CaptionState {
 }
 
 /** The caption tracks showing beside the one the app expects, while
- *  that one shows: tracks the browser turned on itself. */
+ *  that one shows: tracks the browser turned on itself. Its own
+ *  captions menu leaves one track showing, or none, so a viewer's pick
+ *  never looks like this. */
 export function extraBeside(expected: CaptionState | null, list: WatchableTrackList): number[] {
-	void expected;
-	void list;
-	return [];
+	if (typeof expected !== 'number' || expected >= list.length) return [];
+	const isCaption = (t: WatchableTrack) => t.kind === 'subtitles' || t.kind === 'captions';
+	const start = list[expected];
+	if (!isCaption(start) || start.mode !== 'showing') return [];
+	const extra: number[] = [];
+	for (let i = 0; i < list.length; i++) {
+		if (i !== expected && isCaption(list[i]) && list[i].mode === 'showing') extra.push(i);
+	}
+	return extra;
 }
 
 /** The viewer's pick a change shows, or `null`: none before the app
@@ -69,9 +77,17 @@ export function expectCaptions(video: object, state: CaptionState | null): void 
 	expected.set(video, state);
 }
 
+/** What the app last set the video's captions to, or `null`. */
+export function expectedCaptions(video: object): CaptionState | null {
+	return expected.get(video) ?? null;
+}
+
 /** The viewer's pick the video's captions now show, if they show one;
- *  it becomes what the app expects from then on. */
+ *  it becomes what the app expects from then on. A track the browser
+ *  turned on beside the one the app expects is no pick
+ *  ({@link extraBeside}): the app switches it back off. */
 export function noteCaptionChange(video: object, list: WatchableTrackList): CaptionState | null {
+	if (extraBeside(expected.get(video) ?? null, list).length > 0) return null;
 	const now = showingCaption(list);
 	const pick = viewerPick(expected.get(video) ?? null, now);
 	if (pick !== null) expected.set(video, now);

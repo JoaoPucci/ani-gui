@@ -16,7 +16,7 @@
 
 import { applyCaptionPick } from './caption-pick';
 import { startingTrack } from './caption-start';
-import { expectCaptions, showingCaption } from './caption-watch';
+import { expectCaptions, expectedCaptions, extraBeside, showingCaption } from './caption-watch';
 
 /** One listed track, as the proxy answers it. */
 export interface SidecarTrack {
@@ -103,11 +103,14 @@ export async function fetchSidecarTracks(
  *   ({@link redrawOnLoad}). Chromium draws captions only once a mode
  *   change on a joined track has found one showing, and a start that
  *   joined already showing is changed by nothing after: its cues went
- *   active and none was drawn. The file arrives a fetch after the
- *   tracks joined; the selection is a zero-delay task, so in practice
- *   it has run by then — nothing in the browser orders the two — and
- *   the start, set by a script since joining, is left alone by any
- *   later one.
+ *   active and none was drawn. The start, set by a script since
+ *   joining, is left alone by any later selection;
+ * - a track the browser turns on beside the one the app expects is
+ *   switched back off ({@link keepAlone}). The selection is a
+ *   zero-delay task and the file a fetch, so the selection has usually
+ *   run before the start is set again — but nothing in the browser
+ *   orders the two, and a selection that runs after it finds a track
+ *   showing and turns on one more.
  */
 export function attachSidecarTracks(
 	video: HTMLVideoElement,
@@ -132,12 +135,14 @@ export function attachSidecarTracks(
 		return el;
 	});
 	if (start !== null) redrawOnLoad(video, elements[start]);
+	const stopKeeping = keepAlone(video);
 	// What the app set, so the browser's own captions menu can be told
 	// from it ($lib/play/caption-watch).
 	expectCaptions(video, showingCaption(video.textTracks));
 	return () => {
 		// The tracks going are no pick of the viewer's.
 		expectCaptions(video, null);
+		stopKeeping();
 		for (const el of elements) {
 			if (el.track.mode !== 'disabled') el.track.mode = 'disabled';
 			el.remove();
@@ -162,6 +167,20 @@ function redrawOnLoad(video: HTMLVideoElement, el: HTMLTrackElement): void {
 		},
 		{ once: true }
 	);
+}
+
+/**
+ * Switch off any caption track the browser turns on beside the one the
+ * app expects — the start, or the viewer's last pick — each time the
+ * video's tracks change. The returned function stops it.
+ */
+function keepAlone(video: HTMLVideoElement): () => void {
+	const list = video.textTracks;
+	const onChange = () => {
+		for (const i of extraBeside(expectedCaptions(video), list)) list[i].mode = 'disabled';
+	};
+	list.addEventListener('change', onChange);
+	return () => list.removeEventListener('change', onChange);
 }
 
 /**
