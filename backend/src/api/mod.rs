@@ -28,6 +28,7 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod flags;
 mod refill;
 mod sse_abort;
 mod syncplay;
@@ -115,6 +116,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/kitsu/by-mal-ids", post(post_kitsu_by_mal_ids))
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
+        .route("/api/flags", get(flags::get_flags))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
         .route(
             "/api/title-match",
