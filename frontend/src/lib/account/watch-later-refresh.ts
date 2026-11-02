@@ -60,9 +60,34 @@ export function markRefreshed(provider: Provider, nowMs: number): void {
  *  Plan-to-Watch title to Watching (dropping it from the rail) — the
  *  re-pull reflects that without waiting out the TTL. */
 export function invalidateWatchLater(provider: Provider): void {
+	invalidations.set(provider, invalidatedSoFar(provider) + 1);
 	try {
 		window.localStorage.removeItem(KEY_PREFIX + provider);
 	} catch {
 		/* storage unavailable — next launch re-pulls anyway. */
 	}
+}
+
+/** How many times each provider's snapshot was invalidated this session. */
+const invalidations = new Map<Provider, number>();
+
+function invalidatedSoFar(provider: Provider): number {
+	return invalidations.get(provider) ?? 0;
+}
+
+/** Noted when a refresh of `provider` starts, for {@link markRefreshedSince}. */
+export function refreshStamp(provider: Provider): number {
+	return invalidatedSoFar(provider);
+}
+
+/**
+ * Record a refresh of `provider` that started at `stamp` as the latest
+ * pull — unless the snapshot was invalidated since: a write that settled
+ * while the refresh was out asked for a read the refresh started too
+ * early to be, so the snapshot stays due. Returns whether it was marked.
+ */
+export function markRefreshedSince(provider: Provider, stamp: number, nowMs: number): boolean {
+	if (invalidatedSoFar(provider) !== stamp) return false;
+	markRefreshed(provider, nowMs);
+	return true;
 }

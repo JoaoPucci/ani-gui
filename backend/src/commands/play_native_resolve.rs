@@ -94,6 +94,11 @@ pub struct NativeResolved {
     /// Kitsu's count, when whether the listing's rows past it are
     /// appended extras could not be read.
     pub unread_past: Option<u32>,
+    /// When the picked listing was heard
+    /// ([`crate::commands::listing_tags::Hearing`]): a repair of the
+    /// show's numbering stamps from it is ordered by it against another
+    /// walk's. `None` for a resolve that knows no hearing.
+    pub heard: Option<crate::commands::listing_tags::Hearing>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -162,6 +167,10 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller knows the entry
     /// ([`super::play_native_appended`]).
     pub tail: Option<&'a dyn super::play_native_appended::TailSource>,
+    /// Where each listing the walk picks is handed as it is picked,
+    /// whether or not the episode then serves
+    /// ([`crate::commands::listing_tags`]). `None` hands it nowhere.
+    pub heard: Option<&'a dyn crate::commands::listing_tags::ListingSink>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -247,6 +256,8 @@ where
                 if hits.is_empty() {
                     continue;
                 }
+                // The pick fetches the candidates' listings from here.
+                let begun = crate::commands::listing_tags::Begun::now();
                 match pick_candidate_titled(
                     client,
                     &hits,
@@ -259,6 +270,9 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        // The listing was heard by the pick — before the
+                        // appended-extras rule's own reads.
+                        let heard = begun.picked();
                         // The version asked for first, so the listing
                         // the appended-extras rule reads is the one that
                         // plays.
@@ -271,6 +285,14 @@ where
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
+                        // Every version's listing is at hand now, served
+                        // or not.
+                        crate::commands::listing_tags::hand_copies(
+                            req.heard,
+                            client.id(),
+                            &picked,
+                            heard,
+                        );
                         // The version asked for, or the next that
                         // carries the episode in the mode, each read
                         // through its own display stamp.
@@ -352,6 +374,7 @@ where
                             other_copies,
                             listing: picked.episodes.clone(),
                             unread_past: picked.unread_past,
+                            heard: Some(heard),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
