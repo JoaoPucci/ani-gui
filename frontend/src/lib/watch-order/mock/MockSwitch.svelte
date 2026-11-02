@@ -28,7 +28,10 @@
 		handoff: m.watchorder_mock_handoff,
 		wording: m.watchorder_mock_wording,
 		cta: m.watchorder_mock_cta,
-		resume: m.watchorder_mock_resume
+		resume: m.watchorder_mock_resume,
+		stackHover: m.watchorder_mock_stack_hover,
+		footer: m.watchorder_mock_footer,
+		stackPosters: m.watchorder_mock_stack_posters
 	};
 	const optionLabel: Record<string, () => string> = {
 		linked: m.watchorder_setting_linked,
@@ -54,7 +57,17 @@
 		button: m.watchorder_mock_cta_button,
 		stack: m.watchorder_mock_cta_stack,
 		chip: m.watchorder_mock_resume_chip,
-		sentence: m.watchorder_mock_resume_sentence
+		sentence: m.watchorder_mock_resume_sentence,
+		surface: m.watchorder_mock_stack_hover_surface,
+		underline: m.watchorder_mock_stack_hover_underline,
+		border: m.watchorder_mock_stack_hover_border,
+		center: m.watchorder_mock_footer_center,
+		axis: m.watchorder_mock_footer_axis,
+		ends: m.watchorder_mock_footer_ends,
+		'3': m.watchorder_mock_stack_posters_3,
+		'2': m.watchorder_mock_stack_posters_2,
+		'1': m.watchorder_mock_stack_posters_1,
+		'0': m.watchorder_mock_stack_posters_0
 	};
 </script>
 

@@ -12,6 +12,7 @@
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
+	import { mastheadArt } from './masthead';
 	import MetaLine from './MetaLine.svelte';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
@@ -41,7 +42,7 @@
 	const items = $derived(railItems(run, prefs.order));
 	const first = $derived(run.entries.find((e) => e.id === run.nameId)!);
 	const onNow = $derived(currentIn(run, prefs.order));
-	const heroEntry = $derived(onNow?.entry ?? first);
+	const heroEntry = $derived(mastheadArt(run, prefs.order));
 	const accent = $derived(accentFor(heroEntry.id));
 	const titles = $derived(run.entries.map((e) => e.title));
 	const franchiseTitles = $derived(

@@ -18,7 +18,10 @@ export const MOCK_OPTIONS = {
 	handoff: ['next', 'episode'],
 	wording: STRIP_WORDINGS,
 	cta: ['button', 'stack'],
-	resume: ['chip', 'sentence']
+	resume: ['chip', 'sentence'],
+	stackHover: ['surface'],
+	footer: ['ends'],
+	stackPosters: ['3']
 } as const;
 
 type Options = typeof MOCK_OPTIONS;
@@ -43,7 +46,10 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	handoff: 'next',
 	wording: 'role',
 	cta: 'button',
-	resume: 'chip'
+	resume: 'chip',
+	stackHover: 'surface',
+	footer: 'ends',
+	stackPosters: '3'
 };
 export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';
 
