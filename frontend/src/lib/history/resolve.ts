@@ -44,6 +44,7 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
+import { entryNames, namesTheEntry } from './same-name';
 
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
@@ -463,7 +464,11 @@ export function cachedBindingVerdict(
 		return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
-		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
+		if (courSlugRegex(preliminary.cour).test(cached.slug)) return 'trust';
+		// A slug can mark a later season without a cour suffix
+		// ("gintama-2" is Gintama Season 2): an entry Kitsu titles as the
+		// provider does names this cour all the same.
+		return namesTheEntry(preliminary.searchTitle, entryNames(cached)) ? 'trust' : 'reresolve';
 	}
 	return 'trust';
 }

@@ -48,7 +48,7 @@ pub async fn resolve_launch_args(
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     // Every listing the resolve picks is recorded, served or not.
-    let recorder = crate::commands::listing_tags::Recorder(state);
+    let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(
         quality,
         &cfg.locale,

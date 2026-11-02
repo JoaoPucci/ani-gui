@@ -171,6 +171,7 @@ fn launch_args_carry_the_resolves_sidecar_tracks() {
         other_copies: Vec::new(),
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     };
     let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
     assert_eq!(
@@ -200,6 +201,7 @@ fn launch_args_carry_the_resolves_referer() {
         other_copies: Vec::new(),
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     };
     let with = super::play_handoff::launch_args_for(
         native(Some("https://embed.example/")),
@@ -243,6 +245,7 @@ fn launch_args_lead_with_the_providers_default_track() {
         other_copies: Vec::new(),
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     };
     let launch = super::play_handoff::launch_args_for(native.clone(), &args_for(), &cfg);
     assert_eq!(

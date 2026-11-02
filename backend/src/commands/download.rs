@@ -242,7 +242,7 @@ where
         .unwrap_or_default()
         .locale;
     // Every listing the resolve picks is recorded, served or not.
-    let recorder = crate::commands::listing_tags::Recorder(state);
+    let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(
         quality,
         &locale,

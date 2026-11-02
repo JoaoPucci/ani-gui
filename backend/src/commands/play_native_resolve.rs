@@ -94,6 +94,11 @@ pub struct NativeResolved {
     /// Kitsu's count, when whether the listing's rows past it are
     /// appended extras could not be read.
     pub unread_past: Option<u32>,
+    /// When the picked listing was heard
+    /// ([`crate::commands::listing_tags::Hearing`]): a repair of the
+    /// show's numbering stamps from it is ordered by it against another
+    /// walk's. `None` for a resolve that knows no hearing.
+    pub heard: Option<crate::commands::listing_tags::Hearing>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -374,6 +379,7 @@ where
                             other_copies,
                             listing: picked.episodes.clone(),
                             unread_past: picked.unread_past,
+                            heard: Some(heard),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
