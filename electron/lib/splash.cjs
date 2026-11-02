@@ -63,7 +63,13 @@ function splashController({ createWindow, logError }) {
   return {
     show() {
       if (over) return;
-      const splash = createWindow(splashWindowOptions());
+      let splash;
+      try {
+        splash = createWindow(splashWindowOptions());
+      } catch (err) {
+        logError("[main] could not show the splash:", err);
+        return;
+      }
       if (!splash) return;
       splash[SPLASH_MARK] = true;
       splash.once("ready-to-show", () => {

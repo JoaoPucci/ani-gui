@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use super::cache::{self, CacheEntry, FRESH_FOR};
 use super::resolve::Document;
-use super::store::{FlagStore, Origin, SETTLE_CAP};
+use super::store::{FlagStore, Origin, SETTLE_CAP, SETTLE_LIMIT};
 
 /// The waits before the first few retries in a session.
 pub const RETRY_DELAYS: [Duration; 3] = [
@@ -88,7 +88,9 @@ where
     R: Future<Output = Option<CacheEntry>>,
     Fut: Future<Output = Option<Document>>,
 {
-    let deadline = tokio::time::Instant::now() + SETTLE_CAP;
+    let started = tokio::time::Instant::now();
+    let deadline = started + SETTLE_CAP;
+    let read_limit = started + SETTLE_LIMIT;
     tokio::pin!(read);
     tokio::pin!(first);
     let early = tokio::select! {
@@ -101,9 +103,14 @@ where
             decide(store, Some(&doc), None);
             Some(doc)
         }
-        // The attempt failed before the cache read ended.
+        // The attempt failed before the cache read ended. The read
+        // gets as long as a reader waits; one that never ends decides
+        // nothing here (the reader's own limit decides then), and the
+        // retries go on.
         Err(None) => {
-            decide(store, None, read.await.as_ref());
+            if let Ok(cached) = tokio::time::timeout_at(read_limit, &mut read).await {
+                decide(store, None, cached.as_ref());
+            }
             None
         }
         Ok(cached) => match tokio::time::timeout_at(deadline, &mut first).await {
