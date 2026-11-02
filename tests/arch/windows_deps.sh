@@ -215,8 +215,11 @@ fi
 #    made. Keeping it out of the installer was also the original reason
 #    for the install-time download — the zip is ~90 MB. Read from the
 #    inventory above, and from package.json by its JSON parser: no
-#    `build.win` resource or file entry may name it either, since a
-#    stray entry would carry it past the fetcher.
+#    resource or file entry may name it either, in `build.win` or in
+#    `build` itself, which applies to the Windows build too, since a
+#    stray entry would carry it past the fetcher. Nor may a staged
+#    entry carry an install-time binary under another `dep` name: the
+#    fetcher's `binary` fields are compared as well.
 if [ -f "$WINDOWS_FETCH" ]; then
     if ! printf '%s\n' "$windows_install_time" | grep -qx -- ffmpeg; then
         printf "arch/windows_deps FAIL: %s does not declare ffmpeg in INSTALL_TIME_DEPS — a Windows install would have no ffmpeg, and downloads need it\n" "$WINDOWS_FETCH" >&2
@@ -226,13 +229,25 @@ if [ -f "$WINDOWS_FETCH" ]; then
         printf "arch/windows_deps FAIL: %s stages ffmpeg into the Windows package — that redistributes gyan.dev's GPL build, whose corresponding source cannot be offered; the installer downloads it at install time instead\n" "$WINDOWS_FETCH" >&2
         failed=1
     fi
+    if ! node --input-type=module -e '
+const { DEPS, INSTALL_TIME_DEPS } = await import(process.argv[2]);
+const downloaded = new Set((INSTALL_TIME_DEPS || []).map((d) => String(d.binary).toLowerCase()));
+const carried = (DEPS || []).filter((d) => downloaded.has(String(d.binary).toLowerCase()));
+if (carried.length) { console.error(carried.map((d) => d.name + " stages " + d.binary).join("\n")); process.exit(1); }
+' inventory "$REPO_ROOT/$WINDOWS_FETCH"; then
+        printf 'arch/windows_deps FAIL: %s stages a binary its installer downloads at install time (above) — the package would carry it after all\n' "$WINDOWS_FETCH" >&2
+        failed=1
+    fi
 fi
 if ! node -e '
-const win = (require(process.argv[1]).build || {}).win || {};
-const entries = [].concat(win.extraResources || [], win.extraFiles || [], win.files || []);
+const build = require(process.argv[1]).build || {};
+const win = build.win || {};
+const entries = [].concat(
+    build.extraResources || [], build.extraFiles || [], build.files || [],
+    win.extraResources || [], win.extraFiles || [], win.files || []);
 process.exit(/ffmpeg/i.test(JSON.stringify(entries)) ? 1 : 0);
 ' "$REPO_ROOT/$PKG"; then
-    printf 'arch/windows_deps FAIL: %s build.win names ffmpeg in a resource or file entry — the package must not carry it; the installer downloads it at install time\n' "$PKG" >&2
+    printf 'arch/windows_deps FAIL: %s names ffmpeg in a resource or file entry of build or build.win — the package must not carry it; the installer downloads it at install time\n' "$PKG" >&2
     failed=1
 fi
 
@@ -255,10 +270,18 @@ fi
 #      NSISdl, NScurl, INetLoad — matched without regard to case, as
 #      NSIS resolves them) names a declared `${KEY_URL}`, and every line
 #      with a URL in it, comment or not, is one of the `KEY_URL` lines.
+#    - The download is there at all: for each entry, at least one line
+#      not starting (after blanks) with `;` or `#` calls a download
+#      plug-in on `${KEY_URL}`, and installer.nsh defines, at column
+#      zero, exactly one `!macro customInstall` — the hook
+#      electron-builder inserts after the new files land — and exactly
+#      one `!macro customHeader`, which sets the copy aside before the
+#      old uninstaller runs.
 #
 #    What it does not catch: a download routed through a spawned
 #    program that is handed a URL built at run time, a plug-in outside
-#    that list, and whether the macros around the download do what
+#    that list, a download line inside a `/* */` block comment or in a
+#    macro other than customInstall, and whether the macros do what
 #    their comments say — that the update keeps the copy, that the stamp
 #    is honoured. Only Windows runs NSIS; those are the PR's manual
 #    steps. A green run means the script pins what the fetcher declares
@@ -307,9 +330,18 @@ for (const d of Array.isArray(INSTALL_TIME_DEPS) ? INSTALL_TIME_DEPS : []) {
     }
     urlRefs.push("$" + "{" + key + "_URL}");
 }
+const plugin = /(inetc|nsisdl|nscurl|inetload)::/i;
+for (const ref of urlRefs) {
+    const live = lines.filter((l) => !/^\s*[;#]/.test(l) && plugin.test(l) && l.includes(ref));
+    if (live.length === 0) bad.push("no uncommented line calls a download plug-in on " + ref);
+}
+for (const m of ["customInstall", "customHeader"]) {
+    const n = lines.filter((l) => l === "!macro " + m).length;
+    if (n !== 1) bad.push("expected exactly one line [!macro " + m + "], found " + n);
+}
 lines.forEach((l, i) => {
     if (l.includes("://") && !urlLines.has(l)) bad.push("line " + (i + 1) + " names a URL INSTALL_TIME_DEPS does not declare: " + l.trim());
-    if (/(inetc|nsisdl|nscurl|inetload)::/i.test(l) && !urlRefs.some((r) => l.includes(r))) bad.push("line " + (i + 1) + " calls a download plug-in on no declared URL: " + l.trim());
+    if (plugin.test(l) && !urlRefs.some((r) => l.includes(r))) bad.push("line " + (i + 1) + " calls a download plug-in on no declared URL: " + l.trim());
 });
 if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
 ' inventory "$REPO_ROOT/$WINDOWS_FETCH" "$REPO_ROOT/$NSH"; then
