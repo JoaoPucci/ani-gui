@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_RUNS } from './fixtures';
 import { placement } from './order';
-import { emptyColumn, franchiseSummary, stripRunFor, stripView, watchingFor } from './strip-view';
+import {
+	emptyColumn,
+	franchiseSummary,
+	similarHidden,
+	stripRunFor,
+	stripView,
+	watchingFor
+} from './strip-view';
 import type { MockEntry, MockRun } from './types';
 
 const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
@@ -64,6 +71,11 @@ describe('franchiseSummary', () => {
 		expect(franchiseSummary(run('fate')).total).toBe(12);
 	});
 
+	it('counts the recaps, so the stack lists what the total counts', () => {
+		expect(franchiseSummary(run('jojo')).recaps).toBe(1);
+		expect(franchiseSummary(run('fate')).recaps).toBe(2);
+	});
+
 	it('fans the first entry, a film and a side story, filling from the main story', () => {
 		expect(ids(franchiseSummary(run('fate')).posters)).toEqual(['6028', '4788', '6928']);
 		expect(ids(franchiseSummary(run('monogatari')).posters)).toEqual(['3919', '49128', '6546']);
@@ -93,5 +105,17 @@ describe('watchingFor', () => {
 
 	it('says nothing where nothing is part-way', () => {
 		expect(watching('bleach', '244')).toBeNull();
+	});
+});
+
+describe('similarHidden', () => {
+	it("leaves out the run's entries and the strip's tiles, and nothing else", () => {
+		const jojo = run('jojo');
+		const hidden = similarHidden(jojo, stripView(jojo, '12064', 'linked'));
+		for (const e of jojo.entries) expect(hidden.has(e.id)).toBe(true);
+		expect(hidden.has('11459')).toBe(true);
+		// The franchise's other versions are not the run: they may still appear.
+		expect(hidden.has('610')).toBe(false);
+		expect(hidden.size).toBe(jojo.entries.length);
 	});
 });

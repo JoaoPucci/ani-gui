@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_RUNS } from './fixtures';
-import { metaLine, numeral, railKeyText } from './meta';
+import { metaLine, numeral, railKeyText, splitMeta } from './meta';
 import type { MockRun } from './types';
 import { entryIn } from './view';
 
@@ -58,5 +58,27 @@ describe('rail key text', () => {
 			'Leads into Gintama: The Final'
 		);
 		expect(railKeyText(null, false, label)).toBeNull();
+	});
+});
+
+describe('splitMeta', () => {
+	const parts = (key: string, id: string, today = TODAY) =>
+		splitMeta(metaLine(run(key), entryIn(run(key), id)!, today)).map((p) => p.map((s) => s.text));
+
+	it('puts the format and year first, and the rest on its own line', () => {
+		expect(parts('jojo', '46598')).toEqual([['TV', '2022'], ['EP 13 of 14']]);
+		expect(parts('jojo', '7158')).toEqual([['TV', '2012'], ['Watched']]);
+		expect(parts('bleach', '48015')).toEqual([
+			['TV', '2024'],
+			['14', 'ep']
+		]);
+	});
+
+	it('keeps a line with nothing after the year whole', () => {
+		expect(parts('gintama', '43683')).toEqual([['MOVIE', '2021'], []]);
+	});
+
+	it("puts an unaired entry's date on the second line", () => {
+		expect(parts('monogatari', '50013')).toEqual([['SPECIAL'], ['Date not announced']]);
 	});
 });
