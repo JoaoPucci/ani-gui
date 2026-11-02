@@ -69,9 +69,7 @@ impl Registry {
     /// to wait on it.
     pub(crate) fn hold(&mut self, key: &str, now: Instant) -> Option<(u64, bool)> {
         if let Some(&ticket) = self.pending.get(key) {
-            if let Some(w) = self.watched.get_mut(&ticket) {
-                w.seen = Some(now);
-            }
+            self.served(ticket, now);
             return Some((ticket, false));
         }
         if self.pending.len() >= MAX_PENDING {
@@ -87,6 +85,14 @@ impl Registry {
             },
         );
         Some((self.last, true))
+    }
+
+    /// `ticket` was served to a page, which is about to wait on it: it
+    /// counts as on screen from `now`, after a release too.
+    pub(crate) fn served(&mut self, ticket: u64, now: Instant) {
+        if let Some(w) = self.watched.get_mut(&ticket) {
+            w.seen = Some(now);
+        }
     }
 
     /// A page started waiting on `ticket`. Returns the release era the
