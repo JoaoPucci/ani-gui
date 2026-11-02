@@ -428,18 +428,30 @@ test('a play through the stream proxy plays, with its subtitles, under the polic
 		await expect
 			.poll(async () => (await videoState(page))?.tracks ?? [], { timeout: 10_000 })
 			.toContain(`${lanes.stream}/s/${sid}/sub/0.vtt`);
-		await page.evaluate(() => {
-			for (const t of document.querySelector('video')!.textTracks) {
-				if (t.mode === 'disabled') t.mode = 'hidden';
-			}
-		});
+		// A disabled track exposes no cues, and hls.js disables every
+		// labelled subtitle track but the one it selected whenever it
+		// switches its own (SubtitleTrackController.toggleTrackModes) —
+		// the sidecar included, at a moment that depends on when the
+		// rendition's playlist arrives. So each read first sets any
+		// disabled track back to hidden. The track element's readyState
+		// (2 loaded, 3 failed) shows the load itself.
+		const shownCues = () =>
+			page.evaluate(() => {
+				const v = document.querySelector('video');
+				if (!v) return { cues: [] as string[], trackStates: [] as number[] };
+				for (const t of v.textTracks) if (t.mode === 'disabled') t.mode = 'hidden';
+				return {
+					cues: [...v.textTracks].flatMap((t) => [...(t.cues ?? [])].map((c) => (c as VTTCue).text)),
+					trackStates: [...v.querySelectorAll('track')].map((t) => t.readyState)
+				};
+			});
 		await expect
-			.poll(async () => (await videoState(page))?.cues ?? [], { timeout: 15_000 })
-			.toEqual(expect.arrayContaining(['A cue from the sidecar track']));
+			.poll(shownCues, { timeout: 15_000 })
+			.toEqual({ cues: expect.arrayContaining(['A cue from the sidecar track']), trackStates: [2] });
 		// The playlist's own subtitle rendition reaches the player through
 		// the proxy too.
 		await expect
-			.poll(async () => (await videoState(page))?.cues ?? [], { timeout: 15_000 })
+			.poll(async () => (await shownCues()).cues, { timeout: 15_000 })
 			.toEqual(expect.arrayContaining(['A cue from the playlist']));
 
 		// An MP4 session plays straight from the stream lane (media-src).
