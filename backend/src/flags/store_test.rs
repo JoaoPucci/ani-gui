@@ -40,14 +40,18 @@ async fn serve(resp: ResponseTemplate) -> (MockServer, String) {
 fn source(url: &str, dir: &Path) -> Source {
     Source {
         url: url.to_string(),
-        cache_path: dir.join("remote-flags.json"),
+        cache_path: Some(dir.join("remote-flags.json")),
         timeout: Duration::from_millis(500),
     }
 }
 
 async fn seed_cache(src: &Source, fetched_at: u64, flags: serde_json::Value) {
     let flags = flags.as_object().expect("object").clone();
-    cache::write(&src.cache_path, &CacheEntry { fetched_at, flags }).await;
+    cache::write(
+        src.cache_path.as_deref().expect("cache path"),
+        &CacheEntry { fetched_at, flags },
+    )
+    .await;
 }
 
 fn file_body() -> ResponseTemplate {
@@ -90,7 +94,9 @@ async fn a_fetched_file_is_resolved_settled_and_cached() {
     let (store, src, _td) = run(file_body(), None).await;
     assert_eq!(pair(&store), FROM_FILE);
     assert!(store.is_settled());
-    let cached = cache::read(&src.cache_path).await.expect("cached");
+    let cached = cache::read(src.cache_path.as_deref().expect("cache path"))
+        .await
+        .expect("cached");
     assert_eq!(cached.fetched_at, NOW);
     assert_eq!(
         cached.flags.get("test_kill"),
@@ -103,7 +109,7 @@ async fn a_fetched_file_wins_over_a_fresh_cache_and_replaces_it() {
     let (store, src, _td) = run(file_body(), Some(NOW - DAY)).await;
     assert_eq!(pair(&store), FROM_FILE);
     assert_eq!(
-        cache::read(&src.cache_path)
+        cache::read(src.cache_path.as_deref().expect("cache path"))
             .await
             .expect("cached")
             .fetched_at,
@@ -146,7 +152,10 @@ async fn malformed_json_falls_back_to_a_fresh_cache_and_keeps_it() {
     let (store, src, _td) = run(bad, Some(NOW - DAY)).await;
     assert_eq!(pair(&store), FROM_CACHE);
     assert_eq!(
-        cache::read(&src.cache_path).await.expect("kept").fetched_at,
+        cache::read(src.cache_path.as_deref().expect("cache path"))
+            .await
+            .expect("kept")
+            .fetched_at,
         NOW - DAY
     );
 }
@@ -208,18 +217,62 @@ async fn settled_never_waits_past_its_limit() {
     assert!(started.elapsed() < SETTLE_LIMIT + Duration::from_secs(1));
 }
 
+#[test]
+fn the_shipped_source_is_the_flags_branch_file_within_the_fetch_timeout() {
+    let src = Source::shipped(Some("/c/remote-flags.json".into()));
+    assert_eq!(src.url, crate::flags::remote::FLAGS_URL);
+    assert_eq!(src.timeout, crate::flags::remote::FETCH_TIMEOUT);
+    assert_eq!(src.cache_path, Some("/c/remote-flags.json".into()));
+    assert_eq!(Source::shipped(None).cache_path, None);
+}
+
 #[tokio::test]
-async fn the_launch_refresh_runs_off_the_caller() {
-    // The shipped URL is never reached in a test: the task is aborted
-    // straight away. What matters is that spawning returns at once
-    // and leaves the store usable.
-    let td = tempfile::tempdir().expect("tempdir");
+async fn without_a_cache_directory_the_file_is_still_fetched_and_settled() {
+    let (_server, url) = serve(file_body()).await;
+    let src = Source {
+        url,
+        cache_path: None,
+        timeout: Duration::from_millis(500),
+    };
     let store = FlagStore::pending(TEST_DECLS);
-    let handle = super::spawn_launch_refresh(
-        store.clone(),
-        reqwest::Client::new(),
-        td.path().join("remote-flags.json"),
-    );
-    handle.abort();
+    refresh(&store, &reqwest::Client::new(), &src, NOW).await;
+    assert_eq!(pair(&store), FROM_FILE);
+    assert!(store.is_settled());
+}
+
+#[tokio::test]
+async fn without_a_cache_directory_a_failed_fetch_settles_at_the_defaults() {
+    let (_server, url) = serve(ResponseTemplate::new(404)).await;
+    let src = Source {
+        url,
+        cache_path: None,
+        timeout: Duration::from_millis(500),
+    };
+    let store = FlagStore::pending(TEST_DECLS);
+    refresh(&store, &reqwest::Client::new(), &src, NOW).await;
     assert_eq!(pair(&store), DEFAULTS);
+    assert!(store.is_settled());
+}
+
+#[tokio::test]
+async fn the_spawned_launch_refresh_fills_and_settles_the_store() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let (_server, url) = serve(file_body()).await;
+    let src = source(&url, td.path());
+    let store = FlagStore::pending(TEST_DECLS);
+    let handle = super::spawn_launch_refresh(store.clone(), reqwest::Client::new(), src.clone());
+    // Spawning hands back at once; the store is still at the defaults.
+    assert_eq!(pair(&store), DEFAULTS);
+    handle.await.expect("join");
+    assert_eq!(pair(&store), FROM_FILE);
+    assert!(store.is_settled());
+    // Stamped with the wall clock, so the next launch finds it fresh.
+    let cached = cache::read(src.cache_path.as_deref().expect("cache path"))
+        .await
+        .expect("cached");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+    assert!(cache::is_fresh(cached.fetched_at, now, FRESH_FOR));
 }
