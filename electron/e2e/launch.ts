@@ -13,7 +13,12 @@
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
-import { _electron, type ElectronApplication, type Page } from '@playwright/test';
+import {
+	_electron,
+	type BrowserContext,
+	type ElectronApplication,
+	type Page
+} from '@playwright/test';
 import path from 'node:path';
 
 /** electron-builder's pre-AppImage output — the production code path:
@@ -88,5 +93,28 @@ export async function appWindow(app: ElectronApplication, timeoutMs = 60_000): P
 		}
 		if (Date.now() > deadline) throw new Error(`no app window within ${timeoutMs} ms`);
 		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+}
+
+/** `context.route`, tolerant of the splash closing while it is set.
+ *  The route is installed on every open page, and the splash closes
+ *  moments into a test run's boot — sometimes mid-install, which
+ *  Playwright reports with its closed-target error although the
+ *  context and the app's window are fine. A retry installs it on what
+ *  is left; a context that is really gone fails every attempt, and the
+ *  error then surfaces for the cold-launch retry to judge. */
+export async function routeContext(
+	context: BrowserContext,
+	url: Parameters<BrowserContext['route']>[0],
+	handler: Parameters<BrowserContext['route']>[1]
+): Promise<void> {
+	for (let attempt = 0; ; attempt += 1) {
+		try {
+			await context.route(url, handler);
+			return;
+		} catch (err) {
+			const closed = String(err).includes('Target page, context or browser has been closed');
+			if (!closed || attempt >= 3) throw err;
+		}
 	}
 }

@@ -20,7 +20,13 @@ import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { appWindow, launchPackagedApp, packagedBinary, splashState } from "./launch";
+import {
+  appWindow,
+  launchPackagedApp,
+  packagedBinary,
+  routeContext,
+  splashState,
+} from "./launch";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -71,28 +77,28 @@ async function launchAppWithStubsOnce(
   onLaunch(app);
 
   const context = app.context();
-  await context.route("**/api/app-info", (r) =>
+  await routeContext(context, "**/api/app-info", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(appInfo),
     }),
   );
-  await context.route("**/api/history", (r) =>
+  await routeContext(context, "**/api/history", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptyHistory),
     }),
   );
-  await context.route("**/api/kitsu/trending", (r) =>
+  await routeContext(context, "**/api/kitsu/trending", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(trending),
     }),
   );
-  await context.route("**/api/kitsu/top-rated", (r) =>
+  await routeContext(context, "**/api/kitsu/top-rated", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
@@ -100,7 +106,7 @@ async function launchAppWithStubsOnce(
     }),
   );
   // Block image fetches; the renderer's placeholder takes over.
-  await context.route("**/api/image*", (r) => r.fulfill({ status: 503 }));
+  await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
 
   const page = await appWindow(app);
   return { app, page, context };
