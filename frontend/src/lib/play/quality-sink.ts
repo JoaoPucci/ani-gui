@@ -113,6 +113,12 @@ export function whenSettled<T>(value: T | Promise<T>, then: (value: T | undefine
 	else then(value);
 }
 
+/** Starts the engine loading at `at`, or at its own start without one. */
+export function startEngine(engine: Pick<Hls, 'startLoad'>, at: number | null | undefined): void {
+	if (typeof at === 'number') engine.startLoad(at);
+	else engine.startLoad();
+}
+
 /** How long a stream's start waits for the settings. */
 export const QUALITY_SETTING_WAIT_MS = 3_000;
 
