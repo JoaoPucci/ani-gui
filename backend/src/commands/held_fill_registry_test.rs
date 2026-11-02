@@ -132,6 +132,23 @@ fn a_release_takes_a_fill_off_screen_while_its_wait_is_still_open() {
     assert!(!r.may_go(left, later), "the page on screen goes first");
 }
 
+/// A page leaves a show for another page of the same show (Home's card
+/// to its detail page): the release takes the ticket off screen, and the
+/// next page's read, held again, is served the same ticket. From then it
+/// is on screen, as a new ticket is, until that page starts waiting.
+#[test]
+fn a_released_ticket_served_again_is_on_screen_until_its_page_waits() {
+    let mut r = Registry::default();
+    let t0 = Instant::now();
+    let (t, _) = r.hold("k", t0).expect("room");
+    r.release(t);
+    let later = t0 + ON_SCREEN_GRACE * 2;
+    assert!(!r.on_screen(t, later));
+    assert_eq!(r.hold("k", later), Some((t, false)));
+    assert!(r.on_screen(t, later), "served to the page on screen");
+    assert!(!r.on_screen(t, later + ON_SCREEN_GRACE), "no page waited");
+}
+
 #[test]
 fn a_fill_no_page_shows_goes_only_while_no_fill_on_screen_waits() {
     let mut r = Registry::default();
