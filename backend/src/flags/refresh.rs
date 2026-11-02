@@ -40,8 +40,10 @@ pub const RETRY_EVERY: Duration = Duration::from_secs(60 * 60);
 /// How long to wait before retry number `attempt` (from 0).
 #[must_use]
 pub fn retry_delay(attempt: u32) -> Duration {
-    let _ = attempt;
-    Duration::ZERO
+    usize::try_from(attempt)
+        .ok()
+        .and_then(|i| RETRY_DELAYS.get(i).copied())
+        .unwrap_or(RETRY_EVERY)
 }
 
 /// Run the launch refresh. `fetch` makes one attempt at the file;
@@ -59,7 +61,34 @@ pub async fn refresh<F, Fut, C>(
     Fut: Future<Output = Option<Document>>,
     C: Fn() -> u64,
 {
-    let _ = (store, cache_path, &mut fetch, clock, decide);
+    let cached = read_fresh(cache_path, clock()).await;
+    let first = fetch();
+    tokio::pin!(first);
+    let mut outcome = match tokio::time::timeout(SETTLE_CAP, &mut first).await {
+        Ok(result) => {
+            decide(store, result.as_ref(), cached.as_ref());
+            result
+        }
+        Err(_) => {
+            decide(store, None, cached.as_ref());
+            first.await
+        }
+    };
+    let Some(path) = cache_path else { return };
+    let mut attempt = 0;
+    loop {
+        if let Some(flags) = outcome {
+            let entry = CacheEntry {
+                fetched_at: clock(),
+                flags,
+            };
+            cache::write(path, &entry).await;
+            return;
+        }
+        tokio::time::sleep(retry_delay(attempt)).await;
+        attempt = attempt.saturating_add(1);
+        outcome = fetch().await;
+    }
 }
 
 async fn read_fresh(path: Option<&Path>, now: u64) -> Option<CacheEntry> {

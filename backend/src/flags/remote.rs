@@ -27,7 +27,7 @@ pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui
 /// finish in 45 seconds is retried later instead. The connect step
 /// alone stays bound by the client's own connect timeout (10 seconds
 /// on the metadata client).
-pub const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// Fetch and parse the flags file. `None` on every failure: a
 /// transport error, the timeout, a status other than 200, a body over
@@ -41,11 +41,12 @@ pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Op
 
 /// The body of a 200 response, read no further than one byte past the
 /// cap, so an oversized body is refused without being held whole.
-async fn fetch_body(client: &reqwest::Client, url: &str, _timeout: Duration) -> Option<Vec<u8>> {
+async fn fetch_body(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Vec<u8>> {
     // The client's own total timeout is shorter (the metadata client
     // allows 30 s); this request carries the longer one it is given.
     let mut resp = client
         .get(url)
+        .timeout(timeout)
         .header(reqwest::header::USER_AGENT, "ani-gui")
         .send()
         .await

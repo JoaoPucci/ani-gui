@@ -26,8 +26,9 @@ pub(super) struct FlagsResponse {
 /// change for the rest of the session, so the renderer asks once,
 /// before its first page.
 pub(super) async fn get_flags(State(state): State<Arc<AppState>>) -> Json<FlagsResponse> {
+    let flags = state.flags.settled().await;
     Json(FlagsResponse {
-        origin: Origin::Pending,
-        flags: state.flags.current(),
+        origin: state.flags.origin(),
+        flags,
     })
 }

@@ -124,18 +124,32 @@ impl FlagStore {
     /// [`SETTLE_LIMIT`]; past it, settles the store at the defaults
     /// and answers with those.
     pub async fn settled(&self) -> Resolved {
+        let mut rx = self.tx.subscribe();
+        let wait = rx.wait_for(|s| s.origin != Origin::Pending);
+        if tokio::time::timeout(SETTLE_LIMIT, wait).await.is_err() {
+            self.settle(None, Origin::Defaults);
+        }
         self.current()
     }
 
     /// Wait, without a limit, until the flags are decided.
     #[cfg(test)]
-    pub(crate) async fn decided(&self) {}
+    pub(crate) async fn decided(&self) {
+        let mut rx = self.tx.subscribe();
+        let _ = rx.wait_for(|s| s.origin != Origin::Pending).await;
+    }
 
     /// Decide the launch's flags from `doc`, unless they are decided
     /// already. Returns whether this call decided them.
     pub(crate) fn settle(&self, doc: Option<&Document>, origin: Origin) -> bool {
-        let _ = (doc, origin, resolve, self.decls);
-        false
+        let flags = resolve(self.decls, doc);
+        self.tx.send_if_modified(|snap| {
+            if snap.origin != Origin::Pending {
+                return false;
+            }
+            *snap = Snapshot { flags, origin };
+            true
+        })
     }
 }
 

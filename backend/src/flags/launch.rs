@@ -51,8 +51,11 @@ pub fn plan(
     test_file: Option<&OsStr>,
     cache: Option<PathBuf>,
 ) -> LaunchPlan {
-    let _ = (unattended, test_file);
-    LaunchPlan::Live { cache }
+    if unattended != Some(OsStr::new("1")) {
+        return LaunchPlan::Live { cache };
+    }
+    let file = test_file.filter(|f| !f.is_empty()).map(PathBuf::from);
+    LaunchPlan::Test { file }
 }
 
 /// The plan for this process's environment.
@@ -71,8 +74,16 @@ pub fn start(
     client: reqwest::Client,
     plan: LaunchPlan,
 ) -> tokio::task::JoinHandle<()> {
-    let _ = (store, client, plan, settle_from_test_file, unix_now);
-    tokio::spawn(async {})
+    tokio::spawn(async move {
+        match plan {
+            LaunchPlan::Live { cache } => {
+                let client = &client;
+                let fetch = || remote::fetch(client, FLAGS_URL, FETCH_TIMEOUT);
+                refresh(&store, cache.as_deref(), fetch, unix_now).await;
+            }
+            LaunchPlan::Test { file } => settle_from_test_file(&store, file).await,
+        }
+    })
 }
 
 async fn settle_from_test_file(store: &FlagStore, file: Option<PathBuf>) {
