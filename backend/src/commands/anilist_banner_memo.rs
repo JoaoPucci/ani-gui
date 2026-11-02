@@ -9,7 +9,7 @@ use crate::cache::{meta_cache_delete, meta_cache_get, meta_cache_put, SqlitePool
 use crate::meta::kitsu::KitsuAnimeRef;
 
 fn key(kitsu_id: &str) -> String {
-    format!("anilist:banner:v1:k{kitsu_id}")
+    format!("{}{kitsu_id}", crate::cache::families::ANILIST_BANNER)
 }
 
 /// Remember the banner of every ref that carries one, and forget it

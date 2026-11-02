@@ -25,6 +25,9 @@ pub struct AppInfo {
     /// `crate::retired_provider`): empty on every launch that found
     /// nothing such a provider left.
     pub retired_provider_sweep: crate::retired_provider::RetiredSweepReport,
+    /// What the launch's cache reclaim deleted (see `crate::cache::reclaim`):
+    /// zero on every launch that found nothing to reclaim.
+    pub cache_reclaim: crate::cache::reclaim::ReclaimReport,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -44,6 +47,7 @@ pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
             .map(|p| p.display().to_string())
             .collect(),
         retired_provider_sweep: state.legacy_sweep.retired_provider.clone(),
+        cache_reclaim: state.legacy_sweep.cache_reclaim.clone(),
     })
 }
 
@@ -136,6 +140,23 @@ mod tests {
         let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
         assert_eq!(
             json["retired_provider_sweep"],
+            serde_json::to_value(&report).expect("report")
+        );
+    }
+
+    #[test]
+    fn app_info_reports_what_the_cache_reclaim_deleted() {
+        let mut state = fake_state();
+        let report = crate::cache::reclaim::ReclaimReport {
+            undeclared_rows: 264,
+            expired_rows: 735,
+        };
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(json["cache_reclaim"]["undeclared_rows"], 0);
+        state.legacy_sweep.cache_reclaim = report.clone();
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(
+            json["cache_reclaim"],
             serde_json::to_value(&report).expect("report")
         );
     }

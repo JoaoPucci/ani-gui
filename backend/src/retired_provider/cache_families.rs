@@ -9,7 +9,7 @@ use crate::error::Result;
 use super::cache_keys::{mapping_key_id, rows, walked_provider};
 use super::walks;
 
-const STAMPS: &str = "watched-at:v1:";
+const STAMPS: &str = crate::cache::families::WATCHED_AT;
 
 /// Watched-at stamps of a retired key no history row carries.
 pub(super) fn stamps(state: &AppState, ids: &HashSet<&str>) -> Result<Vec<String>> {

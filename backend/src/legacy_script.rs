@@ -24,6 +24,8 @@ pub struct SweepReport {
     /// What the sweep over a retired provider's rows changed
     /// ([`crate::retired_provider`]), which runs once the state exists.
     pub retired_provider: crate::retired_provider::RetiredSweepReport,
+    /// What the launch's cache reclaim deleted ([`crate::cache::reclaim`]).
+    pub cache_reclaim: crate::cache::reclaim::ReclaimReport,
 }
 
 /// Delete whatever the retired script machinery left in `cache_dir`
