@@ -50,7 +50,7 @@ const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
-const { SPLASH_MARK, SPLASH_PAGE, splashWindowOptions } = require("./lib/splash.cjs");
+const { splashController } = require("./lib/splash.cjs");
 const { waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const {
   bootApp,
@@ -360,26 +360,11 @@ function signalBackendGroup(pid) {
 }
 
 /** The splash, while the backend starts and the launch's flags are
- *  decided (lib/splash.cjs). Null once closed, or if it never opened. */
-let splashWindow = null;
-
-function showSplash() {
-  const splash = new BrowserWindow(splashWindowOptions());
-  splash[SPLASH_MARK] = true;
-  splash.once("ready-to-show", () => {
-    if (!splash.isDestroyed()) splash.show();
-  });
-  splash.on("closed", () => {
-    if (splashWindow === splash) splashWindow = null;
-  });
-  splash.loadFile(SPLASH_PAGE).catch((err) => console.error("[main] splash failed to load:", err));
-  splashWindow = splash;
-}
-
-function closeSplash() {
-  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
-  splashWindow = null;
-}
+ *  decided (lib/splash.cjs). */
+const splash = splashController({
+  createWindow: (options) => new BrowserWindow(options),
+  logError: console.error,
+});
 
 async function createWindow(backend, launchFlags = backend.launchFlags ?? null) {
   // Pre-compute the work area so the window opens at the maximized
@@ -988,12 +973,13 @@ app.whenReady().then(() =>
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    showSplash,
+    showSplash: () => splash.show(),
+    suppressSplash: () => splash.suppress(),
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).
     fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
-    closeSplash,
+    closeSplash: () => splash.close(),
     createWindow: async (backend, launchFlags) => {
       await createWindow(backend, launchFlags);
       // The boot's window is open: what it was opened against is what

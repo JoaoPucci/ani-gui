@@ -1,0 +1,8 @@
+/* Placeholder until the splash design is chosen. The mark is one
+   swappable asset (mark.svg): the app's identity is redesigned in
+   0.21.0, and nothing here depends on its shape. */
+html, body { margin: 0; height: 100%; background: #0c0a09; overflow: hidden; }
+/* The splash sits above other apps while the backend starts: dragging
+   anywhere on it moves it. */
+body { display: grid; place-items: center; -webkit-app-region: drag; user-select: none; }
+img { width: 72px; height: 72px; opacity: 0.9; }

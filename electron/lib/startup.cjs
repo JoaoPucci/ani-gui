@@ -205,6 +205,7 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
  */
 async function bootApp({
   showSplash = () => {},
+  suppressSplash = () => {},
   spawnBackend,
   fetchFlags = async () => null,
   createWindow,
@@ -224,11 +225,15 @@ async function bootApp({
   try {
     const backend = await spawnBackend();
     const flags = await fetchFlags(backend);
+    // A quit asked for meanwhile — the splash closed from the taskbar,
+    // say — takes its own course; no window is opened into it.
+    if (quitting()) return;
     await createWindow(backend, flags);
     closeSplash();
   } catch (err) {
     if (quitting()) return;
     logError("[main] startup failed:", err);
+    suppressSplash();
     stopBackend();
     const quitAsked = new Promise((resolve) => onQuitAsked(resolve));
     const reported = (async () => {

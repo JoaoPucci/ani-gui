@@ -22,6 +22,8 @@ function splashWindowOptions() {
     frame: false,
     show: false,
     resizable: false,
+    // Movable by dragging anywhere on it (splash.css): it sits above
+    // other apps while the backend starts.
     movable: true,
     alwaysOnTop: true,
     // On the taskbar like the app it stands for, so a launch shows up
@@ -29,7 +31,7 @@ function splashWindowOptions() {
     skipTaskbar: false,
     center: true,
     // The ink the page paints, so nothing flashes before it does.
-    backgroundColor: "#0b0b0f",
+    backgroundColor: "#0c0a09",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -38,11 +40,47 @@ function splashWindowOptions() {
   };
 }
 
-/** Show, close and suppress the splash. Stub. */
+/**
+ * The splash's lifecycle. `createWindow(options)` makes the window
+ * (main.js passes `new BrowserWindow`).
+ *
+ * - `show` opens it, marked, and shows it once it has painted.
+ * - `close` closes it: the boot's window has shown, so it is not the
+ *   last window and no quit follows.
+ * - `suppress` puts it away for good when the boot fails: hidden, not
+ *   closed, and a paint that arrives later does not show it again —
+ *   it would come back always on top, over the dialog that says why
+ *   the boot failed.
+ */
 function splashController({ createWindow, logError }) {
-  void createWindow;
-  void logError;
-  return { show() {}, close() {}, suppress() {} };
+  let win = null;
+  let suppressed = false;
+  const alive = () => win && !win.isDestroyed();
+  return {
+    show() {
+      const splash = createWindow(splashWindowOptions());
+      if (!splash) return;
+      splash[SPLASH_MARK] = true;
+      splash.once("ready-to-show", () => {
+        if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
+      });
+      splash.on("closed", () => {
+        if (win === splash) win = null;
+      });
+      win = splash;
+      Promise.resolve(splash.loadFile(SPLASH_PAGE)).catch((err) =>
+        logError("[main] the splash failed to load:", err),
+      );
+    },
+    close() {
+      if (alive()) win.close();
+      win = null;
+    },
+    suppress() {
+      suppressed = true;
+      if (alive()) win.hide();
+    },
+  };
 }
 
 module.exports = { SPLASH_MARK, SPLASH_PAGE, splashController, splashWindowOptions };
