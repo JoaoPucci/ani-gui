@@ -1,7 +1,15 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { FLAGS_WAIT_MS, isFlagsAnswer, waitForLaunchFlags } = require("./launch-flags.cjs");
+const {
+  FLAGS_WAIT_MS,
+  bootedWith,
+  isFlagsAnswer,
+  launchFlagsOf,
+  waitForLaunchFlags,
+} = require("./launch-flags.cjs");
+const { windowArguments } = require("./window-args.cjs");
+const { windowKeeper } = require("./single-instance.cjs");
 
 const answer = (status, body) => async () => ({
   ok: status >= 200 && status < 300,
@@ -79,4 +87,34 @@ test("a backend that never answers is given up on at the bound, and the request 
   t.mock.timers.tick(1);
   assert.equal(await pending, null);
   assert.equal(signal.aborted, true);
+});
+
+test("a window reopened later in the session gets the same flags as the boot's", () => {
+  const backend = {
+    apiBase: "http://127.0.0.1:1",
+    internalSecret: "s",
+    lanes: { image: "http://127.0.0.1:2" },
+  };
+  const flags = { origin: "cache", flags: { a: false, b: "old" } };
+  const opened = [];
+  const keeper = windowKeeper({
+    createWindow: async (against) => opened.push(against),
+    quitting: () => false,
+    logError: () => {},
+    discard: () => {},
+  });
+  // The boot's window, opened with the flags, then closed (macOS keeps
+  // the app running); a later launch reopens one.
+  const first = windowArguments(backend, null, flags);
+  keeper.booted(bootedWith(backend, flags));
+  assert.equal(keeper.summon(), "reopened");
+  const again = opened[0];
+  const second = windowArguments(again, null, launchFlagsOf(again));
+  assert.deepEqual(second, first);
+});
+
+test("a window opened without flags reopens without them", () => {
+  const backend = { apiBase: "http://127.0.0.1:1" };
+  assert.equal(launchFlagsOf(bootedWith(backend, null)), null);
+  assert.equal(launchFlagsOf(backend), null);
 });
