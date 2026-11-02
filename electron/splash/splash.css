@@ -1,8 +1,148 @@
-/* Placeholder until the splash design is chosen. The mark is one
-   swappable asset (mark.svg): the app's identity is redesigned in
-   0.21.0, and nothing here depends on its shape. */
-html, body { margin: 0; height: 100%; background: #0c0a09; overflow: hidden; }
+/* The launch splash ("pull-down"). Base styles are the finished, threaded frame;
+   animations only describe how it is reached and the transport beat.
+   Everything is paused until <body> gets `shown` (see splash.js). The
+   opening is done by 500 ms after that: lamp lit at 320, first frame
+   landed at 499. */
+
+@property --pulled { syntax: '<integer>'; inherits: false; initial-value: 0; }
+@counter-style frames { system: extends decimal; pad: 4 "0"; }
+
+:root {
+  --ink-000: #0c0a09; --ink-050: #14110f; --ink-100: #1c1815; --ink-200: #2a2521; --ink-300: #524a44;
+  --bone-100: #f4ece1; --bone-200: #d8cfc2; --bone-300: #b6ad9f; --bone-400: #877f73;
+  --brand: #d77a3b;
+  --font-display: 'Fraunces', 'Libre Baskerville', 'Cormorant Garamond', 'Iowan Old Style', 'Hoefler Text',
+    Charter, Cambria, 'Noto Serif', Georgia, ui-serif, serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', 'Cascadia Mono', Menlo, Monaco, Consolas,
+    ui-monospace, 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Transport geometry: one frame is 88px of picture + an 8px frame line. */
+  --pitch: 96px;
+  --frame-w: 124px;
+  --perf: 22px;
+  /* Transport timing: the claw pulls for 180ms, the frame holds for 460ms. */
+  --beat: 640ms;
+  --lamp-at: 80ms;
+  --thread-at: 320ms; /* first pull starts */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink-000); color: var(--bone-100); }
 /* The splash sits above other apps while the backend starts: dragging
    anywhere on it moves it. */
-body { display: grid; place-items: center; -webkit-app-region: drag; user-select: none; }
-img { width: 72px; height: 72px; opacity: 0.9; }
+body { -webkit-font-smoothing: antialiased; user-select: none; cursor: default; -webkit-app-region: drag; }
+body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
+  animation-play-state: paused !important;
+}
+
+.stage {
+  position: relative; inline-size: 480px; block-size: 300px;
+  display: grid; grid-template-columns: auto 1fr; align-items: center;
+  column-gap: 40px; padding-inline: 52px 40px;
+}
+
+/* — The projector column: strip, falloff shade, lamp, aperture plate. — */
+.projector {
+  position: relative; block-size: 300px;
+  inline-size: calc(var(--frame-w) + 2 * var(--perf));
+}
+
+.track {
+  position: absolute; inset-inline: 0;
+  /* Frame index 2 sits centred in the gate at rest. */
+  inset-block-start: calc(150px - 2.5 * var(--pitch));
+  background:
+    url(sprocket.svg) left top / var(--perf) calc(var(--pitch) / 4) repeat-y,
+    url(sprocket.svg) right top / var(--perf) calc(var(--pitch) / 4) repeat-y,
+    #231e1a;
+  padding-inline: var(--perf);
+  animation: pull var(--beat) linear var(--thread-at) infinite;
+}
+/* Intermittent motion: travel one pitch quickly, then hold still. */
+@keyframes pull {
+  0%   { transform: translateY(0); animation-timing-function: var(--ease-in-out); }
+  28%  { transform: translateY(calc(-1 * var(--pitch))); }
+  100% { transform: translateY(calc(-1 * var(--pitch))); }
+}
+
+.frame {
+  block-size: var(--pitch); padding-block: 4px;
+}
+.frame img {
+  display: block; inline-size: var(--frame-w); block-size: calc(var(--pitch) - 8px);
+  padding: 14px 18px; object-fit: contain;
+  background: radial-gradient(90% 90% at 50% 50%,
+    color-mix(in oklab, var(--brand) 16%, var(--ink-100)), var(--ink-050));
+}
+
+/* Light falloff: only the frame in the gate is lit by the lamp; the film
+   above and below is in the dark of the projector body. Static. */
+.shade {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg,
+    var(--ink-000) 0%,
+    color-mix(in oklab, var(--ink-000) 85%, transparent) 26%,
+    color-mix(in oklab, var(--ink-000) 85%, transparent) calc(50% - 46px),
+    transparent calc(50% - 44px),
+    transparent calc(50% + 44px),
+    color-mix(in oklab, var(--ink-000) 85%, transparent) calc(50% + 46px),
+    color-mix(in oklab, var(--ink-000) 85%, transparent) 74%,
+    var(--ink-000) 100%);
+}
+
+/* Lamp off: the gate itself is dark until the lamp strikes. */
+.lamp-off {
+  position: absolute; inset-inline: 0; inset-block: calc(50% - 46px); pointer-events: none;
+  background: var(--ink-000); opacity: 0;
+  animation: lamp 240ms var(--ease-out-soft) var(--lamp-at) backwards;
+}
+@keyframes lamp { from { opacity: 0.86; } }
+
+/* The aperture plate: two sienna hairlines marking the gate edges,
+   extending past the film like the plate's runners. */
+.plate {
+  position: absolute; inset-inline: -10px; inset-block: calc(50% - 46px); pointer-events: none;
+  border-block: 1px solid color-mix(in oklab, var(--brand) 70%, transparent);
+  animation: plate 300ms var(--ease-out-soft) backwards;
+}
+@keyframes plate { from { opacity: 0; inset-inline: 30px; } }
+
+/* — Title column. — */
+.title { display: grid; row-gap: 10px; animation: title 340ms var(--ease-out-soft) 120ms backwards; }
+@keyframes title { from { opacity: 0; transform: translateX(-6px); } }
+
+.eyebrow, .readout {
+  margin: 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--bone-300); font-variant-numeric: tabular-nums;
+}
+.eyebrow .num { color: var(--brand); }
+.wordmark {
+  margin: 0; font-family: var(--font-display); font-weight: 400; font-style: italic; font-size: 46px; line-height: 1;
+  letter-spacing: -0.02em; color: var(--bone-100);
+  padding-block-end: 12px; border-block-end: 1px solid var(--ink-200);
+}
+.readout { display: flex; align-items: baseline; gap: 8px; }
+
+/* The counter: frames pulled through the gate, ticking as each lands
+   (the pull ends 28% into the beat). */
+.counter {
+  font-size: 22px; letter-spacing: 0.04em; color: var(--bone-200);
+  counter-reset: pulled var(--pulled);
+  animation: count calc(var(--beat) * 1000) steps(1000, jump-start)
+    calc(var(--thread-at) + var(--beat) * 0.28) forwards;
+}
+.counter::after { content: counter(pulled, frames); }
+@keyframes count { from { --pulled: 0; } to { --pulled: 1000; } }
+.still { display: none; font-size: 22px; letter-spacing: 0.04em; color: var(--bone-200); }
+.unit { display: none; }
+
+/* — Reduced motion: no transport. The film rests threaded, the lit frame
+   squarely in the gate, and the readout states the gauge instead of a
+   counter stopped at 0000. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .counter { display: none; }
+  .still, .unit { display: inline; }
+}

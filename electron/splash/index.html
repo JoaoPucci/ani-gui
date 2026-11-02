@@ -1,12 +1,47 @@
 <!doctype html>
+<!--
+  The launch splash: a 35mm strip threaded through a lit gate. The lamp
+  comes up, then the claw pulls the film down one frame at a time — move,
+  hold, move, hold — the intermittent motion every projector makes. The
+  beat is the loading state: each landed frame ticks the counter, and the
+  loop is seamless because the strip advances exactly one frame pitch.
+
+  The mark is mark.svg alone, and the layout holds for a mark of another
+  shape: the app's identity is redesigned in 0.21.0.
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+<meta name="viewport" content="width=480, height=300">
 <title>ani-gui</title>
 <link rel="stylesheet" href="splash.css">
+<script src="splash.js" defer></script>
 </head>
 <body>
-  <img src="mark.svg" alt="">
+  <main class="stage" aria-label="ani-gui is starting">
+    <div class="projector">
+      <div class="track">
+        <div class="frame"><img src="mark.svg" alt=""></div>
+        <div class="frame"><img src="mark.svg" alt=""></div>
+        <div class="frame"><img src="mark.svg" alt=""></div>
+        <div class="frame"><img src="mark.svg" alt=""></div>
+        <div class="frame"><img src="mark.svg" alt=""></div>
+        <div class="frame"><img src="mark.svg" alt=""></div>
+      </div>
+      <span class="shade"></span>
+      <span class="lamp-off"></span>
+      <span class="plate"></span>
+    </div>
+    <section class="title">
+      <p class="eyebrow">reel <span class="num">1</span></p>
+      <h1 class="wordmark">ani-gui</h1>
+      <p class="readout">
+        <span class="counter" aria-hidden="true"></span>
+        <span class="still">35</span>
+        <span class="unit">mm</span>
+      </p>
+    </section>
+  </main>
 </body>
 </html>

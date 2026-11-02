@@ -11,6 +11,9 @@ const path = require("node:path");
  *  the app's window (electron/e2e/launch.ts). */
 const SPLASH_MARK = "aniGuiSplash";
 
+/** What the main process runs in the splash once its window shows. */
+const SHOWN_SIGNAL = "document.body.classList.add('shown')";
+
 /** The page the splash loads. */
 const SPLASH_PAGE = path.join(__dirname, "..", "splash", "index.html");
 
@@ -72,6 +75,14 @@ function splashController({ createWindow, logError }) {
       }
       if (!splash) return;
       splash[SPLASH_MARK] = true;
+      // The page holds its motion until it is told the window is on
+      // screen (splash.js falls back to a timer), so the opening plays
+      // once the window manager has mapped the window.
+      splash.once("show", () => {
+        Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL)).catch((err) =>
+          logError("[main] could not tell the splash it is shown:", err),
+        );
+      });
       splash.once("ready-to-show", () => {
         if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
       });
