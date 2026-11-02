@@ -74,6 +74,8 @@ The renderer runs under a content security policy in two halves, and every resou
 
 - **The bundle's half** is a `<meta http-equiv>` SvelteKit writes into the page at build time (`kit.csp` in `frontend/svelte.config.js`). It allows scripts from the app itself plus SvelteKit's inline bootstrap script, by a hash that changes with every build. It also refuses plugins and `<base>`.
 - **The shell's half** is a response header. It names the lanes, whose ports are known only at launch, so the shell writes it from the handshake (`electron/lib/renderer-csp.cjs`):
+  - anything it does not name is refused (`default-src 'none'`), prefetches included;
+  - its script rule only keeps that default off scripts; the meta's rule, which carries the bootstrap's hash, is the one that decides what runs;
   - styles come from the app;
   - images come from the app, `data:` and the lanes;
   - connections go to the app and the lanes;
@@ -81,14 +83,14 @@ The renderer runs under a content security policy in two halves, and every resou
   - fonts come from the app;
   - workers, frames, plugins, manifests, `<base>`, form submissions and framing the app are refused.
 
-A lane origin enters the header only if it is exactly `http://127.0.0.1:<port>` and belongs to the API or one of the five lanes the renderer knows. Anything else the handshake carries is dropped, so an extra announced line cannot add a source. The header names no script source, so it neither widens nor narrows what the meta allows to run.
+A lane origin enters the header only if it is exactly `http://127.0.0.1:<port>` and belongs to the API or one of the five lanes the renderer knows. Anything else the handshake carries is dropped, so an extra announced line cannot add a source. The script rule leans on every HTML document the app serves carrying the meta; the bundle has one, `index.html`, which also answers every route.
 
 Two rules follow for the frontend:
 
 - **Nothing may evaluate a string as code**, in either build. The play loader's Lottie animation uses lottie-web's light build, which has no expression engine, and its JSON carries its motion as keyframes rather than expressions.
-- **Style attributes are refused**, except SvelteKit's route announcer, which is allowed by its hash. Svelte applies every style that holds an expression through the CSSOM, which the policy does not govern. A static `style="…"` in a template is parsed as markup and refused, so it has to be a class (`frontend/tests/lint/no-static-style-attr.test.ts`).
+- **Style attributes are refused**, except SvelteKit's route announcer, which is allowed by its hash. Svelte applies every style that holds an expression through the CSSOM, which the policy does not govern. A static `style="…"` in a template is parsed as markup and reported as a violation, which fails the e2e guard, so it has to be a class (`frontend/tests/lint/no-static-style-attr.test.ts`).
 
-In a packaged build the `app://` protocol handler adds the header to every response it serves: the index, the SPA fallback, every asset and every error. It keeps each response's content type; a module script served without its JavaScript type would not run. Until the window opens against the handshake, the header names no loopback origin at all.
+In a packaged build the `app://` protocol handler adds the header to every response it serves: the index, the SPA fallback, every asset and every error, a path that does not decode included. It serves only files inside the bundle directory (`electron/lib/bundle-path.cjs`). It keeps each response's content type; a module script served without its JavaScript type would not run. Until the window opens against the handshake, the header names no loopback origin at all.
 
 In development the shell appends the header to the Vite dev server's main-frame responses, beside SvelteKit's own policy, and allows what Vite needs on top: inline `<style>` elements and its hot-reload WebSocket. The browser-only dev flow (`VITE_ANI_GUI_API_BASE`, no Electron) gets only SvelteKit's half.
 

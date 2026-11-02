@@ -240,7 +240,7 @@ pnpm --dir electron dev
 
 There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
 
-The renderer runs under a content security policy ([architecture](./architecture.md#the-renderers-content-security-policy)). A refusal shows up on the terminal as a `[renderer:error] Refused to …` line naming the directive. A dev window that stays blank, or a poster, stream or animation that quietly never loads, is worth checking against those lines first.
+The renderer runs under a content security policy ([architecture](./architecture.md#the-renderers-content-security-policy)). A refusal shows up on the terminal as a `[renderer:error] Refused to …` line, usually naming the directive. A dev window that stays blank, or a poster, stream or animation that quietly never loads, is worth checking against those lines first.
 
 A packaged build whose startup fails — the backend does not start, or the window never gets its first page — says so in an error dialog before it exits with code 1: in the app's language, with the failure's own message as the detail (the same text the `[main] startup failed:` log line carries). The dialog closes by itself after a minute. A dev launch shows no dialog; the reason is on its terminal.
 
