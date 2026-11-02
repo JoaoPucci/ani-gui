@@ -135,7 +135,7 @@ where
         .locale;
     // Every listing the start picks is recorded, whether or not its
     // first episode serves.
-    let recorder = crate::commands::listing_tags::Recorder(state);
+    let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut attempt = RangeStartAttempt {
         args,
         first,
@@ -170,12 +170,14 @@ where
     // row's former tag reads right — for every version of the pick,
     // each keying stamps of its own.
     for (hit, episodes) in picked.copies() {
+        let key = crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
+            .to_string();
         crate::commands::numbering_offset::retag_from_listing(
             state,
-            &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
-                .to_string(),
+            &key,
             episodes,
             picked.unread_past,
+            recorder.hearing(&key),
         );
     }
     // The range's first stream is a positive availability fact

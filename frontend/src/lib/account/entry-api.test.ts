@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getEntry, removeEntry, setEntry } from './entry-api';
+import { forgetCachedEntry, getEntry, removeEntry, setEntry } from './entry-api';
 import { AccountApiError } from './api';
 
 beforeEach(() => {
@@ -99,5 +99,28 @@ describe('removeEntry', () => {
 	it('throws AccountApiError on non-2xx', async () => {
 		mockFetchJson({}, 500);
 		await expect(removeEntry('mal', 'tok', 'k')).rejects.toBeInstanceOf(AccountApiError);
+	});
+});
+
+describe('forgetCachedEntry', () => {
+	it('DELETEs the cached row with the internal secret and no bearer', async () => {
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'dead' }
+		};
+		const spy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+		await forgetCachedEntry('mal', 'kitsu 12', 'user/7');
+		const [url, init] = spy.mock.calls[0];
+		expect(String(url)).toContain(
+			'/api/account/entry/mal/cached?kitsu_id=kitsu%2012&user_id=user%2F7'
+		);
+		expect((init as RequestInit).method).toBe('DELETE');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers.authorization).toBeUndefined();
+		expect(headers['x-ani-gui-internal-secret']).toBe('dead');
+	});
+
+	it('throws AccountApiError on non-2xx', async () => {
+		vi.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 403 }));
+		await expect(forgetCachedEntry('mal', 'k', 'u')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });

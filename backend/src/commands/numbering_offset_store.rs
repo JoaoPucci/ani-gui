@@ -23,9 +23,23 @@ pub(super) fn store_path(history_path: &Path) -> PathBuf {
 /// The store's body as it is now; empty when it is missing or
 /// unreadable.
 pub(super) fn read_store(history_path: &Path) -> String {
+    read_store_checked(history_path).unwrap_or_default()
+}
+
+/// The store's body as it is now; empty when it is missing, an error
+/// when it exists and cannot be read — for a caller that writes what
+/// it derives from the store, where an empty read would be taken for
+/// a store with no rows.
+///
+/// # Errors
+/// The read's failure, unless the store does not exist.
+pub(super) fn read_store_checked(history_path: &Path) -> std::io::Result<String> {
     #[cfg(test)]
     super::read_tap::reading();
-    std::fs::read_to_string(store_path(history_path)).unwrap_or_default()
+    match std::fs::read_to_string(store_path(history_path)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        read => read,
+    }
 }
 
 /// The cross-process lock beside the store. A dedicated file rather
@@ -51,7 +65,7 @@ pub(super) struct Row {
     pub(super) offset: u32,
     pub(super) display: Option<(u32, String)>,
     /// The (slot, tag) the display stamp named its row by before a
-    /// repair put it right ([`super::retag_display`]); it describes
+    /// repair put it right (`numbering_offset_repair.rs`); it describes
     /// the stamp's row only while the stamp names the same slot.
     pub(super) former: Option<(u32, String)>,
 }
@@ -87,6 +101,18 @@ pub(super) fn remove_rows(state: &AppState, forget: impl Fn(&Row) -> bool) -> st
 /// Read the store, apply `change`, and write it back atomically, under
 /// the process mutex and the cross-process file lock.
 pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
+    rewrite_if(state, |rows| {
+        change(rows);
+        true
+    })
+}
+
+/// [`rewrite`], writing the store back only when `change` says it
+/// changed a row.
+pub(super) fn rewrite_if(
+    state: &AppState,
+    change: impl FnOnce(&mut Vec<Row>) -> bool,
+) -> std::io::Result<()> {
     let path = store_path(&state.history_path);
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
@@ -126,7 +152,9 @@ pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> s
             Err(e) => return Err(e),
         };
         let mut rows = parse(&body);
-        change(&mut rows);
+        if !change(&mut rows) {
+            return Ok(());
+        }
         // Atomic like the history writer: a concurrent reader sees
         // the full pre- or post-state, never a half-written file.
         let tmp = path.with_extension("new");

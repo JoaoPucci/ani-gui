@@ -45,6 +45,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, LazyLock, Mutex};
 use tokio::time::Instant;
 
@@ -56,32 +57,17 @@ mod answer;
 mod pace;
 use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
-
-tokio::task_local! {
-    static CLASS: Class;
-}
-
-/// Run `f` with every AniList request it sends counted as
-/// [`Class::Background`].
-pub(crate) async fn in_background<F: Future>(f: F) -> F::Output {
-    CLASS.scope(Class::Background, f).await
-}
-
-/// `f`, with every AniList request it sends counted as `class` — for
-/// work handed to a task of its own, which would otherwise count as
-/// interactive whoever asked for it.
-pub(crate) fn in_class<F: Future>(class: Class, f: F) -> impl Future<Output = F::Output> {
-    CLASS.scope(class, f)
-}
-
-/// The class the calling task's AniList requests count in.
-pub(crate) fn current_class() -> Class {
-    CLASS.try_with(|c| *c).unwrap_or(Class::Interactive)
-}
+#[path = "anilist_gate_turn.rs"]
+mod turn;
+pub(crate) use turn::{as_retry, current_class, in_background, in_class};
+use turn::{sent, Waiting};
 
 struct Gate {
     pace: Pace,
     ledger: Mutex<Ledger>,
+    /// Requests other than retries waiting for their turn now. While
+    /// any waits, no retry takes a turn.
+    fresh_waiting: AtomicUsize,
 }
 
 impl Gate {
@@ -89,7 +75,15 @@ impl Gate {
         Self {
             pace,
             ledger: Mutex::new(Ledger::default()),
+            fresh_waiting: AtomicUsize::new(0),
         }
+    }
+
+    /// The earliest a `class` request may leave: the ledger's answer,
+    /// and for a retry no sooner than a moment from now while a request
+    /// of another class waits.
+    fn ready_at(&self, ledger: &Ledger, class: Class, now: Instant) -> Instant {
+        turn::ready_at(&self.pace, ledger, &self.fresh_waiting, class, now)
     }
 
     fn ledger(&self) -> std::sync::MutexGuard<'_, Ledger> {
@@ -103,22 +97,39 @@ impl Gate {
     /// taken, so a caller dropped while it waits costs nothing.
     /// Returns the instant the turn was taken, for [`Ledger::settle`].
     async fn admit(&self, class: Class, deadline: Instant) -> Result<Instant> {
+        let mut waiting = None;
+        let mut behind_retry = false;
+        let began = Instant::now();
         loop {
-            let (now, at) = {
+            let (now, at, retries) = {
                 let mut ledger = self.ledger();
                 // Read under the lock: a send settled by another task
                 // between a clock read and the lock would land after
                 // `now`, and this send would go in behind it.
                 let now = Instant::now();
-                let at = ledger.ready_at(&self.pace, class, now);
+                let at = self.ready_at(&ledger, class, now);
                 if at <= now {
                     ledger.record_send(&self.pace, now);
+                    if class == Class::Retry {
+                        ledger.record_retry(&self.pace, now);
+                    }
+                    sent(&self.pace, class, &ledger, now, now - began, behind_retry);
                     return Ok(now);
                 }
-                (now, at)
+                if class != Class::Retry
+                    && ledger.ready_at_without_retries(&self.pace, class, now) < at
+                {
+                    behind_retry = true;
+                }
+                (now, at, ledger.retries_in_window(&self.pace, now))
             };
             if at > deadline {
-                return Err(not_sent(at - now, class));
+                return Err(not_sent(at - now, class, retries, behind_retry));
+            }
+            // A request of another class counts as waiting from here,
+            // so no retry takes a turn ahead of it.
+            if class != Class::Retry && waiting.is_none() {
+                waiting = Some(Waiting::new(&self.fresh_waiting));
             }
             tokio::time::sleep_until(at).await;
         }
@@ -187,6 +198,28 @@ where
         );
         retried = true;
     }
+}
+
+/// How long until a background fill could leave through `url`'s gate:
+/// zero when one could leave now. Past zero, the gate is in a pause —
+/// a cool-down, or a background share spent for the window.
+pub(crate) fn background_wait(url: &str) -> std::time::Duration {
+    let gate = gate_for(url);
+    let now = Instant::now();
+    let at = gate.ledger().ready_at(&gate.pace, Class::Background, now);
+    at.saturating_duration_since(now)
+}
+
+/// How long until a retry of a held-back fill may start through
+/// `url`'s gate: zero once the window holds fewer requests than
+/// [`Pace::retry_capacity`], no request of another class waits, and
+/// nothing else keeps it back.
+pub(crate) fn retry_wait(url: &str) -> std::time::Duration {
+    let gate = gate_for(url);
+    let now = Instant::now();
+    let ledger = gate.ledger();
+    let at = gate.ready_at(&ledger, Class::Retry, now);
+    at.saturating_duration_since(now)
 }
 
 /// Share one gate under `url`'s host with `pace` until the guard drops.

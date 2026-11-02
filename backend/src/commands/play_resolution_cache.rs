@@ -214,7 +214,7 @@ use crate::proxy::MediaKind;
 // that wrote the row, which the key does not name: a row written
 // before a locale change keeps the earlier locale's cut until it
 // expires — no listing seen comes near the cap.
-const SCHEMA: &str = "v28";
+pub(crate) const SCHEMA: &str = "v28";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -314,7 +314,10 @@ pub fn cache_key(
     let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
     let s = subtype.unwrap_or("-");
-    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
+    format!(
+        "{}{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}",
+        crate::cache::families::play()
+    )
 }
 
 /// [`cache_key`] for a request naming the version it plays
@@ -347,6 +350,7 @@ pub fn cache_key_for_version(
 /// # Errors
 /// SQLite errors propagate; deserialization failures are treated as
 /// misses (we don't want a corrupt row to permanently mask a show).
+#[cfg_attr(test, track_caller)]
 pub fn get(pool: &SqlitePool, key: &str) -> crate::error::Result<Option<CachedResolution>> {
     match meta_cache_get(pool, key)? {
         None => Ok(None),
@@ -358,6 +362,7 @@ pub fn get(pool: &SqlitePool, key: &str) -> crate::error::Result<Option<CachedRe
 /// from SQLite or serialization are logged at warn level by the
 /// caller; we don't propagate (a cache write failure shouldn't fail
 /// the play).
+#[cfg_attr(test, track_caller)]
 pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
     let Ok(body) = serde_json::to_string(value) else {
         return;
