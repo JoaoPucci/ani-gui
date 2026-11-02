@@ -436,3 +436,57 @@ async fn a_fetch_that_fails_at_once_decides_from_the_cache_once_it_is_read() {
     assert_eq!(store.origin(), Origin::Cache);
     assert_eq!(pair(&store), FROM_CACHE);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_hung_cache_read_does_not_stop_the_sessions_retries() {
+    // The first attempt fails at once and the cache read never ends
+    // (a cache directory on a hung network mount, say). The flags are
+    // decided by a reader's own limit; the retries must still run.
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = cache_in(td.path());
+    let script = Script::new(vec![
+        (Duration::from_millis(10), None),
+        (Duration::ZERO, Some(file_doc())),
+    ]);
+    let store = FlagStore::pending(TEST_DECLS);
+    let task = {
+        let store = store.clone();
+        let fetch = script.fetcher();
+        let path = path.clone();
+        tokio::spawn(async move {
+            let read = std::future::pending::<Option<CacheEntry>>();
+            refresh_from(&store, read, Some(&path), fetch, || NOW).await;
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(600), task)
+        .await
+        .expect("the retry ran and cached the file")
+        .expect("join");
+    assert_eq!(script.attempts(), 2);
+    assert_eq!(cache::read(&path).await.expect("cached").flags, file_doc());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_file_that_beats_a_slow_cache_read_decides_even_past_the_cap() {
+    // The read takes 2.5 s and the file comes at 2.2 s: past the cap,
+    // but before there is any cache to decide with.
+    let script = Script::new(vec![(Duration::from_millis(2200), Some(file_doc()))]);
+    let store = FlagStore::pending(TEST_DECLS);
+    let entry = CacheEntry {
+        fetched_at: NOW,
+        flags: cached_doc(),
+    };
+    let started = tokio::time::Instant::now();
+    let task = {
+        let store = store.clone();
+        let fetch = script.fetcher();
+        tokio::spawn(async move {
+            let read = slow_read(Duration::from_millis(2500), Some(entry));
+            refresh_from(&store, read, None, fetch, || NOW).await;
+        })
+    };
+    store.decided().await;
+    assert_eq!(started.elapsed(), Duration::from_millis(2200));
+    assert_eq!(store.origin(), Origin::File);
+    task.abort();
+}

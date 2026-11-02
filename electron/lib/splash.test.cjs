@@ -114,3 +114,16 @@ test("a splash asked to show after the boot closed or suppressed it opens nothin
     assert.equal(created, 0, end);
   }
 });
+
+test("a splash window that cannot be created is logged, and nothing else happens", () => {
+  const logged = [];
+  const splash = splashController({
+    createWindow: () => {
+      throw new Error("no display for a second window");
+    },
+    logError: (...args) => logged.push(args.join(" ")),
+  });
+  assert.doesNotThrow(() => splash.show());
+  assert.equal(logged.length, 1);
+  splash.close();
+});
