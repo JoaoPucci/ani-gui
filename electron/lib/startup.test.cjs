@@ -608,3 +608,20 @@ test("a quit asked for while the flags were awaited opens no window", async () =
   });
   assert.deepEqual(events, ["splash"]);
 });
+
+test("the window waits for whatever must show first, then shows", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 0, "held until the splash is up");
+  release();
+  await opened;
+  assert.equal(win.shows, 1);
+});

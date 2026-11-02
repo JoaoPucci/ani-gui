@@ -8,6 +8,7 @@ const { EventEmitter } = require("node:events");
 const {
   SPLASH_MARK,
   SPLASH_PAGE,
+  SPLASH_SHOW_WAIT_MS,
   lastSplashState,
   splashController,
   splashWindowOptions,
@@ -212,4 +213,45 @@ test("what happened to the launch's splash can be read back afterwards", () => {
   failed.show();
   failed.suppress();
   assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true });
+});
+
+test("the app's window can wait for the splash to be on screen, for a bounded time", async (t) => {
+  // A fast start (a test run's, or a warm one) could otherwise show the
+  // app's window before the splash had painted, and close a splash
+  // nobody saw.
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  let up = false;
+  const waiting = splash.whenShown().then(() => (up = true));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(up, false);
+  win.emit("ready-to-show");
+  win.emit("show");
+  await waiting;
+  assert.equal(up, true);
+
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const stuck = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
+  stuck.show();
+  let gaveUp = false;
+  const bounded = stuck.whenShown().then(() => (gaveUp = true));
+  t.mock.timers.tick(SPLASH_SHOW_WAIT_MS - 1);
+  await Promise.resolve();
+  assert.equal(gaveUp, false);
+  t.mock.timers.tick(1);
+  await bounded;
+  assert.equal(gaveUp, true);
+});
+
+test("there is nothing to wait for without a splash on its way", async () => {
+  const none = splashController({ createWindow: () => null, logError: () => {} });
+  none.show();
+  await none.whenShown();
+  const never = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
+  await never.whenShown();
+  const gone = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
+  gone.show();
+  gone.suppress();
+  await gone.whenShown();
 });

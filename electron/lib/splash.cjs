@@ -106,6 +106,9 @@ function splashController({ createWindow, logError }) {
       }
       win = null;
     },
+    whenShown() {
+      return Promise.resolve();
+    },
     suppress() {
       over = true;
       suppressed = true;
@@ -129,7 +132,11 @@ function lastSplashState() {
   return { ...current };
 }
 
+/** Stub. */
+const SPLASH_SHOW_WAIT_MS = 0;
+
 module.exports = {
+  SPLASH_SHOW_WAIT_MS,
   SPLASH_MARK,
   SPLASH_PAGE,
   lastSplashState,
