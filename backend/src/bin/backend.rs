@@ -129,9 +129,11 @@ fn main() -> std::process::ExitCode {
         // The remote flags are fetched once per launch, as a task of
         // their own: nothing below waits on GitHub, and until the
         // request settles every flag holds its built-in default.
-        if let Some(cache) = ani_gui::config::paths::flags_cache() {
-            flags::store::spawn_launch_refresh(state.flags.clone(), state.meta_http.clone(), cache);
-        }
+        flags::store::spawn_launch_refresh(
+            state.flags.clone(),
+            state.meta_http.clone(),
+            flags::store::Source::shipped(ani_gui::config::paths::flags_cache()),
+        );
 
         let proxy_router = proxy::build_router(state.proxy_state());
         let api_router = api::build_api_router(state.clone());

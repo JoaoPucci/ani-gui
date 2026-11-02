@@ -105,3 +105,25 @@ async fn a_write_that_cannot_land_is_ignored() {
     write(&blocker.join("remote-flags.json"), &entry(1)).await;
     assert_eq!(read(&blocker.join("remote-flags.json")).await, None);
 }
+
+#[tokio::test]
+async fn a_directory_at_the_cache_path_reads_as_nothing() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    std::fs::create_dir(&path).expect("mkdir");
+    assert_eq!(read(&path).await, None);
+}
+
+/// A link is not followed: a link to a device or a pipe would
+/// otherwise get past the size check, which reads its length as 0.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlink_at_the_cache_path_reads_as_nothing() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let real = td.path().join("real.json");
+    write(&real, &entry(5)).await;
+    assert_eq!(read(&real).await, Some(entry(5)));
+    let link = td.path().join("remote-flags.json");
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+    assert_eq!(read(&link).await, None);
+}

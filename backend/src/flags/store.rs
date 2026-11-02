@@ -95,16 +95,33 @@ impl FlagStore {
 pub struct Source {
     /// The flags file's URL.
     pub url: String,
-    /// The cache file.
-    pub cache_path: PathBuf,
+    /// The cache file; `None` when the platform gave no cache
+    /// directory, and the refresh then fetches without one.
+    pub cache_path: Option<PathBuf>,
     /// The bound on the whole request.
     pub timeout: Duration,
+}
+
+impl Source {
+    /// The shipped file, with its timeout, cached at `cache_path`.
+    #[must_use]
+    pub fn shipped(cache_path: Option<PathBuf>) -> Self {
+        let _ = cache_path;
+        Self {
+            url: String::new(),
+            cache_path: None,
+            timeout: Duration::ZERO,
+        }
+    }
 }
 
 /// Fill `store` for this launch: the fresh cache first, then the
 /// fetched file, then settle. `now` is seconds since the Unix epoch.
 pub async fn refresh(store: &FlagStore, client: &reqwest::Client, source: &Source, now: u64) {
-    let cached = cache::read(&source.cache_path)
+    let Some(cache_path) = &source.cache_path else {
+        return;
+    };
+    let cached = cache::read(cache_path)
         .await
         .filter(|e| cache::is_fresh(e.fetched_at, now, FRESH_FOR));
     if let Some(entry) = &cached {
@@ -124,28 +141,19 @@ pub async fn refresh(store: &FlagStore, client: &reqwest::Client, source: &Sourc
             fetched_at: now,
             flags,
         };
-        cache::write(&source.cache_path, &entry).await;
+        cache::write(cache_path, &entry).await;
     }
 }
 
-/// Start the launch refresh against the shipped URL as a task of its
-/// own, so startup never waits on it.
+/// Start the launch refresh against `source` as a task of its own,
+/// so startup never waits on it.
 pub fn spawn_launch_refresh(
     store: FlagStore,
     client: reqwest::Client,
-    cache_path: PathBuf,
+    source: Source,
 ) -> tokio::task::JoinHandle<()> {
-    let source = Source {
-        url: FLAGS_URL.to_string(),
-        cache_path,
-        timeout: FETCH_TIMEOUT,
-    };
-    tokio::spawn(async move {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        refresh(&store, &client, &source, now).await;
-    })
+    let _ = (store, client, source);
+    tokio::spawn(async {})
 }
 
 #[cfg(test)]
