@@ -29,6 +29,15 @@ pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui
 /// on the metadata client).
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 
+/// The bound on DNS, the TCP connect and the TLS handshake together.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The client the flags file is fetched with.
+#[must_use]
+pub fn client() -> reqwest::Client {
+    reqwest::Client::new()
+}
+
 /// Fetch and parse the flags file. `None` on every failure: a
 /// transport error, the timeout, a status other than 200, a body over
 /// the cap, or a body that is not a flags document.

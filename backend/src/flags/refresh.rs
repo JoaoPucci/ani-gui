@@ -3,10 +3,11 @@
 //!
 //! The cap is how long the launch waits, not how long the fetch tries.
 //!
-//! 1. The fresh cached copy is read, if there is one.
-//! 2. The fetch starts. If the file arrives within the cap, it decides
-//!    the flags. Otherwise the cached copy decides them, or the
-//!    defaults when there is none.
+//! 1. The fetch starts, and the fresh cached copy is read beside it.
+//! 2. If the file arrives within the cap — counted from the start, not
+//!    from the end of the cache read — it decides the flags. Otherwise
+//!    the cached copy decides them, or the defaults when there is
+//!    none. A cache read slower than the cap decides when it ends.
 //! 3. The fetch goes on in the background, within its own generous
 //!    timeout. When the file arrives it is cached for the next launch.
 //! 4. When that attempt fails, the file is fetched again later in the
@@ -51,20 +52,45 @@ pub fn retry_delay(attempt: u32) -> Duration {
 /// there is nowhere to keep the file for the next launch, so the
 /// refresh ends once the flags are decided and the first attempt is
 /// over.
-pub async fn refresh<F, Fut, C>(
-    store: &FlagStore,
-    cache_path: Option<&Path>,
-    mut fetch: F,
-    clock: C,
-) where
+pub async fn refresh<F, Fut, C>(store: &FlagStore, cache_path: Option<&Path>, fetch: F, clock: C)
+where
     F: FnMut() -> Fut,
     Fut: Future<Output = Option<Document>>,
     C: Fn() -> u64,
 {
-    let cached = read_fresh(cache_path, clock()).await;
-    let first = fetch();
+    let read = read_fresh(cache_path, clock());
+    refresh_from(store, read, cache_path, fetch, clock).await;
+}
+
+/// [`refresh`], with the cache read handed in, so a test can make it
+/// slow.
+pub(crate) async fn refresh_from<R, F, Fut, C>(
+    store: &FlagStore,
+    read: R,
+    cache_path: Option<&Path>,
+    mut fetch: F,
+    clock: C,
+) where
+    R: Future<Output = Option<CacheEntry>>,
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Option<Document>>,
+    C: Fn() -> u64,
+{
+    let outcome = first_attempt(store, read, fetch()).await;
+    let Some(path) = cache_path else { return };
+    keep_until_cached(path, outcome, fetch, clock).await;
+}
+
+/// Decide the flags from the first attempt and the cache read, then
+/// see the attempt through. Returns what it fetched.
+async fn first_attempt<R, Fut>(store: &FlagStore, read: R, first: Fut) -> Option<Document>
+where
+    R: Future<Output = Option<CacheEntry>>,
+    Fut: Future<Output = Option<Document>>,
+{
+    let cached = read.await;
     tokio::pin!(first);
-    let mut outcome = match tokio::time::timeout(SETTLE_CAP, &mut first).await {
+    match tokio::time::timeout(SETTLE_CAP, &mut first).await {
         Ok(result) => {
             decide(store, result.as_ref(), cached.as_ref());
             result
@@ -73,8 +99,21 @@ pub async fn refresh<F, Fut, C>(
             decide(store, None, cached.as_ref());
             first.await
         }
-    };
-    let Some(path) = cache_path else { return };
+    }
+}
+
+/// Cache `outcome` if the attempt got the file; otherwise retry on
+/// [`retry_delay`] until one attempt does, and cache that.
+async fn keep_until_cached<F, Fut, C>(
+    path: &Path,
+    mut outcome: Option<Document>,
+    mut fetch: F,
+    clock: C,
+) where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Option<Document>>,
+    C: Fn() -> u64,
+{
     let mut attempt = 0;
     loop {
         if let Some(flags) = outcome {

@@ -3,7 +3,7 @@ use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::{fetch, FETCH_TIMEOUT, FLAGS_URL};
+use super::{client, fetch, CONNECT_TIMEOUT, FETCH_TIMEOUT, FLAGS_URL};
 use crate::flags::resolve::MAX_BYTES;
 
 const FILE: &str = "/flags/flags.json";
@@ -129,4 +129,20 @@ async fn the_requests_own_timeout_outlasts_a_shorter_client_timeout() {
         .build()
         .expect("client");
     assert!(fetch(&client, &url, Duration::from_secs(5)).await.is_some());
+}
+
+#[test]
+fn the_flags_client_gives_a_slow_link_most_of_the_attempt_to_connect() {
+    // DNS, TCP and TLS all fall under the connect timeout; on a lossy
+    // link a SYN retransmitted at 1, 2, 4 and 8 s is past ten seconds
+    // before TLS has started.
+    assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(30));
+    assert!(CONNECT_TIMEOUT < FETCH_TIMEOUT);
+}
+
+#[tokio::test]
+async fn the_flags_client_fetches_the_file() {
+    let (_s, url) =
+        serve(ResponseTemplate::new(200).set_body_string(r#"{"flags":{"test_kill":false}}"#)).await;
+    assert!(fetch(&client(), &url, FETCH_TIMEOUT).await.is_some());
 }

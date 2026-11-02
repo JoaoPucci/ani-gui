@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::{refresh, retry_delay, RETRY_DELAYS, RETRY_EVERY};
+use super::{refresh, refresh_from, retry_delay, RETRY_DELAYS, RETRY_EVERY};
 use crate::flags::cache::{self, CacheEntry, FRESH_FOR};
 use crate::flags::decl::FlagValue;
 use crate::flags::resolve::{parse_document, Document};
@@ -325,4 +325,114 @@ fn the_outcome_is_logged_under_the_backends_default_filter() {
             .any(|l| l.contains("remote flags settled") && l.contains("defaults")),
         "{out}"
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_file_within_the_cap_wins_over_a_fresh_cache_and_replaces_it() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = cache_in(td.path());
+    seed(&path, NOW - DAY, cached_doc()).await;
+    let script = Script::new(vec![(Duration::from_millis(300), Some(file_doc()))]);
+    let (store, task) = launch(Some(path.clone()), &script);
+    task.await.expect("join");
+    assert_eq!(store.origin(), Origin::File);
+    assert_eq!(pair(&store), FROM_FILE);
+    let saved = cache::read(&path).await.expect("cached");
+    assert_eq!((saved.fetched_at, saved.flags), (NOW, file_doc()));
+}
+
+/// A cache read that takes `delay`, then hands back `entry`.
+async fn slow_read(delay: Duration, entry: Option<CacheEntry>) -> Option<CacheEntry> {
+    tokio::time::sleep(delay).await;
+    entry
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_fetch_does_not_wait_for_a_slow_cache_read() {
+    let script = Script::new(vec![(Duration::from_millis(300), Some(file_doc()))]);
+    let store = FlagStore::pending(TEST_DECLS);
+    let entry = CacheEntry {
+        fetched_at: NOW,
+        flags: cached_doc(),
+    };
+    let started = tokio::time::Instant::now();
+    let task = {
+        let store = store.clone();
+        let fetch = script.fetcher();
+        tokio::spawn(async move {
+            let read = slow_read(Duration::from_secs(10), Some(entry));
+            refresh_from(&store, read, None, fetch, || NOW).await;
+        })
+    };
+    store.decided().await;
+    // Decided by the file at 300 ms, not after the read's ten seconds.
+    assert_eq!(started.elapsed(), Duration::from_millis(300));
+    assert_eq!(store.origin(), Origin::File);
+    assert_eq!(pair(&store), FROM_FILE);
+    task.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_cap_counts_from_the_start_not_from_the_end_of_the_cache_read() {
+    // The read takes 1.5 s and the file would take 20: the cap still
+    // ends two seconds in, and the cache decides then.
+    let script = Script::new(vec![(Duration::from_secs(20), Some(file_doc()))]);
+    let store = FlagStore::pending(TEST_DECLS);
+    let entry = CacheEntry {
+        fetched_at: NOW,
+        flags: cached_doc(),
+    };
+    let started = tokio::time::Instant::now();
+    let task = {
+        let store = store.clone();
+        let fetch = script.fetcher();
+        tokio::spawn(async move {
+            let read = slow_read(Duration::from_millis(1500), Some(entry));
+            refresh_from(&store, read, None, fetch, || NOW).await;
+        })
+    };
+    store.decided().await;
+    assert_eq!(started.elapsed(), SETTLE_CAP);
+    assert_eq!(store.origin(), Origin::Cache);
+    assert_eq!(pair(&store), FROM_CACHE);
+    task.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_cache_read_slower_than_the_cap_decides_when_it_ends() {
+    let script = Script::new(vec![(Duration::from_secs(20), Some(file_doc()))]);
+    let store = FlagStore::pending(TEST_DECLS);
+    let entry = CacheEntry {
+        fetched_at: NOW,
+        flags: cached_doc(),
+    };
+    let started = tokio::time::Instant::now();
+    let task = {
+        let store = store.clone();
+        let fetch = script.fetcher();
+        tokio::spawn(async move {
+            let read = slow_read(Duration::from_millis(2500), Some(entry));
+            refresh_from(&store, read, None, fetch, || NOW).await;
+        })
+    };
+    store.decided().await;
+    assert_eq!(started.elapsed(), Duration::from_millis(2500));
+    assert_eq!(store.origin(), Origin::Cache);
+    task.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_fetch_that_fails_at_once_decides_from_the_cache_once_it_is_read() {
+    let script = Script::new(vec![(Duration::from_millis(10), None)]);
+    let store = FlagStore::pending(TEST_DECLS);
+    let entry = CacheEntry {
+        fetched_at: NOW,
+        flags: cached_doc(),
+    };
+    let started = tokio::time::Instant::now();
+    let read = slow_read(Duration::from_millis(400), Some(entry));
+    refresh_from(&store, read, None, script.fetcher(), || NOW).await;
+    assert_eq!(started.elapsed(), Duration::from_millis(400));
+    assert_eq!(store.origin(), Origin::Cache);
+    assert_eq!(pair(&store), FROM_CACHE);
 }
