@@ -180,7 +180,7 @@ pub async fn get_or_fetch(
 }
 
 fn dead_key(url: &str) -> String {
-    format!("image:dead:v1:{}", hash_url(url))
+    format!("{}{}", crate::cache::families::IMAGE_DEAD, hash_url(url))
 }
 
 /// Record that the upstream says `url` is gone. A cache write failure

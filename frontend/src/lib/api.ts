@@ -25,6 +25,8 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
+import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
 import { probeLimiter } from '$lib/availability/probe-limiter';
@@ -311,6 +313,14 @@ export interface AppInfo {
 	 *  launch after upgrading; the diagnostics page decides what to
 	 *  show via `$lib/diagnostics/legacy-sweep`. */
 	removed_legacy_paths: string[];
+	/** What the boot sweep over a retired streaming provider's rows
+	 *  changed; empty on every launch that found none. The page decides
+	 *  what to show via `$lib/diagnostics/retired-sweep`. */
+	retired_provider_sweep?: RetiredSweepReport;
+	/** What the launch's cache reclaim deleted; zero on every launch
+	 *  that found nothing to reclaim. The page decides what to show via
+	 *  `$lib/diagnostics/cache-reclaim`. */
+	cache_reclaim?: CacheReclaimReport;
 }
 
 /** One row from the watch-history file. */
