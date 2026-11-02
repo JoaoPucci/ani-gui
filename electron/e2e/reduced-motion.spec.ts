@@ -5,7 +5,8 @@
  * The page is emulated as `prefers-reduced-motion: reduce` before the
  * app's first real load, the way a desktop setting reaches it, and
  * each main surface is then walked: Home (the hero, the rails, a
- * Continue Watching card hovered and deleted), a show's page (loaded
+ * Continue Watching card hovered and deleted, the row's header action
+ * hovered open), a show's page (loaded
  * and scrolled) and the player with its overlay. At each step
  * `document.getAnimations()` — every CSS animation, CSS transition and
  * Web Animation on the page — must hold nothing that moves.
@@ -23,9 +24,9 @@
  * through its stub, the parallax on Home and a show's page by scrolling
  * them.
  *
- * One scenario runs the same delete with motion on and requires that
- * something does move, so the check cannot pass by looking at a page
- * where nothing could.
+ * One scenario runs the same hover and delete with motion on and
+ * requires that something does move, so the check cannot pass by
+ * looking at a page where nothing could.
  *
  * The backend's API is stubbed per request, as in home-continue.spec.ts,
  * so nothing depends on Kitsu or the provider being reachable.
@@ -34,6 +35,7 @@ import {
 	expect,
 	test,
 	type ElectronApplication,
+	type Locator,
 	type Page
 } from '@playwright/test';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
@@ -194,6 +196,21 @@ function moving(page: Page): Promise<string[]> {
 	);
 }
 
+/** A row action's label opacity, and whether the button already spans
+ *  the slot that reserves its open width — read in one frame, with no
+ *  waiting, so a label still easing in reads as less than 1. */
+function openState(button: Locator) {
+	return button.evaluate((el) => {
+		const label = el.querySelector('.row-action-label') as Element;
+		const slot = el.parentElement as Element;
+		return {
+			label: getComputedStyle(label).opacity,
+			fullWidth:
+				Math.abs(el.getBoundingClientRect().width - slot.getBoundingClientRect().width) < 0.5
+		};
+	});
+}
+
 /** Samples the page through `ms`: motion can start a frame after the
  *  step that caused it. */
 async function expectStill(page: Page, step: string, ms = 600) {
@@ -222,6 +239,15 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await expectStill(page, 'hovering the hero');
 		await card.hover();
 		await expectStill(page, 'hovering a Continue Watching card');
+
+		// The row's header action rests as an icon and opens into its
+		// labelled pill on hover. Under reduced motion it opens at once:
+		// the label is fully on show the moment the pointer arrives, and
+		// the pill is already at the width its slot holds for it.
+		const clear = strip.getByRole('button', { name: 'Clear history' });
+		await clear.hover();
+		expect(await openState(clear)).toEqual({ label: '1', fullWidth: true });
+		await expectStill(page, 'hovering a row’s header action');
 
 		// Delete the card the way a user does: its chip, then the dialog.
 		await page.getByRole('button', { name: 'Remove Continue Test Show from history' }).click();
@@ -284,6 +310,17 @@ test('with motion on, the same delete does move', async () => {
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		const card = strip.locator('button.resume-card', { hasText: 'Continue Test Show' });
 		await expect(card).toBeVisible({ timeout: 15_000 });
+
+		// With motion on, the row's header action eases open on hover.
+		await strip.getByRole('button', { name: 'Clear history' }).hover();
+		const opening: string[] = [];
+		const until = Date.now() + 600;
+		while (Date.now() < until && opening.length === 0) {
+			opening.push(...(await moving(page)).filter((m) => m.includes('row-action')));
+			await page.waitForTimeout(20);
+		}
+		expect(opening.length, 'the row action eases open').toBeGreaterThan(0);
+		await page.mouse.move(0, 0);
 
 		// With motion on the hovered card lifts while the pointer arrives,
 		// and its poster passes over the chip mid-lift; the chip is
