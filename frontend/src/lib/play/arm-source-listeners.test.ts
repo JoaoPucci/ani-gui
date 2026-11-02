@@ -57,6 +57,18 @@ describe('armSourceScopedListeners', () => {
 		expect(video.currentTime).toBe(432.5);
 	});
 
+	it('says the stream starts where it resumes: a recovery, else the kept point, else nowhere', () => {
+		const start = (showId: string, episode: number) =>
+			armSourceScopedListeners({ video, showId, episode, scope, positions }).startAt;
+		savePosition('show-a', 6, 600, 1420, positions);
+		recoveryResume.capture('show-a', 6, 432.5);
+		expect(start('show-a', 6)).toBe(432.5);
+		expect(start('show-a', 6)).toBe(600);
+		savePosition('show-a', 7, 0, 1420, positions);
+		expect(start('show-a', 7)).toBeNull();
+		expect(start('show-a', 8)).toBeNull();
+	});
+
 	it('arms no seek without a capture, and consumes mismatches', () => {
 		recoveryResume.capture('show-a', 6, 432.5);
 		arm('show-b', 6);
@@ -467,7 +479,7 @@ describe('a resume point holds the picture until the seek lands', () => {
 		vi.useRealTimers();
 	});
 
-	function armHolding(showId: string, episode: number) {
+	function armHolding(showId: string, episode: number, extra: Record<string, unknown> = {}) {
 		// Built apart from the call, so the option the hold adds is not
 		// an excess property of the input's literal.
 		const input = {
@@ -476,7 +488,8 @@ describe('a resume point holds the picture until the seek lands', () => {
 			episode,
 			scope,
 			positions,
-			onResumeHold: (holding: boolean) => holds.push(holding)
+			onResumeHold: (holding: boolean) => holds.push(holding),
+			...extra
 		};
 		armSourceScopedListeners(input);
 	}
@@ -601,10 +614,59 @@ describe('a resume point holds the picture until the seek lands', () => {
 		expect(holding()).toBe(false);
 	});
 
-	it('a point in the last 90 seconds is forgotten and the stream revealed from its start', () => {
+	it('a point in the last 90 seconds is forgotten, and revealed once the stream is back at its start', async () => {
+		// The stream was started at the point, so it sits there when
+		// the length judges the point finished: it is sought back to
+		// its start, and revealed once that seek has landed.
+		savePosition('show-a', 6, 1400, Number.NaN, positions);
+		armHolding('show-a', 6, { startedAtPoint: true });
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		video.currentTime = 1400;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(readPosition('show-a', 6, positions)).toBeNull();
+		expect(video.currentTime).toBe(0);
+		expect(holding()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+		seekedAt(0);
+		expect(play).toHaveBeenCalledTimes(1);
+		await settle();
+		expect(holding()).toBe(false);
+	});
+
+	it('a stream started at a point judged finished is sought to its start even while it reads zero', () => {
+		// The metadata usually comes before the point's fragment is in, so
+		// the element still reads zero. The engine has not let go of the
+		// point: unless the element seeks, it moves the playhead there
+		// once that fragment is buffered. The seek to zero is what tells
+		// it to start from the beginning instead.
+		savePosition('show-a', 6, 1400, Number.NaN, positions);
+		armHolding('show-a', 6, { startedAtPoint: true });
+		const seeks: number[] = [];
+		video.addEventListener('seeking', () => seeks.push(video.currentTime));
+		const set = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+		Object.defineProperty(video, 'currentTime', {
+			configurable: true,
+			get: () => set?.get?.call(video) as number,
+			set: (s: number) => {
+				set?.set?.call(video, s);
+				video.dispatchEvent(new Event('seeking'));
+			}
+		});
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		expect(video.currentTime).toBe(0);
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(seeks).toEqual([0]);
+		expect(holding()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+	});
+
+	it('a point in the last 90 seconds, on a stream not started at it, reveals from its start at once', () => {
+		// An mp4 stream opens at its start whatever the point: there is
+		// nothing to seek back from, and nothing for the reveal to wait on.
 		savePosition('show-a', 6, 1400, Number.NaN, positions);
 		armHolding('show-a', 6);
 		metadataWith(1420);
+		expect(readPosition('show-a', 6, positions)).toBeNull();
 		expect(holding()).toBe(false);
 		expect(play).toHaveBeenCalledTimes(1);
 		expect(video.currentTime).toBe(0);
