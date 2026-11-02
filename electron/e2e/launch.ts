@@ -10,6 +10,13 @@
  * file alone, and smoke.spec.ts asks the running app whether the
  * switch arrived.
  *
+ * Every launch here also refuses a display someone may be looking at
+ * (lib/e2e-display.cjs): outside CI the suite runs inside the private
+ * headless GNOME Shell session of tools/headless-wayland.sh, on
+ * Wayland; in CI, on the runner's Xvfb. Test windows opened on the
+ * desktop of whoever ran the suite before this, even under xvfb-run.
+ * smoke.spec.ts asks the running app which platform it landed on.
+ *
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
@@ -20,6 +27,7 @@ import {
 	type Page
 } from '@playwright/test';
 import path from 'node:path';
+import { launchRefusal } from '../lib/e2e-display.cjs';
 
 /** electron-builder's pre-AppImage output — the production code path:
  *  the `app://` protocol handler, the bundled SvelteKit assets and the
@@ -48,10 +56,13 @@ export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
 export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
 
 /** Launch the packaged app with `env` as its whole environment, as a
- *  test run. */
+ *  test run — unless that environment leads to a display someone may
+ *  be looking at, which throws, saying how to run the suite instead. */
 export function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env']
 ): Promise<ElectronApplication> {
+	const refusal = launchRefusal(env ?? {});
+	if (refusal) throw new Error(refusal);
 	return _electron.launch({
 		executablePath: packagedBinary,
 		args: [...testLaunchSwitches],
