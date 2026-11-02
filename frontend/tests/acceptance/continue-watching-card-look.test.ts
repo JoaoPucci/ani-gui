@@ -354,6 +354,45 @@ describe('Continue Watching card artwork', () => {
 		await until(() => image()?.dataset.revealed === 'fade', 'the still to fade in');
 	});
 
+	it('takes a held-back still over a poster that failed to load, keeping the initials under it', async () => {
+		const TICKET = 43;
+		let land: () => void = () => {};
+		const landed = new Promise<void>((r) => (land = r));
+		let hasLanded = false;
+		void landed.then(() => (hasLanded = true));
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json(
+					[episode(4, hasLanded ? THUMB : null)],
+					hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
+				)
+			),
+			http.post(`${API_BASE}/api/refills/wait`, async () => {
+				await landed;
+				return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+			}),
+			http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
+			...rowHandlers()
+		);
+		app = mount(HomePage, { target });
+		await until(() => imageSource() === POSTER, 'the card to settle on the poster');
+		// The poster does not load: the card shows its initials.
+		image()?.dispatchEvent(new Event('error'));
+		await until(() => look() === 'placeholder', 'the initials');
+
+		land();
+		await until(() => imageSource() === THUMB, 'the still to land');
+		expect(artwork()?.querySelector('.look-skeleton')).toBeNull();
+		expect(artwork()?.querySelector('.resume-poster-placeholder')?.textContent).toContain('CO');
+		expect(artwork()?.hasAttribute('data-under')).toBe(true);
+
+		// The still fails too: the card is back on the initials it showed,
+		// drawn as they were rather than landing again.
+		image()?.dispatchEvent(new Event('error'));
+		await until(() => look() === 'placeholder', 'the initials again');
+		expect(artwork()?.classList.contains('look-instant')).toBe(true);
+	});
+
 	it('draws a card in its final look at once on a return to Home', async () => {
 		server.use(...rowHandlers());
 		app = mount(HomePage, { target });
