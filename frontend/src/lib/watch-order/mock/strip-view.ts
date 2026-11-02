@@ -52,6 +52,8 @@ export function emptyColumn(view: StripView, side: 'before' | 'after'): EmptyCol
 
 /** The counts behind the "Whole franchise" control. */
 export interface FranchiseSummary {
+	/** Every entry the franchise page lists, recaps included. */
+	readonly total: number;
 	readonly main: number;
 	/** Films and other versions. */
 	readonly films: number;
@@ -73,9 +75,28 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 		if (c && !posters.includes(c) && posters.length < 3) posters.push(c);
 	}
 	return {
+		total: 0,
 		main: run.entries.length,
 		films: run.films.length + run.versions.length,
 		sides: run.sides.length,
 		posters
 	};
+}
+
+/**
+ * The entry the viewer is part-way through, for the strip's "You're
+ * watching" line: null when it is the entry being viewed or already
+ * one of the strip's tiles, which shows its progress itself.
+ */
+export function watchingFor(
+	run: MockRun,
+	id: string,
+	view: StripView,
+	order: WatchOrder
+): { entry: MockEntry; episode: number } | null {
+	void run;
+	void id;
+	void view;
+	void order;
+	return null;
 }
