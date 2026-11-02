@@ -1,0 +1,1253 @@
+[
+	{
+		"key": "bleach",
+		"nameId": "244",
+		"entries": [
+			{
+				"id": "244",
+				"title": "BLEACH",
+				"subtype": "TV",
+				"start": "2004-10-05",
+				"episodes": 366,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/244/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/244/cover_image/large-b9e0a3066197f1115c773ff866a60873.jpeg"
+			},
+			{
+				"id": "43078",
+				"title": "BLEACH: Sennen Kessen-hen",
+				"subtype": "TV",
+				"start": "2022-10-10",
+				"episodes": 13,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/43078/poster_image/medium-c33a4b2e827f0e99ea57f831af0adabd.jpeg",
+				"cover": "https://media.kitsu.app/anime/43078/cover_image/large-45a93d1d5a68cf93aa314a9efbe8bf72.jpeg"
+			},
+			{
+				"id": "46903",
+				"title": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan",
+				"subtype": "TV",
+				"start": "2023-07-08",
+				"episodes": 13,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/46903/poster_image/medium-24b1c7852d98ef3d435feaa883114b8e.jpeg",
+				"cover": "https://media.kitsu.app/anime/46903/cover_image/large-dc8f25b0f4cd5e3bb451d74108673b6e.jpeg"
+			},
+			{
+				"id": "48015",
+				"title": "BLEACH: Sennen Kessen-hen - Soukoku-tan",
+				"subtype": "TV",
+				"start": "2024-10-05",
+				"episodes": 14,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/48015/poster_image/medium-a4b904b0d98ce42d1af9cbde07089177.jpeg",
+				"cover": "https://media.kitsu.app/anime/48015/cover_image/large-b3305a3976b88108f7f32e4d53748c2d.jpeg"
+			},
+			{
+				"id": "49444",
+				"title": "BLEACH: Sennen Kessen-hen - Kashin-tan",
+				"subtype": "TV",
+				"start": "2026-07-25",
+				"episodes": 10,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/49444/poster_image/medium-66cfbd4d2d642a3084681aa0b7bb02f1.jpeg",
+				"cover": "https://media.kitsu.app/anime/49444/cover_image/large-baa4b4ffbb1ada49c13b95195202c1d4.jpeg"
+			}
+		],
+		"versions": [],
+		"films": [
+			{
+				"id": "1515",
+				"title": "Bleach Movie 1: Memories of Nobody",
+				"subtype": "movie",
+				"start": "2006-12-16",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/1515/poster_image/medium-2706d12b0fb487a67aa87309a81a2368.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/1515/large.jpg"
+			},
+			{
+				"id": "2623",
+				"title": "Bleach Movie 2: The DiamondDust Rebellion - Mou Hitotsu no Hyourinmaru",
+				"subtype": "movie",
+				"start": "2007-12-22",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/2623/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/2623/large.jpg"
+			},
+			{
+				"id": "3817",
+				"title": "Bleach Movie 3: Fade to Black - Kimi no Na wo Yobu",
+				"subtype": "movie",
+				"start": "2008-12-13",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/3817/poster_image/medium-abb5c3de25596d1dc93b5d3228f4de8b.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/3817/large.jpg"
+			},
+			{
+				"id": "5267",
+				"title": "Bleach Movie 4: Jigoku-hen",
+				"subtype": "movie",
+				"start": "2010-12-04",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/5267/poster_image/medium-6bdcd3be85e3ea178c16a242b6d60104.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/5267/large.jpg"
+			}
+		],
+		"sides": [
+			{
+				"id": "684",
+				"title": "Bleach: Memories in the Rain",
+				"subtype": "special",
+				"start": "2005-06-12",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/684/poster_image/medium-088fe6684fd5d80315a67755e50418b7.jpeg",
+				"cover": null
+			},
+			{
+				"id": "739",
+				"title": "Bleach: The Sealed Sword Frenzy",
+				"subtype": "special",
+				"start": "2006-03-23",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/739/poster_image/medium-af966eba13e82fc3f82ab3220c915d04.jpeg",
+				"cover": null
+			},
+			{
+				"id": "13264",
+				"title": "Bleach Colorful!: Gotei Juusan Yatai Daisakusen!",
+				"subtype": "OVA",
+				"start": "2008-09-12",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/13264/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/13264/cover_image/large-44efc2470db16a0c872d264cd6a8aa44.jpeg"
+			}
+		],
+		"recaps": [
+			{
+				"id": "48913",
+				"title": "Bleach: Shuku! Rukia Dakkan! Kagayaku! Shinigami Juuban Shoubu! Mitai Shinigami Doon to Misemasu Special",
+				"subtype": "special",
+				"start": "2006-01-10",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/48913/poster_image/medium-b6ee70e91b4fe722ba948b4c052791e9.jpeg",
+				"cover": null
+			},
+			{
+				"id": "48914",
+				"title": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan Recap",
+				"subtype": "special",
+				"start": "2023-09-02",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/48914/poster_image/medium-246f23f01cb18b6e2a354c40b068add7.jpeg",
+				"cover": null
+			}
+		],
+		"links": [
+			["244", "43078"],
+			["43078", "46903"],
+			["46903", "48015"],
+			["48015", "49444"]
+		],
+		"progress": {
+			"244": "watched",
+			"43078": "watched"
+		}
+	},
+	{
+		"key": "aot",
+		"nameId": "7442",
+		"entries": [
+			{
+				"id": "7442",
+				"title": "Attack on Titan",
+				"subtype": "TV",
+				"start": "2013-04-07",
+				"episodes": 25,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/7442/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7442/large.jpg"
+			},
+			{
+				"id": "8671",
+				"title": "Attack on Titan Season 2",
+				"subtype": "TV",
+				"start": "2017-04-01",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8671/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8671/large.jpg"
+			},
+			{
+				"id": "13569",
+				"title": "Attack on Titan Season 3",
+				"subtype": "TV",
+				"start": "2018-07-23",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/13569/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/13569/large.jpg"
+			},
+			{
+				"id": "41982",
+				"title": "Attack on Titan Season 3 Part 2",
+				"subtype": "TV",
+				"start": "2019-04-29",
+				"episodes": 10,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/41982/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/41982/large.jpg"
+			},
+			{
+				"id": "42422",
+				"title": "Attack on Titan: The Final Season",
+				"subtype": "TV",
+				"start": "2020-12-07",
+				"episodes": 16,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/42422/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/42422/large.jpg"
+			},
+			{
+				"id": "44240",
+				"title": "Attack on Titan: The Final Season Part 2",
+				"subtype": "TV",
+				"start": "2022-01-09",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/44240/poster_image/medium-0fa48d96e48646d81d486e67b60af617.jpeg",
+				"cover": "https://media.kitsu.app/anime/44240/cover_image/large-36fb635220e5dccc6ff547b1f7bae2bd.jpeg"
+			},
+			{
+				"id": "46038",
+				"title": "Attack on Titan: The Final Season - Final Chapters Part 1",
+				"subtype": "special",
+				"start": "2023-03-03",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/46038/poster_image/medium-ac80061d5b82bf4844d5a684e68121f6.jpeg",
+				"cover": "https://media.kitsu.app/anime/46038/cover_image/large-c01740adc9e1bb96e65f4e13f83e1993.jpeg"
+			},
+			{
+				"id": "47132",
+				"title": "Attack on Titan: The Final Season - Final Chapters Part 2",
+				"subtype": "special",
+				"start": "2023-11-04",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47132/poster_image/medium-16f109519ab6896bedc90a3b6d174f10.jpeg",
+				"cover": "https://media.kitsu.app/anime/47132/cover_image/large-5e20fc6eb29952f8986b7b5908b3eebe.jpeg"
+			}
+		],
+		"versions": [
+			{
+				"id": "8672",
+				"title": "Attack on Titan: Crimson Bow and Arrow",
+				"subtype": "movie",
+				"start": "2014-11-22",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/8672/poster_image/medium-2ec75351d84e7ba5cb792ca26559c2c5.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8672/large.jpg"
+			},
+			{
+				"id": "8673",
+				"title": "Attack on Titan: Wings of Freedom",
+				"subtype": "movie",
+				"start": "2015-06-27",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/8673/poster_image/medium-00db38c6ff9fcddb4cce3cf1ae86a62e.jpeg",
+				"cover": null
+			},
+			{
+				"id": "41487",
+				"title": "Attack on Titan: Roar of Awakening",
+				"subtype": "movie",
+				"start": "2018-01-13",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/41487/medium.jpg",
+				"cover": null
+			}
+		],
+		"films": [
+			{
+				"id": "42250",
+				"title": "Shingeki no Kyojin in the Dome: Heishi-tachi no Hoshizora",
+				"subtype": "movie",
+				"start": "2017-05-20",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/42250/medium.jpg",
+				"cover": null
+			}
+		],
+		"sides": [
+			{
+				"id": "7694",
+				"title": "Attack on Titan OVA",
+				"subtype": "OVA",
+				"start": "2013-12-09",
+				"episodes": 3,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/7694/poster_image/medium-8020aa891d55e57bd2758b85cc2e592e.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7694/large.jpg"
+			},
+			{
+				"id": "42247",
+				"title": "Attack on Titan Season 3 Specials",
+				"subtype": "special",
+				"start": "2018-10-17",
+				"episodes": 7,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/42247/medium.jpg",
+				"cover": null
+			},
+			{
+				"id": "45959",
+				"title": "Shingeki no Kyojin: The Final Season Specials",
+				"subtype": "special",
+				"start": "2021-07-07",
+				"episodes": 16,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/45959/poster_image/medium-51a10c867bcf119427a5508d3f619fa5.jpeg",
+				"cover": null
+			},
+			{
+				"id": "8674",
+				"title": "Attack on Titan: No Regrets",
+				"subtype": "OVA",
+				"start": "2014-12-09",
+				"episodes": 2,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/8674/poster_image/medium-e2d1e71ce8e7e7e3c300153cf4a0abed.jpeg",
+				"cover": "https://media.kitsu.app/anime/8674/cover_image/large-3c889339d58dee809e39ae302927004b.jpeg"
+			},
+			{
+				"id": "13718",
+				"title": "Attack on Titan: Lost Girls",
+				"subtype": "OVA",
+				"start": "2017-12-08",
+				"episodes": 3,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/13718/poster_image/medium-3a068c2c0950acdaa10b22f3a18e04e5.jpeg",
+				"cover": "https://media.kitsu.app/anime/13718/cover_image/large-22943a6906aaf40abc68f26f0ffebcf9.jpeg"
+			},
+			{
+				"id": "11315",
+				"title": "Attack on Titan: Junior High",
+				"subtype": "TV",
+				"start": "2015-10-04",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/11315/poster_image/medium-75554a943168add7becc1e58b8753b13.jpeg",
+				"cover": "https://media.kitsu.app/anime/11315/cover_image/large-74b4ea329ca55eb086abc24e8af101b9.jpeg"
+			}
+		],
+		"recaps": [
+			{
+				"id": "7838",
+				"title": "Attack on Titan: Since That Day",
+				"subtype": "special",
+				"start": "2013-07-07",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/7838/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7838/large.jpg"
+			},
+			{
+				"id": "47129",
+				"title": "10-pun de Oitsukeru: Shingeki no Kyojin",
+				"subtype": "ONA",
+				"start": "2018-07-02",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47129/poster_image/medium-ef05d40a7d70011cc533d5dcbe9aaf6f.jpeg",
+				"cover": null
+			},
+			{
+				"id": "47130",
+				"title": "15-pun de Oitsukeru: Shingeki no Kyojin",
+				"subtype": "ONA",
+				"start": "2020-12-02",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47130/poster_image/medium-e136411acf0726f4443caf7fc11ff7f9.jpeg",
+				"cover": null
+			},
+			{
+				"id": "47131",
+				"title": "20-pun de Oitsukeru: Shingeki no Kyojin",
+				"subtype": "ONA",
+				"start": "2021-12-27",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47131/poster_image/medium-3cb87223a5a5f567c32d08ffd452d3b5.jpeg",
+				"cover": "https://media.kitsu.app/anime/47131/cover_image/large-da084856faadf447fabc3346b07519fb.jpeg"
+			},
+			{
+				"id": "47259",
+				"title": "25-pun de Oitsukeru: Shingeki no Kyojin",
+				"subtype": "ONA",
+				"start": "2023-02-18",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47259/poster_image/medium-5ee697bf00f29addf2d4de1a0f0d5d02.jpeg",
+				"cover": null
+			},
+			{
+				"id": "43212",
+				"title": "Attack on Titan: Chronicle",
+				"subtype": "movie",
+				"start": "2020-07-17",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/43212/poster_image/medium-c712c6cee4ae09225e6253e03195eedd.jpeg",
+				"cover": null
+			},
+			{
+				"id": "49129",
+				"title": "Shingeki no Kyojin Movie: Kanketsu-hen - The Last Attack",
+				"subtype": "movie",
+				"start": "2024-11-08",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/49129/poster_image/medium-d7e1c036237b59cfcd4d56e62ba6377b.jpeg",
+				"cover": "https://media.kitsu.app/anime/49129/cover_image/large-56ac90419c26a190ed6c8a3e7baac33e.jpeg"
+			}
+		],
+		"links": [
+			["13569", "41982"],
+			["41982", "42422"],
+			["42422", "44240"],
+			["44240", "46038"],
+			["46038", "47132"],
+			["7442", "8671"],
+			["8671", "13569"]
+		],
+		"progress": {
+			"7442": "watched",
+			"8671": "watched",
+			"13569": "watched",
+			"41982": "watched",
+			"42422": "watched",
+			"44240": "watched"
+		}
+	},
+	{
+		"key": "jojo",
+		"nameId": "7158",
+		"entries": [
+			{
+				"id": "7158",
+				"title": "JoJo no Kimyou na Bouken (TV)",
+				"subtype": "TV",
+				"start": "2012-10-06",
+				"episodes": 26,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/7158/poster_image/medium-dc5b9aa567da90538903f8b0b329d585.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7158/large.jpg"
+			},
+			{
+				"id": "8063",
+				"title": "JoJo no Kimyou na Bouken: Stardust Crusaders",
+				"subtype": "TV",
+				"start": "2014-04-05",
+				"episodes": 24,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8063/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8063/large.jpg"
+			},
+			{
+				"id": "8739",
+				"title": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+				"subtype": "TV",
+				"start": "2015-01-10",
+				"episodes": 24,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8739/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8739/large.jpg"
+			},
+			{
+				"id": "11459",
+				"title": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+				"subtype": "TV",
+				"start": "2016-04-02",
+				"episodes": 39,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/11459/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/11459/large.jpg"
+			},
+			{
+				"id": "41410",
+				"title": "JoJo's Bizarre Adventure: Golden Wind",
+				"subtype": "TV",
+				"start": "2018-10-06",
+				"episodes": 39,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/41410/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/41410/cover_image/large-be407d39f99dc866cfce3dcf028668b3.jpeg"
+			},
+			{
+				"id": "44294",
+				"title": "JoJo's Bizarre Adventure: Stone Ocean",
+				"subtype": "TV",
+				"start": "2021-12-01",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/44294/poster_image/medium-28ef08897afca6eb51c6adfca03b695e.jpeg",
+				"cover": "https://media.kitsu.app/anime/44294/cover_image/large-2241c6e357a3d580d07662ac652a4851.jpeg"
+			},
+			{
+				"id": "46010",
+				"title": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+				"subtype": "TV",
+				"start": "2022-09-01",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/46010/poster_image/medium-8df937bb8a2e510ebf08bf54040d7eb8.jpeg",
+				"cover": "https://media.kitsu.app/anime/46010/cover_image/large-239be882f80504666dc96481267e61fb.jpeg"
+			},
+			{
+				"id": "46598",
+				"title": "JoJo no Kimyou na Bouken: Stone Ocean Part 3",
+				"subtype": "TV",
+				"start": "2022-12-01",
+				"episodes": 14,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/46598/poster_image/medium-ad50d41ba2cdd6ca65bccd1447d26442.jpeg",
+				"cover": "https://media.kitsu.app/anime/46598/cover_image/large-00f67c28065d2ae6bb1c619f1a4dc824.jpeg"
+			},
+			{
+				"id": "49847",
+				"title": "Steel Ball Run: JoJo no Kimyou na Bouken",
+				"subtype": "ONA",
+				"start": "2026-03-19",
+				"episodes": 12,
+				"status": "current",
+				"poster": "https://media.kitsu.app/anime/49847/poster_image/medium-2b8c58a8ac75e30ad82ebefa74ca7c5a.jpeg",
+				"cover": "https://media.kitsu.app/anime/49847/cover_image/large-64da0803a94c466f171577580e1acf2d.jpeg"
+			}
+		],
+		"versions": [
+			{
+				"id": "610",
+				"title": "JoJo no Kimyou na Bouken",
+				"subtype": "OVA",
+				"start": "1993-11-19",
+				"episodes": 6,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/610/poster_image/medium-01d8c4609a5efb4172e1b6d8f1828e16.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/610/large.jpg"
+			},
+			{
+				"id": "7730",
+				"title": "JoJo no Kimyou na Bouken: Adventure",
+				"subtype": "OVA",
+				"start": "2000-05-25",
+				"episodes": 7,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/7730/poster_image/medium-09aca98b66d1c9bea77c269c32d94010.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7730/large.jpg"
+			},
+			{
+				"id": "3136",
+				"title": "JoJo no Kimyou na Bouken: Phantom Blood",
+				"subtype": "movie",
+				"start": "2007-02-17",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/3136/medium.jpg",
+				"cover": null
+			},
+			{
+				"id": "13306",
+				"title": "JoJo’s Bizarre Adventure Re-edited",
+				"subtype": "special",
+				"start": "2012-12-31",
+				"episodes": 3,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/13306/medium.jpg",
+				"cover": null
+			}
+		],
+		"films": [],
+		"sides": [
+			{
+				"id": "12064",
+				"title": "Kishibe Rohan wa Ugokanai",
+				"subtype": "OVA",
+				"start": "2017-09-20",
+				"episodes": 4,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/12064/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/12064/large.jpg"
+			}
+		],
+		"recaps": [
+			{
+				"id": "42116",
+				"title": "JoJo's Bizarre Adventure: Golden Wind Recap",
+				"subtype": "special",
+				"start": "2019-01-05",
+				"episodes": 3,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/42116/medium.jpg",
+				"cover": null
+			}
+		],
+		"links": [
+			["11459", "41410"],
+			["41410", "44294"],
+			["44294", "46010"],
+			["46010", "46598"],
+			["46598", "49847"],
+			["7158", "8063"],
+			["8063", "8739"],
+			["8739", "11459"]
+		],
+		"progress": {
+			"7158": "watched",
+			"8063": "watched",
+			"8739": "watched",
+			"11459": "watched",
+			"41410": "watched",
+			"44294": "watched",
+			"46010": "watched",
+			"46598": 13,
+			"49847": 1
+		}
+	},
+	{
+		"key": "gintama",
+		"nameId": "818",
+		"entries": [
+			{
+				"id": "818",
+				"title": "Gintama",
+				"subtype": "TV",
+				"start": "2006-04-04",
+				"episodes": 201,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/818/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/818/large.jpg"
+			},
+			{
+				"id": "5971",
+				"title": "Gintama'",
+				"subtype": "TV",
+				"start": "2011-04-04",
+				"episodes": 51,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/5971/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/5971/large.jpg"
+			},
+			{
+				"id": "7253",
+				"title": "Gintama': Enchousen",
+				"subtype": "TV",
+				"start": "2012-10-04",
+				"episodes": 13,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/7253/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7253/large.jpg"
+			},
+			{
+				"id": "7241",
+				"title": "Gintama Movie 2: Kanketsu-hen - Yorozuya yo Eien Nare",
+				"subtype": "movie",
+				"start": "2013-07-06",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/7241/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7241/large.jpg"
+			},
+			{
+				"id": "10083",
+				"title": "Gintama°",
+				"subtype": "TV",
+				"start": "2015-04-08",
+				"episodes": 51,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/10083/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/10083/large.jpg"
+			},
+			{
+				"id": "12553",
+				"title": "Gintama.",
+				"subtype": "TV",
+				"start": "2017-01-09",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/12553/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/12553/large.jpg"
+			},
+			{
+				"id": "13726",
+				"title": "Gintama.: Porori-hen",
+				"subtype": "TV",
+				"start": "2017-10-02",
+				"episodes": 13,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/13726/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/13726/cover_image/large-1704581dc5d5c330210cc7f86097bd00.jpeg"
+			},
+			{
+				"id": "14095",
+				"title": "Gintama.: Shirogane no Tamashii-hen",
+				"subtype": "TV",
+				"start": "2018-01-08",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/14095/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/14095/cover_image/large-2a10d21896a8b17b2476f3438fcce3d7.jpeg"
+			},
+			{
+				"id": "41079",
+				"title": "Gintama.: Shirogane no Tamashii-hen 2",
+				"subtype": "TV",
+				"start": "2018-07-09",
+				"episodes": 14,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/41079/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/41079/cover_image/large-7da982dc77e405a8ad786680e6097db7.jpeg"
+			},
+			{
+				"id": "43829",
+				"title": "Gintama: THE SEMI-FINAL",
+				"subtype": "special",
+				"start": "2021-01-15",
+				"episodes": 2,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/43829/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/43829/large.jpg"
+			},
+			{
+				"id": "43683",
+				"title": "Gintama: The Final",
+				"subtype": "movie",
+				"start": "2021-01-08",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://kitsu-production-media.s3.us-west-002.backblazeb2.com/anime/43683/poster_image/47b7a8cedd4fc7638a4474e2079ffcc8.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=002d6013655cdc00000000003%2F20261101%2Fus-west-002%2Fs3%2Faws4_request&X-Amz-Date=20261101T232014Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=e0d5fd968e3c83767891de3a8042cd942c2a2114123957be06f89aeed2dafbfa",
+				"cover": "https://media.kitsu.app/anime/43683/cover_image/large-4c9500ff7486bf432929b29aac24a664.jpeg"
+			}
+		],
+		"versions": [
+			{
+				"id": "4989",
+				"title": "Gintama: The Movie",
+				"subtype": "movie",
+				"start": "2010-04-24",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/4989/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/4989/large.jpg"
+			},
+			{
+				"id": "8608",
+				"title": "Gintama: Yorinuki Gintama-san on Theater 2D",
+				"subtype": "movie",
+				"start": "2012-08-26",
+				"episodes": 2,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8608/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8608/large.jpg"
+			},
+			{
+				"id": "50541",
+				"title": "Shin Gintama Movie: Yoshiwara Daienjou",
+				"subtype": "movie",
+				"start": "2026-02-13",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/50541/poster_image/medium-0c2d7983072f4513ca9d74f75b2daa68.jpeg",
+				"cover": null
+			}
+		],
+		"films": [
+			{
+				"id": "49020",
+				"title": "Gintama on Theater 2D: Ikkoku Keisei-hen",
+				"subtype": "movie",
+				"start": "2024-06-21",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/49020/poster_image/medium-5eff95c1a8252efc4d5f1a92af15789d.jpeg",
+				"cover": null
+			}
+		],
+		"sides": [
+			{
+				"id": "2671",
+				"title": "Gintama: Nanigoto mo Saiyo ga Kanjin nano de Tasho Senobisuru Kurai ga Choudoyoi",
+				"subtype": "special",
+				"start": "2005-09-01",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/2671/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/2671/large.jpg"
+			},
+			{
+				"id": "4797",
+				"title": "Gintama: Shiroyasha Koutan",
+				"subtype": "special",
+				"start": "2008-09-21",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/4797/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/4797/large.jpg"
+			},
+			{
+				"id": "6278",
+				"title": "Gintama: Dai Hanseikai",
+				"subtype": "special",
+				"start": "2010-03-25",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/6278/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/6278/large.jpg"
+			},
+			{
+				"id": "8627",
+				"title": "Gintama': Futon ni Haitte kara Buki Nokoshi ni Kizuite Neru ni Nerenai Toki mo Aru",
+				"subtype": "special",
+				"start": "2015-04-03",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8627/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8627/large.jpg"
+			},
+			{
+				"id": "11759",
+				"title": "Gintama°: Aizome Kaori-hen",
+				"subtype": "OVA",
+				"start": "2016-08-04",
+				"episodes": 2,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/11759/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/11759/large.jpg"
+			},
+			{
+				"id": "47198",
+				"title": "3-nen Z-gumi Ginpachi-sensei",
+				"subtype": "TV",
+				"start": "2025-10-06",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47198/poster_image/medium-e20bab065d43762f05420f980533f395.jpeg",
+				"cover": "https://media.kitsu.app/anime/47198/cover_image/large-de2fc7c96ce9ea1d5793b27b3b5b65ea.jpeg"
+			}
+		],
+		"recaps": [],
+		"links": [
+			["10083", "12553"],
+			["12553", "13726"],
+			["13726", "14095"],
+			["14095", "41079"],
+			["41079", "43683"],
+			["43829", "43683"],
+			["5971", "7253"],
+			["7241", "10083"],
+			["7253", "10083"],
+			["7253", "7241"],
+			["818", "5971"]
+		],
+		"progress": {
+			"818": 6
+		}
+	},
+	{
+		"key": "fate",
+		"nameId": "6028",
+		"entries": [
+			{
+				"id": "6028",
+				"title": "Fate/Zero",
+				"subtype": "TV",
+				"start": "2011-10-02",
+				"episodes": 13,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/6028/poster_image/medium-edd1c8af6e5c64750fcbc9f58389ed0c.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/6028/large.jpg"
+			},
+			{
+				"id": "7658",
+				"title": "Fate/Zero 2nd Season",
+				"subtype": "TV",
+				"start": "2012-04-08",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/7658/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7658/large.jpg"
+			},
+			{
+				"id": "323",
+				"title": "Fate/stay night",
+				"subtype": "TV",
+				"start": "2006-01-07",
+				"episodes": 24,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/323/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/323/large.jpg"
+			},
+			{
+				"id": "9718",
+				"title": "Fate/stay night: Unlimited Blade Works - Prologue",
+				"subtype": "special",
+				"start": "2014-10-05",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/9718/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/9718/large.jpg"
+			},
+			{
+				"id": "7882",
+				"title": "Fate/stay night: Unlimited Blade Works",
+				"subtype": "TV",
+				"start": "2014-10-12",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/7882/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7882/large.jpg"
+			},
+			{
+				"id": "10052",
+				"title": "Fate/stay night: Unlimited Blade Works 2nd Season",
+				"subtype": "TV",
+				"start": "2015-04-05",
+				"episodes": 13,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/10052/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/10052/large.jpg"
+			}
+		],
+		"versions": [
+			{
+				"id": "4788",
+				"title": "Fate/stay night Movie: Unlimited Blade Works",
+				"subtype": "movie",
+				"start": "2010-01-23",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/4788/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/4788/large.jpg"
+			},
+			{
+				"id": "8675",
+				"title": "Fate/stay night: Heaven's Feel I. Presage Flower",
+				"subtype": "movie",
+				"start": "2017-10-14",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8675/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8675/large.jpg"
+			},
+			{
+				"id": "6765",
+				"title": "Fate/Prototype",
+				"subtype": "OVA",
+				"start": "2011-12-31",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/6765/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/6765/large.jpg"
+			}
+		],
+		"films": [],
+		"sides": [
+			{
+				"id": "6928",
+				"title": "Fate/Zero: Onegai! Einzbern Soudanshitsu",
+				"subtype": "special",
+				"start": "2012-03-07",
+				"episodes": 6,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/6928/medium.jpg",
+				"cover": null
+			}
+		],
+		"recaps": [
+			{
+				"id": "6906",
+				"title": "Fate/Zero Remix",
+				"subtype": "special",
+				"start": "2012-03-25",
+				"episodes": 2,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/6906/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/6906/large.jpg"
+			},
+			{
+				"id": "5028",
+				"title": "Fate/stay night TV Reproduction",
+				"subtype": "OVA",
+				"start": "2010-01-17",
+				"episodes": 2,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/5028/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/5028/large.jpg"
+			}
+		],
+		"links": [
+			["6028", "7658"],
+			["7658", "323"],
+			["7658", "9718"],
+			["7882", "10052"],
+			["9718", "7882"]
+		],
+		"progress": {
+			"6028": "watched",
+			"7658": 12
+		}
+	},
+	{
+		"key": "monogatari",
+		"nameId": "3919",
+		"entries": [
+			{
+				"id": "3919",
+				"title": "Bakemonogatari",
+				"subtype": "TV",
+				"start": "2009-07-03",
+				"episodes": 15,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/3919/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/3919/large.jpg"
+			},
+			{
+				"id": "6546",
+				"title": "Nisemonogatari",
+				"subtype": "TV",
+				"start": "2012-01-08",
+				"episodes": 11,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/6546/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/6546/large.jpg"
+			},
+			{
+				"id": "5649",
+				"title": "Kizumonogatari I: Tekketsu-hen",
+				"subtype": "movie",
+				"start": "2016-01-08",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/5649/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/5649/large.jpg"
+			},
+			{
+				"id": "11406",
+				"title": "Kizumonogatari II: Nekketsu-hen",
+				"subtype": "movie",
+				"start": "2016-08-19",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/11406/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/11406/large.jpg"
+			},
+			{
+				"id": "11407",
+				"title": "Kizumonogatari III: Reiketsu-hen",
+				"subtype": "movie",
+				"start": "2017-01-06",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/11407/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/11407/large.jpg"
+			},
+			{
+				"id": "7294",
+				"title": "Nekomonogatari: Kuro",
+				"subtype": "TV",
+				"start": "2012-12-31",
+				"episodes": 4,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/7294/poster_image/medium-ee3544fb677ae927a810e6cb22c55da1.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7294/large.jpg"
+			},
+			{
+				"id": "7573",
+				"title": "Monogatari Series: Second Season",
+				"subtype": "TV",
+				"start": "2013-07-07",
+				"episodes": 26,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/7573/poster_image/medium-93d36f153275c223cfae03794d7ac1a1.jpeg",
+				"cover": "https://media.kitsu.app/anime/cover_images/7573/large.jpg"
+			},
+			{
+				"id": "8032",
+				"title": "Hanamonogatari",
+				"subtype": "TV",
+				"start": "2014-08-16",
+				"episodes": 5,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/8032/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/8032/large.jpg"
+			},
+			{
+				"id": "9961",
+				"title": "Tsukimonogatari",
+				"subtype": "TV",
+				"start": "2014-12-31",
+				"episodes": 4,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/9961/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/9961/large.jpg"
+			},
+			{
+				"id": "11182",
+				"title": "Owarimonogatari",
+				"subtype": "TV",
+				"start": "2015-10-04",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/11182/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/11182/large.jpg"
+			},
+			{
+				"id": "11613",
+				"title": "Koyomimonogatari",
+				"subtype": "ONA",
+				"start": "2016-01-10",
+				"episodes": 12,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/11613/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/11613/large.jpg"
+			},
+			{
+				"id": "13268",
+				"title": "Owarimonogatari 2nd Season",
+				"subtype": "TV",
+				"start": "2017-08-12",
+				"episodes": 7,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/13268/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/13268/large.jpg"
+			},
+			{
+				"id": "42279",
+				"title": "Zoku Owarimonogatari (TV)",
+				"subtype": "TV",
+				"start": "2019-05-18",
+				"episodes": 6,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/42279/medium.jpg",
+				"cover": null
+			},
+			{
+				"id": "14129",
+				"title": "Zoku Owarimonogatari",
+				"subtype": "movie",
+				"start": "2018-11-10",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/14129/medium.jpg",
+				"cover": null
+			},
+			{
+				"id": "48434",
+				"title": "Monogatari Series: Off & Monster Season",
+				"subtype": "ONA",
+				"start": "2024-07-06",
+				"episodes": 14,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/48434/poster_image/medium-f6fe9c8e593ec37be94da7b70b155632.jpeg",
+				"cover": "https://media.kitsu.app/anime/48434/cover_image/large-373bab438f6acbae1c43214c3a5f4782.jpeg"
+			},
+			{
+				"id": "50013",
+				"title": "Monogatari Series: Off & Monster Season Shin Episode",
+				"subtype": "special",
+				"start": null,
+				"episodes": null,
+				"status": "tba",
+				"poster": "https://media.kitsu.app/anime/50013/poster_image/medium-45861b5e1cba1be0e3bacaed35ad1f72.jpeg",
+				"cover": null
+			}
+		],
+		"versions": [],
+		"films": [],
+		"sides": [
+			{
+				"id": "49128",
+				"title": "MONOGATARI Series: OFF & MONSTER Season - A Cruel Fairy Tale: The Beautiful Princess",
+				"subtype": "special",
+				"start": "2024-08-17",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/49128/poster_image/medium-519a98d43b806a2e0197ef925c457a9a.jpeg",
+				"cover": null
+			}
+		],
+		"recaps": [
+			{
+				"id": "4800",
+				"title": "Bakemonogatari Recap",
+				"subtype": "special",
+				"start": "2009-08-07",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/poster_images/4800/medium.jpg",
+				"cover": "https://media.kitsu.app/anime/cover_images/4800/large.jpg"
+			},
+			{
+				"id": "48484",
+				"title": "Nekomonogatari: Kuro Recap",
+				"subtype": "special",
+				"start": "2013-03-06",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/48484/poster_image/medium-b48e806ca2b1815a423401324ca0daaa.jpeg",
+				"cover": null
+			},
+			{
+				"id": "47927",
+				"title": "Kizumonogatari: Koyomi Vamp",
+				"subtype": "movie",
+				"start": "2024-01-12",
+				"episodes": 1,
+				"status": "finished",
+				"poster": "https://media.kitsu.app/anime/47927/poster_image/medium-b9b8dc06c684c6f354c1666ddacc3e80.jpeg",
+				"cover": "https://media.kitsu.app/anime/47927/cover_image/large-4d51383774cceed2fa47b0e5c6dbc0ba.jpeg"
+			}
+		],
+		"links": [
+			["11182", "11613"],
+			["11182", "13268"],
+			["11406", "11407"],
+			["11407", "13268"],
+			["11407", "6546"],
+			["11613", "13268"],
+			["11613", "5649"],
+			["13268", "42279"],
+			["3919", "5649"],
+			["3919", "6546"],
+			["42279", "48434"],
+			["48434", "50013"],
+			["5649", "11406"],
+			["6546", "7294"],
+			["7294", "7573"],
+			["7573", "8032"],
+			["7573", "9961"],
+			["8032", "14129"],
+			["8032", "9961"],
+			["9961", "11182"],
+			["9961", "11613"]
+		],
+		"progress": {
+			"3919": "watched",
+			"6546": "watched",
+			"7294": 2
+		}
+	}
+]
