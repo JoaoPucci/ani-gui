@@ -5,10 +5,14 @@
  * page renders as plain text.
  *
  * Default contributors:
- *  - The layout sets a generic two-segment trail on every navigation
- *    based on URL alone (so a hard-load lands with something visible).
+ *  - The layout resets to a generic two-segment trail based on URL
+ *    alone (so a hard-load lands with something visible) on every
+ *    navigation to another address; on the page's own address it
+ *    keeps the trail the page named. See `pageTrail.reset`
+ *    ($lib/page-trail).
  *  - Routes that have richer labels (anime title, episode number)
- *    overwrite the trail in onMount once their data loads.
+ *    name themselves through `pageTrail.name` once their data loads,
+ *    before or after that reset ($lib/page-trail).
  *
  * On navigation away the layout resets to defaults; this avoids a
  * stale "Naruto Shippuuden" segment lingering on /search after the
@@ -30,8 +34,9 @@ export const breadcrumb = writable<BreadcrumbSegment[]>([]);
 
 /** Build the default trail from a route id alone. Used by the layout
  *  on every navigation so a page with no breadcrumb hook still shows
- *  something meaningful. Routes override this on mount with richer
- *  labels (anime title, episode number). Labels resolve through
+ *  something meaningful. Routes with richer labels (anime title,
+ *  episode number) name themselves through `pageTrail.name`
+ *  ($lib/page-trail), before or after that reset. Labels resolve through
  *  Paraglide so the trail re-renders in the active locale. */
 export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
 	if (!routeId || routeId === '/') {
