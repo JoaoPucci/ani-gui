@@ -38,6 +38,10 @@
 //   text (an episode that can still be clicked to re-check, the rail's
 //   Debug link), each once dimmed it with `opacity`, which took its
 //   text below AA, and each must still exist and set no `opacity`.
+//   A selector is matched exactly, as one entry of its rule's list:
+//   `.ep-tile-recheck, .x { opacity: … }` is caught, but a compound or
+//   descendant form that reaches the same element
+//   (`.ep-grid .ep-tile-recheck`) is not.
 // - Colours that are not bone tiers: the accents, the brand colour,
 //   white with an alpha on the player's own chrome, and any mix other
 //   than the one form above. They are read by review, not here.
@@ -140,6 +144,17 @@ interface TranslucentText {
 	alpha: number;
 }
 
+/**
+ * A rule's keys: its file, then each selector of its list on its own
+ * (postcss splits `a, b` into `a` and `b`), whitespace collapsed. A
+ * grouped rule is therefore seen under every selector it names.
+ */
+function keysOf(path: string, rule: Rule): string[] {
+	return rule.selectors.map(
+		(selector) => `${relative(SRC, path)} ${selector.replace(/\s+/g, ' ')}`
+	);
+}
+
 const translucent: TranslucentText[] = [];
 /** Every rule's declared opacity, by `file selector`; null where it sets none. */
 const ruleOpacity = new Map<string, string | null>();
@@ -148,22 +163,20 @@ for (const path of files.filter((p) => /\.(svelte|css)$/.test(p))) {
 	if (!css) continue;
 	const root = postcss.parse(css);
 	root.walkRules((rule) => {
-		const key = `${relative(SRC, path)} ${rule.selector.replace(/\s+/g, ' ')}`;
-		let opacity: string | null = ruleOpacity.get(key) ?? null;
+		let opacity: string | null = null;
 		rule.each((node) => {
 			if (node.type === 'decl' && node.prop === 'opacity') opacity = node.value;
 		});
-		ruleOpacity.set(key, opacity);
+		for (const key of keysOf(path, rule)) {
+			ruleOpacity.set(key, ruleOpacity.get(key) ?? opacity);
+		}
 	});
 	root.walkDecls('color', (decl) => {
 		const match = TRANSLUCENT_BONE.exec(decl.value.trim());
 		if (!match) return;
-		const rule = decl.parent as Rule;
-		translucent.push({
-			key: `${relative(SRC, path)} ${rule.selector.replace(/\s+/g, ' ')}`,
-			tier: match[1],
-			alpha: Number(match[2]) / 100
-		});
+		for (const key of keysOf(path, decl.parent as Rule)) {
+			translucent.push({ key, tier: match[1], alpha: Number(match[2]) / 100 });
+		}
 	});
 }
 
