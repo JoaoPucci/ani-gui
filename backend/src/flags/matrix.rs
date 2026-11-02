@@ -39,13 +39,36 @@ pub(crate) struct Gaps {
 
 /// Compare `cases` against every value of every flag in `decls`.
 pub(crate) fn gaps(decls: &[FlagDecl], cases: &[FlagCase]) -> Gaps {
-    let _ = (decls, cases);
-    Gaps::default()
+    let covered = |name: &str, value: FlagValue| {
+        cases
+            .iter()
+            .any(|c| c.flag.name == name && c.value == value)
+    };
+    let declared = |name: &str, value: FlagValue| {
+        decls
+            .iter()
+            .any(|d| d.name == name && d.allowed().contains(&value))
+    };
+    Gaps {
+        untested: decls
+            .iter()
+            .flat_map(|d| d.allowed().into_iter().map(move |v| (d.name, v)))
+            .filter(|(name, v)| !covered(name, *v))
+            .collect(),
+        stray: cases
+            .iter()
+            .map(|c| (c.flag.name, c.value))
+            .filter(|(name, v)| !declared(name, *v))
+            .collect(),
+    }
 }
 
 /// Run every case against the flags its value gives.
 pub(crate) fn run(decls: &[FlagDecl], cases: &[FlagCase]) {
-    let _ = (decls, cases, resolve, document);
+    for case in cases {
+        let doc = document(case.flag.name, case.value);
+        (case.check)(&resolve(decls, Some(&doc)));
+    }
 }
 
 /// A flags document holding `value` for `name`.
