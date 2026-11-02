@@ -625,3 +625,37 @@ test("the window waits for whatever must show first, then shows", async () => {
   await opened;
   assert.equal(win.shows, 1);
 });
+
+test("a wait before showing that fails still shows the window, and is logged", async () => {
+  const logged = [];
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: (...a) => logged.push(a),
+    beforeShow: async () => {
+      throw new Error("splash gone sideways");
+    },
+  });
+  win.emit("ready-to-show");
+  await opened;
+  assert.equal(win.shows, 1);
+  assert.equal(logged.length, 1);
+});
+
+test("a first page that fails while the window waits to show is never shown", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = showableWindow(async () => {
+    throw loadError("ERR_FAILED", -2, "app://localhost/");
+  });
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+  });
+  win.emit("ready-to-show");
+  await assert.rejects(opened);
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 0);
+});

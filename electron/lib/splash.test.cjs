@@ -56,7 +56,11 @@ function fakeSplash() {
   win.calls = [];
   win.destroyed = false;
   win.isDestroyed = () => win.destroyed;
-  win.show = () => win.calls.push("show");
+  // As a real BrowserWindow does, show() emits "show" there and then.
+  win.show = () => {
+    win.calls.push("show");
+    win.emit("show");
+  };
   win.hide = () => win.calls.push("hide");
   win.close = () => {
     win.calls.push("close");
@@ -79,9 +83,10 @@ test("a splash shows once it has painted, marked as the splash", () => {
   assert.equal(win[SPLASH_MARK], true);
   assert.deepEqual(win.calls, ["load:index.html"]);
   win.emit("ready-to-show");
-  assert.deepEqual(win.calls, ["load:index.html", "show"]);
+  const windowCalls = () => win.calls.filter((c) => !c.startsWith("js:"));
+  assert.deepEqual(windowCalls(), ["load:index.html", "show"]);
   splash.close();
-  assert.deepEqual(win.calls, ["load:index.html", "show", "close"]);
+  assert.deepEqual(windowCalls(), ["load:index.html", "show", "close"]);
 });
 
 test("a splash suppressed before it painted never comes back on top of the failure report", () => {
@@ -168,22 +173,42 @@ test("under reduced motion nothing on the splash moves", () => {
 test("the splash's motion waits for the window to show, with a timer only as the fallback", () => {
   const css = read("splash.css");
   assert.match(css, /body:not\(\.shown\)[^{]*\{[^}]*animation-play-state: paused/);
-  assert.match(read("splash.js"), /classList\.add\('shown'\)/);
+  const fallback = /^setTimeout\(\(\) => document\.body\.classList\.add\('shown'\), (\d+)\);$/m.exec(
+    read("splash.js"),
+  );
+  assert.ok(fallback, "splash.js starts the motion on a timer");
+  assert.ok(Number(fallback[1]) <= 1000, `fallback after ${fallback[1]} ms`);
 });
 
-test("the splash is told it is shown when its window shows", () => {
+const tick = () => new Promise((r) => setImmediate(r));
+
+test("the splash is told it is shown when its window shows, and answers once it has painted", async () => {
   const win = fakeSplash();
+  let painted;
+  win.webContents.executeJavaScript = (code) => {
+    win.calls.push(`js:${code}`);
+    return new Promise((resolve) => (painted = resolve));
+  };
   const splash = splashController({ createWindow: () => win, logError: () => {} });
   splash.show();
+  let up = false;
+  const waiting = splash.whenShown().then(() => (up = true));
   win.emit("ready-to-show");
-  win.emit("show");
-  assert.ok(
-    win.calls.includes("js:document.body.classList.add('shown')"),
-    JSON.stringify(win.calls),
-  );
+  const signal = win.calls.find((c) => c.startsWith("js:"));
+  assert.ok(signal && signal.includes("classList.add('shown')"), JSON.stringify(win.calls));
+  // It waits two animation frames, so it answers after a frame with
+  // the splash in it has been drawn, not when the window is mapped.
+  assert.equal((signal.match(/requestAnimationFrame/g) || []).length, 2);
+  await tick();
+  assert.equal(up, false, "mapped is not painted");
+  assert.equal(lastSplashState().shown, false);
+  painted(true);
+  await waiting;
+  assert.equal(up, true);
+  assert.equal(lastSplashState().shown, true);
 });
 
-test("a splash that cannot be told it is shown keeps its fallback, and is only logged", async () => {
+test("a splash that cannot be told it is shown keeps its fallback, is only logged, and holds nothing up", async () => {
   const win = fakeSplash();
   win.webContents.executeJavaScript = async () => {
     throw new Error("render frame was disposed");
@@ -191,12 +216,28 @@ test("a splash that cannot be told it is shown keeps its fallback, and is only l
   const logged = [];
   const splash = splashController({ createWindow: () => win, logError: (...a) => logged.push(a) });
   splash.show();
-  win.emit("show");
-  await new Promise((r) => setImmediate(r));
+  const waiting = splash.whenShown();
+  win.emit("ready-to-show");
+  await waiting;
   assert.equal(logged.length, 1);
 });
 
-test("what happened to the launch's splash can be read back afterwards", () => {
+test("a splash closed while the app's window waits for it releases the wait", async () => {
+  const win = fakeSplash();
+  win.webContents.executeJavaScript = () => new Promise(() => {});
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  const waiting = splash.whenShown();
+  win.emit("ready-to-show");
+  win.closeFromOutside = () => {
+    win.destroyed = true;
+    win.emit("closed");
+  };
+  win.closeFromOutside();
+  await waiting;
+});
+
+test("what happened to the launch's splash can be read back afterwards", async () => {
   // A test run starts fast enough that the splash has come and gone
   // before a harness can look at its windows; the end-to-end suite
   // reads this instead.
@@ -206,7 +247,7 @@ test("what happened to the launch's splash can be read back afterwards", () => {
   splash.show();
   assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false });
   win.emit("ready-to-show");
-  win.emit("show");
+  await tick();
   splash.close();
   assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false });
   const failed = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
@@ -227,7 +268,6 @@ test("the app's window can wait for the splash to be on screen, for a bounded ti
   await new Promise((r) => setImmediate(r));
   assert.equal(up, false);
   win.emit("ready-to-show");
-  win.emit("show");
   await waiting;
   assert.equal(up, true);
 
