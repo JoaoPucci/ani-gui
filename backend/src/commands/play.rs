@@ -658,6 +658,7 @@ pub(crate) mod tests {
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
         }
     }
 
