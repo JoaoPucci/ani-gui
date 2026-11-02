@@ -57,6 +57,11 @@ function fakeSplash() {
     win.emit("closed");
   };
   win.loadFile = async (file) => win.calls.push(`load:${path.basename(file)}`);
+  win.webContents = {
+    executeJavaScript: async (code) => {
+      win.calls.push(`js:${code}`);
+    },
+  };
   return win;
 }
 
@@ -126,4 +131,60 @@ test("a splash window that cannot be created is logged, and nothing else happens
   assert.doesNotThrow(() => splash.show());
   assert.equal(logged.length, 1);
   splash.close();
+});
+
+const splashDir = path.dirname(SPLASH_PAGE);
+const read = (name) => fs.readFileSync(path.join(splashDir, name), "utf-8");
+
+test("the splash is the pull-down: a film strip of the mark, a reel title and a counter", () => {
+  const html = read("index.html");
+  assert.match(html, /class="track"/);
+  assert.match(html, /class="wordmark"/);
+  assert.match(html, /class="counter"/);
+  for (const file of ["splash.css", "splash.js", "mark.svg", "sprocket.svg"]) {
+    assert.ok(fs.existsSync(path.join(splashDir, file)), file);
+  }
+});
+
+test("the mark comes from mark.svg alone, so a new identity swaps one file", () => {
+  const html = read("index.html");
+  const srcs = [...html.matchAll(/<img [^>]*src="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(srcs.length > 0);
+  assert.deepEqual([...new Set(srcs)], ["mark.svg"]);
+  assert.doesNotMatch(read("splash.css"), /mark\.svg/);
+});
+
+test("under reduced motion nothing on the splash moves", () => {
+  assert.match(read("splash.css"), /@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*animation: none !important/);
+});
+
+test("the splash's motion waits for the window to show, with a timer only as the fallback", () => {
+  const css = read("splash.css");
+  assert.match(css, /body:not\(\.shown\)[^{]*\{[^}]*animation-play-state: paused/);
+  assert.match(read("splash.js"), /classList\.add\('shown'\)/);
+});
+
+test("the splash is told it is shown when its window shows", () => {
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  win.emit("show");
+  assert.ok(
+    win.calls.includes("js:document.body.classList.add('shown')"),
+    JSON.stringify(win.calls),
+  );
+});
+
+test("a splash that cannot be told it is shown keeps its fallback, and is only logged", async () => {
+  const win = fakeSplash();
+  win.webContents.executeJavaScript = async () => {
+    throw new Error("render frame was disposed");
+  };
+  const logged = [];
+  const splash = splashController({ createWindow: () => win, logError: (...a) => logged.push(a) });
+  splash.show();
+  win.emit("show");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(logged.length, 1);
 });
