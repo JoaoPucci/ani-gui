@@ -60,6 +60,7 @@ import { parse } from 'svelte/compiler';
 import { describe, expect, it } from 'vitest';
 
 import { AA_TEXT, parseHex, textContrast, type Rgb } from './contrast';
+import { ruleKey } from './rule-key';
 
 const SRC = fileURLToPath(new URL('../../src', import.meta.url));
 const TOKENS = join(SRC, 'lib', 'design', 'tokens.css');
@@ -150,9 +151,7 @@ interface TranslucentText {
  * grouped rule is therefore seen under every selector it names.
  */
 function keysOf(path: string, rule: Rule): string[] {
-	return rule.selectors.map(
-		(selector) => `${relative(SRC, path)} ${selector.replace(/\s+/g, ' ')}`
-	);
+	return rule.selectors.map((selector) => ruleKey(relative(SRC, path), selector));
 }
 
 const translucent: TranslucentText[] = [];
