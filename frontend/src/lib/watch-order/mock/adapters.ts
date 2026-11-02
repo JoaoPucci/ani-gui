@@ -1,6 +1,7 @@
 /**
- * Small adapters for the mockup components: the PosterCard shape, a
- * rail's scroll offset, and a franchise's display name.
+ * Small adapters for the mockup components: the PosterCard shape and a
+ * rail's scroll offset; the franchise's display name is re-exported
+ * from `./franchise-name`.
  * Part of the mockups' views; `./view` gathers them.
  */
 import type { KitsuAnimeRef } from '$lib/api';
@@ -47,7 +48,4 @@ export function scrollLeftFor(
 	return Math.max(0, Math.min(target, box.scrollWidth - box.clientWidth));
 }
 
-/** A franchise's name from its first entry: Kitsu's "(TV)"-style format suffix dropped. */
-export function franchiseName(title: string): string {
-	return title.replace(/\s*\((TV|Movie|OVA|ONA|Special)\)$/i, '');
-}
+export { franchiseName } from './franchise-name';

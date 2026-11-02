@@ -43,6 +43,11 @@
 	const heroEntry = $derived(onNow?.entry ?? first);
 	const accent = $derived(accentFor(heroEntry.id));
 	const titles = $derived(run.entries.map((e) => e.title));
+	const franchiseTitles = $derived(
+		[...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
+			.filter((e) => e.id !== first.id)
+			.map((e) => e.title)
+	);
 	const label = (e: MockEntry) =>
 		prefs.titles === 'short' ? shortTitle(e.title, titles) : e.title;
 	const posOf = (e: MockEntry) => placement(run, e.id, prefs.order).position;
@@ -73,7 +78,7 @@
 						>{m.watchorder_franchise_count({ count: run.entries.length })}</span
 					>
 				</p>
-				<h1 class="title">{franchiseName(first.title)}</h1>
+				<h1 class="title">{franchiseName(first.title, franchiseTitles)}</h1>
 				<div class="actions">
 					<a
 						class="btn btn-glass"

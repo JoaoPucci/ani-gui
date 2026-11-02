@@ -32,5 +32,10 @@ export interface MockRun {
 	readonly recaps: readonly MockEntry[];
 	/** Prequel → sequel pairs between members, from either listing. */
 	readonly links: readonly (readonly [string, string])[];
+	/**
+	 * Side story → the entries Kitsu names as its `parent_story`, for
+	 * the side stories whose show page carries a strip.
+	 */
+	readonly parents: Readonly<Record<string, readonly string[]>>;
 	readonly progress: Readonly<Record<string, MockProgress>>;
 }
