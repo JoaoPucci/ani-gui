@@ -237,8 +237,6 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		const hero = page.locator('section.hero');
 		await hero.hover();
 		await expectStill(page, 'hovering the hero');
-		await card.hover();
-		await expectStill(page, 'hovering a Continue Watching card');
 
 		// The row's header action rests as an icon and opens into its
 		// labelled pill on hover. Under reduced motion it opens at once:
@@ -252,6 +250,11 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await clear.hover();
 		expect(await openState(clear)).toEqual({ label: '1', fullWidth: true });
 		await expectStill(page, 'hovering a row’s header action');
+
+		// The card last: its delete chip takes the pointer only while the
+		// card is hovered, and the delete below clicks it.
+		await card.hover();
+		await expectStill(page, 'hovering a Continue Watching card');
 
 		// Delete the card the way a user does: its chip, then the dialog.
 		await page.getByRole('button', { name: 'Remove Continue Test Show from history' }).click();
