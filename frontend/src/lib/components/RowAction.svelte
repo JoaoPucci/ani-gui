@@ -34,6 +34,9 @@
   slot's unpainted rest of the width trails the line, where nothing
   follows it. Only the button takes the pointer, so the reserve never
   opens it or takes a click.
+
+  A busy action still opens on hover and focus, to say what it is; it
+  only keeps the resting colours, as a busy labelled pill does.
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
@@ -54,9 +57,14 @@
 		shape?: RowActionShape;
 		onclick: () => void;
 	} = $props();
+
+	/** The icon's size, in px. The slot passes it to its CSS as
+	 *  `--ra-icon`, so the room held for the open pill counts the icon
+	 *  at the size it is drawn. */
+	const ICON_PX = 14;
 </script>
 
-<span class="row-action-slot" data-shape={shape} data-label={label}
+<span class="row-action-slot" data-shape={shape} data-label={label} style="--ra-icon: {ICON_PX}px"
 	><button
 		type="button"
 		class="row-action"
@@ -67,21 +75,36 @@
 			if (!busy) onclick();
 		}}
 	>
-		{#if icon}<Icon name={icon} size={14} />{/if}
+		{#if icon}<Icon name={icon} size={ICON_PX} />{/if}
 		<span class="row-action-label">{label}</span>
 	</button></span
 >
 
 <style>
+	/* The pill's measures and type, declared once: the button reads them,
+	   and so does the icon shape's sizer, which holds the open pill's
+	   width. Shared, the two cannot drift apart. The type is the
+	   eyebrow's (tokens.css .eyebrow), so the header line reads as one
+	   voice. `--ra-icon` comes from the markup, from the size the icon is
+	   drawn at. */
+	.row-action-slot {
+		--ra-pad: var(--space-3);
+		--ra-gap: var(--space-2);
+		--ra-face: var(--font-body);
+		--ra-type-size: 0.8125rem;
+		--ra-weight: 600;
+		--ra-tracking: 0.14em;
+		--ra-case: uppercase;
+	}
 	.row-action {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--ra-gap);
 		/* 32px: the smallest hit area the row headers allow. The header
 		   reserves this height on every row, so a row with an action
 		   and a row without one start their cards at the same depth. */
 		block-size: var(--space-6);
-		padding-inline: var(--space-3);
+		padding-inline: var(--ra-pad);
 		/* The edge is what marks this as a button on a line of uppercase
 		   text: 40% bone is about 3.4:1 on the page and on a band. */
 		--row-action-border: color-mix(in oklab, var(--bone-100) 40%, transparent);
@@ -89,14 +112,12 @@
 		border-radius: var(--radius-pill);
 		background: transparent;
 		color: var(--bone-200);
-		font-family: var(--font-body);
-		/* The eyebrow's type (tokens.css .eyebrow), so the header line reads
-		   as one voice. */
-		font-size: 0.8125rem;
-		font-weight: 600;
-		letter-spacing: 0.14em;
+		font-family: var(--ra-face);
+		font-size: var(--ra-type-size);
+		font-weight: var(--ra-weight);
+		letter-spacing: var(--ra-tracking);
 		line-height: 1;
-		text-transform: uppercase;
+		text-transform: var(--ra-case);
 		white-space: nowrap;
 		cursor: pointer;
 		/* --dur-fast is 0ms under prefers-reduced-motion (tokens.css). */
@@ -125,14 +146,8 @@
 		opacity: 0.7;
 	}
 	/* The icon shape: at rest a 32px circle over the slot's reserved
-	   width, open on hover and keyboard focus. The pill's measures are
-	   shared with the slot's sizer so the open pill and the room held
-	   for it cannot drift apart. */
-	.row-action-slot {
-		--ra-pad: var(--space-3);
-		--ra-gap: var(--space-2);
-		--ra-icon: 14px;
-	}
+	   width, open on hover and keyboard focus. The slot is the button's
+	   containing block, so the open button's 100% is the reserve. */
 	.row-action-slot[data-shape='icon'] {
 		position: relative;
 		display: inline-block;
@@ -150,12 +165,12 @@
 		block-size: var(--space-6);
 		padding-inline: calc(var(--ra-pad) + var(--ra-icon) + var(--ra-gap)) var(--ra-pad);
 		border: 1px solid transparent;
-		font-family: var(--font-body);
-		font-size: 0.8125rem;
-		font-weight: 600;
-		letter-spacing: 0.14em;
+		font-family: var(--ra-face);
+		font-size: var(--ra-type-size);
+		font-weight: var(--ra-weight);
+		letter-spacing: var(--ra-tracking);
 		line-height: calc(var(--space-6) - 2px);
-		text-transform: uppercase;
+		text-transform: var(--ra-case);
 		white-space: nowrap;
 	}
 	/* At rest. Its transitions are the closing ones: the label leaves
@@ -187,10 +202,12 @@
 		scale: 1.1429;
 		transition: scale var(--dur-med) var(--ease-in-out);
 	}
+	/* Closing, the label fades in half the hover time, so it is gone
+	   before the shrinking edge reaches words still on show. */
 	.row-action-slot[data-shape='icon'] .row-action-label {
 		flex: none;
 		opacity: 0;
-		transition: opacity var(--dur-fast) var(--ease-out-soft);
+		transition: opacity calc(var(--dur-fast) / 2) var(--ease-out-soft);
 	}
 	/* Open. The shape leads; the label fades in over the last part of
 	   the width, so the pill reveals it rather than the words overtaking
