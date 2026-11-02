@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	FAILURE_BACKOFF_MS,
@@ -172,6 +173,21 @@ describe('RefillWaiter', () => {
 		}
 	});
 
+	it('lets go of the tickets of a page that closed before its read came back', async () => {
+		const { wait, calls } = manualWait();
+		const release = vi.fn();
+		const waiter = new RefillWaiter(wait, noSleep, release);
+		void waiter.landed([2]);
+		await flush();
+		const left = new AbortController();
+		left.abort();
+		expect(await waiter.landed([1, 2], left.signal)).toBe(false);
+		// Ticket 2 is still shown by the page that waits on it.
+		expect(release).toHaveBeenCalledWith([1]);
+		await flush();
+		expect(calls.map((c) => c.tickets)).toEqual([[2]]);
+	});
+
 	it('lets go of the tickets of a read no page waits on', () => {
 		const { wait } = manualWait();
 		const release = vi.fn();
@@ -182,6 +198,77 @@ describe('RefillWaiter', () => {
 		waiter.letGo([3]);
 		waiter.letGo([]);
 		expect(release).toHaveBeenCalledTimes(1);
+	});
+
+	/** Pages register their tickets and close in any order, some before
+	 *  their read came back: a release never names a ticket an open page
+	 *  waits on, and once every step has run, each ticket a closed page
+	 *  held that no open page holds was released after it was last
+	 *  handed to the waiter. */
+	it('lets go of every ticket no open page holds, whenever its page closed', async () => {
+		const ticket = fc.integer({ min: 1, max: 5 });
+		const page = fc.record({
+			tickets: fc.uniqueArray(ticket, { minLength: 1, maxLength: 3 }),
+			closesBeforeRead: fc.boolean()
+		});
+		await fc.assert(
+			fc.asyncProperty(
+				fc.array(page, { minLength: 1, maxLength: 6 }),
+				fc.array(fc.nat(), { maxLength: 6 }),
+				async (pages, closings) => {
+					const { wait } = manualWait();
+					const log: { step: number; released: number[] }[] = [];
+					let step = 0;
+					const open = new Map<number, number[]>();
+					const heldWhenReleased: number[] = [];
+					const release = (tickets: number[]) => {
+						const held = new Set([...open.values()].flat());
+						heldWhenReleased.push(...tickets.filter((t) => held.has(t)));
+						log.push({ step, released: tickets });
+					};
+					const waiter = new RefillWaiter(wait, noSleep, release);
+					const lastHanded = new Map<number, number>();
+					const controllers = new Map<number, AbortController>();
+					const closed = new Set<number>();
+					const close = (i: number) => {
+						open.delete(i);
+						closed.add(i);
+						controllers.get(i)?.abort();
+					};
+					for (const [i, p] of pages.entries()) {
+						step += 1;
+						const c = new AbortController();
+						controllers.set(i, c);
+						if (p.closesBeforeRead) {
+							closed.add(i);
+							c.abort();
+						} else {
+							open.set(i, p.tickets);
+						}
+						for (const t of p.tickets) lastHanded.set(t, step);
+						void waiter.landed(p.tickets, c.signal);
+						await flush();
+						const at = closings[i];
+						if (at !== undefined && open.size > 0) {
+							step += 1;
+							const keys = [...open.keys()];
+							close(keys[at % keys.length]);
+							await flush();
+						}
+					}
+					expect(heldWhenReleased).toEqual([]);
+					const stillHeld = new Set([...open.values()].flat());
+					for (const i of closed) {
+						for (const t of pages[i].tickets) {
+							if (stillHeld.has(t)) continue;
+							const releasedAt = log.filter((e) => e.released.includes(t)).map((e) => e.step);
+							expect(Math.max(-1, ...releasedAt)).toBeGreaterThanOrEqual(lastHanded.get(t)!);
+						}
+					}
+					for (const i of [...open.keys()]) close(i);
+				}
+			)
+		);
 	});
 
 	it('resolves false at once for no tickets', async () => {

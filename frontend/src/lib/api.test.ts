@@ -1267,6 +1267,66 @@ function refillingFetch(first: unknown, then: unknown, landed: boolean) {
 	});
 }
 
+/** A backend whose reads carry the next of `tickets` each (none once
+ *  they run out), whose wait answers the first one landed, and which
+ *  records every release. */
+function ticketedFetch(tickets: number[]) {
+	const released: number[][] = [];
+	let reads = 0;
+	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+		if (url.endsWith('/api/refills/release')) {
+			released.push(JSON.parse(init?.body as string).tickets);
+			return {
+				ok: true,
+				status: 204,
+				async text() {
+					return '';
+				}
+			} as unknown as Response;
+		}
+		const isWait = url.endsWith('/api/refills/wait');
+		const header = isWait ? null : (tickets[reads++]?.toString() ?? null);
+		const payload = isWait ? [{ ticket: tickets[0], landed: true }] : [];
+		return {
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name === 'x-ani-gui-refill' ? header : null) },
+			async text() {
+				return JSON.stringify(payload);
+			}
+		} as unknown as Response;
+	});
+	return { fetchMock, released };
+}
+
+describe('tickets no page waits on', () => {
+	it('are let go when the page closed before its read came back', async () => {
+		const { fetchMock, released } = ticketedFetch([41]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const page = new AbortController();
+		const read = kitsuEpisodes('12', 1, { onRefill: vi.fn(), signal: page.signal });
+		page.abort();
+		await read;
+		await vi.waitFor(() => expect(released).toEqual([[41]]));
+		const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+		expect(urls.some((u) => u.endsWith('/api/refills/wait'))).toBe(false);
+	});
+	it('are let go for a read that does not wait on its refill', async () => {
+		const { fetchMock, released } = ticketedFetch([42]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuAnimeDetail('12');
+		await vi.waitFor(() => expect(released).toEqual([[42]]));
+	});
+	it('are let go when the read fetched once more is itself held back', async () => {
+		const { fetchMock, released } = ticketedFetch([43, 44]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuAnimeDetail('12', { onRefill });
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalled());
+		await vi.waitFor(() => expect(released).toEqual([[44]]));
+	});
+});
+
 describe('refillsRelease', () => {
 	it('posts the tickets a closed page let go, and shrugs off a failure', async () => {
 		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
