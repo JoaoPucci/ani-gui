@@ -342,7 +342,17 @@ three-second limit below.
    session. The preload marks that case with `window.aniGui.flagsOrigin`
    set to null, so a renderer consumer that must agree with the backend
    can ask `GET /api/flags` itself.
-4. The splash closes once the app's window has shown.
+4. The app's window shows only once the splash is on screen, waiting at
+   most a second for it, so even a fast start shows the splash rather
+   than closing it unpainted. The splash closes once the app's window
+   has shown.
+
+The splash is a 35mm strip of the app's mark pulled through a lit gate
+a frame at a time, beside a reel title and a frame counter
+(`electron/splash/`). Its motion starts when the main process tells it
+the window is on screen, with a timer in the page as the fallback, and
+under reduced motion it is a still frame. The mark is `mark.svg` alone,
+so the app's new identity in 0.21.0 replaces one file.
 
 The store accepts one decision and refuses every later one. A backend
 consumer reads the flags with `FlagStore::settled()`, which waits for
