@@ -236,12 +236,18 @@ pub(crate) async fn kitsu_episode_page(
 
 /// The entries Kitsu relates an anime to
 /// ([`crate::meta::kitsu::KitsuClient::media_relationships`]), cached
-/// under `kitsu:relations:v2:<id>` for as long as a finished show's
+/// under `kitsu:relations:v3:<id>` for as long as a finished show's
 /// detail row.
 ///
 /// v2: the parser refuses a page naming a destination it does not
 /// include. A v1 row may hold such an entry, read then as one of no
 /// format or status.
+///
+/// v3: each relation carries the day its destination started, which
+/// orders Kitsu's parts, and a destination that leaves out its subtype,
+/// status, count or start is no answer. A v2 row carries no start, read
+/// then as parts whose order the dates do not settle, and may come from
+/// the looser reader before that.
 ///
 /// # Errors
 /// As the client's, on a miss.
@@ -249,7 +255,7 @@ pub async fn kitsu_relationships(
     state: &AppState,
     anime_id: &str,
 ) -> Result<crate::meta::kitsu::KitsuRelations> {
-    let key = format!("kitsu:relations:v2:{anime_id}");
+    let key = format!("kitsu:relations:v3:{anime_id}");
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(rel) = serde_json::from_str(&body) {
             return Ok(rel);
@@ -1120,8 +1126,17 @@ async fn anime_detail_read(
             Some(b) => Some(b),
             None => anilist_banner_for(state, id, anilist_base)
                 .await
-                .unwrap_or_else(|()| {
+                .unwrap_or_else(|e| {
                     answered = false;
+                    // Held back by the gate: retried once the pause
+                    // ends, and the page told so (`held_fill`).
+                    super::held_fill::on_unanswered(
+                        state,
+                        super::held_fill::Fill::Detail,
+                        id,
+                        anilist_base,
+                        &e,
+                    );
                     None
                 }),
         }
@@ -1161,10 +1176,8 @@ async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> std::result::Result<Option<String>, ()> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id)
-        .await
-        .map_err(|_| ())?;
+) -> Result<Option<String>> {
+    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
     // The detail renders without it: a background fill.
     crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
         &state.meta_http,
@@ -1173,7 +1186,6 @@ async fn anilist_banner_for(
         anilist_base,
     ))
     .await
-    .map_err(|_| ())
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@ const apiMock = vi.hoisted(() => ({
 vi.mock('$lib/api', () => apiMock);
 
 import { filterAvailable, filterAvailableCacheOnly } from './filter';
+import { WARM_RETRY_MS } from './warm-ledger';
 
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -136,6 +137,70 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 		// The function awaits the batch call, then kicks off warm
 		// without await. The rejection must not propagate.
 		await expect(filterAvailable([ref('a')], 'sub')).resolves.toBeDefined();
+	});
+});
+
+describe('filterAvailable across mounts (one warm per id per session)', () => {
+	// Each test uses ids of its own: the ledger is the renderer's, and
+	// lives as long as the module does.
+	beforeEach(() => {
+		apiMock.availabilityBatch.mockReset();
+		apiMock.availabilityWarm.mockReset();
+		vi.useFakeTimers({ now: 1_000_000 });
+	});
+	afterEach(() => vi.useRealTimers());
+
+	const flush = () => vi.advanceTimersByTimeAsync(0);
+
+	it('a second mount does not warm an id the first already handed in', async () => {
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityWarm.mockResolvedValue(undefined);
+		await filterAvailable([ref('mount-1')], 'sub');
+		await filterAvailable([ref('mount-1')], 'sub');
+		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(1);
+	});
+
+	it('warms only the ids of a mount not already handed in', async () => {
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityWarm.mockResolvedValue(undefined);
+		await filterAvailable([ref('mount-2a')], 'sub');
+		await filterAvailable([ref('mount-2a'), ref('mount-2b')], 'sub');
+		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(2);
+		expect(
+			apiMock.availabilityWarm.mock.calls[1][0].map((a: { kitsu_id: string }) => a.kitsu_id)
+		).toEqual(['mount-2b']);
+	});
+
+	it('an id still uncached once its retry is due is warmed again', async () => {
+		// Still uncached means the walk ended without a verdict — or
+		// never got to it — so it is asked again, once a retry is due.
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityWarm.mockResolvedValue(undefined);
+		await filterAvailable([ref('mount-3')], 'sub');
+		vi.setSystemTime(1_000_000 + WARM_RETRY_MS - 1);
+		await filterAvailable([ref('mount-3')], 'sub');
+		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(1);
+		vi.setSystemTime(1_000_000 + WARM_RETRY_MS);
+		await filterAvailable([ref('mount-3')], 'sub');
+		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(2);
+	});
+
+	it('a warm that never reached the backend is handed in on the next mount', async () => {
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityWarm.mockRejectedValueOnce(new Error('offline'));
+		await filterAvailable([ref('mount-4')], 'sub');
+		await flush();
+		apiMock.availabilityWarm.mockResolvedValue(undefined);
+		await filterAvailable([ref('mount-4')], 'sub');
+		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(2);
+	});
+
+	it('the other mode of an id is its own warm', async () => {
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityWarm.mockResolvedValue(undefined);
+		await filterAvailable([ref('mount-5')], 'sub');
+		await filterAvailable([ref('mount-5')], 'dub');
+		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(2);
 	});
 });
 

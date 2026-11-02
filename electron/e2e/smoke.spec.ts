@@ -14,20 +14,13 @@
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-} from "@playwright/test";
+import { expect, test, type ElectronApplication } from "@playwright/test";
 import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-
-const electronDir = path.resolve(__dirname, "..");
-const packagedBinary = path.join(electronDir, "dist/linux-unpacked/ani-gui");
+import { launchPackagedApp, packagedBinary } from "./launch";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -74,15 +67,7 @@ async function launchAppWithStubsOnce(
     ANI_GUI_UNATTENDED: "1",
   };
 
-  const app = await electron.launch({
-    executablePath: packagedBinary,
-    // `--no-sandbox` because chrome-sandbox in the unpackaged
-    // linux-unpacked dir isn't SUID. The .deb's postinst fixes
-    // that for installed copies; this test runs against the
-    // pre-install artifact.
-    args: ["--no-sandbox"],
-    env: cleanEnv,
-  });
+  const app = await launchPackagedApp(cleanEnv);
   onLaunch(app);
 
   const context = app.context();
@@ -194,6 +179,23 @@ test("app launches, hero renders, no unexpected console errors", async () => {
   }
 });
 
+test("a test launch is muted", async () => {
+  // A headless launch still opens the host's audio device, and test
+  // runs have played sound on the desktop of whoever ran them. Every
+  // spec launches through the shared helper (tests/arch/e2e_launch.sh
+  // keeps it that way); this asks the running app whether the helper
+  // put the switch on its command line.
+  const { app } = await launchAppWithStubs();
+  try {
+    const muted = await app.evaluate(({ app: electronApp }) =>
+      electronApp.commandLine.hasSwitch("mute-audio"),
+    );
+    expect(muted).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test("clicking a poster card navigates to a detail route", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
@@ -229,7 +231,7 @@ test("settings locale picker is wired to a reloading change handler", async () =
   // exposes every shipped locale, and selecting a non-default one
   // fires a full page reload (paraglideSetLocale's default). The
   // *post-reload locale resolution* depends on Electron's storage
-  // semantics under `_electron.launch()` and is flaky in CI's
+  // semantics under Playwright's Electron launch and is flaky in CI's
   // headless xvfb runner; assert only the integration wiring.
   const { app, page } = await launchAppWithStubs();
   try {

@@ -255,6 +255,27 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
+- **A stamp repair can land inside an older instance's play.** The
+  repair that puts a legacy history row's display stamp back on its
+  slot (the rule in `numbering_offset_drift.rs`, the repair in
+  `numbering_offset_repair.rs`) can run beside a build from before
+  history rows recorded the app's own number, on the same files. Of
+  those builds, 0.15.1 and older can: 0.16.0 takes the single-instance
+  lock this one does. Such a build writes a play's stamp, then its
+  history row. If the repair reads that stamp as it stands, and the
+  row lands after the repair's last read of the history file, the
+  repair moves the stamp back to the old row's slot, and the new row
+  reads one episode high. The repair reads the stamp as it stands when
+  the stamp was written before its first read, or when a replay of the
+  episode the stamp already names wrote the same value again. What the
+  repair reads is then exactly what a warm moving the stamp leaves, and
+  the older build leaves no marker another process can see between its
+  two writes. The window lasts milliseconds on a play, or until an
+  external player starts on a handoff. The next listing at hand puts
+  the stamp on the new row. A stamp that moved to another value while
+  the repair waited for the lock is left alone. Nothing closes the rest
+  short of a marker those builds never write; it stops mattering once
+  no build of 0.15.1 or older shares a profile with this one.
 - **Two app instances do not share the playback record, the paced
   lanes or the host budget.** The proxy's record of media served, the
   lanes that paced downloads and their subtitle fetches take in turn
@@ -349,6 +370,15 @@ starting it, and delete it when you find it done.
 
 ## Interface
 
+- **GNOME's newer Reduced Motion preference does not reach the renderer.**
+  On GNOME 50.1 with Electron 33, the accessibility preference was
+  `reduce` while the older global animation switch remained enabled;
+  Electron still reported `prefers-reduced-motion: no-preference`.
+  The app's motion honours that media query, so on such a system it
+  still plays. What Electron reported matched the older switch, not the
+  new preference. The preference could be read another way and handed
+  to the renderer, or a later Electron may expose it to the query.
+
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
   episode, and Kitsu sometimes gives a double-length episode its
@@ -419,6 +449,30 @@ starting it, and delete it when you find it done.
   re-attempt until that lands. PiP as it exists now — the player's
   video, while the player is open — ships and is described in
   `README.md` and `docs/architecture.md`.
+- **An mp4 stream resumed at a point can still show its first frame
+  in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
+  hides the picture with the page's CSS until the resume seek lands,
+  and picture-in-picture and a `<video>` that is itself fullscreen
+  show the element, not the page. An hls stream closes that gap by
+  starting its engine at the fragment that holds the point, so
+  nothing before it is fetched. An mp4 stream is played from `src`,
+  and there Chromium starts the stream at 0 and decodes and shows the
+  frame there unless the seek reaches the media pipeline first. Every way the page can
+  say "start here" becomes that same seek, issued from the main
+  thread when the metadata arrives: `currentTime` set before the
+  metadata, a `#t=` media fragment, and `preload="metadata"` all
+  race. Measured in Electron 33 by noting every frame the element
+  presented (`requestVideoFrameCallback`) across an episode switch
+  in picture-in-picture, with segment latency and a busy main thread:
+  each of the three still showed frame 0 in some switches — in
+  setups where hls never did, and where the hold without any of them
+  showed it every time. The two fixes that do not race are making the
+  proxy serve an mp4 that starts at the point (a backend change that
+  has to ship on Linux and Windows alike, AGENTS.md §15), or playing
+  mp4 sessions through Media Source Extensions with a remuxer, so the
+  page appends only what follows the point. When this entry was
+  written the maintainer's recorded plays were all hls, so the gap
+  reaches only sources the provider serves as mp4.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli

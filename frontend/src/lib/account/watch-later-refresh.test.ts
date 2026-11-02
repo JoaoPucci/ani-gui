@@ -3,7 +3,9 @@ import {
 	invalidateWatchLater,
 	isWatchLaterStale,
 	markRefreshed,
+	markRefreshedSince,
 	readLastRefreshed,
+	refreshStamp,
 	WATCH_LATER_TTL_MS
 } from './watch-later-refresh';
 
@@ -67,5 +69,33 @@ describe('watch-later refresh timestamps (localStorage)', () => {
 	it('reads back null for a non-numeric stored value', () => {
 		window.localStorage.setItem('aniGui:watchLater:lastRefresh:anilist', 'garbage');
 		expect(readLastRefreshed('anilist')).toBeNull();
+	});
+});
+
+describe('markRefreshedSince', () => {
+	beforeEach(() => {
+		(globalThis as { window?: unknown }).window = { localStorage: fakeStorage() };
+	});
+	afterEach(() => {
+		(globalThis as { window?: unknown }).window = undefined;
+	});
+
+	it('stamps a refresh nothing invalidated while it was out', () => {
+		const stamp = refreshStamp('mal');
+		expect(markRefreshedSince('mal', stamp, 42)).toBe(true);
+		expect(readLastRefreshed('mal')).toBe(42);
+	});
+
+	it('leaves the snapshot due when it was invalidated after the refresh started', () => {
+		const stamp = refreshStamp('anilist');
+		invalidateWatchLater('anilist');
+		expect(markRefreshedSince('anilist', stamp, 42)).toBe(false);
+		expect(readLastRefreshed('anilist')).toBeNull();
+	});
+
+	it("is not held back by another provider's invalidation", () => {
+		const stamp = refreshStamp('mal');
+		invalidateWatchLater('anilist');
+		expect(markRefreshedSince('mal', stamp, 7)).toBe(true);
 	});
 });

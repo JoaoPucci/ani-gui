@@ -28,6 +28,7 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod refill;
 mod sse_abort;
 mod syncplay;
 mod update;
@@ -44,7 +45,7 @@ use crate::commands::{
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
-use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
+use crate::meta::kitsu::KitsuAnimeRef;
 use crate::meta::kitsu_page::KitsuSearchPage;
 
 /// Map every `AniError` variant to the closest matching HTTP status.
@@ -102,7 +103,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
-        .route("/api/kitsu/anime/:id", get(get_kitsu_anime_detail))
         .route(
             "/api/kitsu/anime-by-slug/:slug",
             get(get_kitsu_anime_by_slug),
@@ -116,7 +116,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
-        .route("/api/kitsu/episodes/:anime_id", get(get_kitsu_episodes))
         .route(
             "/api/title-match",
             get(get_title_match).put(put_title_match),
@@ -151,6 +150,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/watched-at", get(get_watched_at_all))
         .merge(account::router())
         .merge(airing::router())
+        .merge(refill::router())
         .with_state(state)
         // The Electron renderer in dev runs at `http://localhost:<vite>`
         // while we bind 127.0.0.1:<random> — that's cross-origin, so
@@ -263,16 +263,6 @@ async fn post_kitsu_search_page(
     ))
 }
 
-async fn get_kitsu_anime_detail(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Result<Json<KitsuAnimeRef>, AniError> {
-    let id = crate::kitsu_id::require(&id)?;
-    Ok(Json(
-        kitsu_inner::kitsu_anime_detail_page(&state, id).await?,
-    ))
-}
-
 async fn get_kitsu_anime_by_slug(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -350,27 +340,6 @@ async fn get_kitsu_top_rated(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<KitsuAnimeRef>>, AniError> {
     Ok(Json(kitsu_inner::kitsu_top_rated(&state).await?))
-}
-
-#[derive(Deserialize)]
-struct EpisodesQuery {
-    page: Option<u32>,
-    /// Skip the cached page — sent only by a click on a tile the
-    /// schedule calls unaired.
-    #[serde(default)]
-    refresh: bool,
-}
-
-async fn get_kitsu_episodes(
-    State(state): State<Arc<AppState>>,
-    Path(anime_id): Path<String>,
-    Query(q): Query<EpisodesQuery>,
-) -> Result<Json<Vec<KitsuEpisode>>, AniError> {
-    let anime_id = crate::kitsu_id::require(&anime_id)?;
-    let page = q.page.unwrap_or(1);
-    Ok(Json(
-        kitsu_inner::kitsu_episodes_with(&state, anime_id, page, q.refresh).await?,
-    ))
 }
 
 #[derive(Deserialize)]
@@ -627,7 +596,7 @@ async fn post_availability(
     Json(args): Json<availability_inner::AvailabilityArgs>,
 ) -> Result<Json<availability_inner::AvailabilityResponse>, AniError> {
     Ok(Json(
-        availability_inner::check_availability(&state, &args).await?,
+        crate::commands::availability_flight::check_shared(&state, args).await?,
     ))
 }
 
@@ -641,19 +610,19 @@ async fn post_availability_batch(
     Json(availability_inner::batch_cached(&state, &args))
 }
 
-/// Fire-and-forget cache warmer. Spawns a background task that
-/// walks `items`, runs availability checks for ones not already
-/// cached (with a 500ms throttle), and writes results. Returns 202
-/// immediately so list views never wait for the warm to finish —
-/// the populated cache is read by the next visit's batch call.
+/// Fire-and-forget cache warmer. Hands `items` to the warm queue,
+/// which probes the ones not already cached in the background and
+/// writes the results. Returns 202 immediately so list views never
+/// wait for the warm to finish — the populated cache is read by the
+/// next visit's batch call.
 async fn post_availability_warm(
     State(state): State<Arc<AppState>>,
     Json(args): Json<availability_inner::AvailabilityWarmArgs>,
 ) -> StatusCode {
-    let s = state.clone();
-    tokio::spawn(async move {
-        availability_inner::warm(s, args.items).await;
-    });
+    state
+        .availability_refreshes
+        .warm_queue
+        .push(&state, args.items);
     StatusCode::ACCEPTED
 }
 
