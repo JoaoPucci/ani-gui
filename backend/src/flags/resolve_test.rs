@@ -1,5 +1,6 @@
 use super::{parse_document, resolve, MAX_BYTES};
 use crate::flags::decl::FlagValue;
+use crate::flags::decl::{FlagDecl, FlagKind};
 use crate::flags::test_decls::{FALLBACK, KILL, TEST_DECLS};
 
 fn resolved(body: &str) -> (Option<FlagValue>, Option<FlagValue>) {
@@ -102,4 +103,70 @@ fn resolved_flags_serialise_as_a_name_to_value_object() {
         serde_json::to_value(&r).expect("serialise"),
         serde_json::json!({ "test_kill": true, "test_fallback": "old" })
     );
+}
+
+const KILL_DECL: FlagDecl = TEST_DECLS[0];
+const FALLBACK_DECL: FlagDecl = TEST_DECLS[1];
+
+#[test]
+fn typed_reads_follow_the_file() {
+    let doc = parse_document(br#"{"flags":{"test_kill":false,"test_fallback":"old"}}"#);
+    let r = resolve(TEST_DECLS, doc.as_ref());
+    assert!(!r.enabled(&KILL_DECL));
+    assert_eq!(r.choice(&FALLBACK_DECL), Some("old"));
+}
+
+#[test]
+fn typed_reads_default_without_a_document() {
+    let r = resolve(TEST_DECLS, None);
+    assert!(r.enabled(&KILL_DECL));
+    assert_eq!(r.choice(&FALLBACK_DECL), Some("new"));
+}
+
+#[test]
+fn a_declaration_missing_from_the_set_reads_as_its_default() {
+    // Resolved against an empty declaration list, as a consumer whose
+    // declaration was left out of `DECLARED` would be.
+    let r = resolve(
+        &[],
+        parse_document(br#"{"flags":{"test_kill":false}}"#).as_ref(),
+    );
+    assert!(r.enabled(&KILL_DECL));
+    assert_eq!(r.choice(&FALLBACK_DECL), Some("new"));
+    let other = FlagDecl {
+        name: "other",
+        kind: FlagKind::Fallback {
+            current: "b",
+            earlier: &["a"],
+        },
+        safe_because: "test-only",
+    };
+    assert_eq!(r.choice(&other), Some("b"));
+}
+
+#[test]
+fn reading_a_declaration_as_the_other_kind_switches_nothing() {
+    let doc = parse_document(br#"{"flags":{"test_kill":false,"test_fallback":"old"}}"#);
+    let r = resolve(TEST_DECLS, doc.as_ref());
+    assert!(r.enabled(&FALLBACK_DECL));
+    assert_eq!(r.choice(&KILL_DECL), None);
+}
+
+#[test]
+fn a_value_this_declaration_does_not_allow_reads_as_its_default() {
+    // A set resolved against a same-named declaration with other
+    // values must not leak them through the typed read.
+    const WIDER: &[FlagDecl] = &[FlagDecl {
+        name: FALLBACK,
+        kind: FlagKind::Fallback {
+            current: "new",
+            earlier: &["elsewhere"],
+        },
+        safe_because: "test-only",
+    }];
+    let r = resolve(
+        WIDER,
+        parse_document(br#"{"flags":{"test_fallback":"elsewhere"}}"#).as_ref(),
+    );
+    assert_eq!(r.choice(&FALLBACK_DECL), Some("new"));
 }
