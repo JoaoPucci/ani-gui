@@ -65,11 +65,7 @@ export class RefillWaiter {
 					// after every fill still on screen — once the open
 					// wait, which still names them, is replaced by one
 					// that does not.
-					const still = new Set(this.pending());
-					const gone = [...listener.tickets].filter((t) => !still.has(t));
-					if (gone.length === 0) return;
-					this.release(gone);
-					this.inFlight?.abort();
+					if (this.letGo([...listener.tickets])) this.inFlight?.abort();
 				},
 				{ once: true }
 			);
@@ -78,6 +74,19 @@ export class RefillWaiter {
 			if (this.inFlight && tickets.some((t) => !this.asked.has(t))) this.inFlight.abort();
 			void this.run();
 		});
+	}
+
+	/**
+	 * Let go of the tickets among `tickets` no page waits on: their
+	 * retries rank after every fill still on screen. `true` when any
+	 * was let go.
+	 */
+	letGo(tickets: number[]): boolean {
+		const still = new Set(this.pending());
+		const gone = [...new Set(tickets)].filter((t) => !still.has(t));
+		if (gone.length === 0) return false;
+		this.release(gone);
+		return true;
 	}
 
 	private pending(): number[] {

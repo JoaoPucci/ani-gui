@@ -172,6 +172,18 @@ describe('RefillWaiter', () => {
 		}
 	});
 
+	it('lets go of the tickets of a read no page waits on', () => {
+		const { wait } = manualWait();
+		const release = vi.fn();
+		const waiter = new RefillWaiter(wait, noSleep, release);
+		void waiter.landed([3]);
+		waiter.letGo([3, 4, 4]);
+		expect(release).toHaveBeenCalledWith([4]);
+		waiter.letGo([3]);
+		waiter.letGo([]);
+		expect(release).toHaveBeenCalledTimes(1);
+	});
+
 	it('resolves false at once for no tickets', async () => {
 		const { wait, calls } = manualWait();
 		expect(await new RefillWaiter(wait, noSleep).landed([])).toBe(false);
