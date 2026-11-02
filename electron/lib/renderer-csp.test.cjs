@@ -59,6 +59,7 @@ test("the packaged policy, directive by directive", () => {
     rendererPolicy({ backend: HANDSHAKE, devOrigin: null }),
     [
       "style-src 'self'",
+      "style-src-attr 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='",
       `img-src 'self' data: ${lanes}`,
       "font-src 'self'",
       `connect-src 'self' ${lanes}`,
@@ -92,6 +93,18 @@ test("nothing is ever allowed to evaluate strings, in either build", () => {
 
 test("the packaged policy allows no inline style", () => {
   assert.ok(!rendererPolicy({ backend: HANDSHAKE, devOrigin: null }).includes("unsafe-inline"));
+});
+
+test("one style attribute is allowed, by its hash: SvelteKit's route announcer", () => {
+  for (const devOrigin of [null, "http://localhost:5173"]) {
+    const d = parse(rendererPolicy({ backend: HANDSHAKE, devOrigin }));
+    assert.deepEqual(d["style-src-attr"], [
+      "'unsafe-hashes'",
+      // sha256 of the announcer's style attribute in @sveltejs/kit
+      // src/core/sync/write_root.js.
+      "'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='",
+    ]);
+  }
 });
 
 test("development adds Vite's injected styles and its HMR socket, and nothing else", () => {
@@ -187,8 +200,8 @@ test("property: every source is a keyword, a scheme the app needs, or a valid an
       (backend, dev) => {
         const policy = rendererPolicy({ backend, devOrigin: dev ? "http://localhost:5173" : null });
         const d = parse(policy);
-        assert.equal(Object.keys(d).length, 13);
-        const allowed = new Set(["'self'", "'none'", "data:", "blob:"]);
+        assert.equal(Object.keys(d).length, 14);
+        const allowed = new Set(["'self'", "'none'", "data:", "blob:", ...d["style-src-attr"]]);
         if (dev) allowed.add("'unsafe-inline'").add("ws://localhost:5173");
         const announced = [backend.apiBase, ...Object.entries(backend.lanes)
           .filter(([n]) => ["stream", "image", "probe", "resolve", "download"].includes(n))
