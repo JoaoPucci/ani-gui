@@ -315,15 +315,19 @@ notification center (#351).
 **Decided once per launch, behind the splash.** The flags are decided
 once, within two seconds of the backend starting its refresh (just
 after its state is built), and do not change for the rest of the
-session. A cache read slower than that decides when it ends.
+session. A cache read slower than that decides when it ends, up to the
+three-second limit below.
 
-1. The Electron main process puts up a splash before it spawns the
-   backend.
+1. The Electron main process puts up a splash as the backend starts,
+   once its read of the desktop's reduced-motion setting has settled
+   (within half a second; about 20 ms on GNOME, at once elsewhere), so
+   the splash opens with that setting like any window.
 2. The backend starts the fetch in a task of its own as soon as its
    state is built, and reads the cached copy beside it. If the file
    arrives within two seconds of that start (the cap), it decides the
    flags. Otherwise the cached copy decides them (below), or the
-   defaults when there is none.
+   defaults when there is none. While a slow cache read is still
+   running, a file that arrives first decides, even past the cap.
 3. Once the backend has announced itself, the main process asks
    `GET /api/flags`, which answers when the flags are decided. It opens
    the app's window with them, so the preload puts them on
@@ -345,15 +349,20 @@ does not wait and is for diagnostics only.
 **The cap bounds the wait, not the fetch.** After the cap, the fetch
 goes on in the background. Its whole request, connect to body, has 45
 seconds, 30 of which may go on connecting (DNS, TCP and TLS): the file
-is tiny, so the time goes on the connection and round trips, and a
-lossy link retransmitting its first packets is past ten seconds before
-TLS starts. The flags use a client of their own for that. When the file arrives it is cached for
-the next launch. When that attempt fails, the file is fetched again
-later in the session, after 3, 10 and 30 minutes and then hourly, until
-one attempt succeeds and is cached. A 404 counts as a failed attempt,
+is tiny, so the time goes on the connection and round trips. The flags
+use a client of their own for that, where the metadata client allows
+10 seconds. The connector splits the connect timeout across the
+addresses DNS returns, so with the CDN's four addresses each TCP
+attempt gets about 7.5 seconds before the next address is tried. When
+the file arrives it is cached for the next launch. When that attempt
+fails, the file is fetched again later in the session, after 3, 10 and
+30 minutes and then hourly, until one attempt succeeds and is cached.
+The retries exist to fill the cache, so a launch with no cache
+directory makes the one attempt only. A 404 counts as a failed attempt,
 so until the `flags` branch exists every session retries on that
-schedule. None of this changes the running session's flags. Worst case: one launch delay; never stuck unless the
-file can't be downloaded at all during an entire session. A connection
+schedule. None of this changes the running session's flags. Worst
+case: one launch delay; never stuck unless the file can't be downloaded
+at all during an entire session. A connection
 that always misses the cap still gets a switch-off on its next launch,
 as long as the file arrives at any point during the previous session.
 

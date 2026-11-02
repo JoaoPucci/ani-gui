@@ -174,13 +174,17 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
 }
 
 /**
- * Put the splash up, spawn the backend, wait for the launch's flags
+ * Ask for the splash, spawn the backend, wait for the launch's flags
  * (lib/launch-flags.cjs, bounded), then open the window against the
  * backend with those flags, and take the splash down once the window
- * has shown. A splash that cannot be shown is logged and the boot goes
- * on without it. A failure ends the process with code 1, in this order
- * — the splash left to the failure report, which hides every window:
+ * has shown. `showSplash` may open the splash later than it is asked
+ * (main.js waits on the reduced-motion read); a splash that cannot be
+ * shown is logged and the boot goes on without it. A failure ends the
+ * process with code 1, in this order:
  *
+ *   0. The splash is put away for good (`suppressSplash`): hidden, not
+ *      closed, so it neither covers the report nor starts a quit as
+ *      the last window closing.
  *   1. The backend tree is stopped. `app.exit` skips `before-quit`,
  *      which is where a normal quit stops it, and the backend's own
  *      watch only acts once this process is gone — which, with a

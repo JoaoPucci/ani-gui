@@ -28,11 +28,14 @@ pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui
 /// [`CONNECT_TIMEOUT`] may go on connecting (see [`client`]).
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 
-/// The bound on DNS, the TCP connect and the TLS handshake together.
-/// On a lossy link a SYN retransmitted at 1, 2, 4 and 8 seconds is
-/// already past ten before TLS starts, so the metadata client's ten
-/// seconds would fail exactly the links the background attempt is
-/// for. Thirty leaves the rest of [`FETCH_TIMEOUT`] for the request.
+/// The bound on DNS, the TCP connect and the TLS handshake together,
+/// where the metadata client allows ten seconds. The connector splits
+/// it across the addresses DNS returns (the CDN returns four, so each
+/// TCP attempt gets about 7.5 s before the next address is tried),
+/// which is how a lossy link's retransmitted SYNs get several seconds
+/// per address rather than two and a half. Thirty leaves the rest of
+/// [`FETCH_TIMEOUT`] for the request. No getter exposes a client's
+/// timeouts, so tests pin the constant, not the builder call.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The client the flags file is fetched with: its own, for the

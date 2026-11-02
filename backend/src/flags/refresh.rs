@@ -7,7 +7,11 @@
 //! 2. If the file arrives within the cap — counted from the start, not
 //!    from the end of the cache read — it decides the flags. Otherwise
 //!    the cached copy decides them, or the defaults when there is
-//!    none. A cache read slower than the cap decides when it ends.
+//!    none. A cache read slower than the cap decides when it ends (up
+//!    to a reader's limit, [`super::store::SETTLE_LIMIT`]), unless the
+//!    file arrives first and decides. With no cache directory the
+//!    refresh makes the one attempt only: the retries exist to fill
+//!    the cache.
 //! 3. The fetch goes on in the background, within its own generous
 //!    timeout. When the file arrives it is cached for the next launch.
 //! 4. When that attempt fails, the file is fetched again later in the
