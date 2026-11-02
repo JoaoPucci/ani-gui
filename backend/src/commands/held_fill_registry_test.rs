@@ -113,6 +113,25 @@ fn a_waiting_page_keeps_its_ticket_on_screen_and_a_release_takes_it_off() {
     assert!(r.on_screen(t, later), "a page waits on it again");
 }
 
+/// A page that closes while its wait is still open: the renderer drops
+/// the wait, but the backend's handler may hold it up to 20 s longer.
+/// The release takes the fill off screen at once, so the page now shown
+/// goes first.
+#[test]
+fn a_release_takes_a_fill_off_screen_while_its_wait_is_still_open() {
+    let mut r = Registry::default();
+    let t0 = Instant::now();
+    let (left, _) = r.hold("left", t0).expect("room");
+    r.watch(left, t0);
+    let later = t0 + ON_SCREEN_GRACE * 2;
+    r.release(left);
+    assert!(!r.on_screen(left, later), "its page has gone");
+    let (shown, _) = r.hold("shown", later).expect("room");
+    r.watch(shown, later);
+    assert!(r.may_go(shown, later));
+    assert!(!r.may_go(left, later), "the page on screen goes first");
+}
+
 #[test]
 fn a_fill_no_page_shows_goes_only_while_no_fill_on_screen_waits() {
     let mut r = Registry::default();
