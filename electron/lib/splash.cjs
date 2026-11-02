@@ -107,4 +107,15 @@ function splashController({ createWindow, logError }) {
   };
 }
 
-module.exports = { SPLASH_MARK, SPLASH_PAGE, splashController, splashWindowOptions };
+/** What the most recently made controller's splash went through. Stub. */
+function lastSplashState() {
+  return {};
+}
+
+module.exports = {
+  SPLASH_MARK,
+  SPLASH_PAGE,
+  lastSplashState,
+  splashController,
+  splashWindowOptions,
+};

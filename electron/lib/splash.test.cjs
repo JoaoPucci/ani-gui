@@ -5,7 +5,13 @@ const path = require("node:path");
 
 const { EventEmitter } = require("node:events");
 
-const { SPLASH_MARK, SPLASH_PAGE, splashController, splashWindowOptions } = require("./splash.cjs");
+const {
+  SPLASH_MARK,
+  SPLASH_PAGE,
+  lastSplashState,
+  splashController,
+  splashWindowOptions,
+} = require("./splash.cjs");
 
 test("the splash is a small frameless window above everything, shown once painted", () => {
   const o = splashWindowOptions();
@@ -187,4 +193,23 @@ test("a splash that cannot be told it is shown keeps its fallback, and is only l
   win.emit("show");
   await new Promise((r) => setImmediate(r));
   assert.equal(logged.length, 1);
+});
+
+test("what happened to the launch's splash can be read back afterwards", () => {
+  // A test run starts fast enough that the splash has come and gone
+  // before a harness can look at its windows; the end-to-end suite
+  // reads this instead.
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false });
+  splash.show();
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false });
+  win.emit("ready-to-show");
+  win.emit("show");
+  splash.close();
+  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false });
+  const failed = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
+  failed.show();
+  failed.suppress();
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true });
 });

@@ -54,6 +54,17 @@ export function launchPackagedApp(
 	});
 }
 
+/** What the launch's splash went through (lib/splash.cjs). A test run
+ *  starts fast enough that the splash has come and gone before a spec
+ *  can look at the app's windows, so the main process's own record is
+ *  read instead. */
+export function splashState(app: ElectronApplication): Promise<Record<string, boolean>> {
+	return app.evaluate(() => {
+		const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+		return main.require('./lib/splash.cjs').lastSplashState();
+	});
+}
+
 /** Whether `page` is the splash rather than the app's window: the main
  *  process marks the splash's BrowserWindow (lib/splash.cjs). */
 async function isSplash(app: ElectronApplication, page: Page): Promise<boolean> {

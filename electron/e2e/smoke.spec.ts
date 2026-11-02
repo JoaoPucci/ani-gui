@@ -20,7 +20,7 @@ import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
+import { appWindow, launchPackagedApp, packagedBinary, splashState } from "./launch";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -214,13 +214,52 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
   }
 });
 
-test("the splash is gone once the app's window has shown", async () => {
+test("the splash shows while the app starts, and is gone once the app's window has shown", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
     await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    // It was on screen — opened and shown, not merely created — and
+    // closed once the app's window had shown, not suppressed by a
+    // failure.
+    expect(await splashState(app)).toEqual({
+      opened: true,
+      shown: true,
+      closed: true,
+      suppressed: false,
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the renderer cannot change the launch's flags", async () => {
+  // The flags are the session's: the preload freezes them, and the
+  // bridge keeps both them and window.aniGui read-only to the page.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const seen = await page.evaluate(() => {
+      const bridge = window.aniGui as unknown as Record<string, unknown>;
+      const flags = bridge.flags as Record<string, unknown>;
+      try {
+        flags.injected = true;
+      } catch {
+        // Strict code throws; sloppy code is ignored. Either way it fails.
+      }
+      try {
+        bridge.flags = { injected: true };
+      } catch {
+        // As above.
+      }
+      return {
+        flagsFrozen: Object.isFrozen(flags),
+        bridgeFrozen: Object.isFrozen(bridge),
+        flags: window.aniGui?.flags,
+      };
+    });
+    expect(seen).toEqual({ flagsFrozen: true, bridgeFrozen: true, flags: {} });
   } finally {
     await app.close();
   }
