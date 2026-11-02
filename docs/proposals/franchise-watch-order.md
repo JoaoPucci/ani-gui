@@ -987,7 +987,8 @@ them introduces a new widget style.
   05"; a total, "of 05", only for a run with no fork, join or
   cycle). The
   masthead's eyebrow gains the position in its value
-  slot ("TV · Finished · 05"). The reason
+  slot ("TV · Finished · 05 of 09"), only for a run that is one line:
+  a bare "05" there reads as nothing in particular. The reason
   for this spot: "where am I, and did I miss something" is answered
   before choosing an episode, not after scrolling past them. The rail
   is one row of compact cards, so it costs little height. Entries
@@ -1004,7 +1005,8 @@ them introduces a new widget style.
     episode count or progress ("TV · 2023 · 13", or "EP 9 of 13").
 - **The current entry** is marked rather than linked: its accent rule
   stays drawn at rest (other cards draw theirs on hover) and it carries
-  a "This" key in the eyebrow voice. A watched entry shows a check in
+  a "You are here" key in the eyebrow voice, the same words the
+  franchise page uses. A watched entry shows a check in
   the meta line, never a dimmed poster: dimming would read as
   "unavailable". The "You're on … · Resume" line sits in the strip's
   header, in the eyebrow's value voice, with the resume as a text
@@ -1070,9 +1072,12 @@ them introduces a new widget style.
 - **On Continue Watching.** The card keeps its 16:9 shape, so the rail
   stays even. Its frame shows the sequel's art: its first episode's
   still where Kitsu has one, otherwise its banner or cover. The
-  oversized tag reads "NEXT" in place of "EP N". The two text lines are
-  the sequel's title and "after *<finished entry>*", which says why
-  the card changed.
+  oversized tag reads "NEXT" in place of "EP N". The small line reads
+  "After *<finished entry>*", which says why the card changed, with
+  the finished entry named by the words that set it apart; the large
+  line is the sequel's whole title, two lines deep. Anime titles put
+  what tells a franchise's entries apart at the end, so the Continue
+  card's one-line show row would cut exactly that.
 - **When data is missing.**
   - A fork: the player card lists the branches, a row each. Continue
     keeps today's card.
@@ -1171,21 +1176,177 @@ and a warning on every strip, card and page.
    the franchise page, the skip pill and the Continue rail for the
    Up next card, and the show page's masthead for the franchise page.
 
+### Phase 0: the mockups, surface by surface
+
+The mockups are drawn in the real app from fixture data: real Kitsu
+entries, with titles, formats, dates, episode counts and images as
+Kitsu served them on 2026-11-02, and made-up progress so every state
+shows. The runs are *Bleach* (a straight line, from the 2004 series to
+the fourth *Thousand-Year Blood War* part), *Attack on Titan*, *JoJo*
+(long romanised titles), *Gintama* (a join at *The Final*), *Fate*
+seen from *Fate/Zero* (a fork) and *Monogatari* (a loop of ten
+entries, and *Off & Monster Season*'s undated special). They are
+turned on in Diagnostics; nothing is fetched or walked at runtime, and
+`frontend/src/lib/watch-order/mock/` is removed when the feature
+lands. Where a choice is real, the mockup offers two options; the
+recommendation follows each.
+
+The rules below hold on every surface:
+
+- **Locales.** Every string is in the four catalogues. Russian and
+  Brazilian Portuguese run longest. The screenshots are taken in
+  English and Russian at 1920 and 1280 px, in Brazilian Portuguese
+  for the strip, the franchise page, the setting, Continue and the
+  player, and in English at 960 px, the smallest window the app
+  allows. Counts that sit beside a
+  noun ("10 entries", "2 ways to continue") use plural variants; the
+  rest put the number where no noun agrees with it ("Comes after these
+  2"). Order words follow the setting's wording: "As linked" is "Por
+  vínculo" in Portuguese, since "ligado" reads as "switched on".
+- **Reduced motion.** Every transition is zero under
+  `prefers-reduced-motion`: the cards use the duration tokens, and the
+  Up next card enters with the skip pill's own transition, which
+  checks the preference itself. Nothing moves on a timer.
+- **Logical properties** only, so a right-to-left locale is a
+  translation.
+- **Titles.** A card clamps its title to two lines and keeps the full
+  title as its tooltip and accessible name. The "short titles" option
+  drops the leading words another entry of the run shares, up to a
+  separator (": ", " - "): *JoJo no Kimyou na Bouken: Stone Ocean Part
+  3* becomes *Stone Ocean Part 3*. A title with no shared part, such
+  as *Steel Ball Run: JoJo no Kimyou na Bouken*, stays whole.
+
+#### The watch-order strip (show page)
+
+- **Options.** *Whole run*: the run as a rail of compact poster cards,
+  scrolled so the entry being viewed sits three quarters of the way
+  along with what came before it in sight. *Before and after*: three
+  columns, the entries before, this entry's oversized numeral with "of
+  09", and the entries after, as small landscape tiles.
+  **Recommended: before and after.** It answers the question the strip
+  exists for ("what came before, what comes next") without scrolling,
+  and a fork or a join reads as two tiles under one key ("2 ways to
+  continue", "Comes after these 2"). The whole run belongs on the
+  franchise page, one click away.
+- **Placement.** Under the masthead (recommended), or just above
+  "Similar titles". Lower down, the strip competes with "Similar
+  titles" and is found only after the episodes; under the masthead it
+  costs one row and answers "did I miss something" before an episode
+  is chosen.
+- **Structure in the rail.** A flat row would draw *Fate/stay night*
+  (2006) → the UBW prologue → UBW as one sequence, though they are two
+  ways on from *Fate/Zero 2nd Season*. So each branch opens with a key
+  ("Way 1 of 2") and a hairline in the gap before it; a loop opens
+  with "Part of a loop of 10 entries"; an entry that only leads into a
+  join says so ("Leads into 10", by the number of the entry it leads
+  into, since a title would not fit the key line). Every member of a
+  loop carries a rule over its poster that runs across the gaps, so
+  the loop reads as one stretch even where "You are here" takes its
+  key. Positions count
+  along the path to the run's first entry: *The Semi-Final*, which no
+  prequel reaches, has no number rather than a second "01". The key
+  line is reserved on every card, so titles share one baseline.
+- **Missing data.** No run: no strip, no position in the masthead.
+  First or last entry: "Start of the run", "End of the run" in the
+  empty column. Unknown date: "Date not announced" in place of the
+  year and count. An entry the provider lacks looks like any other.
+- **Keyboard.** The rail is the existing `Strip` (focusable, arrow
+  keys page it); every card and tile is a link with the poster card's
+  bone focus ring; the entry being viewed is not a link. "Resume" and
+  "Whole franchise" are separate tab stops.
+
+#### The "Up next" card (player)
+
+- **Options.** *Poster*: the next entry's 5:7 poster beside its title
+  and meta, in the skip pill's surface and corner. *Still*: the next
+  entry's banner above its title, wider. **Recommended: poster.** It
+  covers less of the end credits (at 1280 px the still variant covers
+  more than half of the picture's height), and banners crop
+  unpredictably at that size.
+- **States.** One aired next entry: a link to its page. Several (a
+  fork): "Ways to continue" over one row per branch. One not yet
+  aired: "Next, when it airs", its date or "Date not announced", and
+  no link. None: no card. The mockup shows the card on an entry's
+  last episode, from the start of playback, so a screenshot can catch
+  it over the credits.
+- **Keyboard and screen readers.** The card never takes focus; Esc
+  dismisses it while it has focus; the dismiss button is its own tab
+  stop. The announcement is written into a polite live region after
+  the card mounts, since a region that already holds its text when it
+  appears is not read by every screen reader.
+
+#### Continue Watching's hand-off
+
+- **Options.** The tag reads *NEXT*, or *EP 1* like any other card.
+  **Recommended: NEXT.** "EP 1" reads as progress on a show not yet
+  started, and the tag is the only thing that says the card changed
+  before the text is read.
+- **Placement.** The hand-off takes the finished entry's place in the
+  rail; that entry's own card is not shown beside it. Once the next
+  entry has a history row of its own, the hand-off gives way to it.
+- **Truncation.** See "On Continue Watching" above: the sequel's
+  whole title gets the two-line row.
+
+#### The franchise page
+
+- **Options.** *List*: one row per entry, the oversized numeral, a
+  small poster, the title, the meta line and a progress bar in the
+  entry's accent (only where something was watched). *Shelf*: the
+  rail's cards in a grid. **Recommended: list.** Long titles have the
+  width they need, and the fork and the loop can be laid out as what
+  they are.
+- **Structure.** Straight stretches are numbered from the run's first
+  entry; a stretch after a loop is not, since the loop gives it no
+  single place, and its key says so. A fork is a group
+  under "2 ways to continue", its branches side by side as unnumbered
+  columns, each under "Way n of N". A loop is a group under "Part of a
+  loop of 10 entries" with one sentence on why it has no single order;
+  its entries are listed along their links, from where the run enters
+  the loop. In release order every one of these is a single numbered
+  line.
+- **Masthead.** The franchise is named after the run's first entry,
+  without Kitsu's "(TV)" suffix. The hero shows the entry the viewer
+  is on, or the first entry, as section 5 says; a note under the
+  Resume button says which order the list follows, with a link to
+  Settings.
+- **Missing data and keyboard** as on the show page; the recaps stay
+  folded behind a "Show recaps" button that reports its state.
+
+#### The setting
+
+- **Options.** Two buttons, like the audio and quality choices; or two
+  options each with a one-line description. **Recommended: buttons.**
+  They keep the Playback section's two-column field rhythm; the
+  described options bring a bordered-box control no other setting
+  uses. The field's hint carries the explanation either way.
+
 ### Open design questions
 
-1. **Strip placement.** Directly under the masthead (recommended,
-   above), or lower, just above "Similar titles"?
-2. **Short titles on cards.** Should cards show only the distinguishing
-   part of a name ("Stone Ocean Part 3"), with the full title on hover?
-   The backend's title grammar already finds the words a show's
-   seasons share, for provider matching.
-3. **The player header's "next" button on a finale.** Should it also
-   point at the sequel, or is the card enough?
-4. **One accent per franchise.** Every entry's accent is picked from
-   its own id, so a run's pages change colour from part to part.
-   Should franchise surfaces, or the run's show pages, share one
-   accent? Sharing it on show pages would change a look existing users
-   know.
+Each with a recommendation; the maintainer decides.
+
+1. **Strip arrangement and placement.** Before and after, under the
+   masthead (recommended), or the whole run, or either lower down.
+2. **Short titles on cards.** Recommended: yes, on the strip and the
+   franchise page, with the full title as tooltip and accessible name.
+   In full titles, two neighbouring *JoJo* cards both read "JoJo no
+   Kimyou na Bouken: Stone Oce…".
+3. **The player header's "next" button on a finale.** Recommended:
+   leave it alone. It steps through episodes of this entry, and the
+   card is the one place that crosses to another entry; two controls
+   that both mean "next" with different reach would be harder to
+   learn.
+4. **One accent per franchise.** Recommended: keep each entry's own
+   accent on its show page, which existing users know, and use the
+   accent of the entry the franchise page's hero shows on that page.
+5. **Up next: poster or still**, and **Continue: NEXT or EP 1.**
+   Recommended: poster, and NEXT.
+6. **Franchise page: list or shelf.** Recommended: list.
+7. **The setting: buttons or described options.** Recommended:
+   buttons.
+8. **The franchise page's name.** The run's first entry's title can be
+   a romanised name with a suffix (*JoJo no Kimyou na Bouken (TV)*).
+   Recommended: drop the format suffix, as the mockup does, and
+   otherwise keep Kitsu's title rather than keep a list of names.
 
 ## 6. Recommendation and plan for 0.19.0
 
