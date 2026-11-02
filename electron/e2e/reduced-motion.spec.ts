@@ -31,7 +31,6 @@
  * so nothing depends on Kitsu or the provider being reachable.
  */
 import {
-	_electron as electron,
 	expect,
 	test,
 	type ElectronApplication,
@@ -49,9 +48,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-
-const electronDir = path.resolve(__dirname, '..');
-const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
+import { launchPackagedApp, packagedBinary } from './launch';
 
 /** Two rows: the first resolves to the stubbed show and is the one
  *  deleted, so the second has a gap to close. */
@@ -77,17 +74,13 @@ test.beforeAll(() => {
 async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-reduced-motion-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
-	const app = await electron.launch({
-		executablePath: packagedBinary,
-		args: ['--no-sandbox', '--mute-audio'],
-		env: {
-			...process.env,
-			XDG_STATE_HOME: path.join(tmp, 'state'),
-			XDG_CONFIG_HOME: path.join(tmp, 'config'),
-			XDG_CACHE_HOME: path.join(tmp, 'cache'),
-			XDG_DATA_HOME: path.join(tmp, 'data'),
-			ANI_GUI_UNATTENDED: '1'
-		}
+	const app = await launchPackagedApp({
+		...process.env,
+		XDG_STATE_HOME: path.join(tmp, 'state'),
+		XDG_CONFIG_HOME: path.join(tmp, 'config'),
+		XDG_CACHE_HOME: path.join(tmp, 'cache'),
+		XDG_DATA_HOME: path.join(tmp, 'data'),
+		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
 	const page = await app.firstWindow();
