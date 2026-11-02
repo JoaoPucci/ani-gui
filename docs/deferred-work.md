@@ -418,15 +418,20 @@ starting it, and delete it when you find it done.
   are written into `electron/oauth-server.js`; the main process has a
   message table in every shipped locale for its dialogs
   (`electron/lib/main-messages.cjs`), and they belong in it.
-- **Adopt the `documentPictureInPicture` browser API** for the player's
-  pop-out window. Not a request to write documentation — "Document
-  Picture-in-Picture" is the W3C API's name.
+- **Picture-in-picture shows no subtitles; a mini-player window is to
+  replace it.** Chromium's picture-in-picture window draws the video's
+  picture and not its text tracks, so the subtitles stay behind in the
+  main window. The pop-out the player needs is an app-owned window
+  carrying the player itself, studied in
+  [`proposals/mini-player.md`](./proposals/mini-player.md).
 
-  Electron exposes the API but omits the window-creation glue, so it
-  cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the player's
-  video, while the player is open — ships and is described in
-  `README.md` and `docs/architecture.md`.
+  The `documentPictureInPicture` browser API ("Document
+  Picture-in-Picture" is the W3C API's name) would have been the other
+  way, but Electron exposes it without the window-creation glue, so it
+  cannot work: electron/electron#39633, open since 2023. The maintainer
+  chose not to wait for it. PiP as it exists now — the player's video,
+  while the player is open — ships and is described in `README.md` and
+  `docs/architecture.md`.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli
