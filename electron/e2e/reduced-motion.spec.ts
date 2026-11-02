@@ -244,7 +244,11 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		// labelled pill on hover. Under reduced motion it opens at once:
 		// the label is fully on show the moment the pointer arrives, and
 		// the pill is already at the width its slot holds for it.
-		const clear = strip.getByRole('button', { name: 'Clear history' });
+		// The action sits in the row's header, outside the scroller that
+		// carries the region's name, so it is found through the row.
+		const clear = page
+			.locator('section.strip', { has: strip })
+			.getByRole('button', { name: 'Clear history' });
 		await clear.hover();
 		expect(await openState(clear)).toEqual({ label: '1', fullWidth: true });
 		await expectStill(page, 'hovering a row’s header action');
@@ -301,7 +305,7 @@ test('the player and its overlay stand still', async () => {
 	}
 });
 
-test('with motion on, the same delete does move', async () => {
+test('with motion on, the same hover and delete do move', async () => {
 	const { app, page } = await launch(false);
 	try {
 		expect(
@@ -312,7 +316,10 @@ test('with motion on, the same delete does move', async () => {
 		await expect(card).toBeVisible({ timeout: 15_000 });
 
 		// With motion on, the row's header action eases open on hover.
-		await strip.getByRole('button', { name: 'Clear history' }).hover();
+		await page
+			.locator('section.strip', { has: strip })
+			.getByRole('button', { name: 'Clear history' })
+			.hover();
 		const opening: string[] = [];
 		const until = Date.now() + 600;
 		while (Date.now() < until && opening.length === 0) {
@@ -320,7 +327,10 @@ test('with motion on, the same delete does move', async () => {
 			await page.waitForTimeout(20);
 		}
 		expect(opening.length, 'the row action eases open').toBeGreaterThan(0);
+		// It closes once the pointer leaves; the delete below must find
+		// motion of its own, not the action's closing.
 		await page.mouse.move(0, 0);
+		await expect.poll(() => moving(page)).toEqual([]);
 
 		// With motion on the hovered card lifts while the pointer arrives,
 		// and its poster passes over the chip mid-lift; the chip is
