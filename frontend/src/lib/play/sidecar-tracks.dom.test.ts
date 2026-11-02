@@ -69,6 +69,93 @@ describe('the track a session starts on', () => {
 	});
 });
 
+// Chromium runs its own track selection a moment after `<track>`
+// elements join a video, and while a subtitle track shows it turns on
+// one more of the tracks no script has set since they joined: a start
+// switched on after the tracks joined left a second language showing
+// beside it — Arabic over English on a nine-language episode. A track
+// already in its mode when it joins gives the browser nothing to
+// choose, and tracks that leave switched off leave nothing showing to
+// force a choice in the next session.
+//
+// happy-dom builds a fresh TextTrack on every `track` read, so a mode
+// set on one is gone by the next read; these tests hand the adapter
+// track elements whose TextTrack keeps its mode, and a video that
+// records what joined it and how.
+describe('the start shows alone', () => {
+	interface FakeTrack {
+		kind: string;
+		label: string;
+		mode: string;
+	}
+
+	/** Track elements whose TextTrack keeps its mode, and a video that
+	 *  notes each track's mode as it joins. */
+	function fakeVideo() {
+		const tracks: FakeTrack[] = [];
+		const joined: string[] = [];
+		const create = document.createElement.bind(document);
+		vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+			if (tag !== 'track') return create(tag);
+			const attrs = new Map<string, string>();
+			const track: FakeTrack = { kind: 'subtitles', label: '', mode: 'disabled' };
+			const el = {
+				track,
+				setAttribute(name: string, value: string) {
+					attrs.set(name, value);
+					if (name === 'label') track.label = value;
+				},
+				hasAttribute: (name: string) => attrs.has(name),
+				remove() {
+					tracks.splice(tracks.indexOf(track), 1);
+				}
+			};
+			return el as unknown as HTMLElement;
+		}) as typeof document.createElement);
+		const v = {
+			textTracks: tracks,
+			appendChild(el: { track: FakeTrack }) {
+				joined.push(`${el.track.label}:${el.track.mode}`);
+				tracks.push(el.track);
+				return el;
+			}
+		};
+		return { v: v as unknown as HTMLVideoElement, tracks, joined };
+	}
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('the start track is already showing when it joins the video, every other one off', () => {
+		const { v, joined } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es');
+		expect(joined).toEqual(['English:disabled', 'Español:showing']);
+	});
+
+	it('an Off start adds every track switched off', () => {
+		const { v, joined } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es', 'off');
+		expect(joined).toEqual(['English:disabled', 'Español:disabled']);
+	});
+
+	it('the tracks leave the video switched off', () => {
+		const { v, tracks } = fakeVideo();
+		const remove = attachSidecarTracks(v, [en, es], 'en');
+		const attached = [...tracks];
+		expect(attached.map((t) => t.mode)).toEqual(['showing', 'disabled']);
+		remove();
+		expect(tracks).toEqual([]);
+		expect(attached.map((t) => t.mode)).toEqual(['disabled', 'disabled']);
+	});
+
+	it('the start is what the app expects, so the browser showing it is no pick', () => {
+		const { v } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es');
+		expect(noteCaptionChange(v, v.textTracks)).toBeNull();
+	});
+});
+
 describe('fetchSidecarTracks', () => {
 	const originalFetch = globalThis.fetch;
 	afterEach(() => {
