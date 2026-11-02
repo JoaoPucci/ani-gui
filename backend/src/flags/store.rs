@@ -15,8 +15,9 @@ use std::time::Duration;
 
 use tokio::sync::watch;
 
+use super::cache::{self, CacheEntry, FRESH_FOR};
 use super::decl::FlagDecl;
-use super::remote::FETCH_TIMEOUT;
+use super::remote::{self, FETCH_TIMEOUT, FLAGS_URL};
 use super::resolve::{resolve, Document, Resolved};
 
 /// The longest [`FlagStore::settled`] waits for the launch refresh
@@ -52,7 +53,7 @@ impl FlagStore {
 
     fn with(decls: &'static [FlagDecl], settled: bool) -> Self {
         let (tx, _rx) = watch::channel(Snapshot {
-            flags: Resolved::default(),
+            flags: resolve(decls, None),
             settled,
         });
         Self {
@@ -76,11 +77,16 @@ impl FlagStore {
     /// The flags once the launch refresh has finished, or as they
     /// stand after [`SETTLE_LIMIT`], whichever comes first.
     pub async fn settled(&self) -> Resolved {
+        let mut rx = self.tx.subscribe();
+        // A timeout leaves the store as it stands; the sender lives as
+        // long as `self`, so the wait cannot fail any other way.
+        let _ = tokio::time::timeout(SETTLE_LIMIT, rx.wait_for(|s| s.settled)).await;
         self.current()
     }
 
     fn publish(&self, doc: Option<&Document>, settled: bool) {
-        let _ = (doc, settled, resolve, self.decls);
+        let flags = resolve(self.decls, doc);
+        self.tx.send_replace(Snapshot { flags, settled });
     }
 }
 
@@ -98,7 +104,28 @@ pub struct Source {
 /// Fill `store` for this launch: the fresh cache first, then the
 /// fetched file, then settle. `now` is seconds since the Unix epoch.
 pub async fn refresh(store: &FlagStore, client: &reqwest::Client, source: &Source, now: u64) {
-    let _ = (store, client, source, now);
+    let cached = cache::read(&source.cache_path)
+        .await
+        .filter(|e| cache::is_fresh(e.fetched_at, now, FRESH_FOR));
+    if let Some(entry) = &cached {
+        store.publish(Some(&entry.flags), false);
+    }
+    let fetched = remote::fetch(client, &source.url, source.timeout).await;
+    let origin = match (&fetched, &cached) {
+        (Some(_), _) => "file",
+        (None, Some(_)) => "cache",
+        (None, None) => "defaults",
+    };
+    let doc = fetched.as_ref().or(cached.as_ref().map(|e| &e.flags));
+    store.publish(doc, true);
+    tracing::info!(target: "flags", origin, flags = ?store.current(), "remote flags settled");
+    if let Some(flags) = fetched {
+        let entry = CacheEntry {
+            fetched_at: now,
+            flags,
+        };
+        cache::write(&source.cache_path, &entry).await;
+    }
 }
 
 /// Start the launch refresh against the shipped URL as a task of its
@@ -108,8 +135,17 @@ pub fn spawn_launch_refresh(
     client: reqwest::Client,
     cache_path: PathBuf,
 ) -> tokio::task::JoinHandle<()> {
-    let _ = (store, client, cache_path);
-    tokio::spawn(async {})
+    let source = Source {
+        url: FLAGS_URL.to_string(),
+        cache_path,
+        timeout: FETCH_TIMEOUT,
+    };
+    tokio::spawn(async move {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        refresh(&store, &client, &source, now).await;
+    })
 }
 
 #[cfg(test)]
