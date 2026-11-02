@@ -686,8 +686,9 @@ Once the franchise page (c) exists, a trailing link — "Side stories,
 films and other versions (5)", counted from `around` and `chain`'s
 other versions — opens it; before
 then the strip has no trailing link. If you have progress elsewhere in
-the franchise, the strip says so: "You're on *Golden Wind* · EP 12 →
-Resume". That one line answers the JoJo request on whichever JoJo
+the franchise, the strip says so: "You're watching *Golden Wind* ·
+EP 12", a link to that entry's page (section 5 has its final form).
+That one line answers the JoJo request on whichever JoJo
 page the viewer lands.
 
 **Which order.** One app-wide setting decides (section 5): link order
@@ -883,7 +884,7 @@ Continue means.
 
 [inference] Most of what (d) promises is already delivered by (b)
 (the card moves forward at a finale and the finished entry gives way
-to the sequel) and by (a)/(c)'s "You're on *Golden Wind*" line. What
+to the sequel) and by (a)/(c)'s "You're watching *Golden Wind*" line. What
 (d) adds beyond that is hiding parallel watches, which is the part
 most likely to surprise.
 
@@ -1008,9 +1009,10 @@ them introduces a new widget style.
   a "You are here" key in the eyebrow voice, the same words the
   franchise page uses. A watched entry shows a check in
   the meta line, never a dimmed poster: dimming would read as
-  "unavailable". The "You're on … · Resume" line sits in the strip's
-  header, in the eyebrow's value voice, with the resume as a text
-  button.
+  "unavailable". A line for the entry the viewer is part-way
+  through, when it is another entry of the run, links to that entry's
+  page; it never plays. Its form is chosen in the second mockup round
+  (Phase 0, below).
 - **On hover or focus.** The card lifts on hover like any poster card,
   draws its accent rule on hover or focus, and shows the full title.
   Long titles are clamped to two lines on the card, so a name like
@@ -1133,7 +1135,8 @@ and a warning on every strip, card and page.
 - **Wording.** Key: "Watch order". Options: "As linked" (the default)
   and "As released". Hint, in the field-hint voice: "How a series'
   seasons, films and specials are ordered: as the anime databases link
-  them, which often follows the story, or by release date."
+  them, or by release date. The links generally follow the story, but
+  they are maintained by each database's community and can be wrong."
 - **Effect.**
   - The watch-order strip shows the previous and next entries, and
     the position number, in the chosen order. Forks appear only in
@@ -1223,12 +1226,13 @@ The rules below hold on every surface:
   along with what came before it in sight. *Before and after*: three
   columns, the entries before, this entry's oversized numeral with "of
   09", and the entries after, as small landscape tiles.
-  **Recommended: before and after.** It answers the question the strip
-  exists for ("what came before, what comes next") without scrolling,
+  **Decided: before and after** (the maintainer's answer; its second
+  round is "The strip, second round" below). It answers the question
+  the strip exists for ("what came before, what comes next") without scrolling,
   and a fork or a join reads as two tiles under one key ("2 ways to
   continue", "Comes after these 2"). The whole run belongs on the
   franchise page, one click away.
-- **Placement.** Under the masthead (recommended), or just above
+- **Placement.** Under the masthead (decided), or just above
   "Similar titles". Lower down, the strip competes with "Similar
   titles" and is found only after the episodes; under the masthead it
   costs one row and answers "did I miss something" before an episode
@@ -1252,8 +1256,9 @@ The rules below hold on every surface:
   year and count. An entry the provider lacks looks like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
-  bone focus ring; the entry being viewed is not a link. "Resume" and
-  "Whole franchise" are separate tab stops.
+  bone focus ring; the entry being viewed is not a link. The line for
+  the entry being watched and "Whole franchise" are separate tab
+  stops.
 
 #### The "Up next" card (player)
 
@@ -1305,7 +1310,11 @@ The rules below hold on every surface:
   the loop. In release order every one of these is a single numbered
   line.
 - **Masthead.** The franchise is named after the run's first entry,
-  without Kitsu's "(TV)" suffix. The hero shows the entry the viewer
+  without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
+  entry of the franchise would then read the same, ignoring case; the
+  suffix then stays, since it is what tells the two apart. *JoJo no
+  Kimyou na Bouken (TV)* keeps it, because the franchise's 1993 OVA is
+  titled *JoJo no Kimyou na Bouken*. The hero shows the entry the viewer
   is on, or the first entry, as section 5 says; a note under the
   Resume button says which order the list follows, with a link to
   Settings.
@@ -1320,33 +1329,141 @@ The rules below hold on every surface:
   described options bring a bordered-box control no other setting
   uses. The field's hint carries the explanation either way.
 
+### Decisions recorded (first review round)
+
+The maintainer answered the eight questions the first mockups asked:
+
+1. **Strip.** Before and after, under the title. The whole-run rail
+   was liked, but forks and joins break it up. The strip needed a
+   second round, below.
+2. **Short titles** on cards: yes, with the full title as tooltip and
+   accessible name.
+3. **The player's "next episode" button** stays within the entry; only
+   the Up next card crosses to another entry.
+4. **Accents.** Each entry keeps its own accent.
+5. **Up next** shows the poster; Continue's hand-off carries the
+   **NEXT** tag. The hand-off card opens the next entry's show page,
+   not its first episode, as the mockup already does: the viewer
+   arrives where the strip, the synopsis and the episode list say what
+   they are about to start.
+6. **Franchise page** as a list.
+7. **The setting** uses buttons. Its hint adds that the links
+   generally follow the story but are maintained by each database's
+   community and can be wrong (section 5, "The watch-order setting").
+8. **The franchise's name** drops Kitsu's format suffix, guarded
+   against clashes: the suffix stays when another entry of the same
+   franchise would read the same without it (Phase 0, "The franchise
+   page"). In the fixtures this keeps *JoJo no Kimyou na Bouken (TV)*
+   whole; *Zoku Owarimonogatari (TV)* and the film *Zoku
+   Owarimonogatari* are the other real clash, though neither names a
+   franchise.
+
+### The strip, second round
+
+The second round revises the before-and-after strip only. It is a
+mockup like the first, behind the same Diagnostics switch, and each
+variant below is one of the switch's options.
+
+- **Balance.** The three columns are mirrored about the centre: the
+  entries before read towards it (poster on the side nearest the
+  centre, text aligned to it), the entries after read away from it,
+  and the outer columns take equal shares of the width, so the
+  position numeral is the strip's centre whichever side is longer. The
+  grid has three rows (the keys, the join or fork line, the entries),
+  so the three keys share one baseline whatever sits under them, and
+  the centre's two hairlines run through all three rows. An empty
+  side keeps its column, drops its key and says why it is empty
+  ("Start of the run", "End of the run"), so the numeral does not move
+  at either end of a run. The centre column stays at every window
+  width; the first round hid it below 1100 px.
+- **The band.** The strip sits on one faint band: the page's own ink,
+  one step up (`--ink-050`), at 72 % opacity, with the card corner
+  radius. No border, blur, shadow or gradient. Its footer, under a
+  hairline, holds the line for the entry being watched at the start
+  and the way to the franchise page at the end.
+- **Wording of the two columns.** Four options:
+  - *Relation*: Kitsu's role for the link. "Prequel" and "Sequel",
+    plural at a join or a fork ("Sequels", over "2 ways to continue");
+    a side story's strip names its "Parent story" (two on *Fate/Zero:
+    Onegai! Einzbern Soudanshitsu*, which Kitsu relates to both
+    *Fate/Zero* seasons), with no "Comes after these 2" line, since two
+    parents are not a join. A role names a link, so in "As released"
+    order, where the neighbours are neighbours by date, this option
+    says "Released before" and "Released after": calling the 2006
+    *Fate/stay night* the "Prequel" of *Fate/Zero* would be false.
+  - *Previous / Next*.
+  - *Watch before / Watch after*.
+  - *Before / After*, the first round's words.
+
+  **Recommended: Relation.** It is the only wording that is right on a
+  side story: "Previous: *Gintama°*" on *Gintama°: Aizome Kaori-hen*
+  puts the two in one sequence, and "Watch before: *Gintama°*" is an
+  instruction the data does not give; "Parent story" says what Kitsu
+  says. Kitsu names both branches of *Fate/Zero 2nd
+  Season*'s fork `sequel`, so roles do not tell the branches apart;
+  the "2 ways to continue" line under the key does.
+- **"Whole franchise".** Two variants, both the same link, at the end
+  of the band's footer:
+  - *Button*: the show page's outline button at its full size (the
+    size of Download), with the number of entries the franchise page
+    lists, recaps included, and the app's arrow ("Whole franchise |
+    15 entries →" on JoJo).
+  - *Poster stack*: three posters fanned (the run's first entry, a
+    film or other version, a side story), "See the whole franchise",
+    and what the page holds ("9 in the main story · 4 films and
+    versions · 1 side story · 1 recap", the same 15 the button
+    counts). The posters spread slightly on hover or
+    focus. No border, so it does not read as a twin of the watching
+    card.
+
+  **Recommended: button.** It is the app's own control, at the size of
+  the page's other buttons, and the count tells the viewer there is
+  more than the strip shows. The stack shows *what* there is, which
+  the button cannot, but it is a widget no other page has; it is the
+  option to take if the button reads as too quiet in use.
+- **The entry being watched.** The first round's "You're on
+  *Gintama°* · EP 12 — Resume" read as a second play button. Two
+  variants, both linking to that entry's show page, neither playing:
+  - *Card*: a small link with the entry's poster, "You're watching",
+    its title and episode, and an arrow. Its visible text is its
+    accessible name.
+  - *Sentence*: "You're watching *Gintama°* · EP 12." followed by a
+    text link, "Go to its page", which the sentence describes for
+    screen readers.
+
+  Either way the line shows only when the entry being watched is not
+  already one of the strip's tiles: on *Stone Ocean Part 3* the sequel
+  tile is *Steel Ball Run*, with its progress, so the line would only
+  repeat it.
+
+  When the footer has no room for both on one row, the franchise link
+  takes the upper row.
+
+  **Recommended: card.** The poster says "this is a show" before the
+  words are read, which is the confusion the round set out to fix.
+
 ### Open design questions
 
 Each with a recommendation; the maintainer decides.
 
-1. **Strip arrangement and placement.** Before and after, under the
-   masthead (recommended), or the whole run, or either lower down.
-2. **Short titles on cards.** Recommended: yes, on the strip and the
-   franchise page, with the full title as tooltip and accessible name.
-   In full titles, two neighbouring *JoJo* cards both read "JoJo no
-   Kimyou na Bouken: Stone Oce…".
-3. **The player header's "next" button on a finale.** Recommended:
-   leave it alone. It steps through episodes of this entry, and the
-   card is the one place that crosses to another entry; two controls
-   that both mean "next" with different reach would be harder to
-   learn.
-4. **One accent per franchise.** Recommended: keep each entry's own
-   accent on its show page, which existing users know, and use the
-   accent of the entry the franchise page's hero shows on that page.
-5. **Up next: poster or still**, and **Continue: NEXT or EP 1.**
-   Recommended: poster, and NEXT.
-6. **Franchise page: list or shelf.** Recommended: list.
-7. **The setting: buttons or described options.** Recommended:
-   buttons.
-8. **The franchise page's name.** The run's first entry's title can be
-   a romanised name with a suffix (*JoJo no Kimyou na Bouken (TV)*).
-   Recommended: drop the format suffix, as the mockup does, and
-   otherwise keep Kitsu's title rather than keep a list of names.
+1. **Column wording.** Relation (recommended), Previous / Next, Watch
+   before / after, or Before / After. The design critic preferred
+   "Watch before / Watch after": one pair of words for every case,
+   with no second vocabulary for release order and side stories.
+2. **"Whole franchise".** Button (recommended) or poster stack.
+3. **The entry being watched.** Card (recommended) or sentence.
+4. **A side story's strip.** The second round gives a side story a
+   strip naming its parent stories. Should the parent's strip also
+   list its side stories? Recommended: no; the franchise page lists
+   them, and the strip stays about the main story.
+5. **A numeral with no total.** Where the run is not one line (a
+   join, a fork, a loop), the strip shows the position along this
+   entry's path ("10") and no "of N", while the franchise control
+   counts every entry ("21 entries"). Recommended: keep it; a total
+   would be false where paths differ in length.
+6. **JoJo's franchise name.** The clash guard keeps *JoJo no Kimyou na
+   Bouken (TV)*. Recommended: accept it; any other name would be one
+   the app made up.
 
 ## 6. Recommendation and plan for 0.19.0
 
@@ -1366,7 +1483,7 @@ implementation, designer and critic, a draft pull request with a
 manual test section, a consistency check) before it merges:
 
 1. **Watch order strip** (option a), with the `chain` walk and the
-   "You're on …" line, both of which need the whole run, not just the
+   "You're watching …" line, both of which need the whole run, not just the
    neighbours. Read-only, no provider requests, no change to Continue
    or trackers. On its own it answers "what comes before and after"
    and most of the JoJo request.
