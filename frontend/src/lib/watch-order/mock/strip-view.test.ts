@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_RUNS } from './fixtures';
 import { placement } from './order';
-import { emptyColumn, franchiseSummary, stripRunFor, stripView } from './strip-view';
+import { emptyColumn, franchiseSummary, stripRunFor, stripView, watchingFor } from './strip-view';
 import type { MockEntry, MockRun } from './types';
 
 const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
@@ -58,8 +58,40 @@ describe('franchiseSummary', () => {
 		expect(franchiseSummary(run('bleach'))).toMatchObject({ main: 5, films: 4, sides: 3 });
 	});
 
+	it('totals every entry the franchise page lists, recaps included', () => {
+		// JoJo: 9 in the run, 4 other versions, 1 side story, 1 recap.
+		expect(franchiseSummary(run('jojo')).total).toBe(15);
+		expect(franchiseSummary(run('fate')).total).toBe(12);
+	});
+
 	it('fans the first entry, a film and a side story, filling from the main story', () => {
 		expect(ids(franchiseSummary(run('fate')).posters)).toEqual(['6028', '4788', '6928']);
 		expect(ids(franchiseSummary(run('monogatari')).posters)).toEqual(['3919', '49128', '6546']);
+	});
+});
+
+describe('watchingFor', () => {
+	const watching = (key: string, id: string, order: 'linked' | 'released' = 'linked') => {
+		const r = run(key);
+		const w = watchingFor(r, id, stripView(r, id, order), order);
+		return w && [w.entry.id, w.episode];
+	};
+
+	it('names the entry the viewer is part-way through, elsewhere in the run', () => {
+		// On Golden Wind, the viewer is on Steel Ball Run, episode 1.
+		expect(watching('jojo', '41410')).toEqual(['49847', 1]);
+		expect(watching('gintama', '43683')).toEqual(['818', 6]);
+	});
+
+	it('says nothing on that entry itself, or where a tile beside it already shows it', () => {
+		expect(watching('jojo', '49847')).toBeNull();
+		// Steel Ball Run is Stone Ocean Part 3's sequel tile.
+		expect(watching('jojo', '46598')).toBeNull();
+		// Fate/Zero 2nd Season is one of the side story's parent tiles.
+		expect(watching('fate', '6928')).toBeNull();
+	});
+
+	it('says nothing where nothing is part-way', () => {
+		expect(watching('bleach', '244')).toBeNull();
 	});
 });
