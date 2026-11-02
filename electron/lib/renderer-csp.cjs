@@ -22,9 +22,10 @@
 // script rule, `'self' 'unsafe-inline'`, only keeps that default off
 // scripts: the meta's script-src carries a hash, which turns
 // 'unsafe-inline' off in that policy, and a script has to pass both, so
-// what runs is the meta's rule. That leans on every HTML document the
-// app serves carrying the meta; the bundle's only one is index.html,
-// which the SPA fallback serves for every route. No `'unsafe-eval'`
+// what runs is the meta's rule. That leans on every document the app
+// serves carrying the meta: the bundle's only HTML document is
+// index.html, which the SPA fallback serves for every route, and its
+// SVGs carry no script (frontend/tests/lint/static-documents.test.ts). No `'unsafe-eval'`
 // anywhere, in either build: the loader's Lottie runs on lottie-web's
 // light build, which has no expression engine.
 //
