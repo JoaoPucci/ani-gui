@@ -21,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
 import { launchPackagedApp, packagedBinary } from "./launch";
+import { expectedPlatform } from "../lib/e2e-display.cjs";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -191,6 +192,47 @@ test("a test launch is muted", async () => {
       electronApp.commandLine.hasSwitch("mute-audio"),
     );
     expect(muted).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+/** The `--ozone-platform` value on each of the app's processes'
+ *  command lines, read from /proc. Chromium resolves the platform once,
+ *  in the browser process, and hands the answer to every child it
+ *  starts — the GPU process and each renderer carry it. A child
+ *  rewrites its process title, which joins its arguments with spaces
+ *  rather than NULs, so the switch is matched in either form. */
+async function ozonePlatforms(app: ElectronApplication): Promise<string[]> {
+  const pids = await app.evaluate(({ app: electronApp }) =>
+    electronApp.getAppMetrics().map((metric) => metric.pid),
+  );
+  const platforms: string[] = [];
+  for (const pid of pids) {
+    let cmdline: string;
+    try {
+      cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    } catch {
+      continue; // the process ended between the two reads
+    }
+    for (const match of cmdline.matchAll(/--ozone-platform=([^\s\0]+)/g)) {
+      platforms.push(match[1]);
+    }
+  }
+  return platforms;
+}
+
+test("a test launch lands on the display the run is meant for", async () => {
+  // Test windows opened on the desktop of whoever ran the suite. Outside
+  // CI the suite runs inside tools/headless-wayland.sh's private GNOME
+  // Shell session, and the app must be on Wayland there — on the
+  // headless compositor, which the launch helper insists on; in CI, on
+  // the runner's Xvfb, through X11.
+  const { app } = await launchAppWithStubs();
+  try {
+    await expect.poll(() => ozonePlatforms(app)).not.toEqual([]);
+    const platforms = await ozonePlatforms(app);
+    expect(new Set(platforms)).toEqual(new Set([expectedPlatform(process.env)]));
   } finally {
     await app.close();
   }
