@@ -274,14 +274,15 @@ proptest::proptest! {
         }
     }
 
-    /// Whatever the order of waits starting, waits ending and releases,
-    /// a ticket is on screen exactly while a wait that started after the
-    /// last release is still open — or, within the grace, one such wait
-    /// started or ended (or the ticket was issued) and no release came
-    /// since. A wait still open across a release never keeps it there.
+    /// Whatever the order of waits starting, waits ending, releases and
+    /// the ticket being served to a page again, a ticket is on screen
+    /// exactly while a wait that started after the last release is still
+    /// open — or, within the grace, one such wait started or ended, or
+    /// the ticket was issued or served, and no release came since. A
+    /// wait still open across a release never keeps it there.
     #[test]
     fn on_screen_follows_the_waits_no_release_has_let_go(
-        ops in proptest::collection::vec((0u8..3, 0usize..8, 0u64..3_000), 0..64),
+        ops in proptest::collection::vec((0u8..5, 0usize..8, 0u64..3_000), 0..64),
     ) {
         let mut now = Instant::now();
         let mut r = Registry::default();
@@ -305,6 +306,14 @@ proptest::proptest! {
                     }
                 }
                 1 => {}
+                2 => {
+                    proptest::prop_assert_eq!(r.hold("k", now), Some((t, false)));
+                    seen = Some(now);
+                }
+                3 => {
+                    r.served(t, now);
+                    seen = Some(now);
+                }
                 _ => {
                     r.release(t);
                     open.iter_mut().for_each(|w| w.1 = true);
