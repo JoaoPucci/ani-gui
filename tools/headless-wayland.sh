@@ -217,7 +217,9 @@ for tool in "$GNOME_SHELL" dbus-run-session dbus-update-activation-environment s
     fi
 done
 
-self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+dir=$(dirname "$0")
+dir=$(cd "$dir" && pwd)
+self="$dir/${0##*/}"
 
 # Under /tmp, not $TMPDIR: a Unix socket's path is capped at 108 bytes,
 # and the compositor aborts when its runtime directory's path is longer
