@@ -31,11 +31,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-/** A fetcher's `DEPS`, imported: an entry's dep, version and URL are
- *  fields of a parsed object, not text to pick out of the script, and
- *  the Linux fetcher's `SYSTEM_DEPS` — what it does *not* stage — is a
- *  separate export this never reads. The fetchers guard their entry
- *  point, so importing one downloads nothing.
+/** A fetcher's declared lists, imported: an entry's dep, version and
+ *  URL are fields of a parsed object, not text to pick out of the
+ *  script. Read here: each fetcher's `DEPS` (what its package carries)
+ *  and the Windows fetcher's `INSTALL_TIME_DEPS` (what its installer
+ *  downloads instead). The Linux fetcher's `SYSTEM_DEPS` — what the
+ *  distribution provides — is not read: the package does nothing to
+ *  provide those. The fetchers guard their entry point, so importing
+ *  one downloads nothing.
  *
  *  Loaded while the file is collected, not inside the tests that
  *  compare it: a test's 5 s budget is wall time, and a cold read queued
@@ -46,20 +49,26 @@ const SCRIPTS = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
 	'../../../../electron/scripts'
 );
-async function fetcherDeps(file: string): Promise<FetcherDep[]> {
+async function fetcherDeps(file: string, list = 'DEPS'): Promise<FetcherDep[]> {
 	// As a file URL: a bare `C:\…` path is not an import specifier on
 	// Windows.
 	const mod = await import(/* @vite-ignore */ pathToFileURL(path.join(SCRIPTS, file)).href);
-	return mod.DEPS as FetcherDep[];
+	const deps = mod[list];
+	if (!Array.isArray(deps)) throw new Error(`${file} does not export ${list} as an array`);
+	return deps as FetcherDep[];
 }
 const FETCHED = {
 	linux: await fetcherDeps('fetch-linux-deps.mjs'),
-	windows: await fetcherDeps('fetch-windows-deps.mjs')
+	windows: await fetcherDeps('fetch-windows-deps.mjs'),
+	windowsInstallTime: await fetcherDeps('fetch-windows-deps.mjs', 'INSTALL_TIME_DEPS')
 };
+/** Every pin a package provides, carried or downloaded at install time. */
+const PINNED = [...FETCHED.linux, ...FETCHED.windows, ...FETCHED.windowsInstallTime];
 const README = readFileSync(path.resolve(SCRIPTS, '../../README.md'), 'utf8');
 
-/** The `dep` names both platform fetchers stage. */
-const STAGED = new Set([...FETCHED.linux, ...FETCHED.windows].map((d) => d.dep));
+/** The `dep` names the packages provide: staged by either fetcher, or
+ *  downloaded by the Windows installer. */
+const PROVIDED = new Set(PINNED.map((d) => d.dep));
 
 function assertCommonShape(entry: { name: string; license: string; url: string }, label: string) {
 	expect(entry.name, `${label}: name`).toBeTruthy();
@@ -96,7 +105,7 @@ describe('credits — bundled tools', () => {
 		assertUniqueNames(BUNDLED_TOOLS, 'BUNDLED_TOOLS');
 	});
 
-	it('credits exactly what the fetchers stage', () => {
+	it('credits exactly what the packages provide', () => {
 		// The page's whole claim is that this list is what the packages
 		// bundle, so both directions are wrong in their own way: a
 		// missing entry hides a binary the user received, and a stale
@@ -108,14 +117,14 @@ describe('credits — bundled tools', () => {
 		// script in both places at once precisely because nothing tied
 		// them together.
 		const credited = new Set(BUNDLED_TOOLS.map((t) => t.name));
-		const staged = STAGED;
+		const provided = PROVIDED;
 
-		expect(staged.size, 'the fetchers should declare something').toBeGreaterThan(0);
-		for (const dep of staged) {
-			expect(credited.has(dep), `${dep} is staged by a fetcher but not credited`).toBe(true);
+		expect(provided.size, 'the fetchers should declare something').toBeGreaterThan(0);
+		for (const dep of provided) {
+			expect(credited.has(dep), `${dep} is provided by a package but not credited`).toBe(true);
 		}
 		for (const name of credited) {
-			expect(staged.has(name), `${name} is credited but no fetcher stages it`).toBe(true);
+			expect(provided.has(name), `${name} is credited but no package provides it`).toBe(true);
 		}
 	});
 
@@ -124,7 +133,7 @@ describe('credits — bundled tools', () => {
 		// carries the first time someone bumps one and not the other.
 		for (const tool of BUNDLED_TOOLS) {
 			if (tool.version === null) continue;
-			const pinned = [...FETCHED.linux, ...FETCHED.windows].filter((d) => d.dep === tool.name);
+			const pinned = PINNED.filter((d) => d.dep === tool.name);
 			expect(pinned.length, `${tool.name}: no fetcher pins it`).toBeGreaterThan(0);
 			for (const d of pinned) {
 				expect(d.version, `${tool.name}: ${d.name} pins ${d.version}`).toBe(tool.version);
@@ -132,15 +141,16 @@ describe('credits — bundled tools', () => {
 		}
 	});
 
-	it("offers ffmpeg's source for the exact build the Windows installer ships", () => {
-		// The installer redistributes a GPL build, which obliges an offer
-		// of its corresponding source. The offer is derived from the
-		// fetcher's pin, so it cannot name a different build than the
-		// one in the package.
-		const win = FETCHED.windows.find((d) => d.dep === 'ffmpeg');
-		expect(win, 'the Windows fetcher stages ffmpeg').toBeTruthy();
-		const v = win!.version;
-		expect(win!.url, 'the staged binary comes from that build page').toBe(
+	it("links ffmpeg's build and source at the version the Windows package pins", () => {
+		// The links are derived from the Windows pin — carried or
+		// downloaded at install time — so they cannot name a different
+		// build than the one a Windows install ends up with.
+		const win = [...FETCHED.windows, ...FETCHED.windowsInstallTime].filter(
+			(d) => d.dep === 'ffmpeg'
+		);
+		expect(win.length, 'the Windows package pins ffmpeg exactly once').toBe(1);
+		const v = win[0].version;
+		expect(win[0].url, 'the binary comes from that build page').toBe(
 			`https://github.com/GyanD/codexffmpeg/releases/download/${v}/ffmpeg-${v}-essentials_build.zip`
 		);
 		const ffmpeg = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg');
@@ -152,20 +162,20 @@ describe('credits — bundled tools', () => {
 		});
 	});
 
-	it('repeats the source offer in the README, at the same build', () => {
-		const offer = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg')?.provenance;
-		expect(offer).toBeTruthy();
-		expect(README, 'README links the build page').toContain(offer!.buildUrl);
-		expect(README, 'README links the FFmpeg source tag').toContain(offer!.sourceUrl);
+	it('repeats the build and source links in the README, at the same build', () => {
+		const links = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg')?.provenance;
+		expect(links).toBeTruthy();
+		expect(README, 'README links the build page').toContain(links!.buildUrl);
+		expect(README, 'README links the FFmpeg source tag').toContain(links!.sourceUrl);
 		// The prose names the version too, and a bump that rewrites the
 		// links but not the sentence would leave the README naming a
-		// build the installer no longer carries.
+		// build the installer no longer pins.
 		const named = [
 			...README.matchAll(/ffmpeg[ -](\d+\.\d+(?:\.\d+)?)|\[(\d+\.\d+(?:\.\d+)?) essentials/gi)
 		];
-		expect(named.length, 'README names the bundled version').toBeGreaterThan(0);
+		expect(named.length, 'README names the pinned version').toBeGreaterThan(0);
 		for (const m of named) {
-			expect(m[1] ?? m[2], `README: "${m[0]}"`).toBe(offer!.version);
+			expect(m[1] ?? m[2], `README: "${m[0]}"`).toBe(links!.version);
 		}
 	});
 
