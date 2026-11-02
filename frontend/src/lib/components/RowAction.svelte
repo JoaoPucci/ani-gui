@@ -179,7 +179,14 @@
 	/* At rest. Its transitions are the closing ones: the shape waits for
 	   the label's fade (below) to finish, then draws in on an in-out
 	   curve whose slow start keeps a pointer grazing off and back from
-	   making it flicker. */
+	   making it flicker.
+
+	   Under reduced motion the app's rule in tokens.css zeroes every
+	   transition's duration and stops the busy spin, but keeps each
+	   delay. The delays here are built from the duration tokens, which
+	   that rule's block sets to 0ms, so they go too: the pill opens and
+	   its label shows the moment it is hovered or focused. A literal
+	   delay would keep the label waiting on a pill already open. */
 	.row-action-slot[data-shape='icon'] .row-action {
 		position: absolute;
 		inset-block: 0;
@@ -243,11 +250,6 @@
 	@keyframes row-action-spin {
 		to {
 			transform: rotate(360deg);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.row-action.busy :global(svg) {
-			animation: none;
 		}
 	}
 </style>
