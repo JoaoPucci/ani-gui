@@ -77,7 +77,25 @@ export async function fetchSidecarTracks(
 /**
  * Append one `<track>` per listing; the returned function removes them.
  * The track the player starts on ({@link startingTrack}, for the
- * user's `locale`) alone carries the `default` attribute.
+ * user's `locale`) alone carries the `default` attribute, and is
+ * already showing when it joins the video.
+ *
+ * Chromium runs its own subtitle selection a moment after tracks join
+ * a video. It leaves alone any track a script has set since the track
+ * joined; of the rest, while a subtitle track shows — or one did when
+ * the last change to a joined track was made — it turns on one more,
+ * even beside a track already showing. A start switched on after its
+ * tracks joined left that second track showing: Arabic over English on
+ * a nine-language episode. So:
+ *
+ * - whatever shows is turned off first — a track the stream's playlist
+ *   carries may be — so nothing shows when the new tracks join;
+ * - the start's track is switched on before it joins, which the
+ *   selection does not count as a script's change, and every other
+ *   track joins disabled, never fetched;
+ * - the tracks are switched off before they are removed, so the next
+ *   session's tracks do not join a video that last showed one — with
+ *   no start of its own, that session would get one anyway.
  */
 export function attachSidecarTracks(
 	video: HTMLVideoElement,
@@ -86,6 +104,7 @@ export function attachSidecarTracks(
 	remembered?: string
 ): () => void {
 	const start = startingTrack(tracks, locale, remembered);
+	applyCaptionPick(video.textTracks, 'off');
 	const elements = tracks.map((track, i) => {
 		const attrs = { ...trackAttributes(track), default: i === start };
 		const el = document.createElement('track');
@@ -93,31 +112,24 @@ export function attachSidecarTracks(
 		el.setAttribute('srclang', attrs.srclang);
 		el.setAttribute('label', attrs.label);
 		el.setAttribute('src', attrs.src);
-		if (attrs.default) el.setAttribute('default', '');
+		if (attrs.default) {
+			el.setAttribute('default', '');
+			el.track.mode = 'showing';
+		}
 		video.appendChild(el);
 		return el;
 	});
-	applyStart(video, start === null ? null : elements[start]);
-	return () => {
-		// The tracks going are no pick of the viewer's.
-		expectCaptions(video, null);
-		for (const el of elements) el.remove();
-	};
-}
-
-/**
- * The start applied to the video's tracks, not left to the `default`
- * attribute alone: the browser honours the attribute only while no
- * subtitle track shows, and a track the stream's playlist carries may
- * already be showing. Every subtitle track is turned off — disabled,
- * so none is fetched — and the start's track, if any, turned on.
- */
-function applyStart(video: HTMLVideoElement, start: HTMLTrackElement | null): void {
-	applyCaptionPick(video.textTracks, 'off');
-	if (start) start.track.mode = 'showing';
 	// What the app set, so the browser's own captions menu can be told
 	// from it ($lib/play/caption-watch).
 	expectCaptions(video, showingCaption(video.textTracks));
+	return () => {
+		// The tracks going are no pick of the viewer's.
+		expectCaptions(video, null);
+		for (const el of elements) {
+			if (el.track.mode !== 'disabled') el.track.mode = 'disabled';
+			el.remove();
+		}
+	};
 }
 
 /**

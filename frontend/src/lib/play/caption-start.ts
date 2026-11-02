@@ -1,9 +1,9 @@
 /**
  * Which of a session's sidecar tracks the player starts on: the one
- * attached with the `default` attribute, which the browser turns on
- * by itself when the tracks are added. Every other track starts
- * disabled and is never fetched until the captions picker shows it
- * ({@link import('./caption-pick')}).
+ * attached with the `default` attribute and already showing as it
+ * joins the video ({@link import('./sidecar-tracks')}). Every other
+ * track starts disabled and is never fetched until the captions picker
+ * shows it ({@link import('./caption-pick')}).
  *
  * The start follows the viewer, not the provider: the language last
  * picked on the show ({@link import('./caption-choice')}), else the UI
