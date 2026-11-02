@@ -93,7 +93,7 @@ pub fn image_cache_dir() -> Option<PathBuf> {
 /// flags file and when it was fetched (see `crate::flags::cache`).
 #[must_use]
 pub fn flags_cache() -> Option<PathBuf> {
-    None
+    cache_dir().map(|d| d.join("remote-flags.json"))
 }
 
 /// `$XDG_CACHE_HOME/ani-gui/metadata.sqlite` — SQLite metadata cache.

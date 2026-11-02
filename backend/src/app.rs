@@ -183,7 +183,7 @@ impl AppState {
             account_write_locks: AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+            flags: crate::flags::FlagStore::pending(crate::flags::DECLARED),
         })
     }
 
