@@ -114,4 +114,11 @@ describe('searchOrigin', () => {
 			expect(searchOrigin(origin)).toBeNull();
 		}
 	});
+
+	it('answers null for an address the URL parser refuses, rather than throwing', () => {
+		// `\/` reads as a scheme-relative URL with an empty host, which
+		// the parser rejects. The withSearchOrigin property drew it.
+		expect(searchOrigin('\\/')).toBeNull();
+		expect(searchOrigin('//')).toBeNull();
+	});
 });
