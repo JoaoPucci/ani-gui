@@ -1534,6 +1534,11 @@ more between them, 38 in total:
 - AniList GraphQL, 3: two relations queries (nine and eight entries)
   and one schema introspection of `MediaRelation`.
 
+For the second mockup round, on 2026-11-02, three more Kitsu REST
+`media-relationships` reads, one at a time with a pause of three
+seconds: 6928, 11759 and 12064, the side stories whose parent stories
+the mockup's fixtures record.
+
 The Fate and Ranma relation samples are the repository's recorded
 fixtures under `tests/fixtures/tracker-map/wire/`, and the unaired
 sequel of Kitsu 48677 one under `tests/fixtures/hianime/appended/`;
