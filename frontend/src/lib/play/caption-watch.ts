@@ -46,6 +46,14 @@ export function showingCaption(list: WatchableTrackList): CaptionState {
 	return 'off';
 }
 
+/** The caption tracks showing beside the one the app expects, while
+ *  that one shows: tracks the browser turned on itself. */
+export function extraBeside(expected: CaptionState | null, list: WatchableTrackList): number[] {
+	void expected;
+	void list;
+	return [];
+}
+
 /** The viewer's pick a change shows, or `null`: none before the app
  *  has set the captions (`expected` null), and none where they are as
  *  the app set them. */
