@@ -48,16 +48,28 @@ impl Resolved {
     /// off.
     #[must_use]
     pub fn enabled(&self, decl: &FlagDecl) -> bool {
-        let _ = decl;
-        false
+        match self.value(decl) {
+            FlagValue::Bool(on) => on,
+            FlagValue::Choice(_) => true,
+        }
     }
 
     /// The behaviour a fallback selects, read the same way as
     /// [`Resolved::enabled`]. `None` for a kill switch's declaration.
     #[must_use]
     pub fn choice(&self, decl: &FlagDecl) -> Option<&'static str> {
-        let _ = decl;
-        None
+        match self.value(decl) {
+            FlagValue::Choice(c) => Some(c),
+            FlagValue::Bool(_) => None,
+        }
+    }
+
+    /// `decl`'s value in this set if the declaration allows it, and its
+    /// default otherwise.
+    fn value(&self, decl: &FlagDecl) -> FlagValue {
+        self.get(decl.name)
+            .filter(|v| decl.allowed().contains(v))
+            .unwrap_or_else(|| decl.default_value())
     }
 
     /// Every resolved flag and its value, by name.
