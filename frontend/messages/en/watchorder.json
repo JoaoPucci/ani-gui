@@ -96,6 +96,16 @@
 		}
 	],
 	"strip_franchise_stack_main": "{count} in the main story",
+	"strip_franchise_stack_recaps": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} recap",
+				"countPlural=*": "{count} recaps"
+			}
+		}
+	],
 	"strip_franchise_stack_sides": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -126,7 +136,6 @@
 			}
 		}
 	],
-	"strip_watching_aria": "Go to {title}, which you're watching, at episode {episode}",
 	"strip_watching_go": "Go to its page",
 	"strip_watching_key": "You're watching",
 	"strip_watching_sentence": "You're watching {title} · EP {episode}.",

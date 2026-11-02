@@ -23,13 +23,15 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import WatchOrderPanel from '$lib/watch-order/mock/WatchOrderPanel.svelte';
 	import { numeral as mockNumeral } from '$lib/watch-order/mock/meta';
-	import { placement as mockPlacement } from '$lib/watch-order/mock/order';
+	import {
+		stripRunFor as mockRunFor,
+		stripView as mockStripView
+	} from '$lib/watch-order/mock/strip-view';
 	import {
 		loadMockPrefs,
 		saveMockPrefs,
 		type WatchOrderMockPrefs
 	} from '$lib/watch-order/mock/prefs';
-	import { runFor as mockRunFor } from '$lib/watch-order/mock/view';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -1390,10 +1392,14 @@
 	const mockRun = $derived(mockPrefs.enabled ? mockRunFor(id) : null);
 	// "08 of 09" in the masthead eyebrow, only where the run is one
 	// line: a bare number there reads as nothing in particular.
-	const mockPlace = $derived(mockRun ? mockPlacement(mockRun, id, mockPrefs.order) : null);
+	const mockPlace = $derived(mockRun ? mockStripView(mockRun, id, mockPrefs.order) : null);
 	const similarShown = $derived(
-		mockRun
-			? (similar ?? []).filter((s) => !mockRun.entries.some((e) => e.id === s.id))
+		mockRun && mockPlace
+			? (similar ?? []).filter(
+					(s) =>
+						!mockRun.entries.some((e) => e.id === s.id) &&
+						!mockPlace.before.some((e) => e.id === s.id)
+				)
 			: (similar ?? [])
 	);
 

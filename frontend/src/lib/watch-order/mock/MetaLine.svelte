@@ -2,6 +2,9 @@
   A mockup card's meta line in PosterCard's voice: uppercase and
   tracked, the figure bright and the word faint, with a check before
   "Watched". A unit ("EP") joins the figure before it, without a dot.
+  The dot sits inside the segment it introduces, so a wrapped line
+  never ends on one; "Watched" takes none, its check already sets it
+  apart.
 -->
 <script lang="ts">
 	import type { MetaSegment } from './meta';
@@ -11,12 +14,15 @@
 
 <span class="meta">
 	{#each segments as seg, i (i)}
-		{#if i > 0 && seg.kind !== 'unit'}<span class="dot" aria-hidden="true">·</span>{/if}
 		<span
 			class="seg"
 			class:num={seg.kind === 'num' || seg.kind === 'watched'}
 			class:unit={seg.kind === 'unit'}
 		>
+			{#if i > 0 && seg.kind !== 'unit' && seg.kind !== 'watched'}<span
+					class="dot"
+					aria-hidden="true">·</span
+				>{/if}
 			{#if seg.kind === 'watched'}
 				<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
 					<path
@@ -62,6 +68,7 @@
 		letter-spacing: var(--tracking-micro);
 	}
 	.dot {
+		margin-inline-end: calc(var(--space-2) - 0.3em);
 		color: color-mix(in oklab, var(--bone-100) 35%, transparent);
 	}
 </style>

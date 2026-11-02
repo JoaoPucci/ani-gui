@@ -3,12 +3,29 @@
  * `./strip-wording`: Paraglide messages only, so the components stay
  * thin.
  */
+import { m } from '$lib/paraglide/messages';
 import type { EmptyColumn } from './strip-view';
-import type { ColumnKey } from './strip-wording';
+import type { ColumnKey, ColumnWord } from './strip-wording';
+
+const WORDS: Record<ColumnWord, readonly [() => string, () => string]> = {
+	before: [m.watchorder_strip_before, m.watchorder_strip_before],
+	after: [m.watchorder_strip_after, m.watchorder_strip_after],
+	previous: [m.watchorder_strip_word_previous, m.watchorder_strip_word_previous],
+	next: [m.watchorder_strip_word_next, m.watchorder_strip_word_next],
+	watch_before: [m.watchorder_strip_word_watch_before, m.watchorder_strip_word_watch_before],
+	watch_after: [m.watchorder_strip_word_watch_after, m.watchorder_strip_word_watch_after],
+	prequel: [m.watchorder_strip_word_prequel, m.watchorder_strip_word_prequels],
+	sequel: [m.watchorder_strip_word_sequel, m.watchorder_strip_word_sequels],
+	parent: [m.watchorder_strip_word_parent, m.watchorder_strip_word_parents],
+	released_before: [
+		m.watchorder_strip_word_released_before,
+		m.watchorder_strip_word_released_before
+	],
+	released_after: [m.watchorder_strip_word_released_after, m.watchorder_strip_word_released_after]
+};
 
 export function columnKeyText(key: ColumnKey): string {
-	void key;
-	return '';
+	return WORDS[key.word][key.plural ? 1 : 0]();
 }
 
 /**
@@ -20,13 +37,14 @@ export function columnCountText(
 	side: 'before' | 'after',
 	count: number
 ): string | null {
-	void kind;
-	void side;
-	void count;
-	return null;
+	if (kind === 'side' || count < 2) return null;
+	return side === 'before'
+		? m.watchorder_strip_join({ count })
+		: m.watchorder_strip_ways({ count });
 }
 
 export function emptyColumnText(kind: EmptyColumn): string {
-	void kind;
-	return '';
+	if (kind === 'first') return m.watchorder_strip_first();
+	if (kind === 'last') return m.watchorder_strip_last();
+	return m.watchorder_strip_side_end();
 }

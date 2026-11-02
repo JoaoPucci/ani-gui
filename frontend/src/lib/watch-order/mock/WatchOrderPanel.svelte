@@ -6,25 +6,24 @@
     sight; branches, a loop and side entries open with a key and a
     hairline (railItems);
   - `trio`: what comes before, this entry's place, and what comes
-    after, as three columns of landscape tiles.
+    after, mirrored about the centre (StripTrio).
 
-  Both share the Strip eyebrow ("Watch order — 04 of 05"), the "You're
-  on … · Resume" line and the link to the franchise page.
+  The rail keeps the first round's header line and link; the trio
+  carries the second round's variants of both.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { imageProxyUrl } from '$lib/api';
 	import Strip from '$lib/components/Strip.svelte';
-	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import MetaLine from './MetaLine.svelte';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
-	import { metaLine, numeral, railKeyText } from './meta';
-	import { loopSize, placement, railItems } from './order';
+	import StripTrio from './StripTrio.svelte';
+	import { numeral, railKeyText } from './meta';
+	import { loopSize, railItems } from './order';
 	import type { WatchOrderMockPrefs } from './prefs';
 	import { shortTitle } from './short-title';
 	import type { MockEntry, MockRun } from './types';
+	import { stripView } from './strip-view';
 	import { currentIn, scrollLeftFor } from './view';
 
 	let {
@@ -41,7 +40,7 @@
 		onchoose: (next: WatchOrderMockPrefs) => void;
 	} = $props();
 
-	const here = $derived(placement(run, id, prefs.order));
+	const here = $derived(stripView(run, id, prefs.order));
 	const items = $derived(railItems(run, prefs.order));
 	const loop = $derived(loopSize(run, id, prefs.order));
 	const titles = $derived(run.entries.map((e) => e.title));
@@ -53,6 +52,7 @@
 				total: numeral(here.total)
 			});
 		if (here.position !== null) return numeral(here.position);
+		if (here.kind === 'side') return m.watchorder_strip_side_story();
 		return here.inCycle
 			? m.watchorder_strip_unnumbered_cycle({ count: loop })
 			: m.watchorder_strip_unnumbered_branch();
@@ -95,30 +95,14 @@
 	>
 {/snippet}
 
-{#snippet tile(e: MockEntry)}
-	<a
-		class="tile"
-		style:--accent={accentFor(e.id)}
-		href={resolve('/anime/[id]', { id: e.id })}
-		title={e.title}
-	>
-		<span class="tile-poster">
-			{#if imageProxyUrl(e.poster)}
-				<img src={imageProxyUrl(e.poster)} alt="" loading="lazy" decoding="async" />
-			{/if}
-		</span>
-		<span class="tile-text">
-			<span class="tile-title">{label(e)}</span>
-			{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
-			<MetaLine segments={metaLine(run, e, today)} />
-		</span>
-	</a>
-{/snippet}
-
 <div class="watch-order" bind:this={wrap}>
 	{#if prefs.switcher}
 		<div class="switch-row">
-			<MockSwitch {prefs} keys={['order', 'strip', 'placement', 'titles']} {onchoose} />
+			<MockSwitch
+				{prefs}
+				keys={['order', 'strip', 'placement', 'titles', 'wording', 'cta', 'resume']}
+				{onchoose}
+			/>
 		</div>
 	{/if}
 	{#if prefs.strip === 'rail'}
@@ -144,53 +128,7 @@
 			{/each}
 		</Strip>
 	{:else}
-		<section class="trio" aria-label={m.watchorder_strip_eyebrow()}>
-			<header class="trio-header">
-				<h2 class="eyebrow">
-					<span class="eyebrow-key">{m.watchorder_strip_eyebrow()}</span>
-					{#if here.position === null}
-						<span class="eyebrow-rule" aria-hidden="true"></span>
-						<span class="eyebrow-value">{caption}</span>
-					{:else}
-						<span class="sr-only">{caption}</span>
-					{/if}
-				</h2>
-				<div class="trio-trailing">{@render trailing()}</div>
-			</header>
-			<div class="trio-grid">
-				<div class="col">
-					<p class="col-key">
-						{here.before.length > 1
-							? m.watchorder_strip_join({ count: here.before.length })
-							: m.watchorder_strip_before()}
-					</p>
-					{#each here.before as e (e.id)}{@render tile(e)}{:else}
-						<p class="col-empty">{m.watchorder_strip_first()}</p>
-					{/each}
-				</div>
-				<div class="col col-this" style:--accent={accentFor(id)}>
-					<p class="col-key col-key-here">{m.watchorder_franchise_here()}</p>
-					<p class="this-numeral" aria-hidden="true">
-						{here.position !== null ? numeral(here.position) : '—'}
-					</p>
-					{#if here.total !== null}
-						<p class="this-total" aria-hidden="true">
-							{m.watchorder_strip_of_total({ total: numeral(here.total) })}
-						</p>
-					{/if}
-				</div>
-				<div class="col">
-					<p class="col-key">
-						{here.after.length > 1
-							? m.watchorder_strip_ways({ count: here.after.length })
-							: m.watchorder_strip_after()}
-					</p>
-					{#each here.after as e (e.id)}{@render tile(e)}{:else}
-						<p class="col-empty">{m.watchorder_strip_last()}</p>
-					{/each}
-				</div>
-			</div>
-		</section>
+		<StripTrio {run} {id} view={here} {prefs} {today} {caption} {label} />
 	{/if}
 </div>
 
@@ -209,8 +147,7 @@
 		flex-wrap: wrap;
 		row-gap: var(--space-3);
 	}
-	.watch-order :global(.strip-header .eyebrow),
-	.trio-header .eyebrow {
+	.watch-order :global(.strip-header .eyebrow) {
 		flex: none;
 		white-space: nowrap;
 	}
@@ -247,151 +184,5 @@
 	}
 	.on-now + .text-btn {
 		margin-inline-start: var(--space-4);
-	}
-
-	.trio {
-		padding-inline: var(--space-8);
-	}
-	.trio-header {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--space-3) var(--space-5);
-		margin-block-end: var(--space-4);
-	}
-	.trio-trailing {
-		display: inline-flex;
-		align-items: baseline;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-	}
-	.trio-grid {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-		gap: var(--space-6);
-		align-items: start;
-	}
-	.col {
-		display: grid;
-		gap: var(--space-3);
-		align-content: start;
-	}
-	.col-key {
-		margin: 0;
-		font-size: var(--type-micro);
-		font-weight: 600;
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		color: var(--bone-300);
-	}
-	.col-key-here {
-		color: var(--bone-100);
-	}
-	.this-total {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		font-size: var(--type-micro);
-		letter-spacing: var(--tracking-micro);
-		text-transform: uppercase;
-		color: var(--bone-300);
-	}
-	.col-empty {
-		margin: 0;
-		font-size: var(--type-meta);
-		color: var(--bone-400);
-	}
-	.col-this {
-		justify-items: center;
-		padding-inline: var(--space-5);
-		border-inline: 1px solid var(--ink-200);
-	}
-	.this-numeral {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		font-size: var(--type-numeral-xl);
-		font-weight: 700;
-		line-height: 1;
-		color: var(--bone-100);
-		border-block-end: 2px solid var(--accent);
-		padding-block-end: var(--space-2);
-	}
-	.tile {
-		display: grid;
-		grid-template-columns: 3.5rem minmax(0, 1fr);
-		gap: var(--space-3);
-		align-items: center;
-		padding: var(--space-2);
-		margin: calc(-1 * var(--space-2));
-		border-radius: var(--radius-card);
-		color: inherit;
-		transition: background-color var(--dur-fast) var(--ease-out-soft);
-	}
-	.tile:hover {
-		background: var(--ink-050);
-	}
-	.tile-poster {
-		position: relative;
-		aspect-ratio: var(--poster-aspect);
-		overflow: hidden;
-		border-radius: calc(var(--radius-card) - 2px);
-		background: var(--ink-100);
-		box-shadow: var(--shadow-card-rest);
-	}
-	.tile-poster::after {
-		content: '';
-		position: absolute;
-		inset-inline: 0;
-		inset-block-end: 0;
-		block-size: 2px;
-		background: var(--accent);
-		transform: scaleX(0);
-		transform-origin: inline-start;
-		transition: transform var(--dur-med) var(--ease-out-soft);
-	}
-	.tile:hover .tile-poster::after,
-	.tile:focus-visible .tile-poster::after {
-		transform: scaleX(1);
-	}
-	.tile-poster img {
-		position: absolute;
-		inset: 0;
-		inline-size: 100%;
-		block-size: 100%;
-		object-fit: cover;
-	}
-	.tile-text {
-		display: grid;
-		gap: var(--space-1);
-		min-inline-size: 0;
-	}
-	.tile-title {
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		font-size: 0.9375rem;
-		font-weight: 500;
-		line-height: 1.3;
-		color: color-mix(in oklab, var(--bone-100) 90%, transparent);
-	}
-	.sr-only {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-	@media (max-width: 1100px) {
-		.trio-grid {
-			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		}
-		.col-this {
-			display: none;
-		}
 	}
 </style>

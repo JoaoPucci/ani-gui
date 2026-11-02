@@ -5,6 +5,7 @@
  */
 import { MOCK_RUNS } from './fixtures';
 import type { WatchOrder } from './by-start';
+import { currentIn } from './handoff';
 import { placement } from './place';
 import type { MockEntry, MockRun } from './types';
 
@@ -75,7 +76,12 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 		if (c && !posters.includes(c) && posters.length < 3) posters.push(c);
 	}
 	return {
-		total: 0,
+		total:
+			run.entries.length +
+			run.versions.length +
+			run.films.length +
+			run.sides.length +
+			run.recaps.length,
 		main: run.entries.length,
 		films: run.films.length + run.versions.length,
 		sides: run.sides.length,
@@ -94,9 +100,8 @@ export function watchingFor(
 	view: StripView,
 	order: WatchOrder
 ): { entry: MockEntry; episode: number } | null {
-	void run;
-	void id;
-	void view;
-	void order;
-	return null;
+	const now = currentIn(run, order);
+	if (!now || now.entry.id === id) return null;
+	const shown = [...view.before, ...view.after].some((e) => e.id === now.entry.id);
+	return shown ? null : now;
 }

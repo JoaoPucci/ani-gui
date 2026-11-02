@@ -96,6 +96,16 @@
 		}
 	],
 	"strip_franchise_stack_main": "{count} na história principal",
+	"strip_franchise_stack_recaps": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} recapitulação",
+				"countPlural=*": "{count} recapitulações"
+			}
+		}
+	],
 	"strip_franchise_stack_sides": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -126,7 +136,6 @@
 			}
 		}
 	],
-	"strip_watching_aria": "Ir para {title}, que você está assistindo, no episódio {episode}",
 	"strip_watching_go": "Ir para a página",
 	"strip_watching_key": "Você está assistindo",
 	"strip_watching_sentence": "Você está assistindo {title} · EP {episode}.",
@@ -142,10 +151,10 @@
 		}
 	],
 	"strip_word_next": "Próximo",
-	"strip_word_parent": "História principal",
-	"strip_word_parents": "Histórias principais",
-	"strip_word_prequel": "Prequel",
-	"strip_word_prequels": "Prequels",
+	"strip_word_parent": "História de origem",
+	"strip_word_parents": "Histórias de origem",
+	"strip_word_prequel": "Prequela",
+	"strip_word_prequels": "Prequelas",
 	"strip_word_previous": "Anterior",
 	"strip_word_released_after": "Lançado depois",
 	"strip_word_released_before": "Lançado antes",

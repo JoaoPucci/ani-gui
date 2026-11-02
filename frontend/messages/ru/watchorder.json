@@ -89,6 +89,7 @@
 	"strip_franchise_link": "Вся франшиза",
 	"strip_franchise_stack_films": "Фильмы и версии: {count}",
 	"strip_franchise_stack_main": "В основной истории: {count}",
+	"strip_franchise_stack_recaps": "Пересказы: {count}",
 	"strip_franchise_stack_sides": "Побочные истории: {count}",
 	"strip_franchise_stack_title": "Вся франшиза целиком",
 	"strip_join": "Идёт после этих частей ({count})",
@@ -112,7 +113,6 @@
 			}
 		}
 	],
-	"strip_watching_aria": "Перейти к «{title}»: вы смотрите серию {episode}",
 	"strip_watching_go": "Перейти на страницу",
 	"strip_watching_key": "Вы смотрите",
 	"strip_watching_sentence": "Вы смотрите «{title}», серия {episode}.",
@@ -129,12 +129,12 @@
 			}
 		}
 	],
-	"strip_word_next": "Следующее",
-	"strip_word_parent": "Основная история",
-	"strip_word_parents": "Основные истории",
+	"strip_word_next": "Следующая часть",
+	"strip_word_parent": "Исходная история",
+	"strip_word_parents": "Исходные истории",
 	"strip_word_prequel": "Приквел",
 	"strip_word_prequels": "Приквелы",
-	"strip_word_previous": "Предыдущее",
+	"strip_word_previous": "Предыдущая часть",
 	"strip_word_released_after": "Вышло позже",
 	"strip_word_released_before": "Вышло раньше",
 	"strip_word_sequel": "Сиквел",
