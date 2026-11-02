@@ -69,7 +69,9 @@ test("property: whatever is asked, a file it names lies inside the bundle", () =
           const out = bundleTarget(dir, `/${parts.join("")}`, mod);
           if (out.kind !== "file") return;
           const rel = mod.relative(dir, out.file);
-          assert.ok(!rel.startsWith("..") && !mod.isAbsolute(rel), `${parts.join("")} → ${out.file}`);
+          // A name that merely starts with dots (`..a`) is inside.
+          const escapes = rel === ".." || rel.startsWith(`..${mod.sep}`) || mod.isAbsolute(rel);
+          assert.ok(!escapes, `${parts.join("")} → ${out.file}`);
         },
       ),
     );
