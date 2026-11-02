@@ -47,12 +47,12 @@ export interface BundledTool {
 	noteId: BundledToolNoteId;
 	/** Where a copyleft binary a package redistributes was built, and
 	 *  its upstream source. Present only for those. */
-	sourceOffer?: SourceOffer;
+	provenance?: BuildProvenance;
 }
 
 /** The published build and the upstream source for one redistributed
  *  copyleft binary. */
-export interface SourceOffer {
+export interface BuildProvenance {
 	/** The build's version, as the fetcher pins it. */
 	version: string;
 	/** The page the build is published on — the one the fetcher
@@ -67,10 +67,10 @@ export interface SourceOffer {
  *  fetcher and holds the two together. */
 export const FFMPEG_WINDOWS_BUILD = '7.1.1';
 
-/** The source offer for gyan.dev's ffmpeg essentials build `version`:
+/** The build page and source for gyan.dev's ffmpeg essentials build `version`:
  *  its GitHub release, and FFmpeg's own `n<version>` tag. Derived from
  *  the version alone so the links cannot name a different build. */
-export function ffmpegSourceOffer(version: string): SourceOffer {
+export function ffmpegProvenance(version: string): BuildProvenance {
 	return {
 		version,
 		buildUrl: `https://github.com/GyanD/codexffmpeg/releases/tag/${version}`,
@@ -114,7 +114,7 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		noteId: 'ffmpeg',
 		// The Windows installer redistributes a GPL build (Linux takes
 		// the distribution's, which the distribution answers for).
-		sourceOffer: ffmpegSourceOffer(FFMPEG_WINDOWS_BUILD)
+		provenance: ffmpegProvenance(FFMPEG_WINDOWS_BUILD)
 	}
 ];
 

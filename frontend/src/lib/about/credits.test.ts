@@ -22,7 +22,7 @@ import {
 	assetName,
 	BUNDLED_TOOLS,
 	DONATION_ETH_ADDRESS,
-	ffmpegSourceOffer,
+	ffmpegProvenance,
 	type AssetCredit,
 	type BundledTool
 } from './credits';
@@ -144,8 +144,8 @@ describe('credits — bundled tools', () => {
 			`https://github.com/GyanD/codexffmpeg/releases/download/${v}/ffmpeg-${v}-essentials_build.zip`
 		);
 		const ffmpeg = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg');
-		expect(ffmpeg?.sourceOffer).toEqual(ffmpegSourceOffer(v));
-		expect(ffmpegSourceOffer(v)).toEqual({
+		expect(ffmpeg?.provenance).toEqual(ffmpegProvenance(v));
+		expect(ffmpegProvenance(v)).toEqual({
 			version: v,
 			buildUrl: `https://github.com/GyanD/codexffmpeg/releases/tag/${v}`,
 			sourceUrl: `https://github.com/FFmpeg/FFmpeg/tree/n${v}`
@@ -153,7 +153,7 @@ describe('credits — bundled tools', () => {
 	});
 
 	it('repeats the source offer in the README, at the same build', () => {
-		const offer = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg')?.sourceOffer;
+		const offer = BUNDLED_TOOLS.find((t) => t.name === 'ffmpeg')?.provenance;
 		expect(offer).toBeTruthy();
 		expect(README, 'README links the build page').toContain(offer!.buildUrl);
 		expect(README, 'README links the FFmpeg source tag').toContain(offer!.sourceUrl);

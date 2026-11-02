@@ -114,6 +114,14 @@ export const DEPS = [
 	},
 ];
 
+// Dependencies the Windows package provides without carrying them: the
+// NSIS installer downloads each at install time (see
+// `build-resources/installer.nsh`), and this script neither downloads
+// nor stages them. Declared here so the arch checks and the credits
+// can tell a deliberate install-time download from a forgotten
+// dependency.
+export const INSTALL_TIME_DEPS = [];
+
 const cacheDir = path.join(electronDir, '.win-deps-cache');
 const stagedBinDir = path.join(electronDir, 'build-resources', 'win', 'bin');
 
