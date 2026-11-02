@@ -26,6 +26,7 @@ pub mod cache;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod flags;
 #[cfg(test)]
 #[path = "held_test.rs"]
 pub(crate) mod held;
