@@ -726,10 +726,10 @@ starting it, and delete it when you find it done.
   serves one kind), the player to start with its own captions off and
   say why, and the external-player hand-off to pass no subtitle file.
   It waited because no stream seen so far has been burned in, so
-  there is nothing to detect yet. Subtitles carried inside the
-  stream's own playlist are a separate case, logged by the subtitle
-  stack's last part (#356) as its own entry,
-  "Sidecar subtitles on a stream that also carries its own".
+  there is nothing to detect yet. Subtitles carried as tracks inside
+  the stream's own playlist are a different case: they can be turned
+  off, but the player's engine and the app's own subtitle files can
+  switch each other off.
 
 ## Following a provider's legitimate domain move
 
