@@ -63,16 +63,15 @@ function isPlainObject(v) {
 
 /** What the boot's window was opened against, as the window keeper
  *  keeps it for a later window: the handshake and the launch's flags,
- *  which stay the session's. Stub. */
+ *  which stay the session's. */
 function bootedWith(backend, launchFlags) {
-  void launchFlags;
-  return backend;
+  return { ...backend, launchFlags };
 }
 
-/** The launch's flags a window opened against `opened` gets. Stub. */
+/** The launch's flags a window opened against `opened` gets: the ones
+ *  `bootedWith` kept, or none. */
 function launchFlagsOf(opened) {
-  void opened;
-  return null;
+  return opened.launchFlags ?? null;
 }
 
 module.exports = { FLAGS_WAIT_MS, bootedWith, isFlagsAnswer, launchFlagsOf, waitForLaunchFlags };

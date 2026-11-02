@@ -51,7 +51,7 @@ const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { splashController } = require("./lib/splash.cjs");
-const { waitForLaunchFlags } = require("./lib/launch-flags.cjs");
+const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
   bootApp,
@@ -367,7 +367,7 @@ const splash = splashController({
   logError: console.error,
 });
 
-async function createWindow(backend, launchFlags = backend.launchFlags ?? null) {
+async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
   // work-area size avoids the "open at 1280×800, then animate to
@@ -1004,7 +1004,7 @@ app.whenReady().then(() => {
       // The boot's window is open: what it was opened against is what
       // a later window needs (see windowKeeper) — its lanes included,
       // and the launch's flags, which stay the session's.
-      keeper.booted({ ...backend, launchFlags });
+      keeper.booted(bootedWith(backend, launchFlags));
     },
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,
