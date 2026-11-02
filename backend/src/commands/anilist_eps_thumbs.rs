@@ -29,7 +29,7 @@ mod titles;
 /// Versioned so a schema change orphans old rows: `v2` caches the
 /// whole [`StreamingListing`] (entry titles, AniList's episode count
 /// and status) where `v1` cached a bare number → thumbnail map.
-fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
+pub(crate) fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
     format!("{}{kitsu_id}", crate::cache::families::ANILIST_EPS_THUMBS)
 }
 
@@ -70,6 +70,41 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> StreamingListing {
+    // Two views filling the same show at once — the episode page and a
+    // Continue Watching card — share one lookup: one read of Kitsu's
+    // mappings, one AniList request. Keyed by the app state as well, so
+    // two states (tests) never share.
+    let shared = format!(
+        "{:p}\u{0}{}\u{0}{kitsu_id}",
+        std::ptr::from_ref(state),
+        anilist_base.unwrap_or("")
+    );
+    let listing = THUMBS_IN_FLIGHT
+        .run(shared, || {
+            thumbs_for_show_once(state, kitsu_id, anilist_base)
+        })
+        .await;
+    // A caller that took a copy of a held-back lookup waits on its
+    // retry as the one that ran it does.
+    crate::commands::held_fill::note_pending(
+        state,
+        crate::commands::held_fill::Fill::Thumbs,
+        kitsu_id,
+        anilist_base,
+    );
+    listing
+}
+
+/// The thumbnail lookups in flight, by show.
+static THUMBS_IN_FLIGHT: std::sync::LazyLock<crate::meta::inflight::Inflight<StreamingListing>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// One read-through of the show's thumbnail listing.
+async fn thumbs_for_show_once(
+    state: &AppState,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> StreamingListing {
     let key = anilist_eps_thumbs_key(kitsu_id);
     if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
         if let Ok(listing) = serde_json::from_str::<StreamingListing>(&body) {
@@ -78,7 +113,9 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
     }
     match fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await {
         // A step that got no answer says nothing about the show:
-        // nothing is kept, and the next view asks again.
+        // nothing is kept. A lookup the gate held back is retried once
+        // the pause ends (`held_fill`); otherwise the next view asks
+        // again.
         Err(Miss::Unanswered) => StreamingListing::default(),
         outcome => {
             let outcome = outcome.map_err(|_| ());

@@ -38,8 +38,9 @@ export async function refreshedResume(
 	const from = parseHistoryEpisode(now.former_ep_no);
 	const moved = to !== null && from !== null && from !== to && move(kitsuId, from, to) === true;
 	// Given anew when a position moved, so Play is offered again with
-	// it where it is now; a repaired stamp names its former number for
-	// good, and a read that moves nothing changes nothing.
+	// it where it is now; a repaired stamp goes on naming its former
+	// number until a listing gives it to a real episode, and a read that
+	// moves nothing changes nothing.
 	if (now.ep_no === entry.ep_no) return moved ? { ...entry } : null;
 	return { ...entry, ep_no: now.ep_no };
 }

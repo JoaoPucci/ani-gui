@@ -32,7 +32,6 @@ use crate::account::provider::{
 };
 use crate::account::status::ListStatus;
 use crate::app::AppState;
-use crate::cache::SqlitePool;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::{AniError, Result};
 use crate::meta::anilist_user::AniListProvider;
@@ -65,6 +64,10 @@ pub struct AccountWriteLocks {
     inner: Arc<ShowLockMap>,
     /// Which connection of each tracker a cache write belongs to.
     pub(crate) epochs: super::account_epoch::AccountEpochs,
+    /// Which user each bearer belongs to.
+    pub(crate) owners: super::account_owner::OwnerMemo,
+    /// Which cached rows a write changed while a full-list read was out.
+    pub(crate) cache_revisions: super::account_revisions::CacheRevisions,
 }
 
 impl AccountWriteLocks {
@@ -216,13 +219,32 @@ pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> R
     provider.me(tokens).await
 }
 
-/// The bearer's own list: its owner from `me()` — the only identity the
-/// backend trusts — then its full list (all statuses), written through
-/// the cache under that owner. Returns the freshly-fetched entries.
+/// The user `tokens` belongs to on `kind`, asked of the tracker once
+/// per bearer ([`super::account_owner::OwnerMemo`]).
 ///
 /// # Errors
 /// [`AniError::Metadata`] for a kind with no provider; otherwise those
-/// of `me()` and the list read.
+/// of `me()`.
+pub async fn owner(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> Result<String> {
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    state
+        .account_write_locks
+        .owners
+        .owner(kind, provider.as_ref(), tokens)
+        .await
+}
+
+/// The bearer's own list: its owner as the tracker names it for the
+/// bearer ([`owner`]: asked once per bearer, then remembered) — the only
+/// identity the backend trusts — then its full list (all statuses),
+/// written through the cache under that owner. Returns the
+/// freshly-fetched entries.
+///
+/// # Errors
+/// [`AniError::Metadata`] for a kind with no provider; otherwise those
+/// of the owner lookup and the list read.
 pub async fn list_for_bearer(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -242,9 +264,19 @@ pub(crate) async fn list_for_bearer_via(
     tokens: &Tokens,
 ) -> Result<Vec<ListEntry>> {
     // The connection the request arrived in, before its first wait.
-    let began = state.account_write_locks.epochs.current(kind);
-    let profile = provider.me(tokens).await?;
-    list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
+    let began = (
+        state.account_write_locks.epochs.current(kind),
+        state
+            .account_write_locks
+            .cache_revisions
+            .start_refresh(kind),
+    );
+    let owner = state
+        .account_write_locks
+        .owners
+        .owner(kind, provider, tokens)
+        .await?;
+    list_all_and_cache_from(state, kind, provider, tokens, &owner, began).await
 }
 
 /// The list read and its write-through for `user_id`, with the provider
@@ -257,28 +289,46 @@ pub(crate) async fn list_all_and_cache_via(
     tokens: &Tokens,
     user_id: &str,
 ) -> Result<Vec<ListEntry>> {
-    let began = state.account_write_locks.epochs.current(kind);
+    let began = (
+        state.account_write_locks.epochs.current(kind),
+        state
+            .account_write_locks
+            .cache_revisions
+            .start_refresh(kind),
+    );
     list_all_and_cache_from(state, kind, provider, tokens, user_id, began).await
 }
 
 /// The list read and its write-through for a request that arrived in connection
-/// epoch `began`: a disconnect since purged the cache, and the answer
-/// must not fill it again for that account.
+/// epoch and cache revision `began`. A disconnect since purged the cache,
+/// and the answer must not fill it again for that account. A write that
+/// landed while the read was out cached a newer answer for its row than
+/// this one, so that row is left as the write left it; every other row
+/// is cached from this answer. The list is read once either way.
 async fn list_all_and_cache_from(
     state: &Arc<AppState>,
     kind: ProviderKind,
     provider: &dyn UserListProvider,
     tokens: &Tokens,
     user_id: &str,
-    began: u64,
+    began: (u64, u64),
 ) -> Result<Vec<ListEntry>> {
-    let entries = provider.list_all(tokens).await?;
-    state
-        .account_write_locks
+    let entries = provider.list_all_for(tokens, user_id).await?;
+    let locks = &state.account_write_locks;
+    locks
         .epochs
-        .write_if_current(kind, began, || {
-            write_through_cache(&state.cache_pool, kind, user_id, &entries)
+        .write_if_current(kind, began.0, || {
+            locks.cache_revisions.cache_refresh(kind, began.1, |keep| {
+                crate::account::cache::write_entries_keeping(
+                    &state.cache_pool,
+                    kind,
+                    user_id,
+                    &entries,
+                    keep,
+                )
+            })
         })
+        .flatten()
         .transpose()?;
     Ok(entries)
 }
@@ -295,6 +345,7 @@ pub fn cached_list(
 
 /// Drop every cached row for `(kind, user_id)` — called on disconnect.
 pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> Result<()> {
+    state.account_write_locks.owners.forget(kind);
     state.account_write_locks.epochs.purge(kind, || {
         crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
     })
@@ -307,18 +358,10 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
 /// internal secret so a cross-origin tab can't wipe a stranger's cache by
 /// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
+    state.account_write_locks.owners.forget(kind);
     state.account_write_locks.epochs.purge(kind, || {
         crate::account::cache::clear_provider(&state.cache_pool, kind)
     })
-}
-
-fn write_through_cache(
-    pool: &SqlitePool,
-    kind: ProviderKind,
-    user_id: &str,
-    entries: &[ListEntry],
-) -> Result<()> {
-    crate::account::cache::write_entries(pool, kind, user_id, entries)
 }
 
 /// Write a single just-synced entry back into the cache so the local
@@ -1020,15 +1063,12 @@ pub(crate) async fn write_through(
     if update.is_empty() {
         return Ok(None);
     }
+    let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
-    if let Ok(profile) = provider.me(tokens).await {
-        let _ = state
-            .account_write_locks
-            .epochs
-            .write_if_current(kind, began, || {
-                upsert_cached_entry(state, kind, &profile.user_id, &entry)
-            });
-    }
+    let owner = super::account_owner::after_write(state, kind, provider, tokens, owner).await;
+    super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
+        upsert_cached_entry(state, kind, owner, &entry)
+    });
     Ok(Some(entry))
 }
 
@@ -1047,3 +1087,7 @@ mod reconcile_for_tests;
 #[cfg(test)]
 #[path = "account_resolve_test.rs"]
 mod resolve_tests;
+
+#[cfg(test)]
+#[path = "account_interleave_prop_test.rs"]
+mod interleave_prop_tests;
