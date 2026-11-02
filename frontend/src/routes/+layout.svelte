@@ -872,12 +872,15 @@
 			flex-wrap: wrap;
 		}
 	}
+	/* The small rail link steps down to the faintest text tier rather
+	   than fading with opacity: bone-300 at 0.6 read 3.8:1, short of
+	   WCAG AA for its label. */
 	.nav li.small .nav-link {
-		opacity: 0.6;
+		color: var(--bone-400);
 	}
 	.nav li.small .nav-link:hover,
 	.nav li.small .nav-link.active {
-		opacity: 1;
+		color: var(--bone-100);
 	}
 
 	.nav-link {
@@ -1251,9 +1254,9 @@
 		display: none;
 	}
 	.topbar-search input::placeholder {
-		/* Lift placeholder from bone-400 to a brighter color-mix so
-		   the call-to-action ("Search anime…") is legible at the
-		   bumped 16px size. */
+		/* The call-to-action ("Search anime…") at the bumped 16px
+		   size. Bone-100 at 55% clears WCAG AA (4.5:1) on every ink
+		   surface; tests/lint/text-contrast.test.ts holds it there. */
 		color: color-mix(in oklab, var(--bone-100) 55%, transparent);
 		font-weight: 400;
 	}
