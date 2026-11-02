@@ -13,10 +13,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import type { BreadcrumbSegment } from '$lib/breadcrumb';
+	import { goesBack, type BreadcrumbSegment } from '$lib/breadcrumb';
 	import { m } from '$lib/paraglide/messages';
 
-	let { segments }: { segments: BreadcrumbSegment[] } = $props();
+	let { segments, back = null }: { segments: BreadcrumbSegment[]; back?: string | null } = $props();
 
 	// The chevron walks "up" one level — to the second-to-last
 	// segment. When there's only one segment (the current page), it
@@ -25,10 +25,20 @@
 		segments.length >= 2 ? (segments[segments.length - 2].href ?? '/') : '/'
 	);
 
+	// A hop to the page behind steps back to its history entry, so it
+	// comes back as it was left (the search page restores its results
+	// and scroll from it); any other hop opens the page.
 	function goUp(e: MouseEvent) {
 		e.preventDefault();
+		if (goesBack(upHref, back)) window.history.back();
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		void goto(upHref);
+		else void goto(upHref);
+	}
+
+	function stepBack(e: MouseEvent, href: string) {
+		if (!goesBack(href, back)) return;
+		e.preventDefault();
+		window.history.back();
 	}
 </script>
 
@@ -68,8 +78,12 @@
 						<!-- href is `/` literal or `/anime/[id]` etc; the no-resolve
 						     rule pattern-matches a literal `resolve(...)` and trips
 						     on the conditional, so wrap with a disable. -->
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a href={seg.href === '/' ? resolve('/') : seg.href}>{seg.label}</a>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -->
+						<a
+							href={seg.href === '/' ? resolve('/') : seg.href}
+							onclick={(e) => stepBack(e, seg.href ?? '')}>{seg.label}</a
+						>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					{:else}
 						<span aria-current="page">{seg.label}</span>
 					{/if}
