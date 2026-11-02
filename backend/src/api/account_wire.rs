@@ -113,10 +113,11 @@ pub struct UpdateProgressRequest {
     pub score: Option<u8>,
 }
 
-/// Renderer-supplied fallback identity for the cache DELETE path. Consulted
-/// ONLY when the bearer's `me()` call fails with `InvalidToken` —
-/// disconnect-after-expiry needs to clear the cache but the bearer is no longer
-/// trusted upstream. Trusting this in the live-bearer path would re-enable the
+/// Renderer-supplied fallback identity for the cached-read and cache DELETE
+/// paths. Consulted ONLY when the bearer's owner lookup fails with
+/// `InvalidToken`, `Network`, `Upstream` or `RateLimited`
+/// (`me_failure_allows_renderer_fallback`) — disconnect-after-expiry needs to
+/// clear the cache but the bearer is no longer trusted upstream. Trusting this in the live-bearer path would re-enable the
 /// cross-origin poisoning that taking the id from the bearer closed.
 #[derive(Debug, Deserialize)]
 pub struct DisconnectFallbackQuery {
@@ -151,6 +152,16 @@ pub struct EntryQuery {
     /// Kitsu id of the show whose entry is read or removed. The route
     /// refuses a value that is not one ([`crate::kitsu_id::require`]).
     pub kitsu_id: String,
+}
+
+/// Query string for clearing one show's cached row locally
+/// (`DELETE /entry/:provider/cached?kitsu_id=…&user_id=…`).
+#[derive(Debug, Deserialize)]
+pub struct ForgetCachedQuery {
+    /// Kitsu id of the show whose cached row is cleared.
+    pub kitsu_id: String,
+    /// The user whose cached list the row is cleared from.
+    pub user_id: String,
 }
 
 /// The live current list entry for one show, returned by

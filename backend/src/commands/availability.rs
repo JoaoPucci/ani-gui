@@ -997,7 +997,7 @@ pub async fn check_availability(
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let recorder = crate::commands::listing_tags::Recorder(state);
+    let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut attempt = ProbeAttempt {
         args,
         mode,
@@ -1031,12 +1031,15 @@ pub async fn check_availability(
             // of the pick keys stamps of its own, each put right from its
             // own listing.
             for (hit, episodes) in p.copies() {
+                let key =
+                    crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
+                        .to_string();
                 crate::commands::numbering_offset::retag_from_listing(
                     state,
-                    &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
-                        .to_string(),
+                    &key,
                     episodes,
                     p.unread_past,
+                    recorder.hearing(&key),
                 );
             }
             if present {

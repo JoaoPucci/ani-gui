@@ -50,6 +50,9 @@ pub use snapshot::Numbering;
 #[path = "numbering_offset_drift.rs"]
 mod drift;
 
+#[path = "numbering_offset_repair.rs"]
+mod repair;
+
 #[cfg(test)]
 #[path = "numbering_offset_drift_flow_test.rs"]
 mod drift_flow_tests;
