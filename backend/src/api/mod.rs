@@ -814,6 +814,10 @@ mod error_envelope_test;
 mod kitsu_search_page_test;
 
 #[cfg(test)]
+#[path = "flags_test.rs"]
+mod flags_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
@@ -879,6 +883,7 @@ mod tests {
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
         }
     }
 
