@@ -12,8 +12,10 @@
  *
  * The app notes what it set, per video ({@link expectCaptions}); a
  * change the video's TextTrackList reports is the viewer's when the
- * app had set the captions and they now differ. Before the start is
- * set, and once the session goes, nothing is. The page asks only
+ * app had set the captions and they now differ — except a track the
+ * browser turned on beside the one the app expects, which the
+ * browser's menu never leaves ({@link extraBeside}). Before the start
+ * is set, and once the session goes, nothing is. The page asks only
  * while its own controls are off: with them on there is no browser
  * menu, and a change the app did not make is hls.js's. The start is
  * set where a session has sidecar tracks, so on a stream that carries

@@ -562,8 +562,10 @@ starting it, and delete it when you find it done.
   and a seek leave the sidecar tracks as the app set them.
 
   Undoing hls.js's change after it happens is not the fix: with the
-  custom controls off, any caption change the app did not make is
-  read as the viewer's pick (`$lib/play/caption-watch`). The fix
+  custom controls off, a caption change the app did not make is read
+  as the viewer's pick (`$lib/play/caption-watch`) — all but a track
+  turned on beside the one the app set, and hls.js switches that one
+  off first. The fix
   belongs in keeping hls.js's own subtitle selection in step with the
   captions menu.
 - **Illustrated brand assets** — post-1.0.
