@@ -979,7 +979,6 @@
 	@media (prefers-reduced-motion: reduce) {
 		.nav-link::after {
 			transform: none;
-			transition: opacity var(--dur-fast) linear;
 		}
 		.nav-link:hover::after,
 		.nav-link.active::after {
@@ -1089,7 +1088,6 @@
 	@media (prefers-reduced-motion: reduce) {
 		.rail-foot::after {
 			transform: none;
-			transition: opacity var(--dur-fast) linear;
 		}
 		.rail-foot:hover::after,
 		.rail-foot.active::after {
