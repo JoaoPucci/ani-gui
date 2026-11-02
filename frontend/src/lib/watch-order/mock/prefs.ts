@@ -19,9 +19,9 @@ export const MOCK_OPTIONS = {
 	wording: STRIP_WORDINGS,
 	cta: ['button', 'stack'],
 	resume: ['chip', 'sentence'],
-	stackHover: ['surface'],
-	footer: ['ends'],
-	stackPosters: ['3']
+	stackHover: ['surface', 'underline', 'border'],
+	footer: ['center', 'axis', 'ends'],
+	stackPosters: ['3', '2', '1', '0']
 } as const;
 
 type Options = typeof MOCK_OPTIONS;
@@ -45,10 +45,10 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	setting: 'segmented',
 	handoff: 'next',
 	wording: 'role',
-	cta: 'button',
+	cta: 'stack',
 	resume: 'chip',
 	stackHover: 'surface',
-	footer: 'ends',
+	footer: 'center',
 	stackPosters: '3'
 };
 export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';

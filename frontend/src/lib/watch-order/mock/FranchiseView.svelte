@@ -42,6 +42,7 @@
 	const items = $derived(railItems(run, prefs.order));
 	const first = $derived(run.entries.find((e) => e.id === run.nameId)!);
 	const onNow = $derived(currentIn(run, prefs.order));
+	// The artwork is the named entry's; Resume goes to the entry being watched.
 	const heroEntry = $derived(mastheadArt(run, prefs.order));
 	const accent = $derived(accentFor(heroEntry.id));
 	const titles = $derived(run.entries.map((e) => e.title));
@@ -85,7 +86,7 @@
 					<a
 						class="btn btn-glass"
 						style:--btn-glow="var(--accent)"
-						href={resolve('/anime/[id]', { id: heroEntry.id })}
+						href={resolve('/anime/[id]', { id: (onNow?.entry ?? first).id })}
 					>
 						<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
 							><path d="M8 5v14l11-7z" fill="currentColor" /></svg
@@ -344,6 +345,7 @@
 		line-height: var(--leading-tight);
 		letter-spacing: var(--tracking-display);
 		overflow-wrap: anywhere;
+		text-wrap: balance;
 	}
 	.actions {
 		display: flex;

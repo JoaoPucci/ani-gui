@@ -3,11 +3,16 @@
  * shows. Part of the mockups' views.
  */
 import type { WatchOrder } from './by-start';
-import { currentIn } from './handoff';
 import type { MockEntry, MockRun } from './types';
 
-/** The entry the masthead's backdrop and poster come from. */
+/**
+ * The entry the masthead's backdrop and poster come from: the one the
+ * franchise is named after, so the artwork beside the name is that
+ * entry's. The entry being watched has its own line under the Resume
+ * button. `order` does not change it: the name comes from the run's
+ * first entry in either order.
+ */
 export function mastheadArt(run: MockRun, order: WatchOrder): MockEntry {
-	const first = run.entries.find((e) => e.id === run.nameId)!;
-	return currentIn(run, order)?.entry ?? first;
+	void order;
+	return run.entries.find((e) => e.id === run.nameId)!;
 }

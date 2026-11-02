@@ -20,19 +20,22 @@
 		entry,
 		episode,
 		variant,
-		label
+		label,
+		bare = false
 	}: {
 		entry: MockEntry;
 		episode: number;
 		variant: 'chip' | 'sentence';
 		label: (e: MockEntry) => string;
+		/** No resting border (the centred footers). */
+		bare?: boolean;
 	} = $props();
 
 	const href = $derived(resolve('/anime/[id]', { id: entry.id }));
 </script>
 
 {#if variant === 'chip'}
-	<a class="chip" {href} style:--accent={accentFor(entry.id)} title={entry.title}>
+	<a class="chip" class:bare {href} style:--accent={accentFor(entry.id)} title={entry.title}>
 		<span class="chip-poster">
 			{#if imageProxyUrl(entry.poster)}
 				<img src={imageProxyUrl(entry.poster)} alt="" loading="lazy" decoding="async" />
@@ -40,8 +43,8 @@
 		</span>
 		<span class="chip-text">
 			<span class="chip-key">{m.watchorder_strip_watching_key()}</span>
-			<span class="chip-title">
-				{label(entry)}
+			<span class="chip-line">
+				<span class="chip-title">{label(entry)}</span>
 				<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span>
 			</span>
 		</span>
@@ -72,9 +75,19 @@
 			border-color var(--dur-fast) var(--ease-out-soft),
 			background-color var(--dur-fast) var(--ease-out-soft);
 	}
-	.chip:hover {
+	.chip:hover,
+	.chip:focus-visible {
 		border-color: var(--bone-300);
 		background: var(--ink-100);
+	}
+	/* Bare: no resting border, the same plate as the poster stack on
+	   hover and focus, so the two read as one pair in the footer. */
+	.chip.bare {
+		border-color: transparent;
+	}
+	.chip.bare:hover,
+	.chip.bare:focus-visible {
+		border-color: transparent;
 	}
 	.chip:focus-visible,
 	.text-btn:focus-visible {
@@ -108,7 +121,15 @@
 		text-transform: uppercase;
 		color: var(--bone-300);
 	}
+	/* The title gives way before the episode does. */
+	.chip-line {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-1);
+		min-inline-size: 0;
+	}
 	.chip-title {
+		min-inline-size: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -117,7 +138,8 @@
 		color: var(--bone-100);
 	}
 	.chip-ep {
-		margin-inline-start: var(--space-1);
+		flex: none;
+		white-space: nowrap;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-size: var(--type-micro);
@@ -128,12 +150,17 @@
 		display: inline-flex;
 		color: var(--bone-300);
 		transform: scaleX(var(--flip, 1));
+		transition:
+			transform var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
 	}
 	:global([dir='rtl']) .chip {
 		--flip: -1;
 	}
-	.chip:hover .arrow {
+	.chip:hover .arrow,
+	.chip:focus-visible .arrow {
 		color: var(--bone-100);
+		transform: scaleX(var(--flip, 1)) translateX(2px);
 	}
 
 	.sentence {

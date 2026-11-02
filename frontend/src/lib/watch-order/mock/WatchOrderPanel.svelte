@@ -95,7 +95,18 @@
 		<div class="switch-row">
 			<MockSwitch
 				{prefs}
-				keys={['order', 'strip', 'placement', 'titles', 'wording', 'cta', 'resume']}
+				keys={[
+					'order',
+					'strip',
+					'placement',
+					'titles',
+					'wording',
+					'cta',
+					'resume',
+					'stackHover',
+					'footer',
+					'stackPosters'
+				]}
 				{onchoose}
 			/>
 		</div>

@@ -116,19 +116,30 @@
 				{/if}
 			</div>
 			{@render column('after')}
-		</div>
 
-		<footer class="trio-footer">
-			{#if watching}
-				<StripWatching
-					entry={watching.entry}
-					episode={watching.episode}
-					variant={prefs.resume}
-					{label}
-				/>
-			{/if}
-			<StripFranchiseLink {run} {id} variant={prefs.cta} />
-		</footer>
+			<footer class="trio-footer footer-{prefs.footer}" class:alone={!watching}>
+				{#if watching}
+					<div class="slot slot-watching">
+						<StripWatching
+							entry={watching.entry}
+							episode={watching.episode}
+							variant={prefs.resume}
+							{label}
+							bare={prefs.footer !== 'ends'}
+						/>
+					</div>
+				{/if}
+				<div class="slot slot-franchise">
+					<StripFranchiseLink
+						{run}
+						{id}
+						variant={prefs.cta}
+						hover={prefs.stackHover}
+						limit={Number(prefs.stackPosters)}
+					/>
+				</div>
+			</footer>
+		</div>
 	</div>
 </section>
 
@@ -143,6 +154,10 @@
 		padding: var(--space-5) var(--space-5) var(--space-4);
 		border-radius: var(--radius-card);
 		background: color-mix(in oklab, var(--ink-050) 72%, transparent);
+		/* The footer's arrangements ask the band's width. Not the
+		   footer's own: a size container lays its contents out on their
+		   own, which would undo the axis arrangement's subgrid. */
+		container: trio-band / inline-size;
 	}
 	.band > .eyebrow {
 		margin-block-end: var(--space-4);
@@ -318,21 +333,115 @@
 		color: color-mix(in oklab, var(--bone-100) 90%, transparent);
 	}
 
-	/* The watching line at the start, the franchise link at the end. */
-	/* wrap-reverse: when the two do not fit one row, the franchise link
-	   (last in reading order) takes the upper row. */
+	/* The footer: the line for the entry being watched and the way to
+	   the franchise page, under a hairline, in one of three
+	   arrangements. It is the grid's fourth row, so the `axis`
+	   arrangement can sit on the strip's own columns. */
 	.trio-footer {
+		grid-column: 1 / -1;
+		grid-row: 4;
+		margin-block-start: var(--space-5);
+		padding-block-start: var(--space-4);
+		border-block-start: 1px solid var(--ink-200);
+	}
+
+	/* ends: the second round's, the watching line at the start and the
+	   franchise link at the end. wrap-reverse: when the two do not fit
+	   one row, the franchise link (last in reading order) takes the
+	   upper row. */
+	.footer-ends {
 		display: flex;
 		flex-wrap: wrap-reverse;
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-3) var(--space-5);
-		margin-block-start: var(--space-5);
-		padding-block-start: var(--space-4);
-		border-block-start: 1px solid var(--ink-200);
 	}
-	.trio-footer > :global(:last-child) {
+	.footer-ends .slot-franchise {
 		margin-inline-start: auto;
+	}
+
+	/* center: the two side by side in the middle, at one width, the
+	   wider one's (capped); one above the other where a row cannot
+	   hold both. */
+	.footer-center {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(0, 24rem);
+		justify-content: center;
+		align-items: center;
+		gap: var(--space-4) var(--space-6);
+	}
+	@container trio-band (max-width: 50rem) {
+		.footer-center {
+			grid-auto-flow: row;
+		}
+	}
+
+	/* axis: on the strip's own columns, each against the centre's
+	   hairlines, the watching card under the entries before and the
+	   franchise link under the entries after, at one width. */
+	.footer-axis {
+		display: grid;
+		grid-template-columns: subgrid;
+		align-items: center;
+		row-gap: var(--space-4);
+	}
+	.footer-axis .slot-watching {
+		grid-column: 1;
+		justify-self: end;
+	}
+	.footer-axis .slot-franchise {
+		grid-column: 3;
+		justify-self: start;
+	}
+	.footer-axis.alone .slot-franchise {
+		grid-column: 1 / -1;
+		justify-self: center;
+	}
+	.footer-axis .slot {
+		inline-size: min(100%, 22rem);
+	}
+
+	/* Where the strip's columns are too narrow to hold them, the axis
+	   arrangement falls back to the centred one, one above the other. */
+	@container trio-band (max-width: 56rem) {
+		.footer-axis {
+			grid-template-columns: minmax(0, 24rem);
+			justify-content: center;
+		}
+		.footer-axis .slot-watching,
+		.footer-axis .slot-franchise {
+			grid-column: 1;
+			justify-self: stretch;
+			inline-size: auto;
+		}
+	}
+
+	/* In the centred arrangements each item fills its slot, so the two
+	   read as a matched pair. */
+	.footer-center .slot,
+	.footer-axis .slot {
+		display: grid;
+		min-inline-size: 0;
+	}
+	.footer-center .slot > :global(*),
+	.footer-axis .slot > :global(*) {
+		inline-size: 100%;
+		max-inline-size: none;
+		margin: 0;
+		box-sizing: border-box;
+	}
+	/* Alone, the stack keeps its own width, so its arrow stays by its
+	   text. */
+	.footer-center.alone,
+	.footer-axis.alone {
+		grid-auto-columns: auto;
+		grid-template-columns: auto;
+		justify-content: center;
+	}
+	.footer-center.alone .slot > :global(*),
+	.footer-axis.alone .slot > :global(*) {
+		inline-size: auto;
 	}
 	.sr-only {
 		position: absolute;

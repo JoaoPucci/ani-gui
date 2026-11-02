@@ -60,7 +60,7 @@ export interface FranchiseSummary {
 	readonly films: number;
 	readonly sides: number;
 	readonly recaps: number;
-	/** Up to three posters to fan out, from different parts of the franchise. */
+	/** Up to three entries with a poster to fan out, from different parts of the franchise. */
 	readonly posters: readonly MockEntry[];
 }
 
@@ -74,7 +74,7 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 	];
 	const posters: MockEntry[] = [];
 	for (const c of candidates) {
-		if (c && !posters.includes(c) && posters.length < 3) posters.push(c);
+		if (c && c.poster !== null && !posters.includes(c) && posters.length < 3) posters.push(c);
 	}
 	return {
 		total:
