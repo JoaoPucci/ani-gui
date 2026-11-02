@@ -377,7 +377,7 @@ then uses the defaults.
 To see what a running backend resolved, read
 `GET <api base>/api/flags`. It returns every declared flag's value,
 and `settled: true` once the launch fetch has finished. The backend
-logs the outcome at `info` under the `flags` target, including whether
+logs the outcome at `info` as `remote flags settled`, including whether
 the values came from the file, the cache or the defaults.
 
 ## Code style

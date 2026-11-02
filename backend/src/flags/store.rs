@@ -133,7 +133,7 @@ pub async fn refresh(store: &FlagStore, client: &reqwest::Client, source: &Sourc
     };
     let doc = fetched.as_ref().or(cached.as_ref().map(|e| &e.flags));
     store.publish(doc, true);
-    tracing::info!(target: "flags", origin, flags = ?store.current(), "remote flags settled");
+    tracing::info!(origin, flags = ?store.current(), "remote flags settled");
     if let (Some(flags), Some(path)) = (fetched, &source.cache_path) {
         let entry = CacheEntry {
             fetched_at: now,

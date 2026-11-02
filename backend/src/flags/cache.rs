@@ -80,7 +80,7 @@ pub async fn read(path: &Path) -> Option<CacheEntry> {
 /// logged and otherwise ignored: the cache is a convenience.
 pub async fn write(path: &Path, entry: &CacheEntry) {
     if let Err(error) = try_write(path, entry).await {
-        tracing::warn!(target: "flags", %error, path = %path.display(), "could not cache the flags file");
+        tracing::warn!(%error, path = %path.display(), "could not cache the flags file");
     }
 }
 
