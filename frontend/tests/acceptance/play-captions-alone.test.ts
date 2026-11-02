@@ -20,7 +20,11 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { setLocale } from '../../src/lib/paraglide/runtime';
 import { storedCaption } from '../../src/lib/play/caption-choice';
 import { playerVideo, playerVideoInSlot } from './player-video';
-import { installBrowserTrackSelection, paintsCaptions } from './browser-track-selection';
+import {
+	installBrowserTrackSelection,
+	paintsCaptions,
+	setLoadOrder
+} from './browser-track-selection';
 import { m } from '../../src/lib/paraglide/messages';
 import { tick } from 'svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
@@ -251,6 +255,44 @@ describe('the track that shows is drawn', () => {
 		const video = await mountAt('session-1', '1');
 		await pick('Arabic');
 		expect(showing(video)).toBe('العربية');
+		expect(paintsCaptions(video)).toBe(true);
+	});
+});
+
+// Nothing in the browser orders the start's file arriving against its
+// own track selection. Whichever comes first, the start shows alone,
+// is drawn, and nothing the browser did is remembered as the viewer's
+// pick.
+describe.each([
+	['the selection runs before the start file arrives', 'selection-first'],
+	['the start file arrives before the selection runs', 'load-first']
+] as const)('when %s', (_name, order) => {
+	beforeEach(() => setLoadOrder(order));
+	afterEach(() => setLoadOrder('selection-first'));
+
+	it('the start shows alone and is drawn', async () => {
+		handlers();
+		const video = await mountAt('session-1', '1');
+		await browserSettles();
+		expect(showing(video)).toBe('English');
+		expect(paintsCaptions(video)).toBe(true);
+	});
+
+	it("the start shows alone, is drawn, and is no pick with the browser's own controls", async () => {
+		handlers(false);
+		const video = await mountAt('session-1', '1');
+		await browserSettles();
+		expect(showing(video)).toBe('English');
+		expect(paintsCaptions(video)).toBe(true);
+		expect(storedCaption(KITSU_ID)).toBeUndefined();
+	});
+
+	it('the next episode starts alone and drawn', async () => {
+		handlers();
+		const video = await mountAt('session-1', '1');
+		await nextEpisode(video, 'session-2', '2');
+		await browserSettles();
+		expect(showing(video)).toBe('English');
 		expect(paintsCaptions(video)).toBe(true);
 	});
 });

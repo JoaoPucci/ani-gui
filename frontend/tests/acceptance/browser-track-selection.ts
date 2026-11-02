@@ -31,9 +31,9 @@
 // ({@link paintsCaptions}). The browser fetches a track's file once
 // the track is joined and not disabled, and fires `load` on its
 // element when the file is in. Nothing orders that against the
-// selection, which runs with no fetch to wait on, but a fetch through
-// the proxy takes far longer than a zero-delay task; the model fires
-// it after the selection.
+// selection, which runs with no fetch to wait on: a fetch through the
+// proxy usually takes far longer than a zero-delay task, but the
+// model plays both orders ({@link setLoadOrder}).
 //
 // The model turns on the first track left alone where Chromium may
 // prefer the user's language; scenarios assert how many tracks show,
@@ -45,18 +45,26 @@
 // it on — a mode set before the track joins is the script's, but not
 // a change to a joined track.
 //
-// What the model cannot show: happy-dom builds a new TextTrackList on
-// every read of `textTracks`, so the change event the browser fires
-// after its selection never reaches the page's listener here. Whether
-// the start joins already showing — which keeps the selection from
-// changing anything the page would have to hear — is held by the
-// unit tests in sidecar-tracks.dom.test.ts.
+// happy-dom builds a new TextTrackList on every read of `textTracks`,
+// so a listener on one never hears anything. Here each video keeps one
+// list, which reads the video's tracks afresh, and the browser fires
+// `change` on it a task after any change to a joined track's mode —
+// the script's or the selection's — as Chromium does.
 
 interface Installed {
 	uninstall(): void;
 }
 
 let paints: (video: Node) => boolean = () => false;
+
+type LoadOrder = 'selection-first' | 'load-first';
+let loadOrder: LoadOrder = 'selection-first';
+
+/** Whether a track's file arrives after the browser's selection, as a
+ *  fetch through the proxy usually does, or before it. */
+export function setLoadOrder(order: LoadOrder): void {
+	loadOrder = order;
+}
 
 /** Whether the video draws the cues of the track showing: a track
  *  shows, and the flag is up. */
@@ -69,6 +77,50 @@ export function installBrowserTrackSelection(): Installed {
 	const build = descriptor?.get;
 	if (!build) throw new Error('happy-dom has no HTMLTrackElement.track getter to stabilise');
 	const appendDescriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'appendChild');
+	const listDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'textTracks');
+	const freshList = listDescriptor?.get;
+	if (!freshList)
+		throw new Error('happy-dom has no HTMLMediaElement.textTracks getter to stabilise');
+
+	/** Each video's one TextTrackList: events on it, tracks read afresh. */
+	const lists = new WeakMap<HTMLMediaElement, TextTrackList>();
+	function listOf(video: HTMLMediaElement): TextTrackList {
+		let list = lists.get(video);
+		if (!list) {
+			const events = new EventTarget();
+			const fresh = () => freshList!.call(video) as TextTrackList;
+			list = new Proxy(events, {
+				get(target, prop) {
+					if (
+						prop === 'addEventListener' ||
+						prop === 'removeEventListener' ||
+						prop === 'dispatchEvent'
+					)
+						return (target[prop] as (...a: unknown[]) => unknown).bind(target);
+					const now = fresh();
+					const value = Reflect.get(now, prop, now);
+					return typeof value === 'function' ? value.bind(now) : value;
+				},
+				has(_target, prop) {
+					return Reflect.has(fresh(), prop);
+				}
+			}) as unknown as TextTrackList;
+			lists.set(video, list);
+		}
+		return list;
+	}
+
+	/** `change` on the video's list, once per task however many modes
+	 *  changed in it. */
+	const changePending = new WeakSet<HTMLMediaElement>();
+	function scheduleChange(video: HTMLMediaElement) {
+		if (changePending.has(video)) return;
+		changePending.add(video);
+		setTimeout(() => {
+			changePending.delete(video);
+			listOf(video).dispatchEvent(new Event('change'));
+		}, 0);
+	}
 	const append = appendDescriptor?.value as Node['appendChild'];
 
 	const owned = new WeakMap<HTMLTrackElement, TextTrack>();
@@ -100,11 +152,13 @@ export function installBrowserTrackSelection(): Installed {
 		}
 		// Only a change moves the flag: a selection that finds the start
 		// already on leaves it where it was.
-		if (changed)
+		if (changed) {
 			flagUp.set(
 				video,
 				tracks.some((t) => t.track.mode === 'showing')
 			);
+			scheduleChange(video as HTMLMediaElement);
+		}
 		for (const t of tracks) fetchIfWanted(t.el);
 	}
 
@@ -141,6 +195,7 @@ export function installBrowserTrackSelection(): Installed {
 					if (next === mode) return;
 					mode = next;
 					const video = el.parentNode;
+					if (video instanceof HTMLMediaElement) scheduleChange(video);
 					if (!browserActing && video instanceof HTMLMediaElement) {
 						setByScript.add(built);
 						flagUp.set(
@@ -157,12 +212,28 @@ export function installBrowserTrackSelection(): Installed {
 		return track;
 	}
 
-	/** The selection runs once per batch of tracks, a task later. */
+	/** The selection runs once per batch of tracks, a task later — or,
+	 *  for {@link setLoadOrder} `load-first`, after the files of the
+	 *  tracks already on have arrived. */
 	function schedule(video: HTMLMediaElement) {
 		if (pending.has(video)) return;
 		pending.add(video);
-		setTimeout(() => select(video), 0);
+		if (loadOrder === 'load-first') {
+			setTimeout(() => {
+				for (const t of joined(video)) fetchIfWanted(t.el);
+				setTimeout(() => setTimeout(() => select(video), 0), 0);
+			}, 0);
+		} else {
+			setTimeout(() => select(video), 0);
+		}
 	}
+
+	Object.defineProperty(HTMLMediaElement.prototype, 'textTracks', {
+		configurable: true,
+		get(this: HTMLMediaElement) {
+			return listOf(this);
+		}
+	});
 
 	Object.defineProperty(Node.prototype, 'appendChild', {
 		configurable: true,
@@ -177,6 +248,9 @@ export function installBrowserTrackSelection(): Installed {
 	return {
 		uninstall() {
 			paints = () => false;
+			loadOrder = 'selection-first';
+			if (listDescriptor)
+				Object.defineProperty(HTMLMediaElement.prototype, 'textTracks', listDescriptor);
 			if (descriptor) Object.defineProperty(HTMLTrackElement.prototype, 'track', descriptor);
 			if (appendDescriptor) Object.defineProperty(Node.prototype, 'appendChild', appendDescriptor);
 		}

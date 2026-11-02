@@ -136,6 +136,21 @@ describe('the start shows alone', () => {
 			};
 			return el as unknown as HTMLElement;
 		}) as typeof document.createElement);
+		const onChange: Array<() => void> = [];
+		// Not enumerable: the list still compares as its tracks.
+		Object.defineProperties(tracks, {
+			addEventListener: {
+				value(type: string, listener: () => void) {
+					if (type === 'change') onChange.push(listener);
+				}
+			},
+			removeEventListener: {
+				value(type: string, listener: () => void) {
+					const at = onChange.indexOf(listener);
+					if (type === 'change' && at !== -1) onChange.splice(at, 1);
+				}
+			}
+		});
 		const v = {
 			textTracks: tracks,
 			appendChild(el: { track: FakeTrack }) {
@@ -149,7 +164,10 @@ describe('the start shows alone', () => {
 			onLoad.delete(label);
 			for (const l of listeners) l();
 		};
-		return { v: v as unknown as HTMLVideoElement, tracks, joined, changed, load };
+		const change = () => {
+			for (const l of [...onChange]) l();
+		};
+		return { v: v as unknown as HTMLVideoElement, tracks, joined, changed, load, change };
 	}
 
 	afterEach(() => {
@@ -211,6 +229,41 @@ describe('the start shows alone', () => {
 		changed.length = 0;
 		load('Español');
 		expect(changed).toEqual([]);
+	});
+
+	// The browser's selection can run after the start was set again —
+	// nothing orders the start's file against it — and then turns on a
+	// second track beside the start. It is switched back off.
+	it('a track the browser turns on beside the start is switched back off', () => {
+		const { v, tracks, change } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es');
+		tracks[0].mode = 'showing';
+		change();
+		expect(tracks.map((t) => t.mode)).toEqual(['disabled', 'showing']);
+	});
+
+	it('a track the viewer picked shows on, and is kept alone in turn', () => {
+		const { v, tracks, change } = fakeVideo();
+		attachSidecarTracks(v, [en, es], 'es');
+		// The viewer picks English in the browser's own menu.
+		tracks[1].mode = 'disabled';
+		tracks[0].mode = 'showing';
+		expect(noteCaptionChange(v, v.textTracks)).toBe(0);
+		change();
+		expect(tracks.map((t) => t.mode)).toEqual(['showing', 'disabled']);
+		tracks[1].mode = 'showing';
+		change();
+		expect(tracks.map((t) => t.mode)).toEqual(['showing', 'disabled']);
+	});
+
+	it('once the tracks are going, a change touches nothing', () => {
+		const { v, tracks, change } = fakeVideo();
+		const remove = attachSidecarTracks(v, [en, es], 'es');
+		const attached = [...tracks];
+		remove();
+		attached[0].mode = 'showing';
+		change();
+		expect(attached[0].mode).toBe('showing');
 	});
 
 	it('the start is what the app expects, so the browser showing it is no pick', () => {
