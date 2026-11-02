@@ -1,8 +1,8 @@
 /**
  * The launch's remote flags, as the renderer sees them.
  *
- * The backend decides them within two seconds of starting and never
- * changes them in the session (backend/src/flags). The Electron main
+ * The backend decides them within two seconds of starting its refresh
+ * and never changes them in the session (backend/src/flags). The Electron main
  * process asks for them before it opens the window and hands them to
  * the preload, so they are on `window.aniGui.flags` before the first
  * page renders — this module only reads them. A window opened without

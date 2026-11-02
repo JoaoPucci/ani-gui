@@ -320,7 +320,9 @@ git push -u origin flags
 ```
 
 Until the branch exists, every launch gets a 404 and uses the
-defaults, which is also what an empty `flags` object does.
+defaults, which is also what an empty `flags` object does, and each
+session retries the file after 3, 10 and 30 minutes and then hourly.
+Create the branch before the first release that carries this.
 
 **The format.** One JSON object with a `flags` object inside. A kill
 switch takes `false`; a fallback takes the name of one of the earlier
@@ -381,7 +383,8 @@ its cached copy for up to seven days, then uses the defaults.
 
 To see what a running backend decided, read
 `GET <api base>/api/flags`. It returns every declared flag's value and
-where they came from (`origin`: `file`, `cache` or `defaults`). The
+where they came from (`origin`: `file`, `cache` or `defaults`, or
+`test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the
 same origin. The app's window gets the same values from the preload, as
 `window.aniGui.flags`.

@@ -2,16 +2,16 @@
 
 // The launch's remote flags, read once from the backend before the
 // app's window opens (see backend/src/flags). The backend decides them
-// within two seconds of starting and never changes them in the
-// session; `/api/flags` answers once they are decided. The window is
+// within two seconds of starting its refresh and never changes them in
+// the session; `/api/flags` answers once they are decided. The window is
 // opened with them (lib/window-args.cjs), so the renderer has its
 // flags before its first page renders.
 
-/** The longest the main process waits for `/api/flags`. The backend
- *  answers within its own limit (three seconds from its start, two
- *  of them the cap on the file); this is the bound on a backend that
- *  does not answer at all, and is longer than that limit so it never
- *  cuts a decision short. */
+/** The longest the main process waits for `/api/flags`. The route
+ *  waits at most three seconds for the decision before deciding the
+ *  defaults itself (backend/src/flags/store.rs); this is the bound on
+ *  a backend that does not answer at all, and is longer than the
+ *  route's own so it never cuts an answer short. */
 const FLAGS_WAIT_MS = 4000;
 
 /**

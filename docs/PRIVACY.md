@@ -165,7 +165,8 @@ ani-gui keeps the following on your computer only:
 
 Most outbound traffic happens only when you take an action that
 requires it. The exceptions are two requests made on every launch,
-the update check and the remote flags file (below). For each kind of
+the update check and the remote flags file (below), and the flags
+file's retries later in a session whose launch request failed. For each kind of
 request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
@@ -291,8 +292,9 @@ request:
   information is sent.
 
 There is no analytics or telemetry. Apart from the two launch requests
-above, which carry nothing about you or how you use the app, ani-gui
-does not "phone home" on launch or on any other schedule.
+above, and the flags file's retries after a failed one, none of which
+carry anything about you or how you use the app, ani-gui does not
+"phone home" on launch or on any other schedule.
 
 ## Connecting and disconnecting an account
 

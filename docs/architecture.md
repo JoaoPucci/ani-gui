@@ -313,21 +313,27 @@ signature check proposed for the in-app updater (#342) and the
 notification center (#351).
 
 **Decided once per launch, behind the splash.** The flags are decided
-once, within two seconds of the backend starting, and do not change for
-the rest of the session.
+once, within two seconds of the backend starting its refresh (just
+after its state is built), and do not change for the rest of the
+session. A cache read slower than that decides when it ends.
 
 1. The Electron main process puts up a splash before it spawns the
    backend.
 2. The backend starts the fetch in a task of its own as soon as its
-   state is built. If the file arrives within two seconds (the cap), it
-   decides the flags. Otherwise the cached copy decides them (below), or
-   the defaults when there is none.
+   state is built, and reads the cached copy beside it. If the file
+   arrives within two seconds of that start (the cap), it decides the
+   flags. Otherwise the cached copy decides them (below), or the
+   defaults when there is none.
 3. Once the backend has announced itself, the main process asks
    `GET /api/flags`, which answers when the flags are decided. It opens
    the app's window with them, so the preload puts them on
    `window.aniGui.flags` before the first page renders. The main process
    waits at most four seconds for that answer, and opens the window
-   without flags (every flag at its default) if none comes.
+   without flags if none comes. The renderer then runs on every flag's
+   default while the backend may have decided otherwise, for the whole
+   session. The preload marks that case with `window.aniGui.flagsOrigin`
+   set to null, so a renderer consumer that must agree with the backend
+   can ask `GET /api/flags` itself.
 4. The splash closes once the app's window has shown.
 
 The store accepts one decision and refuses every later one. A backend
@@ -338,13 +344,15 @@ does not wait and is for diagnostics only.
 
 **The cap bounds the wait, not the fetch.** After the cap, the fetch
 goes on in the background. Its whole request, connect to body, has 45
-seconds: the file is tiny, so the time goes on DNS, the TLS handshake
-and round trips, and 45 seconds lets a link with multi-second latency
-and some packet loss finish them. When the file arrives it is cached for
+seconds, 30 of which may go on connecting (DNS, TCP and TLS): the file
+is tiny, so the time goes on the connection and round trips, and a
+lossy link retransmitting its first packets is past ten seconds before
+TLS starts. The flags use a client of their own for that. When the file arrives it is cached for
 the next launch. When that attempt fails, the file is fetched again
 later in the session, after 3, 10 and 30 minutes and then hourly, until
-one attempt succeeds and is cached. None of this changes the running
-session's flags. Worst case: one launch delay; never stuck unless the
+one attempt succeeds and is cached. A 404 counts as a failed attempt,
+so until the `flags` branch exists every session retries on that
+schedule. None of this changes the running session's flags. Worst case: one launch delay; never stuck unless the
 file can't be downloaded at all during an entire session. A connection
 that always misses the cap still gets a switch-off on its next launch,
 as long as the file arrives at any point during the previous session.
