@@ -15,7 +15,7 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import { settle } from '$lib/transitions/settle';
+	import { settle } from '$lib/motion/settle';
 	import MetaLine from './MetaLine.svelte';
 	import { metaLine } from './meta';
 	import type { MockEntry, MockRun } from './types';
