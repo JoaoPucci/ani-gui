@@ -63,12 +63,19 @@ async function isSplash(app: ElectronApplication, page: Page): Promise<boolean> 
 
 /** The app's window — not the splash, which opens first and closes
  *  once the app's window shows. Specs use this where they would use
- *  `app.firstWindow()`, which would hand them the splash. */
-export async function appWindow(app: ElectronApplication): Promise<Page> {
-	for (const page of app.windows()) {
-		if (!(await isSplash(app, page))) return page;
+ *  `app.firstWindow()`, which would hand them the splash. Polls the
+ *  open windows rather than waiting on the `window` event, which a
+ *  window opened during the first scan would slip past; a page that
+ *  closes while it is checked is the splash going away. */
+export async function appWindow(app: ElectronApplication, timeoutMs = 60_000): Promise<Page> {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		for (const page of app.windows()) {
+			if (page.isClosed()) continue;
+			const splash = await isSplash(app, page).catch(() => true);
+			if (!splash) return page;
+		}
+		if (Date.now() > deadline) throw new Error(`no app window within ${timeoutMs} ms`);
+		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
-	return app.waitForEvent('window', {
-		predicate: async (page) => !(await isSplash(app, page))
-	});
 }

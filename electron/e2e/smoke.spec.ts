@@ -35,7 +35,7 @@ test.beforeAll(() => {
  * launched Electron app, BEFORE its first window starts loading —
  * critical because the renderer fires its initial `fetch()` calls
  * (history, trending, top-rated) immediately on mount. Routes set
- * via `page.route()` after `firstWindow()` resolves race those
+ * via `page.route()` after `appWindow()` resolves race those
  * requests and miss the first batch, leaving real-network responses
  * visible to the page. Setting them on `context.route()` (visible to
  * any page in the context) avoids the race.
