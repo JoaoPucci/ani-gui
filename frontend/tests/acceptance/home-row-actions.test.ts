@@ -223,7 +223,9 @@ for (const style of ['inline', 'band'] as const) {
 				expect(words.hidden, label).toBe(false);
 				// The width the open label needs is held by the slot, so
 				// opening moves nothing beside it. It is drawn from an
-				// attribute, not a second copy of the words.
+				// attribute, not a second copy of the words: the slot's text
+				// is the label once, so no rendered duplicate is read out
+				// or found by a search of the page.
 				expect(slot.dataset.label, label).toBe(label);
 				expect(slot.textContent?.trim(), label).toBe(label);
 			}

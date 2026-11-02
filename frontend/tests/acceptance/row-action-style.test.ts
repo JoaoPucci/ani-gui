@@ -35,9 +35,14 @@ describe('a row action', () => {
 	});
 
 	it('is set in the eyebrow’s type', () => {
+		// Declared once, on the slot, for the button and the room held
+		// for it alike.
+		const slot = rule('.row-action-slot');
+		expect(slot).toContain('--ra-type-size: 0.8125rem;');
+		expect(slot).toContain('--ra-tracking: 0.14em;');
 		const base = rule('.row-action');
-		expect(base).toContain('font-size: 0.8125rem;');
-		expect(base).toContain('letter-spacing: 0.14em;');
+		expect(base).toContain('font-size: var(--ra-type-size);');
+		expect(base).toContain('letter-spacing: var(--ra-tracking);');
 	});
 });
 
@@ -67,6 +72,34 @@ describe('an icon-shaped row action', () => {
 		const sizer = rule(`${ICON}::after`);
 		expect(sizer).toContain('content: attr(data-label);');
 		expect(sizer).toContain('visibility: hidden;');
+		// `inline-size: 100%` is the reserve only because the slot is
+		// the button's containing block.
+		expect(rule(ICON)).toContain('position: relative;');
+	});
+
+	it('holds exactly the open pill’s width: the room and the pill share every measure', () => {
+		// The sizer sets the words as the button does. A type value
+		// changed on one side only would clip the open label's last
+		// letter, or leave dead room after it.
+		const sizer = rule(`${ICON}::after`);
+		const base = rule('.row-action');
+		for (const prop of [
+			'font-family',
+			'font-size',
+			'font-weight',
+			'letter-spacing',
+			'text-transform'
+		]) {
+			const decl = new RegExp(`\\n\\s*${prop}: ([^;]+);`);
+			const inButton = decl.exec(base)?.[1];
+			expect(inButton, prop).toMatch(/^var\(--ra-/);
+			expect(decl.exec(sizer)?.[1], prop).toBe(inButton);
+		}
+		// The icon's width in the reserve is the size the icon is drawn
+		// at, from one constant.
+		expect(SOURCE).toContain('size={ICON_PX}');
+		expect(SOURCE).toContain('style="--ra-icon: {ICON_PX}px"');
+		expect(STYLE).not.toMatch(/--ra-icon:/);
 	});
 
 	it('opens to its label on hover and on keyboard focus alike', () => {
@@ -74,6 +107,26 @@ describe('an icon-shaped row action', () => {
 		expect(open).toContain('inline-size: 100%;');
 		expect(rule(`${ICON} .row-action:is(:hover, :focus-visible) .row-action-label`)).toContain(
 			'opacity: 1;'
+		);
+	});
+
+	it('shows its tone’s colours on keyboard focus, as on hover', () => {
+		// Focus is when an icon-shaped action names itself, so a
+		// keyboard user sees Clear history's warning before pressing it.
+		expect(STYLE).toContain(
+			"[data-shape='icon'] .row-action:focus-visible:not([aria-disabled='true']) {"
+		);
+		expect(STYLE).toContain(
+			"[data-shape='icon'] .row-action.quiet:focus-visible:not([aria-disabled='true']) {"
+		);
+	});
+
+	it('lets its label go before the closing edge reaches the words', () => {
+		// At rest the label's transition is the closing one: it fades in
+		// half the hover time, so the shrinking edge never cuts through
+		// words still on show.
+		expect(rule(`${ICON} .row-action-label`)).toContain(
+			'transition: opacity calc(var(--dur-fast) / 2) var(--ease-out-soft);'
 		);
 	});
 
@@ -102,12 +155,14 @@ describe('an icon-shaped row action', () => {
 });
 
 describe('the clear-history glyph', () => {
-	it('is a clock whose rim gives way to an ×', () => {
+	it('is a clock whose rim gives way to an ×, large enough to read at 14px', () => {
 		const icon = readFileSync(resolve(process.cwd(), 'src/lib/components/Icon.svelte'), 'utf8');
 		const at = icon.indexOf("name === 'clear-history'");
 		expect(at).toBeGreaterThan(-1);
 		const glyph = icon.slice(at, icon.indexOf('</svg>', at));
 		expect(glyph).toContain('d="M12.94 18.24 A7.5 7.5 0 1 1 18.24 12.94"');
-		expect(glyph).toContain('d="M15.5 15.5 L20.5 20.5"');
+		// 6.5 units: about 3.8px at 14px. At 5 units the × read as a speck.
+		expect(glyph).toContain('d="M14.5 14.5 L21 21"');
+		expect(glyph).toContain('d="M21 14.5 L14.5 21"');
 	});
 });
