@@ -11,17 +11,22 @@
 //     `script-src 'self'` plus the hash of SvelteKit's inline bootstrap
 //     script, which changes with every build and only the build knows.
 //     It also says `object-src 'none'` and `base-uri 'none'`.
-//   - This one, sent as a response header: every fetch directive except
-//     the script ones. It has to be written at run time because it
-//     names the backend's loopback lanes, and the kernel assigns their
-//     ports at every start (backend/src/lanes.rs; the handshake in
-//     lib/backend-handshake.cjs announces them).
+//   - This one, sent as a response header: `default-src 'none'` and every
+//     fetch directive the app needs. It has to be written at run time
+//     because it names the backend's loopback lanes, and the kernel
+//     assigns their ports at every start (backend/src/lanes.rs; the
+//     handshake in lib/backend-handshake.cjs announces them).
 //
-// This half never names a script source and has no `default-src`, so it
-// can neither widen nor narrow what the meta allows to run; scripts are
-// the meta's alone. No `'unsafe-eval'` anywhere, in either build: the
-// loader's Lottie runs on lottie-web's light build, which has no
-// expression engine.
+// `default-src 'none'` refuses whatever the header does not name;
+// Chromium rules some loads (`<link rel=prefetch>`) by it alone. Its
+// script rule, `'self' 'unsafe-inline'`, only keeps that default off
+// scripts: the meta's script-src carries a hash, which turns
+// 'unsafe-inline' off in that policy, and a script has to pass both, so
+// what runs is the meta's rule. That leans on every HTML document the
+// app serves carrying the meta; the bundle's only one is index.html,
+// which the SPA fallback serves for every route. No `'unsafe-eval'`
+// anywhere, in either build: the loader's Lottie runs on lottie-web's
+// light build, which has no expression engine.
 //
 // Packaged builds send it on every response of the `app://` protocol
 // handler (`policedResponse`); development appends it to the Vite dev
@@ -99,6 +104,10 @@ function rendererPolicy({ backend, devOrigin }) {
   const dev = typeof devOrigin === "string" ? devOriginFrom(devOrigin) : null;
   const hmr = dev ? dev.replace(/^http/, "ws") : null;
   const directives = [
+    // Whatever is not named below.
+    ["default-src", ["'none'"]],
+    // Narrowed to 'self' plus the bootstrap's hash by the bundle's meta.
+    ["script-src", ["'self'", "'unsafe-inline'"]],
     // Bundled CSS. Vite injects each module's CSS as a <style> in dev.
     ["style-src", ["'self'", ...(dev ? ["'unsafe-inline'"] : [])]],
     // Style attributes: SvelteKit's announcer and nothing else. Svelte
