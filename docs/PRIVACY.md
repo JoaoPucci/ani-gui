@@ -160,6 +160,9 @@ ani-gui keeps the following on your computer only:
   example the database is momentarily unavailable), the rows are left
   on disk. Reconnecting the **same** account and re-syncing replaces
   them; otherwise they remain until you delete the local database.
+- **Window size** — the size your desktop gave the app's window when it
+  maximized it, per display, in `window-geometry.json` under the app's
+  user-data directory, so the next launch opens at that size.
 - **Remote flags cache** — the last copy of the project's remote flags
   file the app fetched (see below), and when it was fetched, in
   `remote-flags.json` under your OS's cache directory. It holds only

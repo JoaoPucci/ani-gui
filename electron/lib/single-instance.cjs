@@ -52,8 +52,8 @@ function revealWindow(win) {
  *     macOS after the last window closed (window-all-closed quits
  *     everywhere else): a window is opened against the boot's backend,
  *     one at a time. A reopen that fails is logged and its window
- *     discarded — on screen, frameless and blank, it would have
- *     nothing on it to close it by — and the next launch tries again.
+ *     discarded — frameless, with no page, it would have nothing
+ *     on it to close it by — and the next launch tries again.
  *
  * Returns what it did: "revealed", "reopened" or "none".
  */

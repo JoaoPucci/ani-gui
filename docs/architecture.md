@@ -349,13 +349,17 @@ three-second limit below.
    splash closes. The two are never on screen competing, so it does
    not matter that native Wayland ignores always-on-top. A splash that
    never paints, or is minimized, holds the window no longer than that
-   second. On Wayland the compositor gives no work area until a window
-   is on screen, so the hidden window paints at the full screen size
-   and takes its maximized size (below the top bar) from the
-   compositor as it appears: a one-time height correction, measured at
-   up to about 85 ms after the window appears on GNOME. Measured on
-   GNOME under Wayland and on Xvfb; X11 with a real window manager and
-   Windows were not measured.
+   second. The hidden window is made at the size the desktop granted
+   the last time it maximized the window on the same display (by id,
+   size and scale), kept in `window-geometry.json` under the app's
+   user data, else at the work area. On Wayland, which reports no work
+   area until a window is on screen, that remembered size is what lets
+   the window appear at its final size: only the first launch on a
+   display, or after its size, scale or top bar changes, paints at the
+   full screen and takes a one-time height correction from the
+   compositor as it appears. Measured on GNOME under Wayland and on
+   Xvfb; X11 with a real window manager and Windows were not
+   measured.
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate
 a frame at a time, beside a reel title and a frame counter

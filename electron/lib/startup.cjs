@@ -11,9 +11,9 @@
  * before the first page finishes loading, and the window that
  * navigation lands in still works, so that rejection is logged and
  * dropped. Every other rejection — a refused connection, a renderer
- * that crashed mid-load (ERR_FAILED) — leaves a blank window with
- * nothing on it, a close button included (see awaitFirstShow), so it
- * propagates and fails the boot.
+ * that crashed mid-load (ERR_FAILED) — leaves a window with nothing on
+ * it, a close button included (see awaitFirstShow), so it propagates
+ * and fails the boot.
  *
  * So does a page that arrives as an error page. `loadURL` resolves
  * for anything that arrives, and the app serves its own error pages:
@@ -87,13 +87,13 @@ function firstShowTimeoutMs({ isDev }) {
  * has not got there within `timeoutMs` — unless that is `null` or
  * left out, which sets no deadline (see firstShowTimeoutMs).
  *
- * The window is on screen well before `ready-to-show`: it is created
- * with `show: false`, but main.js maximizes it straight away, and
- * maximizing a hidden window shows it. It is also frameless — the
- * titlebar and its buttons are the renderer's to draw. So a window
- * that never gets its first paint is a blank rectangle with nothing
- * on it to click, the close button included, and the app would
- * otherwise sit there with its backend running behind it.
+ * The window stays hidden until it is revealed after `ready-to-show`
+ * (main.js maximizes it, which maps it, only then), so the splash is
+ * all that is on screen while it waits. A window that never gets its
+ * first paint would leave the splash standing, with nothing to click
+ * — the app's window is frameless, its close button the renderer's to
+ * draw — and the app would otherwise sit there with its backend
+ * running behind it.
  *
  * After the first show the guard lets go: a later renderer crash is
  * not a boot failure.
@@ -149,12 +149,11 @@ function awaitFirstShow(win, { timeoutMs }) {
  * hides the failed window, and a first paint arriving afterwards must
  * not put it back on screen.
  *
- * A window that is gone is not a failure. The window is on screen
- * while it loads, and something that closes it then — the user,
- * through the window manager, on a boot taking its time — makes the
- * load reject like a crashed renderer's (ERR_FAILED) while the app is
- * already quitting over its last window. That is a quit, and the open
- * resolves with nothing to report.
+ * A window that is gone is not a failure. A quit while it loads — the
+ * user closing the splash, on a boot taking its time — destroys it,
+ * and the load rejects like a crashed renderer's (ERR_FAILED) while
+ * the app is already quitting. That is a quit, and the open resolves
+ * with nothing to report.
  */
 /**
  * Wait for `beforeShow`, keeping the first-show guard's watch on the
@@ -208,8 +207,9 @@ async function openFirstPage(
 /**
  * Ask for the splash, spawn the backend, wait for the launch's flags
  * (lib/launch-flags.cjs, bounded), then open the window against the
- * backend with those flags, and take the splash down once the window
- * has shown. `showSplash` may open the splash later than it is asked
+ * backend with those flags; the window's reveal takes the splash down
+ * as it shows (main.js), and the boot closes it again here in case
+ * nothing did. `showSplash` may open the splash later than it is asked
  * (main.js waits on the reduced-motion read); a splash that cannot be
  * shown is logged and the boot goes on without it. A failure ends the
  * process with code 1, in this order:
