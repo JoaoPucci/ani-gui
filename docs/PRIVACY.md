@@ -1,18 +1,23 @@
 # Privacy Policy
 
-_Last updated: 2026-10-05_
+_Last updated: 2026-11-03_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
 <https://github.com/JoaoPucci/ani-gui>.
 
 The plain version: **ani-gui runs entirely on your machine. We do
-not operate a server. We do not collect telemetry. The only data
-that leaves your computer is what you explicitly send to public
-services (your anime tracker, the anime catalogue, the video host).**
+not operate a server, and the app collects no analytics or
+telemetry. What leaves your computer is the requests the app makes
+to public services to do its job: the anime catalogues, the
+streaming site and the video hosts it names, Aniskip, GitHub's list
+of the app's releases, and, if you connect one, your anime tracker.
+Each is described below.**
 
-If you have not connected an account (AniList or MyAnimeList),
-ani-gui never sends any data identifying you anywhere.
+If you have not connected an account (AniList or MyAnimeList), none
+of these requests carries an account or any other identifier of
+yours. Like any request over the internet, each one shows the service
+your IP address.
 
 ## What ani-gui stores locally
 
@@ -163,9 +168,12 @@ ani-gui keeps the following on your computer only:
 
 ## What ani-gui transmits to public services
 
-Most outbound traffic happens only when you take an action that
-requires it; the exception is the update check that runs on launch
-(below). For each kind of request:
+Most requests follow what you open: a page fetches what it shows, and
+pages resolve episodes ahead of a play (below). Two things happen at
+launch whatever you open: the update check (below), and, with an
+account connected, refreshing its sign-in if it has expired. The home
+page, which the app opens on, fetches its catalogue rows as it loads.
+For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogue playback resolves
@@ -260,23 +268,40 @@ requires it; the exception is the update check that runs on launch
     requests:
     - AniList: <https://anilist.co/terms>
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
-- **Update check (automatic, on launch)** — ani-gui queries GitHub's
-  public releases API to notify you when a new app version is
-  published. The settings only control whether pre-releases are
-  included, not whether the check runs. No account information is
-  sent.
+- **Update check (automatic, on launch)** — ani-gui asks GitHub's
+  public releases API (`api.github.com`) for the project's newest
+  release, so it can tell you when a new version is out. The request
+  carries the User-Agent `ani-gui` and nothing else about you or the
+  app: not the version you run, which is compared on your machine,
+  and no account information. Which release it asks for follows the
+  "Include pre-releases in update check" setting, and the choice shows
+  in the request's address. With the setting on (the default), it asks
+  for the newest release of any kind
+  (`/repos/JoaoPucci/ani-gui/releases?per_page=1`). With it off, it
+  asks for the newest full release
+  (`/repos/JoaoPucci/ani-gui/releases/latest`). The check cannot be
+  turned off; the setting only chooses between those two requests.
 
   Versions before 0.12 made a second automatic request here: the
   bundled copy of the `ani-cli` script fetched its own latest version
   from upstream at every launch. The app no longer carries or runs
   that script, so that request is gone.
-- **Aniskip OP/ED timing** — when the auto-skip toggle is on, ani-gui
-  asks the Aniskip community service for crowd-sourced opening /
-  ending timestamps for the episode you're watching. No account
-  information is sent.
+- **Aniskip OP/ED timing (automatic, when an episode plays in the
+  app)** — once an episode playing in the app's own player has a
+  known length, ani-gui asks the Aniskip community service
+  (`api.aniskip.com`) for crowd-sourced opening and ending times. They
+  drive the Skip button, and the automatic skip when the auto-skip
+  settings are on. The request names the show's MyAnimeList id, looked
+  up from its Kitsu entry, the episode number, and the episode's
+  length in seconds; a show with no MyAnimeList id is not asked
+  about. No account information is sent. Answers are cached, so
+  playing the episode again does not ask again while the cached times
+  last. The auto-skip settings do not stop the request, and no setting
+  does.
 
-There is no analytics or telemetry. ani-gui does not "phone home" on
-launch or on any other schedule.
+There is no analytics or telemetry: no request reports how you use
+the app, and the update check is the only request that goes to the
+project's own repository.
 
 ## Connecting and disconnecting an account
 
@@ -314,5 +339,7 @@ we do not collect contact information.
 
 ## Contact
 
-Issues and questions about this policy are tracked publicly at
-<https://github.com/JoaoPucci/ani-gui/issues>.
+The project has no channel for questions about this policy. Its
+GitHub repository has issues and discussions turned off, and offers
+no private reporting. The policy's history is public in the git
+history of `docs/PRIVACY.md`.

@@ -30,7 +30,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
 | **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |
 | **Localised** | English, Brazilian Portuguese, Latin American Spanish, Russian. |
-| **No telemetry** | No analytics or tracking. Outbound traffic is metadata, the stream you picked, a launch-time check of the app's own GitHub releases, and — with an account connected — your tracker's list + progress sync. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
+| **No telemetry** | No analytics or tracking. Outbound traffic is catalogue metadata and opening/ending times, the streams for the episodes you play and the ones a page resolves ahead, a launch-time check of the app's own GitHub releases, and — with an account connected — your tracker's list + progress sync. Localhost-only listener on a kernel-assigned port. See the [privacy policy](docs/PRIVACY.md). |
 
 ## Install
 
@@ -146,7 +146,7 @@ Once connected:
 - **Watch Later rail** — your Plan-to-Watch list surfaces as a rail on the home page, bridged to local cards you can play in one click.
 - **Automatic progress sync** — as you watch, the episode is pushed back to the tracker. The sync only ever moves progress *forward* (replaying or stepping back never lowers your count), promotes a Plan-to-Watch title to *Watching* on first play, preserves a *Rewatching* row while you rewatch, and marks a series *Completed* when you start the last episode of a finished show — which, on a rewatch, AniList does itself and the app does on MyAnimeList, counting the rewatch there. Where the tracker files the show differently — one show split across several of the tracker's entries, several parts under one entry, or a prologue the tracker counts — each of its entries gets its own episodes under its own numbers and is completed at its own last episode once the tracker has it finished, and an earlier entry is brought to its end when a later one starts; where the tracker's count differs and nothing explains why, the progress is sent without the status, and never past the tracker's own count (see [title resolution](docs/title-resolution.md)).
 
-Everything stays on your machine: your OAuth token is encrypted through your OS keychain and written to the app's user-data directory (the Rust backend never persists it — each request carries its own bearer), and your tracker list is cached in a local SQLite database to render the Watch Later rail. ani-gui runs no server of its own. See the [privacy policy](docs/PRIVACY.md) for exactly what's sent where.
+What the app keeps stays on your machine: your OAuth token is encrypted through your OS keychain and written to the app's user-data directory (the Rust backend never persists it — each request carries its own bearer), and your tracker list is cached in a local SQLite database to render the Watch Later rail. ani-gui runs no server of its own. See the [privacy policy](docs/PRIVACY.md) for exactly what's sent where.
 
 ## Configuration
 
