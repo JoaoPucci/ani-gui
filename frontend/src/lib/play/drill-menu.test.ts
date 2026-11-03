@@ -195,7 +195,7 @@ describe('drillStep properties', () => {
 		);
 	});
 
-	it('every step that leaves the menu open with focus to move names a target in it or its button', () => {
+	it('a focus target inside the menu is only named while the menu is open', () => {
 		fc.assert(
 			fc.property(fc.array(event, { maxLength: 30 }), (events) => {
 				let menu = closed;
@@ -206,6 +206,18 @@ describe('drillStep properties', () => {
 					}
 					menu = step.menu;
 				}
+			})
+		);
+	});
+
+	it('a step that changes nothing hands back the same menu, so an effect that runs it settles', () => {
+		fc.assert(
+			fc.property(fc.array(event, { maxLength: 30 }), event, (events, e) => {
+				const menu = events.reduce((m, ev) => drillStep(m, ev).menu, closed);
+				const after = drillStep(menu, e).menu;
+				const same =
+					after.open === menu.open && after.list === menu.list && after.width === menu.width;
+				if (same) expect(after).toBe(menu);
 			})
 		);
 	});
