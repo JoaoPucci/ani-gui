@@ -20,12 +20,14 @@ const STALL_MS = 700;
  * What the stall line says while each step is pending, from the main
  * process's own message table (lib/main-messages.cjs), in step order.
  *
- * Measured, only two things hold a step past STALL_MS: a stalled
- * network, which holds the flags step until the fetch's two-second cap,
- * and a first-time database on a slow disk, in the backend's start. The
- * flags step names the network; every other step says the generic line.
- * A job the backend reports itself (a migration, a cache reclaim) would
- * get its own line for the backend step here.
+ * The causes we know of for a step past STALL_MS: a stalled network,
+ * which holds the flags step up to the fetch's two-second cap; a
+ * first-time database on a slow disk, in the backend's start; and, in
+ * development, the page step while Vite compiles. The flags step names
+ * the network, which is its cause unless the read of the saved copy is
+ * itself slow; every other step says the generic line. A job the
+ * backend reports itself (a migration, a cache reclaim) would get its
+ * own line for the backend step here.
  */
 function stallTexts(messages) {
   return STEPS.map((step) => (step === "flags" ? messages.splashNetworkSlow : messages.splashStartingUp));
