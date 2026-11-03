@@ -136,6 +136,7 @@
 		type DrillMenu
 	} from '$lib/play/drill-menu';
 	import { plainKey } from '$lib/play/menu-arrow';
+	import { stepMenuFocus } from '$lib/menu/menu-dom';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -2739,20 +2740,6 @@
 		e.stopPropagation();
 		pcMenu = step.menu;
 		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
-	}
-	/** ArrowDown, ArrowUp, Home and End move focus between the menu's
-	 *  enabled items, wrapping at the ends, and go no further. */
-	function stepMenuFocus(e: KeyboardEvent) {
-		const menu = e.currentTarget as HTMLElement;
-		const items = Array.from(
-			menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')
-		);
-		const at = items.indexOf(document.activeElement as HTMLButtonElement);
-		const next = menuKeyStep(e.key, at, items.length);
-		if (next === null) return;
-		e.preventDefault();
-		e.stopPropagation();
-		items[next].focus();
 	}
 	$effect(() => {
 		if (!moreOpen) return;
