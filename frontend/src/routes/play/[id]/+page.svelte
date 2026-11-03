@@ -126,7 +126,8 @@
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
-	import { moreMenuArrow, moreMenuEscape, moreMenuQuality } from '$lib/play/more-menu-quality';
+	import { moreMenuEscape, moreMenuQuality } from '$lib/play/more-menu-quality';
+	import { menuArrow } from '$lib/play/menu-arrow';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -2652,10 +2653,10 @@
 	// from them, and otherwise stay in the menu rather than seek.
 	function onMoreMenuKey(e: KeyboardEvent) {
 		const menu = e.currentTarget as HTMLElement;
-		const arrow = moreMenuArrow(e.key, {
+		const arrow = menuArrow(e.key, {
 			rtl: getComputedStyle(menu).direction === 'rtl',
-			qualityOpen: moreQualityOpen,
-			onQualityRow: moreQualityRow !== null && document.activeElement === moreQualityRow
+			listOpen: moreQualityOpen,
+			onOpener: moreQualityRow !== null && document.activeElement === moreQualityRow
 		});
 		if (arrow !== null) {
 			e.preventDefault();

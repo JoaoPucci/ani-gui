@@ -1,7 +1,7 @@
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { QualityMenu, QualityMenuItem } from './quality-menu';
-import { moreMenuArrow, moreMenuEscape, moreMenuQuality } from './more-menu-quality';
+import { moreMenuEscape, moreMenuQuality } from './more-menu-quality';
 
 const LEVELS: QualityMenu = {
 	items: [
@@ -70,61 +70,5 @@ describe('moreMenuEscape', () => {
 
 	it('closes the menu from its main list', () => {
 		expect(moreMenuEscape(false)).toBe('close');
-	});
-});
-
-describe('moreMenuArrow', () => {
-	const at = (over: Partial<Parameters<typeof moreMenuArrow>[1]> = {}) => ({
-		rtl: false,
-		qualityOpen: false,
-		onQualityRow: false,
-		...over
-	});
-
-	it('opens the levels from the Quality row with the arrow pointing into the line', () => {
-		expect(moreMenuArrow('ArrowRight', at({ onQualityRow: true }))).toBe('open');
-		expect(moreMenuArrow('ArrowLeft', at({ onQualityRow: true, rtl: true }))).toBe('open');
-	});
-
-	it('goes back from the levels with the arrow pointing out of it', () => {
-		expect(moreMenuArrow('ArrowLeft', at({ qualityOpen: true }))).toBe('back');
-		expect(moreMenuArrow('ArrowRight', at({ qualityOpen: true, rtl: true }))).toBe('back');
-	});
-
-	it('keeps any other horizontal arrow in the menu', () => {
-		expect(moreMenuArrow('ArrowLeft', at({ onQualityRow: true }))).toBe('stay');
-		expect(moreMenuArrow('ArrowRight', at())).toBe('stay');
-		expect(moreMenuArrow('ArrowLeft', at())).toBe('stay');
-		expect(moreMenuArrow('ArrowRight', at({ qualityOpen: true }))).toBe('stay');
-	});
-
-	it('leaves every other key alone', () => {
-		fc.assert(
-			fc.property(
-				fc.string().filter((k) => k !== 'ArrowLeft' && k !== 'ArrowRight'),
-				fc.boolean(),
-				fc.boolean(),
-				fc.boolean(),
-				(key, rtl, qualityOpen, onQualityRow) => {
-					expect(moreMenuArrow(key, { rtl, qualityOpen, onQualityRow })).toBeNull();
-				}
-			)
-		);
-	});
-
-	it('answers every horizontal arrow, mirrored under right-to-left', () => {
-		fc.assert(
-			fc.property(
-				fc.constantFrom('ArrowLeft', 'ArrowRight'),
-				fc.boolean(),
-				fc.boolean(),
-				(key, qualityOpen, onQualityRow) => {
-					const ltr = moreMenuArrow(key, { rtl: false, qualityOpen, onQualityRow });
-					const mirrored = key === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
-					expect(ltr).not.toBeNull();
-					expect(moreMenuArrow(mirrored, { rtl: true, qualityOpen, onQualityRow })).toBe(ltr);
-				}
-			)
-		);
 	});
 });
