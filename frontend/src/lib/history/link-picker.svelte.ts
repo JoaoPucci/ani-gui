@@ -6,7 +6,7 @@
  * the latest one's answer is shown.
  */
 
-import { resolveHistoryEntry } from './resolve';
+import { continueEpisode } from '$lib/play/next-episode';
 import { linkWarnings, type LinkCandidate, type LinkWarning } from './link-candidates';
 import { loadCandidates, searchCandidates, type LinkDeps, type LinkOffer } from './link-offer';
 
@@ -16,6 +16,10 @@ export class LinkPicker {
 	failed = $state(false);
 	chosen = $state<LinkCandidate | null>(null);
 	error = $state<string | null>(null);
+	/** The episode the surface the picker opened from offers for the
+	 *  card — what its card, breadcrumb or player shows — or null when
+	 *  it named none. */
+	protected shownEpisode = $state<number | null>(null);
 
 	#pickerDeps: LinkDeps;
 	#query = 0;
@@ -26,12 +30,23 @@ export class LinkPicker {
 
 	/** What the chosen show would be worth a second look for. */
 	get warnings(): LinkWarning[] {
-		return this.offer && this.chosen ? linkWarnings(this.offer.entry, this.chosen.ref) : [];
+		return this.offer && this.chosen
+			? linkWarnings(this.offer.entry, this.chosen.ref, this.#episodeNumber(this.offer))
+			: [];
 	}
 
-	/** The episode the card's row is at, as the card shows it. */
+	/** The episode the card offers, as the card, the breadcrumb and the
+	 *  player show it: the one the surface named, else the one a
+	 *  Continue click plays for the row's guessed show. */
 	get episode(): string {
-		return this.offer ? String(resolveHistoryEntry(this.offer.entry, null).displayEpisode) : '';
+		return this.offer ? String(this.#episodeNumber(this.offer)) : '';
+	}
+
+	#episodeNumber(offer: LinkOffer): number {
+		return (
+			this.shownEpisode ??
+			continueEpisode(offer.current.id, offer.entry.ep_no, offer.current.episode_count)
+		);
 	}
 
 	/** Show the offer's own candidates. */

@@ -69,10 +69,13 @@ export class LinkSession extends LinkPicker {
 		this.settled = true;
 	}
 
-	/** Open the picker on the offer's candidates. */
-	async start(): Promise<void> {
+	/** Open the picker on the offer's candidates, naming `episode` —
+	 *  the one the surface it opened from offers for the card — when
+	 *  given. */
+	async start(episode?: number): Promise<void> {
 		const offer = this.offer;
 		if (!offer) return;
+		this.shownEpisode = episode ?? null;
 		this.open = true;
 		this.group = null;
 		// The latest opening's answer stands; a history that cannot be

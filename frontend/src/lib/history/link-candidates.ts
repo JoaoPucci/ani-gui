@@ -69,12 +69,17 @@ function seasonOf(ref: KitsuAnimeRef): number {
 
 /** What to point out before linking `entry` to `ref`: a season its
  *  saved title names that the show does not, and an episode past the
- *  show's count. Warnings only — the user decides. */
-export function linkWarnings(entry: HistoryEntry, ref: KitsuAnimeRef): LinkWarning[] {
+ *  show's count — `episode`, the one the card offers, which is the
+ *  number the picker names. Warnings only — the user decides. */
+export function linkWarnings(
+	entry: HistoryEntry,
+	ref: KitsuAnimeRef,
+	episode: number
+): LinkWarning[] {
 	const target = resolveHistoryEntry(entry, null);
 	const warnings: LinkWarning[] = [];
 	if (target.cour !== seasonOf(ref)) warnings.push('season');
-	if (ref.episode_count !== null && target.displayEpisode > ref.episode_count) {
+	if (ref.episode_count !== null && episode > ref.episode_count) {
 		warnings.push('episode');
 	}
 	return warnings;

@@ -1852,7 +1852,10 @@
 								<button
 									type="button"
 									class="guess-note-change"
-									onclick={() => void linkSession.start()}>{m.detail_link_change()}</button
+									onclick={() =>
+										void linkSession.start(
+											resumeEntry?.id === linkSession.offer?.entry.id ? defaultEpisode() : undefined
+										)}>{m.detail_link_change()}</button
 								>
 							{/if}
 						</p>
