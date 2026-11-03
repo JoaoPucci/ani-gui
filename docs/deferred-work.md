@@ -642,11 +642,12 @@ starting it, and delete it when you find it done.
   parser for it (`backend/src/notices/remote.rs`) and the donation
   ask's schedule (`frontend/src/lib/notices/donation.ts`) are built and
   tested, but nothing serves the block to the window and nothing shows
-  either. Content from the file is trusted only once the file is
-  signed and the signature verified (minisign, as proposed for the
-  in-app updater); after that it needs a route for the window, the rows
-  (an announcement about the source joining the outage row rather than
-  adding one) and the ask's toast.
+  either. The block survives only from a file whose minisign signature
+  verifies (`backend/src/flags/signature.rs`), and the shipped build
+  trusts no key yet. Using it needs the maintainer's public key in
+  `TRUSTED_KEYS`, a route for the window, the rows (an announcement
+  about the source joining the outage row rather than adding one) and
+  the ask's toast.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
   entry has been matched to a Kitsu show, is a button that tries to
