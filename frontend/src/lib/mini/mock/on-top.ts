@@ -15,6 +15,9 @@ export type OnTopChoice = 'card' | 'pin' | 'both';
 export interface OnTopView {
 	/** The one-time card shows now. */
 	card: boolean;
+	/** What the first open on Wayland shows by itself, until seen: the
+	 *  card over the picture, the pin's explainer, or nothing. */
+	firstOpen: 'card' | 'popover' | null;
 	/** The strip's pin: a real toggle, an explainer, or none. */
 	pin: 'toggle' | 'explain' | null;
 }
@@ -28,6 +31,7 @@ export function onTopView(
 	const withPin = choice !== 'card';
 	return {
 		card: wayland && choice !== 'pin' && !hintSeen,
+		firstOpen: null,
 		pin: withPin ? (wayland ? 'explain' : 'toggle') : null
 	};
 }

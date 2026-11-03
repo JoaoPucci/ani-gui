@@ -4,15 +4,19 @@ import { onTopCopy, onTopView } from './on-top';
 
 describe('how the window speaks about staying on top', () => {
 	it('shows the card once on Wayland, then never again', () => {
-		expect(onTopView('wayland', 'card', false)).toEqual({ card: true, pin: null });
-		expect(onTopView('wayland', 'card', true)).toEqual({ card: false, pin: null });
+		expect(onTopView('wayland', 'card', false)).toEqual({ firstOpen: 'card', pin: null });
+		expect(onTopView('wayland', 'card', true)).toEqual({ firstOpen: null, pin: null });
+	});
+
+	it('opens the pin explainer by itself once with "both", rather than a card', () => {
+		expect(onTopView('wayland', 'both', false)).toEqual({ firstOpen: 'popover', pin: 'explain' });
+		expect(onTopView('wayland', 'both', true)).toEqual({ firstOpen: null, pin: 'explain' });
 	});
 
 	it('makes the pin explain on Wayland, and toggle elsewhere', () => {
-		expect(onTopView('wayland', 'pin', false)).toEqual({ card: false, pin: 'explain' });
-		expect(onTopView('windows', 'pin', false)).toEqual({ card: false, pin: 'toggle' });
-		expect(onTopView('x11', 'both', false)).toEqual({ card: false, pin: 'toggle' });
-		expect(onTopView('wayland', 'both', false)).toEqual({ card: true, pin: 'explain' });
+		expect(onTopView('wayland', 'pin', false)).toEqual({ firstOpen: null, pin: 'explain' });
+		expect(onTopView('windows', 'pin', false)).toEqual({ firstOpen: null, pin: 'toggle' });
+		expect(onTopView('x11', 'both', false)).toEqual({ firstOpen: null, pin: 'toggle' });
 	});
 
 	it('never shows the card where the app can keep the window on top', () => {
@@ -23,7 +27,7 @@ describe('how the window speaks about staying on top', () => {
 				fc.boolean(),
 				(platform, choice, seen) => {
 					const view = onTopView(platform, choice, seen);
-					expect(view.card).toBe(false);
+					expect(view.firstOpen).toBeNull();
 					expect(view.pin).not.toBe('explain');
 				}
 			)
