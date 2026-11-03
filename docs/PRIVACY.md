@@ -9,10 +9,10 @@ the open-source ani-gui desktop application maintained at
 The plain version: **ani-gui runs entirely on your machine. We do
 not operate a server, and the app collects no analytics or
 telemetry. What leaves your computer is the requests the app makes
-to public services to do its job: the anime catalogues, the
-streaming site and the video hosts it names, Aniskip, GitHub's list
-of the app's releases, and, if you connect one, your anime tracker.
-Each is described below.**
+to public services to do its job: the anime catalogues and the hosts
+that serve their images, the streaming site and the video hosts it
+names, Aniskip, GitHub's list of the app's releases, and, if you
+connect one, your anime tracker. Each is described below.**
 
 If you have not connected an account (AniList or MyAnimeList), none
 of these requests carries an account or any other identifier of
@@ -169,18 +169,27 @@ ani-gui keeps the following on your computer only:
 ## What ani-gui transmits to public services
 
 Most requests follow what you open: a page fetches what it shows, and
-pages resolve episodes ahead of a play (below). Two things happen at
-launch whatever you open: the update check (below), and, with an
-account connected, refreshing its sign-in if it has expired. The home
-page, which the app opens on, fetches its catalogue rows as it loads.
-For each kind of request:
+pages resolve episodes ahead of a play (below). At launch the app
+checks for updates (below) and, with an account connected, refreshes
+its sign-in if it has expired; both happen again when changing the
+language reloads the window. The app always opens on the home page,
+which as it loads fetches its catalogue rows and their images,
+resolves your Continue Watching rows and checks with the streaming
+site that they are still available, checks the availability of shows
+on the page that the app has not checked before, and, with an account
+connected, fetches your tracker list for the Watch Later rail. For
+each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogue playback resolves
   against: hianime (reached at hianime.at). anidb.app was asked first
   until it was retired in October 2026, and nothing contacts it now.
-  Searches and episode listings are asked for as you browse and play,
-  and a background warm a page runs asks for what is in view — the
+  Searches and episode listings are asked for as you browse and play;
+  the rows of shows on the home page and the search page, and a show
+  page's strip of related shows, ask the streaming catalogue in the
+  background whether the shows they list that the app has not checked
+  before are available there; and a background warm a page runs asks
+  for what is in view — the
   detail page for the episode its Play button targets, which is the
   resume point when there is one, and the play page for the episode
   after the one playing, or, with resolution caching turned on, both
@@ -220,6 +229,11 @@ For each kind of request:
   for, and asks every megaplay server for the one network whose streams
   it can play, whichever network the listing named. So the hosts a megaplay page leads
   to are that network's, and no other's.
+- **Images** — posters, covers, banners and, with an account
+  connected, your tracker avatar are fetched from the host the
+  catalogue or tracker names for them (Kitsu's and AniList's image
+  hosts, for instance) and cached on disk, so each is fetched once.
+  These requests carry no identifier of yours.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
@@ -270,10 +284,11 @@ For each kind of request:
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
 - **Update check (automatic, on launch)** — ani-gui asks GitHub's
   public releases API (`api.github.com`) for the project's newest
-  release, so it can tell you when a new version is out. The request
-  carries the User-Agent `ani-gui` and nothing else about you or the
-  app: not the version you run, which is compared on your machine,
-  and no account information. Which release it asks for follows the
+  release, so it can tell you when a new version is out. It asks again
+  when changing the language reloads the window. Besides GitHub's
+  standard `Accept` and API-version headers, the request carries only
+  the User-Agent `ani-gui`: not the version you run, which is compared
+  on your machine, and no account information. Which release it asks for follows the
   "Include pre-releases in update check" setting, and the choice shows
   in the request's address. With the setting on (the default), it asks
   for the newest release of any kind
@@ -293,7 +308,8 @@ For each kind of request:
   drive the Skip button, and the automatic skip when the auto-skip
   settings are on. The request names the show's MyAnimeList id, looked
   up from its Kitsu entry, the episode number, and the episode's
-  length in seconds; a show with no MyAnimeList id is not asked
+  length in seconds. A show with no MyAnimeList id, a play with no
+  Kitsu entry, and an episode with a fractional number are not asked
   about. No account information is sent. Answers are cached, so
   playing the episode again does not ask again while the cached times
   last. The auto-skip settings do not stop the request, and no setting
@@ -340,6 +356,6 @@ we do not collect contact information.
 ## Contact
 
 The project has no channel for questions about this policy. Its
-GitHub repository has issues and discussions turned off, and offers
-no private reporting. The policy's history is public in the git
-history of `docs/PRIVACY.md`.
+GitHub repository has issues and discussions turned off and offers
+no private reporting; it accepts pull requests, which are public. The
+policy's history is public in the git history of `docs/PRIVACY.md`.
