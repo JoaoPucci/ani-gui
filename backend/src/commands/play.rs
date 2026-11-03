@@ -113,6 +113,13 @@ pub struct PlayArgs {
     /// not carry, plays the pick's default.
     #[serde(default)]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The history row a Continue card whose show was only a guess
+    /// opened this play from — its show key. The session says whether
+    /// the play landed on that row's own listing
+    /// ([`CreateSessionResponse::own_listing`]), which is what lets the
+    /// guess become the row's Kitsu id. `None` for every other play.
+    #[serde(default)]
+    pub guess_row: Option<String>,
     /// The captions choice remembered for the show
     /// (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. `None`
     /// when none is.
@@ -121,6 +128,28 @@ pub struct PlayArgs {
 }
 
 impl PlayArgs {
+    /// Whether this play, asked from a guessed Continue card, landed
+    /// on the card's own listing — the show key `played`
+    /// ([`crate::scraper::provider::same_listing`]). False for a play
+    /// no guessed card asked for.
+    #[must_use]
+    pub fn lands_on_guess_row(&self, played: &str) -> bool {
+        self.guess_row
+            .as_deref()
+            .is_some_and(|row| crate::scraper::provider::same_listing(row, played))
+    }
+
+    /// The Kitsu id a watch of `played` may record: the request's, unless
+    /// a guessed Continue card asked for it and `played` is not that
+    /// card's own listing ([`Self::lands_on_guess_row`]).
+    #[must_use]
+    pub fn recordable_kitsu_id(&self, played: &str) -> Option<&str> {
+        if self.guess_row.is_some() && !self.lands_on_guess_row(played) {
+            return None;
+        }
+        self.kitsu_id.as_deref()
+    }
+
     /// What the viewer wants of a listing, with `locale` the UI's.
     #[must_use]
     pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
@@ -341,7 +370,9 @@ where
     let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-            if let Some(resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await {
+            if let Some(mut resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await
+            {
+                resp.own_listing = args.lands_on_guess_row(&cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -550,6 +581,7 @@ where
         episode: Some(episode),
         former_episode,
         episode_unverified: cached_resolution.episode_unverified,
+        own_listing: args.lands_on_guess_row(&cached_resolution.show_id),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);
@@ -638,6 +670,7 @@ pub(crate) mod tests {
                 prefetch,
                 kitsu_id,
                 version: None,
+                guess_row: None,
                 caption: None,
             };
             let got = scrape_priority(&args);
@@ -705,6 +738,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
             version: None,
+            guess_row: None,
             caption: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
@@ -776,6 +810,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
             version: None,
+            guess_row: None,
             caption: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
@@ -836,6 +871,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         };
         for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
@@ -895,6 +931,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         }
     }
@@ -1174,6 +1211,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         };
         write_history_on_cache_hit(
@@ -1473,6 +1511,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         }
     }
@@ -1626,6 +1665,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         };
         let mut cached = cached_blank(
@@ -1672,6 +1712,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         };
         let mut cached = cached_blank(
@@ -2126,6 +2167,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
             caption: None,
         };
         assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
@@ -2278,6 +2320,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("race-1".into()),
             version: None,
+            guess_row: None,
             caption: None,
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
@@ -2343,6 +2386,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("cap-1".into()),
             version: None,
+            guess_row: None,
             caption: None,
         };
         let at_start =
@@ -2395,6 +2439,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-2".into()),
             version: None,
+            guess_row: None,
             caption: None,
         };
         let at_start =
@@ -2452,6 +2497,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-1".into()),
             version: None,
+            guess_row: None,
             caption: None,
         };
         let at_start =
@@ -2490,6 +2536,9 @@ mod affinity_tests;
 #[cfg(test)]
 #[path = "play_after_removal_test.rs"]
 mod after_removal_tests;
+#[cfg(test)]
+#[path = "play_guess_row_test.rs"]
+mod guess_row_tests;
 #[cfg(test)]
 #[path = "play_played_test.rs"]
 mod played_tests;

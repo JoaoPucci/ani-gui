@@ -158,6 +158,7 @@
 	import {
 		claimPlay,
 		playArgsFor,
+		playedRecord,
 		playMode,
 		playQuality,
 		recordPlayed,
@@ -187,6 +188,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
+		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
@@ -195,10 +197,11 @@
 	} from '$lib/play/play-origin';
 
 	const id = $derived(page.params.id ?? '');
-	// A session opened from a guessed Continue match records the guess
-	// nowhere — not on the history row, not on tracker accounts
-	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
-	// this page builds for itself carries it on.
+	// A session opened from a guessed Continue match records the guess —
+	// on the history row, on tracker accounts — only for a play that
+	// landed on the card's own listing ($lib/play/play-origin.ts). The
+	// flag is in the URL, and every URL this page builds for itself
+	// carries it on.
 	const fromGuess = $derived(openedFromGuess(page.url.searchParams));
 	// A session a Continue card opened writes its positions for the
 	// card's history row, so removing the card forgets them whatever
@@ -2193,10 +2196,14 @@
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
 				version,
-				caption: storedCaption(id)
+				caption: storedCaption(id),
+				// The click may take this warm's session: it answers for the
+				// guessed card's row as the click would.
+				guessRow: guessRow(fromGuess, fromRow)
 			});
-			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
-				playStream(args, emit, signal)
+			void getOrFire(
+				makeKey(id, targetEp, mode, quality, version, args.guess_row),
+				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
 				 *  rejects with "aborted" which we swallow */
@@ -2253,7 +2260,8 @@
 			show,
 			kitsuId: recordableId(owner.showId, guess),
 			version,
-			caption: storedCaption(owner.showId)
+			caption: storedCaption(owner.showId),
+			guessRow: guessRow(guess, row)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2275,7 +2283,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality, version),
+						makeKey(owner.showId, targetEp, mode, quality, version, playArgs.guess_row),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2319,17 +2327,26 @@
 			// is the clicked show's even when the viewer has moved on.
 			// The tracker mirror is renderer-driven — the backend is
 			// stateless — and a guessed match writes nothing to the
-			// user's trackers.
+			// user's trackers unless its play landed on the card's own
+			// listing.
 			// The episode the session plays: the request may have named it
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, targetEp);
+			// A guess whose play landed on the card's own listing is recorded
+			// and mirrored as a play from the show's page is.
+			const record = playedRecord(
+				{ ...playArgs, episode: String(played) },
+				owner.showId,
+				guess,
+				outcome.session
+			);
 			recordPlayed(
 				{
-					args: { ...playArgs, episode: String(played) },
+					args: record.args,
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: !guess,
+					mirror: record.mirror,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }

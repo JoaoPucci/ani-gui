@@ -229,6 +229,7 @@ fn a_session_answer_names_versions_only_when_there_are_several() {
         episode: None,
         former_episode: None,
         episode_unverified: false,
+        own_listing: false,
     };
     let plain = serde_json::to_value(&resp).expect("json");
     assert!(plain.get("versions").is_none() && plain.get("version").is_none());
@@ -278,6 +279,7 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
         episode: None,
         former_episode: None,
         episode_unverified: false,
+        own_listing: false,
     };
     crate::commands::play::with_versions_of(&mut resp, &native.versions, native.version);
     assert_eq!(resp.versions, both_versions());
