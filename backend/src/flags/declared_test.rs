@@ -22,3 +22,13 @@ fn every_shipped_default_is_one_of_its_allowed_values() {
         );
     }
 }
+
+#[test]
+fn no_flag_is_declared_under_the_notices_key() {
+    use crate::flags::test_decls::TEST_DECLS;
+    use crate::notices::NOTICES_KEY;
+    assert!(DECLARED
+        .iter()
+        .chain(TEST_DECLS)
+        .all(|d| d.name != NOTICES_KEY));
+}
