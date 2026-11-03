@@ -454,7 +454,7 @@ test("a page that never answers a step holds nothing up for long", async (t) => 
   splash.progress("page").then(() => (done = true));
   await Promise.resolve();
   t.mock.timers.tick(149);
-  await Promise.resolve();
+  for (let i = 0; i < 5; i++) await tick();
   assert.equal(done, false);
   t.mock.timers.tick(1);
   for (let i = 0; i < 5; i++) await tick();
@@ -1121,14 +1121,14 @@ test("a clock stepping back after the paint never stretches the wait past the mi
 /** A splash on a hand-set clock and mock timers, painted at 0, whose
  *  page answers each step at once. Returns the controller, the clock
  *  setter, and `settle(promise)` which reports whether it has settled. */
-async function paintedSplash(t, { resting = false } = {}) {
+async function paintedSplash(t, { resting = false, answer = (n) => Promise.resolve(n) } = {}) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let now = 0;
   const win = fakeSplash();
   let answerShown = () => {};
   win.webContents.executeJavaScript = (code) => {
     const m = /splashProgress\.set\((\d+)\)/.exec(code);
-    if (m) return Promise.resolve(Number(m[1]));
+    if (m) return answer(Number(m[1]));
     return new Promise((resolve) => (answerShown = resolve));
   };
   const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
@@ -1137,6 +1137,7 @@ async function paintedSplash(t, { resting = false } = {}) {
   splash.motionPreference(resting);
   answerShown(resting);
   for (let i = 0; i < 5; i++) await tick();
+  assert.equal(lastSplashState().shown, true, "painted");
   const at = (ms) => (now = ms);
   const flush = async () => {
     for (let i = 0; i < 8; i++) await tick();
@@ -1146,14 +1147,17 @@ async function paintedSplash(t, { resting = false } = {}) {
     promise.then(() => (seen.done = true));
     return seen;
   };
-  return { splash, win, at, flush, watch };
+  return { splash, win, at, flush, watch, now: () => now };
 }
 
 test("a last step landing after the minimum holds the splash until its stretch has been seen", async (t) => {
   // A slow page renders after the splash's minimum: without a hold the
   // last stretch would light in the instant the splash closes, and the
   // rail would never be seen complete.
-  assert.equal(SPLASH_COMPLETE_HOLD_MS, 300);
+  // The wipe is 300 ms on an ease-out curve, 99% of the way at 250 ms:
+  // the hold is that, not the whole curve (the review of this hold
+  // measured what 300 ms cost warm launches).
+  assert.equal(SPLASH_COMPLETE_HOLD_MS, 250);
   const { splash, at, flush, watch } = await paintedSplash(t);
   at(SPLASH_MIN_ON_SCREEN_MS + 400);
   const step = watch(splash.progress("page"));
@@ -1233,4 +1237,86 @@ test("a last step landing before the splash has painted adds no wait: the minimu
   for (let i = 0; i < 8; i++) await tick();
   assert.equal(done, true);
   splash.close();
+});
+
+test("the hold counts from when the step landed: a slow answer is part of it, not added to it", async (t) => {
+  let release;
+  const { splash, at, flush, watch } = await paintedSplash(t, {
+    answer: (n) => (n === 3 ? new Promise((r) => (release = () => r(n))) : Promise.resolve(n)),
+  });
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.progress("page"));
+  await flush();
+  // The page takes 100 ms to answer.
+  t.mock.timers.tick(100);
+  at(SPLASH_MIN_ON_SCREEN_MS + 500);
+  release();
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS - 100 - 1);
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("a clock set back never stretches the hold", async (t) => {
+  let release;
+  const { splash, at, flush, watch } = await paintedSplash(t, {
+    answer: (n) => (n === 3 ? new Promise((r) => (release = () => r(n))) : Promise.resolve(n)),
+  });
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.progress("page"));
+  await flush();
+  at(0); // the wall clock jumps back an hour, say
+  release();
+  await flush();
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("a splash that painted after the reveal stopped waiting for its paint still shows the rail complete", async (t) => {
+  // The reveal waits for the paint at most SPLASH_SHOW_WAIT_MS, and a
+  // paint after that gets no minimum: the hold is then all that keeps
+  // the last stretch on screen.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  const win = fakeSplash();
+  let answerShown = () => {};
+  win.webContents.executeJavaScript = (code) => {
+    const m = /splashProgress\.set\((\d+)\)/.exec(code);
+    if (m) return Promise.resolve(Number(m[1]));
+    return new Promise((resolve) => (answerShown = resolve));
+  };
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  let shownDone = false;
+  splash.whenShown().then(() => (shownDone = true));
+  t.mock.timers.tick(SPLASH_SHOW_WAIT_MS);
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(shownDone, true, "the reveal stopped waiting");
+  now = SPLASH_SHOW_WAIT_MS + 50;
+  answerShown(false);
+  for (let i = 0; i < 8; i++) await tick();
+  now = SPLASH_SHOW_WAIT_MS + 100;
+  let done = false;
+  splash.progress("page").then(() => (done = true));
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(done, false, "held, though the minimum after the paint has not run out");
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(done, true);
+  splash.close();
+});
+
+test("no language's network line says it starts regardless", () => {
+  for (const locale of LOCALES) {
+    assert.doesNotMatch(messagesFor(locale).splashNetworkSlow, /anyway|mesmo assim|de todos modos|всё равно|все равно|продолжится/i, locale);
+  }
 });
