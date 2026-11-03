@@ -88,36 +88,32 @@ const GRANT_SETTLE_MS = 2000;
 /**
  * Records the size this launch's window is granted as it is revealed
  * maximized on the display it was made for, through `save`. Recording
- * starts at `revealing()` — just before the reveal maximizes the
- * window — and ends GRANT_SETTLE_MS later, or at an unmaximize once the
- * window has `shown()`. A later maximize, or a maximized window moved
- * to another monitor (by keyboard it stays maximized, and Wayland gives
- * no position to tell), is not recorded.
+ * runs from `revealing()` — just before the reveal maximizes the
+ * window — for GRANT_SETTLE_MS, and nothing else ends it: on GNOME
+ * under Wayland the window reports unmaximized for a moment right after
+ * its show, before the compositor's maximized configure brings the size
+ * that must be kept. `shown()` and `unmaximized()` are therefore heard
+ * and ignored. A later maximize, or a maximized window moved to another
+ * monitor (by keyboard it stays maximized, and Wayland gives no
+ * position to tell), falls outside the window and is not recorded.
  */
 function grantedSizeRecorder({ save, setTimer = (fn, ms) => setTimeout(fn, ms) }) {
   let recording = false;
-  let shownYet = false;
-  let done = false;
+  let armed = false;
   return {
     revealing() {
-      if (done) return;
+      if (armed) return;
+      armed = true;
       recording = true;
       setTimer(() => {
         recording = false;
-        done = true;
       }, GRANT_SETTLE_MS);
     },
-    shown() {
-      shownYet = true;
-    },
+    shown() {},
     maximized(size) {
       if (recording) save({ width: size.width, height: size.height });
     },
-    unmaximized() {
-      if (!shownYet) return;
-      recording = false;
-      done = true;
-    },
+    unmaximized() {},
   };
 }
 

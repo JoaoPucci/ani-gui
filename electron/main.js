@@ -521,7 +521,6 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       if (!win.isMaximized()) win.maximize();
     });
     win.once("show", () => keeper.shown(win));
-    win.once("show", () => granted.shown());
   };
   win.on("closed", () => keeper.closed(win));
 
@@ -560,7 +559,6 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   };
   win.on("maximize", rememberMaximized);
   win.on("resize", rememberMaximized);
-  win.on("unmaximize", () => granted.unmaximized());
   win.on("unmaximize", sendMaxState);
 
   // A window that never gets its first page — a load that fails, an
