@@ -3678,10 +3678,11 @@ mod sidecar_suffix_props {
 
 // ── the sidecar phase is bounded in count and in flight ────────────
 
-/// A listing is a handful of languages; one that lists more tracks
-/// than the cap is malformed or hostile, and only the first cap-many
-/// are fetched — in listing order, so a well-formed listing that is
-/// merely long keeps its first tracks.
+/// The sidecar writer is a backstop behind the resolve, which has
+/// already cut every listing it builds to the cap by the user's
+/// preference: a listing that reaches the writer longer than the cap
+/// did not come through the resolve, and only its first cap-many are
+/// fetched, in listing order.
 #[tokio::test]
 async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
@@ -3708,14 +3709,26 @@ async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
             url: format!("{}/subs/l{i:02}.vtt", server.uri()),
         })
         .collect();
-    let written = write_sidecar_subtitles(
+    // The host's budget would pace the fetches past its burst at a
+    // token a second and a half, and this test is about the cap, not
+    // the pacing: the host here lets every request through at once.
+    let budget = crate::proxy::host_budget::HostBudget::new(
+        u32::try_from(total).expect("small"),
+        crate::proxy::host_budget::SEGMENT_REFILL,
+    );
+    let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
+        &budget,
+        &crate::commands::download_pacing::SidecarGate::never(),
         &tracks,
         None,
         dest.path(),
         "Show Episode 16",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
     )
     .await;
+    let written = crate::commands::download_transfer::install_staged(staged);
     let expected: Vec<std::path::PathBuf> = (0..SUBTITLE_TRACK_CAP)
         .map(|i| dest.path().join(format!("Show Episode 16.l{i:02}.vtt")))
         .collect();

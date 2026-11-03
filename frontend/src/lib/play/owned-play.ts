@@ -93,6 +93,9 @@ export function playArgsFor(input: {
 	/** The version remembered for the show (`storedChoice` in
 	 *  `$lib/versions/version-choice.ts`); left off when none is. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show (`storedCaption` in
+	 *  `$lib/play/caption-choice.ts`); left off when none is. */
+	caption?: string;
 }): PlayArgs {
 	const args: PlayArgs = {
 		title: input.title,
@@ -107,6 +110,7 @@ export function playArgsFor(input: {
 	if (input.kitsuId !== undefined) args.kitsu_id = input.kitsuId;
 	if (input.prefetch) args.prefetch = true;
 	if (input.version) args.version = input.version;
+	if (input.caption) args.caption = input.caption;
 	return args;
 }
 
