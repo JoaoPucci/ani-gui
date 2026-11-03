@@ -220,4 +220,26 @@ describe('an account action whose bridge call fails', () => {
 		expect(buttonLabels('anilist')).toEqual(['Sign in']);
 		expect(toastTexts()).toEqual([]);
 	});
+
+	it('a disconnect from the topbar chip whose clear cannot be confirmed settles the same way', async () => {
+		disk.anilist = SAVED;
+		installBridge({ clearToken: ipcFailure });
+		await open();
+
+		const trigger = layoutTarget.querySelector<HTMLButtonElement>('.account-chip-trigger');
+		if (!trigger) throw new Error('no account chip');
+		trigger.click();
+		await settle(4);
+		const disconnect = Array.from(
+			layoutTarget.querySelectorAll<HTMLButtonElement>('.account-chip-pop-action')
+		).find((b) => b.textContent?.trim() === 'Disconnect');
+		if (!disconnect) throw new Error('no Disconnect in the chip');
+		disconnect.click();
+		await settle();
+
+		expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		expect(accountStore.accountChanging.anilist).toBe(false);
+		expect(card('anilist').dataset.state).toBe('connected');
+		expect(toastTexts()).toEqual([CLEAR_FAILED]);
+	});
 });

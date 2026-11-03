@@ -78,6 +78,16 @@ function flow(overrides: Partial<ConnectFlowDeps> = {}): ConnectFlowDeps {
 let toasts: { kind: 'error'; message: string }[] = [];
 let seeded: string[] = [];
 
+/** Records each notice; a withdrawn one leaves the list. */
+function pushToast(t: { kind: 'error'; message: string }): string {
+	toasts.push(t);
+	return String(toasts.length - 1);
+}
+
+function dismissToast(id: string): void {
+	toasts.splice(Number(id), 1);
+}
+
 function deps(f: ConnectFlowDeps): ConnectActionDeps {
 	return {
 		store: accountStore,
@@ -85,7 +95,8 @@ function deps(f: ConnectFlowDeps): ConnectActionDeps {
 		seedConnectedList: async (p, bearer) => {
 			seeded.push(`${p} ${bearer}`);
 		},
-		pushToast: (t) => toasts.push(t)
+		pushToast,
+		dismissToast
 	};
 }
 
@@ -93,7 +104,7 @@ function cancelDeps(cancelOAuth: () => Promise<boolean>) {
 	return {
 		store: accountStore,
 		cancelOAuth,
-		pushToast: (t: { kind: 'error'; message: string }) => toasts.push(t)
+		pushToast
 	};
 }
 
@@ -140,7 +151,7 @@ describe('connectProvider: a bridge call that rejects', () => {
 		expect(messages()).toEqual([m.account_connect_error_unknown()]);
 	});
 
-	it('wakes a keyring read that was waiting on the sign-in', async () => {
+	it("wakes whoever waits on the provider's next change", async () => {
 		const oauth = deferred<never>();
 		const running = connectProvider('anilist', deps(flow({ openOAuth: () => oauth.promise })));
 		await settle();
@@ -185,6 +196,7 @@ describe('connectProvider: a bridge call that rejects', () => {
 		expect(s.kind === 'connected' && s.account.access_token).toBe('new-bearer');
 		expect(accountStore.accountChanging.anilist).toBe(false);
 		expect(messages()).toEqual([]);
+		expect(seeded).toEqual(['anilist new-bearer']);
 	});
 
 	it('a persist that rejects before writing ends signed out and says sign-in failed', async () => {
@@ -193,6 +205,32 @@ describe('connectProvider: a bridge call that rejects', () => {
 			deps(flow({ persistAccount: () => Promise.reject(new Error('ipc gone')) }))
 		);
 		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+		expect(messages()).toEqual([m.account_connect_error_unknown()]);
+	});
+
+	it('a sign-in that rejects from a keychain error puts the error back', async () => {
+		accountStore.setError('anilist', 'Keychain read failed: decrypt_error');
+		await connectProvider(
+			'anilist',
+			deps(flow({ openOAuth: () => Promise.reject(new Error('ipc gone')) }))
+		);
+		expect(accountStore.byProvider.anilist.kind).not.toBe('connecting');
+		expect(accountStore.accountChanging.anilist).toBe(false);
+		expect(messages()).toEqual([m.account_connect_error_unknown()]);
+	});
+
+	it('a keyring that cannot be read again keeps the restored sign-in', async () => {
+		accountStore.setExpired('anilist', account());
+		(globalThis as { window?: { aniGui?: unknown } }).window = {
+			aniGui: { account: { getToken: async () => ({ ok: false, kind: 'decrypt_error' }) } }
+		};
+		await connectProvider(
+			'anilist',
+			deps(flow({ openOAuth: () => Promise.reject(new Error('ipc gone')) }))
+		);
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind).toBe('expired');
+		expect(s.kind === 'expired' && s.account.access_token).toBe('old-bearer');
 		expect(messages()).toEqual([m.account_connect_error_unknown()]);
 	});
 });
@@ -247,19 +285,15 @@ describe('cancelConnect', () => {
 		await running;
 	});
 
-	it('an abandoned sign-in that completes anyway is taken from the disk', async () => {
+	it('an abandoned sign-in that completes in the browser anyway is not saved', async () => {
 		const oauth = deferred<{ ok: true; code: string; state: string }>();
+		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
+			disk[p] = payload;
+			return { ok: true as const };
+		});
 		const running = connectProvider(
 			'anilist',
-			deps(
-				flow({
-					openOAuth: () => oauth.promise,
-					persistAccount: async (p, payload) => {
-						disk[p] = payload;
-						return { ok: true };
-					}
-				})
-			)
+			deps(flow({ openOAuth: () => oauth.promise, persistAccount: persist }))
 		);
 		await settle();
 		await cancelConnect(
@@ -269,9 +303,44 @@ describe('cancelConnect', () => {
 		oauth.resolve({ ok: true, code: 'code', state: 'st' });
 		await running;
 		await settle();
+		expect(persist).not.toHaveBeenCalled();
+		expect(disk.anilist).toBeUndefined();
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+		expect(messages()).toEqual([m.account_connect_error_cancelled()]);
+	});
+
+	it('an abandoned save already sent is read back once a newer sign-in settles', async () => {
+		const save = deferred<{ ok: true }>();
+		const firstRun = connectProvider(
+			'anilist',
+			deps(
+				flow({
+					persistAccount: async (p, payload) => {
+						const r = await save.promise;
+						disk[p] = payload;
+						return r;
+					}
+				})
+			)
+		);
+		await settle();
+		await cancelConnect(
+			'anilist',
+			cancelDeps(() => Promise.reject(new Error('ipc gone')))
+		);
+		const second = deferred<{ ok: false; kind: string }>();
+		const secondRun = connectProvider('anilist', deps(flow({ openOAuth: () => second.promise })));
+		await settle();
+		save.resolve({ ok: true });
+		await firstRun;
+		await settle();
+		expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+		second.resolve({ ok: false, kind: 'port_busy' });
+		await secondRun;
+		await settle();
 		const s = accountStore.byProvider.anilist;
 		expect(s.kind === 'connected' && s.account.access_token).toBe('new-bearer');
-		expect(seeded).toEqual([]);
+		expect(seeded).toEqual(['anilist new-bearer']);
 	});
 
 	it('an abandoned sign-in does not overwrite a newer one under way', async () => {

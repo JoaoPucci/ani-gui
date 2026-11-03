@@ -97,6 +97,15 @@ describe('accountStore.reread', () => {
 		expect(s.kind === 'connected' && s.account.access_token).toBe('newer');
 	});
 
+	it('applies nothing when the keyring cannot read the file', async () => {
+		accountStore.setExpired('anilist', account({ access_token: 'held' }));
+		const done = accountStore.reread('anilist');
+		answer({ ok: false, kind: 'decrypt_error' });
+		expect(await done).toBe(false);
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind === 'expired' && s.account.access_token).toBe('held');
+	});
+
 	it('touches no other provider', async () => {
 		accountStore.setConnected('mal', account({ access_token: 'mal' }));
 		const before = accountStore.byProvider.mal;

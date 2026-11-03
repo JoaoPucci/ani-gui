@@ -16,7 +16,8 @@ describe('handleChipDisconnect', () => {
 			unknownErrorMessage: () => 'unknown',
 			tokenClearFailedMessage: () => 'token clear failed',
 			reread: vi.fn().mockResolvedValue(true),
-			stateOf: (): ProviderState => ({ kind: 'disconnected' })
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		const deps = {
 			disconnectAccount,
@@ -42,7 +43,8 @@ describe('handleChipDisconnect', () => {
 			unknownErrorMessage: () => 'unknown',
 			tokenClearFailedMessage: () => 'token clear failed',
 			reread: vi.fn().mockResolvedValue(true),
-			stateOf: (): ProviderState => ({ kind: 'disconnected' })
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		const deps = {
 			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'ok' }),
@@ -65,7 +67,8 @@ describe('handleChipDisconnect', () => {
 			unknownErrorMessage: () => 'unknown',
 			tokenClearFailedMessage: () => 'token clear failed',
 			reread: vi.fn().mockResolvedValue(true),
-			stateOf: (): ProviderState => ({ kind: 'disconnected' })
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		const deps = {
 			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'token_clear_failed' }),
@@ -107,7 +110,8 @@ describe('handleChipDisconnect', () => {
 			unknownErrorMessage: () => 'u',
 			tokenClearFailedMessage: () => 'tcf',
 			reread: vi.fn().mockResolvedValue(true),
-			stateOf: (): ProviderState => ({ kind: 'disconnected' })
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		await handleChipDisconnect('mal', prev, deps, cb);
 		expect(disconnectAccount.mock.calls[0]?.[1]).toBe(prev);
@@ -126,7 +130,8 @@ describe('handleChipDisconnect', () => {
 					order.push(`reread ${p}`);
 					return applied;
 				}),
-				stateOf: () => stateAfterReread
+				stateOf: () => stateAfterReread,
+				dismissToast: vi.fn()
 			};
 			const deps = {
 				disconnectAccount: vi.fn().mockRejectedValue(new Error('ipc gone')),
