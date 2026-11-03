@@ -1033,7 +1033,8 @@ starting it, and delete it when you find it done.
   setuid execution, so Chromium's setuid sandbox helper cannot be
   used from inside it (the `.deb` sets the helper's SUID bit in its
   postinst and keeps the sandbox), which is a packaging question of
-  its own and not part of this entry.
+  its own and not part of this entry — see "Chromium's namespace
+  sandbox in the AppImage".
 
   Two things a grep will not surface. The manual diagnostic route
   hands a pasted public URL straight to the player, the one place
@@ -1279,6 +1280,11 @@ because Ubuntu's AppArmor restriction on user namespaces grants its
 exceptions per binary, and a sandbox that fails to start aborts the
 launch. Keeping the namespace sandbox needs a probe that answers for the
 app's own binary, or a way to fall back when the sandboxed start fails.
+The AppRun is not the only place the flag comes from: electron-builder
+still writes the image's own `.desktop` entry as
+`Exec=AppRun --no-sandbox %U`, so a launch through desktop integration
+skips the probe even in its stock form, and that entry's arguments
+(`appImage.executableArgs`) change along with it.
 It waited because it changes which hosts run sandboxed, which wants
 testing across distributions rather than riding along with a toolchain
 bump.
