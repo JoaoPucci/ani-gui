@@ -151,14 +151,25 @@ test("a splash window that cannot be created is logged, and nothing else happens
 const splashDir = path.dirname(SPLASH_PAGE);
 const read = (name) => fs.readFileSync(path.join(splashDir, name), "utf-8");
 
-test("the splash is the pull-down: a film strip of the mark, a reel title and a counter", () => {
+test("the splash is the pull-down: a film strip of the mark beside a reel title", () => {
   const html = read("index.html");
   assert.match(html, /class="track"/);
   assert.match(html, /class="wordmark"/);
-  assert.match(html, /class="counter"/);
   for (const file of ["splash.css", "splash.js", "mark.svg", "sprocket.svg"]) {
     assert.ok(fs.existsSync(path.join(splashDir, file)), file);
   }
+});
+
+test("nothing on the splash counts: its readout slot is empty, moving or still", () => {
+  // A ticking counter reads as a progress indicator, and the splash
+  // measures nothing. The slot under the title stays in the page, empty,
+  // for whatever comes to fill it; the still frame shows the same.
+  const html = read("index.html");
+  assert.match(html, /<p class="readout" aria-hidden="true"><\/p>/);
+  assert.doesNotMatch(html, /class="(counter|still|unit)"/);
+  const css = read("splash.css");
+  assert.doesNotMatch(css, /counter\(|counter-reset|@counter-style|--pulled/);
+  assert.doesNotMatch(css, /\.(counter|still|unit)\b/);
 });
 
 test("the mark comes from mark.svg alone, so a new identity swaps one file", () => {
