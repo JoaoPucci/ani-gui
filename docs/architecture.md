@@ -322,10 +322,12 @@ after its state is built), and do not change for the rest of the
 session. A cache read slower than that decides when it ends, up to the
 three-second limit below.
 
-1. The Electron main process puts up a splash as the backend starts,
-   once its read of the desktop's reduced-motion setting has settled
-   (within half a second; about 20 ms on GNOME, at once elsewhere), so
-   the splash opens with that setting like any window.
+1. The Electron main process puts up a splash at once, as the backend
+   starts. It opens before the desktop's reduced-motion setting has
+   been read (within half a second; about 20 ms on GNOME, at once
+   elsewhere), so it holds its first frame until that read settles,
+   and is then told either to start its motion or to rest on its
+   finished still frame: a reduced-motion user never sees it move.
 2. The backend starts the fetch in a task of its own as soon as its
    state is built, and reads the cached copy beside it. If the file
    arrives within two seconds of that start (the cap), it decides the
@@ -345,11 +347,15 @@ three-second limit below.
 4. The splash is on screen first and alone. The app's window loads and
    paints its first page hidden; once it is ready to show, it waits up
    to a second for the splash to answer that it has rendered a frame,
+   then until the splash has been on screen for 500 ms (300 ms when it
+   rests on its still frame) — long enough for the opening to read —
    and only then is it mapped, already maximized and painted, and the
-   splash closes. The two are never on screen competing, so it does
-   not matter that native Wayland ignores always-on-top. A splash that
-   never paints, or is minimized, holds the window no longer than that
-   second. The hidden window is made at the size the desktop granted
+   splash closes. A launch whose window is ready later than that pays
+   nothing for the minimum; a warm one, whose window is ready as soon
+   as the splash has painted, pays up to that half second. The two are
+   never on screen competing, so it does not matter that native
+   Wayland ignores always-on-top. A splash that never paints, or is
+   minimized, holds the window no longer than that first second. The hidden window is made at the size the desktop granted
    the window when a launch last revealed it maximized on the same
    display (by id, size and scale), kept in `window-geometry.json`
    under the app's user data, else at the work area. On Wayland, which
@@ -365,9 +371,11 @@ three-second limit below.
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate
 a frame at a time, beside a reel title and a frame counter
-(`electron/splash/`). Its motion starts when the main process tells it
-the window is on screen, with a timer in the page as the fallback, and
-under reduced motion it is a still frame. The mark is `mark.svg` alone,
+(`electron/splash/`). Its motion starts only when the main process
+tells it to, once the window is on screen and the reduced-motion
+setting is known; under reduced motion it rests on a still frame, and
+the page's own fallback timer, for a signal that never comes, rests it
+too rather than starting the motion. The mark is `mark.svg` alone,
 and the layout holds for a mark of another shape, so a new mark replaces
 one file.
 
