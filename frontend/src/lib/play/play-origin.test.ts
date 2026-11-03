@@ -7,6 +7,7 @@ import {
 	openedFromGuess,
 	openedFromRow,
 	recordableId,
+	sessionShow,
 	withGuess,
 	withLanding,
 	withRow
@@ -85,5 +86,38 @@ describe("where a guessed session's play landed", () => {
 	it('is read back from the URL', () => {
 		expect(landedElsewhere(new URLSearchParams('session=s&guess=1&landed=other'))).toBe(true);
 		expect(landedElsewhere(new URLSearchParams('session=s&guess=1'))).toBe(false);
+	});
+});
+
+describe('the show a session plays as', () => {
+	const CARD = 'hianime:jojos-bizarre-adventure-2000-5182';
+
+	it('is the page for a session no guess opened', () => {
+		expect(sessionShow({ id: '7158', guess: false, row: CARD, linked: null })).toEqual({
+			kitsuId: '7158',
+			recordAs: '7158',
+			mirrors: true
+		});
+	});
+
+	it('is the guess, named apart, for a guessed session', () => {
+		expect(sessionShow({ id: '7158', guess: true, row: CARD, linked: null })).toEqual({
+			guessRow: CARD,
+			guessId: '7158',
+			recordAs: '7158',
+			mirrors: true
+		});
+	});
+
+	it('is the linked show once the card was linked from the session, never the old guess', () => {
+		// Later episodes go out naming the link: the backend records it
+		// only on the card's own listing, and the trackers hear nothing of
+		// a stream that is still the guessed show's.
+		expect(sessionShow({ id: '7158', guess: true, row: CARD, linked: '4013' })).toEqual({
+			guessRow: CARD,
+			guessId: '4013',
+			recordAs: '4013',
+			mirrors: false
+		});
 	});
 });

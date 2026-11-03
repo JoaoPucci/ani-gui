@@ -57,6 +57,10 @@ class FakeEventSource {
 		(this.listeners[name] ??= []).push(handler);
 	}
 	close() {}
+	dispatch(name: string, data: string) {
+		const ev = { data, type: name } as unknown as MessageEvent;
+		for (const h of this.listeners[name] ?? []) h(ev);
+	}
 }
 type GlobalLike = { EventSource?: typeof FakeEventSource };
 const g = globalThis as unknown as GlobalLike;
@@ -363,6 +367,56 @@ describe('linking from the player', () => {
 		button(m.play_link_open_linked(), slip()!)!.click();
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the way to the linked show');
 		expect(String(vi.mocked(goto).mock.calls.at(-1)?.[0])).toBe(`/anime/${RIGHT}`);
+	});
+
+	it('plays later episodes of the session as the linked show, which history keeps', async () => {
+		// A backend that records whatever id a watch names, on the card's
+		// row: only the renderer stands between the link and the old guess.
+		const watched: Record<string, unknown>[] = [];
+		server.use(
+			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
+				const body = (await request.json()) as Record<string, unknown>;
+				watched.push(body);
+				const id = (body.kitsu_id ?? undefined) as string | undefined;
+				if (id)
+					backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: id } : r));
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+		await openPlayer();
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE);
+		await until(
+			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
+			'the linked note'
+		);
+		const next = target.querySelector<HTMLButtonElement>(
+			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+		)!;
+		await until(() => !next.disabled, 'the next episode button');
+		const before = FakeEventSource.instances.length;
+		next.click();
+		await until(() => FakeEventSource.instances.length > before, 'the next episode play');
+		const play = FakeEventSource.instances.at(-1)!;
+		const asked = new URL(play.url, 'http://x').searchParams;
+		expect(asked.get('episode')).toBe('3');
+		// Named as the link, on the card's row; never as the old guess.
+		expect(asked.get('guess_row')).toBe(CARD);
+		expect(asked.get('guess_id')).toBe(RIGHT);
+		expect(asked.get('kitsu_id')).toBeNull();
+		// It lands on the card's own listing.
+		play.dispatch(
+			'done',
+			JSON.stringify({
+				session_id: 'session-2',
+				master_url: '/s/t/master.m3u8',
+				media_kind: 'mp4',
+				own_listing: true
+			})
+		);
+		await until(() => watched.length > 0, 'the watch');
+		expect(watched.every((w) => w.kitsu_id !== GUESS && w.guess_id !== GUESS)).toBe(true);
+		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
 	});
 
 	it('gives the slip its guess back on Undo', async () => {

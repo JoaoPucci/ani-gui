@@ -223,3 +223,49 @@ proptest! {
         prop_assert_eq!(args.resolve_kitsu_id(&played), want);
     }
 }
+
+/// The stitched show's play from the card whose row is the played key,
+/// linked to 4013, naming `guess_id` as its guess.
+async fn linked_play(guess_id: &str) -> (bool, Option<String>) {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "4".into(),
+            id: played_key(),
+            title: STITCHED.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut asked = args(Some(&played_key()));
+    asked.guess_id = Some(guess_id.into());
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let recorded = crate::history::read_all(&state.history_path)
+        .expect("rows")
+        .into_iter()
+        .find(|r| r.id == played_key())
+        .and_then(|r| r.kitsu_id);
+    (resp.own_listing, recorded)
+}
+
+#[tokio::test]
+async fn a_guessed_play_on_a_linked_line_does_not_stand_for_it() {
+    // The guess (7158) is not the show the line records: the play is not
+    // the line's, so the renderer records and mirrors nothing of it.
+    let (own, recorded) = linked_play("7158").await;
+    assert!(!own);
+    assert_eq!(recorded.as_deref(), Some("4013"));
+}
+
+#[tokio::test]
+async fn a_play_naming_the_link_stands_for_the_linked_line() {
+    let (own, recorded) = linked_play("4013").await;
+    assert!(own);
+    assert_eq!(recorded.as_deref(), Some("4013"));
+}

@@ -152,3 +152,7 @@ mod anilist_unanswered_test;
 #[cfg(test)]
 #[path = "guessed_from_test.rs"]
 mod guessed_from_test;
+
+#[cfg(test)]
+#[path = "guess_guard_test.rs"]
+mod guess_guard_test;
