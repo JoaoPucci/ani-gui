@@ -38,6 +38,15 @@ describe('cardRow — the line a Continue card stands for', () => {
 		).toBe(PLAYED);
 	});
 
+	it('is the row itself while the row shown records its own show', () => {
+		// The 2012 row was played from the 2012 series' page before: it is
+		// the user's own series, and a resume of it is no guess.
+		const rows = [row(PLAYED, CARD), row(CARD)];
+		const matches = { [PLAYED]: { id: SERIES_2012 }, [CARD]: { id: SERIES_2012 } };
+		expect(cardRow(rows[0], rows, matches, (id) => id === CARD)).toBe(PLAYED);
+		expect(cardRow(rows[0], rows, matches, () => true)).toBe(CARD);
+	});
+
 	it('is the row itself for a row no guessed play wrote', () => {
 		const card = row(CARD);
 		expect(cardRow(card, [card], { [CARD]: { id: SERIES_2012 } })).toBe(CARD);
@@ -69,6 +78,8 @@ describe('cardRow — properties', () => {
 				const shown = rows[at];
 				const stands = cardRow(shown, rows, matches);
 				if (stands === shown.id) return;
+				// A shown row that records its own show stands for itself.
+				expect(cardRow(shown, rows, matches, () => false)).toBe(shown.id);
 				// Only the row a guessed play came from, still in the history,
 				// matched as the same show the shown row is.
 				expect(stands).toBe(shown.guessed_from);

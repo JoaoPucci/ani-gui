@@ -777,3 +777,40 @@ async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched
         .ep_no;
     assert_eq!(listed, "12.5");
 }
+
+#[tokio::test]
+async fn an_external_play_makes_the_row_its_own_again() {
+    // A row a guessed card's play wrote on another listing notes the card
+    // it came from; a later play of that row no guess asked for clears it.
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &provider);
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
+    )
+    .expect("write config");
+    play_external(&state, &play_args()).await.expect("plays");
+    wait_for(&argv_file).await;
+    let row = crate::history::read_all(&state.history_path)
+        .expect("rows")
+        .into_iter()
+        .find(|r| r.id.contains("the-show-77"))
+        .expect("row")
+        .id;
+    crate::commands::guessed_from::record(&state, Some("hianime:other-card-1"), &row);
+    assert!(crate::commands::guessed_from::all(&state)
+        .expect("notes")
+        .contains_key(&row));
+    play_external(&state, &play_args())
+        .await
+        .expect("plays again");
+    assert!(!crate::commands::guessed_from::all(&state)
+        .expect("notes")
+        .contains_key(&row));
+}

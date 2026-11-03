@@ -269,3 +269,37 @@ async fn a_play_naming_the_link_stands_for_the_linked_line() {
     assert!(own);
     assert_eq!(recorded.as_deref(), Some("4013"));
 }
+
+#[tokio::test]
+async fn a_guessed_play_repairs_a_line_whose_recorded_show_kitsu_deleted() {
+    // The line records 4013, which Kitsu answered gone: Continue Watching
+    // guesses it again, and a play of the guess that lands on the line's
+    // own listing stands for it, as it did before a link could stick.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!("{}4013", crate::commands::kitsu_gone::GONE_PREFIX),
+        "404",
+        3600,
+    )
+    .expect("gone mark");
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "4".into(),
+            id: played_key(),
+            title: STITCHED.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut asked = args(Some(&played_key()));
+    asked.guess_id = Some("7158".into());
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    assert!(resp.own_listing);
+}
