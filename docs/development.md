@@ -401,6 +401,75 @@ environment variables above).
 constant, and register a test case for its default and for each retreat
 in `flags::matrix::CASES`. A test fails until every value has one.
 
+## Signing the flags file
+
+The flags themselves need no signature (see
+[`architecture.md`](./architecture.md#remote-flags)). The notices the
+file may carry for the notification center, and its donation-ask
+number, are used only when `flags.json` is signed with minisign and the
+signature verifies against a public key the build trusts
+(`backend/src/flags/signature.rs`, `TRUSTED_KEYS`). Each launch fetches
+`flags.json.minisig` from beside `flags.json` on the `flags` branch. An
+unsigned file, a signature that does not verify, or a build that trusts
+no key keeps the file's flags and drops its notices. The shipped build
+trusts no key yet: the first one goes in with the release that starts
+showing remote notices.
+
+The private key never goes into this repository, a pull request, an
+issue, CI or any shared drive. Keep it, and its password, offline with
+the maintainer. Anyone holding it can put text and a link in front of
+every user.
+
+These steps need [minisign](https://jedisct1.github.io/minisign/)
+0.11 or later. They are written for bash on Linux; on Windows run the
+same `minisign` commands in PowerShell with the paths changed.
+
+**1. Make the key pair (once per key).**
+
+```sh
+mkdir -p ~/.minisign
+minisign -G -p ~/.minisign/ani-gui-flags.pub -s ~/.minisign/ani-gui-flags.key
+```
+
+minisign asks for a password for the secret key. `ani-gui-flags.pub`
+holds two lines; the second is the public key, a base64 string starting
+`RW`.
+
+**2. Trust the key in a release.** Add that second line to
+`TRUSTED_KEYS` in `backend/src/flags/signature.rs`, update the test that
+pins the list, and ship the release. Installs on older releases ignore
+signed content; that is the safe direction.
+
+**3. Sign and publish.** After every edit of `flags.json`, sign the
+exact bytes you push, then commit the file and its signature together:
+
+```sh
+cd ../ani-gui-flags
+git pull
+python3 -m json.tool flags.json
+minisign -S -s ~/.minisign/ani-gui-flags.key -m flags.json \
+  -t "flags.json $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+minisign -V -p ~/.minisign/ani-gui-flags.pub -m flags.json
+git add flags.json flags.json.minisig
+git commit -m "chore: publish a notice"
+git push
+```
+
+`-S` writes `flags.json.minisig` beside the file with minisign's default
+prehashed signature, the only kind the app accepts; `-V` checks it
+before it is pushed. An edit pushed without a fresh signature leaves the
+old signature beside new bytes: installs keep the flags and drop the
+notices until a matching signature is pushed. GitHub's web editor
+cannot sign, so a notice edit made there needs the steps above
+afterwards.
+
+**4. Rotating the key.** Make the new pair (step 1), add its public key
+to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is
+out, sign with the new key only. A release later, remove the old key
+from the list. If a secret key is lost or leaked, delete
+`flags.json.minisig` from the branch at once (every install then drops
+the notices), and ship a release that removes that key.
+
 ## Code style
 
 - **Rust**: `cargo fmt` (settings in `rustfmt.toml`); `cargo clippy -D warnings` enforced by CI.

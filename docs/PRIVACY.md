@@ -359,8 +359,11 @@ kind of request:
   information, nothing about what you watch, and no identifier of your
   install. The file holds what the maintainer writes for every install:
   the switches and, when there are any, notices for the notification
-  center. Reading the notices is part of the same request and sends
-  nothing more; this version reads them but does not show them yet.
+  center. Beside it, the same launch downloads the file's signature
+  (`flags.json.minisig`), a second small request to the same server
+  that reveals the same: your IP address, when, and that it comes from
+  ani-gui. The app uses the notices only when the signature proves the
+  maintainer wrote them; this version does not show them yet.
   GitHub's own privacy statement governs the request:
   <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
 - **Aniskip OP/ED timing (automatic, when an episode plays in the
@@ -378,8 +381,9 @@ kind of request:
   does.
 
 There is no analytics or telemetry: no request reports how you use
-the app, and the update check and the remote flags file are the only
-requests that go to the project's own repository.
+the app, and the update check and the remote flags file (with its
+signature) are the only requests that go to the project's own
+repository.
 
 The notification center makes no request of its own. What it says about
 the streaming source not answering comes from the app's own requests:

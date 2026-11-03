@@ -307,6 +307,18 @@ flags with that value in force. A test over `DECLARED` fails while any
 value of a declared flag has no case, or a case names a flag or value
 no longer declared.
 
+**What a signature adds.** The file's notices for the notification
+center, and its donation-ask number, are content rather than a retreat,
+so they are used only under a signature. Each launch fetches
+`flags.json.minisig` beside the file, from the same branch and host, and
+verifies the file's exact bytes with minisign (Ed25519 over BLAKE2b-512,
+the prehashed form only) against the public keys compiled into the
+build (`flags::signature::TRUSTED_KEYS`). A verified file keeps its
+notices block; any other file keeps its flags and loses the block, and
+what is cached is that admitted document. The shipped build trusts no
+key yet, so no notice is used. Signing, trusting and rotating a key are
+in [`development.md`](./development.md#signing-the-flags-file).
+
 **Why the file is not signed.** With every declaration held to that
 rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
 write access to the branch, could only switch features off or bring
@@ -585,8 +597,9 @@ are kept. Nothing in the block is HTML, and nothing renders it as HTML.
 
 None of it is shown yet, and the donation-ask number schedules nothing
 yet: text and links from the file, and a number that makes the app ask
-for something, are trusted only once the file is signed and the
-signature verified, which is planned for the same release. What is
+for something, are trusted only from a file whose signature verifies
+(see "What a signature adds" above). A file that does not verify loses
+its notices block before it is cached or read. What is
 ready for it: the parser, and the donation ask's schedule as a pure
 state machine (`$lib/notices/donation`): once each time the published
 number rises past the last one the install acted on, never in the first
