@@ -1021,10 +1021,16 @@ async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
         versions: Vec::new(),
         unread_past: None,
     };
-    let resolved =
-        crate::commands::play_native_episode::resolve_episode(&c, &picked, "7.5", "sub", "720")
-            .await
-            .expect("the recap resolves");
+    let resolved = crate::commands::play_native_episode::resolve_episode(
+        &c,
+        &picked,
+        "7.5",
+        "sub",
+        "720",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("the recap resolves");
     assert_eq!(resolved.master_url, "https://hls.example/v/720/index.m3u8");
     assert_eq!(resolved.slot, 8);
     assert_eq!(resolved.tag.as_deref(), Some("7.5"));
@@ -3727,13 +3733,13 @@ async fn a_megaplay_server_is_read_through_the_sites_sources_endpoint() {
             referer: Some("https://megaplay.buzz/".into()),
             subtitles: vec![
                 SubtitleTrack {
-                    lang: "eng".into(),
+                    lang: "en".into(),
                     label: "English".into(),
                     default: true,
                     url: "https://mp.example/v/subs/track_0_eng.vtt".into(),
                 },
                 SubtitleTrack {
-                    lang: "spa".into(),
+                    lang: "es-419".into(),
                     label: "Spanish (Latin American)".into(),
                     default: false,
                     url: "https://mp.example/v/subs/track_2_Latin_American_spa.vtt".into(),

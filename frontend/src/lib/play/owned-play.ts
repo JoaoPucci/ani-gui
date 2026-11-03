@@ -97,6 +97,9 @@ export function playArgsFor(input: {
 	/** The history row a guessed Continue card opened the session from
 	 *  (`guessRow` in `./play-origin`). */
 	guessRow?: string;
+	/** The captions choice remembered for the show (`storedCaption` in
+	 *  `$lib/play/caption-choice.ts`); left off when none is. */
+	caption?: string;
 }): PlayArgs {
 	const args: PlayArgs = {
 		title: input.title,
@@ -112,6 +115,7 @@ export function playArgsFor(input: {
 	if (input.prefetch) args.prefetch = true;
 	if (input.version) args.version = input.version;
 	if (input.guessRow) args.guess_row = input.guessRow;
+	if (input.caption) args.caption = input.caption;
 	return args;
 }
 

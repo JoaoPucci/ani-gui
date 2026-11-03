@@ -21,10 +21,35 @@ pub(super) fn build_argv_with_template(
         argv.push(format!("{referrer_flag}{r}"));
     }
     match sub_flag {
-        SubFlag::Each(flag) => argv.extend(args.subtitle_urls.iter().map(|u| format!("{flag}{u}"))),
-        SubFlag::First(flag) => {
+        SubFlag::Each(flag, off) => {
+            // A show remembered Off starts with its subtitles off,
+            // every track still there to turn on.
+            if args.subtitles_off {
+                argv.push(off.to_string());
+            }
+            // Fitted to the command line beside everything else on it,
+            // the stream URL that follows included.
+            let fixed: Vec<String> = argv
+                .iter()
+                .cloned()
+                .chain(std::iter::once(args.stream_url.clone()))
+                .collect();
+            let flags = args
+                .subtitle_urls
+                .iter()
+                .map(|u| format!("{flag}{u}"))
+                .collect();
+            argv.extend(crate::commands::command_line::flags_within_budget(
+                &args.player_command,
+                &fixed,
+                flags,
+            ));
+        }
+        // One file, and none for a show remembered Off.
+        SubFlag::First(flag) if !args.subtitles_off => {
             argv.extend(args.subtitle_urls.first().map(|u| format!("{flag}{u}")))
         }
+        SubFlag::First(_) => {}
     }
     argv.push(args.stream_url.clone());
     argv
@@ -51,7 +76,12 @@ pub(super) fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
     };
     let referer = args.referer.as_deref().unwrap_or("");
     let title = args.title.as_deref().unwrap_or("");
-    let subtitle = args.subtitle_urls.first().map_or("", String::as_str);
+    // A template takes one file, and none for a show remembered Off.
+    let subtitle = if args.subtitles_off {
+        ""
+    } else {
+        args.subtitle_urls.first().map_or("", String::as_str)
+    };
     let url = args.stream_url.as_str();
     tokens
         .into_iter()

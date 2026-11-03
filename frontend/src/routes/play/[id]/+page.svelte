@@ -76,9 +76,15 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
+	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
+	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
+	import { captionEntries } from '$lib/play/caption-label';
+	import { captionOrder } from '$lib/play/caption-order';
+	import { menuHeight, menuKeyStep, revealScroll } from '$lib/play/caption-menu-fit';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -300,8 +306,8 @@
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
 	// TextTrackList off the page's video so the menu reflects
-	// whatever the current session has attached (today: 0 or 1
-	// track; multi-language sessions land later). `textTracksTick`
+	// whatever the current session has attached — none, one, or one
+	// per language the provider lists. `textTracksTick`
 	// is the reactivity dependency — every addtrack / removetrack /
 	// individual `change` event bumps it so `availableTracks` and
 	// `captionsOn` re-derive.
@@ -311,20 +317,31 @@
 	const availableTracks = $derived.by(() => {
 		void textTracksTick; // reactivity dep — re-derive on each tick
 		if (!videoEl) return [];
-		const out: Array<{ index: number; label: string; showing: boolean }> = [];
+		const out: Array<{ index: number; lang: string; label: string; showing: boolean }> = [];
 		for (let i = 0; i < videoEl.textTracks.length; i++) {
 			const t = videoEl.textTracks[i];
 			if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
-			out.push({
-				index: i,
-				label: t.label || t.language || m.play_track_fallback_label({ number: String(i + 1) }),
-				showing: t.mode === 'showing'
-			});
+			out.push({ index: i, lang: t.language, label: t.label, showing: t.mode === 'showing' });
 		}
 		return out;
 	});
 	const captionsOn = $derived(availableTracks.some((t) => t.showing));
 	const showCcButton = $derived(availableTracks.length > 0);
+	// The show's remembered captions choice as the menu opened, so the
+	// order it lists the viewer's languages in holds while it is open.
+	let ccRemembered = $state<string | undefined>(undefined);
+	// The menu's entries: named from each track's language tag in the
+	// app's language, the viewer's languages first, then the rest by
+	// name ($lib/play/caption-label, $lib/play/caption-order).
+	const ccMenu = $derived.by(() => {
+		const locale = uiLocale();
+		const entries = captionEntries(availableTracks, locale, {
+			qualified: (name, detail) => m.play_controls_cc_qualified({ name, detail }),
+			numbered: (name, n) => m.play_controls_cc_numbered({ name, number: String(n) }),
+			untitled: (position) => m.play_track_fallback_label({ number: String(position) })
+		});
+		return captionOrder(entries, { locale, remembered: ccRemembered });
+	});
 	let scrubberHover = $state(false);
 	// Furthest end of the contiguous buffered range that contains
 	// currentTime — feeds the dimmer "preloaded" segment of the
@@ -506,18 +523,98 @@
 	}
 
 	function toggleCcMenu() {
+		if (!ccMenuOpen) ccRemembered = storedCaption(id);
 		ccMenuOpen = !ccMenuOpen;
 	}
 
+	/** Scroll the captions menu just far enough to show `item`, and
+	 *  focus it ($lib/play/caption-menu-fit). */
+	function revealCcItem(menu: HTMLElement, item: HTMLElement) {
+		menu.scrollTop = revealScroll({
+			scrollTop: menu.scrollTop,
+			viewHeight: menu.clientHeight,
+			itemTop: item.offsetTop,
+			itemHeight: item.offsetHeight
+		});
+		item.focus({ preventScroll: true });
+	}
+
+	/** The captions menu, as it mounts: capped at the room above the
+	 *  captions button inside the player and below the app's top bar —
+	 *  again on every resize while it is open — and opened on the
+	 *  selected entry. */
+	function fitCcMenu(menu: HTMLElement) {
+		const fit = () => {
+			const frame = ccMenuAnchor?.closest('.player-frame');
+			if (!ccMenuAnchor || !frame) return;
+			// In fullscreen the player covers the top bar.
+			const topbar = document.fullscreenElement ? null : document.querySelector('.topbar');
+			const height = menuHeight({
+				frameTop: frame.getBoundingClientRect().top,
+				ceiling: topbar?.getBoundingClientRect().bottom,
+				anchorTop: ccMenuAnchor.getBoundingClientRect().top,
+				gap: 8, // the menu's 0.5rem offset above the button
+				margin: 8,
+				floor: 96 // about two entries and the heading
+			});
+			menu.style.setProperty('max-block-size', `${height}px`);
+		};
+		fit();
+		const checked = menu.querySelector<HTMLElement>('[aria-checked="true"]');
+		if (checked) revealCcItem(menu, checked);
+		window.addEventListener('resize', fit);
+		return { destroy: () => window.removeEventListener('resize', fit) };
+	}
+
+	/** ArrowUp, ArrowDown, Home and End move through the menu's
+	 *  entries, and the player's volume shortcuts on the up and down
+	 *  arrows do not see them. */
+	function onCcMenuKey(e: KeyboardEvent) {
+		const menu = e.currentTarget as HTMLElement;
+		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
+		const at = items.indexOf(document.activeElement as HTMLElement);
+		const next = menuKeyStep(e.key, at, items.length);
+		if (next === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		revealCcItem(menu, items[next]);
+	}
+
+	/** A captions pick the browser's own menu made — with the custom
+	 *  controls off — remembered for the show as the app's own menu's
+	 *  are ($lib/play/caption-watch). */
+	function rememberViewerPick(video: HTMLVideoElement) {
+		// With the app's own controls on there is no browser menu: a
+		// change the app did not make is hls.js's, not the viewer's.
+		if (USE_CUSTOM_PLAYER_CONTROLS) return;
+		const pick = noteCaptionChange(video, video.textTracks);
+		if (pick === null) return;
+		const choice = captionChoiceOf(video.textTracks, pick);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+	}
+
+	/** The UI locale, which the subtitle track a session starts on
+	 *  follows; empty when Paraglide has none resolved. */
+	function uiLocale(): string {
+		try {
+			return getLocale();
+		} catch {
+			return '';
+		}
+	}
+
 	/** Pick a subtitle track by its index in the TextTrackList, or
-	 *  'off' to hide every track. The chosen one becomes `showing`,
-	 *  everything else `hidden`. */
-	function pickCcTrack(target: number | 'off') {
+	 *  'off' for none. Only the track shown is loaded; the rule is
+	 *  $lib/play/caption-pick's. */
+	function pickCcTrack(target: CaptionTarget) {
 		ccMenuOpen = false;
 		if (!videoEl) return;
-		for (let i = 0; i < videoEl.textTracks.length; i++) {
-			videoEl.textTracks[i].mode = target === i ? 'showing' : 'hidden';
-		}
+		applyCaptionPick(videoEl.textTracks, target);
+		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
+		// Under the show's id, unless the session was opened from a
+		// guessed match, which records nothing under the guess.
+		const choice = captionChoiceOf(videoEl.textTracks, target);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
 	}
 
 	function setVolume(v: number) {
@@ -1649,6 +1746,7 @@
 		// thrash availableTracks' derivation chain.
 		const onTextTracksMutate = () => {
 			textTracksTick++;
+			rememberViewerPick(v);
 		};
 		v.textTracks.addEventListener('addtrack', onTextTracksMutate);
 		v.textTracks.addEventListener('removetrack', onTextTracksMutate);
@@ -1938,7 +2036,9 @@
 		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId));
+			sourceScope.add(
+				armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale(), storedCaption(id))
+			);
 		}
 	});
 
@@ -2159,6 +2259,7 @@
 			show,
 			kitsuId: recordableId(owner.showId, guess),
 			version,
+			caption: storedCaption(owner.showId),
 			guessRow: guessRow(guess, row)
 		});
 		// The resolve records the watch; mark the episode started first,
@@ -2544,7 +2645,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				// Body text is shaped by describeExternalLaunchFailure so
@@ -2612,7 +2714,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))
@@ -3016,11 +3119,18 @@
 									<span class="pc-cc-rule" aria-hidden="true"></span>
 								</button>
 								{#if ccMenuOpen}
-									<div id="pc-cc-menu" class="pc-cc-menu" role="menu" tabindex="-1">
+									<div
+										id="pc-cc-menu"
+										class="pc-cc-menu"
+										role="menu"
+										tabindex="-1"
+										use:fitCcMenu
+										onkeydown={onCcMenuKey}
+									>
 										<p class="pc-cc-menu-heading">{m.play_controls_cc_menu_heading()}</p>
 										<button
 											type="button"
-											class="pc-menu-item"
+											class="pc-menu-item pc-cc-item"
 											class:pc-menu-active={!captionsOn}
 											role="menuitemradio"
 											aria-checked={!captionsOn}
@@ -3031,20 +3141,35 @@
 											</span>
 											<span>{m.play_controls_cc_off()}</span>
 										</button>
-										{#each availableTracks as t (t.index)}
+										{#snippet ccItem(t: (typeof ccMenu.rest)[number])}
 											<button
 												type="button"
-												class="pc-menu-item"
+												class="pc-menu-item pc-cc-item"
 												class:pc-menu-active={t.showing}
 												role="menuitemradio"
 												aria-checked={t.showing}
+												title={t.name}
 												onclick={() => pickCcTrack(t.index)}
 											>
 												<span class="pc-menu-check" aria-hidden="true">
 													{#if t.showing}✓{/if}
 												</span>
-												<span>{t.label}</span>
+												<span class="pc-cc-name">{t.name}</span>
+												{#if t.sdh}
+													<abbr class="pc-cc-sdh" title={m.play_controls_cc_sdh_title()}>
+														{m.play_controls_cc_sdh()}
+													</abbr>
+												{/if}
 											</button>
+										{/snippet}
+										{#each ccMenu.yours as t (t.index)}
+											{@render ccItem(t)}
+										{/each}
+										{#if ccMenu.yours.length > 0 && ccMenu.rest.length > 0}
+											<div class="pc-cc-divider" role="separator"></div>
+										{/if}
+										{#each ccMenu.rest as t (t.index)}
+											{@render ccItem(t)}
 										{/each}
 									</div>
 								{/if}
@@ -4589,6 +4714,15 @@
 		inset-inline-end: 0;
 		inset-block-end: calc(100% + 0.5rem);
 		min-inline-size: 14rem;
+		/* With a provider listing thirty-odd languages the menu is
+		   taller than the player: its height is capped at the room
+		   above the button (set as it opens, and on resize) and it
+		   scrolls inside that. */
+		max-inline-size: min(22rem, calc(100vw - 2rem));
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 		padding: 0.45rem;
 		background: rgba(28, 28, 32, 0.96);
 		border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4601,6 +4735,38 @@
 		   popover always wins. The kebab menu uses 5; the player-skip
 		   button is z-10 — we stay above both. */
 		z-index: 50;
+	}
+	/* Each entry stays on one line, its name ellipsised only past the
+	   menu's widest. */
+	.pc-cc-menu > * {
+		flex-shrink: 0;
+	}
+	.pc-cc-item {
+		white-space: nowrap;
+	}
+	.pc-cc-name {
+		flex: 1 1 auto;
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* The mark for a track for the deaf and hard of hearing: a small
+	   outlined tag after the name, so "Thai" and its SDH twin read as
+	   one language in two forms. */
+	.pc-cc-sdh {
+		flex-shrink: 0;
+		padding: 0.05rem 0.35rem;
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 4px;
+		font: 600 0.65rem/1.3 var(--font-mono);
+		letter-spacing: 0.06em;
+		color: rgba(255, 255, 255, 0.72);
+		text-decoration: none;
+	}
+	.pc-cc-divider {
+		block-size: 1px;
+		margin: 0.3rem 0.6rem;
+		background: rgba(255, 255, 255, 0.12);
 	}
 	.pc-cc-menu-heading {
 		margin: 0.15rem 0.6rem 0.4rem;

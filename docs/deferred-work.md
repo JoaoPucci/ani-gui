@@ -508,17 +508,67 @@ starting it, and delete it when you find it done.
   settings; and external players and Syncplay receive the tracks as
   files and style them themselves, so this is the embedded player
   only.
-- **Subtitle track selection: a locale-aware default, and a remembered
-  choice.** Which track shows when an episode opens is the provider's
-  call, in every app locale: the browser turns on the track the
-  provider flagged default, the rest start hidden, and the page flips
-  one to showing only when the user picks it. Nothing is remembered —
-  the next episode starts from the provider's flag again.
+- **One set of player controls.** The player has two: the app's own,
+  and Chromium's native ones, which Settings swaps in when "Custom
+  player controls" (`use_custom_player_controls`, on by default) is
+  turned off. Every player feature has to work through
+  both, so it is built twice. The per-show subtitle memory is the
+  latest case: a pick in the app's captions menu is recorded as it
+  is made, while a pick in the browser's menu has to be inferred from
+  the video's text-track changes.
 
-  It waits on evidence. Every hianime listing captured or played so
-  far carried English alone, flagged default, so an app-language
-  preference has nothing to choose between yet. A payload that flags
-  no track at all starts with every subtitle off.
+  Investigate choosing one. Before deciding, measure what the native
+  path still offers that the custom one does not — the setting's own
+  hint names picture-in-picture and the native captions menu — and
+  decide from that.
+- **The starting captions on a playlist-only stream.** The app
+  applies a session's starting captions — the language last picked on
+  the show (Off included), else the app's language — only where the
+  session lists sidecar subtitle tracks. A stream whose subtitles
+  exist only inside its own playlist never gets one, whichever player
+  controls are on: hls.js's own choice plays, a language or Off
+  picked in the app's captions menu is remembered but not applied on
+  the show's next such episode, and with the custom controls off a
+  pick in Chromium's own menu is not remembered at all, since that is
+  recorded only once the app has applied a start.
+
+  It waits because no episode seen has that shape — every one lists
+  its tracks beside the stream — and because the obvious fix, taking
+  the captions as they stand when such a session starts, would let
+  hls.js's own switching of playlist tracks read as the viewer's pick.
+
+  The gap is in where the start is applied, not in either menu, so
+  choosing one set of player controls (above) would not remove it.
+- **Sidecar subtitles on a stream that also carries its own.** Each
+  time hls.js switches its own subtitle track it disables every
+  labelled subtitle track but the one it chose
+  (`SubtitleTrackController.toggleTrackModes`), the app's sidecar
+  `<track>`s included, and it reads the captions again on every
+  change to them. On a stream whose playlist lists subtitle
+  renditions as well as sidecar tracks, then, a sidecar track picked
+  from the captions menu goes off the moment it is picked: showing it
+  reads to hls.js as "none of mine", so it switches to none. The
+  session's start fares the same way. When hls.js picks its playlist
+  track after the sidecar tracks attach, that track replaces the
+  start; when it picked before, the start's own change makes it
+  switch to none, and every track goes off. The pick and the first
+  order were measured on the packaged app with a fixture stream of
+  that shape; the second follows from the same code.
+
+  It waits because the provider serves no such stream. Episodes
+  resolved across sub and dub in November 2026 carried no
+  `EXT-X-MEDIA` subtitle rendition and no closed captions, and each
+  had a single level. With no playlist tracks hls.js's subtitle track
+  stays at none and it never switches: a minute of playback, a pick
+  and a seek leave the sidecar tracks as the app set them.
+
+  Undoing hls.js's change after it happens is not the fix: with the
+  custom controls off, a caption change the app did not make is read
+  as the viewer's pick (`$lib/play/caption-watch`) — all but a track
+  turned on beside the one the app set, and hls.js switches that one
+  off first. The fix
+  belongs in keeping hls.js's own subtitle selection in step with the
+  captions menu.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
