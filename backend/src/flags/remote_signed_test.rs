@@ -118,3 +118,95 @@ async fn a_signature_that_never_comes_costs_the_notices_not_the_flags() {
     assert_eq!(doc.get("some_feature"), Some(&serde_json::json!(false)));
     assert!(started.elapsed() < std::time::Duration::from_secs(3));
 }
+
+async fn serve_delayed(file_ms: u64, sig: ResponseTemplate) -> (MockServer, String) {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(FILE)
+                .set_delay(std::time::Duration::from_millis(file_ms)),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json.minisig"))
+        .respond_with(sig)
+        .mount(&server)
+        .await;
+    let url = format!("{}/flags/flags.json", server.uri());
+    (server, url)
+}
+
+#[tokio::test]
+async fn a_hung_signature_does_not_hold_the_flags_past_the_launchs_wait() {
+    let hung = ResponseTemplate::new(200)
+        .set_body_string(SIG)
+        .set_delay(std::time::Duration::from_secs(60));
+    let (_s, url) = serve_delayed(0, hung).await;
+    let started = std::time::Instant::now();
+    let doc = fetch_trusting(
+        &reqwest::Client::new(),
+        &url,
+        FETCH_TIMEOUT,
+        &[KEY_ONE.trim()],
+    )
+    .await
+    .expect("the flags arrive");
+    assert!(
+        started.elapsed() < crate::flags::store::SETTLE_CAP,
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(doc.get(NOTICES_KEY), None);
+}
+
+#[tokio::test]
+async fn the_signature_is_asked_for_alongside_the_file_not_after_it() {
+    // The signature takes longer than the grace it gets after the
+    // file, so only a request made alongside the file arrives in time.
+    let slow = ResponseTemplate::new(200)
+        .set_body_string(SIG)
+        .set_delay(super::SIGNATURE_GRACE + std::time::Duration::from_millis(300));
+    let (_s, url) = serve_delayed(600, slow).await;
+    let doc = fetch_trusting(
+        &reqwest::Client::new(),
+        &url,
+        FETCH_TIMEOUT,
+        &[KEY_ONE.trim()],
+    )
+    .await
+    .expect("document");
+    assert!(doc.get(NOTICES_KEY).is_some());
+}
+
+#[tokio::test]
+async fn a_file_that_fails_does_not_wait_for_its_signature() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json.minisig"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(SIG)
+                .set_delay(std::time::Duration::from_secs(60)),
+        )
+        .mount(&server)
+        .await;
+    let url = format!("{}/flags/flags.json", server.uri());
+    let started = std::time::Instant::now();
+    let doc = fetch_trusting(
+        &reqwest::Client::new(),
+        &url,
+        FETCH_TIMEOUT,
+        &[KEY_ONE.trim()],
+    )
+    .await;
+    assert_eq!(doc, None);
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+}
