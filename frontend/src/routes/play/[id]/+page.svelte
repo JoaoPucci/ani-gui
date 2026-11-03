@@ -549,8 +549,10 @@
 			if (!ccMenuAnchor || !frame) return;
 			// In fullscreen the player covers the top bar.
 			const topbar = document.fullscreenElement ? null : document.querySelector('.topbar');
+			const frameBox = frame.getBoundingClientRect();
 			const height = menuHeight({
-				frameTop: frame.getBoundingClientRect().top,
+				frameTop: frameBox.top,
+				frameHeight: frameBox.height,
 				ceiling: topbar?.getBoundingClientRect().bottom,
 				anchorTop: ccMenuAnchor.getBoundingClientRect().top,
 				gap: 8, // the menu's 0.5rem offset above the button
