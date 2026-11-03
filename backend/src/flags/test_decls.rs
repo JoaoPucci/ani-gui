@@ -1,6 +1,5 @@
-//! Declarations the tests resolve against. The production list is
-//! empty until a flag's consumer lands, so these stand in for one of
-//! each kind.
+//! Declarations the tests resolve against, one of each kind, so the
+//! rules are tested apart from whatever the production list holds.
 
 use super::decl::{FlagDecl, FlagKind};
 

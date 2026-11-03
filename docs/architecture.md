@@ -276,6 +276,7 @@ only values the file may select:
 |---|---|---|
 | Kill switch | `true` (the feature runs) | `false` (the feature is off) |
 | Fallback | the behaviour this build ships | a behaviour an earlier release had, from the list the declaration names |
+| Rollout | `false` (the feature is off) | `true` (the feature runs), from a verified file only; `false` from any |
 
 A flag takes its built-in default when the file sends anything else for
 it: a value the declaration does not list, the wrong JSON type, or no
@@ -283,10 +284,12 @@ entry at all. Flags the build does not declare are ignored. The value
 resolution returns is the declaration's own string, never one copied
 from the file.
 
-**Only safe directions.** A flag may only move the app toward the safer
-or older side: switching a feature off, or going back to an earlier
-behaviour. It may never switch off something protective or silence a
-notice. The kinds guarantee half of that: the default is the build's own
+**Only safe directions, unless signed.** A file whose signature does not
+verify may only move the app toward the safer or older side: switching
+a feature off, or going back to an earlier behaviour. It may never
+switch off something protective or silence a notice. Turning a feature
+on is the one riskier move, and only a rollout's `true` from a verified
+file makes it (see "What a signature adds" below). The kinds guarantee half of that: the default is the build's own
 behaviour, and the file can only pick a value the declaration lists. They
 cannot check whether the listed values really are the safer side. For a
 fallback, that depends on which earlier behaviours the declaration names.
@@ -307,38 +310,43 @@ flags with that value in force. A test over `DECLARED` fails while any
 value of a declared flag has no case, or a case names a flag or value
 no longer declared.
 
-**What a signature adds.** The file's notices for the notification
-center, and its donation-ask number, are content rather than a retreat,
-so they are used only under a signature. Each launch fetches
+**What a signature adds.** Two things are used only under a signature:
+a rollout's `true`, which turns a feature on, and the file's notices
+for the notification center with its donation-ask number, which are
+content rather than a retreat. Each launch fetches
 `flags.json.minisig` beside the file, from the same branch and host, and
 verifies the file's exact bytes with minisign (Ed25519 over BLAKE2b-512,
 the prehashed form only) against the public keys compiled into the
-build (`flags::signature::TRUSTED_KEYS`). A verified file keeps its
-notices block; any other file keeps its flags and loses the block, and
-what is cached is that admitted document, marked as such. A cache
+build (`flags::signature::TRUSTED_KEYS`). A verified file is used
+whole; any other file keeps its flags but loses its notices block and
+every rollout it sets to `true`, and what is cached is that admitted
+document, marked as such. A cache
 without the mark was written by a build before the signature check,
 which kept the file as fetched; it is read as an unsigned file, so its
-notices are dropped and its flags kept. The shipped build trusts no
-key yet, so no notice is used. Signing, trusting and rotating a key are
+notices and any turned-on rollout are dropped and its other flags
+kept. The shipped build trusts no key yet, so no notice is used and no
+rollout is turned on. Signing, trusting and rotating a key are
 in [`development.md`](./development.md#signing-the-flags-file).
 
 What a signature does not cover: the cached copy is the user's own disk
-and is read back without checking again, so verified notices stay in
-use for up to the cache's seven days on a machine that cannot reach the
-file, including after the signature is withdrawn; and an older signed
-pair of file and signature, republished, verifies again. A notice meant
+and is read back without checking again, so verified notices, and a
+rollout a verified file turned on, stay in use for up to the cache's
+seven days on a machine that cannot reach the file, including after the
+signature is withdrawn; and an older signed pair of file and signature,
+republished, verifies again. A rollout meant to go off again is set to
+`false`, which any file may do. A notice meant
 to end is therefore removed from the file, and bounded by `max_app`
 where the release that fixes its cause is known.
 
-**Why the flags need no signature.** With every declaration held to
-that rule, no value the file can select is riskier than the default, so
-someone who rewrote the file in transit, or got write access to the
-branch, could only switch features off or bring back older behaviour.
-The flags are therefore read whatever the signature above says; the
-signature gates only the notices block. A flag kind whose file value is
-riskier than its default, such as turning something on or relaxing a
-check, would need the flags themselves to be read only under a verified
-signature, which no code does today.
+**Why most flags need no signature.** With every declaration held to
+that rule, no value an unverified file can select is riskier than the
+default, so someone who rewrote the file in transit, or got write
+access to the branch, could only switch features off or bring back
+older behaviour. The flags are therefore read whatever the signature
+above says, less the values only a signature may select. That is also
+why the flags still apply while signing is not set up, or when a
+signature is stale: an unsigned edit can still switch a feature off in
+an incident.
 
 **Decided once per launch, behind the splash.** The flags are decided
 once, within two seconds of the backend starting its refresh (just
@@ -520,12 +528,11 @@ flags the window was opened with. Off, nothing of it mounts: no bell,
 no toast or row from it, no detail page content, no line above Play, no
 read of the source's health, and nothing read from or written to its
 storage. The update badge and dialog, the download dock and the
-diagnostics page are the same either way. The flag is not declared in
-`flags::DECLARED` yet, so it is off in every build: a flag the file
-turns on is a riskier value than the build's default, which the
-remote-flags rule above does not allow. A release turns the center on
-by declaring the flag as a kill switch, which ships on and which the
-file may then only switch off.
+diagnostics page are the same either way. The flag is declared in
+`flags::DECLARED` as a rollout (`notices::NOTIFICATION_CENTER`): off by
+default, and turned on only by a flags file whose signature verifies.
+After a grace period a release declares it as a kill switch instead,
+which ships it on and which the file may then only switch off.
 
 **What it shows.** Each notice is a keyed row, either a *condition*
 (true for a while, resolving itself) or an *event* (happened once):
@@ -536,12 +543,16 @@ file may then only switch off.
 | The streaming source isn't answering, then is answering again | condition | `GET /api/source-health` (below) |
 | Episodes downloaded | event, one row per show | the download list |
 | A download failed | event | the download list |
+| A notice from the developer | condition, one row per notice | `GET /api/notices` (below) |
 
 Raising a key that exists updates its row: a run of failures is one
 outage row, three finished episodes of one show one row counting three.
 Events are kept in the window's `localStorage` (`ani-gui.notices.v1`),
 at most 50 and none older than 30 days. Conditions are never stored;
-they are worked out again at each start. A condition that resolves stays
+they are worked out again at each start. Of a published notice the ids
+read or dismissed are kept (`ani-gui.notices.published.v1`, the 64
+latest of each), so it does not come back as news, or at all, at the
+next launch. A condition that resolves stays
 in the list, marked resolved, for a day or until the app restarts.
 
 **The bell.** It counts every unread row, good news included, except
@@ -585,7 +596,7 @@ between the user and the source blocking it look the same from here,
 the wording says plainly that the cause is not known. While the source
 isn't answering, a show's page carries one line above Play saying so.
 
-**Published notices ride the flags file, and are not shown yet.** The
+**Published notices ride the flags file.** The
 maintainer may publish notices for everyone under one reserved key of
 the flags file's `flags` object, which no flag may be declared under:
 
@@ -608,9 +619,13 @@ the flags file's `flags` object, which no flag may be declared under:
 
 They need no request of their own: the block is part of the one launch
 fetch, cached with it, and decided once with the flags
-(`FlagStore::notices`, which keeps the block as it came). The parser
-that will read it, `backend/src/notices/remote.rs`, is built and tested
-but not yet called, so nothing is parsed or logged at run time today. `format` is the block's version: a build reads only the format
+(`FlagStore::notices`, which keeps the block as it came). It is kept
+only from a file whose signature verifies (see "What a signature adds"
+above); any other file loses it before it is cached or read. The window
+asks for it once, on `GET /api/notices`, which answers only while the
+center is on: the block parsed for the running release by
+`backend/src/notices/remote.rs`, what was dropped logged with its
+reason. `format` is the block's version: a build reads only the format
 it knows and drops any other block whole. Fields a build does not know
 are ignored, so a later field (a button whose action comes from a fixed
 list, an image served from this repository) reaches older builds as a
@@ -623,16 +638,32 @@ the string `"source"` is ignored rather than dropping the notice; the priority o
 `warning`, `critical`; the version bounds `X.Y.Z`. At most eight notices
 are kept. Nothing in the block is HTML, and nothing renders it as HTML.
 
-None of it is shown yet, and the donation-ask number schedules nothing
-yet: text and links from the file, and a number that makes the app ask
-for something, are trusted only from a file whose signature verifies
-(see "What a signature adds" above). A file that does not verify loses
-its notices block before it is cached or read. What is
-ready for it: the parser, and the donation ask's schedule as a pure
-state machine (`$lib/notices/donation`): once each time the published
-number rises past the last one the install acted on, never in the first
-fourteen days after the first launch, never while a video plays, and a
-new install reacting only to rises after the number it saw at install.
+The window reads the answer strictly again (`$lib/notices/published`):
+a field that is not what it should be drops its notice, and a link is a
+plain `http` or `https` address or nothing. Each notice is a row of its
+own, "From the developer", coloured by its priority (`warning` amber,
+`critical` oxblood), toasting on arrival like any other row but never
+while a video plays, whatever its priority. Its words are drawn as text,
+its link shown as its address and opened in the user's browser by the
+row's one action. It may be dismissed. A notice with `"about":
+"source"` explains the outage the app works out for itself, so it joins
+that row instead of adding one: its words and link appear on the outage
+row's page while the source is not answering, and nowhere otherwise.
+
+**The donation ask.** The published `donation_ask` number drives the
+ask's schedule, a pure state machine (`$lib/notices/donation`, wired by
+`$lib/notices/donation-ask`): once each time the number rises past the
+last one the install acted on, never in the first fourteen days after
+the first launch, never while a video plays, something is fullscreen or
+the player is open (it waits for a moment when none is true), and a new
+install records the number current when it first sees one and reacts
+only to rises after it. The ask is one pinned toast with two answers:
+Donate, which opens the About page's Support section, and Not now. The
+number is acted on when the toast is shown, so either answer, or
+neither, ends it until the number rises again. There is no permanent
+opt-out in this version; the stored state reserves an `optOut` field so
+one can be added without a migration. The state is kept in the
+window's `localStorage` (`ani-gui.donation-ask.v1`).
 
 ## Embedded playback
 

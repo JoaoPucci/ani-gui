@@ -23,25 +23,24 @@
 //! - [`store`] — what the rest of the backend reads: the flags decided
 //!   once per launch.
 //!
-//! **The safety rule.** A flag may only move behaviour toward the
-//! safer or older side: a kill switch turning a feature off, or a
-//! return to a behaviour an earlier release had. The declaration's
-//! type ([`decl::FlagKind`]) guarantees half of that: the default is
-//! the build's own behaviour, and the file can only pick a value the
-//! declaration lists — a kill switch's "off", or a fallback's named
-//! earlier behaviours — because the value resolution returns is
-//! borrowed from the declaration rather than copied from the file.
-//! Whether the listed values really are the safer side is not
-//! something a type can see: that is the declaration's
-//! `safe_because`, and review. With every declaration held to that,
-//! no value the file can select is riskier than the build's own
-//! default, so the flags need no signature: anyone able to rewrite the
-//! file in transit can do no more than switch a feature off. The file
-//! is signed all the same, for the notices it may carry: [`signature`]
-//! keeps those only from a verified file, and reads the flags whatever
-//! the verdict. A flag kind with a riskier value — turning something
-//! on, or relaxing a check — would need the flags themselves read only
-//! under a verified signature, which no code does today (see
+//! **The safety rule.** An unsigned file may only move behaviour
+//! toward the safer or older side: a kill switch turning a feature
+//! off, a return to a behaviour an earlier release had, or a rollout
+//! left off. The declaration's type ([`decl::FlagKind`]) guarantees
+//! half of that: the default is the build's own behaviour, and the
+//! file can only pick a value the declaration lists, because the value
+//! resolution returns is borrowed from the declaration rather than
+//! copied from the file. Whether the listed values really are the
+//! safer side is not something a type can see: that is the
+//! declaration's `safe_because`, and review. With every declaration
+//! held to that, anyone able to rewrite the file in transit can do no
+//! more than switch a feature off.
+//!
+//! **What a signature adds.** A rollout's `true` turns a feature on,
+//! which is riskier than the default, and the notices the file may
+//! carry are content. Both are used only from a file whose signature
+//! verifies: [`signature::admit`] drops them from any other before the
+//! flags are decided or cached, and keeps the rest of its flags (see
 //! `docs/architecture.md`, "Remote flags").
 //!
 //! The backend owns the request; the renderer reads the resolved
