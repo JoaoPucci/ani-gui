@@ -36,10 +36,12 @@ export interface KeyChord {
 	readonly shiftKey: boolean;
 }
 
-/** The key a menu acts on: the event's key when no modifier is held,
- *  null otherwise — a modified key (Alt+ArrowLeft for history back,
- *  and the like) is not the menu's, and passes through untouched. */
+/** The key a menu acts on: the event's key unless Alt, Ctrl or Meta is
+ *  held, null then — such a key (Alt+ArrowLeft for history back, and
+ *  the like) is not the menu's, and passes through untouched. */
 export function plainKey(chord: KeyChord): string | null {
-	void chord;
-	return chord.key;
+	// Shift is read as the key itself, as the player's own keys read it:
+	// passed on, Shift+arrows would reach the player's volume and seek.
+	const held = chord.altKey || chord.ctrlKey || chord.metaKey;
+	return held ? null : chord.key;
 }

@@ -135,6 +135,7 @@
 		type DrillFocus,
 		type DrillMenu
 	} from '$lib/play/drill-menu';
+	import { plainKey } from '$lib/play/menu-arrow';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -583,6 +584,7 @@
 	 *  entries, and the player's volume shortcuts on the up and down
 	 *  arrows do not see them. */
 	function onCcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
 		const at = items.indexOf(document.activeElement as HTMLElement);
@@ -2693,6 +2695,8 @@
 	// Left and Right open the levels from the Quality row and go back
 	// from them, and otherwise stay in the menu rather than seek.
 	function onMoreMenuKey(e: KeyboardEvent) {
+		// A modified key (Alt+ArrowLeft for history back) is not the menu's.
+		if (plainKey(e) === null) return;
 		const menu = e.currentTarget as HTMLElement;
 		const step = drillArrow(moreMenu, e.key, {
 			rtl: getComputedStyle(menu).direction === 'rtl',
@@ -2718,6 +2722,7 @@
 	// or Quality from its row and go back from the list, and otherwise
 	// stay in the menu rather than seek.
 	function onPcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
 		const menu = e.currentTarget as HTMLElement;
 		const opener = focusedOpener<PcList>(['speed', 'quality']);
 		const step = drillArrow(pcMenu, e.key, {
