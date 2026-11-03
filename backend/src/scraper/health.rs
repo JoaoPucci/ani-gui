@@ -1,10 +1,11 @@
 //! Whether the streaming source is answering, read only from traffic
-//! the app already sends: the outcomes its gate records. No request is
+//! the app already sends: the outcomes its gate takes as evidence (an
+//! outcome the breaker refuses as stale reaches neither). No request is
 //! ever made to find out.
 //!
 //! The notification center tells the user once that the source is not
 //! answering, instead of every failed play telling them again. The
-//! rule is deliberately slow to speak, so one flaky minute, or failures
+//! rule counts failures, not time: a few failures in a row, or failures
 //! that only background probes saw, raise nothing:
 //!
 //! - **Not answering**: at least [`OUTAGE_FAILURES`] consecutive
@@ -42,6 +43,20 @@ pub enum Observation {
     },
     /// The source answered with a rate limit.
     RateLimited,
+}
+
+impl Observation {
+    /// The observation for a gate outcome; `interactive` when a user
+    /// was waiting on the request.
+    #[must_use]
+    pub fn of(outcome: super::outcome::ScrapeOutcome, interactive: bool) -> Self {
+        use super::outcome::ScrapeOutcome;
+        match outcome {
+            ScrapeOutcome::Success => Self::Success,
+            ScrapeOutcome::Failure => Self::Failure { interactive },
+            ScrapeOutcome::RateLimited { .. } => Self::RateLimited,
+        }
+    }
 }
 
 /// What the renderer is told.

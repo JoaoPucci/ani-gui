@@ -12,7 +12,9 @@ impl ScraperGate {
     /// success only closes an open breaker when the request started
     /// after the breaker opened — a slow pre-storm request reporting
     /// success later is stale evidence, not proof of recovery.
-    pub fn record_outcome(&self, ok: bool, started_at: Instant) {
+    /// Returns whether the outcome was taken as evidence: `false` for
+    /// one refused as stale.
+    pub fn record_outcome(&self, ok: bool, started_at: Instant) -> bool {
         let mut s = self.inner.lock().expect("gate lock");
         if ok {
             if let Some(opened) = s.opened_at {
@@ -21,7 +23,7 @@ impl ScraperGate {
                     // flight when the breaker opened, so its success
                     // says nothing about the upstream's state NOW.
                     // Leave the breaker (and the failure run) alone.
-                    return;
+                    return false;
                 }
             }
             s.answered = true;
@@ -57,7 +59,7 @@ impl ScraperGate {
                     // The request ran against the pre-recovery
                     // upstream; a newer accepted success already
                     // proved the state it observed is gone.
-                    return;
+                    return false;
                 }
             }
             s.consecutive_failures += 1;
@@ -79,5 +81,6 @@ impl ScraperGate {
                 s.half_open_trial_at = None;
             }
         }
+        true
     }
 }

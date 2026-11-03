@@ -333,8 +333,9 @@ impl ScraperGate {
     /// window and resume paced, instead of being refused and losing
     /// their rows. Without a hint the window falls back to
     /// [`BREAKER_COOLDOWN`]. Interactive admits ignore the window as
-    /// they ignore the breaker.
-    pub fn record(&self, outcome: ScrapeOutcome, started_at: Instant) {
+    /// they ignore the breaker. Returns whether the outcome was taken
+    /// as evidence: `false` for one refused as stale.
+    pub fn record(&self, outcome: ScrapeOutcome, started_at: Instant) -> bool {
         match outcome {
             ScrapeOutcome::Success => self.record_outcome(true, started_at),
             ScrapeOutcome::Failure => self.record_outcome(false, started_at),
@@ -347,7 +348,7 @@ impl ScraperGate {
                     // a newer accepted success already proved that
                     // state is gone — same filter as the untyped
                     // failure path.
-                    return;
+                    return false;
                 }
                 // A rate limit is the provider answering.
                 s.answered = true;
@@ -375,6 +376,7 @@ impl ScraperGate {
                 s.half_open_trial_at = None;
                 s.open_until = None;
                 s.opened_at = None;
+                true
             }
         }
     }
@@ -383,22 +385,21 @@ impl ScraperGate {
 impl ScraperGate {
     /// [`ScraperGate::record`], also noted for whether the provider is
     /// answering: `priority` says whether a user was waiting on the
-    /// request. Every caller that knows the priority records through
-    /// this.
+    /// request. Only an outcome the breaker takes as evidence reaches
+    /// the outage rule; one it refuses as stale reaches neither. Every
+    /// caller that knows the priority records through this.
     pub fn record_from(
         &self,
         priority: ScrapePriority,
         outcome: ScrapeOutcome,
         started_at: Instant,
     ) {
-        self.record(outcome, started_at);
-        let observation = match outcome {
-            ScrapeOutcome::Success => Observation::Success,
-            ScrapeOutcome::Failure => Observation::Failure {
-                interactive: priority == ScrapePriority::Interactive,
-            },
-            ScrapeOutcome::RateLimited { .. } => Observation::RateLimited,
-        };
+        if !self.record(outcome, started_at) {
+            // Stale evidence the breaker refused says nothing about
+            // the source now, to the outage rule either.
+            return;
+        }
+        let observation = Observation::of(outcome, priority == ScrapePriority::Interactive);
         let mut run = self.health.lock().expect("health lock");
         *run = run.observe(observation, unix_ms());
     }
