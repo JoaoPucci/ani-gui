@@ -9,6 +9,9 @@ const chord = (
 
 const VERTICAL = ['ArrowDown', 'ArrowUp', 'Home', 'End'] as const;
 
+/** A key that types one character, Space aside. */
+const typed = (k: string) => [...k].length === 1 && k !== ' ';
+
 describe('menuKey', () => {
 	it('moves down and up through the items, wrapping at the ends', () => {
 		expect(menuKey(chord('ArrowDown'), 0, 3)).toEqual({ kind: 'focus', index: 1 });
@@ -72,7 +75,7 @@ describe('menuKey', () => {
 		const named = new Set<string>([...VERTICAL, 'ArrowLeft', 'ArrowRight', 'Escape', 'Tab']);
 		fc.assert(
 			fc.property(
-				fc.string().filter((k) => !named.has(k)),
+				fc.string().filter((k) => !named.has(k) && !typed(k)),
 				fc.integer({ min: -1, max: 9 }),
 				fc.integer({ min: 0, max: 10 }),
 				(key, at, count) => {
@@ -82,6 +85,21 @@ describe('menuKey', () => {
 		);
 		expect(menuKey(chord('Enter'), 0, 3)).toBeNull();
 		expect(menuKey(chord(' '), 0, 3)).toBeNull();
+	});
+
+	it('keeps a typed character in the menu: on the play page n, f and m are player keys', () => {
+		for (const key of ['n', 'f', 'm', 'M', '1', 'é', '😀']) {
+			expect(menuKey(chord(key), 0, 3)).toEqual({ kind: 'hold' });
+		}
+		fc.assert(
+			fc.property(
+				fc.string({ unit: 'grapheme', minLength: 1, maxLength: 1 }).filter((k) => typed(k)),
+				fc.boolean(),
+				(key, shiftKey) => {
+					expect(menuKey(chord(key, { shiftKey }), 0, 3)).toEqual({ kind: 'hold' });
+				}
+			)
+		);
 	});
 
 	it('always lands a vertical key on an item that exists', () => {

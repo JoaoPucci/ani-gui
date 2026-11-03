@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
+	focusAfter,
 	focusFirstItem,
 	focusedIndex,
 	menuItems,
 	onMenuKey,
+	onMenuTabOrType,
 	refocusMenu,
 	stepMenuFocus
 } from './menu-dom';
@@ -284,5 +286,101 @@ describe('refocusMenu', () => {
 		item('a').remove();
 		refocusMenu(menu, 0, null);
 		expect(document.activeElement).not.toBe(anchor);
+	});
+});
+
+describe('onMenuTabOrType', () => {
+	let close: Mock<() => void>;
+	const handler = (e: KeyboardEvent) => {
+		taken = onMenuTabOrType(e, { anchor, close });
+	};
+	let taken = false;
+
+	beforeEach(() => {
+		close = vi.fn<() => void>();
+		taken = false;
+	});
+
+	it('closes on Tab from the menu’s button, Tab moving on from there', () => {
+		build(['a', 'b']);
+		item('a').focus();
+		const e = press('Tab', handler);
+		expect(taken).toBe(true);
+		expect(close).toHaveBeenCalledOnce();
+		expect(document.activeElement).toBe(anchor);
+		expect(e.defaultPrevented).toBe(false);
+	});
+
+	it('closes on Shift+Tab with focus on the menu’s button', () => {
+		build(['a', 'b']);
+		item('b').focus();
+		const e = press('Tab', handler, { shiftKey: true });
+		expect(taken).toBe(true);
+		expect(close).toHaveBeenCalledOnce();
+		expect(document.activeElement).toBe(anchor);
+		expect(e.defaultPrevented).toBe(true);
+	});
+
+	it('keeps a typed character from the page', () => {
+		build(['a']);
+		item('a').focus();
+		const page = vi.fn();
+		document.addEventListener('keydown', page);
+		const e = press('m', handler);
+		document.removeEventListener('keydown', page);
+		expect(taken).toBe(true);
+		expect(e.defaultPrevented).toBe(true);
+		expect(page).not.toHaveBeenCalled();
+		expect(close).not.toHaveBeenCalled();
+	});
+
+	it('leaves the keys the menu steps or closes by its own rule, and modified keys, alone', () => {
+		build(['a', 'b']);
+		item('a').focus();
+		for (const [key, mods] of [
+			['ArrowDown', {}],
+			['ArrowLeft', {}],
+			['Escape', {}],
+			['Enter', {}],
+			[' ', {}],
+			['Tab', { altKey: true }],
+			['m', { ctrlKey: true }]
+		] as const) {
+			const e = press(key, handler, mods);
+			expect(taken, key).toBe(false);
+			expect(e.defaultPrevented).toBe(false);
+		}
+		expect(close).not.toHaveBeenCalled();
+		expect(document.activeElement).toBe(item('a'));
+	});
+});
+
+describe('focusAfter', () => {
+	it('focuses the first control after the element, outside it', () => {
+		build(['a']);
+		item('a').focus();
+		focusAfter(menu);
+		expect(document.activeElement).toBe(after);
+	});
+
+	it('skips what cannot take focus from the keyboard', () => {
+		build(['a']);
+		const disabled = document.createElement('button');
+		disabled.disabled = true;
+		const unfocusable = document.createElement('span');
+		unfocusable.tabIndex = -1;
+		after.before(disabled, unfocusable);
+		focusAfter(anchor);
+		// The menu's own item is after the button, and takes focus.
+		expect(document.activeElement).toBe(item('a'));
+		focusAfter(menu);
+		expect(document.activeElement).toBe(after);
+	});
+
+	it('leaves focus alone when nothing follows', () => {
+		build(['a']);
+		item('a').focus();
+		focusAfter(after);
+		expect(document.activeElement).toBe(item('a'));
 	});
 });

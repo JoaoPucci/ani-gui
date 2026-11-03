@@ -7,17 +7,18 @@
 // through the items and wrap at the ends, Home and End go to the
 // first and last; Left and Right go nowhere and reach nothing else —
 // the download dock opens over the play page, whose player takes the
-// arrows as volume and seek keys. Escape and Shift+Tab close the menu
+// arrows as volume and seek keys. A typed character stays in the menu
+// too: n, f and m are the player's keys. Escape and Shift+Tab close the menu
 // with focus back on its button; Tab closes it with focus moving on
 // from the button. A key with Alt, Ctrl or Meta held is the browser's.
 //
 // The dock's items change while it is open: a download that ends
 // swaps its Cancel for Reveal and Dismiss, and a dismissed row takes
 // its actions with it. Focus on an item that went moves to the item
-// now in its place, or to the menu's button when none is left; the
-// last row dismissed takes the dock away, and the dock that comes back
-// for the next download comes back closed. The account chip's menu
-// goes the same way with the chip when the account signs out.
+// now in its place. The last row dismissed takes the dock away, and
+// focus moves on to the control after it; the dock that comes back for
+// the next download comes back closed. The account chip's menu goes
+// the same way with the chip when the account signs out.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
@@ -153,11 +154,13 @@ async function leaves() {
 	}
 }
 
-/** Left and Right, and the vertical keys, stay in the menu; a key with
- *  Alt held is the browser's. */
+/** Left and Right, the vertical keys and typed characters stay in the
+ *  menu — on the play page n, f and m are the player's next-episode,
+ *  fullscreen and mute keys; a key with Alt held is the browser's. */
 async function holdsItsKeys() {
 	const keys = pageKeys();
-	for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp']) await press(key);
+	for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'n', 'f', 'm'])
+		await press(key);
 	await press('Home');
 	keys.stop();
 	expect(keys.heard).toEqual([]);
@@ -189,6 +192,11 @@ describe('the account chip’s menu', () => {
 		await openMenu();
 		await walk([m.account_chip_pop_manage(), m.account_chip_pop_disconnect()]);
 		await holdsItsKeys();
+		// The header naming the account describes the menu, and is no
+		// landmark inside it.
+		expect(menu()!.querySelector('header, footer, nav, aside, main, section')).toBeNull();
+		const header = document.getElementById(menu()!.getAttribute('aria-describedby') ?? '');
+		expect(header?.textContent).toContain('tester');
 	});
 
 	it('closes on Escape, Shift+Tab and Tab, with focus on its button', async () => {
@@ -264,6 +272,26 @@ describe('the download dock’s menu', () => {
 		expect(described[3]).toContain('Frieren');
 	});
 
+	it('tells a queued download’s Cancel apart from a running one’s', async () => {
+		const queued = downloadStore.add({
+			title: 'Frieren',
+			episode: '1',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		downloadStore.markQueued(queued, new AbortController());
+		app = mount(DownloadDock, { target });
+		await settle();
+		await openMenu();
+		const description = (items()[0].getAttribute('aria-describedby') ?? '')
+			.split(' ')
+			.map((id) => document.getElementById(id)?.textContent ?? '')
+			.join(' ');
+		expect(description).toContain('Frieren');
+		expect(description).toContain(m.download_dock_queued());
+	});
+
 	it('opens on its first item and steps through every action, wrapping', async () => {
 		seed();
 		app = mount(DownloadDock, { target });
@@ -321,6 +349,10 @@ describe('the download dock’s menu', () => {
 			destDir: '/dl'
 		});
 		downloadStore.markDone(id, '/dl');
+		// The control the top bar has after the dock.
+		const next = document.createElement('button');
+		next.textContent = 'next';
+		target.after(next);
 		app = mount(DownloadDock, { target });
 		await settle();
 		await openMenu();
@@ -328,6 +360,9 @@ describe('the download dock’s menu', () => {
 		expect(focusedName()).toBe(m.download_dock_dismiss_aria_label());
 		focused()!.click();
 		await until(() => target.querySelector('button') === null, 'the dock to go');
+		// Focus went with the dock to what follows it, not to the page.
+		expect(focused()).toBe(next);
+		next.remove();
 
 		downloadStore.add({
 			title: 'Dandadan',
