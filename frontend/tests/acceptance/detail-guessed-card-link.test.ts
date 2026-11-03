@@ -85,7 +85,7 @@ interface Row {
 }
 
 let rows: Row[];
-let linkCalls: { rows: string[]; kitsu_id: string }[];
+let linkCalls: { card: string; rows: string[]; kitsu_id: string }[];
 let unlinkCalls: { kitsu_id: string; rows: { row: string; previous: string | null }[] }[];
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -169,7 +169,7 @@ function serveBackend() {
 				})
 			),
 			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
-				const body = (await request.json()) as { rows: string[]; kitsu_id: string };
+				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
 				linkCalls.push(body);
 				const linked = rows
 					.filter((r) => body.rows.includes(r.id))
@@ -311,7 +311,7 @@ describe('changing the show', () => {
 
 		await linkToTheRightShow();
 
-		expect(linkCalls[0]).toEqual({ rows: [CARD, HIDDEN], kitsu_id: RIGHT });
+		expect(linkCalls[0]).toEqual({ card: CARD, rows: [CARD, HIDDEN], kitsu_id: RIGHT });
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
 		expect(String(vi.mocked(goto).mock.calls.at(-1)?.[0])).toBe(`/anime/${RIGHT}`);
 		await until(() => !hasNote(), 'the line to go');
@@ -362,7 +362,7 @@ describe('the picker, by keyboard and while it links', () => {
 		const held = new Promise<void>((r) => (release = r));
 		server.use(
 			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
-				const body = (await request.json()) as { rows: string[]; kitsu_id: string };
+				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
 				linkCalls.push(body);
 				await held;
 				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [] });
@@ -432,7 +432,7 @@ describe('from Home to a relinked card', () => {
 		}, 'the Link button');
 		button(m.detail_link_confirm_button())!.click();
 		await until(() => linkCalls.length === 1, 'the link');
-		expect(linkCalls[0]).toEqual({ rows: [CARD, HIDDEN], kitsu_id: RIGHT });
+		expect(linkCalls[0]).toEqual({ card: CARD, rows: [CARD, HIDDEN], kitsu_id: RIGHT });
 
 		// Home again: the card is the right show.
 		expect(await homeCards()).toEqual([TITLE]);

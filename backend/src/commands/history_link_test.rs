@@ -95,6 +95,7 @@ async fn setup(status: u16) -> (tempfile::TempDir, MockServer, AppState) {
 
 fn args(rows: &[&str], kitsu_id: &str) -> LinkArgs {
     LinkArgs {
+        card: rows[0].to_string(),
         rows: rows.iter().map(|r| (*r).to_string()).collect(),
         kitsu_id: kitsu_id.into(),
     }
@@ -338,7 +339,7 @@ async fn the_routes_link_and_undo() {
         .clone()
         .oneshot(post(
             "/api/history/link",
-            serde_json::json!({"rows": ["black-clover-77"], "kitsu_id": LINKED}),
+            serde_json::json!({"card": "black-clover-77", "rows": ["black-clover-77"], "kitsu_id": LINKED}),
         ))
         .await
         .unwrap();
@@ -362,4 +363,139 @@ async fn the_routes_link_and_undo() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(read_all(&history).unwrap(), rows());
+}
+
+/// The JoJo card: its own row, the 2000 OVA's listing, guessed as the
+/// 2012 series, and the row its guessed play wrote for the 2012
+/// series' listing — another listing, guessed as the same show.
+fn jojo_rows() -> Vec<HistoryEntry> {
+    vec![
+        row(
+            "2",
+            "hianime:jojos-bizarre-adventure-2012-708",
+            "JoJo's Bizarre Adventure",
+            Some(1_793_600_000_000),
+            None,
+        ),
+        row(
+            "1",
+            "hianime:jojos-bizarre-adventure-2000-5182",
+            "JoJo's Bizarre Adventure",
+            Some(1_791_000_000_000),
+            None,
+        ),
+    ]
+}
+
+const JOJO_CARD: &str = "hianime:jojos-bizarre-adventure-2000-5182";
+const JOJO_PLAYED: &str = "hianime:jojos-bizarre-adventure-2012-708";
+
+#[tokio::test]
+async fn a_link_leaves_out_the_row_another_listing_wrote() {
+    let (_tmp, _mock, state) = setup(200).await;
+    write_atomic(&state.history_path, &jojo_rows()).unwrap();
+
+    let outcome = link(
+        &state,
+        &LinkArgs {
+            card: JOJO_CARD.into(),
+            rows: vec![JOJO_CARD.into(), JOJO_PLAYED.into()],
+            kitsu_id: LINKED.into(),
+        },
+    )
+    .await
+    .expect("link");
+
+    let mut expected = jojo_rows();
+    expected[1].kitsu_id = Some(LINKED.into());
+    assert_eq!(
+        read_all(&state.history_path).unwrap(),
+        expected,
+        "the 2012 listing's row stays the 2012 series' history"
+    );
+    let linked: Vec<&str> = outcome.linked.iter().map(|l| l.row.as_str()).collect();
+    assert_eq!(linked, [JOJO_CARD]);
+}
+
+#[tokio::test]
+async fn a_link_keeps_a_bare_row_of_the_cards_own_listing() {
+    let (_tmp, _mock, state) = setup(200).await;
+
+    let outcome = link(
+        &state,
+        &LinkArgs {
+            card: "hianime:black-clover-949".into(),
+            rows: vec![
+                "hianime:black-clover-949".into(),
+                "black-clover-77".into(),
+                "hianime:gintama-1237".into(),
+            ],
+            kitsu_id: LINKED.into(),
+        },
+    )
+    .await
+    .expect("link");
+
+    let linked: Vec<&str> = outcome.linked.iter().map(|l| l.row.as_str()).collect();
+    assert_eq!(linked, ["hianime:black-clover-949", "black-clover-77"]);
+}
+
+#[test]
+fn the_group_a_link_would_write_leaves_out_another_listing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let history = tmp.path().join("history");
+    write_atomic(&history, &jojo_rows()).unwrap();
+    let state = state_at(history, "http://127.0.0.1:9");
+
+    let group = link_group(
+        &state,
+        &LinkGroupArgs {
+            card: JOJO_CARD.into(),
+            rows: vec![
+                JOJO_CARD.into(),
+                JOJO_PLAYED.into(),
+                "hianime:gone-1".into(),
+            ],
+        },
+    )
+    .expect("group");
+
+    assert_eq!(group, [JOJO_CARD]);
+}
+
+#[tokio::test]
+async fn the_group_route_answers_the_rows_a_link_would_write() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    let (_tmp, _mock, state) = setup(200).await;
+    let router = crate::api::build_api_router(Arc::new(state));
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/history/link-group")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "card": "black-clover-77",
+                        "rows": ["black-clover-77", "hianime:black-clover-949", "hianime:gintama-1237"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!(["black-clover-77", "hianime:black-clover-949"])
+    );
 }
