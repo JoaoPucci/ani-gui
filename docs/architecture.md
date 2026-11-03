@@ -71,7 +71,7 @@ Lanes bound how long one class can make another wait; they do not bound a class 
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.
-2. The search page calls `POST /api/kitsu/search/page` with an offset of 0. The backend hits Kitsu and returns a page of matches — Kitsu serves at most 20 a page, in its own ranking, by popularity, unless the user chose an order — with the offset the next page starts at. As the user scrolls to the end of the results, the page asks for the next offset and appends what comes back. Choosing Year or Rating starts the search over with the order in the request (`sort`), and Kitsu sorts the pages, so a page that lands continues the order below what is shown. (The search bar's live dropdown calls `POST /api/kitsu/search`, which is the first page alone.)
+2. The search page calls `POST /api/kitsu/search/page` with an offset of 0. The backend hits Kitsu — with every dash that no ASCII letter or digit precedes sent as a gap, since Kitsu reads such a dash as "exclude what follows" — and returns a page of matches — Kitsu serves at most 20 a page, in its own ranking, by popularity, unless the user chose an order — with the offset the next page starts at. As the user scrolls to the end of the results, the page asks for the next offset and appends what comes back. Choosing Year or Rating starts the search over with the order in the request (`sort`), and Kitsu sorts the pages, so a page that lands continues the order below what is shown. (The search bar's live dropdown calls `POST /api/kitsu/search`, which is the first page alone.)
 3. The user picks a result; the renderer fetches detail and episode list via `GET /api/kitsu/anime/:id` and `GET /api/kitsu/episodes/:id`.
    Going back to the search page (the back button, or the topbar's chevron, which names the search and steps back to it) restores what the user left: the search page keeps its query, order, type filters, loaded results and the card at the top of the screen in a [SvelteKit snapshot](https://svelte.dev/docs/kit/snapshots) on that history entry. Results under an hour old, judged for the current audio setting, come back without a request; otherwise, and on a reload, the search runs again in the same order and filters, page by page up to that card. A search page opened from another page starts afresh, and the bare Search link empties it; a new query submitted while on the search page keeps the order and type filters on screen.
 4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against [hianime](https://hianime.at): it searches the site for the title (falling back through every alias), probes candidates' per-entry episode lists to pick the right show, fetches the episode's server list, and reads the master-playlist URL and any sidecar subtitle tracks off the chosen server's embed page. Requests go through a `curl-impersonate` subprocess — the site sits behind TLS-fingerprinting protection that rejects plain HTTP clients. See [Providers and failover](#providers-and-failover).
@@ -358,7 +358,12 @@ three-second limit below.
    opening to read — and only then is it mapped, already maximized and
    painted, and the splash closes. A launch whose window is ready later
    than that pays nothing for the minimum; a warm one, whose window is
-   ready as soon as the splash has painted, pays up to that half second.
+   ready as soon as the splash has painted, pays up to that half second
+   for it. The rail's completion hold can add to either: a page that
+   renders less than 250 ms before the minimum runs out (150 ms on the
+   still frame), or after it, or after a splash that painted too late
+   for the minimum, holds the reveal until 250 ms (150 ms) after it
+   rendered, so the rail's last stretch is seen lit.
    The two are never on screen competing, so it does not matter that
    native Wayland ignores always-on-top. A splash that never paints, or
    is minimized, holds the window no longer than that first second. The
@@ -384,18 +389,29 @@ on a screen this brief reads as a count. Under the name, a wordless rail
 of film edge lights one of its three stretches as each step of the boot
 lands: the backend's handshake, the launch's flags decided, the app's
 first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
-wait for that render gave up is revealed with the last stretch unlit.
-The splash waits at most 150 ms, about a millisecond in practice, for
-its page to take the last step before the app's window replaces it. A
-line under the rail says "Starting up…", in the app's language, only
-once the pending step has taken longer than 700 ms, and goes when that
-step lands. The splash's motion starts only when the main process tells
-it to, once the window is on screen and the reduced-motion setting is
-known; under reduced motion it rests on a still frame and its rail
-lights without a wipe, and the page's own fallback timer, for a signal
-that never comes, rests it too rather than starting the motion. The mark
-is `mark.svg` alone, and the layout holds for a mark of another shape,
-so a new mark replaces one file.
+wait for that render gave up lights the last stretch as its window is
+about to be revealed anyway, held the same way, so the rail is always
+seen complete. The splash waits at most 150 ms, about a millisecond in
+practice, for its page to take the last step. A last step landing so
+late that the splash's minimum time on screen would not show it then
+holds the splash until 250 ms (150 ms on the still frame) after that
+step landed, so the rail is seen complete before the app's window
+replaces it. A line under the rail, in the app's language, appears only
+once the pending step has taken longer than 700 ms, and then stays until
+the splash closes; only its words change, when the reason does. While
+the flags step stalls it says "Network is slow — starting in a moment…":
+the app is waiting on the flags fetch, for at most its two-second cap,
+and what it starts with (the file if it lands in time, else the saved
+copy or the defaults) is not decided yet. A slow read of the saved copy
+can hold that step too, rarely. Any other stalled step says "Starting
+up…", and once the flags land the network line gives way to it at once.
+The splash's motion starts only when the main process tells it to, once
+the window is on screen and the reduced-motion setting is known; under
+reduced motion it rests on a still frame and its rail lights without a
+wipe, and the page's own fallback timer, for a signal that never comes,
+rests it too rather than starting the motion. The mark is `mark.svg`
+alone, and the layout holds for a mark of another shape, so a new mark
+replaces one file.
 
 The store accepts one decision and refuses every later one. A backend
 consumer reads the flags with `FlagStore::settled()`, which waits for

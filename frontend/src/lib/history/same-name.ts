@@ -32,16 +32,18 @@ export function entryNames(ref: KitsuAnimeRef): string[] {
 /** Whether `providerTitle` is one of `entryTitles`: the same words once
  *  case and punctuation are folded, or the same name before a trailing
  *  cour suffix with the same cour number however the suffix is spelled
- *  ("Season 2", "2nd Season", "Second Season", "Part 2", "Cour 2"). A
- *  title with no words names nothing. */
+ *  ("Season 2", "2nd Season", "Second Season", "Part 2", "Cour 2").
+ *  Words of letters alone may run together on either side (`joined`): a
+ *  show key spells Re:ZERO "rezero" where Kitsu's titles keep "re" and
+ *  "zero" apart. A title with no words names nothing. */
 export function namesTheEntry(providerTitle: string, entryTitles: readonly string[]): boolean {
 	const wanted = words(providerTitle);
 	if (wanted.length === 0) return false;
-	const wantedKey = wanted.join(' ');
+	const wantedKey = joined(wanted);
 	const wantedCour = splitCour(wanted);
 	return entryTitles.some((t) => {
 		const have = words(t);
-		if (have.join(' ') === wantedKey) return true;
+		if (joined(have) === wantedKey) return true;
 		if (!wantedCour) return false;
 		const haveCour = splitCour(have);
 		return (
@@ -86,7 +88,21 @@ function splitCour(ws: string[]): { name: string; cour: number } | null {
 	if (COUR_KEYWORDS.has(a)) cour = /^\d+$/.test(b) ? courNumber(b) : null;
 	else if (COUR_KEYWORDS.has(b)) cour = ordinal(a);
 	if (cour === null) return null;
-	return { name: ws.slice(0, -2).join(' '), cour };
+	return { name: joined(ws.slice(0, -2)), cour };
+}
+
+const LETTERS_ONLY = /^\p{Alphabetic}+$/u;
+
+/** The words as one name, two neighbouring words of letters alone run
+ *  together and every other pair kept apart. A word with a digit in it
+ *  never joins its neighbour, so no number reads as another: "season 1
+ *  2" is not "season 12", nor "show 2" "show2". */
+function joined(ws: string[]): string {
+	return ws.reduce((name, w, i) => {
+		if (i === 0) return w;
+		const run = LETTERS_ONLY.test(ws[i - 1]) && LETTERS_ONLY.test(w);
+		return name + (run ? '' : ' ') + w;
+	}, '');
 }
 
 /** A cour written as an ordinal: a number with its suffix, or one of

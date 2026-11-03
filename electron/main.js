@@ -384,6 +384,7 @@ const splash = splashController({
   // in the language the app's dialogs speak (read once the app is
   // ready, when the splash opens).
   stallTexts: () => stallTexts(messagesFor(mainLocale())),
+  stallGeneric: () => messagesFor(mainLocale()).splashStartingUp,
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.
@@ -585,12 +586,12 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // The page's render is the last step of the boot the splash's rail
     // shows (lib/splash-progress.cjs). The rail hears it, and its page
     // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
-    // before the window replaces the splash. A wait that gave up on the
-    // render lights nothing: the window is revealed anyway.
-    beforeShow: () =>
-      revealGate(() => splash.whenShown(), {
-        ready: appReady.ready.then((rendered) => rendered === true && splash.progress("page")),
-      }),
+    // before the window replaces the splash; and when it lands too late
+    // for the minimum to show it, the splash holds until
+    // SPLASH_COMPLETE_HOLD_MS after it landed. A wait that gave up on the
+    // render completes the rail the same way before the window is
+    // revealed anyway, so the rail is always seen complete.
+    beforeShow: () => revealGate(splash, appReady),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).

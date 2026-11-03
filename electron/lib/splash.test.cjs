@@ -9,6 +9,8 @@ const fc = require("fast-check");
 const {
   SPLASH_MARK,
   SPLASH_PAGE,
+  SPLASH_COMPLETE_HOLD_MS,
+  SPLASH_COMPLETE_HOLD_REDUCED_MS,
   SPLASH_MIN_ON_SCREEN_MS,
   SPLASH_MIN_ON_SCREEN_REDUCED_MS,
   SPLASH_SHOW_WAIT_MS,
@@ -199,9 +201,11 @@ test("the stall line sits outside the flow, so its coming and going moves nothin
   const css = read("splash.css");
   assert.match(css, /\.readout \{[^}]*position: relative;/);
   assert.match(css, /\.status \{[^}]*position: absolute;/);
-  // A longer line, in any language, ends in an ellipsis inside the
-  // title column rather than running off the window.
-  assert.match(css, /\.status \{[^}]*max-inline-size: 100%;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+  // A longer line, in any language, wraps inside the title column
+  // rather than running off the window or being cut short (the
+  // end-to-end suite checks every language's lines fit the window).
+  assert.match(css, /\.status \{[^}]*max-inline-size: 100%;/);
+  assert.doesNotMatch(css, /\.status \{[^}]*(nowrap|text-overflow)/);
 });
 
 test("the rail hangs under the title without pushing it off the gate's centre", () => {
@@ -288,24 +292,29 @@ test("the rail lights a stretch per step landed, in order, and never goes back",
   assert.equal(page.set(9), 3);
 });
 
-test("the stall line comes only once a step has been pending 700 ms, and goes when it lands", () => {
+test("the stall line comes only once a step has been pending 700 ms, and stays until the splash closes", () => {
+  // The maintainer saw "Starting up…" appear, go, and come back on one
+  // slow launch: a line that has appeared stays, and only its words
+  // change, when the reason does (below). It used to go whenever its
+  // step landed.
   const page = progressPage(texts);
   page.tick(699);
   assert.equal(page.status(), null, "not before 700 ms");
   page.tick(1);
   assert.equal(page.status(), "Backend…");
   page.set(1);
-  assert.equal(page.status(), null, "gone once the step lands");
-  // The next step gets its own 700 ms, counted from the last landing.
+  assert.equal(page.status(), "Backend…", "still up once the step lands");
+  // The next step's own words come once it has been pending 700 ms,
+  // counted from the last landing.
   page.tick(699);
-  assert.equal(page.status(), null);
+  assert.equal(page.status(), "Backend…");
   page.tick(1);
   assert.equal(page.status(), "Flags…");
   page.set(2);
   page.tick(300);
   page.set(3);
   page.tick(5000);
-  assert.equal(page.status(), null, "nothing pending, nothing said");
+  assert.equal(page.status(), "Flags…", "nothing pending, still up with its last words");
 });
 
 test("a stall line that would say the same at the next step stays up instead of blinking", () => {
@@ -317,7 +326,7 @@ test("a stall line that would say the same at the next step stays up instead of 
   page.tick(5000);
   assert.equal(page.status(), "Same");
   page.set(3);
-  assert.equal(page.status(), null);
+  assert.equal(page.status(), "Same");
 });
 
 test("a page told nothing to say never shows a stall line", () => {
@@ -327,28 +336,124 @@ test("a page told nothing to say never shows a stall line", () => {
   assert.equal(page.set(1), 1);
 });
 
-test("the stall line says the same thing at every step for now, in every language the app ships", () => {
-  // The backend step is where a named job would go — a migration, a
-  // cache reclaim — once the backend reports one; until then every
-  // step says the generic line.
+test("a stalled flags step says the network is slow, and every other stalled step says the app is starting", () => {
+  // The flags step waits on the network: the fetch of the flags file,
+  // up to its two-second cap. Past 700 ms that is the cause we know of
+  // (a slow read of the cached copy can hold it too). What the app
+  // starts with is not yet decided when the line appears: the file, if
+  // it arrives within the cap, else the saved copy or the defaults. So
+  // the line promises only that the start goes ahead.
   assert.deepEqual(STEPS, ["backend", "flags", "page"]);
   assert.equal(STALL_MS, 700);
+  const en = messagesFor("en");
+  assert.equal(en.splashNetworkSlow, "Network is slow — starting in a moment…");
+  assert.equal(en.splashStartingUp, "Starting up…");
   for (const locale of LOCALES) {
     const m = messagesFor(locale);
-    assert.equal(typeof m.splashStartingUp, "string");
-    assert.ok(m.splashStartingUp.length > 0, locale);
-    assert.deepEqual(stallTexts(m), [m.splashStartingUp, m.splashStartingUp, m.splashStartingUp], locale);
+    for (const key of ["splashStartingUp", "splashNetworkSlow"]) {
+      assert.equal(typeof m[key], "string", `${locale} ${key}`);
+      assert.ok(m[key].length > 0, `${locale} ${key}`);
+    }
+    assert.notEqual(m.splashNetworkSlow, m.splashStartingUp, locale);
+    assert.deepEqual(stallTexts(m), [m.splashStartingUp, m.splashNetworkSlow, m.splashStartingUp], locale);
   }
-  assert.notEqual(messagesFor("ru").splashStartingUp, messagesFor("en").splashStartingUp);
+  for (const locale of LOCALES.filter((l) => l !== "en")) {
+    assert.notEqual(messagesFor(locale).splashNetworkSlow, en.splashNetworkSlow, locale);
+  }
+});
+
+/** The splash page as the launch opens it, in English, on a fake clock. */
+function launchPage() {
+  const m = messagesFor("en");
+  const query = new URLSearchParams(
+    splashPageQuery({ version: "0.18.0", stallTexts: stallTexts(m), generic: m.splashStartingUp }),
+  );
+  return { m, page: progressPage(`?${query}`) };
+}
+
+test("a stall, a landing, a quick step and another stall: the line never leaves", () => {
+  // The maintainer's launch: the backend stalled, landed, the flags
+  // came quickly, the page stalled. The line read "Starting up…"
+  // throughout, with no gap.
+  const { m, page } = launchPage();
+  page.tick(STALL_MS);
+  assert.equal(page.status(), m.splashStartingUp, "backend stalled");
+  page.set(1);
+  assert.equal(page.status(), m.splashStartingUp, "backend landed: still up");
+  page.tick(200);
+  page.set(2);
+  assert.equal(page.status(), m.splashStartingUp, "flags came quickly: still up, same words");
+  page.tick(STALL_MS * 3);
+  assert.equal(page.status(), m.splashStartingUp, "page stalled: still up, same words");
+  page.set(3);
+  assert.equal(page.status(), m.splashStartingUp);
+});
+
+test("the line's words follow the reason: generic, then the network while the flags stall, then generic again at once", () => {
+  const { m, page } = launchPage();
+  page.tick(STALL_MS);
+  assert.equal(page.status(), m.splashStartingUp, "backend stalled");
+  page.set(1);
+  // The flags step is not stalled yet: the generic line stands.
+  page.tick(STALL_MS - 1);
+  assert.equal(page.status(), m.splashStartingUp);
+  page.tick(1);
+  assert.equal(page.status(), m.splashNetworkSlow, "flags stalled");
+  page.set(2);
+  // The network is no longer the reason: back to the generic line at
+  // once, never hidden on the way.
+  assert.equal(page.status(), m.splashStartingUp, "flags landed");
+  page.tick(STALL_MS * 3);
+  assert.equal(page.status(), m.splashStartingUp, "page stalled");
+});
+
+test("with the generic words in hand, a launch whose steps all land quickly never shows the line", () => {
+  const { page } = launchPage();
+  page.tick(STALL_MS - 1);
+  assert.equal(page.status(), null, "not before 700 ms");
+  page.set(1);
+  page.tick(STALL_MS - 1);
+  page.set(2);
+  page.tick(STALL_MS - 1);
+  page.set(3);
+  page.tick(5000);
+  assert.equal(page.status(), null);
+});
+
+test("the stall lines and the generic words are read apart: one failing keeps the other", () => {
+  const open = (options) => {
+    const win = fakeSplash();
+    const splash = splashController({ createWindow: () => win, logError: () => {}, ...options });
+    splash.show();
+    splash.close();
+    return win.loadOptions.query;
+  };
+  const boom = () => {
+    throw new Error("no locale");
+  };
+  const q1 = open({ stallTexts: () => ["a", "b", "c"], stallGeneric: boom });
+  assert.deepEqual([q1.t1, q1.t2, q1.t3, q1.tg], ["a", "b", "c", undefined]);
+  const q2 = open({ stallTexts: boom, stallGeneric: () => "g" });
+  assert.deepEqual([q2.t1, q2.tg], [undefined, "g"]);
+});
+
+test("a line that first appears for the network goes back to the generic line once the flags land", () => {
+  const { m, page } = launchPage();
+  page.set(1);
+  page.tick(STALL_MS);
+  assert.equal(page.status(), m.splashNetworkSlow);
+  page.set(3);
+  assert.equal(page.status(), m.splashStartingUp);
 });
 
 test("the splash page is opened with its version, its stall timing and its stall lines", () => {
-  assert.deepEqual(splashPageQuery({ version: "0.18.0", stallTexts: ["a", "b", "c"] }), {
+  assert.deepEqual(splashPageQuery({ version: "0.18.0", stallTexts: ["a", "b", "c"], generic: "g" }), {
     v: "0.18.0",
     st: "700",
     t1: "a",
     t2: "b",
     t3: "c",
+    tg: "g",
   });
   const win = fakeSplash();
   const splash = splashController({
@@ -356,9 +461,10 @@ test("the splash page is opened with its version, its stall timing and its stall
     logError: () => {},
     version: "0.18.0",
     stallTexts: () => ["a", "b", "c"],
+    stallGeneric: () => "g",
   });
   splash.show();
-  assert.deepEqual(win.loadOptions.query, { v: "0.18.0", st: "700", t1: "a", t2: "b", t3: "c" });
+  assert.deepEqual(win.loadOptions.query, { v: "0.18.0", st: "700", t1: "a", t2: "b", t3: "c", tg: "g" });
   splash.close();
 });
 
@@ -421,10 +527,10 @@ test("a page that never answers a step holds nothing up for long", async (t) => 
   splash.progress("page").then(() => (done = true));
   await Promise.resolve();
   t.mock.timers.tick(149);
-  await Promise.resolve();
+  for (let i = 0; i < 5; i++) await tick();
   assert.equal(done, false);
   t.mock.timers.tick(1);
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 5; i++) await tick();
   assert.equal(done, true);
   assert.equal(lastSplashState().steps, 3);
   assert.equal(lastSplashState().railLit, 0);
@@ -1084,3 +1190,252 @@ test("a clock stepping back after the paint never stretches the wait past the mi
   assert.equal(await settlesAtOnce(t, waiting), true);
 });
 
+
+/** A splash on a hand-set clock and mock timers, painted at 0, whose
+ *  page answers each step at once. Returns the controller, the clock
+ *  setter, and `settle(promise)` which reports whether it has settled. */
+async function paintedSplash(t, { resting = false, answer = (n) => Promise.resolve(n) } = {}) {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  const win = fakeSplash();
+  let answerShown = () => {};
+  win.webContents.executeJavaScript = (code) => {
+    win.calls.push(`js:${code}`);
+    const m = /splashProgress\.set\((\d+)\)/.exec(code);
+    if (m) return answer(Number(m[1]));
+    return new Promise((resolve) => (answerShown = resolve));
+  };
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(resting);
+  answerShown(resting);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(lastSplashState().shown, true, "painted");
+  const at = (ms) => (now = ms);
+  const flush = async () => {
+    for (let i = 0; i < 8; i++) await tick();
+  };
+  const watch = (promise) => {
+    const seen = { done: false };
+    promise.then(() => (seen.done = true));
+    return seen;
+  };
+  return { splash, win, at, flush, watch, now: () => now };
+}
+
+test("a last step landing after the minimum holds the splash until its stretch has been seen", async (t) => {
+  // A slow page renders after the splash's minimum: without a hold the
+  // last stretch would light in the instant the splash closes, and the
+  // rail would never be seen complete.
+  // The wipe is 300 ms on an ease-out curve, 99% of the way at 250 ms:
+  // the hold is that, not the whole curve (the review of this hold
+  // measured what 300 ms cost warm launches).
+  assert.equal(SPLASH_COMPLETE_HOLD_MS, 250);
+  const { splash, at, flush, watch } = await paintedSplash(t);
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.progress("page"));
+  await flush();
+  assert.equal(step.done, false, "held");
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS - 1);
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("a last step landing well inside the minimum adds no wait: the minimum already shows it", async (t) => {
+  const { splash, at, flush, watch } = await paintedSplash(t);
+  at(100);
+  const step = watch(splash.progress("page"));
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("a last step landing just before the minimum ends is held only past it, until its stretch has been seen", async (t) => {
+  // Landing 50 ms before the minimum ends, the stretch would show for
+  // 50 ms: the reveal waits until the hold has passed since the step.
+  const { splash, at, flush, watch } = await paintedSplash(t);
+  at(SPLASH_MIN_ON_SCREEN_MS - 50);
+  const step = watch(splash.progress("page"));
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS - 1);
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("on the still frame the stretch lights at once, so its hold is shorter", async (t) => {
+  assert.equal(SPLASH_COMPLETE_HOLD_REDUCED_MS, 150);
+  const { splash, at, flush, watch } = await paintedSplash(t, { resting: true });
+  at(SPLASH_MIN_ON_SCREEN_REDUCED_MS + 400);
+  const step = watch(splash.progress("page"));
+  await flush();
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_REDUCED_MS - 1);
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("the hold is only for the last step, and ends at once if the splash goes", async (t) => {
+  const { splash, at, flush, watch } = await paintedSplash(t);
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const first = watch(splash.progress("backend"));
+  await flush();
+  assert.equal(first.done, true, "an earlier step is not held");
+  const last = watch(splash.progress("page"));
+  await flush();
+  assert.equal(last.done, false);
+  splash.close();
+  await flush();
+  assert.equal(last.done, true, "nothing to hold for once the splash is gone");
+});
+
+test("a last step landing before the splash has painted adds no wait: the minimum after the paint shows it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = railSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => 0 });
+  splash.show();
+  let done = false;
+  splash.progress("page").then(() => (done = true));
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(done, true);
+  splash.close();
+});
+
+test("the hold counts from when the step landed: a slow answer is part of it, not added to it", async (t) => {
+  let release;
+  const { splash, at, flush, watch } = await paintedSplash(t, {
+    answer: (n) => (n === 3 ? new Promise((r) => (release = () => r(n))) : Promise.resolve(n)),
+  });
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.progress("page"));
+  await flush();
+  // The page takes 100 ms to answer.
+  t.mock.timers.tick(100);
+  at(SPLASH_MIN_ON_SCREEN_MS + 500);
+  release();
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS - 100 - 1);
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("a clock set back never stretches the hold", async (t) => {
+  let release;
+  const { splash, at, flush, watch } = await paintedSplash(t, {
+    answer: (n) => (n === 3 ? new Promise((r) => (release = () => r(n))) : Promise.resolve(n)),
+  });
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.progress("page"));
+  await flush();
+  at(0); // the wall clock jumps back an hour, say
+  release();
+  await flush();
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("a splash that painted after the reveal stopped waiting for its paint still shows the rail complete", async (t) => {
+  // The reveal waits for the paint at most SPLASH_SHOW_WAIT_MS, and a
+  // paint after that gets no minimum: the hold is then all that keeps
+  // the last stretch on screen.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  const win = fakeSplash();
+  let answerShown = () => {};
+  win.webContents.executeJavaScript = (code) => {
+    const m = /splashProgress\.set\((\d+)\)/.exec(code);
+    if (m) return Promise.resolve(Number(m[1]));
+    return new Promise((resolve) => (answerShown = resolve));
+  };
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  let shownDone = false;
+  splash.whenShown().then(() => (shownDone = true));
+  t.mock.timers.tick(SPLASH_SHOW_WAIT_MS);
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(shownDone, true, "the reveal stopped waiting");
+  now = SPLASH_SHOW_WAIT_MS + 50;
+  answerShown(false);
+  for (let i = 0; i < 8; i++) await tick();
+  now = SPLASH_SHOW_WAIT_MS + 100;
+  let done = false;
+  splash.progress("page").then(() => (done = true));
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(done, false, "held, though the minimum after the paint has not run out");
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  for (let i = 0; i < 8; i++) await tick();
+  assert.equal(done, true);
+  splash.close();
+});
+
+test("no language's network line says it starts regardless", () => {
+  for (const locale of LOCALES) {
+    assert.doesNotMatch(messagesFor(locale).splashNetworkSlow, /anyway|mesmo assim|de todos modos|всё равно|все равно|продолжится/i, locale);
+  }
+});
+
+test("a page that never says it rendered still completes the rail, and the reveal waits for it to be seen", async (t) => {
+  // The window is revealed anyway once the wait for its render gives
+  // up (lib/app-window.cjs); the rail must not jump from almost
+  // complete to gone.
+  const { splash, win, at, flush, watch } = await paintedSplash(t);
+  await splash.progress("backend");
+  await splash.progress("flags");
+  at(SPLASH_MIN_ON_SCREEN_MS + 4000);
+  const step = watch(splash.pageReady(false));
+  await flush();
+  assert.equal(
+    win.calls.filter((c) => c.includes("splashProgress")).at(-1),
+    "js:window.splashProgress && window.splashProgress.set(3)",
+  );
+  assert.equal(step.done, false, "held");
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  await flush();
+  assert.equal(step.done, true);
+  assert.equal(lastSplashState().steps, 3);
+  splash.close();
+});
+
+test("a page that rendered completes the rail the same way", async (t) => {
+  const { splash, at, flush, watch } = await paintedSplash(t);
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.pageReady(true));
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("whatever steps did not land, the reveal's step lights the whole rail first", async (t) => {
+  const { splash, win, flush } = await paintedSplash(t);
+  splash.pageReady(false);
+  await flush();
+  assert.deepEqual(
+    win.calls.filter((c) => c.includes("splashProgress")),
+    ["js:window.splashProgress && window.splashProgress.set(3)"],
+  );
+  splash.close();
+});
