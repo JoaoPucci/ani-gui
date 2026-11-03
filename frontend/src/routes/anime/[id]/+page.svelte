@@ -1592,11 +1592,11 @@
 		);
 		if (outcome.kind === 'played') {
 			actionNotice = null;
-			// Stamp Continue Watching for the click. getOrFire shares
-			// the prefetch's in-flight promise (which had prefetch=true),
-			// so the backend's auto-history-write stayed silent for
-			// cache-hit clicks — markWatched covers that gap. The backend
-			// op is idempotent.
+			// Stamp Continue Watching for the click. A click served from a
+			// finished prefetch (prefetch=true) wrote no history row on
+			// resolving — getOrFire refires a warm still running — so
+			// markWatched, sent now as the session arrives, writes it. The
+			// backend op is idempotent.
 			// Completion is decided against the FULL finite series total
 			// (Kitsu's mode-independent count), NOT episodeCap — in dub
 			// mode the playable cap is only the dubbed slice — and only for a finished series.

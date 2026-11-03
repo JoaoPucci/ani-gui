@@ -714,6 +714,11 @@ export interface PlayArgs {
 	 *  opened the play from. The session answers whether the play
 	 *  landed on that row's own listing (`own_listing`). */
 	guess_row?: string;
+	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
+	 *  place of `kitsu_id`: the backend records it on the row the
+	 *  resolve writes only when the play landed on that row's own
+	 *  listing, and reads it for nothing else. */
+	guess_id?: string;
 	/** The captions choice remembered for the show
 	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
 	 *  backend orders the subtitle tracks it hands an external player,
@@ -826,6 +831,7 @@ export function playStream(
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
