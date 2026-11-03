@@ -6,7 +6,7 @@ use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use crate::scraper::provider::ProviderId;
 use std::path::PathBuf;
 
-fn state() -> AppState {
+pub(super) fn state() -> AppState {
     AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -108,11 +108,12 @@ fn a_bare_rows_title_match_lives_under_the_legacy_segment() {
         Some("12"),
         "the row with no provider searches the title, so its match is kept"
     );
-    assert!(
-        crate::cache::meta_cache_get(&s.cache_pool, "title-match:v3:legacy:stone ocean:c1")
-            .expect("read")
-            .is_some()
-    );
+    assert!(crate::cache::meta_cache_get(
+        &s.cache_pool,
+        &format!("{}1", title_match_prefix(None, "stone ocean"))
+    )
+    .expect("read")
+    .is_some());
     assert_eq!(
         title_match_get(&s, Some(ProviderId::Hianime), "stone ocean", 1).expect("get"),
         None,
