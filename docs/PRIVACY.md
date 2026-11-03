@@ -189,9 +189,8 @@ tracker list, asking the tracker to confirm who you are and fetching
 the list again when the saved copy is six hours old or more. For
 each kind of request:
 
-- **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the streaming catalogue playback resolves
-  against: hianime (reached at hianime.at). anidb.app was asked first
+- **Anime catalogue lookups** — Kitsu, AniList, and the streaming
+  catalogue playback resolves against: hianime (reached at hianime.at). anidb.app was asked first
   until it was retired in October 2026, and nothing contacts it now.
   Searches and episode listings are asked for as you browse and play;
   the rows of shows on the home page and the search page, and a show
@@ -207,8 +206,10 @@ each kind of request:
   than running once on opening, so paging the grid or the strip to new
   episodes, or changing the audio mode or quality setting, resolves
   what is newly in view. These requests carry the search terms you
-  typed or the anime IDs you're browsing, and no account identifier,
-  whether or not you have connected an account. A request to hianime's own
+  typed or the anime IDs you're browsing, and no account identifier.
+  MyAnimeList is reached only as your tracker, and reading a show's
+  details from your tracker before writing your progress to it is a
+  tracker request, which carries your sign-in (below). A request to hianime's own
   site follows a redirect only while it stays on that site; one that
   points anywhere else is not followed, so the site it names never
   receives the request. Resolving an episode through
@@ -246,8 +247,9 @@ each kind of request:
   size limit removes it or you clear the cache. These requests carry
   no identifier of yours, except the avatar's: its address is the one
   your tracker gives for your account, and it names the account
-  (AniList's and MyAnimeList's avatar addresses carry your user id), so
-  the host serving it can tell whose avatar is asked for.
+  (AniList's and MyAnimeList's avatar addresses carry your user id
+  when you have set an avatar), so the host serving it can tell whose
+  avatar is asked for.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
@@ -287,13 +289,18 @@ each kind of request:
   subtitle files beside them without any playback. Syncplay, once the
   app has launched it, connects on its own to the Syncplay server and
   room you choose in its dialog or its own settings, under the name
-  you give it there; the
-  app passes it only the stream, its subtitle files and the player's
-  options.
+  you give it there; the app passes it only the stream, its subtitle
+  files and the player's options. By default Syncplay shares the
+  stream's address and length with that server and the others in the
+  room; its own privacy settings can hash or withhold them.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
-  - Your OAuth bearer token is sent to that provider's API on every
-    request that fetches your list or updates your progress.
+  - Your OAuth bearer token is sent with every request ani-gui makes
+    to that provider as your tracker: your profile, your list, the
+    show details read to line up episode numbers before a write, and
+    the writes themselves. Renewing your sign-in sends its refresh
+    token to the provider. AniList requests made as a catalogue lookup
+    carry none.
   - We send your watch progress (episodes watched, status, score)
     when you mark an episode watched.
   - We never send tracker tokens or progress to any third party.
@@ -341,7 +348,7 @@ project's own repository.
 
 ## Connecting and disconnecting an account
 
-Connecting AniList (and, in a future release, MyAnimeList) uses the
+Connecting AniList or MyAnimeList uses the
 standard OAuth Authorization Code flow:
 
 1. ani-gui generates a one-time random `state` value and PKCE pair.
