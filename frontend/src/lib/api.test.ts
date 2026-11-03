@@ -9,6 +9,7 @@ import {
 	airingGet,
 	aniskipGet,
 	appInfo,
+	sourceHealth,
 	availabilityBatch,
 	availabilityWarm,
 	checkAvailability,
@@ -114,6 +115,16 @@ describe('appInfo', () => {
 		expect(init).toBeUndefined(); // GET, no body
 		expect(info.version).toBe('0.1.0');
 		expect(info.proxy_base_url).toBe('http://127.0.0.1:42337');
+	});
+});
+
+describe('sourceHealth', () => {
+	it('GETs /api/source-health and hands back the body as it came', async () => {
+		const body = { providers: [{ provider: 'hianime', state: 'answering' }] };
+		const fetchMock = mockFetchOnce(body);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(await sourceHealth()).toEqual(body);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/source-health`);
 	});
 });
 
