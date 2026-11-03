@@ -9,6 +9,7 @@
   behaves consistently across docks.
 -->
 <script lang="ts">
+	import { flushSync } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import Icon from './Icon.svelte';
@@ -21,6 +22,7 @@
 	import { handleChipDisconnect } from '$lib/account/chip-disconnect';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { primaryAccountStore } from '$lib/account/primary-store.svelte';
+	import { focusFirstItem, onMenuKey } from '$lib/menu/menu-dom';
 	import { m } from '$lib/paraglide/messages';
 
 	// Chosen lead provider lives in a shared store seeded from
@@ -49,8 +51,21 @@
 
 	$effect(() => {
 		if (!open) return;
+		// Opened: focus goes to the first item, as the play page's menus do.
+		focusFirstItem(document.getElementById('account-chip-pop'));
 		return popoverControls.attach({ onClose: () => (open = false) });
 	});
+	// A chip that goes (signed out elsewhere) takes its menu with it,
+	// and comes back closed.
+	$effect(() => {
+		if (!visible) open = false;
+	});
+
+	// The menu's keys ($lib/menu/menu-keys): arrows, Home and End move
+	// between the items; Escape, Tab and Shift+Tab close it.
+	function onMenuKeydown(e: KeyboardEvent) {
+		onMenuKey(e, { anchor: trigger, close: () => flushSync(() => (open = false)) });
+	}
 
 	function providerLabel(provider: 'anilist' | 'mal' | 'inhouse'): string {
 		if (provider === 'anilist') return m.account_provider_anilist();
@@ -104,6 +119,7 @@
 			class:warn={descriptor.warning !== null}
 			aria-haspopup="menu"
 			aria-expanded={open}
+			aria-controls="account-chip-pop"
 			aria-label={m.account_chip_aria_label({ username: descriptor.username })}
 			onclick={() => (open = !open)}
 		>
@@ -126,8 +142,11 @@
 				class="account-chip-pop"
 				role="menu"
 				aria-label={m.account_chip_pop_aria_label()}
+				aria-describedby="account-chip-pop-header"
+				tabindex="-1"
+				onkeydown={onMenuKeydown}
 			>
-				<header class="account-chip-pop-header">
+				<header id="account-chip-pop-header" class="account-chip-pop-header">
 					<span class="account-chip-pop-provider">{providerLabel(descriptor.provider)}</span>
 					<span class="account-chip-pop-username">{descriptor.username}</span>
 					{#if warningLabel(descriptor.warning)}

@@ -12,12 +12,14 @@
       item with progress / status / per-row actions.
 -->
 <script lang="ts">
+	import { flushSync } from 'svelte';
 	import { slide } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
 	import { formatSpeed, totalSpeed } from '$lib/download/speed';
 	import { dockLabel } from '$lib/download/dock-label';
+	import { focusFirstItem, focusedIndex, onMenuKey, refocusMenu } from '$lib/menu/menu-dom';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
@@ -40,8 +42,38 @@
 		if (open) downloadStore.markAllSeen();
 	});
 
+	// A dock that goes with its last row takes its menu with it, and
+	// the next download's dock comes back closed.
+	$effect(() => {
+		if (!hasItems) open = false;
+	});
+
+	// The rows' actions are the menu's items, and they change while it
+	// is open: a download that ends swaps Cancel for Reveal and Dismiss,
+	// a dismissed row takes its actions with it. Read before the rows
+	// redraw, the place focus was on; after, focus that went with its
+	// item moves to the item now at that place ($lib/menu/menu-dom).
+	const rowShape = $derived(itemsView.map((i) => `${i.id}:${i.status}`).join(' '));
+	let focusWas: number | null = null;
+	$effect.pre(() => {
+		void rowShape;
+		focusWas = open ? focusedIndex(document.getElementById('dl-dock-pop')) : null;
+	});
+	$effect(() => {
+		void rowShape;
+		if (open) refocusMenu(document.getElementById('dl-dock-pop'), focusWas, trigger);
+	});
+
+	// The menu's keys ($lib/menu/menu-keys): arrows, Home and End move
+	// between the items; Escape, Tab and Shift+Tab close it.
+	function onMenuKeydown(e: KeyboardEvent) {
+		onMenuKey(e, { anchor: trigger, close: () => flushSync(() => (open = false)) });
+	}
+
 	$effect(() => {
 		if (!open) return;
+		// Opened: focus goes to the first item, as the play page's menus do.
+		focusFirstItem(document.getElementById('dl-dock-pop'));
 		const onPointerDown = (e: PointerEvent) => {
 			const target = e.target as Node | null;
 			if (!target) return;
@@ -92,6 +124,7 @@
 			onclick={() => (open = !open)}
 			aria-haspopup="menu"
 			aria-expanded={open}
+			aria-controls="dl-dock-pop"
 			aria-label={triggerLabel.kind === 'active-queued'
 				? m.download_dock_active_queued_speed_label({
 						count: triggerLabel.count,
@@ -133,11 +166,20 @@
 		</button>
 
 		{#if open}
-			<div id="dl-dock-pop" class="dl-dock-pop" role="menu" aria-label={m.download_dock_title()}>
+			<div
+				id="dl-dock-pop"
+				class="dl-dock-pop"
+				role="menu"
+				aria-label={m.download_dock_title()}
+				tabindex="-1"
+				onkeydown={onMenuKeydown}
+			>
 				{#if itemsView.length === 0}
 					<p class="dl-dock-empty">{m.download_dock_empty()}</p>
 				{:else}
-					<ul class="dl-dock-list">
+					<!-- A menu holds items, not a list: the rows step aside for
+					     their actions, each described by its row's text. -->
+					<ul class="dl-dock-list" role="none">
 						{#each itemsView as item (item.id)}
 							{@const epLabel =
 								item.rangeTotal && item.currentEp != null
@@ -148,8 +190,12 @@
 									: item.rangeTotal
 										? m.download_dock_ep_label_range_static({ episode: item.episode })
 										: m.download_dock_ep_label_single({ episode: item.episode })}
-							<li class="dl-row dl-row-{item.status}" title={item.title}>
-								<span class="dl-row-text">
+							{@const described =
+								(item.status === 'done' || item.status === 'error') && terminalReportText(item)
+									? `${item.id}-text ${item.id}-report`
+									: `${item.id}-text`}
+							<li class="dl-row dl-row-{item.status}" title={item.title} role="none">
+								<span class="dl-row-text" id="{item.id}-text">
 									<span class="dl-row-title">{item.title}</span>
 									<span class="dl-row-sep" aria-hidden="true">·</span>
 									<span class="dl-row-ep">{epLabel}</span>
@@ -175,6 +221,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => confirmCancel(item)}
 										aria-label={m.download_dock_cancel_aria_label()}
 										title={m.download_dock_cancel_title()}
@@ -193,6 +241,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => reveal(item.destDir)}
 										aria-label={m.download_dock_reveal_aria_label()}
 										title={m.download_dock_reveal_title()}
@@ -211,6 +261,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => downloadStore.dismiss(item.id)}
 										aria-label={m.download_dock_dismiss_aria_label()}
 										title={m.download_dock_dismiss_title()}
@@ -231,6 +283,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => downloadStore.dismiss(item.id)}
 										aria-label={m.download_dock_dismiss_aria_label()}
 										title={m.download_dock_dismiss_title()}
@@ -247,7 +301,8 @@
 									</button>
 								{/if}
 								{#if (item.status === 'done' || item.status === 'error') && terminalReportText(item)}
-									<span class="dl-row-report">{terminalReportText(item)}</span>
+									<span class="dl-row-report" id="{item.id}-report">{terminalReportText(item)}</span
+									>
 								{/if}
 							</li>
 						{/each}
