@@ -152,8 +152,8 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
    reduced motion (GNOME's setting reaches Chromium only through a
    switch added after this window opened), or when the fallback rests
    the page. */
-body.reduced:not(.shown) *, body.reduced:not(.shown) *::before, body.reduced:not(.shown) *::after {
+body.reduced *, body.reduced *::before, body.reduced *::after {
   animation: none !important; transition: none !important;
 }
-body.reduced:not(.shown) .counter { display: none; }
-body.reduced:not(.shown) .still, body.reduced:not(.shown) .unit { display: inline; }
+body.reduced .counter { display: none; }
+body.reduced .still, body.reduced .unit { display: inline; }

@@ -230,7 +230,9 @@ function splashController({
       const min = first.resting ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
       // Counted from the paint: a window ready long after it waits for
       // nothing more.
-      const remaining = min - (clock() - paintedAt);
+      // Never more than the minimum: a clock set back since the paint
+      // must not stretch the wait.
+      const remaining = Math.min(min, min - (clock() - paintedAt));
       if (remaining <= 0) return;
       let minTimer;
       await Promise.race([
