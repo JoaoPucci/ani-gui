@@ -344,8 +344,14 @@ three-second limit below.
    session. The preload marks that case with `window.aniGui.flagsOrigin`
    set to null, so a renderer consumer that must agree with the backend
    can ask `GET /api/flags` itself.
-4. The splash is on screen first and alone. The app's window loads and
-   paints its first page hidden; once it is ready to show, it waits up
+4. The splash is on screen first and alone. The app's window, like the
+   splash, is made on the app's own dark background (`--ink-000`), so
+   nothing white shows before a stylesheet loads. It loads and paints
+   its first page hidden, and its renderer says when that page has
+   rendered (two animation frames after the root layout mounts); the
+   reveal waits for that word, at most four seconds from the window's
+   creation, past which the window is revealed anyway, on the dark
+   background. Once it is ready to show, it also waits up
    to a second for the splash to answer that it has rendered a frame,
    then until the splash has been on screen for 500 ms since that paint
    (300 ms when it rests on its still frame) — long enough for the
