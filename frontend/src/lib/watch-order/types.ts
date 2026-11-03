@@ -7,26 +7,20 @@
  * beside this one.
  */
 
-/** One Kitsu anime as the franchise payload carries it. */
-export interface WatchEntry {
-	readonly id: string;
-	/** Kitsu's canonical title. */
-	readonly title: string;
-	/** Kitsu's subtype as served (`TV`, `movie`, `OVA`, `ONA`, `special`), or null. */
-	readonly subtype: string | null;
-	/** `YYYY-MM-DD`, or null when Kitsu has no date. */
-	readonly start: string | null;
-	readonly episodes: number | null;
-	/** Kitsu's status (`finished`, `current`, `upcoming`, `tba`), or null. */
-	readonly status: string | null;
-	readonly poster: string | null;
-	readonly cover: string | null;
-}
+import type { Franchise, FranchiseEntry } from '$lib/api';
+
+export type { Franchise, FranchiseEntry };
+
+/** One Kitsu anime as the franchise payload carries it ($lib/api's `FranchiseEntry`). */
+export type WatchEntry = Readonly<FranchiseEntry>;
 
 /** A prequel → sequel pair between two run members. */
 export type RunLink = readonly [string, string];
 
-/** The franchise payload: the run, the entries around it, and a side story's parents. */
+/**
+ * The franchise payload read-only: $lib/api's `Franchise`, which every
+ * reader here takes, so a fixture's read-only lists fit it too.
+ */
 export interface FranchiseData {
 	/** The id asked about. */
 	readonly anchor: string;
