@@ -231,6 +231,29 @@ fn a_word_led_by_a_dash_is_sent_as_the_word() {
     assert_eq!(search_text("-naruto"), "naruto");
 }
 
+/// Kitsu reads a `-` that punctuation leads as an exclusion too:
+/// "naruto:-shippuden" and "naruto (-shippuden)" answer Naruto without
+/// Shippuden, and "Re:ZERO (-Starting Life in Another World-) Season 4"
+/// answers Zoids Genesis. Only a letter or digit before the dash makes
+/// it text, so every other dash is sent as a gap.
+#[test]
+fn a_dash_no_letter_or_digit_leads_is_sent_as_a_gap() {
+    for (q, sent) in [
+        ("naruto:-shippuden", "naruto: shippuden"),
+        ("naruto (-shippuden)", "naruto ( shippuden)"),
+        ("naruto [-shippuden]", "naruto [ shippuden]"),
+        ("Re:ZERO.-Starting Life", "Re:ZERO. Starting Life"),
+        (
+            "Re:ZERO (-Starting Life in Another World-) Season 4",
+            "Re:ZERO ( Starting Life in Another World-) Season 4",
+        ),
+        ("naruto --shippuden", "naruto shippuden"),
+        ("naruto--shippuden", "naruto- shippuden"),
+    ] {
+        assert_eq!(search_text(q), sent, "{q}");
+    }
+}
+
 /// A dash inside or after a word, or a dash other than `-`, is text
 /// to Kitsu, and reaches it as typed.
 #[test]
@@ -295,37 +318,44 @@ async fn the_client_finds_re_zero_season_4_by_its_provider_title() {
 }
 
 proptest! {
-    /// No word Kitsu is sent starts with a dash, every word of the
-    /// query reaches it less its leading dashes, and sending the text
-    /// again sends the same text.
+    /// Every dash Kitsu is sent follows a letter or digit, every other
+    /// character of the query reaches it in order (dashes that follow
+    /// none become gaps), and sending the text again sends the same
+    /// text.
     #[test]
-    fn no_word_sent_is_an_exclusion(
-        words in prop::collection::vec("-{0,3}[A-Za-z0-9:!'\\-]{0,6}", 0..8),
-        gaps in prop::collection::vec("[ \\t]{1,3}", 8),
+    fn no_dash_sent_is_an_exclusion(
+        query in "[A-Za-z0-9:!'()\\[\\]. \\t\\-]{0,40}",
     ) {
-        let query: String = words
-            .iter()
-            .zip(&gaps)
-            .map(|(w, g)| format!("{w}{g}"))
-            .collect();
         let sent = search_text(&query);
-        for word in sent.split_whitespace() {
-            prop_assert!(!word.starts_with('-'), "{:?} sent as {:?}", query, sent);
+        let mut previous = None;
+        for c in sent.chars() {
+            if c == '-' {
+                prop_assert!(
+                    previous.is_some_and(|p: char| p.is_ascii_alphanumeric()),
+                    "{:?} sent as {:?}", query, sent
+                );
+            }
+            previous = Some(c);
         }
-        let kept: Vec<&str> = query
-            .split_whitespace()
-            .map(|w| w.trim_start_matches('-'))
-            .filter(|w| !w.is_empty())
-            .collect();
-        prop_assert_eq!(sent.split_whitespace().collect::<Vec<_>>(), kept);
+        let mut gapped = String::new();
+        let mut before = None;
+        for c in query.chars() {
+            let text = c != '-' || before.is_some_and(|p: char| p.is_ascii_alphanumeric());
+            gapped.push(if text { c } else { ' ' });
+            before = Some(c);
+        }
+        prop_assert_eq!(
+            sent.split_whitespace().collect::<Vec<_>>(),
+            gapped.split_whitespace().collect::<Vec<_>>()
+        );
         prop_assert_eq!(search_text(&sent), sent.clone());
     }
 
-    /// A query no word of which starts with a dash is sent as typed,
-    /// up to the space between its words.
+    /// A query each dash of which follows a letter or digit is sent as
+    /// typed, up to the space between its words.
     #[test]
     fn a_query_without_an_exclusion_is_sent_as_typed(
-        words in prop::collection::vec("[A-Za-z0-9:!'][A-Za-z0-9:!'\\-]{0,6}", 1..8),
+        words in prop::collection::vec("[A-Za-z0-9:!']([A-Za-z0-9]-|[A-Za-z0-9:!']){0,5}", 1..8),
     ) {
         let query = words.join(" ");
         prop_assert_eq!(search_text(&query), query);
