@@ -13,7 +13,7 @@
 	"panel_title": "Notifications",
 	"mark_all_read": "Mark all as read",
 	"empty_title": "You're all caught up",
-	"empty_body": "Updates, finished and failed downloads, and trouble with the streaming source show up here.",
+	"empty_body": "Updates, finished and failed downloads, trouble with the streaming source and news from the developer show up here.",
 	"dismiss": "Dismiss",
 	"dismiss_aria": "Dismiss: {title}",
 	"unread_sr": "Unread.",
@@ -69,5 +69,11 @@
 	"download_failed_title": "A download failed",
 	"download_failed_meta": "{title} · Episode {episode}",
 	"download_failed_reason_label": "What went wrong",
-	"download_failed_reason_unknown": "The download stopped without saying why."
+	"download_failed_reason_unknown": "The download stopped without saying why.",
+	"published_meta": "From the developer",
+	"published_link_label": "Link",
+	"published_link_action": "Open link",
+	"donation_ask": "ani-gui is free and made in spare time. If it's useful to you, a donation helps keep it going.",
+	"donation_donate": "Donate",
+	"donation_later": "Not now"
 }

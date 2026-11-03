@@ -50,7 +50,10 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { PUBLISHED_STORAGE_KEY } from '../../src/lib/notices/published-memory';
 import { DONATION_STORAGE_KEY, GRACE_MS, serializeState } from '../../src/lib/notices/donation';
 
-const published = { reads: 0, answer: { donation_ask: null, items: [] } as unknown };
+const published = {
+	reads: 0,
+	answer: { donation_ask: null, items: [] } as Record<string, unknown>
+};
 
 afterEach(async () => {
 	await teardown();

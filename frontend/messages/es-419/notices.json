@@ -13,7 +13,7 @@
 	"panel_title": "Notificaciones",
 	"mark_all_read": "Marcar todo como leído",
 	"empty_title": "Estás al día",
-	"empty_body": "Aquí aparecen las actualizaciones, las descargas terminadas o fallidas y los problemas con la fuente de streaming.",
+	"empty_body": "Aquí aparecen las actualizaciones, las descargas terminadas o fallidas, los problemas con la fuente de streaming y los avisos del desarrollador.",
 	"dismiss": "Descartar",
 	"dismiss_aria": "Descartar: {title}",
 	"unread_sr": "Sin leer.",
@@ -69,5 +69,11 @@
 	"download_failed_title": "Una descarga falló",
 	"download_failed_meta": "{title} · Episodio {episode}",
 	"download_failed_reason_label": "Qué salió mal",
-	"download_failed_reason_unknown": "La descarga se detuvo sin decir por qué."
+	"download_failed_reason_unknown": "La descarga se detuvo sin decir por qué.",
+	"published_meta": "Del desarrollador",
+	"published_link_label": "Enlace",
+	"published_link_action": "Abrir enlace",
+	"donation_ask": "ani-gui es gratis y se hace en el tiempo libre. Si te resulta útil, una donación ayuda a que siga adelante.",
+	"donation_donate": "Donar",
+	"donation_later": "Ahora no"
 }

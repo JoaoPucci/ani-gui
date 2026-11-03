@@ -14,7 +14,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import type { ToastKind } from '$lib/toasts/store.svelte';
 
-	let { kind, message, announcement, actionLabel, onAction, onDismiss } = $props<{
+	let { kind, message, announcement, actionLabel, onAction, dismissLabel, onDismiss } = $props<{
 		kind: ToastKind;
 		message: string;
 		/** What the live region announces; the message when omitted. A
@@ -23,6 +23,9 @@
 		announcement?: string;
 		actionLabel?: string | null;
 		onAction?: (() => void) | null;
+		/** Words for the dismiss control, which then reads as an answer
+		 *  ("Not now") rather than a ×. */
+		dismissLabel?: string | null;
 		onDismiss: () => void;
 	}>();
 
@@ -49,14 +52,18 @@
 			{actionLabel}
 		</button>
 	{/if}
-	<button
-		type="button"
-		class="dismiss"
-		aria-label={m.toast_dismiss_aria()}
-		onclick={() => onDismiss()}
-	>
-		<span aria-hidden="true">×</span>
-	</button>
+	{#if dismissLabel}
+		<button type="button" class="later" onclick={() => onDismiss()}>{dismissLabel}</button>
+	{:else}
+		<button
+			type="button"
+			class="dismiss"
+			aria-label={m.toast_dismiss_aria()}
+			onclick={() => onDismiss()}
+		>
+			<span aria-hidden="true">×</span>
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -157,6 +164,30 @@
 		background: color-mix(in oklab, var(--bone-100, #f4ece1) 8%, transparent);
 	}
 	.dismiss:focus-visible {
+		outline: 2px solid var(--toast-accent);
+		outline-offset: 2px;
+	}
+	/* A dismissal that answers a question: quieter than the action
+	   beside it, the same pill. */
+	.later {
+		flex: 0 0 auto;
+		padding: 0.4rem 0.85rem;
+		font-family: var(--font-mono, monospace);
+		font-size: var(--type-micro, 0.75rem);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro, 0.08em);
+		text-transform: uppercase;
+		color: var(--bone-300, #b6ad9f);
+		background: transparent;
+		border: 1px solid color-mix(in oklab, var(--bone-100, #f4ece1) 18%, transparent);
+		border-radius: var(--radius-pill, 999px);
+		cursor: pointer;
+	}
+	.later:hover {
+		color: var(--bone-100, #f4ece1);
+		background: color-mix(in oklab, var(--bone-100, #f4ece1) 8%, transparent);
+	}
+	.later:focus-visible {
 		outline: 2px solid var(--toast-accent);
 		outline-offset: 2px;
 	}

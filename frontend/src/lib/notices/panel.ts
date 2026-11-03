@@ -57,11 +57,18 @@ export function noticeToast(n: Notice, view: (key: string) => void): PushArgs {
 export interface ActionDeps {
 	openUpdate: () => void;
 	reveal: (dir: string) => void;
+	/** Opens an http or https address in the user's browser. */
+	openLink?: (url: string) => void;
 }
 
 export function act(kind: ActionKind, n: Notice, deps: ActionDeps): void {
 	if (kind === 'open-update') {
 		deps.openUpdate();
+		return;
+	}
+	if (kind === 'open-link') {
+		const link = n.kind === 'remote' ? n.data.link : n.data.noteLink;
+		if (typeof link === 'string' && link) deps.openLink?.(link);
 		return;
 	}
 	const dir = n.data.destDir;

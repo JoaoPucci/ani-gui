@@ -101,8 +101,8 @@
 		<p class="intro">{m.about_intro()}</p>
 	</header>
 
-	<!-- DONATE -->
-	<section class="section">
+	<!-- DONATE: the donation ask's Donate lands here (#support). -->
+	<section class="section" id="support">
 		<h2 class="section-eyebrow">
 			<span>{m.about_section_donate_title()}</span>
 			<span class="section-eyebrow-faint">{m.about_section_donate_hint()}</span>

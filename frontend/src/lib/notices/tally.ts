@@ -2,7 +2,19 @@
  *  bell's count and colour. */
 import type { Notice, Tone } from './kinds';
 
+/** A published notice's tone, from its priority. */
+const PUBLISHED_TONE: Readonly<Record<string, Tone>> = {
+	critical: 'failure',
+	warning: 'live'
+};
+
 export function toneOf(n: Notice): Tone {
+	if (n.kind === 'remote') {
+		const p = n.data.priority;
+		return (
+			(typeof p === 'string' && Object.hasOwn(PUBLISHED_TONE, p) && PUBLISHED_TONE[p]) || 'info'
+		);
+	}
 	if (n.kind === 'download-failed') return 'failure';
 	if (n.resolvedAt !== null) return 'good';
 	if (n.kind === 'outage') return 'live';
