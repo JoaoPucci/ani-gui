@@ -465,6 +465,128 @@ One request per launch, and at most one an hour after the first few
 retries of a session whose fetch keeps failing, is far below any
 plausible one. A rate-limited answer is a failed fetch like any other.
 
+## Notification center
+
+The app's notices used to live wherever they arose and were gone once
+the moment passed. The notification center keeps them in one list and
+says, once, when the streaming source stops answering. The renderer half
+is in `frontend/src/lib/notices/`; the backend half in
+`backend/src/notices/` and `backend/src/scraper/health.rs`.
+
+**Behind a flag that ships off.** The whole center reads the
+`notification_center` launch flag and runs only when it is `true`
+(`$lib/notices/enabled`). Like every flag it is read once, from the
+flags the window was opened with. Off, nothing of it mounts: no bell,
+no toast or row from it, no detail page content, no line above Play, no
+read of the source's health, and nothing read from or written to its
+storage. The update badge and dialog, the download dock and the
+diagnostics page are the same either way. The flag is not yet declared
+in `flags::DECLARED`: a flag the file turns on is a riskier value than
+the build's default, which the remote-flags rule above does not allow
+for an unsigned file, so the center ships off and cannot be turned on
+remotely until that is settled.
+
+**What it shows.** Each notice is a keyed row, either a *condition*
+(true for a while, resolving itself) or an *event* (happened once):
+
+| Notice | Kind | Raised from |
+|---|---|---|
+| An update is available | condition | the update check the layout already runs |
+| The streaming source isn't answering, then is answering again | condition | `GET /api/source-health` (below) |
+| Episodes downloaded | event, one row per show | the download list |
+| A download failed | event | the download list |
+
+Raising a key that exists updates its row: a run of failures is one
+outage row, three finished episodes of one show one row counting three.
+Events are kept in the window's `localStorage` (`ani-gui.notices.v1`),
+at most 50 and none older than 30 days. Conditions are never stored;
+they are worked out again at each start. A condition that resolves stays
+in the list, marked resolved, for a day or until the app restarts.
+
+**The bell.** It counts every unread row, good news included, except
+the update while the update badge shows it: the badge stays, keeps the
+place the in-app updater's progress ring needs, and the bell does not
+count one update twice. The count is oxblood while a failure or a live
+problem is unread, neutral otherwise. When it goes from nothing to
+something the bell swings once and the count pops on; under reduced
+motion it does not move. Its panel is a dialog in the download dock's
+style; every row's action and dismiss are always visible, in space
+reserved on every row. A row opens the notice's page,
+`/notifications/<key>`.
+
+**How a notice arrives** (`$lib/notices/arrival`). A new notice shows a
+toast, amber for a live condition and oxblood for a failed event, except
+the update, which its badge announces. While a video plays, in the
+window or picture-in-picture, only a failure toasts; the rest is counted
+and listed silently. Nothing ever shows over fullscreen, native or the
+player's own: a toast that would show is held, and shows when the user
+leaves fullscreen if its row is still unread. The bell's count and the
+list change at once either way. On the player nothing navigates away
+from the episode: a toast's View and a row open the notice in the panel,
+in place. Playback and fullscreen are read from the document's own
+media and `fullscreenchange` events, so the player needs no hook.
+
+**Telling users the source isn't answering, from their own traffic.**
+Each provider's gate keeps a `HealthRun` beside its breaker, fed every
+outcome it records together with whether a user was waiting on the
+request. The source is reported not answering after four consecutive
+failures (the breaker opening, and its next attempt failing too) with a
+user's request among them. Failures only background probes saw, and one
+flaky minute, raise nothing; a rate limit is the source answering, busy,
+and neither counts nor ends a run. The first success ends an outage and
+the row says the source is answering again. The renderer reads the
+answer from `GET /api/source-health` every ten seconds and when the
+window regains focus. That is a loopback read: nothing is sent to the
+source or anywhere else to find out. Since an outage and something
+between the user and the source blocking it look the same from here,
+the wording says plainly that the cause is not known. While the source
+isn't answering, a show's page carries one line above Play saying so.
+
+**Published notices ride the flags file, and are not shown yet.** The
+maintainer may publish notices for everyone under one reserved key of
+the flags file's `flags` object, which no flag may be declared under:
+
+```json
+{ "flags": { "notices": {
+  "format": 1,
+  "donation_ask": 2,
+  "items": [{
+    "id": "source-2026-11",
+    "title": "The streaming source is down for maintenance",
+    "body": "It should be back tonight.",
+    "link": "https://github.com/JoaoPucci/ani-gui/discussions/1",
+    "priority": "warning",
+    "about": "source",
+    "min_app": "0.20.0",
+    "max_app": "0.20.9"
+  }]
+} } }
+```
+
+They need no request of their own: the block is part of the one launch
+fetch, cached with it, and decided once with the flags
+(`FlagStore::notices`). `backend/src/notices/remote.rs` reads it
+strictly. `format` is the block's version: a build reads only the format
+it knows and drops any other block whole. Fields a build does not know
+are ignored, so a later field (a button whose action comes from a fixed
+list, an image served from this repository) reaches older builds as a
+notice without it. A notice whose known fields are malformed is dropped
+and logged, never shown in part: the title is one line of at most 120
+characters, the body plain text of at most 1,000, neither with control
+or direction-override characters; the link plain `http` or `https` with
+no credentials, at most 300 bytes; the priority one of `info`,
+`warning`, `critical`; the version bounds `X.Y.Z`. At most eight notices
+are kept. Nothing in the block is HTML, and nothing renders it as HTML.
+
+None of it is shown yet, and the donation-ask number schedules nothing
+yet. Showing text and links from the file is the same question as
+turning a flag on from it, and waits on the same decision. What is
+ready for it: the parser, and the donation ask's schedule as a pure
+state machine (`$lib/notices/donation`): once each time the published
+number rises past the last one the install acted on, never in the first
+fourteen days after the first launch, never while a video plays, and a
+new install reacting only to rises after the number it saw at install.
+
 ## Embedded playback
 
 Playback happens inside the desktop window — not in a detached `mpv` process. Implementation:
