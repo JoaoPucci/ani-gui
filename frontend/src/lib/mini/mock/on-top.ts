@@ -44,7 +44,8 @@ export type OnTopCopy = 'gnome' | 'kde' | 'other';
  * window rule.
  */
 export function onTopCopy(desktop: string | null, gnomeMenuConfirmed: boolean): OnTopCopy {
-	void desktop;
-	void gnomeMenuConfirmed;
+	const names = (desktop ?? '').toLowerCase().split(':');
+	if (names.includes('gnome') && gnomeMenuConfirmed) return 'gnome';
+	if (names.includes('kde')) return 'kde';
 	return 'other';
 }

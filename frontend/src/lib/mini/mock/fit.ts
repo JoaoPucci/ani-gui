@@ -20,7 +20,7 @@ export const MINI_COMPACT_BELOW = 400;
 export interface MiniControlSet {
 	compact: boolean;
 	/** Whether previous / next have buttons. */
-	episodeSteps: 'buttons' | 'hidden' | 'timeline';
+	episodeSteps: 'buttons' | 'hidden';
 	/** The centre cluster's flanks: ten-second skips or episode steps. */
 	clusterFlanks: 'skip' | 'episode' | null;
 	/** The time readout: current and total, or current alone. */
@@ -30,15 +30,18 @@ export interface MiniControlSet {
 	cueLift: number;
 }
 
+/** px the cues rise, by layout: [default, compact]. */
+const CUE_LIFT = { bar: [48, 24], centre: [28, 20] } as const;
+
 export function miniControlSet(width: number, layout: MiniLayout): MiniControlSet {
 	const compact = width < MINI_COMPACT_BELOW;
 	return {
 		compact,
-		episodeSteps: compact ? 'timeline' : 'buttons',
+		episodeSteps: compact || layout === 'centre' ? 'hidden' : 'buttons',
 		clusterFlanks: layout === 'centre' ? 'skip' : null,
 		time: compact ? 'current' : 'both',
 		mute: !compact,
-		cueLift: 0
+		cueLift: CUE_LIFT[layout][compact ? 1 : 0]
 	};
 }
 
@@ -50,7 +53,6 @@ export function miniControlSet(width: number, layout: MiniLayout): MiniControlSe
  * lifting it would push it out of the window's top edge.
  */
 export function cueLifts(line: number | 'auto', snapToLines: boolean): boolean {
-	void line;
-	void snapToLines;
-	return false;
+	if (line === 'auto') return true;
+	return snapToLines ? line < 0 : line >= 50;
 }
