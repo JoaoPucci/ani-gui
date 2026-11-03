@@ -76,11 +76,16 @@ export interface PlayerKeyContext {
 	 *  flicker the state; arrow seeks let repeats through for
 	 *  continuous scrubbing. */
 	repeat: boolean;
+	/** True while a modal dialog is open over the player (the
+	 *  change-show picker): its keys are its own, and none reaches the
+	 *  player behind it. */
+	overDialog?: boolean;
 }
 
 export function decidePlayerKeyAction(ctx: PlayerKeyContext): PlayerKeyAction | null {
 	if (ctx.inField) return null;
 	if (ctx.modifier) return null;
+	if (ctx.overDialog) return null;
 
 	switch (ctx.key) {
 		case ' ':

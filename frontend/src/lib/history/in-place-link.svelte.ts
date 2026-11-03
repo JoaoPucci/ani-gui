@@ -43,6 +43,7 @@ export class InPlaceLinkSession extends LinkSession {
 	#page = '';
 	#refresh: () => void;
 	#keeping: { title: string | null };
+	#notify: (notice: LinkNotice) => void;
 
 	constructor(deps: InPlaceLinkDeps) {
 		const refresh = deps.refresh ?? noRefresh;
@@ -59,6 +60,7 @@ export class InPlaceLinkSession extends LinkSession {
 		} satisfies LinkSessionDeps);
 		this.#refresh = refresh;
 		this.#keeping = keeping;
+		this.#notify = deps.notify;
 	}
 
 	/** What the slip shows now. */
@@ -92,6 +94,8 @@ export class InPlaceLinkSession extends LinkSession {
 		if (!offer || this.busy) return;
 		this.choose({ ref: offer.current, current: true });
 		await this.confirm();
+		// The picker that shows a link's error is closed: say it here.
+		if (this.error) this.#notify({ kind: 'error', message: this.error });
 	}
 
 	override async confirm(): Promise<void> {

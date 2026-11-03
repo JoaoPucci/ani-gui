@@ -2,9 +2,9 @@
   GuessMark — the app's one mark for "guessed": two waves, ≈, drawn in
   the stroke the player's ⋯ menu icons use (24-unit box, 2.25 stroke,
   round caps). Every surface that says a show was guessed carries it:
-  the player's slip and its ⋯ entry, the Continue card's pill and the
-  failed resume's button. Decorative: the words beside it say what it
-  means.
+  the player's slip and its ⋯ entry, the Continue card's pill, the
+  failed resume's button and the show page's matched-from line.
+  Decorative: the words beside it say what it means.
 -->
 <script lang="ts">
 	let { size = 18, class: className = '' }: { size?: number; class?: string } = $props();

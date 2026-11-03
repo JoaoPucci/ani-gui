@@ -2824,7 +2824,8 @@
 				inField,
 				inButton,
 				modifier: e.ctrlKey || e.metaKey || e.altKey,
-				repeat: e.repeat
+				repeat: e.repeat,
+				overDialog: playLink.open
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:

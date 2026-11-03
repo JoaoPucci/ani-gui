@@ -63,6 +63,7 @@ export class LinkSession extends LinkPicker {
 		this.offer = null;
 		this.open = false;
 		this.settled = false;
+		this.group = null;
 		const offer = await linkOffer(this.#deps, row, pageId);
 		if (arrival !== this.#arrival) return;
 		this.offer = offer;

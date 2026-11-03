@@ -147,6 +147,7 @@
 	import { LinkSession } from '$lib/history/link-session.svelte';
 	import { appLinkDeps } from '$lib/history/link-deps';
 	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 
@@ -1845,6 +1846,7 @@
 						     the page, so the line arriving moves nothing below it. -->
 						<p class="guess-note">
 							{#if linkSession.offer}
+								<GuessMark size={16} />
 								<span class="guess-note-text" title={linkSession.offer.entry.title}
 									>{m.detail_link_matched({ title: linkSession.offer.entry.title })}</span
 								>
@@ -2821,6 +2823,11 @@
 	   and its button never do, and nothing below moves when it lands. */
 	.guess-note > * {
 		animation: text-in var(--dur-med) var(--ease-out-soft) both;
+	}
+	/* The app's one mark for a guess ($lib/components/GuessMark). */
+	.guess-note :global(.guess-mark) {
+		align-self: center;
+		color: color-mix(in oklab, var(--accent) 85%, var(--bone-100));
 	}
 	.guess-note-text {
 		min-inline-size: 0;
