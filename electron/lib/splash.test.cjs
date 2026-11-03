@@ -179,9 +179,11 @@ test("the splash holds still until it is told to move, and its fallback never st
   // that never comes, settles on the finished still frame.
   const css = read("splash.css");
   assert.match(css, /body:not\(\.shown\)[^{]*\{[^}]*animation-play-state: paused/);
-  // Resting applies only to a page not already moving: the fallback
-  // must not freeze a motion the main process has started.
-  assert.match(css, /body\.reduced:not\(\.shown\) \*[^{]*\{[^}]*animation: none !important/);
+  // The still frame applies to any page told to rest, so if the two
+  // ever met, resting would win; the fallback itself (below) does not
+  // rest a page the main process has set moving.
+  assert.match(css, /body\.reduced \*[^{]*\{[^}]*animation: none !important/);
+  assert.doesNotMatch(css, /body\.reduced:not\(\.shown\)/);
   const fallback =
     /^setTimeout\(\(\) => \{\n\s+if \(!document\.body\.classList\.contains\('shown'\)\) document\.body\.classList\.add\('reduced'\);\n\}, (\d+)\);$/m.exec(
       read("splash.js"),
@@ -696,15 +698,34 @@ test("the shorter minimum follows the page's answer, which also reflects the sys
   // main process may pass no preference while the page still rests.
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const win = answeringSplash();
-  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => 0 });
   splash.show();
-  let up = false;
-  const waiting = splash.whenShown().then(() => (up = true));
+  const waiting = splash.whenShown();
   win.emit("ready-to-show");
   splash.motionPreference(false);
   win.answer(true);
   for (let i = 0; i < 5; i++) await tick();
-  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_REDUCED_MS);
-  await waiting;
-  assert.equal(up, true);
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_REDUCED_MS - 1);
+  assert.equal(await settlesAtOnce(t, waiting), false);
+  t.mock.timers.tick(1);
+  assert.equal(await settlesAtOnce(t, waiting), true);
 });
+
+test("a clock stepping back after the paint never stretches the wait past the minimum", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 10_000;
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  win.answer(false);
+  for (let i = 0; i < 5; i++) await tick();
+  now -= 60_000; // the system clock set back a minute
+  const waiting = splash.whenShown();
+  // Let the wait reach its timer before time moves.
+  assert.equal(await settlesAtOnce(t, waiting), false);
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_MS);
+  assert.equal(await settlesAtOnce(t, waiting), true);
+});
+
