@@ -4,18 +4,18 @@
 //! It stands in for the remote file when a launch cannot read it —
 //! offline, a timeout, an error status, a malformed body — for as long
 //! as it is fresh ([`FRESH_FOR`]). Past that, the built-in defaults
-//! apply. The entry holds the document rather than resolved values,
-//! so it goes through the same resolution as a fetched file: a cache
+//! apply. The entry holds the document rather than resolved values, so
+//! it goes through the same resolution as a fetched file: a cache
 //! written by another build, or edited by hand, still resolves only to
 //! values this build declares. The notices block it may hold is kept
 //! only if it verified when fetched (see [`super::signature`]); it is
 //! not checked again on reading, so a hand edit of the user's own cache
-//! reaches only that user's notices. An entry not marked as coming
-//! from a verified file (the `verified` field) is admitted again on
-//! reading, as an unsigned file under the reading build's
-//! declarations: that covers an entry written before the signature
-//! check, which held the file as fetched, and one written by a build
-//! that did not yet declare a rollout the reader does.
+//! reaches only that user's own install (its notices and rollouts). An
+//! entry not marked as coming from a verified file (the `verified`
+//! field) is admitted again on reading, as an unsigned file under the
+//! reading build's declarations: that covers an entry written before
+//! the signature check, which held the file as fetched, and one written
+//! by a build that did not yet declare a rollout the reader does.
 //!
 //! **Why seven days.** Every value an unverified document can resolve
 //! to is a flag's default or a declared retreat from it, so such a
@@ -23,13 +23,13 @@
 //! for; a verified one may also turn a rollout on and carry notices,
 //! which the maintainer signed. What its age bounds is how long a
 //! change the maintainer has since made (a lifted retreat, a rollout
-//! turned off again) waits on a machine that cannot reach GitHub. A week rides out a
-//! run of launches without the network — a trip, a captive portal, a
-//! blocked CDN — so a feature switched off for a bad release stays off
-//! through them, while a lifted retreat clears within a week even on a
-//! machine that never reaches the file again. An entry dated in the
-//! future (a clock set back) is not fresh: it could otherwise outlive
-//! the window by however far the clock moved.
+//! turned off again) waits on a machine that cannot reach GitHub. A
+//! week rides out a run of launches without the network — a trip, a
+//! captive portal, a blocked CDN — so a feature switched off for a bad
+//! release stays off through them, while a lifted retreat clears within
+//! a week even on a machine that never reaches the file again. An entry
+//! dated in the future (a clock set back) is not fresh: it could
+//! otherwise outlive the window by however far the clock moved.
 
 use std::path::Path;
 use std::time::Duration;
@@ -62,15 +62,14 @@ pub struct CacheEntry {
 
 impl CacheEntry {
     /// An entry for a document that went through
-    /// [`super::signature::admit`]. It is marked verified when the
-    /// document holds what only a verified file keeps.
+    /// [`super::signature::admit`]. Its mark is set by [`write`], from
+    /// the document, as it is written.
     #[must_use]
     pub fn admitted(fetched_at: u64, flags: Document) -> Self {
-        let verified = holds_signed_content(&flags, super::DECLARED);
         Self {
             fetched_at,
             flags,
-            verified,
+            verified: false,
         }
     }
 }
