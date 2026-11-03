@@ -227,9 +227,9 @@ async function nextEpisode(video: HTMLVideoElement, session: string, episode: st
 }
 
 // Which track a session starts on is the one attached as the default,
-// which the browser turns on by itself; every other track starts
-// disabled and is never fetched. happy-dom reads the attribute the same
-// way, so the scenarios read the mode each track starts in.
+// already showing as it joins the video; every other track starts
+// disabled and is never fetched. happy-dom shows a default track as
+// well, so the scenarios read the mode each track starts in.
 // With the app's custom controls turned off the video shows the
 // browser's own controls, whose captions menu sets the tracks' modes
 // itself; the page hears it as a change on the TextTrackList.

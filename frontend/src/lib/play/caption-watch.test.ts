@@ -2,6 +2,7 @@ import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
 	expectCaptions,
+	extraBeside,
 	noteCaptionChange,
 	showingCaption,
 	viewerPick,
@@ -66,6 +67,55 @@ describe('noteCaptionChange', () => {
 		// no pick.
 		expectCaptions(video, null);
 		list[1].mode = 'showing';
+		expect(noteCaptionChange(video, list)).toBeNull();
+	});
+});
+
+describe('extraBeside', () => {
+	it('is every other caption track showing while the expected one shows too', () => {
+		expect(extraBeside(1, [sub('showing'), sub('showing'), sub('disabled')])).toEqual([0]);
+		expect(extraBeside(1, [sub('showing'), sub('showing'), sub('showing')])).toEqual([0, 2]);
+		expect(extraBeside(1, [{ kind: 'metadata', mode: 'showing' }, sub('showing')])).toEqual([]);
+	});
+
+	it('is nothing when the expected track no longer shows, or the app expects none or off', () => {
+		expect(extraBeside(1, [sub('showing'), sub('disabled')])).toEqual([]);
+		expect(extraBeside(null, [sub('showing'), sub('showing')])).toEqual([]);
+		expect(extraBeside('off', [sub('showing'), sub('showing')])).toEqual([]);
+	});
+
+	it('names only caption tracks showing other than the expected one, which shows', () => {
+		const track = fc.record({
+			kind: fc.constantFrom('subtitles', 'captions', 'metadata'),
+			mode: fc.constantFrom('showing', 'hidden', 'disabled')
+		});
+		fc.assert(
+			fc.property(fc.array(track, { maxLength: 8 }), fc.nat(8), (list, expected) => {
+				const extra = extraBeside(expected, list);
+				const startShows =
+					expected < list.length &&
+					list[expected].mode === 'showing' &&
+					(list[expected].kind === 'subtitles' || list[expected].kind === 'captions');
+				if (!startShows) expect(extra).toEqual([]);
+				for (const i of extra) {
+					expect(i).not.toBe(expected);
+					expect(list[i].mode).toBe('showing');
+					expect(['subtitles', 'captions']).toContain(list[i].kind);
+				}
+			})
+		);
+	});
+});
+
+describe('a track the browser turns on beside the one the app expects', () => {
+	it('is no pick of the viewer', () => {
+		const video = {};
+		const list = [sub('disabled'), sub('showing')];
+		expectCaptions(video, 1);
+		list[0].mode = 'showing';
+		expect(noteCaptionChange(video, list)).toBeNull();
+		// Switched back off, the captions are as the app set them.
+		list[0].mode = 'disabled';
 		expect(noteCaptionChange(video, list)).toBeNull();
 	});
 });

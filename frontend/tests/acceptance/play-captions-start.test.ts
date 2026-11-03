@@ -217,9 +217,9 @@ async function reload(session: string, episode: string, show = KITSU_ID) {
 }
 
 // Which track a session starts on is the one attached as the default,
-// which the browser turns on by itself; every other track starts
-// disabled and is never fetched. happy-dom reads the attribute the same
-// way, so the scenarios read the mode each track starts in.
+// already showing as it joins the video; every other track starts
+// disabled and is never fetched. happy-dom shows a default track as
+// well, so the scenarios read the mode each track starts in.
 describe('the track a session starts on', () => {
 	it("opens on the track in the user's language", async () => {
 		setLocale('pt-BR', { reload: false });
@@ -250,7 +250,7 @@ describe("a show's remembered captions", () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		await nextEpisode(video, 'session-2', '2');
 		expect(showing(video)).toBe('Español');
 	});
@@ -267,7 +267,7 @@ describe("a show's remembered captions", () => {
 	it('survives a reload', async () => {
 		handlers();
 		await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Spanish (Latin America)');
 		const reloaded = await reload('session-2', '2');
 		expect(showing(reloaded)).toBe('Español');
 	});
@@ -276,7 +276,7 @@ describe("a show's remembered captions", () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
 		await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		const other = await reload('session-9', '1', OTHER_SHOW);
 		expect(showing(other)).toBe('Português');
 	});
@@ -297,7 +297,7 @@ describe("a show's remembered captions", () => {
 				document.querySelector(`button[aria-label="${m.play_controls_cc_aria_label()}"]`) !== null,
 			'the captions button'
 		);
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		const reloaded = await reload('session-2', '2');
 		expect(showing(reloaded)).toBe('Português');
 	});
@@ -306,7 +306,7 @@ describe("a show's remembered captions", () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Espanhol (América Latina)');
 		await nextEpisode(video, 'session-2-no-es', '2');
 		expect(showing(video)).toBe('Português');
 		await nextEpisode(video, 'session-3', '3');

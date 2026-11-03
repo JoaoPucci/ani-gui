@@ -16,7 +16,7 @@
 
 import { applyCaptionPick } from './caption-pick';
 import { startingTrack } from './caption-start';
-import { expectCaptions, showingCaption } from './caption-watch';
+import { expectCaptions, expectedCaptions, extraBeside, showingCaption } from './caption-watch';
 
 /** One listed track, as the proxy answers it. */
 export interface SidecarTrack {
@@ -77,7 +77,40 @@ export async function fetchSidecarTracks(
 /**
  * Append one `<track>` per listing; the returned function removes them.
  * The track the player starts on ({@link startingTrack}, for the
- * user's `locale`) alone carries the `default` attribute.
+ * user's `locale`) alone carries the `default` attribute, and is
+ * already showing when it joins the video.
+ *
+ * Chromium runs its own subtitle selection a moment after tracks join
+ * a video. It leaves alone any track a script has set since the track
+ * joined; of the rest, while a subtitle track shows — or one did when
+ * the last change to a joined track was made — it turns on one more,
+ * even beside a track already showing. A start switched on after its
+ * tracks joined left that second track showing: Arabic over English on
+ * a nine-language episode. So:
+ *
+ * - whatever shows is turned off first — a track the stream's playlist
+ *   carries may be — so nothing shows when the new tracks join (hls.js
+ *   then switches its own tracks against the start: logged in
+ *   docs/deferred-work.md as "Sidecar subtitles on a stream that also
+ *   carries its own");
+ * - the start's track is switched on before it joins, which the
+ *   selection does not count as a script's change, and every other
+ *   track joins disabled, never fetched;
+ * - the tracks are switched off before they are removed, so the next
+ *   session's tracks do not join a video that last showed one — with
+ *   no start of its own, that session would get one anyway;
+ * - once the start's file is in, the start is set again on the video
+ *   ({@link redrawOnLoad}). Chromium draws captions only once a mode
+ *   change on a joined track has found one showing, and a start that
+ *   joined already showing is changed by nothing after: its cues went
+ *   active and none was drawn. The start, set by a script since
+ *   joining, is left alone by any later selection;
+ * - a track the browser turns on beside the one the app expects is
+ *   switched back off ({@link keepAlone}). The selection is a
+ *   zero-delay task and the file a fetch, so the selection has usually
+ *   run before the start is set again — but nothing in the browser
+ *   orders the two, and a selection that runs after it finds a track
+ *   showing and turns on one more.
  */
 export function attachSidecarTracks(
 	video: HTMLVideoElement,
@@ -86,6 +119,7 @@ export function attachSidecarTracks(
 	remembered?: string
 ): () => void {
 	const start = startingTrack(tracks, locale, remembered);
+	applyCaptionPick(video.textTracks, 'off');
 	const elements = tracks.map((track, i) => {
 		const attrs = { ...trackAttributes(track), default: i === start };
 		const el = document.createElement('track');
@@ -93,31 +127,60 @@ export function attachSidecarTracks(
 		el.setAttribute('srclang', attrs.srclang);
 		el.setAttribute('label', attrs.label);
 		el.setAttribute('src', attrs.src);
-		if (attrs.default) el.setAttribute('default', '');
+		if (attrs.default) {
+			el.setAttribute('default', '');
+			el.track.mode = 'showing';
+		}
 		video.appendChild(el);
 		return el;
 	});
-	applyStart(video, start === null ? null : elements[start]);
+	if (start !== null) redrawOnLoad(video, elements[start]);
+	const stopKeeping = keepAlone(video);
+	// What the app set, so the browser's own captions menu can be told
+	// from it ($lib/play/caption-watch).
+	expectCaptions(video, showingCaption(video.textTracks));
 	return () => {
 		// The tracks going are no pick of the viewer's.
 		expectCaptions(video, null);
-		for (const el of elements) el.remove();
+		stopKeeping();
+		for (const el of elements) {
+			if (el.track.mode !== 'disabled') el.track.mode = 'disabled';
+			el.remove();
+		}
 	};
 }
 
 /**
- * The start applied to the video's tracks, not left to the `default`
- * attribute alone: the browser honours the attribute only while no
- * subtitle track shows, and a track the stream's playlist carries may
- * already be showing. Every subtitle track is turned off — disabled,
- * so none is fetched — and the start's track, if any, turned on.
+ * When the start's file is in, switch the start off and on again on
+ * the video, so the browser draws it. Only while it is still the one
+ * showing on this video: a track the viewer has moved off, or one
+ * that has left with its session, is not touched. The mode it ends on
+ * is the one the app set, so no caption change is reported as a pick.
  */
-function applyStart(video: HTMLVideoElement, start: HTMLTrackElement | null): void {
-	applyCaptionPick(video.textTracks, 'off');
-	if (start) start.track.mode = 'showing';
-	// What the app set, so the browser's own captions menu can be told
-	// from it ($lib/play/caption-watch).
-	expectCaptions(video, showingCaption(video.textTracks));
+function redrawOnLoad(video: HTMLVideoElement, el: HTMLTrackElement): void {
+	el.addEventListener(
+		'load',
+		() => {
+			if (el.parentNode !== video || el.track.mode !== 'showing') return;
+			el.track.mode = 'hidden';
+			el.track.mode = 'showing';
+		},
+		{ once: true }
+	);
+}
+
+/**
+ * Switch off any caption track the browser turns on beside the one the
+ * app expects — the start, or the viewer's last pick — each time the
+ * video's tracks change. The returned function stops it.
+ */
+function keepAlone(video: HTMLVideoElement): () => void {
+	const list = video.textTracks;
+	const onChange = () => {
+		for (const i of extraBeside(expectedCaptions(video), list)) list[i].mode = 'disabled';
+	};
+	list.addEventListener('change', onChange);
+	return () => list.removeEventListener('change', onChange);
 }
 
 /**

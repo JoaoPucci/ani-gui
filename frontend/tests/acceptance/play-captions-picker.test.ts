@@ -18,6 +18,8 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { kitsuRef, appConfig } from './home-handlers';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
+import { setLocale } from '../../src/lib/paraglide/runtime';
+import { m } from '../../src/lib/paraglide/messages';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 
 vi.mock('$app/state', () => ({
@@ -57,6 +59,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	setLocale('en', { reload: false });
 	if (app) unmount(app);
 	app = null;
 	target.remove();
@@ -70,11 +73,41 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	}
 }
 
-const LISTING = (session: string) => [
-	{ lang: 'en', label: 'English', default: true, url: `${API_BASE}/s/${session}/sub/0.vtt` },
-	{ lang: 'pt-BR', label: 'Português', default: false, url: `${API_BASE}/s/${session}/sub/1.vtt` },
-	{ lang: 'es-419', label: 'Español', default: false, url: `${API_BASE}/s/${session}/sub/2.vtt` }
+/** A listing as the provider labels it — Steel Ball Run's first
+ *  episode, in part, for a session named `many-*`. */
+const MANY: [string, string, boolean][] = [
+	['ar', 'Arabic', false],
+	['es-419', 'Spanish (- Latin America | SDH)', false],
+	['pt-BR', 'Portuguese (- Brazil)', false],
+	['en', 'English', true],
+	['th', 'Thai (- SDH)', false],
+	['th', 'Thai', false],
+	['es-419', 'Spanish (- Latin America)', false]
 ];
+
+const LISTING = (session: string) =>
+	session.startsWith('many-')
+		? MANY.map(([lang, label, isDefault], i) => ({
+				lang,
+				label,
+				default: isDefault,
+				url: `${API_BASE}/s/${session}/sub/${i}.vtt`
+			}))
+		: [
+				{ lang: 'en', label: 'English', default: true, url: `${API_BASE}/s/${session}/sub/0.vtt` },
+				{
+					lang: 'pt-BR',
+					label: 'Português',
+					default: false,
+					url: `${API_BASE}/s/${session}/sub/1.vtt`
+				},
+				{
+					lang: 'es-419',
+					label: 'Español',
+					default: false,
+					url: `${API_BASE}/s/${session}/sub/2.vtt`
+				}
+			];
 
 function handlers() {
 	server.use(
@@ -102,7 +135,9 @@ function modes(video: HTMLVideoElement): Array<[string, TextTrackMode]> {
 }
 
 function ccButton(): HTMLButtonElement {
-	const button = document.querySelector<HTMLButtonElement>('button[aria-label="Captions"]');
+	const button = document.querySelector<HTMLButtonElement>(
+		`button[aria-label="${m.play_controls_cc_aria_label()}"]`
+	);
 	if (!button) throw new Error('no captions button');
 	return button;
 }
@@ -121,14 +156,15 @@ async function pick(name: string) {
 	await tick();
 }
 
-async function mountAt(session: string, episode: string) {
+async function mountAt(session: string, episode: string, tracks = 3) {
 	setUrl(`/play/${KITSU_ID}`, { session, episode, kind: 'mp4' });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	const video = playerVideo();
-	await until(() => video.textTracks.length === 3, 'the three tracks attached');
+	await until(() => video.textTracks.length === tracks, 'the tracks attached');
 	await until(
-		() => document.querySelector('button[aria-label="Captions"]') !== null,
+		() =>
+			document.querySelector(`button[aria-label="${m.play_controls_cc_aria_label()}"]`) !== null,
 		'the captions button'
 	);
 	return video;
@@ -200,7 +236,7 @@ describe('the captions picker', () => {
 	it('picking a track shows it alone, and the others stay unloaded', async () => {
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Português');
+		await pick('Portuguese (Brazil)');
 		expect(modes(video)).toEqual([
 			['English', 'disabled'],
 			['Português', 'showing'],
@@ -211,8 +247,8 @@ describe('the captions picker', () => {
 	it('switching tracks moves the one shown and leaves the one before disabled', async () => {
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Português');
-		await pick('Español');
+		await pick('Portuguese (Brazil)');
+		await pick('Spanish (Latin America)');
 		expect(modes(video)).toEqual([
 			['English', 'disabled'],
 			['Português', 'disabled'],
@@ -223,7 +259,7 @@ describe('the captions picker', () => {
 	it('Off shows no track and leaves every track unloaded', async () => {
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Português');
+		await pick('Portuguese (Brazil)');
 		await pick('Off');
 		expect(modes(video)).toEqual([
 			['English', 'disabled'],
@@ -245,7 +281,7 @@ describe('the captions picker', () => {
 		video.appendChild(id3);
 		id3.track.mode = 'hidden';
 		expect(id3.track.mode).toBe('hidden');
-		await pick('Português');
+		await pick('Portuguese (Brazil)');
 		expect(modes(video)).toEqual([
 			['English', 'disabled'],
 			['Português', 'showing'],
@@ -272,7 +308,7 @@ describe('the captions picker', () => {
 	it('the next episode, and a reload, start on the language picked', async () => {
 		handlers();
 		const video = await mountAt('session-1', '1');
-		await pick('Español');
+		await pick('Spanish (Latin America)');
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'mp4' });
 		await until(() => video.src.includes('session-2'), 'the second session attached');
@@ -297,5 +333,137 @@ describe('the captions picker', () => {
 			['Português', 'disabled'],
 			['Español', 'showing']
 		]);
+	});
+});
+
+/** The open menu's entries as they read, in order, with the divider
+ *  between the viewer's languages and the rest as `---`. */
+function menuReads(): string[] {
+	const menu = document.querySelector('#pc-cc-menu');
+	if (!menu) throw new Error('the captions menu is not open');
+	return Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="separator"]')).map(
+		(el) =>
+			el.getAttribute('role') === 'separator'
+				? '---'
+				: (el.textContent ?? '').replace('✓', '').replace(/\s+/g, ' ').trim()
+	);
+}
+
+async function openMenu() {
+	ccButton().click();
+	await until(() => document.querySelector('#pc-cc-menu') !== null, 'the captions menu');
+	await tick();
+}
+
+// A provider lists dozens of languages under labels of its own
+// ("Portuguese (- Brazil)", "Thai (- SDH)"). The menu names each from
+// its language tag in the app's language, marks the tracks for the
+// deaf and hard of hearing instead of spelling it out, puts the
+// viewer's languages first and the rest in alphabetical order, and
+// stays inside the player however many there are.
+describe('the captions menu with many languages', () => {
+	it('names each track in the app language, marks SDH, and puts your language first', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		await openMenu();
+		expect(menuReads()).toEqual([
+			'Off',
+			'English',
+			'---',
+			'Arabic',
+			'Portuguese (Brazil)',
+			'Spanish (Latin America)',
+			'Spanish (Latin America) SDH',
+			'Thai',
+			'Thai SDH'
+		]);
+	});
+
+	it("names them in the app's own language when the app is in Portuguese", async () => {
+		setLocale('pt-BR', { reload: false });
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		await openMenu();
+		expect(menuReads()).toEqual([
+			'Desativadas',
+			'Português (Brasil)',
+			'---',
+			'Árabe',
+			'Espanhol (América Latina)',
+			'Espanhol (América Latina) CC',
+			'Inglês',
+			'Tailandês',
+			'Tailandês CC'
+		]);
+	});
+
+	it('puts the language last picked on the show among yours', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		await pick('Thai');
+		await openMenu();
+		expect(menuReads().slice(0, 5)).toEqual(['Off', 'Thai', 'Thai SDH', 'English', '---']);
+	});
+
+	it('fits inside the player and scrolls, rather than running above it', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		// happy-dom lays nothing out: the player starts 100 px down the
+		// window and the captions button 420 px down.
+		const frame = document.querySelector<HTMLElement>('.player-frame');
+		if (!frame) throw new Error('no player frame');
+		frame.getBoundingClientRect = () => new DOMRect(0, 100, 1280, 600);
+		ccButton().getBoundingClientRect = () => new DOMRect(1080, 420, 48, 48);
+		await openMenu();
+		const menu = document.querySelector<HTMLElement>('#pc-cc-menu');
+		// 420 − 100, less the gap under the menu and the margin over it.
+		expect(menu?.style.maxBlockSize).toBe('304px');
+	});
+
+	it('stops at the top bar when the page has scrolled the player up under it', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		const frame = document.querySelector<HTMLElement>('.player-frame');
+		if (!frame) throw new Error('no player frame');
+		// The player scrolled 200 px above the window; the app's top
+		// bar, sticky, ends 84 px down.
+		const topbar = document.createElement('header');
+		topbar.className = 'topbar';
+		topbar.getBoundingClientRect = () => new DOMRect(0, 0, 1280, 84);
+		document.body.prepend(topbar);
+		try {
+			frame.getBoundingClientRect = () => new DOMRect(0, -200, 1280, 700);
+			ccButton().getBoundingClientRect = () => new DOMRect(1080, 420, 48, 48);
+			await openMenu();
+			const menu = document.querySelector<HTMLElement>('#pc-cc-menu');
+			// 420 − 84, less the gap under the menu and the margin over it.
+			expect(menu?.style.maxBlockSize).toBe('320px');
+		} finally {
+			topbar.remove();
+		}
+	});
+
+	it('opens on the selected entry, and arrow keys move through the entries, not the volume', async () => {
+		handlers();
+		const video = await mountAt('many-1', '1', MANY.length);
+		video.volume = 0.5;
+		await openMenu();
+		const focused = () =>
+			(document.activeElement?.textContent ?? '').replace('✓', '').replace(/\s+/g, ' ').trim();
+		expect(focused()).toBe('English');
+		const press = (key: string) =>
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+			);
+		press('ArrowDown');
+		expect(focused()).toBe('Arabic');
+		press('ArrowUp');
+		press('ArrowUp');
+		expect(focused()).toBe('Off');
+		press('End');
+		expect(focused()).toBe('Thai SDH');
+		press('Home');
+		expect(focused()).toBe('Off');
+		expect(video.volume).toBe(0.5);
 	});
 });

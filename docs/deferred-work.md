@@ -539,6 +539,36 @@ starting it, and delete it when you find it done.
 
   The gap is in where the start is applied, not in either menu, so
   choosing one set of player controls (above) would not remove it.
+- **Sidecar subtitles on a stream that also carries its own.** Each
+  time hls.js switches its own subtitle track it disables every
+  labelled subtitle track but the one it chose
+  (`SubtitleTrackController.toggleTrackModes`), the app's sidecar
+  `<track>`s included, and it reads the captions again on every
+  change to them. On a stream whose playlist lists subtitle
+  renditions as well as sidecar tracks, then, a sidecar track picked
+  from the captions menu goes off the moment it is picked: showing it
+  reads to hls.js as "none of mine", so it switches to none. The
+  session's start fares the same way. When hls.js picks its playlist
+  track after the sidecar tracks attach, that track replaces the
+  start; when it picked before, the start's own change makes it
+  switch to none, and every track goes off. The pick and the first
+  order were measured on the packaged app with a fixture stream of
+  that shape; the second follows from the same code.
+
+  It waits because the provider serves no such stream. Episodes
+  resolved across sub and dub in November 2026 carried no
+  `EXT-X-MEDIA` subtitle rendition and no closed captions, and each
+  had a single level. With no playlist tracks hls.js's subtitle track
+  stays at none and it never switches: a minute of playback, a pick
+  and a seek leave the sidecar tracks as the app set them.
+
+  Undoing hls.js's change after it happens is not the fix: with the
+  custom controls off, a caption change the app did not make is read
+  as the viewer's pick (`$lib/play/caption-watch`) — all but a track
+  turned on beside the one the app set, and hls.js switches that one
+  off first. The fix
+  belongs in keeping hls.js's own subtitle selection in step with the
+  captions menu.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
