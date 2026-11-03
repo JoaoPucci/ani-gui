@@ -230,7 +230,7 @@ describe('the show page a guessed Continue card opened', () => {
 		await until(hasNote, 'the matched-from line');
 		expect(button(m.detail_link_change())).not.toBeNull();
 		// Quiet: no dialog on arrival.
-		expect(target.querySelector('[role="dialog"]')).toBeNull();
+		expect(target.querySelector('dialog')).toBeNull();
 	});
 
 	it('says nothing when opened any other way', async () => {
@@ -264,7 +264,7 @@ describe('the show page a guessed Continue card opened', () => {
 				),
 			'the play to start'
 		);
-		expect(target.querySelector('[role="dialog"]')).toBeNull();
+		expect(target.querySelector('dialog')).toBeNull();
 	});
 });
 
@@ -273,9 +273,9 @@ async function linkToTheRightShow() {
 	await openShowPage(GUESS, { guessed: CARD });
 	await until(hasNote, 'the matched-from line');
 	button(m.detail_link_change())!.click();
-	await until(() => target.querySelector('[role="dialog"]') !== null, 'the picker');
+	await until(() => target.querySelector('dialog') !== null, 'the picker');
 	const row = () =>
-		Array.from(target.querySelectorAll('[role="dialog"] li button')).find((b) =>
+		Array.from(target.querySelectorAll('dialog li button')).find((b) =>
 			/^Black Clover\s+2017\b/.test((b.textContent ?? '').trim())
 		) as HTMLButtonElement | undefined;
 	await until(() => row() !== undefined, 'the right show among the candidates');
@@ -350,6 +350,28 @@ describe('changing the show', () => {
 	});
 });
 
+describe('the picker', () => {
+	it('opens in the top layer, as a modal dialog, so it shows over a fullscreen player', async () => {
+		const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
+		try {
+			await openShowPage(GUESS, { guessed: CARD });
+			await until(hasNote, 'the matched-from line');
+			button(m.detail_link_change())!.click();
+			await until(() => target.querySelector('dialog') !== null, 'the picker');
+			await until(() => showModal.mock.calls.length === 1, 'showModal');
+			expect(target.querySelector('dialog')!.open).toBe(true);
+			// The show the card shows now is labelled as this page.
+			await until(
+				() =>
+					(target.querySelector('dialog')!.textContent ?? '').includes(m.detail_link_shown_now()),
+				'the current show'
+			);
+		} finally {
+			showModal.mockRestore();
+		}
+	});
+});
+
 describe('the episode the picker names', () => {
 	it('is the one Continue Watching picks up at, as the card and the page show it', async () => {
 		// The row saved episode 5; the card, and the page's Continue,
@@ -357,8 +379,8 @@ describe('the episode the picker names', () => {
 		await openShowPage(GUESS, { guessed: CARD });
 		await until(hasNote, 'the matched-from line');
 		button(m.detail_link_change())!.click();
-		await until(() => target.querySelector('[role="dialog"]') !== null, 'the picker');
-		const text = target.querySelector('[role="dialog"]')!.textContent ?? '';
+		await until(() => target.querySelector('dialog') !== null, 'the picker');
+		const text = target.querySelector('dialog')!.textContent ?? '';
 		expect(text).toContain(m.detail_link_dialog_body({ episode: '6' }));
 		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '5' }));
 	});
@@ -371,9 +393,9 @@ describe('the picker, by keyboard and while it links', () => {
 		const change = button(m.detail_link_change())!;
 		change.focus();
 		change.click();
-		await until(() => target.querySelector('[role="dialog"]') !== null, 'the picker');
+		await until(() => target.querySelector('dialog') !== null, 'the picker');
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-		await until(() => target.querySelector('[role="dialog"]') === null, 'the picker to close');
+		await until(() => target.querySelector('dialog') === null, 'the picker to close');
 		await until(() => document.activeElement === button(m.detail_link_change()), 'focus on Change');
 	});
 
@@ -441,8 +463,8 @@ describe('from Home to a relinked card', () => {
 		await until(hasNote, 'the matched-from line');
 		button(m.detail_link_change())!.click();
 		const right = () =>
-			Array.from(target.querySelectorAll<HTMLButtonElement>('[role="dialog"] li button')).find(
-				(b) => /^Black Clover\s+2017\b/.test((b.textContent ?? '').trim())
+			Array.from(target.querySelectorAll<HTMLButtonElement>('dialog li button')).find((b) =>
+				/^Black Clover\s+2017\b/.test((b.textContent ?? '').trim())
 			);
 		await until(() => right() !== undefined, 'the right show among the candidates');
 		right()!.click();
