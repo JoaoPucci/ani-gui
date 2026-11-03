@@ -86,11 +86,16 @@ function lastAppReady() {
   return { ...current };
 }
 
-/** The reveal's gate: open once the splash is done (`splashShown`, a
- *  function returning its wait) and the renderer has said its first
- *  page rendered, or the wait for it gave up. */
-function revealGate(splashShown, appReady) {
-  return Promise.all([splashShown(), appReady.ready]);
+/** The reveal's gate: open once the splash is done (`whenShown`) and
+ *  the renderer has said its first page rendered, or the wait for it
+ *  gave up — and, either way, once the splash has been told and has
+ *  completed its rail (`pageReady`, lib/splash.cjs), so no reveal closes
+ *  the splash on a rail that is not seen complete. */
+function revealGate(splash, appReady) {
+  return Promise.all([
+    splash.whenShown(),
+    appReady.ready.then((rendered) => splash.pageReady(rendered === true)),
+  ]);
 }
 
 module.exports = {

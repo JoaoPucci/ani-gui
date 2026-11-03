@@ -137,10 +137,11 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 /* The readout under the title: the progress rail (progress.js), a
    strip of film edge — perforations — in three stretches, one per step
    of the boot, each lit in the brand colour as its step lands. Under
-   it, out of the flow so its coming and going moves nothing, the line
-   that appears only when a step stalls. A stretch wipes in and the line
-   fades only once the splash is told to move; a step that lands before
-   that, or under reduced motion, just shows. */
+   it, out of the flow so its appearing moves nothing, the line that
+   appears only when a step stalls and then stays, changing only its
+   words. A stretch wipes in and the line fades in only once the splash
+   is told to move; a step that lands before that, or under reduced
+   motion, just shows. */
 .readout { position: relative; }
 .rail {
   display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 6px;
@@ -159,7 +160,9 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 .rail i.lit::after { clip-path: inset(0 0 0 0); }
 .status {
   position: absolute; inset-inline-start: 0; inset-block-start: calc(100% + 10px);
-  max-inline-size: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Wraps inside the title column, which a long line in any language
+     needs; the window has room below for three lines and more. */
+  max-inline-size: 100%; line-height: 1.45;
   font-size: 11px; letter-spacing: 0.06em; text-transform: none; color: var(--bone-300);
   opacity: 0;
 }

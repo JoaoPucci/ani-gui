@@ -215,6 +215,28 @@
   "names_entry": true
  },
  {
+  "case": "the season's slug words run Re:ZERO together and name Kitsu 49746",
+  "title": "rezero starting life in another world season 4",
+  "names": [
+   "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+   "Re:ZERO -Starting Life in Another World- Season 4",
+   "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+   "Re:ゼロから始める異世界生活 4th season"
+  ],
+  "names_entry": true
+ },
+ {
+  "case": "run-together slug words of Season 3 do not name Kitsu 49746",
+  "title": "rezero starting life in another world season 3",
+  "names": [
+   "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+   "Re:ZERO -Starting Life in Another World- Season 4",
+   "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+   "Re:ゼロから始める異世界生活 4th season"
+  ],
+  "names_entry": false
+ },
+ {
   "case": "a legacy episode-count tail is part of the title as given",
   "title": "Gintama Season 2 (51 episodes)",
   "names": [
@@ -317,5 +339,21 @@
    "Show Part 2"
   ],
   "names_entry": true
+ },
+ {
+  "case": "two numbers are never run into one",
+  "title": "Show Season 1 2",
+  "names": [
+   "Show Season 12"
+  ],
+  "names_entry": false
+ },
+ {
+  "case": "a number is never run into a word",
+  "title": "Show 2",
+  "names": [
+   "Show2"
+  ],
+  "names_entry": false
  }
 ]

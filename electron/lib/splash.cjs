@@ -97,8 +97,12 @@ function splashController({
   // The version the splash shows above its title (splashVersionLabel).
   version = "",
   // What the line under the rail says while each step stalls
-  // (lib/splash-progress.cjs), read when the splash opens.
+  // (lib/splash-progress.cjs), read when the splash opens; the generic
+  // words (below) take over from a step's own once that step lands.
   stallTexts = () => [],
+  // The line's generic words, which take over at once from a step's own
+  // when that step lands, read when the splash opens.
+  stallGeneric = () => "",
 }) {
   const state = fresh();
   state.version = version;
@@ -128,6 +132,11 @@ function splashController({
   // seen, and for how long.
   let askedAt = null;
   let paintedAt = null;
+  // Whether the splash painted resting on its still frame.
+  let restingAtPaint = false;
+  // Whether the reveal waits for the minimum time on screen: not when
+  // it stopped waiting for a paint that came too late (whenShown).
+  let minimumHeld = true;
   const since = () => `+${clock() - askedAt} ms`;
   current = state;
   // Settles when the splash can no longer reach the screen (no
@@ -159,12 +168,32 @@ function splashController({
         state.shown = true;
         paintedAt = clock();
         log(`[main] splash painted (${since()})`);
+        restingAtPaint = resting === true;
         markPainted(resting === true);
       })
       .catch((err) => {
         logError("[main] could not tell the splash it is shown:", err);
         markUp();
       });
+  };
+  const holdForCompletion = async (landedAt) => {
+    if (paintedAt === null || !alive()) return;
+    const min = restingAtPaint ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
+    const hold = restingAtPaint ? SPLASH_COMPLETE_HOLD_REDUCED_MS : SPLASH_COMPLETE_HOLD_MS;
+    const seenUntil = landedAt + hold;
+    // Where the reveal waits for the minimum, hold only past it.
+    if (minimumHeld && seenUntil <= paintedAt + min) return;
+    const remaining = Math.min(hold, seenUntil - clock());
+    if (remaining <= 0) return;
+    log(`[main] splash holds ${remaining} ms for its completed rail (${since()})`);
+    let timer;
+    await Promise.race([
+      released,
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, remaining);
+      }),
+    ]);
+    clearTimeout(timer);
   };
   return {
     show() {
@@ -173,13 +202,20 @@ function splashController({
       log(`[main] splash asked for (${since()})`);
       // The page's query is settled before any window exists, so
       // nothing past this point is left half made.
+      // Each read on its own, so one failing keeps the other.
       let texts = [];
+      let generic = "";
       try {
         texts = stallTexts();
       } catch (err) {
-        logError("[main] the splash's stall line could not be read:", err);
+        logError("[main] the splash's stall lines could not be read:", err);
       }
-      const query = splashPageQuery({ version, stallTexts: texts });
+      try {
+        generic = stallGeneric();
+      } catch (err) {
+        logError("[main] the splash's generic stall line could not be read:", err);
+      }
+      const query = splashPageQuery({ version, stallTexts: texts, generic });
       let splash;
       try {
         splash = createWindow(splashWindowOptions());
@@ -268,6 +304,7 @@ function splashController({
         late,
       ]);
       clearTimeout(timer);
+      if (first === "late") minimumHeld = false;
       if (typeof first !== "object" || over || !alive()) return;
       const min = first.resting ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
       // Counted from the paint: a window ready long after it waits for
@@ -291,17 +328,40 @@ function splashController({
     dismissed() {
       return dismissedByUser;
     },
+    // The app's window is about to be revealed: its first page has
+    // rendered, or the wait for that gave up (`rendered` false). Either
+    // way the rail is lit whole, any step that never landed included,
+    // and held for the completion beat (progress), so no reveal closes
+    // the splash on a rail that is not seen complete.
+    pageReady(rendered) {
+      if (rendered !== true && steps < STEPS.length && !over && alive()) {
+        log(`[main] splash completes its rail for a page that did not say it rendered (${since()})`);
+      }
+      return this.progress("page");
+    },
     // A step of the boot has landed (lib/splash-progress.cjs): the rail
     // lights through it. A step already passed, or one it does not
     // know, changes nothing. Resolves once the page has answered, or
     // after STEP_ANSWER_WAIT_MS.
+    //
+    // The last step also holds until SPLASH_COMPLETE_HOLD_MS
+    // (SPLASH_COMPLETE_HOLD_REDUCED_MS on the still frame) after it
+    // landed, the page's answer included, so a page that renders late
+    // does not close the splash in the instant its rail completes. Not
+    // held: a step before the paint (the minimum after the paint shows
+    // it), and one landing well inside a minimum the reveal waits for;
+    // after a paint too late for the reveal's wait there is no minimum,
+    // and the step is held. A splash that goes ends the hold.
     progress(step) {
       const n = STEPS.indexOf(step) + 1;
       if (n <= steps || !state.opened) return Promise.resolve();
       steps = n;
       state.steps = n;
+      const landedAt = clock();
       log(`[main] splash step ${n}, ${step} (${since()})`);
-      return sendSteps();
+      const answered = sendSteps();
+      if (n < STEPS.length) return answered;
+      return answered.then(() => holdForCompletion(landedAt));
     },
     suppress() {
       over = true;
@@ -329,10 +389,11 @@ function fresh() {
 
 /** The query the splash page is opened with: the version above its
  *  title, how long a step may be pending before the stall line shows,
- *  and that line for each step. */
-function splashPageQuery({ version, stallTexts = [] }) {
+ *  that line for each step, and its generic words. */
+function splashPageQuery({ version, stallTexts = [], generic = "" }) {
   const query = { v: version, st: String(STALL_MS) };
   stallTexts.forEach((text, i) => (query[`t${i + 1}`] = text));
+  if (generic) query.tg = generic;
   return query;
 }
 
@@ -354,7 +415,9 @@ function lastSplashState() {
 /** The longest the app's window waits for the splash to paint. The
  *  splash is a light static page and paints well within this; the bound
  *  is for one that never does. With the minimum time on screen after a
- *  paint, the whole wait is at most this plus SPLASH_MIN_ON_SCREEN_MS. */
+ *  paint, whenShown waits at most this plus SPLASH_MIN_ON_SCREEN_MS; the
+ *  rail's completion hold (SPLASH_COMPLETE_HOLD_MS) can keep the reveal
+ *  up to that long after the last step lands. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
 /** How long the splash stays on screen after it has painted before the
@@ -367,6 +430,16 @@ const SPLASH_MIN_ON_SCREEN_MS = 500;
 /** The same under reduced motion, when the splash rests on its still
  *  frame, which reads at once. */
 const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 300;
+
+/** How long after the rail's last step lands the app's window may
+ *  replace the splash, the page's answer to the step included: the
+ *  stretch's 300 ms wipe (splash.css) is on an ease-out curve that is
+ *  99% of the way by 250 ms. Only a last step landing late enough that
+ *  the minimum would not show it this long waits for it. */
+const SPLASH_COMPLETE_HOLD_MS = 250;
+
+/** The same on the still frame, where the stretch lights at once. */
+const SPLASH_COMPLETE_HOLD_REDUCED_MS = 150;
 
 /**
  * Reveal the app's window: `maximize()` the hidden window, which maps
@@ -385,6 +458,8 @@ function revealMaximized(win, { onMapped, afterShow, cancelled = () => false }) 
 }
 
 module.exports = {
+  SPLASH_COMPLETE_HOLD_MS,
+  SPLASH_COMPLETE_HOLD_REDUCED_MS,
   SPLASH_MIN_ON_SCREEN_MS,
   SPLASH_MIN_ON_SCREEN_REDUCED_MS,
   SPLASH_SHOW_WAIT_MS,

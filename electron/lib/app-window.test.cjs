@@ -114,7 +114,7 @@ test("the reveal waits for the renderer's word even once the splash is done", as
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc);
   let open = false;
-  revealGate(() => splashShown, waiter).then(() => (open = true));
+  revealGate(gateSplash(splashShown), waiter).then(() => (open = true));
   splashDone();
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.equal(open, false, "the splash is done but the page has not rendered");
@@ -131,10 +131,53 @@ test("the reveal waits for the splash even once the page has rendered", async ()
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
   ipc.emit(APP_READY_CHANNEL, { sender: contents });
   let open = false;
-  revealGate(() => splashShown, waiter).then(() => (open = true));
+  revealGate(gateSplash(splashShown), waiter).then(() => (open = true));
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.equal(open, false);
   splashDone();
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(open, true);
+});
+
+/** A splash for the gate: done when `shown` settles, recording what it
+ *  is told about the page and holding that for `hold`. */
+function gateSplash(shown, hold = Promise.resolve()) {
+  const told = [];
+  return { told, whenShown: () => shown, pageReady: (rendered) => (told.push(rendered), hold) };
+}
+
+test("a page that never says it rendered still has the splash complete its rail, and the reveal waits for it", async () => {
+  // The wait for the render gives up (here at once); the window is then
+  // revealed anyway, but only after the splash has lit its last stretch
+  // and held it.
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 1 });
+  let release;
+  const splash = gateSplash(Promise.resolve(), new Promise((r) => (release = r)));
+  let open = false;
+  revealGate(splash, waiter).then(() => (open = true));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(splash.told, [false], "told the page did not say it rendered");
+  assert.equal(open, false, "held for the rail");
+  release();
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(open, true);
+});
+
+test("a page that rendered has the splash complete its rail the same way", async () => {
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
+  let release;
+  const splash = gateSplash(Promise.resolve(), new Promise((r) => (release = r)));
+  let open = false;
+  revealGate(splash, waiter).then(() => (open = true));
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.deepEqual(splash.told, [true]);
+  assert.equal(open, false);
+  release();
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.equal(open, true);
 });

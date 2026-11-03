@@ -311,8 +311,11 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
       const run = (code: string) => w.webContents.executeJavaScript(code);
       const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
-        const texts = stallTexts(messagesFor("en"));
-        await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.0.0", stallTexts: texts }) });
+        const en = messagesFor("en");
+        const texts = stallTexts(en);
+        await w.loadFile(SPLASH_PAGE, {
+          query: splashPageQuery({ version: "0.0.0", stallTexts: texts, generic: en.splashStartingUp }),
+        });
         const look = () =>
           run(
             "({ lit: document.querySelectorAll('.rail i.lit').length," +
@@ -327,7 +330,7 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
         const stalled = await look();
         const lit3 = await run("window.splashProgress.set(3)");
         const done = await look();
-        return { expected: texts[1], start, lit1, early, stalled, lit3, done };
+        return { expected: texts[1], generic: en.splashStartingUp, start, lit1, early, stalled, lit3, done };
       } finally {
         w.destroy();
       }
@@ -338,7 +341,63 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
     expect(seen.stalled).toMatchObject({ lit: 1, status: seen.expected });
     expect(seen.stalled.title).toBe(seen.early.title);
     expect(seen.lit3).toBe(3);
-    expect(seen.done).toMatchObject({ lit: 3, status: null });
+    // Up until the splash closes, back to the generic words once the
+    // network is no longer the reason.
+    expect(seen.done).toMatchObject({ lit: 3, status: seen.generic });
+  } finally {
+    await app.close();
+  }
+});
+
+test("every language's stall lines fit the splash, whole, without moving its title", async () => {
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { LOCALES, messagesFor } = main.require("./lib/main-messages.cjs");
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
+      const out: Record<string, unknown>[] = [];
+      try {
+        for (const locale of LOCALES as string[]) {
+          for (const text of new Set(stallTexts(messagesFor(locale)) as string[])) {
+            await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.18.0", stallTexts: [] }) });
+            out.push(
+              await w.webContents.executeJavaScript(
+                `(() => {
+                  const title = () => document.querySelector('.wordmark').getBoundingClientRect().top;
+                  const before = title();
+                  const s = document.querySelector('.status');
+                  s.textContent = ${JSON.stringify(text)};
+                  s.classList.add('on');
+                  const r = s.getBoundingClientRect();
+                  const lineHeight = parseFloat(getComputedStyle(s).lineHeight);
+                  return { locale: ${JSON.stringify(locale)}, text: s.textContent,
+                    fits: r.right <= innerWidth && r.bottom <= innerHeight && s.scrollWidth <= s.clientWidth,
+                    lines: Math.round(r.height / lineHeight),
+                    still: title() === before };
+                })()`,
+              ),
+            );
+          }
+        }
+      } finally {
+        w.destroy();
+      }
+      return out;
+    });
+    // Two lines per language, each a real line of text.
+    expect(seen.length).toBe(8);
+    for (const line of seen) {
+      expect(line).toMatchObject({ fits: true, still: true });
+      expect(String(line.text).length).toBeGreaterThan(0);
+      expect(line.lines).toBeLessThanOrEqual(3);
+    }
   } finally {
     await app.close();
   }

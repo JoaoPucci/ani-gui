@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	defaultTrailFor,
 	goesBack,
-	searchOrigin,
 	labelCells,
 	withSearchOrigin,
 	yieldingSegment
@@ -104,6 +103,30 @@ describe('withSearchOrigin', () => {
 			)
 		);
 	});
+
+	it('replays the run that drew `//` as the origin (fast-check seed 877037045)', () => {
+		// This seed's 25th case draws the origin `//or%`, which the URL
+		// parser refuses (a malformed host behind `//`); fast-check
+		// shrank it to `//`. The property above failed on it before
+		// searchOrigin caught the refusal.
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({ label: fc.string(), href: fc.option(fc.string(), { nil: undefined }) }),
+					{ minLength: 1, maxLength: 5 }
+				),
+				fc.option(fc.string(), { nil: null }),
+				(trail, origin) => {
+					const out = withSearchOrigin(trail, origin, '/anime/[id]');
+					expect(out.length - trail.length).toBeGreaterThanOrEqual(0);
+					expect(out.length - trail.length).toBeLessThanOrEqual(1);
+					expect(out.at(-1)).toEqual(trail.at(-1));
+				}
+			),
+			{ seed: 877037045 }
+		);
+		expect(withSearchOrigin([home, show], '//', '/anime/[id]')).toEqual([home, show]);
+	});
 });
 
 describe('goesBack', () => {
@@ -111,22 +134,6 @@ describe('goesBack', () => {
 		expect(goesBack('/search?q=a', '/search?q=a')).toBe(true);
 		expect(goesBack('/', '/search?q=a')).toBe(false);
 		expect(goesBack('/search?q=a', null)).toBe(false);
-	});
-});
-
-describe('searchOrigin', () => {
-	it('answers a search the reader ran, and nothing else', () => {
-		expect(searchOrigin('/search?q=frieren')).toBe('/search?q=frieren');
-		for (const origin of [null, '', '/', '/search', '/search?q=%20', '/anime/1?q=a']) {
-			expect(searchOrigin(origin)).toBeNull();
-		}
-	});
-
-	it('answers null for an address the URL parser refuses, rather than throwing', () => {
-		// `\/` reads as a scheme-relative URL with an empty host, which
-		// the parser rejects. The withSearchOrigin property drew it.
-		expect(searchOrigin('\\/')).toBeNull();
-		expect(searchOrigin('//')).toBeNull();
 	});
 });
 

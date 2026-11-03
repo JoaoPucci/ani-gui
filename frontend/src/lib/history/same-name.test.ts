@@ -91,6 +91,35 @@ describe('namesTheEntry', () => {
 		).toBe(false);
 	});
 
+	it('names an entry whose titles split a word the slug runs together', () => {
+		// hianime's key for Re:ZERO Season 4 runs "re" and "zero" together.
+		const season4 = [
+			'Re:Zero kara Hajimeru Isekai Seikatsu 4th Season',
+			'Re:ZERO -Starting Life in Another World- Season 4'
+		];
+		expect(namesTheEntry('rezero starting life in another world season 4', season4)).toBe(true);
+		expect(namesTheEntry('rezero starting life in another world 4th season', season4)).toBe(true);
+	});
+
+	it('names no other season with words run together', () => {
+		expect(
+			namesTheEntry('rezero starting life in another world season 3', [
+				'Re:ZERO -Starting Life in Another World- Season 4'
+			])
+		).toBe(false);
+		expect(
+			namesTheEntry('rezero starting life in another world season 4', [
+				'Re:ZERO -Starting Life in Another World- Season 3'
+			])
+		).toBe(false);
+	});
+
+	it('never runs numbers together', () => {
+		expect(namesTheEntry('Show Season 1 2', ['Show Season 12'])).toBe(false);
+		expect(namesTheEntry('Show 1 2', ['Show 12'])).toBe(false);
+		expect(namesTheEntry('Show 2', ['Show2'])).toBe(false);
+	});
+
 	it('names nothing with a title of no words, or a suffix with no name', () => {
 		expect(namesTheEntry('', [''])).toBe(false);
 		expect(namesTheEntry('!!', ['??'])).toBe(false);
@@ -173,13 +202,55 @@ describe('namesTheEntry properties', () => {
 	it('another name never names the entry', () => {
 		fc.assert(
 			fc.property(name, name, cour, kw, (a, b, n, k) => {
-				fc.pre(a !== b);
+				// Names that differ only in where their words break are one name
+				// run together ("re zero" and "rezero").
+				fc.pre(a.replaceAll(' ', '') !== b.replaceAll(' ', ''));
 				for (const provider of spellings(a, n, k)) {
 					for (const kitsu of spellings(b, n, k)) {
 						expect(namesTheEntry(provider, [kitsu]), `${provider} / ${kitsu}`).toBe(false);
 					}
 				}
 			})
+		);
+	});
+	it('a name run together names only its own cour', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.stringMatching(/^[a-z]{1,6}$/), { minLength: 2, maxLength: 4 }),
+				fc.array(fc.boolean(), { minLength: 3, maxLength: 3 }),
+				cour,
+				cour,
+				kw,
+				kw,
+				(ws, joins, n, m, a, b) => {
+					const apart = ws.join(' ');
+					const together = ws
+						.slice(1)
+						.reduce((acc, w, i) => acc + (joins[i] ? '' : ' ') + w, ws[0]);
+					for (const provider of spellings(together, n, a)) {
+						for (const kitsu of spellings(apart, m, b)) {
+							expect(namesTheEntry(provider, [kitsu]), `${provider} / ${kitsu}`).toBe(n === m);
+						}
+					}
+				}
+			)
+		);
+	});
+
+	it('two numbers are never one', () => {
+		fc.assert(
+			fc.property(
+				name,
+				fc.integer({ min: 1, max: 99 }),
+				fc.integer({ min: 0, max: 99 }),
+				kw,
+				(nm, a, b, k) => {
+					const provider = `${nm} ${k} ${a} ${b}`;
+					const kitsu = `${nm} ${k} ${a}${b}`;
+					expect(namesTheEntry(provider, [kitsu]), `${provider} / ${kitsu}`).toBe(false);
+					expect(namesTheEntry(kitsu, [provider]), `${kitsu} / ${provider}`).toBe(false);
+				}
+			)
 		);
 	});
 });
