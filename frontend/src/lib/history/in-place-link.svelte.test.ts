@@ -225,3 +225,25 @@ describe('a link to another show', () => {
 		expect(s.error).not.toBeNull();
 	});
 });
+
+describe('a surface that reads nothing from the history', () => {
+	it('links and undoes without a refresh', async () => {
+		const f = fake();
+		delete f.deps.refresh;
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		await s.confirm();
+		expect(s.slip).toBe('linked');
+		await s.undo(
+			{
+				kitsu_id: RIGHT.id,
+				linked: [{ row: CARD.id, previous: null, ep_no: '1', watched_at: null }]
+			},
+			GUESS.id,
+			CARD.id
+		);
+		expect(s.slip).toBe('guess');
+	});
+});
