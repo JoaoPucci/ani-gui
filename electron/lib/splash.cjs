@@ -164,8 +164,16 @@ function lastSplashState() {
  *  bound is for one that never does. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
+/** Map the app's window once the splash has painted. Stub. */
+async function mapAfterSplash(win, whenShown, onMapped) {
+  void whenShown;
+  void onMapped;
+  win.maximize();
+}
+
 module.exports = {
   SPLASH_SHOW_WAIT_MS,
+  mapAfterSplash,
   SPLASH_MARK,
   SPLASH_PAGE,
   lastSplashState,

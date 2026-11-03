@@ -10,6 +10,7 @@ const {
   SPLASH_PAGE,
   SPLASH_SHOW_WAIT_MS,
   lastSplashState,
+  mapAfterSplash,
   splashController,
   splashWindowOptions,
 } = require("./splash.cjs");
@@ -352,4 +353,58 @@ test("every way the splash cannot reach the screen releases the wait at once, no
   const eWait = e.whenShown();
   pending.emit("ready-to-show");
   assert.equal(await settlesAtOnce(t, eWait), false, "still out");
+});
+
+/** A fake of the app's window: records when it is mapped. */
+function fakeAppWindow() {
+  const win = { calls: [], destroyed: false };
+  win.isDestroyed = () => win.destroyed;
+  win.maximize = () => win.calls.push("maximize");
+  return win;
+}
+
+test("the app's window is not mapped until the splash has painted, even where nothing keeps the splash on top", async (t) => {
+  // On native Wayland always-on-top is ignored, so a mapped app window
+  // would cover the splash. The splash is shown first and alone; the
+  // app's window is mapped (maximized) only once it has painted.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const splashWin = fakeSplash();
+  let painted;
+  splashWin.webContents.executeJavaScript = () => new Promise((resolve) => (painted = resolve));
+  const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
+  splash.show();
+  splashWin.emit("ready-to-show");
+  const app = fakeAppWindow();
+  const mapped = mapAfterSplash(app, () => splash.whenShown(), () => app.calls.push("listening"));
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(app.calls, [], "not mapped while the splash has not painted");
+  painted(true);
+  await mapped;
+  assert.deepEqual(app.calls, ["maximize", "listening"]);
+});
+
+test("a splash that never paints holds the app's window back no longer than its bound", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const splashWin = fakeSplash();
+  splashWin.webContents.executeJavaScript = () => new Promise(() => {});
+  const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
+  splash.show();
+  splashWin.emit("ready-to-show");
+  const app = fakeAppWindow();
+  const mapped = mapAfterSplash(app, () => splash.whenShown(), () => {});
+  t.mock.timers.tick(SPLASH_SHOW_WAIT_MS - 1);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(app.calls, []);
+  t.mock.timers.tick(1);
+  await mapped;
+  assert.deepEqual(app.calls, ["maximize"]);
+});
+
+test("an app window gone before the splash painted is not mapped", async () => {
+  const app = fakeAppWindow();
+  app.destroyed = true;
+  let listening = false;
+  await mapAfterSplash(app, async () => {}, () => (listening = true));
+  assert.deepEqual(app.calls, []);
+  assert.equal(listening, false);
 });
