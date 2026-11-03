@@ -27,8 +27,10 @@ export interface HydrateTarget {
 	byProvider: Record<Provider, ProviderState>;
 	renewalFailure: RenewalFailures;
 	accountGeneration: Record<Provider, number>;
+	accountChanging: Record<Provider, boolean>;
 	keyringWaiting: boolean;
 	bumpGeneration(provider: Provider): void;
+	nextChange(provider: Provider): Promise<void>;
 	refreshExpired(): Promise<void>;
 }
 
@@ -64,16 +66,28 @@ function applyRead(target: HydrateTarget, p: Provider, read: ReadPersistedAccoun
 	target.byProvider = next;
 }
 
+/** Whether a change to the provider is under way: a connect in the
+ *  browser, or a disconnect or other account change not yet landed. */
+function changing(target: HydrateTarget, p: Provider): boolean {
+	return target.accountChanging[p] || target.byProvider[p].kind === 'connecting';
+}
+
 /**
  * Read one provider until a read answers with its generation where it
  * found it. An overtaken answer is dropped and the provider read again:
  * the change that overtook it may since have been undone (a connect
- * started and cancelled), and the disk says what it left.
+ * started and cancelled), and the disk says what it left. Every read,
+ * the first included, waits until no change is under way — read while a
+ * connect or disconnect is, its answer would replace the change's own
+ * state. The keyring notice counts the reads alone, not that wait.
  */
-async function readProvider(target: HydrateTarget, p: Provider): Promise<void> {
+async function readProvider(target: HydrateTarget, p: Provider, wait: KeyringWait): Promise<void> {
 	for (;;) {
+		while (changing(target, p)) await target.nextChange(p);
 		const generation = target.accountGeneration[p];
-		const read = await readPersistedAccount(p);
+		const reading = readPersistedAccount(p);
+		wait.track(reading);
+		const read = await reading;
 		if (target.accountGeneration[p] === generation) return applyRead(target, p, read);
 	}
 }
@@ -85,7 +99,7 @@ async function readProvider(target: HydrateTarget, p: Provider): Promise<void> {
  * than each caller remembering.
  */
 export function hydrateAccounts(target: HydrateTarget): Promise<void> {
-	const settled = Promise.all(PROVIDERS.map((p) => readProvider(target, p)));
-	waitFor(target).track(settled);
+	const wait = waitFor(target);
+	const settled = Promise.all(PROVIDERS.map((p) => readProvider(target, p, wait)));
 	return settled.then(() => target.refreshExpired());
 }

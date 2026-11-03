@@ -13,6 +13,7 @@
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, refreshTokens } from './api';
 import { hydrateAccounts } from './hydrate-flow';
+import { AccountChanges } from './account-changes';
 import { refreshExpiredAccounts } from './refresh-flow';
 import { beginOwnWrite } from './own-writes';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
@@ -74,6 +75,7 @@ class AccountStore {
 	/** Mark / clear the in-progress-change flag for a provider. */
 	private setChanging(provider: Provider, changing: boolean): void {
 		this.accountChanging = { ...this.accountChanging, [provider]: changing };
+		this.changes.notify(provider);
 	}
 
 	/**
@@ -108,6 +110,13 @@ class AccountStore {
 	 */
 	hydrate(): Promise<void> {
 		return hydrateAccounts(this);
+	}
+
+	private changes = new AccountChanges();
+
+	/** Resolves at the provider's next state change (see `setChanging`). */
+	nextChange(provider: Provider): Promise<void> {
+		return this.changes.next(provider);
 	}
 
 	/**
