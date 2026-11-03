@@ -1,0 +1,87 @@
+//! The launch fetches the file's signature beside it, and only a file
+//! verified under a trusted key keeps its notices.
+
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+use super::{fetch, fetch_trusting, FETCH_TIMEOUT};
+use crate::notices::NOTICES_KEY;
+
+const FILE: &str = include_str!("../../tests/fixtures/flags-signature/flags.json");
+const SIG: &str = include_str!("../../tests/fixtures/flags-signature/flags.json.minisig");
+const SIG_BY_TWO: &str =
+    include_str!("../../tests/fixtures/flags-signature/flags.json.by-key-two.minisig");
+const KEY_ONE: &str = include_str!("../../tests/fixtures/flags-signature/test-key-one.pub");
+
+async fn serve(signature: Option<&str>) -> (MockServer, String) {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(FILE))
+        .mount(&server)
+        .await;
+    let sig = match signature {
+        Some(s) => ResponseTemplate::new(200).set_body_string(s),
+        None => ResponseTemplate::new(404).set_body_string("404: Not Found"),
+    };
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json.minisig"))
+        .respond_with(sig)
+        .mount(&server)
+        .await;
+    let url = format!("{}/flags/flags.json", server.uri());
+    (server, url)
+}
+
+#[tokio::test]
+async fn a_file_signed_by_a_trusted_key_keeps_its_notices() {
+    let (server, url) = serve(Some(SIG)).await;
+    let doc = fetch_trusting(
+        &reqwest::Client::new(),
+        &url,
+        FETCH_TIMEOUT,
+        &[KEY_ONE.trim()],
+    )
+    .await
+    .expect("document");
+    assert!(doc.get(NOTICES_KEY).is_some());
+    assert_eq!(doc.get("some_feature"), Some(&serde_json::json!(false)));
+    let asked: Vec<String> = server
+        .received_requests()
+        .await
+        .expect("recorded")
+        .iter()
+        .map(|r| r.url.path().to_string())
+        .collect();
+    assert_eq!(asked, ["/flags/flags.json", "/flags/flags.json.minisig"]);
+}
+
+#[tokio::test]
+async fn an_unsigned_or_wrongly_signed_file_keeps_its_flags_and_loses_its_notices() {
+    for sig in [None, Some(SIG_BY_TWO), Some("junk")] {
+        let (_s, url) = serve(sig).await;
+        let doc = fetch_trusting(
+            &reqwest::Client::new(),
+            &url,
+            FETCH_TIMEOUT,
+            &[KEY_ONE.trim()],
+        )
+        .await
+        .expect("document");
+        assert_eq!(doc.get(NOTICES_KEY), None, "{sig:?}");
+        assert_eq!(
+            doc.get("some_feature"),
+            Some(&serde_json::json!(false)),
+            "{sig:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_shipped_build_trusts_no_signature_yet() {
+    let (_s, url) = serve(Some(SIG)).await;
+    let doc = fetch(&reqwest::Client::new(), &url, FETCH_TIMEOUT)
+        .await
+        .expect("document");
+    assert_eq!(doc.get(NOTICES_KEY), None);
+}

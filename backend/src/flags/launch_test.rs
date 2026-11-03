@@ -194,3 +194,24 @@ async fn a_normal_launch_asks_for_the_live_file() {
     );
     task.abort();
 }
+
+#[tokio::test]
+async fn a_test_runs_file_keeps_its_flags_and_loses_unsigned_notices() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let file = td.path().join("flags.json");
+    std::fs::write(
+        &file,
+        r#"{"flags":{"test_kill":false,"notices":{"format":1,"donation_ask":3}}}"#,
+    )
+    .expect("write");
+    let store = FlagStore::pending(TEST_DECLS);
+    start(
+        store.clone(),
+        reqwest::Client::new(),
+        LaunchPlan::Test { file: Some(file) },
+    )
+    .await
+    .expect("join");
+    assert_eq!(pair(&store).0, Some(FlagValue::Bool(false)));
+    assert_eq!(store.notices(), None);
+}
