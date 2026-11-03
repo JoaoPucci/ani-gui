@@ -11,7 +11,7 @@
 //! section 4 ([`rules`]); the strips around it are attached from the run
 //! members' listings ([`around`]).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -70,18 +70,31 @@ pub fn plan(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Plan {
-    let complete = rules::run(anchor, &Lookup { known, details }).is_err();
-    Plan::Done(Franchise {
-        anchor: anchor.to_string(),
-        entries: Vec::new(),
-        links: Vec::new(),
-        versions: Vec::new(),
-        films: Vec::new(),
-        sides: Vec::new(),
-        recaps: Vec::new(),
-        parents: BTreeMap::new(),
-        complete,
-    })
+    let missing = |has: bool| {
+        if has {
+            Vec::new()
+        } else {
+            vec![anchor.to_string()]
+        }
+    };
+    let (listings, needed) = (
+        missing(known.contains_key(anchor)),
+        missing(details.contains_key(anchor)),
+    );
+    if !listings.is_empty() || !needed.is_empty() {
+        return Plan::Need {
+            listings,
+            details: needed,
+        };
+    }
+    let lookup = Lookup { known, details };
+    match rules::run(anchor, &lookup) {
+        Err(listings) => Plan::Need {
+            listings,
+            details: Vec::new(),
+        },
+        Ok(run) => around::assemble(anchor, &run, &lookup),
+    }
 }
 
 /// The listings and details a walk reads from.
@@ -90,6 +103,44 @@ pub(crate) struct Lookup<'a> {
     pub(crate) details: &'a BTreeMap<String, FranchiseEntry>,
 }
 
+impl Lookup<'_> {
+    /// The listing of `id`, when read.
+    pub(crate) fn listing(&self, id: &str) -> Option<&FranchiseListing> {
+        self.known.get(id)
+    }
+
+    /// What is known of `id`: its own details, else the first
+    /// `consulted` listing (in id order) that relates it.
+    pub(crate) fn entry(&self, id: &str, consulted: &BTreeSet<String>) -> Option<FranchiseEntry> {
+        if let Some(d) = self.details.get(id) {
+            return Some(d.clone());
+        }
+        consulted
+            .iter()
+            .filter_map(|c| self.known.get(c))
+            .flat_map(|l| &l.relations)
+            .find(|r| r.id == id && r.entry.is_some())
+            .and_then(|r| r.entry.clone())
+    }
+}
+
+/// The sort key for entries: start (unknown last), then numeric id.
+pub(crate) fn order_key(start: Option<&str>, id: &str) -> (bool, String, u64, String) {
+    (
+        start.is_none(),
+        start.unwrap_or_default().to_string(),
+        id.parse().unwrap_or(u64::MAX),
+        id.to_string(),
+    )
+}
+
+/// The key of a numeric id alone.
+pub(crate) fn id_key(id: &str) -> (u64, String) {
+    (id.parse().unwrap_or(u64::MAX), id.to_string())
+}
+
+#[path = "franchise_walk_around.rs"]
+mod around;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
 
