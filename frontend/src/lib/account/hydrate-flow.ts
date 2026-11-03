@@ -8,8 +8,9 @@
  * answering holds only its own reads, and the app renders signed out
  * until each answers. A read that answers after the provider's state
  * changed (a connect or disconnect while it waited) is dropped: what
- * the user did since is newer than what it read; the provider is read
- * again, so it ends on what that change left on disk. A provider whose read
+ * the user did since is newer than what it read. Once that change has
+ * landed, a provider it left signed out is read again (see
+ * `readAfterChange`). A provider whose read
  * holds a different sign-in moves its generation, so a renewal still
  * out for the old one is superseded.
  */
@@ -72,24 +73,58 @@ function changing(target: HydrateTarget, p: Provider): boolean {
 	return target.accountChanging[p] || target.byProvider[p].kind === 'connecting';
 }
 
+/** The provider's state kind, read now. */
+function kindOf(target: HydrateTarget, p: Provider): ProviderState['kind'] {
+	return target.byProvider[p].kind;
+}
+
+/** Read the provider once; true when the answer was applied, false
+ *  when a change overtook it. */
+async function readOnce(target: HydrateTarget, p: Provider, wait: KeyringWait): Promise<boolean> {
+	const generation = target.accountGeneration[p];
+	const reading = readPersistedAccount(p);
+	wait.track(reading);
+	const read = await reading;
+	if (target.accountGeneration[p] !== generation) return false;
+	applyRead(target, p, read);
+	return true;
+}
+
 /**
- * Read one provider until a read answers with its generation where it
- * found it. An overtaken answer is dropped and the provider read again:
- * the change that overtook it may since have been undone (a connect
- * started and cancelled), and the disk says what it left. Every read,
- * the first included, waits until no change is under way — read while a
- * connect or disconnect is, its answer would replace the change's own
- * state. The keyring notice counts the reads alone, not that wait.
+ * After a change got in a read's way: wait until it has landed — read
+ * while a connect or disconnect is under way, an answer would replace
+ * the change's own state — and then read again only if it left the
+ * provider signed out. That is a connect started and cancelled, where
+ * the disk still holds the sign-in the overtaken read was after. A
+ * change that ended anywhere else (signed in, an error it reported) has
+ * said what the provider's state is. A sign-in found expired gets its
+ * refresh here, since the hydrate's own has run by then.
  */
-async function readProvider(target: HydrateTarget, p: Provider, wait: KeyringWait): Promise<void> {
+async function readAfterChange(
+	target: HydrateTarget,
+	p: Provider,
+	wait: KeyringWait
+): Promise<void> {
 	for (;;) {
 		while (changing(target, p)) await target.nextChange(p);
-		const generation = target.accountGeneration[p];
-		const reading = readPersistedAccount(p);
-		wait.track(reading);
-		const read = await reading;
-		if (target.accountGeneration[p] === generation) return applyRead(target, p, read);
+		if (kindOf(target, p) !== 'disconnected') return;
+		if (await readOnce(target, p, wait)) {
+			if (kindOf(target, p) === 'expired') void target.refreshExpired();
+			return;
+		}
 	}
+}
+
+/**
+ * The provider's first read. Settles once it has applied, or once a
+ * change has got in its way — then the rest goes on in the background,
+ * so a sign-in left open in the browser holds no other provider's
+ * hydrate or refresh. The keyring notice counts the reads alone, not
+ * the waits for a change.
+ */
+async function firstRead(target: HydrateTarget, p: Provider, wait: KeyringWait): Promise<void> {
+	if (!changing(target, p) && (await readOnce(target, p, wait))) return;
+	void readAfterChange(target, p, wait);
 }
 
 /**
@@ -100,6 +135,6 @@ async function readProvider(target: HydrateTarget, p: Provider, wait: KeyringWai
  */
 export function hydrateAccounts(target: HydrateTarget): Promise<void> {
 	const wait = waitFor(target);
-	const settled = Promise.all(PROVIDERS.map((p) => readProvider(target, p, wait)));
+	const settled = Promise.all(PROVIDERS.map((p) => firstRead(target, p, wait)));
 	return settled.then(() => target.refreshExpired());
 }
