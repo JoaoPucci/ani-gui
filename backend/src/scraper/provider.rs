@@ -159,7 +159,9 @@ pub struct EpisodeRef {
     pub title: Option<String>,
 }
 
-pub use super::show_key::{same_listing, slug_numeric_id, slug_search_term, slug_words, ShowKey};
+pub use super::show_key::{
+    key_year, same_listing, slug_numeric_id, slug_search_term, slug_words, ShowKey,
+};
 
 /// The most a subtitle track's URL may run to, in bytes. A track URL
 /// a CDN signs runs to a few hundred bytes — a path, a token, an

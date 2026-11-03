@@ -645,13 +645,16 @@ describe('playStream', () => {
 		// The session then says whether the play landed on that row's own
 		// listing, which is what lets the guess be recorded on it.
 		const promise = playStream(
-			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1' },
+			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1', guess_id: '42' },
 			() => {}
 		);
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(new URL(es.url).searchParams.get('guess_row')).toBe('hianime:x-1');
+		// The guess rides beside it, apart from the page's id.
+		expect(new URL(es.url).searchParams.get('guess_id')).toBe('42');
+		expect(new URL(es.url).searchParams.has('kitsu_id')).toBe(false);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 		const plain = playStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
@@ -659,6 +662,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es2 = FakeEventSource.instances[1];
 		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
+		expect(new URL(es2.url).searchParams.has('guess_id')).toBe(false);
 		es2.dispatch('done', JSON.stringify(donePayload()));
 		await plain;
 	});
@@ -1154,6 +1158,36 @@ describe('kitsuTitleMatchGet', () => {
 		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
 		const got = await kitsuTitleMatchGet('Whatever', 1, 'hianime');
 		expect(got).toBeNull();
+	});
+});
+
+describe('the title match of a row that names a year', () => {
+	it('asks for the guess its year keyed', async () => {
+		const fetchMock = mockFetchOnce('7730');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
+		const url = new URL(lastCall(fetchMock).url);
+		expect(url.searchParams.get('year')).toBe('2000');
+	});
+
+	it('stores the guess under its year', async () => {
+		const fetchMock = mockFetchOnce(null, 204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchPut("JoJo's Bizarre Adventure", 1, '7730', 'hianime', 2000);
+		expect(JSON.parse(lastCall(fetchMock).init?.body as string)).toEqual({
+			title: "JoJo's Bizarre Adventure",
+			cour: 1,
+			kitsu_id: '7730',
+			provider: 'hianime',
+			year: 2000
+		});
+	});
+
+	it('names no year for a row that names none', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet('Demon Slayer', 1, 'hianime', null);
+		expect(new URL(lastCall(fetchMock).url).searchParams.has('year')).toBe(false);
 	});
 });
 

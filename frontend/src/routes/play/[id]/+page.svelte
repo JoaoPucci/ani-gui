@@ -179,7 +179,7 @@
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -188,6 +188,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
+		guessedId,
 		guessRow,
 		openedFromGuess,
 		openedFromRow,
@@ -2134,10 +2135,11 @@
 	// Breadcrumb: Home › <title> › EP <n>. Re-runs when the episode
 	// number flips (next/prev buttons replaceState the URL) or when
 	// the title finally lands. The leaf is plain text — current page
-	// gets no href in the trail.
+	// gets no href in the trail. Named through the keeper, so the
+	// layout's reset for the navigation keeps it whichever runs first.
 	$effect(() => {
 		const title = detail?.canonical_title ?? null;
-		breadcrumb.set([
+		pageTrail.name(page.url.pathname, [
 			{ label: m.breadcrumb_home(), href: '/' },
 			{ label: title ?? m.breadcrumb_anime(), href: showHref },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
@@ -2202,7 +2204,8 @@
 				version,
 				// The click may take this warm's session: it answers for the
 				// guessed card's row as the click would.
-				guessRow: guessRow(fromGuess, fromRow)
+				guessRow: guessRow(fromGuess, fromRow),
+				guessId: guessedId(fromGuess, id)
 			});
 			void getOrFire(
 				makeKey(id, targetEp, mode, quality, version, args.guess_row),
@@ -2264,7 +2267,10 @@
 			kitsuId: recordableId(owner.showId, guess),
 			version,
 			caption: storedCaption(owner.showId),
-			guessRow: guessRow(guess, row)
+			guessRow: guessRow(guess, row),
+			// The guess, apart from the page's id: the resolve records it on
+			// the card's row when the switch lands on that row's listing.
+			guessId: guessedId(guess, owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.

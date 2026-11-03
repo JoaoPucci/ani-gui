@@ -331,7 +331,18 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
+/// - v4: the pick takes the hit from the row's year, then the hit
+///   titled as the row, before the hit whose slug the title spells. A
+///   v3 row can hold a pick this one would not make — Black Clover's
+///   one-episode special for the TV series, the 2012 JoJo for the
+///   2000 OVA — so v3 rows are not read and the next load picks again;
+///   the launch's cache reclaim deletes them (`crate::cache::families`).
+pub(crate) const TITLE_MATCH_VERSION: u32 = 4;
+
+/// The first version whose keys name the provider segment
+/// ([`title_match_prefix`]); the versions before it keyed the title
+/// alone.
+pub(crate) const FIRST_SEGMENTED_TITLE_MATCH_VERSION: u32 = 3;
 
 fn title_match_key(
     provider: Option<crate::scraper::provider::ProviderId>,
@@ -349,11 +360,21 @@ pub(crate) fn title_match_prefix(
     provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
 ) -> String {
+    title_match_prefix_at(TITLE_MATCH_VERSION, provider, title)
+}
+
+/// [`title_match_prefix`] as `version` wrote it — a version from
+/// [`FIRST_SEGMENTED_TITLE_MATCH_VERSION`] on.
+pub(crate) fn title_match_prefix_at(
+    version: u32,
+    provider: Option<crate::scraper::provider::ProviderId>,
+    title: &str,
+) -> String {
     let normalized = title.trim().to_lowercase();
     let segment = provider.map_or(LEGACY_TITLE_MATCH_SEGMENT, |p| p.label());
     format!(
         "{}{segment}:{normalized}:c",
-        crate::cache::families::title_match()
+        crate::cache::families::title_match_at(version)
     )
 }
 
@@ -363,10 +384,12 @@ pub(crate) const LEGACY_TITLE_MATCH_SEGMENT: &str = "legacy";
 
 /// The segments a bare history row's title matches were written under
 /// before bare keys named no provider: anidb.app's label, while the
-/// app shipped it. Nothing files a match under them now; they are read
-/// only to find a row whose recorded entry Kitsu answered gone. A
-/// removal of the row takes them, and the launch sweep takes those no
-/// remaining row is read by ([`crate::retired_provider`]).
+/// app shipped it. Nothing files a match under them now, and every
+/// match under them is a v3 key, which no family declares since v4: the
+/// launch's cache reclaim deletes them ([`crate::cache::families`])
+/// before anything reads. A removal of the row still asks for them, as
+/// does the launch sweep ([`crate::retired_provider`]), and finds them
+/// only where a reclaim was refused.
 pub(crate) const RETIRED_TITLE_MATCH_SEGMENTS: &[&str] = &["anidb.app"];
 
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
@@ -1197,6 +1220,10 @@ mod detail_ttl_tests;
 #[cfg(test)]
 #[path = "kitsu_title_match_test.rs"]
 mod title_match_tests;
+
+#[cfg(test)]
+#[path = "kitsu_title_match_version_test.rs"]
+mod title_match_version_tests;
 
 #[cfg(test)]
 #[path = "kitsu_show_key_test.rs"]

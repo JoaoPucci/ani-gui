@@ -323,6 +323,10 @@ export interface HistoryEntry {
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
+	/** The release year the row's show key names among its slug's words
+	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
+	 *  the backend; absent when it names none. */
+	key_year?: number;
 }
 
 /** Input to `cmd_create_session`. */
@@ -742,6 +746,11 @@ export interface PlayArgs {
 	 *  opened the play from. The session answers whether the play
 	 *  landed on that row's own listing (`own_listing`). */
 	guess_row?: string;
+	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
+	 *  place of `kitsu_id`: the backend records it on the row the
+	 *  resolve writes only when the play landed on that row's own
+	 *  listing, and reads it for nothing else. */
+	guess_id?: string;
 	/** The captions choice remembered for the show
 	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
 	 *  backend orders the subtitle tracks it hands an external player,
@@ -854,6 +863,7 @@ export function playStream(
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
@@ -1359,11 +1369,15 @@ export function kitsuEpisodes(
 export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
 	if (provider !== null) qs.set('provider', provider);
+	// A row that names a year keeps its guess apart from a row titled
+	// alike that names another.
+	if (year !== null) qs.set('year', String(year));
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1378,9 +1392,11 @@ export function kitsuTitleMatchPut(
 	title: string,
 	cour: number,
 	kitsuId: string,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<void> {
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
+	const body = { title, cour, kitsu_id: kitsuId, provider };
+	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
 }
 
 /**
