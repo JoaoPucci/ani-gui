@@ -8,7 +8,8 @@
  * answering holds only its own reads, and the app renders signed out
  * until each answers. A read that answers after the provider's state
  * changed (a connect or disconnect while it waited) is dropped: what
- * the user did since is newer than what it read. A provider whose read
+ * the user did since is newer than what it read; the provider is read
+ * again, so it ends on what that change left on disk. A provider whose read
  * holds a different sign-in moves its generation, so a renewal still
  * out for the old one is superseded.
  */
@@ -53,14 +54,8 @@ function waitFor(target: HydrateTarget): KeyringWait {
 	return wait;
 }
 
-/** Seed one provider from its keychain read, unless superseded. */
-function applyRead(
-	target: HydrateTarget,
-	p: Provider,
-	generation: number,
-	read: ReadPersistedAccountResult
-): void {
-	if (target.accountGeneration[p] !== generation) return;
+/** Seed one provider from its keychain read. */
+function applyRead(target: HydrateTarget, p: Provider, read: ReadPersistedAccountResult): void {
 	const prev = target.byProvider;
 	const state = hydratedState(prev[p], read, Math.floor(Date.now() / 1000));
 	if (isSignInChange(prev[p], state, ownWrites(p))) target.bumpGeneration(p);
@@ -70,17 +65,27 @@ function applyRead(
 }
 
 /**
+ * Read one provider until a read answers with its generation where it
+ * found it. An overtaken answer is dropped and the provider read again:
+ * the change that overtook it may since have been undone (a connect
+ * started and cancelled), and the disk says what it left.
+ */
+async function readProvider(target: HydrateTarget, p: Provider): Promise<void> {
+	for (;;) {
+		const generation = target.accountGeneration[p];
+		const read = await readPersistedAccount(p);
+		if (target.accountGeneration[p] === generation) return applyRead(target, p, read);
+	}
+}
+
+/**
  * Read every provider and apply each answer; then give a just-expired
  * but refreshable provider its refresh. Every hydrate path (cold launch
  * AND the account page) must do that, so the hydrate owns it rather
  * than each caller remembering.
  */
 export function hydrateAccounts(target: HydrateTarget): Promise<void> {
-	const reads = PROVIDERS.map((p) => {
-		const generation = target.accountGeneration[p];
-		return readPersistedAccount(p).then((read) => applyRead(target, p, generation, read));
-	});
-	const settled = Promise.all(reads);
+	const settled = Promise.all(PROVIDERS.map((p) => readProvider(target, p)));
 	waitFor(target).track(settled);
 	return settled.then(() => target.refreshExpired());
 }
