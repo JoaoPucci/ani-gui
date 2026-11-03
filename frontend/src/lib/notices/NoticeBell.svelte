@@ -112,11 +112,12 @@
 		};
 	});
 
-	// Keys pressed in the panel are the panel's: on the player they
+	// On the player, keys pressed in the panel are the panel's: they
 	// must not also seek, change the volume or toggle fullscreen, whose
-	// shortcuts listen on the document and the window.
+	// shortcuts listen on the document and the window. Elsewhere they
+	// go on to the app's own shortcuts (`/` and Ctrl+K for search).
 	function onPanelKey(e: KeyboardEvent) {
-		e.stopPropagation();
+		if (onPlayer) e.stopPropagation();
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			close(true);

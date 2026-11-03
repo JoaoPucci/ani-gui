@@ -20,7 +20,7 @@
 	"resolved_sr": "Resuelto.",
 	"toast_view": "Ver",
 	"detail_missing": "Esta notificación ya no está aquí. Puede que se haya descartado o resuelto.",
-	"detail_off": "Las notificaciones no están activadas en esta versión.",
+	"detail_off": "Las notificaciones están desactivadas.",
 	"update_title": "ani-gui {tag} está disponible",
 	"update_meta": "Tienes la {current}",
 	"update_body": "Salió una versión más nueva de ani-gui. Ábrela para ver qué cambió y cómo instalarla.",
