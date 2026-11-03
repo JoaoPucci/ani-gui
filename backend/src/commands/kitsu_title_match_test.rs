@@ -107,11 +107,15 @@ fn a_bare_rows_title_match_lives_under_the_legacy_segment() {
         Some("12"),
         "the row with no provider searches the title, so its match is kept"
     );
-    assert!(
-        crate::cache::meta_cache_get(&s.cache_pool, "title-match:v3:legacy:stone ocean:c1")
-            .expect("read")
-            .is_some()
-    );
+    assert!(crate::cache::meta_cache_get(
+        &s.cache_pool,
+        &format!(
+            "{}legacy:stone ocean:c1",
+            crate::cache::families::title_match()
+        )
+    )
+    .expect("read")
+    .is_some());
     assert_eq!(
         title_match_get(&s, Some(ProviderId::Hianime), "stone ocean", 1).expect("get"),
         None,

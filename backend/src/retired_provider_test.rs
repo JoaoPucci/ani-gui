@@ -222,7 +222,10 @@ fn cache_rows_only_a_retired_provider_could_be_read_by_go() {
     put(&state, &walked_title, "1555");
     put(
         &state,
-        "title-match:v3:anidb.app:naruto shippuden:c1",
+        &format!(
+            "{}anidb.app:naruto shippuden:c1",
+            crate::cache::families::title_match()
+        ),
         "1555",
     );
     put(&state, "watched-at:v1:hianime:gone-1", "1");
@@ -236,7 +239,10 @@ fn cache_rows_only_a_retired_provider_could_be_read_by_go() {
         "availability:v24:1:sub",
         "availability:v24:2:sub",
         retired_title.as_str(),
-        "title-match:v3:anidb.app:naruto shippuden:c1",
+        &format!(
+            "{}anidb.app:naruto shippuden:c1",
+            crate::cache::families::title_match()
+        ),
         "watched-at:v1:hianime:gone-1",
         "allmanga2kitsu:v8:hianime:gone-1",
         "allmanga2kitsu:played:v1:hianime:gone-1",
@@ -484,7 +490,10 @@ fn a_kept_rows_title_match_under_a_retired_segment_stays_while_its_page_reads_it
         &format!("{}11", crate::commands::kitsu_gone::GONE_PREFIX),
         "1",
     );
-    let retired_segment = "title-match:v3:anidb.app:old show:c1";
+    let retired_segment = &format!(
+        "{}anidb.app:old show:c1",
+        crate::cache::families::title_match()
+    );
     put(&state, retired_segment, "22");
 
     let _ = sweep(&state);
