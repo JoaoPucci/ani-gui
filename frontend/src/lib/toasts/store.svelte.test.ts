@@ -229,3 +229,21 @@ describe('keepOnPush', () => {
 		);
 	});
 });
+
+describe('a toast whose dismiss control has words', () => {
+	beforeEach(() => {
+		for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
+	});
+
+	it('keeps the words it was pushed with, and none by default', () => {
+		toastStore.push({ kind: 'info', message: 'Plain.' });
+		const id = toastStore.push({
+			kind: 'info',
+			message: 'Asked.',
+			duration: null,
+			dismissLabel: 'Not now'
+		});
+		expect(toastStore.items[0].dismissLabel).toBeNull();
+		expect(toastStore.items.find((i) => i.id === id)?.dismissLabel).toBe('Not now');
+	});
+});
