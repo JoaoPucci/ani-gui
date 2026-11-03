@@ -97,6 +97,19 @@ async function readOnce(target: HydrateTarget, p: Provider, wait: KeyringWait): 
 }
 
 /**
+ * Read one provider again and apply the answer, outside any hydrate:
+ * after an account action whose bridge call rejected, the disk is the
+ * only one who knows whether its write or clear landed. A change under
+ * way is left alone (it settles the provider itself), and a read a
+ * change overtakes is dropped, as in the hydrate. True when the answer
+ * was applied.
+ */
+export function rereadAccount(target: HydrateTarget, p: Provider): Promise<boolean> {
+	if (changing(target, p)) return Promise.resolve(false);
+	return readOnce(target, p, waitFor(target));
+}
+
+/**
  * After a change got in a read's way: wait until it has landed — read
  * while a connect or disconnect is under way, an answer would replace
  * the change's own state — and then read again only if it left the

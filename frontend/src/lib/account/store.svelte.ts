@@ -12,7 +12,7 @@
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, refreshTokens } from './api';
-import { hydrateAccounts } from './hydrate-flow';
+import { hydrateAccounts, rereadAccount } from './hydrate-flow';
 import { AccountChanges } from './account-changes';
 import { refreshExpiredAccounts } from './refresh-flow';
 import { beginOwnWrite } from './own-writes';
@@ -111,6 +111,14 @@ class AccountStore {
 	 */
 	hydrate(): Promise<void> {
 		return hydrateAccounts(this);
+	}
+
+	/**
+	 * Read one provider's saved sign-in again and apply it (see
+	 * `rereadAccount` in `$lib/account/hydrate-flow`). True when applied.
+	 */
+	reread(provider: Provider): Promise<boolean> {
+		return rereadAccount(this, provider);
 	}
 
 	private changes = new AccountChanges();
