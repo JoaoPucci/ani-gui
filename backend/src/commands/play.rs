@@ -127,8 +127,10 @@ pub struct PlayArgs {
     pub caption: Option<String>,
     /// The locale the renderer runs in, which the built-in player
     /// starts by. It wins over `config.toml`'s, which the renderer
-    /// adopts only when it is one of the app's own locales. `None` from
-    /// a caller that names none, which orders by the configured one.
+    /// adopts only when it is one of the app's own locales. Empty when
+    /// the renderer resolved none, which names no language, as the
+    /// built-in player reads it. `None` from a caller that names none,
+    /// which orders by the configured one.
     #[serde(default)]
     pub locale: Option<String>,
 }
