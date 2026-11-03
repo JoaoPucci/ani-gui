@@ -12,6 +12,7 @@
 const path = require("node:path");
 
 const { APP_BACKGROUND } = require("./app-window.cjs");
+const { STALL_MS, STEPS } = require("./splash-progress.cjs");
 
 /** Set on the splash's BrowserWindow, so a harness can tell it from
  *  the app's window (electron/e2e/launch.ts). */
@@ -95,9 +96,33 @@ function splashController({
   clock = () => Date.now(),
   // The version the splash shows above its title (splashVersionLabel).
   version = "",
+  // What the line under the rail says while each step stalls
+  // (lib/splash-progress.cjs), read when the splash opens.
+  stallTexts = () => [],
 }) {
   const state = fresh();
   state.version = version;
+  // The boot's steps landed so far: sent to the page as each lands,
+  // and again once the page has loaded.
+  let steps = 0;
+  const sendSteps = () => {
+    if (!alive()) return Promise.resolve();
+    const sent = steps;
+    let timer;
+    const answered = Promise.resolve(
+      win.webContents.executeJavaScript(`window.splashProgress && window.splashProgress.set(${sent})`),
+    ).then(
+      (lit) => {
+        if (typeof lit === "number") state.railLit = Math.max(state.railLit, lit);
+      },
+      () => {},
+    );
+    // A page that does not answer holds nothing up for longer than this.
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, STEP_ANSWER_WAIT_MS);
+    });
+    return Promise.race([answered, late]).finally(() => clearTimeout(timer));
+  };
   // One info line per step of the splash's life, timed from when it
   // was asked for: enough for a run's log to say whether a splash was
   // seen, and for how long.
@@ -191,7 +216,11 @@ function splashController({
       });
       win = splash;
       state.opened = true;
-      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query: { v: version } })).catch((err) =>
+      splash.webContents.on("did-finish-load", () => {
+        if (steps > 0) sendSteps();
+      });
+      const query = splashPageQuery({ version, stallTexts: stallTexts() });
+      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) =>
         logError("[main] the splash failed to load:", err),
       );
     },
@@ -254,6 +283,18 @@ function splashController({
     dismissed() {
       return dismissedByUser;
     },
+    // A step of the boot has landed (lib/splash-progress.cjs): the rail
+    // lights through it. A step already passed, or one it does not
+    // know, changes nothing. Resolves once the page has answered, or
+    // after STEP_ANSWER_WAIT_MS.
+    progress(step) {
+      const n = STEPS.indexOf(step) + 1;
+      if (n <= steps || !state.opened) return Promise.resolve();
+      steps = n;
+      state.steps = n;
+      log(`[main] splash step ${n}, ${step} (${since()})`);
+      return sendSteps();
+    },
     suppress() {
       over = true;
       suppressed = true;
@@ -275,8 +316,20 @@ function splashController({
 let current = fresh();
 
 function fresh() {
-  return { opened: false, shown: false, closed: false, suppressed: false, version: "" };
+  return { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 };
 }
+
+/** The query the splash page is opened with: the version above its
+ *  title, how long a step may be pending before the stall line shows,
+ *  and that line for each step. */
+function splashPageQuery({ version, stallTexts = [] }) {
+  const query = { v: version, st: String(STALL_MS) };
+  stallTexts.forEach((text, i) => (query[`t${i + 1}`] = text));
+  return query;
+}
+
+/** The longest a step waits for the splash page to answer it. */
+const STEP_ANSWER_WAIT_MS = 150;
 
 /** The version the splash shows above its title, labelled as the app's
  *  rail and About label theirs (frontend `$lib/version.ts`): the bare
@@ -332,6 +385,7 @@ module.exports = {
   SPLASH_PAGE,
   lastSplashState,
   splashController,
+  splashPageQuery,
   splashVersionLabel,
   splashWindowOptions,
 };

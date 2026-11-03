@@ -261,6 +261,10 @@ async function bootApp({
   suppressSplash = () => {},
   spawnBackend,
   fetchFlags = async () => null,
+  // Each step of the boot as it lands, for the splash's rail
+  // (lib/splash-progress.cjs): "backend", then "flags". The last,
+  // "page", is the app's window's own (main.js).
+  stepDone = () => {},
   createWindow,
   closeSplash = () => {},
   stopBackend,
@@ -277,7 +281,9 @@ async function bootApp({
   }
   try {
     const backend = await spawnBackend();
+    stepDone("backend");
     const flags = await fetchFlags(backend);
+    stepDone("flags");
     // A quit asked for meanwhile — the splash closed from the taskbar,
     // say — takes its own course; no window is opened into it.
     if (quitting()) return;

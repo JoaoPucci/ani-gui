@@ -47,7 +47,8 @@ const {
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
-const { resolveLocale } = require("./lib/main-messages.cjs");
+const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
+const { stallTexts } = require("./lib/splash-progress.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
@@ -379,6 +380,10 @@ const splash = splashController({
   // would quit of itself.
   onDismissed: () => app.quit(),
   log: console.log,
+  // The line under the splash's rail when a step of the boot stalls,
+  // in the language the app's dialogs speak (read once the app is
+  // ready, when the splash opens).
+  stallTexts: () => stallTexts(messagesFor(mainLocale())),
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.
@@ -577,7 +582,13 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // is it mapped (maximized) and shown, and the splash put away. The
     // two are never on screen competing, on any platform. A later window
     // finds no splash, and waits only for its renderer.
-    beforeShow: () => revealGate(() => splash.whenShown(), appReady),
+    // The page's render is the last step of the boot the splash's rail
+    // shows (lib/splash-progress.cjs); the rail hears it before the
+    // window replaces the splash.
+    beforeShow: () =>
+      revealGate(() => splash.whenShown(), {
+        ready: appReady.ready.then(() => splash.progress("page")),
+      }),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
@@ -1070,6 +1081,11 @@ app.whenReady().then(() => {
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).
     fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
+    // The backend's handshake and the flags' decision, each lighting a
+    // stretch of the splash's rail as it lands.
+    stepDone: (step) => {
+      splash.progress(step);
+    },
     closeSplash: () => splash.close(),
     createWindow: async (backend, launchFlags) => {
       await reducedMotion;

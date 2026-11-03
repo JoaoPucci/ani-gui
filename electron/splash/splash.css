@@ -128,10 +128,38 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
   letter-spacing: -0.02em; color: var(--bone-100);
   padding-block-end: 12px; border-block-end: 1px solid var(--ink-200);
 }
-/* The readout: a slot under the title, empty for now. Hidden while
-   empty, so the column's row gap doesn't push the title and its
-   rule off the gate's centre. */
-.readout:empty { display: none; }
+/* The readout under the title: the progress rail (progress.js), a
+   strip of film edge — perforations — in three stretches, one per step
+   of the boot, each lit in the brand colour as its step lands. Under
+   it, out of the flow so its coming and going moves nothing, the line
+   that appears only when a step stalls. A stretch wipes in and the line
+   fades only once the splash is told to move; a step that lands before
+   that, or under reduced motion, just shows. */
+.readout { position: relative; }
+.rail {
+  display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 6px;
+  block-size: 5px;
+}
+.rail i {
+  position: relative; display: block; border-radius: 1px;
+  background: repeating-linear-gradient(90deg, var(--ink-200) 0 6px, transparent 6px 10px);
+}
+.rail i::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg, var(--brand) 0 6px, transparent 6px 10px);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--brand) 45%, transparent);
+  clip-path: inset(0 100% 0 0);
+}
+.rail i.lit::after { clip-path: inset(0 0 0 0); }
+.status {
+  position: absolute; inset-inline-start: 0; inset-block-start: calc(100% + 10px);
+  white-space: nowrap;
+  font-size: 11px; letter-spacing: 0.06em; text-transform: none; color: var(--bone-300);
+  opacity: 0;
+}
+.status.on { opacity: 1; }
+body.shown .rail i::after { transition: clip-path 300ms var(--ease-out-soft); }
+body.shown .status { transition: opacity 220ms var(--ease-out-soft); }
 
 /* — Reduced motion: no transport. The film rests threaded, the lit frame
    squarely in the gate. */

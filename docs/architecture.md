@@ -380,13 +380,19 @@ frame at a time, beside the app's name with its version above it
 (`electron/splash/`). The version is the app's own, labelled as the rail
 and About label it (`-dev` in a dev run), and the main process opens the
 page with it. Nothing else on the splash is a number, since any number
-on a screen this brief reads as a count. Its motion starts only when the
-main process tells it to, once the window is on screen and the
-reduced-motion setting is known; under reduced motion it rests on a
-still frame, and the page's own fallback timer, for a signal that never
-comes, rests it too rather than starting the motion. The mark is
-`mark.svg` alone, and the layout holds for a mark of another shape, so a
-new mark replaces one file.
+on a screen this brief reads as a count. Under the name, a wordless rail
+of film edge lights one of its three stretches as each step of the boot
+lands: the backend's handshake, the launch's flags decided, the app's
+first page rendered (`electron/lib/splash-progress.cjs`). A line under
+the rail says "Starting up…", in the app's language, only once the
+pending step has taken longer than 700 ms, and goes when that step
+lands. The splash's motion starts only when the main process tells it
+to, once the window is on screen and the reduced-motion setting is
+known; under reduced motion it rests on a still frame and its rail
+lights without a wipe, and the page's own fallback timer, for a signal
+that never comes, rests it too rather than starting the motion. The mark
+is `mark.svg` alone, and the layout holds for a mark of another shape,
+so a new mark replaces one file.
 
 The store accepts one decision and refuses every later one. A backend
 consumer reads the flags with `FlagStore::settled()`, which waits for

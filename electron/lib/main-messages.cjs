@@ -13,9 +13,11 @@
 // (frontend/project.inlang/settings.json), so adding a locale there
 // turns this red until it is added here.
 //
-// The table is those two dialogs and no more. The pages the OAuth
-// callback server answers the browser with (oauth-server.js) are the
-// main process's text too, and are still English.
+// The table is those two dialogs and the line the launch splash shows
+// when a step of the boot stalls (lib/splash-progress.cjs), and no
+// more. The pages the OAuth callback server answers the browser with
+// (oauth-server.js) are the main process's text too, and are still
+// English.
 
 const BASE_LOCALE = "en";
 
@@ -35,6 +37,8 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "They will be cancelled if you quit. Continue?",
     cancel: "Cancel",
     quitAnyway: "Quit anyway",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Starting up…",
   },
   "pt-BR": {
     bootFailed: "Não foi possível iniciar o ani-gui",
@@ -47,6 +51,8 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "Eles serão cancelados se você sair. Continuar?",
     cancel: "Cancelar",
     quitAnyway: "Sair mesmo assim",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Iniciando…",
   },
   "es-419": {
     bootFailed: "No se pudo iniciar ani-gui",
@@ -59,6 +65,8 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "Se cancelarán si sales. ¿Continuar?",
     cancel: "Cancelar",
     quitAnyway: "Salir de todos modos",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Iniciando…",
   },
   ru: {
     bootFailed: "Не удалось запустить ani-gui",
@@ -72,6 +80,8 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "При выходе они будут отменены. Продолжить?",
     cancel: "Отмена",
     quitAnyway: "Всё равно выйти",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Запуск…",
   },
 };
 
