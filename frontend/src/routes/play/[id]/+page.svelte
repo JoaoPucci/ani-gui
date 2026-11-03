@@ -578,6 +578,12 @@
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
 		const at = items.indexOf(document.activeElement as HTMLElement);
+		// The horizontal arrows stay in the menu rather than seek.
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
 		const next = menuKeyStep(e.key, at, items.length);
 		if (next === null) return;
 		e.preventDefault();
@@ -675,7 +681,32 @@
 		if (!pcMenuOpen) {
 			pcSpeedExpanded = false;
 			pcQualityExpanded = false;
+			return;
 		}
+		// Focus goes into the menu as it opens, where the arrow keys
+		// move it rather than reaching the player.
+		void tick().then(() => focusFirstPcItem());
+	}
+	function focusFirstPcItem() {
+		document
+			.querySelector<HTMLElement>('#pc-overflow-menu [role^="menuitem"]:not(:disabled)')
+			?.focus();
+	}
+	// Opening Speed or Quality swaps the menu's contents: focus moves
+	// to the list's back row, and back to the row that opened it on
+	// the way out, rather than being lost with the row it was on.
+	async function openPcList(list: 'speed' | 'quality') {
+		if (list === 'speed') pcSpeedExpanded = true;
+		else pcQualityExpanded = true;
+		await tick();
+		focusFirstPcItem();
+	}
+	async function closePcList() {
+		const list = pcSpeedExpanded ? 'speed' : 'quality';
+		pcSpeedExpanded = false;
+		pcQualityExpanded = false;
+		await tick();
+		document.querySelector<HTMLElement>(`#pc-overflow-menu [data-opens="${list}"]`)?.focus();
 	}
 	function closePcMenu() {
 		pcMenuOpen = false;
@@ -1933,7 +1964,11 @@
 					qualityView = view;
 					// A stream retiring takes its levels with it; the next
 					// one's menu opens on the main list.
-					if (!view) pcQualityExpanded = false;
+					if (!view && pcQualityExpanded) {
+						pcQualityExpanded = false;
+						// The row that had focus goes with the list.
+						void tick().then(() => focusFirstPcItem());
+					}
 				}
 			});
 			qualityControl = quality;
@@ -2670,9 +2705,19 @@
 	// The in-player menu steps the same way; its horizontal arrows stay
 	// in it rather than seek.
 	function onPcMenuKey(e: KeyboardEvent) {
-		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+		const menu = e.currentTarget as HTMLElement;
+		const focused = document.activeElement as HTMLElement | null;
+		const opens = focused?.dataset.opens;
+		const arrow = menuArrow(e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			listOpen: pcSpeedExpanded || pcQualityExpanded,
+			onOpener: opens === 'speed' || opens === 'quality'
+		});
+		if (arrow !== null) {
 			e.preventDefault();
 			e.stopPropagation();
+			if (arrow === 'open') void openPcList(opens === 'speed' ? 'speed' : 'quality');
+			if (arrow === 'back') void closePcList();
 			return;
 		}
 		stepMenuFocus(e);
@@ -3331,7 +3376,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcSpeedExpanded = false)}
+											onclick={() => void closePcList()}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3369,7 +3414,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcQualityExpanded = false)}
+											onclick={() => void closePcList()}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3425,7 +3470,8 @@
 											class="pc-menu-item pc-menu-row-arrow"
 											role="menuitem"
 											aria-haspopup="menu"
-											onclick={() => (pcSpeedExpanded = true)}
+											data-opens="speed"
+											onclick={() => void openPcList('speed')}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<circle
@@ -3473,7 +3519,8 @@
 												class="pc-menu-item pc-menu-row-arrow"
 												role="menuitem"
 												aria-haspopup="menu"
-												onclick={() => (pcQualityExpanded = true)}
+												data-opens="quality"
+												onclick={() => void openPcList('quality')}
 											>
 												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 													<path
