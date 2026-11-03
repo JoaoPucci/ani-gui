@@ -314,7 +314,7 @@ test("the stall line comes only once a step has been pending 700 ms, and stays u
   page.tick(300);
   page.set(3);
   page.tick(5000);
-  assert.notEqual(page.status(), null, "nothing pending, still up");
+  assert.equal(page.status(), "Flags…", "nothing pending, still up with its last words");
 });
 
 test("a stall line that would say the same at the next step stays up instead of blinking", () => {
@@ -405,6 +405,36 @@ test("the line's words follow the reason: generic, then the network while the fl
   assert.equal(page.status(), m.splashStartingUp, "flags landed");
   page.tick(STALL_MS * 3);
   assert.equal(page.status(), m.splashStartingUp, "page stalled");
+});
+
+test("with the generic words in hand, a launch whose steps all land quickly never shows the line", () => {
+  const { page } = launchPage();
+  page.tick(STALL_MS - 1);
+  assert.equal(page.status(), null, "not before 700 ms");
+  page.set(1);
+  page.tick(STALL_MS - 1);
+  page.set(2);
+  page.tick(STALL_MS - 1);
+  page.set(3);
+  page.tick(5000);
+  assert.equal(page.status(), null);
+});
+
+test("the stall lines and the generic words are read apart: one failing keeps the other", () => {
+  const open = (options) => {
+    const win = fakeSplash();
+    const splash = splashController({ createWindow: () => win, logError: () => {}, ...options });
+    splash.show();
+    splash.close();
+    return win.loadOptions.query;
+  };
+  const boom = () => {
+    throw new Error("no locale");
+  };
+  const q1 = open({ stallTexts: () => ["a", "b", "c"], stallGeneric: boom });
+  assert.deepEqual([q1.t1, q1.t2, q1.t3, q1.tg], ["a", "b", "c", undefined]);
+  const q2 = open({ stallTexts: boom, stallGeneric: () => "g" });
+  assert.deepEqual([q2.t1, q2.tg], [undefined, "g"]);
 });
 
 test("a line that first appears for the network goes back to the generic line once the flags land", () => {
