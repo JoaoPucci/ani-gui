@@ -136,7 +136,22 @@ pub(crate) async fn cached_row_is_live(
     remembered: Option<&str>,
 ) -> bool {
     cached_row_is_walked(state, cached)
+        && !cached_row_may_be_cut(&cached.subtitles)
         && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE, remembered).await
+}
+
+/// Whether a cached row's tracks may be a cut listing: as many as the
+/// cap, which a resolve keeps of a longer listing — the tracks the play
+/// that wrote the row wanted most, its remembered language and its
+/// locale ([`crate::scraper::track_preference::most_wanted_within`]).
+/// The row does not record that choice, so a play wanting another
+/// could be handed a listing without its language; such a row is not
+/// replayed, and the fresh resolve cuts for the play asking. A listing
+/// exactly the cap's length reads the same and resolves afresh too. No
+/// listing seen comes near the cap, and replay is the opt-in cache.
+#[must_use]
+pub(crate) fn cached_row_may_be_cut(tracks: &[crate::scraper::provider::SubtitleTrack]) -> bool {
+    tracks.len() >= crate::proxy::upstream::SUBTITLE_TRACK_CAP
 }
 
 /// Whether a cached row was resolved through a provider the state
