@@ -225,8 +225,17 @@ describe('keys in the panel off the player', () => {
 		window.addEventListener('keydown', spy);
 		try {
 			const lead = panel()?.querySelector<HTMLElement>('.nr-lead') as HTMLElement;
-			lead.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+			lead.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+			await settle();
+			expect(seen, 'Escape stays with the panel').toEqual([]);
+			expect(panel()).toBeNull();
+			(bell(root) as HTMLButtonElement).click();
+			await settle();
+			const again = panel()?.querySelector<HTMLElement>('.nr-lead') as HTMLElement;
+			again.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+			await settle();
 			expect(seen).toEqual(['/']);
+			expect(panel(), 'the search takes over from the panel').toBeNull();
 		} finally {
 			window.removeEventListener('keydown', spy);
 		}
