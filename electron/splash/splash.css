@@ -7,8 +7,8 @@
    landed at 499. */
 
 :root {
-  --ink-000: #0c0a09; --ink-050: #14110f; --ink-100: #1c1815; --ink-200: #2a2521; --ink-300: #524a44;
-  --bone-100: #f4ece1; --bone-200: #d8cfc2; --bone-300: #b6ad9f; --bone-400: #877f73;
+  --ink-000: #0c0a09; --ink-050: #14110f; --ink-100: #1c1815; --ink-200: #2a2521;
+  --bone-100: #f4ece1; --bone-300: #b6ad9f;
   --brand: #d77a3b;
   --font-display: 'Fraunces', 'Libre Baskerville', 'Cormorant Garamond', 'Iowan Old Style', 'Hoefler Text',
     Charter, Cambria, 'Noto Serif', Georgia, ui-serif, serif;
@@ -122,9 +122,9 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
   letter-spacing: -0.02em; color: var(--bone-100);
   padding-block-end: 12px; border-block-end: 1px solid var(--ink-200);
 }
-/* The readout: a slot under the title, empty for now. An empty slot
-   takes no line, so the reel title and its rule centre on the gate
-   instead of riding above it; whatever fills the slot brings its own. */
+/* The readout: a slot under the title, empty for now. Hidden while
+   empty, so the column's row gap doesn't push the reel title and its
+   rule off the gate's centre. */
 .readout:empty { display: none; }
 
 /* — Reduced motion: no transport. The film rests threaded, the lit frame
