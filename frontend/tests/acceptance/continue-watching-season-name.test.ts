@@ -137,6 +137,19 @@ const SLIME_2 = entry(
 	12
 );
 
+const REZERO_4 = entry(
+	'49746',
+	're-zero-kara-hajimeru-isekai-seikatsu-4',
+	'Re:Zero kara Hajimeru Isekai Seikatsu 4th Season',
+	{
+		en: 'Re:ZERO -Starting Life in Another World- Season 4',
+		en_jp: 'Re:Zero kara Hajimeru Isekai Seikatsu 4th Season',
+		ja_jp: 'Re:ゼロから始める異世界生活 4th season'
+	},
+	[],
+	19
+);
+
 /** Home with one Continue row whose mapping a play stored as `ref`.
  *  Kitsu's search answers `ref` too, so a card that passes the mapping
  *  over still resolves — as a guess. */
@@ -209,6 +222,32 @@ describe('a Continue card bound to a later season by a play', () => {
 		);
 
 		expect(await play(SLIME_2.canonical_title)).toEqual({ recorded: null, guess: true });
+	});
+});
+
+// Kitsu keeps Re:ZERO's "re" and "zero" apart, and its Season 4 slug
+// marks the season with a bare `-4`, which reads as the first season. A
+// title that runs the two together is still the entry's own name; one
+// that names another season is not.
+describe('a Continue card whose title runs a word of the entry together', () => {
+	it('is linked when the words name the entry (ReZERO … Season 4 → Re:ZERO Season 4)', async () => {
+		mountWithPlayedMapping(
+			'hianime:rezero-starting-life-in-another-world-season-4-4587',
+			'ReZERO Starting Life in Another World Season 4',
+			REZERO_4
+		);
+
+		expect(await play(REZERO_4.canonical_title)).toEqual({ recorded: '49746', guess: false });
+	});
+
+	it('stays a guess when the words name another season (Season 3 → Season 4)', async () => {
+		mountWithPlayedMapping(
+			'hianime:rezero-starting-life-in-another-world-season-3-1',
+			'ReZERO Starting Life in Another World Season 3',
+			REZERO_4
+		);
+
+		expect(await play(REZERO_4.canonical_title)).toEqual({ recorded: null, guess: true });
 	});
 });
 

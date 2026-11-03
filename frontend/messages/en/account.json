@@ -52,6 +52,7 @@
 	"signin_unreachable_action": "Try now",
 	"signin_unknown_message": "Couldn't renew your {provider} sign-in. Try again, or reconnect if it keeps failing.",
 	"signin_unknown_action": "Try again",
+	"keyring_waiting": "Waiting for your system keyring. Your accounts load as soon as it answers; unlock it if it asks.",
 	"primary_badge": "Primary",
 	"primary_make": "Make primary",
 	"primary_hint": "Shown in the topbar. The Watch Later rail lists most recently updated on your tracker first; this tracker's copy is the one used when a title is on both. Progress still syncs to every connected tracker.",

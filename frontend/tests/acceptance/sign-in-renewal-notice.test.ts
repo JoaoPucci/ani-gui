@@ -75,7 +75,7 @@ function installKeychain() {
 	(window as unknown as { aniGui: unknown }).aniGui = {
 		apiBase: API_BASE,
 		account: {
-			getToken: (provider: Provider) =>
+			getToken: async (provider: Provider) =>
 				provider === 'mal' ? { ok: true, payload: DEAD_MAL } : { ok: false, kind: 'not_found' }
 		}
 	};
@@ -241,7 +241,7 @@ describe('opening the app with a dead MAL sign-in', () => {
 		(window as unknown as { aniGui: unknown }).aniGui = {
 			apiBase: API_BASE,
 			account: {
-				getToken: (provider: Provider) =>
+				getToken: async (provider: Provider) =>
 					provider === 'mal'
 						? { ok: true, payload: { ...DEAD_MAL, expires_at_epoch_s: 4_000_000_000 } }
 						: { ok: false, kind: 'not_found' }
@@ -288,7 +288,7 @@ describe('opening the app with a dead MAL sign-in', () => {
 		(window as unknown as { aniGui: unknown }).aniGui = {
 			apiBase: API_BASE,
 			account: {
-				getToken: (provider: Provider) =>
+				getToken: async (provider: Provider) =>
 					provider === 'mal'
 						? {
 								ok: true,

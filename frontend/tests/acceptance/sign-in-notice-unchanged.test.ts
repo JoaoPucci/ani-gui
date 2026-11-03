@@ -64,7 +64,7 @@ function installKeychain(accounts: Partial<Record<Provider, PersistedAccount>>) 
 	(window as unknown as { aniGui: unknown }).aniGui = {
 		apiBase: API_BASE,
 		account: {
-			getToken: (provider: Provider) => {
+			getToken: async (provider: Provider) => {
 				const payload = accounts[provider];
 				return payload ? { ok: true, payload } : { ok: false, kind: 'not_found' };
 			},

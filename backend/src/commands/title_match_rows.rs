@@ -6,8 +6,8 @@
 use crate::app::AppState;
 use crate::cache::meta_cache_entries_prefix;
 use crate::commands::kitsu::{
-    title_match_prefix, title_match_prefix_at, FIRST_SEGMENTED_TITLE_MATCH_VERSION,
-    TITLE_MATCH_VERSION,
+    title_match_prefix_at, FIRST_SEGMENTED_TITLE_MATCH_VERSION,
+    FIRST_YEAR_KEYED_TITLE_MATCH_VERSION, TITLE_MATCH_VERSION,
 };
 use crate::commands::title_match_store::retired_title_match_prefixes;
 use crate::error::Result;
@@ -38,10 +38,15 @@ pub(crate) fn own_matches(
 pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
     let provider = ShowKey::parse(id).provider;
     let mut prefixes = current_prefixes(id, title);
+    // The versions since the year came into the key, each as it wrote it.
+    for version in FIRST_YEAR_KEYED_TITLE_MATCH_VERSION..TITLE_MATCH_VERSION {
+        prefixes.extend(prefixes_at(version, id, title));
+    }
     for searched in [title, without_episode_tail(title)] {
-        // The versions since the provider segment, each as it wrote it,
-        // and the ones before it, which keyed the title alone.
-        for version in FIRST_SEGMENTED_TITLE_MATCH_VERSION..TITLE_MATCH_VERSION {
+        // The versions since the provider segment, each as it wrote it
+        // before the year came into the key, and the ones before it,
+        // which keyed the title alone.
+        for version in FIRST_SEGMENTED_TITLE_MATCH_VERSION..FIRST_YEAR_KEYED_TITLE_MATCH_VERSION {
             prefixes.push(title_match_prefix_at(version, provider, searched));
         }
         let normalized = searched.trim().to_lowercase();
@@ -58,6 +63,12 @@ pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 /// year the row names — its title's, else its key's — when it names one
 /// ([`crate::commands::title_match_year`]).
 fn current_prefixes(id: &str, title: &str) -> Vec<String> {
+    prefixes_at(TITLE_MATCH_VERSION, id, title)
+}
+
+/// [`current_prefixes`] as `version` wrote them, from
+/// [`FIRST_YEAR_KEYED_TITLE_MATCH_VERSION`] on.
+fn prefixes_at(version: u32, id: &str, title: &str) -> Vec<String> {
     let key = ShowKey::parse(id);
     let year = crate::commands::title_match_year::title_year(title)
         .or_else(|| crate::scraper::provider::key_year(id));
@@ -67,7 +78,7 @@ fn current_prefixes(id: &str, title: &str) -> Vec<String> {
         // by it alone: a guess under the bare title is another row's,
         // titled alike but naming no year.
         let keyed = crate::commands::title_match_year::keyed_title(searched, year);
-        prefixes.push(title_match_prefix(key.provider, &keyed));
+        prefixes.push(title_match_prefix_at(version, key.provider, &keyed));
     }
     prefixes
 }
