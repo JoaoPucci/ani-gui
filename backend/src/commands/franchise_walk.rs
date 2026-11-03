@@ -70,7 +70,7 @@ pub fn plan(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Plan {
-    let _ = (known, details);
+    let complete = rules::run(anchor, &Lookup { known, details }).is_err();
     Plan::Done(Franchise {
         anchor: anchor.to_string(),
         entries: Vec::new(),
@@ -80,6 +80,15 @@ pub fn plan(
         sides: Vec::new(),
         recaps: Vec::new(),
         parents: BTreeMap::new(),
-        complete: false,
+        complete,
     })
 }
+
+/// The listings and details a walk reads from.
+pub(crate) struct Lookup<'a> {
+    pub(crate) known: &'a BTreeMap<String, FranchiseListing>,
+    pub(crate) details: &'a BTreeMap<String, FranchiseEntry>,
+}
+
+#[path = "franchise_walk_rules.rs"]
+pub(crate) mod rules;
