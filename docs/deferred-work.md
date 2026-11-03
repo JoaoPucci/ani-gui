@@ -637,9 +637,10 @@ starting it, and delete it when you find it done.
   because the center's first version was scoped to the notices the
   maintainer's design decisions covered.
 - **Published notices and the donation ask are read but not shown.**
-  The flags file may carry a notices block (`backend/src/notices/`):
-  the backend parses it strictly and keeps it with the launch's flags,
-  and the donation ask's schedule is built and tested
+  The flags file may carry a notices block: the backend keeps it, as it
+  came, with the launch's flags (`FlagStore::notices`), and the strict
+  parser for it (`backend/src/notices/remote.rs`) and the donation
+  ask's schedule are built and tested
   (`frontend/src/lib/notices/donation.ts`), but nothing serves the
   block to the window and nothing shows either. Showing text and links
   from the file, like turning a flag on from it, is riskier than any

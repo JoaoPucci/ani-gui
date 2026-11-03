@@ -528,13 +528,15 @@ media and `fullscreenchange` events, so the player needs no hook.
 
 **Telling users the source isn't answering, from their own traffic.**
 Each provider's gate keeps a `HealthRun` beside its breaker, fed every
-outcome it records together with whether a user was waiting on the
-request. The source is reported not answering after four consecutive
+outcome the breaker takes as evidence (one it refuses as stale reaches
+neither), together with whether a user was waiting on the request. The source is reported not answering after four consecutive
 failures (the breaker opening, and its next attempt failing too) with a
-user's request among them. Failures only background probes saw, and one
-flaky minute, raise nothing; a rate limit is the source answering, busy,
-and neither counts nor ends a run. The first success ends an outage and
-the row says the source is answering again. The renderer reads the
+user's request among them. The rule counts failures, not time: a few
+failures in a row, or any number only background probes saw, raise
+nothing; a rate limit is the source answering, busy, and neither counts
+nor ends a run. The first success ends an outage and the row says the
+source is answering again; so does the backend reporting the source
+plainly answering, as it does after a restart. The renderer reads the
 answer from `GET /api/source-health` every ten seconds and when the
 window regains focus. That is a loopback read: nothing is sent to the
 source or anywhere else to find out. Since an outage and something
@@ -565,16 +567,18 @@ the flags file's `flags` object, which no flag may be declared under:
 
 They need no request of their own: the block is part of the one launch
 fetch, cached with it, and decided once with the flags
-(`FlagStore::notices`). `backend/src/notices/remote.rs` reads it
-strictly. `format` is the block's version: a build reads only the format
+(`FlagStore::notices`, which keeps the block as it came). The parser
+that will read it, `backend/src/notices/remote.rs`, is built and tested
+but not yet called, so nothing is parsed or logged at run time today. `format` is the block's version: a build reads only the format
 it knows and drops any other block whole. Fields a build does not know
 are ignored, so a later field (a button whose action comes from a fixed
 list, an image served from this repository) reaches older builds as a
-notice without it. A notice whose known fields are malformed is dropped
-and logged, never shown in part: the title is one line of at most 120
+notice without it. A notice whose known fields are malformed is dropped,
+with its reason, never shown in part: the title is one line of at most 120
 characters, the body plain text of at most 1,000, neither with control
 or direction-override characters; the link plain `http` or `https` with
-no credentials, at most 300 bytes; the priority one of `info`,
+no credentials, at most 300 bytes as serialised; an `about` that is not
+the string `"source"` is ignored rather than dropping the notice; the priority one of `info`,
 `warning`, `critical`; the version bounds `X.Y.Z`. At most eight notices
 are kept. Nothing in the block is HTML, and nothing renders it as HTML.
 

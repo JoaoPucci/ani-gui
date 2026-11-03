@@ -4,7 +4,6 @@
 //!
 //! ```json
 //! { "flags": {
-//!     "notification_center": true,
 //!     "notices": {
 //!       "format": 1,
 //!       "donation_ask": 2,
@@ -33,11 +32,15 @@
 //! `min_app` and `max_app` aim a notice at a range of releases, so a
 //! notice can also name the builds that understand it.
 //!
-//! **Strict.** Every known field is checked. A notice with a field that
-//! is malformed — a link that is not plain `http`/`https`, text past
+//! **Strict.** Every known field is checked; an `about` other than the
+//! string `"source"` is the one ignored rather than refused. A notice
+//! with a field that is malformed — a link that is not plain `http`/`https`, text past
 //! its limit or carrying control or direction-override characters, a
-//! priority this build does not know — is dropped and the reason
-//! logged; it is never shown in part. Pure: no I/O, no clock.
+//! priority this build does not know — is dropped, with its reason in
+//! [`Parsed::dropped`]; it is never shown in part. Pure: no I/O, no
+//! clock. Not called yet: the block is kept unparsed with the launch's
+//! flags (`FlagStore::notices`) until showing remote content is
+//! settled.
 
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -60,7 +63,8 @@ pub const MAX_ID_CHARS: usize = 64;
 pub const MAX_TITLE_CHARS: usize = 120;
 /// The longest body, in characters. Line breaks allowed.
 pub const MAX_BODY_CHARS: usize = 1000;
-/// The longest link, in bytes of its serialised form.
+/// The longest link, in bytes of its serialised form (the `_CHARS`
+/// names the limit's family; the count is bytes).
 pub const MAX_LINK_CHARS: usize = 300;
 
 /// How loudly a notice is shown; the renderer maps it to a colour.

@@ -10,7 +10,9 @@
 //!
 //! - [`remote`] — the typed, versioned block of notices and the
 //!   donation-ask number, validated strictly: anything malformed is
-//!   dropped and logged, never passed on.
+//!   dropped with its reason, never passed on. Built and tested, not
+//!   called yet: the block is kept unparsed until showing remote
+//!   content is settled.
 
 mod fields;
 pub mod remote;
