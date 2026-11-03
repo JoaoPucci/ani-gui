@@ -185,17 +185,18 @@ ani-gui keeps the following on your computer only:
 
 Most requests follow what you open: a page fetches what it shows, and
 pages resolve episodes ahead of a play (below). At launch the app
-checks for updates and fetches the remote flags file (both below) and, with an account connected, refreshes
-its sign-in if it has expired; both happen again when changing the
-language reloads the window. The app always opens on the home page,
-which as it loads fetches its catalogue rows and their images,
+checks for updates and fetches the remote flags file (both below) and,
+with an account connected, refreshes its sign-in if it has expired;
+the update check and the sign-in refresh happen again when changing
+the language reloads the window. The app always opens on the home
+page, which as it loads fetches its catalogue rows and their images,
 resolves your Continue Watching rows and checks that they are still
 available, checks the availability of the shows on the page — asking
 the streaming site about those it has no recent answer for — and, with
 an account connected, loads the Watch Later rail from your saved
 tracker list, asking the tracker to confirm who you are and fetching
-the list again when the saved copy is six hours old or more. For
-each kind of request:
+the list again when the saved copy is six hours old or more. For each
+kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, and the streaming
   catalogue playback resolves against: hianime (reached at hianime.at). anidb.app was asked first
