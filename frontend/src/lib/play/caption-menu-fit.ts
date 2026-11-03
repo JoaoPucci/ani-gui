@@ -27,6 +27,8 @@ export interface MenuRoom {
 	ceiling?: number;
 	/** The least height the menu keeps, however little room there is. */
 	floor?: number;
+	/** The player's height, which bounds the menu's. */
+	frameHeight?: number;
 }
 
 /** The menu's greatest height, in whole pixels: the room below the
