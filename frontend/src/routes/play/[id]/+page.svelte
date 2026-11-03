@@ -3284,11 +3284,14 @@
 										id="pc-cc-menu"
 										class="pc-cc-menu"
 										role="menu"
+										aria-labelledby="pc-cc-menu-heading"
 										tabindex="-1"
 										use:fitCcMenu
 										onkeydown={onCcMenuKey}
 									>
-										<p class="pc-cc-menu-heading">{m.play_controls_cc_menu_heading()}</p>
+										<p id="pc-cc-menu-heading" class="pc-cc-menu-heading">
+											{m.play_controls_cc_menu_heading()}
+										</p>
 										<button
 											type="button"
 											class="pc-menu-item pc-cc-item"
@@ -3375,6 +3378,7 @@
 									id="pc-overflow-menu"
 									class="pc-menu"
 									role="menu"
+									aria-label={m.play_controls_menu_aria_label()}
 									tabindex="-1"
 									onkeydown={onPcMenuKey}
 								>

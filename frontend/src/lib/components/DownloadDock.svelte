@@ -51,7 +51,7 @@
 
 	// A dock that goes with its last row takes its menu with it, and
 	// the next download's dock comes back closed. Focus in it moves on,
-	// before it goes, to the control after it, as Tab would.
+	// before it goes, to the next tab stop after it ($lib/menu/menu-dom).
 	$effect.pre(() => {
 		if (hasItems || !wrap) return;
 		if (wrap.contains(document.activeElement)) focusAfter(wrap);

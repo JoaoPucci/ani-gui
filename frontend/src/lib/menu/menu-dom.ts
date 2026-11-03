@@ -47,9 +47,10 @@ export function stepMenuFocus(e: KeyboardEvent): void {
 export interface MenuKeyTarget {
 	/** The menu's button, which focus returns to. */
 	readonly anchor: HTMLElement | null;
-	/** Closes the menu. The components take the menu out of the page
-	 *  before returning (Svelte's `flushSync`), so that for Tab nothing
-	 *  of it is left for the browser to move into from the button. */
+	/** Closes the menu. The components apply the close at once (Svelte's
+	 *  `flushSync`): the menu leaves the page, or, with an outro to play,
+	 *  is inert while it leaves. Either way Tab, moving on from the
+	 *  button, has nothing of it to move into. */
 	close(): void;
 }
 
@@ -88,17 +89,30 @@ export function onMenuTabOrType(e: KeyboardEvent, target: MenuKeyTarget): boolea
 	return true;
 }
 
-/** What takes focus from the keyboard. */
-const TABBABLE =
-	'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+/** What takes focus from the keyboard: the focusable controls, less
+ *  any taken out of the tab order. */
+const TABBABLE = [
+	'a[href]',
+	'button:not(:disabled)',
+	'input:not(:disabled)',
+	'select:not(:disabled)',
+	'textarea:not(:disabled)',
+	'[tabindex]'
+]
+	.map((s) => `${s}:not([tabindex="-1"])`)
+	.join(', ');
 
-/** Focuses the first control after `el` in the page's order, outside
- *  it: where Tab would go from `el`'s end. Nothing when none follows. */
+/** Focuses the first tab stop after `el` in the page's order, outside
+ *  it, passing over any that does not take focus (hidden, or inert).
+ *  Nothing when none follows. */
 export function focusAfter(el: Element): void {
-	const next = Array.from(document.querySelectorAll<HTMLElement>(TABBABLE)).find(
+	const after = Array.from(document.querySelectorAll<HTMLElement>(TABBABLE)).filter(
 		(c) => !el.contains(c) && !!(el.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING)
 	);
-	next?.focus();
+	for (const c of after) {
+		c.focus();
+		if (document.activeElement === c) return;
+	}
 }
 
 /** After the menu's items changed while it was open: when the item

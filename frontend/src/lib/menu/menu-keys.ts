@@ -7,11 +7,11 @@
  * and End go to the first and last; Left and Right are held in the
  * menu — these menus open nothing sideways, and on the play page the
  * player would take them as seek keys. A typed character is held too,
- * Space aside (it presses the item): n, f and m are the player's. Escape closes the menu with
- * focus back on its button, and so does Shift+Tab, the button being
- * where that key heads; Tab closes it and moves on past the button.
- * A key with Alt, Ctrl or Meta held is the browser's, as it is the
- * player's ($lib/play/menu-arrow's `plainKey`).
+ * Space aside (it presses the item): n, p, f and m are the player's.
+ * Escape closes the menu with focus back on its button, and so does
+ * Shift+Tab, the button being where that key heads; Tab closes it and
+ * moves on past the button. A key with Alt, Ctrl or Meta held is the
+ * browser's, as it is the player's ($lib/play/menu-arrow's `plainKey`).
  *
  * `$lib/menu/menu-dom` applies the step to a menu element.
  */
