@@ -45,8 +45,9 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long the signature may lag behind the file once the file has
 /// arrived. Both are asked for at once; this bounds only the wait after
 /// the file, so a signature that hangs costs the notices without
-/// holding the flags past the launch's own wait. Stub value.
-pub const SIGNATURE_GRACE: Duration = Duration::from_secs(60);
+/// holding the flags past the launch's own wait
+/// ([`super::store::SETTLE_CAP`]).
+pub const SIGNATURE_GRACE: Duration = Duration::from_millis(750);
 
 /// The client the flags file is fetched with: its own, for the
 /// connect timeout above. Falls back to the default client if the
@@ -69,27 +70,40 @@ pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Op
 
 /// [`fetch`], trusting the signature keys `keys`: the file and its
 /// detached signature, from the same address with [`SIGNATURE_SUFFIX`]
-/// appended, asked for at once, each within `timeout`. The flags are
-/// returned whatever the signature says; the notices block only when
-/// the file verifies under one of `keys` (see [`super::signature`]). A
-/// signature that fails or does not arrive in time is no signature: it
-/// costs the notices, never the flags.
+/// appended, asked for at once. The file has `timeout`; once it has
+/// arrived the signature has at most [`SIGNATURE_GRACE`] more, and a
+/// file that fails ends the attempt without waiting for it. The flags
+/// are returned whatever the signature says; the notices block only
+/// when the file verifies under one of `keys` (see
+/// [`super::signature`]). A signature that fails or does not arrive in
+/// time is no signature: it costs the notices, never the flags.
 pub async fn fetch_trusting(
     client: &reqwest::Client,
     url: &str,
     timeout: Duration,
     keys: &[&str],
 ) -> Option<Document> {
+    let sig_client = client.clone();
     let sig_url = format!("{url}{SIGNATURE_SUFFIX}");
-    let (body, signature) = tokio::join!(
-        tokio::time::timeout(timeout, fetch_body(client, url, timeout)),
-        tokio::time::timeout(timeout, fetch_body(client, &sig_url, timeout)),
-    );
-    let body = body.ok()??;
+    let mut signature =
+        tokio::spawn(async move { fetch_body(&sig_client, &sig_url, timeout).await });
+    let body = tokio::time::timeout(timeout, fetch_body(client, url, timeout))
+        .await
+        .ok()
+        .flatten();
+    let Some(body) = body else {
+        signature.abort();
+        return None;
+    };
+    let signature = match tokio::time::timeout(SIGNATURE_GRACE, &mut signature).await {
+        Ok(Ok(sig)) => sig,
+        _ => {
+            signature.abort();
+            None
+        }
+    };
     let doc = parse_document(&body)?;
     let signature = signature
-        .ok()
-        .flatten()
         .filter(|s| s.len() <= MAX_SIGNATURE_BYTES)
         .and_then(|s| String::from_utf8(s).ok());
     let verdict = verify(&body, signature.as_deref(), keys);
