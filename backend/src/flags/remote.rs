@@ -1,5 +1,8 @@
 //! The request for the flags file: one per launch, and in a session
-//! where it fails, the occasional retry (see [`super::refresh`]).
+//! where it fails, the occasional retry (see [`super::refresh`]). Each
+//! attempt also asks for the file's detached signature beside it, which
+//! decides whether the notices the file carries may be used (see
+//! [`super::signature`]).
 //!
 //! The file lives on the repository's `flags` branch and is read from
 //! `raw.githubusercontent.com`, GitHub's content CDN — not the REST
@@ -11,6 +14,7 @@
 use std::time::Duration;
 
 use super::resolve::{parse_document, Document, MAX_BYTES};
+use super::signature::{admit, verify, MAX_SIGNATURE_BYTES, SIGNATURE_SUFFIX, TRUSTED_KEYS};
 
 /// Where the flags file is read from.
 pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json";
@@ -54,21 +58,33 @@ pub fn client() -> reqwest::Client {
 /// transport error, the timeout, a status other than 200, a body over
 /// the cap, or a body that is not a flags document.
 pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Document> {
-    fetch_trusting(client, url, timeout, &[]).await
+    fetch_trusting(client, url, timeout, TRUSTED_KEYS).await
 }
 
-/// [`fetch`], trusting the signature keys `keys`. Stub.
+/// [`fetch`], trusting the signature keys `keys`: the file, then its
+/// detached signature from the same address with
+/// [`SIGNATURE_SUFFIX`] appended, both within `timeout`. The flags are
+/// returned whatever the signature says; the notices block only when
+/// the file verifies under one of `keys` (see [`super::signature`]). A
+/// signature that cannot be fetched is no signature.
 pub async fn fetch_trusting(
     client: &reqwest::Client,
     url: &str,
     timeout: Duration,
     keys: &[&str],
 ) -> Option<Document> {
-    let _ = keys;
-    let body = tokio::time::timeout(timeout, fetch_body(client, url, timeout))
-        .await
-        .ok()??;
-    parse_document(&body)
+    let both = async {
+        let body = fetch_body(client, url, timeout).await?;
+        let doc = parse_document(&body)?;
+        let signature = fetch_body(client, &format!("{url}{SIGNATURE_SUFFIX}"), timeout)
+            .await
+            .filter(|s| s.len() <= MAX_SIGNATURE_BYTES)
+            .and_then(|s| String::from_utf8(s).ok());
+        let verdict = verify(&body, signature.as_deref(), keys);
+        tracing::info!(?verdict, "flags file signature checked");
+        Some(admit(doc, verdict))
+    };
+    tokio::time::timeout(timeout, both).await.ok()?
 }
 
 /// The body of a 200 response, read no further than one byte past the
