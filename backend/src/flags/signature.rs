@@ -115,3 +115,7 @@ mod tests;
 #[cfg(test)]
 #[path = "signature_turn_on_test.rs"]
 mod turn_on_tests;
+
+#[cfg(test)]
+#[path = "signature_minisign_test.rs"]
+mod minisign_tests;
