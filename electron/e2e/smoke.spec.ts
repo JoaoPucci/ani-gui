@@ -247,15 +247,19 @@ test("the app's window paints the app's dark background and is revealed once its
   // a white frame between the splash and Home.
   const { app } = await launchAppWithStubs();
   try {
+    // Once the reveal is over, only the app's window is left.
+    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
     const backgrounds = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((w) => w.getBackgroundColor().toLowerCase()),
     );
     expect(backgrounds).toEqual(["#0c0a09"]);
+    // The renderer said its first page had rendered while the window
+    // was still hidden: the reveal waited for it.
     const ready = await app.evaluate(() => {
       const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
       return main.require("./lib/app-window.cjs").lastAppReady();
     });
-    expect(ready).toEqual({ rendered: true, gaveUp: false });
+    expect(ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
   } finally {
     await app.close();
   }

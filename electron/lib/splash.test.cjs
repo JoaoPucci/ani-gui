@@ -27,7 +27,7 @@ test("the splash is a small frameless window above everything, shown once painte
   assert.ok(o.width > 0 && o.width <= 640 && o.height > 0 && o.height <= 480);
   // The ink the app and the splash page paint (tokens.css --ink-000),
   // so nothing of another colour flashes before the page does.
-  assert.equal(o.backgroundColor, "#0c0a09");
+  assert.equal(o.backgroundColor, require("./app-window.cjs").APP_BACKGROUND);
   assert.equal(o.webPreferences.contextIsolation, true);
   assert.equal(o.webPreferences.nodeIntegration, false);
   assert.equal(o.webPreferences.preload, undefined);
