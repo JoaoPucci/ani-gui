@@ -377,11 +377,11 @@ three-second limit below.
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate
 a frame at a time, beside a reel title (`electron/splash/`). Nothing
-on it counts or reads as progress: the slot under the title is empty.
-Its motion starts only when the main process tells it to, once the
-window is on screen and the reduced-motion setting is known; under reduced motion it rests on a still frame, and
-the page's own fallback timer, for a signal that never comes, rests it
-too rather than starting the motion. The mark is `mark.svg` alone,
+on it counts or reads as progress. Its motion starts only when the
+main process tells it to, once the window is on screen and the
+reduced-motion setting is known; under reduced motion it rests on a
+still frame, and the page's own fallback timer, for a signal that never
+comes, rests it too rather than starting the motion. The mark is `mark.svg` alone,
 and the layout holds for a mark of another shape, so a new mark replaces
 one file.
 
