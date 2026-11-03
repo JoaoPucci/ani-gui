@@ -152,3 +152,19 @@ async fn a_listing_past_the_cap_is_incomplete() {
     assert_eq!(listing.relations.len(), 20 * FRANCHISE_MAX_PAGES);
     assert!(!listing.complete);
 }
+
+/// Kitsu answering with an error status is that status, not a listing.
+#[tokio::test]
+async fn an_error_status_is_no_listing() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/media-relationships"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let client = KitsuClient::with_base(reqwest::Client::new(), server.uri());
+    assert!(matches!(
+        client.franchise_relations("9").await,
+        Err(AniError::Upstream { status: 503 })
+    ));
+}
