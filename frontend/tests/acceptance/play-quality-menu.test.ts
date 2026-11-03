@@ -512,6 +512,55 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		expect(document.activeElement).toBe(moreButton());
 	});
 
+	it('moves through the menu with the arrow keys, which leave the player alone', async () => {
+		await nativeMaster();
+		const video = playerVideo();
+		video.volume = 0.5;
+		const time = video.currentTime;
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => document.activeElement === moreItems()[0], 'focus on the list');
+
+		const press = (key: string) =>
+			(document.activeElement ?? document.body).dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true })
+			);
+		const focused = () => document.activeElement?.textContent?.replace('✓', '').trim();
+		// Back row, Auto, then the levels, wrapping at the ends.
+		press('ArrowDown');
+		expect(focused()).toBe(m.play_quality_auto());
+		press('ArrowDown');
+		expect(focused()).toBe(label(1080));
+		press('End');
+		expect(focused()).toBe(label(360));
+		press('ArrowDown');
+		expect(focused()).toBe(m.play_controls_menu_quality_label());
+		press('ArrowUp');
+		expect(focused()).toBe(label(360));
+		press('Home');
+		expect(focused()).toBe(m.play_controls_menu_quality_label());
+		expect(video.volume).toBe(0.5);
+		expect(video.currentTime).toBe(time);
+	});
+
+	it('drops back to the main list when the stream retires under the open levels', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+
+		// Another session attaches: the levels retire with the old one.
+		// Focus goes to the menu's own button, which nothing disables,
+		// rather than to an item a switch may have disabled.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the next engine');
+		await until(() => moreRadios().length === 0, 'the main list');
+		expect(target.querySelector('#np-more-menu')).not.toBe(null);
+		await until(() => document.activeElement === moreButton(), 'focus on the menu button');
+	});
+
 	it('names the one level of a single-level stream, with nothing to open', async () => {
 		const hls = await mountHls(false);
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[2]] });
