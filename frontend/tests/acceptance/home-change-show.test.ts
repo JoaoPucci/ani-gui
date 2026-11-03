@@ -106,8 +106,12 @@ function serve() {
 	server.use(
 		...homeHandlers({}, [
 			...linkBackendHandlers(backend),
-			// The JoJo card's own row was watched last, so it is the card,
-			// and the 2012 listing's row hides behind it.
+			// The JoJo card's own row leads here, watched last, and the
+			// 2012 listing's row hides behind it. A guessed play of the
+			// card that lands on the 2012 listing stamps that row later,
+			// and then it leads instead: the pill links what the card
+			// shows, the 2012 row. Which row Home should offer then is an
+			// open decision on PR #336.
 			http.get(`${API_BASE}/api/watched-at`, () =>
 				HttpResponse.json({ [JOJO_CARD]: 2_000, [JOJO_PLAYED]: 1_000 })
 			),
