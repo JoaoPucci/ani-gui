@@ -20,6 +20,7 @@
 	"resolved_sr": "Resuelto.",
 	"toast_view": "Ver",
 	"detail_missing": "Esta notificación ya no está aquí. Puede que se haya descartado o resuelto.",
+	"detail_off": "Las notificaciones no están activadas en esta versión.",
 	"update_title": "ani-gui {tag} está disponible",
 	"update_meta": "Tienes la {current}",
 	"update_body": "Salió una versión más nueva de ani-gui. Ábrela para ver qué cambió y cómo instalarla.",
@@ -35,7 +36,7 @@
 			}
 		}
 	],
-	"outage_body": "La fuente no responde desde las {time}. Todavía no sabemos por qué: puede que esté caída, o que algo entre tú y ella la esté bloqueando. Desde aquí ambos casos se ven igual.",
+	"outage_body": "La fuente no responde desde {time}. Todavía no sabemos por qué: puede que esté caída, o que algo entre tú y ella la esté bloqueando. Desde aquí ambos casos se ven igual.",
 	"outage_body_still": "Explorar, buscar y tus listas siguen funcionando; solo reproducir y descargar necesitan la fuente.",
 	"outage_evidence_label": "Lo que vio ani-gui",
 	"outage_evidence": [
@@ -43,15 +44,15 @@
 			"declarations": ["input last", "input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} intento de alcanzarla falló, a las {last}. ani-gui no hizo solicitudes adicionales para averiguarlo.",
-				"countPlural=*": "{count} intentos seguidos de alcanzarla fallaron, el último a las {last}. ani-gui no hizo solicitudes adicionales para averiguarlo."
+				"countPlural=one": "{count} intento de alcanzarla falló ({last}). ani-gui no hizo solicitudes adicionales para averiguarlo.",
+				"countPlural=*": "{count} intentos seguidos de alcanzarla fallaron; el último, {last}. ani-gui no hizo solicitudes adicionales para averiguarlo."
 			}
 		}
 	],
 	"outage_resolved_title": "La fuente de streaming volvió a responder",
-	"outage_resolved_meta": "Funciona de nuevo desde las {time}",
-	"outage_resolved_body": "La fuente volvió a responder a las {time}. La reproducción debería funcionar con normalidad.",
-	"outage_line": "La fuente de streaming no responde desde las {time}. Todavía no sabemos por qué; la reproducción podría fallar.",
+	"outage_resolved_meta": "Funciona de nuevo desde {time}",
+	"outage_resolved_body": "La fuente volvió a responder ({time}). La reproducción debería funcionar con normalidad.",
+	"outage_line": "La fuente de streaming no responde desde {time}. Todavía no sabemos por qué; la reproducción podría fallar.",
 	"outage_line_details": "Detalles",
 	"download_done_title": [
 		{

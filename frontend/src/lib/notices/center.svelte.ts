@@ -1,9 +1,10 @@
 /**
  * The notification center's state: the list, whether its panel is
  * open, and the toasts held while something is fullscreen. One
- * instance lives for the window (`noticeCenter`), created only when the
- * center's flag is on; with the flag off nothing here runs, so nothing
- * is read from or written to its storage.
+ * instance lives for the window (`noticeCenter`, ./instance). Creating
+ * it reads and writes nothing; the layout loads it only while the
+ * center's flag is on, so with the flag off its storage is never
+ * touched.
  *
  * The rules live in pure modules — the list in ./model, arrival in
  * ./arrival — and this class only holds their state and calls out:
@@ -39,6 +40,9 @@ export interface CenterDeps {
 	now: () => number;
 	/** Shows a notice as a toast. */
 	toast: (n: Notice) => void;
+	/** What the window is doing right now, read at each arrival. The
+	 *  last moment reported to `setMoment` stands in without it. */
+	moment?: () => Moment;
 }
 
 export class NoticeCenter {
@@ -84,9 +88,14 @@ export class NoticeCenter {
 	take(changes: readonly SourceChange[]): void {
 		for (const c of changes) {
 			if (c.op === 'raise') this.raise(c.input);
-			else if (c.op === 'resolve') this.resolve(c.key, c.at, c.data);
-			else this.set(withdraw(this.rows, c.key));
+			else if (c.op === 'resolve') this.resolve(c.key, c.at ?? this.deps.now(), c.data);
+			else this.withdraw(c.key);
 		}
+	}
+
+	private withdraw(key: string): void {
+		const next = withdraw(this.rows, key);
+		if (next.length !== this.rows.length) this.set(next);
 	}
 
 	markRead(key: string): void {
@@ -112,9 +121,10 @@ export class NoticeCenter {
 	}
 
 	private apply(c: Change): void {
+		if (!c.changed) return;
 		this.set(c.list);
 		if (!c.notice) return;
-		const how = arrival(c.notice, c.fresh, this.moment);
+		const how = arrival(c.notice, c.fresh, this.deps.moment?.() ?? this.moment);
 		if (how === 'toast') this.deps.toast(c.notice);
 		else if (how === 'hold') this.held.push(c.notice.key);
 	}

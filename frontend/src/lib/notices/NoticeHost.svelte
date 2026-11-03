@@ -13,8 +13,8 @@
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { updateStore } from '$lib/update/store.svelte';
-	import { noticeCenter, setNoticeToast } from './instance';
-	import { watchMoment } from './moment';
+	import { noticeCenter, setMomentReader, setNoticeToast } from './instance';
+	import { momentOf, watchMoment } from './moment';
 	import { startHealthPoll } from './health-poll';
 	import { noticeToast, viewOf } from './panel';
 	import { downloadChanges, outageChanges, updateChange } from './sources';
@@ -38,6 +38,7 @@
 	onMount(() => {
 		noticeCenter.load();
 		setNoticeToast((n) => toastStore.push(noticeToast(n, view)));
+		setMomentReader(() => momentOf(document));
 		const stopMoment = watchMoment(document, (at) => noticeCenter.setMoment(at));
 		const poll = startHealthPoll({
 			read: sourceHealth,
@@ -52,6 +53,7 @@
 			poll.stop();
 			stopMoment();
 			setNoticeToast(() => {});
+			setMomentReader(null);
 		};
 	});
 

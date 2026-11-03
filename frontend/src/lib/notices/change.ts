@@ -19,10 +19,14 @@ export function raise(list: readonly Notice[], input: RaiseInput, now: number): 
 			resolvedAt: null,
 			data: { ...input.data }
 		};
-		return { list: [...list, notice], notice, fresh: true };
+		return { list: [...list, notice], notice, fresh: true, changed: true };
 	}
 	const prev = list[i];
 	const fresh = prev.resolvedAt !== null || (lifetimeOf(input.kind) === 'event' && prev.read);
+	const data = { ...prev.data, ...input.data };
+	if (!fresh && add === 0 && prev.kind === input.kind && sameData(prev.data, data)) {
+		return { list: list.slice(), notice: null, fresh: false, changed: false };
+	}
 	const notice: Notice = {
 		...prev,
 		kind: input.kind,
@@ -31,11 +35,11 @@ export function raise(list: readonly Notice[], input: RaiseInput, now: number): 
 		count: fresh ? add : prev.count + add,
 		read: fresh ? false : prev.read,
 		resolvedAt: null,
-		data: { ...prev.data, ...input.data }
+		data
 	};
 	const next = list.slice();
 	next[i] = notice;
-	return { list: next, notice, fresh };
+	return { list: next, notice, fresh, changed: true };
 }
 
 /** Mark the live condition `key` resolved at `now`. It comes back
@@ -50,7 +54,7 @@ export function resolveKey(
 	const i = list.findIndex(
 		(n) => n.key === key && n.resolvedAt === null && lifetimeOf(n.kind) === 'condition'
 	);
-	if (i === -1) return { list: list.slice(), notice: null, fresh: false };
+	if (i === -1) return { list: list.slice(), notice: null, fresh: false, changed: false };
 	const notice: Notice = {
 		...list[i],
 		resolvedAt: now,
@@ -60,7 +64,7 @@ export function resolveKey(
 	};
 	const next = list.slice();
 	next[i] = notice;
-	return { list: next, notice, fresh: true };
+	return { list: next, notice, fresh: true, changed: true };
 }
 
 /** Remove a condition that stopped being true without resolving (the
@@ -69,4 +73,9 @@ export function withdraw(list: readonly Notice[], key: string): Notice[] {
 	return list.filter(
 		(n) => n.key !== key || lifetimeOf(n.kind) === 'event' || n.resolvedAt !== null
 	);
+}
+
+function sameData(a: NoticeData, b: NoticeData): boolean {
+	const keys = Object.keys(b);
+	return keys.length === Object.keys(a).length && keys.every((k) => a[k] === b[k]);
 }

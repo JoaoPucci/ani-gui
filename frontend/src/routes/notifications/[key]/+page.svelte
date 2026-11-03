@@ -50,8 +50,10 @@
 			</div>
 		</header>
 		<NoticeBody {copy} {onAct} />
-	{:else}
+	{:else if enabled}
 		<p class="nd-missing">{m.notices_detail_missing()}</p>
+	{:else}
+		<p class="nd-missing">{m.notices_detail_off()}</p>
 	{/if}
 </article>
 

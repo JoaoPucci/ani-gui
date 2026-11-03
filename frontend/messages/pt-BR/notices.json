@@ -21,6 +21,7 @@
 	"resolved_sr": "Resolvido.",
 	"toast_view": "Ver",
 	"detail_missing": "Esta notificação não está mais aqui. Ela pode ter sido dispensada ou resolvida.",
+	"detail_off": "As notificações não estão ativadas nesta versão.",
 	"update_title": "O ani-gui {tag} está disponível",
 	"update_meta": "Você está na {current}",
 	"update_body": "Saiu uma versão mais nova do ani-gui. Abra para ver o que mudou e como instalar.",
@@ -45,15 +46,15 @@
 			"declarations": ["input last", "input count", "local countPlural = count: plural"],
 			"selectors": ["count", "countPlural"],
 			"match": {
-				"count=0, countPlural=*": "{count} tentativas seguidas de alcançá-la falharam, a última às {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso.",
-				"count=*, countPlural=one": "{count} tentativa de alcançá-la falhou, às {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso.",
-				"count=*, countPlural=*": "{count} tentativas seguidas de alcançá-la falharam, a última às {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso."
+				"count=0, countPlural=*": "{count} tentativas seguidas de alcançá-la falharam; a última, {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso.",
+				"count=*, countPlural=one": "{count} tentativa de alcançá-la falhou ({last}). O ani-gui não fez nenhuma requisição extra para descobrir isso.",
+				"count=*, countPlural=*": "{count} tentativas seguidas de alcançá-la falharam; a última, {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso."
 			}
 		}
 	],
 	"outage_resolved_title": "A fonte de streaming voltou a responder",
 	"outage_resolved_meta": "Funcionando de novo desde {time}",
-	"outage_resolved_body": "A fonte voltou a responder às {time}. A reprodução deve funcionar normalmente.",
+	"outage_resolved_body": "A fonte voltou a responder ({time}). A reprodução deve funcionar normalmente.",
 	"outage_line": "A fonte de streaming não responde desde {time}. Ainda não sabemos por quê; a reprodução pode falhar.",
 	"outage_line_details": "Detalhes",
 	"download_done_title": [

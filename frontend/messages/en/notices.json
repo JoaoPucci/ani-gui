@@ -20,6 +20,7 @@
 	"resolved_sr": "Resolved.",
 	"toast_view": "View",
 	"detail_missing": "This notification is no longer here. It may have been dismissed or resolved.",
+	"detail_off": "Notifications aren't turned on in this version.",
 	"update_title": "ani-gui {tag} is available",
 	"update_meta": "You have {current}",
 	"update_body": "A newer release of ani-gui is out. Open it to read what changed and how to install it.",

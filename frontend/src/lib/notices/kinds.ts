@@ -42,6 +42,9 @@ export interface Change {
 	list: Notice[];
 	notice: Notice | null;
 	fresh: boolean;
+	/** Whether the list changed at all: a source repeating itself
+	 *  changes nothing, and nothing is written for it. */
+	changed: boolean;
 }
 
 export const MAX_ROWS = 50;

@@ -8,7 +8,7 @@ import type { ProviderHealth } from './health-answer';
 
 export type SourceChange =
 	| { op: 'raise'; input: RaiseInput }
-	| { op: 'resolve'; key: string; at: number; data: NoticeData }
+	| { op: 'resolve'; key: string; at?: number; data: NoticeData }
 	| { op: 'withdraw'; key: string };
 
 export const UPDATE_KEY = 'update';
@@ -25,7 +25,8 @@ export { parseHealth, type ProviderHealth } from './health-answer';
 export const outageKey = (provider: string) => `outage:${provider}`;
 
 /** The outage rows the providers' health asks for: raised while a
- *  provider is not answering, resolved once it answers again. */
+ *  provider is not answering, resolved once it answers again or is
+ *  plainly answering. */
 export function outageChanges(health: readonly ProviderHealth[]): SourceChange[] {
 	return health.flatMap((h): SourceChange[] => {
 		const key = outageKey(h.provider);
@@ -43,7 +44,9 @@ export function outageChanges(health: readonly ProviderHealth[]): SourceChange[]
 			];
 		if (h.state === 'answering_again')
 			return [{ op: 'resolve', key, at: h.recovered_ms, data: { since: h.since_ms } }];
-		return [];
+		// Plainly answering: a live row (one the backend has since
+		// forgotten, after a restart) is over as of now.
+		return [{ op: 'resolve', key, data: {} }];
 	});
 }
 

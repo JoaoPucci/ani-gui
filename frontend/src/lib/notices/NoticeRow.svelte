@@ -25,6 +25,7 @@
 	import NoticeBody from './NoticeBody.svelte';
 	import { copyOf, detailPath, when } from './copy';
 	import { canDismiss, toneOf, type Notice } from './model';
+	import { rowDomId } from './panel';
 
 	let {
 		notice,
@@ -48,7 +49,7 @@
 
 	const copy = $derived(copyOf(notice));
 	const tone = $derived(toneOf(notice));
-	const id = $derived(`nr-${notice.key.replace(/[^a-z0-9-]/gi, '_')}`);
+	const id = $derived(rowDomId(notice.key));
 </script>
 
 {#snippet lead()}

@@ -99,7 +99,7 @@
 			close(false);
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== 'Escape') return;
+			if (e.key !== 'Escape' || e.defaultPrevented) return;
 			const inside = panel?.contains(document.activeElement) || bell === document.activeElement;
 			e.preventDefault();
 			close(Boolean(inside));
@@ -112,7 +112,16 @@
 		};
 	});
 
+	// Keys pressed in the panel are the panel's: on the player they
+	// must not also seek, change the volume or toggle fullscreen, whose
+	// shortcuts listen on the document and the window.
 	function onPanelKey(e: KeyboardEvent) {
+		e.stopPropagation();
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			close(true);
+			return;
+		}
 		if (!panel) return;
 		const leads = Array.from(panel.querySelectorAll<HTMLElement>('[data-row] .nr-lead'));
 		const at = leads.findIndex((el) => el.closest('[data-row]')?.contains(document.activeElement));
@@ -125,6 +134,8 @@
 	function actOn(n: Notice) {
 		const action = copyOf(n).action;
 		if (!action) return;
+		// The panel steps aside for whatever the action opens.
+		close(false);
 		act(action.kind, n, {
 			openUpdate: () => updateStore.openDialog(),
 			reveal: (dir) => void window.aniGui?.revealInFolder?.(dir)

@@ -26,6 +26,13 @@ export function stepRow(key: string, at: number, count: number): number | null {
 	}
 }
 
+/** An element id for the row of `key`: distinct for distinct keys,
+ *  made only of characters an id allows. */
+export function rowDomId(key: string): string {
+	const units = Array.from({ length: key.length }, (_, i) => key.charCodeAt(i).toString(36));
+	return `nr-${units.join('-')}`;
+}
+
 export type View = { mode: 'page'; path: string } | { mode: 'in-place'; key: string };
 
 /** Opening a notice goes to its page, except on the player, where
