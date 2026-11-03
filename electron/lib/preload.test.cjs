@@ -93,3 +93,26 @@ test("a flags flag that is not a flat object of booleans and strings counts as n
     assert.deepEqual({ ...bridge.flags }, {}, arg);
   }
 });
+
+test("the renderer can say its first page has rendered, once, on the app-ready channel", () => {
+  const sent = [];
+  const exposed = {};
+  const electron = {
+    contextBridge: { exposeInMainWorld: (name, value) => (exposed[name] = value) },
+    ipcRenderer: {
+      invoke() {},
+      send: (channel) => sent.push(channel),
+      sendSync() {},
+      on() {},
+      removeListener() {},
+    },
+  };
+  vm.runInNewContext(source, {
+    require: () => electron,
+    process: { argv: ["electron", "--ani-gui-api-base=http://127.0.0.1:1"], platform: "linux" },
+    console: { error() {} },
+  });
+  exposed.aniGui.appReady();
+  exposed.aniGui.appReady();
+  assert.deepEqual(sent, ["ani-gui:app-ready"]);
+});

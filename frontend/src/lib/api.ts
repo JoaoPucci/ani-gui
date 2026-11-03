@@ -72,6 +72,10 @@ declare global {
 			 *  `defaults` or `test`; null when the window opened
 			 *  without them. */
 			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has rendered,
+			 *  which the window's reveal waits for (`$lib/app-ready`).
+			 *  Absent in browser-only dev. */
+			appReady?: () => void;
 			/** Open a native folder picker dialog. Returns the chosen
 			 *  absolute path or null on cancel. */
 			pickDirectory?: (options?: {

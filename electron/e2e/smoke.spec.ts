@@ -242,6 +242,25 @@ test("the splash shows while the app starts, and is gone once the app's window h
   }
 });
 
+test("the app's window paints the app's dark background and is revealed once its page has rendered", async () => {
+  // A slow first render (a cold Vite compile, a cold disk) used to show
+  // a white frame between the splash and Home.
+  const { app } = await launchAppWithStubs();
+  try {
+    const backgrounds = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map((w) => w.getBackgroundColor().toLowerCase()),
+    );
+    expect(backgrounds).toEqual(["#0c0a09"]);
+    const ready = await app.evaluate(() => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      return main.require("./lib/app-window.cjs").lastAppReady();
+    });
+    expect(ready).toEqual({ rendered: true, gaveUp: false });
+  } finally {
+    await app.close();
+  }
+});
+
 test("the renderer cannot change the launch's flags", async () => {
   // The flags are the session's. The bridge hands the page frozen
   // copies of what the preload exposes, so neither the flags nor
