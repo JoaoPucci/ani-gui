@@ -397,19 +397,21 @@ late that the splash's minimum time on screen would not show it then
 holds the splash until 250 ms (150 ms on the still frame) after that
 step landed, so the rail is seen complete before the app's window
 replaces it. A line under the rail, in the app's language, appears only
-once the pending step has taken longer than 700 ms, and goes when that
-step lands. While the flags step stalls it says "Network is slow —
-starting in a moment…": the app is waiting on the flags fetch, for at
-most its two-second cap, and what it starts with (the file if it lands
-in time, else the saved copy or the defaults) is not decided yet. A slow
-read of the saved copy can hold that step too, rarely. Any other stalled
-step says "Starting up…". The splash's motion starts only when the main
-process tells it to, once the window is on screen and the reduced-motion
-setting is known; under reduced motion it rests on a still frame and its
-rail lights without a wipe, and the page's own fallback timer, for a
-signal that never comes, rests it too rather than starting the motion.
-The mark is `mark.svg` alone, and the layout holds for a mark of another
-shape, so a new mark replaces one file.
+once the pending step has taken longer than 700 ms, and then stays until
+the splash closes; only its words change, when the reason does. While
+the flags step stalls it says "Network is slow — starting in a moment…":
+the app is waiting on the flags fetch, for at most its two-second cap,
+and what it starts with (the file if it lands in time, else the saved
+copy or the defaults) is not decided yet. A slow read of the saved copy
+can hold that step too, rarely. Any other stalled step says "Starting
+up…", and once the flags land the network line gives way to it at once.
+The splash's motion starts only when the main process tells it to, once
+the window is on screen and the reduced-motion setting is known; under
+reduced motion it rests on a still frame and its rail lights without a
+wipe, and the page's own fallback timer, for a signal that never comes,
+rests it too rather than starting the motion. The mark is `mark.svg`
+alone, and the layout holds for a mark of another shape, so a new mark
+replaces one file.
 
 The store accepts one decision and refuses every later one. A backend
 consumer reads the flags with `FlagStore::settled()`, which waits for

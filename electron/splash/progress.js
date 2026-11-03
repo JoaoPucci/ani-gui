@@ -7,8 +7,11 @@
 // lib/splash.cjs). The line stays empty until a step has been pending
 // `st` ms (`?st=`), counted from the page's load or the last step to
 // land, then says what the main process gave for that step (`?t1=`..
-// `?t3=`, in the app's language), and goes when it lands, unless the
-// next step's line is the same words.
+// `?t3=`, in the app's language). Once up it stays until the splash
+// closes; only its words change, when the reason does. A step whose
+// own line is not the generic one (`?tg=`; the network, for the flags
+// step) shows its words only once it has stalled, and when it lands the
+// generic line takes over at once.
 // A page opened without them (a browser preview) never shows the line.
 // How each change moves, or does not under reduced motion, is
 // splash.css's.
@@ -20,20 +23,22 @@
   const stallMs = Number(q.get('st')) || 700;
   let done = 0;
   let timer = null;
+  const generic = q.get('tg');
+  const say = (text) => {
+    status.textContent = text;
+    status.classList.add('on');
+  };
   const watch = () => {
     clearTimeout(timer);
     if (!status) return;
     const pending = done;
     const text = pending < segments.length ? texts[pending] : null;
-    // A line already up that would say the same for the step now
-    // pending stays up, rather than fading out and back in.
-    if (text && status.classList.contains('on') && status.textContent === text) return;
-    status.classList.remove('on');
-    if (!text) return;
-    timer = setTimeout(() => {
-      status.textContent = texts[pending];
-      status.classList.add('on');
-    }, stallMs);
+    const up = status.classList.contains('on');
+    // A reason that has passed (the network, once the flags landed)
+    // gives way to the generic line at once, never to a gap.
+    if (up && generic && status.textContent !== generic && status.textContent !== text) say(generic);
+    if (!text || (up && status.textContent === text)) return;
+    timer = setTimeout(() => say(text), stallMs);
   };
   window.splashProgress = {
     set(n) {

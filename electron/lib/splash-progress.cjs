@@ -10,7 +10,8 @@
 // its window is about to be revealed anyway, so the rail is always
 // seen complete. The rail carries no words and no numbers. The line
 // under it appears only when the pending step has taken longer than
-// STALL_MS, and goes when the step lands.
+// STALL_MS, and then stays until the splash closes: only its words
+// change, when the reason does.
 
 /** The boot's steps, in the order they land. */
 const STEPS = ["backend", "flags", "page"];

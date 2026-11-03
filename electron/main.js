@@ -384,6 +384,7 @@ const splash = splashController({
   // in the language the app's dialogs speak (read once the app is
   // ready, when the splash opens).
   stallTexts: () => stallTexts(messagesFor(mainLocale())),
+  stallGeneric: () => messagesFor(mainLocale()).splashStartingUp,
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.

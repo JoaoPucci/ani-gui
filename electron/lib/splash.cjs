@@ -99,6 +99,9 @@ function splashController({
   // What the line under the rail says while each step stalls
   // (lib/splash-progress.cjs), read when the splash opens.
   stallTexts = () => [],
+  // The line's generic words, which take over at once from a step's own
+  // when that step lands, read when the splash opens.
+  stallGeneric = () => "",
 }) {
   const state = fresh();
   state.version = version;
@@ -199,12 +202,14 @@ function splashController({
       // The page's query is settled before any window exists, so
       // nothing past this point is left half made.
       let texts = [];
+      let generic = "";
       try {
         texts = stallTexts();
+        generic = stallGeneric();
       } catch (err) {
         logError("[main] the splash's stall line could not be read:", err);
       }
-      const query = splashPageQuery({ version, stallTexts: texts });
+      const query = splashPageQuery({ version, stallTexts: texts, generic });
       let splash;
       try {
         splash = createWindow(splashWindowOptions());
@@ -378,10 +383,11 @@ function fresh() {
 
 /** The query the splash page is opened with: the version above its
  *  title, how long a step may be pending before the stall line shows,
- *  and that line for each step. */
-function splashPageQuery({ version, stallTexts = [] }) {
+ *  that line for each step, and its generic words. */
+function splashPageQuery({ version, stallTexts = [], generic = "" }) {
   const query = { v: version, st: String(STALL_MS) };
   stallTexts.forEach((text, i) => (query[`t${i + 1}`] = text));
+  if (generic) query.tg = generic;
   return query;
 }
 
