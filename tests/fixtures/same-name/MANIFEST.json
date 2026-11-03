@@ -3,9 +3,9 @@
   "captured_at": "2026-11-01",
   "fixtures": {
     "vectors.json": {
-      "source": "Hand-assembled. 11 pairs of a hianime card title with the Kitsu entry it names, the entry's titles read from kitsu.io on 2026-11-01; 5 pairs of a card title with a Kitsu entry it does not name, read the same way; one show key's slug words; and the comparison's edges: the legacy episode-count tail, cour numbers at and past u32 and past double precision, leading zeros, ordinal spellings, full-width digits, non-ASCII case, a name that is a prefix of another.",
-      "size": 8359,
-      "sha256": "ca313d1eb401418adc95c70707e0a308bfb1cb610f9f8375350ca2f2ecc58eb8"
+      "source": "Hand-assembled. 11 pairs of a hianime card title with the Kitsu entry it names, the entry's titles read from kitsu.io on 2026-11-01; 5 pairs of a card title with a Kitsu entry it does not name, read the same way; two show keys' slug words that name their entry — Gintama Season 2's, and Re:ZERO Season 4's, which run \"re\" and \"zero\" together where Kitsu's titles keep them apart (its entry read on 2026-11-03) — and Re:ZERO Season 3's, which do not name the Season 4 entry; and the comparison's edges: the legacy episode-count tail, cour numbers at and past u32 and past double precision, leading zeros, ordinal spellings, full-width digits, non-ASCII case, a name that is a prefix of another, and numbers that are never run together.",
+      "size": 9445,
+      "sha256": "615f4b43e062bcfba8f6e005ffad8312dad36afdb1be477543101eecd537a3a1"
     }
   }
 }
