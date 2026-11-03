@@ -847,7 +847,7 @@ test("a 404 whose load is then superseded still fails the boot", async () => {
   assert.equal(win.reveals, 0);
 });
 
-test("a first page that commits without an error status and is then superseded still opens", async () => {
+test("a first page that commits without an error status and is then superseded is logged and dropped", async () => {
   for (const status of [200, -1]) {
     const logged = [];
     const win = pageWindow(async (w, url) => {

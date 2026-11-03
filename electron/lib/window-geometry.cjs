@@ -1,7 +1,7 @@
 "use strict";
 
-// The size the desktop actually gave the app's window when it
-// maximized it, remembered per display, so the next launch can make
+// The size the desktop actually gave the app's window when a launch
+// revealed it maximized, remembered per display, so the next launch can make
 // its hidden window at that size and reveal it there.
 //
 // The window is made hidden and paints its first page before it is
@@ -91,13 +91,14 @@ const GRANT_SETTLE_MS = 2000;
  * runs from `revealing()` — just before the reveal maximizes the
  * window — for GRANT_SETTLE_MS, and nothing else ends it: on GNOME
  * under Wayland the window reports unmaximized for a moment right after
- * its show, before the compositor's maximized configure brings the size
- * that must be kept. `shown()` and `unmaximized()` are therefore heard
- * and ignored. A later maximize, or a maximized window moved to another
+ * its show (263 ms in, measured), before the compositor's maximized
+ * configure brings the size that must be kept, so an unmaximize must
+ * not end it. main.js records only while the window is maximized, so
+ * that moment stores nothing. A later maximize, or a maximized window moved to another
  * monitor (by keyboard it stays maximized, and Wayland gives no
  * position to tell), falls outside the window and is not recorded.
  */
-function grantedSizeRecorder({ save, setTimer = (fn, ms) => setTimeout(fn, ms) }) {
+function grantedSizeRecorder({ save }) {
   let recording = false;
   let armed = false;
   return {
@@ -105,15 +106,13 @@ function grantedSizeRecorder({ save, setTimer = (fn, ms) => setTimeout(fn, ms) }
       if (armed) return;
       armed = true;
       recording = true;
-      setTimer(() => {
+      setTimeout(() => {
         recording = false;
       }, GRANT_SETTLE_MS);
     },
-    shown() {},
     maximized(size) {
       if (recording) save({ width: size.width, height: size.height });
     },
-    unmaximized() {},
   };
 }
 

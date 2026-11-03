@@ -161,16 +161,28 @@ test("only the sizes granted while the launch's reveal settles are recorded", (t
 });
 
 test("the reveal's own unmaximize while it settles does not stop the recording", (t) => {
-  // Measured on GNOME under Wayland: the window reports unmaximized
-  // for a moment after its show, before the compositor's maximized
-  // configure arrives with the size that must be kept.
+  // Measured on GNOME under Wayland: after its show the window reports
+  // unmaximized for a moment (263 ms in), and only then does the
+  // compositor's maximized configure bring the size that must be kept.
+  // main.js records nothing while the window is unmaximized, and the
+  // recording itself must still be running when the configure lands.
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const writes = [];
   const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
   recorder.revealing();
   recorder.maximized({ width: 1920, height: 1080 });
-  recorder.shown();
-  recorder.unmaximized();
+  t.mock.timers.tick(263);
   recorder.maximized({ width: 1920, height: 1048 });
   assert.deepEqual(writes.at(-1), { width: 1920, height: 1048 });
+});
+
+test("the recording is armed once: a second reveal after it settled records nothing", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const writes = [];
+  const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
+  recorder.revealing();
+  t.mock.timers.tick(GRANT_SETTLE_MS);
+  recorder.revealing();
+  recorder.maximized({ width: 2560, height: 1400 });
+  assert.deepEqual(writes, []);
 });
