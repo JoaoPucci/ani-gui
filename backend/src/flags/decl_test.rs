@@ -146,3 +146,42 @@ fn validation_refuses_a_fallback_with_a_repeated_or_empty_value() {
     assert!(validate(&[fallback("new", &[""])]).is_err());
     assert!(validate(&[fallback("", &["old"])]).is_err());
 }
+
+mod rollout {
+    use super::super::{validate, FlagValue};
+    use crate::flags::test_decls::{TEST_DECLS, TURN_ON, WITH_TURN_ON};
+
+    #[test]
+    fn a_rollout_ships_off_and_may_be_turned_on() {
+        assert_eq!(TURN_ON.default_value(), FlagValue::Bool(false));
+        assert_eq!(
+            TURN_ON.allowed(),
+            vec![FlagValue::Bool(false), FlagValue::Bool(true)]
+        );
+    }
+
+    #[test]
+    fn only_a_rollouts_on_value_needs_a_signature() {
+        assert!(TURN_ON.signed_only(FlagValue::Bool(true)));
+        assert!(!TURN_ON.signed_only(FlagValue::Bool(false)));
+        for decl in TEST_DECLS {
+            for v in decl.allowed() {
+                assert!(!decl.signed_only(v), "{}: {v:?}", decl.name);
+            }
+        }
+    }
+
+    #[test]
+    fn a_rollout_is_a_valid_declaration() {
+        assert_eq!(validate(WITH_TURN_ON), Ok(()));
+    }
+
+    #[test]
+    fn a_rollout_reads_as_off_until_turned_on() {
+        use crate::flags::resolve::{parse_document, resolve};
+        let none = resolve(WITH_TURN_ON, None);
+        assert!(!none.enabled(&TURN_ON));
+        let doc = parse_document(br#"{"flags":{"test_rollout":true}}"#).expect("doc");
+        assert!(resolve(WITH_TURN_ON, Some(&doc)).enabled(&TURN_ON));
+    }
+}

@@ -87,3 +87,7 @@ pub fn admit(mut doc: Document, verdict: Verdict) -> Document {
 #[cfg(test)]
 #[path = "signature_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "signature_turn_on_test.rs"]
+mod turn_on_tests;
