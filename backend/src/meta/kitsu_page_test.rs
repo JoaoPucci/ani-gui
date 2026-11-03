@@ -235,7 +235,8 @@ fn a_word_led_by_a_dash_is_sent_as_the_word() {
 /// "naruto:-shippuden" and "naruto (-shippuden)" answer Naruto without
 /// Shippuden, and "Re:ZERO (-Starting Life in Another World-) Season 4"
 /// answers Zoids Genesis. Only a letter or digit before the dash makes
-/// it text, so every other dash is sent as a gap.
+/// it text; every dash no ASCII letter or digit precedes is sent as a
+/// gap.
 #[test]
 fn a_dash_no_letter_or_digit_leads_is_sent_as_a_gap() {
     for (q, sent) in [
@@ -254,7 +255,7 @@ fn a_dash_no_letter_or_digit_leads_is_sent_as_a_gap() {
     }
 }
 
-/// A dash inside or after a word, or a dash other than `-`, is text
+/// A dash after an ASCII letter or digit, or a dash other than `-`, is text
 /// to Kitsu, and reaches it as typed.
 #[test]
 fn a_dash_inside_or_after_a_word_is_left_alone() {

@@ -32,7 +32,7 @@
       "captured_at": "2026-11-03",
       "size": 2438,
       "sha256": "37db232d7ec55112362de996fc896d6f5e0ac9d2235a52fe0961a02d9f7233d3",
-      "notes": "Kitsu reads a '-' that no letter or digit precedes as an exclusion: this, the provider's Re:ZERO Season 4 title sent as given, answers Zoids Genesis (anime/646) alone."
+      "notes": "Kitsu reads a '-' that no letter or digit precedes as an exclusion (the client sends as a gap every '-' that no ASCII letter or digit precedes): this, the provider's Re:ZERO Season 4 title sent as given, answers Zoids Genesis (anime/646) alone."
     },
     "search_rezero_season_4.json": {
       "request": "GET /anime?filter[text]=Re:ZERO Starting Life in Another World- Season 4&page[size]=20&page[number]=1&fields[anime]=canonicalTitle,titles,abbreviatedTitles,slug,synopsis,startDate,endDate,episodeCount,averageRating,subtype,status,posterImage,coverImage,ageRating,popularityRank",
