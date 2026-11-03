@@ -174,3 +174,18 @@ fn the_wire_shape_is_what_the_renderer_reads() {
         serde_json::json!({ "state": "answering_again", "since_ms": 1, "recovered_ms": 3 })
     );
 }
+
+#[test]
+fn a_gate_outcome_maps_to_its_observation() {
+    use crate::scraper::outcome::ScrapeOutcome;
+    assert_eq!(
+        Observation::of(ScrapeOutcome::Success, true),
+        Observation::Success
+    );
+    assert_eq!(Observation::of(ScrapeOutcome::Failure, true), USER);
+    assert_eq!(Observation::of(ScrapeOutcome::Failure, false), PROBE);
+    assert_eq!(
+        Observation::of(ScrapeOutcome::RateLimited { retry_after: None }, true),
+        Observation::RateLimited
+    );
+}
