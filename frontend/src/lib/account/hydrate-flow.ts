@@ -32,10 +32,16 @@ export interface HydrateTarget {
 	keyringWaiting: boolean;
 	bumpGeneration(provider: Provider): void;
 	nextChange(provider: Provider): Promise<void>;
-	refreshExpired(): Promise<void>;
+	refreshExpired(only?: Provider): Promise<void>;
 }
 
 const PROVIDERS: Provider[] = ['anilist', 'mal', 'inhouse'];
+
+/** One hydrate: whether its first reads have all settled, and its
+ *  refresh run. */
+interface HydrateRun {
+	settled: boolean;
+}
 
 /** One KeyringWait per store, shared by its overlapping hydrates. */
 const waits = new WeakMap<HydrateTarget, KeyringWait>();
@@ -97,19 +103,22 @@ async function readOnce(target: HydrateTarget, p: Provider, wait: KeyringWait): 
  * provider signed out. That is a connect started and cancelled, where
  * the disk still holds the sign-in the overtaken read was after. A
  * change that ended anywhere else (signed in, an error it reported) has
- * said what the provider's state is. A sign-in found expired gets its
- * refresh here, since the hydrate's own has run by then.
+ * said what the provider's state is. A sign-in found expired after the
+ * hydrate's own refresh has run gets one of its own, for that provider.
  */
 async function readAfterChange(
 	target: HydrateTarget,
 	p: Provider,
-	wait: KeyringWait
+	wait: KeyringWait,
+	hydrate: HydrateRun
 ): Promise<void> {
 	for (;;) {
 		while (changing(target, p)) await target.nextChange(p);
 		if (kindOf(target, p) !== 'disconnected') return;
 		if (await readOnce(target, p, wait)) {
-			if (kindOf(target, p) === 'expired') void target.refreshExpired();
+			// While the hydrate is still out its own refresh covers this
+			// sign-in; asking here too would exchange one refresh token twice.
+			if (hydrate.settled && kindOf(target, p) === 'expired') void target.refreshExpired(p);
 			return;
 		}
 	}
@@ -122,19 +131,29 @@ async function readAfterChange(
  * hydrate or refresh. The keyring notice counts the reads alone, not
  * the waits for a change.
  */
-async function firstRead(target: HydrateTarget, p: Provider, wait: KeyringWait): Promise<void> {
+async function firstRead(
+	target: HydrateTarget,
+	p: Provider,
+	wait: KeyringWait,
+	hydrate: HydrateRun
+): Promise<void> {
 	if (!changing(target, p) && (await readOnce(target, p, wait))) return;
-	void readAfterChange(target, p, wait);
+	void readAfterChange(target, p, wait, hydrate);
 }
 
 /**
- * Read every provider and apply each answer; then give a just-expired
- * but refreshable provider its refresh. Every hydrate path (cold launch
+ * Read every provider and apply each answer — a provider a change got in
+ * the way of is read in the background (see `firstRead`) — then give a
+ * just-expired but refreshable provider its refresh. Every hydrate path (cold launch
  * AND the account page) must do that, so the hydrate owns it rather
  * than each caller remembering.
  */
 export function hydrateAccounts(target: HydrateTarget): Promise<void> {
 	const wait = waitFor(target);
-	const settled = Promise.all(PROVIDERS.map((p) => firstRead(target, p, wait)));
-	return settled.then(() => target.refreshExpired());
+	const hydrate: HydrateRun = { settled: false };
+	const settled = Promise.all(PROVIDERS.map((p) => firstRead(target, p, wait, hydrate)));
+	return settled.then(() => {
+		hydrate.settled = true;
+		return target.refreshExpired();
+	});
 }

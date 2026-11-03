@@ -126,26 +126,30 @@ class AccountStore {
 	 * usable refresh token (MAL's ~1h access token), re-persisting the
 	 * rotated tokens and flipping it back to `connected`. AniList carries
 	 * no refresh token, so it stays expired → reauth. Best-effort and
-	 * safe to `void` from the layout's onMount after hydrate.
+	 * safe to `void` from the layout's onMount after hydrate. `only`
+	 * limits it to one provider.
 	 */
-	refreshExpired(): Promise<void> {
-		return refreshExpiredAccounts({
-			byProvider: () => this.byProvider,
-			onRefreshed: (provider, account) => this.setConnected(provider, account),
-			refreshTokens,
-			persistAccount,
-			// Post-await staleness guard: the per-provider generation counter
-			// advances on any account change (and synchronously at the start
-			// of an async disconnect), so a refresh that resolved after a
-			// mid-flight disconnect / re-auth is dropped — even before the
-			// store snapshot catches up.
-			generation: (provider) => this.accountGeneration[provider],
-			onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
-			ownWrite: beginOwnWrite,
-			// Don't even start an expired refresh for a provider whose
-			// disconnect is mid-flight.
-			changing: (provider) => this.accountChanging[provider]
-		});
+	refreshExpired(only?: Provider): Promise<void> {
+		return refreshExpiredAccounts(
+			{
+				byProvider: () => this.byProvider,
+				onRefreshed: (provider, account) => this.setConnected(provider, account),
+				refreshTokens,
+				persistAccount,
+				// Post-await staleness guard: the per-provider generation counter
+				// advances on any account change (and synchronously at the start
+				// of an async disconnect), so a refresh that resolved after a
+				// mid-flight disconnect / re-auth is dropped — even before the
+				// store snapshot catches up.
+				generation: (provider) => this.accountGeneration[provider],
+				onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
+				ownWrite: beginOwnWrite,
+				// Don't even start an expired refresh for a provider whose
+				// disconnect is mid-flight.
+				changing: (provider) => this.accountChanging[provider]
+			},
+			only
+		);
 	}
 
 	/**
