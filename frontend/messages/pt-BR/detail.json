@@ -161,7 +161,7 @@
 	"link_change": "Alterar",
 	"link_dialog_eyebrow": "Corrigir correspondência",
 	"link_dialog_title": "Qual anime é “{title}”?",
-	"link_dialog_body": "Continuar assistindo retoma no episódio {episode}. Escolha o anime que ele realmente é.",
+	"link_dialog_body": "Continuar assistindo retoma no episódio {episode}. Escolha de qual anime ele é de verdade.",
 	"link_search_label": "Buscar um anime",
 	"link_search_placeholder": "Título, temporada ou ano",
 	"link_search_submit": "Buscar",

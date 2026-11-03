@@ -156,7 +156,7 @@
 	"link_change": "Cambiar",
 	"link_dialog_eyebrow": "Corregir coincidencia",
 	"link_dialog_title": "¿Qué serie es «{title}»?",
-	"link_dialog_body": "Seguir viendo retoma en el episodio {episode}. Elige la serie que realmente es.",
+	"link_dialog_body": "Seguir viendo retoma en el episodio {episode}. Elige a qué serie pertenece en realidad.",
 	"link_search_label": "Buscar una serie",
 	"link_search_placeholder": "Título, temporada o año",
 	"link_search_submit": "Buscar",

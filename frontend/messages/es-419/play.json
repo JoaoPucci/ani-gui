@@ -153,6 +153,6 @@
 	"link_menu_item": "No es esta serie…",
 	"link_playing_now": "Reproduciendo",
 	"link_change_button": "¿No es esta serie? Cambiar",
-	"link_dialog_body": "Se está reproduciendo el episodio {episode}. Elige la serie que realmente es.",
+	"link_dialog_body": "Se está reproduciendo el episodio {episode}. Elige a qué serie pertenece en realidad.",
 	"link_warning_episode": "Se está reproduciendo el episodio {episode}, pero esta serie tiene {count} episodios."
 }
