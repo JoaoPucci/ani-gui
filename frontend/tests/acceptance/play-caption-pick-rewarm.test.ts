@@ -33,7 +33,6 @@ vi.mock('$lib/account/push-watched', () => ({
 	syncWatchedToTrackers: vi.fn(async () => {})
 }));
 
-import { goto } from '$app/navigation';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
@@ -64,13 +63,16 @@ class FakeEventSource {
 type GlobalLike = { EventSource?: typeof FakeEventSource };
 const g = globalThis as unknown as GlobalLike;
 
+/** The episodes the page stamped as watched, in order. */
+const watched: string[] = [];
+
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
-	vi.mocked(goto).mockClear();
+	watched.length = 0;
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	localStorage.clear();
@@ -133,7 +135,10 @@ function handlers() {
 				episode_count_approximate: false
 			})
 		),
-		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+		http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
+			watched.push(String(((await request.json()) as { episode: string }).episode));
+			return new HttpResponse(null, { status: 204 });
+		}),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/s/:session/subtitles`, ({ params }) =>
 			HttpResponse.json(LISTING(String(params.session)))
@@ -189,14 +194,17 @@ describe('play route — a captions pick and the warmed next episode', () => {
 				media_kind: 'mp4'
 			})
 		);
+		// Let the answer settle the warm before the click, as any real
+		// click comes after it.
+		await new Promise((r) => setTimeout(r, 0));
 		const opened = FakeEventSource.instances.length;
 		await until(() => nextButton() !== null && !nextButton()!.disabled, 'the Next button');
 		nextButton()!.click();
-		// The switch navigates to the session it played.
-		await until(
-			() => vi.mocked(goto).mock.calls.some(([url]) => String(url).includes('session-4')),
-			'the switch to the warmed session'
-		);
+		// The switch played a session without asking for one: the warm
+		// for the language picked, since the one before was dropped
+		// unanswered.
+		await until(() => watched.includes('4'), 'the switch to the next episode');
+		expect(before.closed).toBe(true);
 		expect(FakeEventSource.instances.length).toBe(opened);
 	});
 });
