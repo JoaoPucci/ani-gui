@@ -50,7 +50,7 @@ const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
-const { splashController } = require("./lib/splash.cjs");
+const { mapAfterSplash, splashController } = require("./lib/splash.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
@@ -470,6 +470,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // hidden, so the underlying surface is created with the maximize
   // hint already set. Most launches end here — the WM honors the
   // hint at map time and the window appears maximized in one shot.
+  // That call is what maps the window, so it is made only once the
+  // splash has painted (mapAfterSplash, lib/splash.cjs): the splash is
+  // on screen first and alone, and the page loads hidden meanwhile.
   //
   // Step 2 — post-show fallback: ~1 launch in 5 mutter drops the
   // pre-show hint under load and the window comes up at workArea
@@ -485,18 +488,18 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // on the bad path. We attempted to hide it behind setOpacity(0)
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
-  win.maximize();
-  // That call also puts the window on screen — maximizing a hidden
-  // window shows it — and emits a first `show` before the listener
-  // below exists. The `show` Step 2 waits for is the next one: the
-  // show() openFirstPage makes at ready-to-show, further down, where
-  // the first load and the first-show guard are held too. Until the
-  // renderer paints, what is on screen is blank and frameless: the
-  // titlebar and its close button are the renderer's to draw.
-  win.once("show", () => {
-    if (!win.isMaximized()) win.maximize();
-  });
-  win.once("show", () => keeper.shown(win));
+  //
+  // The maximize puts the window on screen — maximizing a hidden
+  // window shows it — and emits a first `show` before the listeners
+  // below exist. The `show` Step 2 waits for is the next one: the
+  // show() openFirstPage makes right after, where the first load and
+  // the first-show guard are held too.
+  const mapped = () => {
+    win.once("show", () => {
+      if (!win.isMaximized()) win.maximize();
+    });
+    win.once("show", () => keeper.shown(win));
+  };
   win.on("closed", () => keeper.closed(win));
 
   // Catch the X-button / window-close path. The before-quit hook
@@ -522,14 +525,12 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   const firstPage = {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
-    // The boot's window waits, up to a second, for the splash to have
-    // rendered a frame before its show completes the boot and the
-    // splash is put away (lib/splash.cjs). The window itself is mapped
-    // earlier, by maximize() above: beneath the always-on-top splash
-    // on X11 and Windows, possibly above it on native Wayland, which
-    // ignores always-on-top. A later window finds no splash and waits
-    // for nothing.
-    beforeShow: () => splash.whenShown(),
+    // The window loads hidden; at ready-to-show it waits, up to a
+    // second, for the splash to have rendered a frame, and only then is
+    // mapped (maximized) and shown, and the splash put away. The two
+    // are never on screen competing, on any platform. A later window
+    // finds no splash and waits for nothing.
+    beforeShow: () => mapAfterSplash(win, () => splash.whenShown(), mapped),
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });

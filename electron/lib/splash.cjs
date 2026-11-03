@@ -1,10 +1,12 @@
 "use strict";
 
 // The splash: the window on screen while the backend starts and the
-// launch's flags are decided, before the app's own window has painted.
-// It sits above the app's window where the platform keeps a window on
-// top (X11, Windows; native Wayland ignores that), and closes once the
-// app's window shows (see bootApp in lib/startup.cjs).
+// launch's flags are decided. It is on screen first and alone: the
+// app's window is not mapped until the splash has painted
+// (mapAfterSplash), so the two never compete for the top, whether or
+// not the platform honours always-on-top (native Wayland does not).
+// It closes once the app's window shows (see bootApp in
+// lib/startup.cjs).
 
 const path = require("node:path");
 
@@ -164,11 +166,20 @@ function lastSplashState() {
  *  bound is for one that never does. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
-/** Map the app's window once the splash has painted. Stub. */
+/**
+ * Map the app's window once the splash has painted (`whenShown`, which
+ * is bounded by SPLASH_SHOW_WAIT_MS), so the splash is on screen first
+ * and alone on every platform — native Wayland included, where nothing
+ * keeps it on top. The window is mapped by `maximize()`: maximizing a
+ * hidden window maps it, already maximized, which is how it opens
+ * maximized reliably. `onMapped` then runs, for what must listen from
+ * the map on. A window gone meanwhile is left alone.
+ */
 async function mapAfterSplash(win, whenShown, onMapped) {
-  void whenShown;
-  void onMapped;
+  await whenShown();
+  if (win.isDestroyed()) return;
   win.maximize();
+  onMapped();
 }
 
 module.exports = {
