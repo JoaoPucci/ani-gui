@@ -299,6 +299,23 @@ describe('accountStore.hydrate', () => {
 			if (s.kind === 'connected') expect(s.account.access_token).toBe('fresh');
 		});
 
+		it('reads a provider again when what overtook its read was undone', async () => {
+			// A connect started and cancelled while the keyring was still
+			// answering leaves the provider signed out; the sign-in saved on
+			// disk is still there and must not stay hidden until relaunch.
+			const answer = stubSlowBridge();
+			void accountStore.hydrate();
+			accountStore.setConnecting('anilist');
+			accountStore.setDisconnected('anilist');
+			answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			// The answer was overtaken; the provider is read again.
+			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+			answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		});
+
 		it('says it is waiting on the keyring once a read runs past the wait, and stops when it answers', async () => {
 			vi.useFakeTimers();
 			const answer = stubSlowBridge();
