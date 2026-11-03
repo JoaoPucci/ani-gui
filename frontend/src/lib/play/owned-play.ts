@@ -97,6 +97,8 @@ export function playArgsFor(input: {
 	/** The history row a guessed Continue card opened the session from
 	 *  (`guessRow` in `./play-origin`). */
 	guessRow?: string;
+	/** The guessed card's Kitsu id (`guessedId` in `./play-origin`). */
+	guessId?: string;
 	/** The captions choice remembered for the show (`storedCaption` in
 	 *  `$lib/play/caption-choice.ts`); left off when none is. */
 	caption?: string;
@@ -115,6 +117,7 @@ export function playArgsFor(input: {
 	if (input.prefetch) args.prefetch = true;
 	if (input.version) args.version = input.version;
 	if (input.guessRow) args.guess_row = input.guessRow;
+	if (input.guessId) args.guess_id = input.guessId;
 	if (input.caption) args.caption = input.caption;
 	return args;
 }

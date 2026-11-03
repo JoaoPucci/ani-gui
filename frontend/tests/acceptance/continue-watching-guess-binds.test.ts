@@ -266,6 +266,11 @@ describe('a guessed Continue card whose play lands on its own listing', () => {
 
 		const { stream, session } = await playTheCard(true);
 		expect(stream.searchParams.get('guess_row')).toBe(LISTING);
+		// The resolve names the guess apart from the page, so the backend
+		// can record it on the row as the play lands on the card's own
+		// listing, before any watch stamp.
+		expect(stream.searchParams.get('guess_id')).toBe(KITSU_ID);
+		expect(stream.searchParams.has('kitsu_id')).toBe(false);
 		expect(session.searchParams.get('guess')).toBe('1');
 		expect(stamps[0]).toMatchObject({ kitsu_id: KITSU_ID, episode: '4' });
 		await until(() => trackerWrites.length >= TRACKERS.length, 'the tracker writes');
@@ -283,6 +288,7 @@ describe('a guessed Continue card whose play lands on another listing', () => {
 
 		const { stream } = await playTheCard(false);
 		expect(stream.searchParams.get('guess_row')).toBe(LISTING);
+		expect(stream.searchParams.has('kitsu_id')).toBe(false);
 		expect(stamps[0]).not.toHaveProperty('kitsu_id');
 		await noTrackerWriteWindow();
 		expect(trackerWrites).toEqual([]);

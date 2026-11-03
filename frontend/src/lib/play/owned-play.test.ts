@@ -296,6 +296,13 @@ describe("playArgsFor — a guessed card's row", () => {
 		expect(playArgsFor({ ...base, guessRow: 'hianime:show-1' }).guess_row).toBe('hianime:show-1');
 		expect('guess_row' in playArgsFor(base)).toBe(false);
 	});
+
+	it("names the guessed card's guess when given, and only then", () => {
+		const args = playArgsFor({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
+		expect(args.guess_id).toBe('42');
+		expect('kitsu_id' in args).toBe(false);
+		expect('guess_id' in playArgsFor(base)).toBe(false);
+	});
 });
 
 describe('playedRecord', () => {
