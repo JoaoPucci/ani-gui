@@ -10,9 +10,11 @@
  * search page must come back with the same query, order, filter,
  * results and scroll, without asking for any page again.
  *
- * The search, availability and image requests are stubbed; the show
- * page's own requests are left to the backend, since the scenario only
- * needs to leave the search page and come back.
+ * The search, availability, image and show-detail requests are stubbed;
+ * the show page's other requests are left to the backend, since the
+ * scenarios only need to leave the search page and come back. The
+ * detail is stubbed so the show page names the show in the breadcrumb,
+ * which the last scenario reads.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
@@ -89,7 +91,8 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 			routed();
 			return r.fulfill(json(topRated));
 		}
-		if (p.endsWith('/api/kitsu/search')) return r.fulfill(json([]));
+		// The topbar's live results: show 1, whatever was typed.
+		if (p.endsWith('/api/kitsu/search')) return r.fulfill(json([show(1)]));
 		if (p.includes('/api/image')) return r.fulfill({ status: 503 });
 		if (p.endsWith('/api/availability/batch')) {
 			const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
@@ -100,6 +103,11 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 				})
 			);
 		}
+		// The show page names the show in the breadcrumb once its detail
+		// lands; answered here so it has a title to name without the
+		// network.
+		const detail = p.match(/\/api\/kitsu\/anime\/(\d+)$/);
+		if (detail) return r.fulfill(json(show(Number(detail[1]))));
 		if (p.endsWith('/api/kitsu/search/page')) {
 			// Twenty shows a page, five pages, for any query.
 			const body = r.request().postDataJSON() as { query: string; offset: number; sort?: string };
@@ -220,6 +228,40 @@ test('the topbar chevron names the search and returns to it as it was left', asy
 		await crumbs.getByRole('link', { name: 'Go up one level' }).click();
 		await expect(page).toHaveURL(/\/search\?q=frieren/);
 		await expectRestored(page, top, asked, askedBefore);
+	} finally {
+		await app.close();
+	}
+});
+
+test('a show picked again from the topbar search keeps its title in the breadcrumb', async () => {
+	// On a show opened from a search, picking the same show from the
+	// topbar's live results navigates to the address already on screen.
+	// The show page stays mounted and names nothing new, and the
+	// layout's reset for the navigation left "Home · Search · Anime".
+	const { app, page } = await launch([]);
+	try {
+		const field = page.getByRole('searchbox');
+		await field.fill('frieren');
+		await field.press('Enter');
+		await expect(card(page, '1')).toBeVisible();
+		const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' });
+		const current = crumbs.locator('li:not(.sep)').last();
+
+		await card(page, '1').locator('a').click();
+		await expect(page).toHaveURL(/\/anime\/1$/);
+		await expect(current).toHaveText('Show 1');
+
+		await field.fill('show');
+		const hit = page.getByRole('option', { name: /Show 1/ });
+		await expect(hit).toBeVisible();
+		await hit.click();
+		await expect(page).toHaveURL(/\/anime\/1$/);
+		// Held a moment, because toHaveText retries and would pass on the
+		// title before the layout's reset lands. The second is a bound, not
+		// a witness: on master the reset landed well inside it.
+		await page.waitForTimeout(1_000);
+		await expect(current).toHaveText('Show 1');
+		await expect(crumbs.getByRole('link', { name: 'Search', exact: true })).toBeVisible();
 	} finally {
 		await app.close();
 	}
