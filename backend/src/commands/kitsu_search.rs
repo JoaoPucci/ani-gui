@@ -71,19 +71,22 @@ pub async fn kitsu_search_page_ordered(
     if offset % u32::from(SEARCH_PAGE_LIMIT) != 0 || offset > MAX_SEARCH_OFFSET {
         return Err(AniError::InvalidSearchOffset);
     }
+    // The page is kept under the text Kitsu is sent, so two queries
+    // Kitsu reads alike share it.
+    let query = crate::meta::kitsu_page::search_text(query);
     // Kitsu's ranking keeps the key it always had; a sorted search is
     // its own search, so its pages are kept apart.
     let key = match order {
         SearchOrder::Relevance => format!(
             "{}{offset}:{}",
             crate::cache::families::KITSU_SEARCH,
-            normalize_query(query)
+            normalize_query(&query)
         ),
         _ => format!(
             "{}{}:{offset}:{}",
             crate::cache::families::KITSU_SEARCH,
             order.as_str(),
-            normalize_query(query)
+            normalize_query(&query)
         ),
     };
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
@@ -100,7 +103,7 @@ pub async fn kitsu_search_page_ordered(
     }
     let mut page = state
         .kitsu
-        .search_page_ordered(query, SEARCH_PAGE_LIMIT, offset, order)
+        .search_page_ordered(&query, SEARCH_PAGE_LIMIT, offset, order)
         .await?;
     // Never advertise a page this function would refuse.
     page.next_offset = page.next_offset.filter(|n| *n <= MAX_SEARCH_OFFSET);

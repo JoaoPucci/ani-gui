@@ -81,6 +81,12 @@ pub fn next_offset(
     (has_next_link || counted_more).then_some(next)
 }
 
+/// The text a search for `query` sends Kitsu as `filter[text]`.
+#[must_use]
+pub fn search_text(query: &str) -> String {
+    query.to_string()
+}
+
 #[cfg(test)]
 #[path = "kitsu_page_test.rs"]
 mod tests;
