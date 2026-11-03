@@ -331,7 +331,14 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
+/// - v4: the title guess searches Kitsu without the dashes that lead a
+///   word, which Kitsu read as exclusions, and the reverse resolve it
+///   falls back to reads words a show key runs together as the entry's.
+///   A v3 row can hold a pick either rule made wrong — a pick among the
+///   hits Kitsu returned for Re:ZERO without "Starting", or Season 2
+///   Part 2 for Re:ZERO Season 2; re-keying lets the next load
+///   re-derive it.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 4;
 
 fn title_match_key(
     provider: Option<crate::scraper::provider::ProviderId>,
@@ -465,7 +472,13 @@ pub fn title_match_put(
 ///   row can bind a hentai's key to an
 ///   undated entry one of whose names it is listed under; re-keying
 ///   lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 9;
+/// - v10: words a show key runs together name the entry whose titles
+///   keep them apart ("rezero" is "Re:ZERO"). A v9 row can bind a
+///   season's key to a later part of it — Re:ZERO Season 2's to Season
+///   2 Part 2, taken on its slug's cour after the resolve passed over
+///   Season 2 — or to nothing it could name at all; re-keying lets the
+///   next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 10;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("{}{show_id}", crate::cache::families::mapping())
