@@ -44,9 +44,8 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long the signature may lag behind the file once the file has
 /// arrived. Both are asked for at once; this bounds only the wait after
-/// the file, so a signature that hangs costs the notices without
-/// holding the flags past the launch's own wait
-/// ([`super::store::SETTLE_CAP`]).
+/// the file, so a signature that hangs costs the notices and holds the
+/// flags at most this long past the file.
 pub const SIGNATURE_GRACE: Duration = Duration::from_millis(750);
 
 /// The client the flags file is fetched with: its own, for the

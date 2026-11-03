@@ -422,7 +422,7 @@ every user.
 
 These steps need [minisign](https://jedisct1.github.io/minisign/)
 0.11 or later. Each step is given for bash on Linux and for
-PowerShell 7 on Windows.
+PowerShell 7.1 or later on Windows.
 
 **0. Keep the file's bytes as they are pushed (once).** The signature
 covers the exact bytes, and the `flags` branch does not carry the main
@@ -485,13 +485,15 @@ git push
 
 `-S` writes `flags.json.minisig` beside the file with minisign's default
 prehashed signature, the only kind the app accepts; `-V` checks it
-before it is pushed. In PowerShell 7 (Windows' `python3` may be the
-Store's placeholder; `py -3` or `Get-Content flags.json | ConvertFrom-Json`
-checks the JSON instead):
+before it is pushed. In PowerShell (Windows' `python3` may be the
+Store's placeholder, so the check uses `py -3`; PowerShell's own
+`ConvertFrom-Json` accepts comments the app does not, so it is no
+substitute):
 
 ```powershell
+Set-Location ..\ani-gui-flags
 git pull
-Get-Content flags.json | ConvertFrom-Json | Out-Null
+py -3 -m json.tool flags.json
 minisign -S -s "$HOME\.minisign\ani-gui-flags.key" -m flags.json -t "flags.json $(Get-Date -AsUTC -UFormat '%Y-%m-%dT%H:%M:%SZ')"
 minisign -V -p "$HOME\.minisign\ani-gui-flags.pub" -m flags.json
 git add flags.json flags.json.minisig
@@ -514,7 +516,8 @@ from the list. If a secret key is lost or leaked, delete
 `flags.json.minisig` from the branch at once, and ship a release that
 removes that key. An install drops the notices once a launch has
 downloaded the unsigned file: on that launch if the file arrives within
-its two-second wait, otherwise on the next. One that cannot reach the
+its two-second wait, otherwise on the next (a deleted signature answers
+404 at once, so it adds no wait). One that cannot reach the
 file keeps its cached copy, and the notices in it, for up to seven
 days.
 
