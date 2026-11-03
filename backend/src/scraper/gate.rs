@@ -27,7 +27,7 @@
 use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
-use super::health::{Health, HealthRun};
+use super::health::{Health, HealthRun, Observation};
 use super::reservation::{SlotGuard, SlotSchedule};
 
 pub use super::outcome::ScrapeOutcome;
@@ -392,15 +392,31 @@ impl ScraperGate {
         started_at: Instant,
     ) {
         self.record(outcome, started_at);
-        let _ = priority;
+        let observation = match outcome {
+            ScrapeOutcome::Success => Observation::Success,
+            ScrapeOutcome::Failure => Observation::Failure {
+                interactive: priority == ScrapePriority::Interactive,
+            },
+            ScrapeOutcome::RateLimited { .. } => Observation::RateLimited,
+        };
+        let mut run = self.health.lock().expect("health lock");
+        *run = run.observe(observation, unix_ms());
     }
 
     /// Whether the provider is answering, as the notification center
     /// reads it. A read, never a state change.
     #[must_use]
     pub fn health(&self) -> Health {
-        Health::Answering
+        self.health.lock().expect("health lock").health()
     }
+}
+
+/// The wall clock, in ms since the Unix epoch: the times the renderer
+/// shows ("since 14:02") are the user's clock, not the monotonic one.
+fn unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 // `record_outcome` lives in a `#[path]` child module so its
