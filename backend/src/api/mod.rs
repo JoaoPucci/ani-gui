@@ -28,6 +28,7 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod franchise;
 mod refill;
 mod sse_abort;
 mod syncplay;
@@ -150,6 +151,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/watched-at", get(get_watched_at_all))
         .merge(account::router())
         .merge(airing::router())
+        .merge(franchise::router())
         .merge(refill::router())
         .with_state(state)
         // The Electron renderer in dev runs at `http://localhost:<vite>`

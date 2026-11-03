@@ -26,6 +26,7 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
+	kitsuFranchise,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuSearchPage,
@@ -1454,7 +1455,8 @@ describe('settingsGet', () => {
 			auto_skip_ed: false,
 			use_custom_player_controls: false,
 			update_include_prereleases: true,
-			primary_account: ''
+			primary_account: '',
+			watch_order: 'linked'
 		};
 		const fetchMock = mockFetchOnce(cfg);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1482,7 +1484,8 @@ describe('settingsPut', () => {
 			auto_skip_ed: true,
 			use_custom_player_controls: true,
 			update_include_prereleases: false,
-			primary_account: 'mal'
+			primary_account: 'mal',
+			watch_order: 'linked'
 		};
 		const fetchMock = mockFetchOnce(null, 204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1828,6 +1831,27 @@ describe('airingGet', () => {
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/kitsu/airing/kid%2050551`);
 		expect(got).toEqual(status);
+	});
+});
+
+describe('kitsuFranchise', () => {
+	it('GETs /api/kitsu/franchise/<kitsuId> and returns the franchise', async () => {
+		const franchise = {
+			anchor: '7730',
+			entries: [],
+			links: [['7158', '7730']],
+			versions: [],
+			films: [],
+			sides: [],
+			recaps: [],
+			parents: {},
+			complete: true
+		};
+		const fetchMock = mockFetchOnce(franchise);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await kitsuFranchise('kid 7730');
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730`);
+		expect(got).toEqual(franchise);
 	});
 });
 

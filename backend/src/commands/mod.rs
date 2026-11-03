@@ -52,6 +52,8 @@ pub(crate) mod download_tool;
 mod download_tool_output;
 mod download_transfer;
 pub mod external_player;
+pub mod franchise;
+pub mod franchise_walk;
 pub mod history;
 pub(crate) mod history_claim;
 pub(crate) mod history_forget;

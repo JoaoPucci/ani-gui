@@ -77,7 +77,8 @@ const config = () => ({
 	use_custom_player_controls: true,
 	auto_update_anicli: false,
 	update_include_prereleases: false,
-	primary_account: ''
+	primary_account: '',
+	watch_order: 'linked'
 });
 
 /** Every search request Kitsu was asked, as `query@offset/sort`. */

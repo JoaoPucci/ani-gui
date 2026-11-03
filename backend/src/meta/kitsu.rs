@@ -911,6 +911,13 @@ mod relations;
 pub use relations::{
     parse_relationships_response, KitsuRelation, KitsuRelations, RELATIONS_PAGE_LIMIT,
 };
+#[path = "kitsu_franchise_read.rs"]
+mod franchise_read;
+pub use franchise_read::{
+    listing_complete, more_pages, parse_franchise_page, FranchiseEntry, FranchiseListing,
+    FranchisePage, FranchiseRelation, FRANCHISE_ANIME_FIELDS, FRANCHISE_MAX_PAGES,
+    FRANCHISE_PAGE_LIMIT,
+};
 
 #[cfg(test)]
 mod tests {

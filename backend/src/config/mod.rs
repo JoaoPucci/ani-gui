@@ -5,6 +5,7 @@
 
 pub mod paths;
 mod syncplay;
+pub mod watch_order;
 
 use std::path::Path;
 
@@ -104,6 +105,13 @@ pub struct Config {
     /// connected provider regardless.
     #[serde(default)]
     pub primary_account: String,
+    /// The order franchise surfaces show a run in: `"linked"` (the
+    /// default) follows Kitsu's prequel and sequel links, `"released"`
+    /// the start dates. A value this build does not know reads as
+    /// `"linked"` ([`watch_order::normalize`]), so a newer build's
+    /// value degrades instead of failing the whole file.
+    #[serde(deserialize_with = "watch_order::read")]
+    pub watch_order: String,
 }
 
 impl Default for Config {
@@ -125,6 +133,7 @@ impl Default for Config {
             use_custom_player_controls: true,
             update_include_prereleases: true,
             primary_account: String::new(),
+            watch_order: watch_order::LINKED.into(),
         }
     }
 }
