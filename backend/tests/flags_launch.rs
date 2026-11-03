@@ -102,15 +102,15 @@ async fn a_test_run_makes_no_request_for_the_flags_file() {
     assert_eq!(heard, None);
 }
 
-/// The shipped build declares no flags yet, so the file's values cannot
-/// show here; what this proves is that naming a file keeps the run a
-/// test run and off the network. That a test run's file decides the
-/// flags is `flags::launch`'s own tests, with test declarations.
+/// Naming a file keeps the run a test run and off the network, and the
+/// file is admitted like a fetched one: unsigned, it cannot turn the
+/// notification center (a rollout) on. That a test run's file decides
+/// the flags is `flags::launch`'s own tests, with test declarations.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_run_takes_the_file_the_test_names() {
     let home = tempfile::tempdir().expect("tempdir");
     let file = home.path().join("flags.json");
-    std::fs::write(&file, r#"{"flags":{}}"#).expect("write");
+    std::fs::write(&file, r#"{"flags":{"notification_center":true}}"#).expect("write");
     let (url, rx) = proxy();
     let mut cmd = common::command(
         Path::new(env!("CARGO_BIN_EXE_ani-gui-backend")),
@@ -122,7 +122,10 @@ async fn a_test_run_takes_the_file_the_test_names() {
     let body = flags(&backend.api_base).await;
     let heard = heard_raw(&rx, Duration::from_secs(2));
     stop(backend);
-    assert_eq!(body, serde_json::json!({ "origin": "test", "flags": {} }));
+    assert_eq!(
+        body,
+        serde_json::json!({ "origin": "test", "flags": { "notification_center": false } })
+    );
     assert_eq!(heard, None);
 }
 
