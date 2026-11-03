@@ -6,7 +6,7 @@
 // open panel and held toasts would otherwise reach the next one.
 
 import { http, HttpResponse } from 'msw';
-import { mount, unmount, createRawSnippet } from 'svelte';
+import { mount, unmount, createRawSnippet, type Component, type Snippet } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { IDLE } from '../../src/lib/notices/arrival';
@@ -51,7 +51,7 @@ export function installWindow(flags: Record<string, boolean | string> | undefine
 let target: HTMLElement | null = null;
 let layout: ReturnType<typeof mount> | null = null;
 
-export async function bootLayout(Layout: Parameters<typeof mount>[0]) {
+export async function bootLayout(Layout: Component<{ children: Snippet }>) {
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
