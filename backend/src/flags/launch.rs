@@ -19,7 +19,8 @@ use std::path::PathBuf;
 
 use super::refresh::refresh;
 use super::remote::{self, FETCH_TIMEOUT, FLAGS_URL};
-use super::resolve::parse_document;
+use super::resolve::{parse_document, Document};
+use super::signature::{admit, verify, SIGNATURE_SUFFIX, TRUSTED_KEYS};
 use super::store::{FlagStore, Origin};
 
 /// The test-run switch.
@@ -88,10 +89,7 @@ pub fn start(
 
 async fn settle_from_test_file(store: &FlagStore, file: Option<PathBuf>) {
     let doc = match file {
-        Some(path) => tokio::fs::read(path)
-            .await
-            .ok()
-            .and_then(|b| parse_document(&b)),
+        Some(path) => read_test_file(&path).await,
         None => None,
     };
     store.settle(doc.as_ref(), Origin::Test);
@@ -100,6 +98,22 @@ async fn settle_from_test_file(store: &FlagStore, file: Option<PathBuf>) {
         flags = ?store.current(),
         "remote flags settled"
     );
+}
+
+/// A test run's file, admitted like a fetched one: its notices only
+/// when a `.minisig` beside it verifies under the build's keys.
+async fn read_test_file(path: &std::path::Path) -> Option<Document> {
+    let body = tokio::fs::read(path).await.ok()?;
+    let doc = parse_document(&body)?;
+    let mut sig_path = path.as_os_str().to_owned();
+    sig_path.push(SIGNATURE_SUFFIX);
+    let signature = tokio::fs::read_to_string(PathBuf::from(sig_path))
+        .await
+        .ok();
+    Some(admit(
+        doc,
+        verify(&body, signature.as_deref(), TRUSTED_KEYS),
+    ))
 }
 
 fn unix_now() -> u64 {

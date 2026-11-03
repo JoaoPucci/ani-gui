@@ -307,14 +307,38 @@ flags with that value in force. A test over `DECLARED` fails while any
 value of a declared flag has no case, or a case names a flag or value
 no longer declared.
 
-**Why the file is not signed.** With every declaration held to that
-rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
-write access to the branch, could only switch features off or bring
-back older behaviour. A future flag that needs a riskier value, such as
-turning something on or relaxing a check, must not be declared until
-the file is verified. The verifier to adopt then is the minisign
-signature check proposed for the in-app updater (#342) and the
-notification center (#351).
+**What a signature adds.** The file's notices for the notification
+center, and its donation-ask number, are content rather than a retreat,
+so they are used only under a signature. Each launch fetches
+`flags.json.minisig` beside the file, from the same branch and host, and
+verifies the file's exact bytes with minisign (Ed25519 over BLAKE2b-512,
+the prehashed form only) against the public keys compiled into the
+build (`flags::signature::TRUSTED_KEYS`). A verified file keeps its
+notices block; any other file keeps its flags and loses the block, and
+what is cached is that admitted document, marked as such. A cache
+without the mark was written by a build before the signature check,
+which kept the file as fetched; it is read as an unsigned file, so its
+notices are dropped and its flags kept. The shipped build trusts no
+key yet, so no notice is used. Signing, trusting and rotating a key are
+in [`development.md`](./development.md#signing-the-flags-file).
+
+What a signature does not cover: the cached copy is the user's own disk
+and is read back without checking again, so verified notices stay in
+use for up to the cache's seven days on a machine that cannot reach the
+file, including after the signature is withdrawn; and an older signed
+pair of file and signature, republished, verifies again. A notice meant
+to end is therefore removed from the file, and bounded by `max_app`
+where the release that fixes its cause is known.
+
+**Why the flags need no signature.** With every declaration held to
+that rule, no value the file can select is riskier than the default, so
+someone who rewrote the file in transit, or got write access to the
+branch, could only switch features off or bring back older behaviour.
+The flags are therefore read whatever the signature above says; the
+signature gates only the notices block. A flag kind whose file value is
+riskier than its default, such as turning something on or relaxing a
+check, would need the flags themselves to be read only under a verified
+signature, which no code does today.
 
 **Decided once per launch, behind the splash.** The flags are decided
 once, within two seconds of the backend starting its refresh (just
@@ -601,8 +625,9 @@ are kept. Nothing in the block is HTML, and nothing renders it as HTML.
 
 None of it is shown yet, and the donation-ask number schedules nothing
 yet: text and links from the file, and a number that makes the app ask
-for something, are trusted only once the file is signed and the
-signature verified, which is planned for the same release. What is
+for something, are trusted only from a file whose signature verifies
+(see "What a signature adds" above). A file that does not verify loses
+its notices block before it is cached or read. What is
 ready for it: the parser, and the donation ask's schedule as a pure
 state machine (`$lib/notices/donation`): once each time the published
 number rises past the last one the install acted on, never in the first

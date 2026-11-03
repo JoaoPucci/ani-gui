@@ -1,5 +1,8 @@
 //! The request for the flags file: one per launch, and in a session
-//! where it fails, the occasional retry (see [`super::refresh`]).
+//! where it fails, the occasional retry (see [`super::refresh`]). Each
+//! attempt also asks for the file's detached signature beside it, which
+//! decides whether the notices the file carries may be used (see
+//! [`super::signature`]).
 //!
 //! The file lives on the repository's `flags` branch and is read from
 //! `raw.githubusercontent.com`, GitHub's content CDN — not the REST
@@ -11,6 +14,7 @@
 use std::time::Duration;
 
 use super::resolve::{parse_document, Document, MAX_BYTES};
+use super::signature::{admit, verify, MAX_SIGNATURE_BYTES, SIGNATURE_SUFFIX, TRUSTED_KEYS};
 
 /// Where the flags file is read from.
 pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json";
@@ -38,6 +42,12 @@ pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 /// timeouts, so tests pin the constant, not the builder call.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long the signature may lag behind the file once the file has
+/// arrived. Both are asked for at once; this bounds only the wait after
+/// the file, so a signature that hangs costs the notices and holds the
+/// flags at most this long past the file.
+pub const SIGNATURE_GRACE: Duration = Duration::from_millis(750);
+
 /// The client the flags file is fetched with: its own, for the
 /// connect timeout above. Falls back to the default client if the
 /// builder fails, which it does not in practice.
@@ -54,10 +64,50 @@ pub fn client() -> reqwest::Client {
 /// transport error, the timeout, a status other than 200, a body over
 /// the cap, or a body that is not a flags document.
 pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Document> {
+    fetch_trusting(client, url, timeout, TRUSTED_KEYS).await
+}
+
+/// [`fetch`], trusting the signature keys `keys`: the file and its
+/// detached signature, from the same address with [`SIGNATURE_SUFFIX`]
+/// appended, asked for at once. The file has `timeout`; once it has
+/// arrived the signature has at most [`SIGNATURE_GRACE`] more, and a
+/// file that fails ends the attempt without waiting for it. The flags
+/// are returned whatever the signature says; the notices block only
+/// when the file verifies under one of `keys` (see
+/// [`super::signature`]). A signature that fails or does not arrive in
+/// time is no signature: it costs the notices, never the flags.
+pub async fn fetch_trusting(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: Duration,
+    keys: &[&str],
+) -> Option<Document> {
+    let sig_client = client.clone();
+    let sig_url = format!("{url}{SIGNATURE_SUFFIX}");
+    let mut signature =
+        tokio::spawn(async move { fetch_body(&sig_client, &sig_url, timeout).await });
     let body = tokio::time::timeout(timeout, fetch_body(client, url, timeout))
         .await
-        .ok()??;
-    parse_document(&body)
+        .ok()
+        .flatten();
+    let Some(body) = body else {
+        signature.abort();
+        return None;
+    };
+    let signature = match tokio::time::timeout(SIGNATURE_GRACE, &mut signature).await {
+        Ok(Ok(sig)) => sig,
+        _ => {
+            signature.abort();
+            None
+        }
+    };
+    let doc = parse_document(&body)?;
+    let signature = signature
+        .filter(|s| s.len() <= MAX_SIGNATURE_BYTES)
+        .and_then(|s| String::from_utf8(s).ok());
+    let verdict = verify(&body, signature.as_deref(), keys);
+    tracing::info!(?verdict, "flags file signature checked");
+    Some(admit(doc, verdict))
 }
 
 /// The body of a 200 response, read no further than one byte past the
@@ -88,3 +138,7 @@ async fn fetch_body(client: &reqwest::Client, url: &str, timeout: Duration) -> O
 #[cfg(test)]
 #[path = "remote_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "remote_signed_test.rs"]
+mod signed_tests;

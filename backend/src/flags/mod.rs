@@ -35,12 +35,14 @@
 //! something a type can see: that is the declaration's
 //! `safe_because`, and review. With every declaration held to that,
 //! no value the file can select is riskier than the build's own
-//! default, so the file is not signed: anyone able to rewrite it in
-//! transit can do no more than switch a feature off. A future flag that
-//! needs a riskier value — turning something on, or relaxing a check —
-//! must not be declared until the file is verified with the minisign
-//! verifier proposed for the update path (see `docs/architecture.md`,
-//! "Remote flags").
+//! default, so the flags need no signature: anyone able to rewrite the
+//! file in transit can do no more than switch a feature off. The file
+//! is signed all the same, for the notices it may carry: [`signature`]
+//! keeps those only from a verified file, and reads the flags whatever
+//! the verdict. A flag kind with a riskier value — turning something
+//! on, or relaxing a check — would need the flags themselves read only
+//! under a verified signature, which no code does today (see
+//! `docs/architecture.md`, "Remote flags").
 //!
 //! The backend owns the request; the renderer reads the resolved
 //! values through `GET /api/flags`.
@@ -51,6 +53,7 @@ pub mod launch;
 pub mod refresh;
 pub mod remote;
 pub mod resolve;
+pub mod signature;
 pub mod store;
 
 pub use decl::{FlagDecl, FlagKind, FlagValue};

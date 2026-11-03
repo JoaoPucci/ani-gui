@@ -7,7 +7,13 @@
 //! apply. The entry holds the document rather than resolved values,
 //! so it goes through the same resolution as a fetched file: a cache
 //! written by another build, or edited by hand, still resolves only to
-//! values this build declares.
+//! values this build declares. The notices block it may hold is kept
+//! only if it verified when fetched (see [`super::signature`]); it is
+//! not checked again on reading, so a hand edit of the user's own cache
+//! reaches only that user's notices. An entry without the mark this
+//! build writes (the `admitted` field) predates the signature check
+//! and held the file as fetched: it is read as an unsigned file, its
+//! notices dropped.
 //!
 //! **Why seven days.** Every value a document can resolve to is a
 //! flag's default or a declared retreat from it, so a cached document
@@ -27,6 +33,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::resolve::{Document, MAX_BYTES};
+use super::signature::{admit, Verdict};
 
 /// How long a cached document stands in for an unreachable file.
 pub const FRESH_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -36,8 +43,27 @@ pub const FRESH_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 pub struct CacheEntry {
     /// When the document was fetched, in seconds since the Unix epoch.
     pub fetched_at: u64,
-    /// The `flags` object as fetched.
+    /// The `flags` object as admitted (see [`super::signature::admit`]).
     pub flags: Document,
+    /// Whether `flags` was admitted before it was written: true for
+    /// every entry this build writes. Builds before the signature check
+    /// wrote the file as fetched and no mark, which reads as `false`;
+    /// [`read`] admits such an entry as unsigned.
+    #[serde(default)]
+    pub admitted: bool,
+}
+
+impl CacheEntry {
+    /// An entry for a document that went through
+    /// [`super::signature::admit`].
+    #[must_use]
+    pub fn admitted(fetched_at: u64, flags: Document) -> Self {
+        Self {
+            fetched_at,
+            flags,
+            admitted: true,
+        }
+    }
 }
 
 /// Whether an entry fetched at `fetched_at` may stand in at `now`:
@@ -72,7 +98,12 @@ pub async fn read(path: &Path) -> Option<CacheEntry> {
     if bytes.len() as u64 > MAX_FILE_BYTES {
         return None;
     }
-    serde_json::from_slice(&bytes).ok()
+    let entry: CacheEntry = serde_json::from_slice(&bytes).ok()?;
+    Some(if entry.admitted {
+        entry
+    } else {
+        CacheEntry::admitted(entry.fetched_at, admit(entry.flags, Verdict::Unsigned))
+    })
 }
 
 /// Replace the cache file with `entry`, through a temporary file so a
