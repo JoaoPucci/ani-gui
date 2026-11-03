@@ -48,3 +48,18 @@ fn a_row_written_without_tracks_reads_as_none() {
     let row = get(&pool, "play:test:old").expect("read").expect("row");
     assert!(row.subtitles.is_empty());
 }
+
+/// A row written while the language reader missed the `<code>-<n>.vtt`
+/// naming holds each track's label as its language — Steel Ball Run's
+/// cached first episode carries `lang: "Portuguese (- Brazil)"` — and
+/// a replay would hand those on as they are. Rows written before the
+/// reader learned that naming are keyed `play:v26:`, so the key must
+/// move past it for the tracks to be read again.
+#[test]
+fn a_row_whose_tracks_took_the_label_as_language_is_not_read() {
+    let key = cache_key("t", "sub", "best", "1", None, None, None);
+    assert!(
+        !key.starts_with("play:v26:"),
+        "the key must have moved past play:v26: — {key}"
+    );
+}
