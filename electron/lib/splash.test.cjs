@@ -436,3 +436,63 @@ test("a launch cancelled by closing the splash reveals nothing", () => {
   });
   assert.deepEqual(app.calls, []);
 });
+
+test("a launch's log says when the splash was asked for, shown, painted and closed", async (t) => {
+  let now = 1000;
+  const lines = [];
+  const win = fakeSplash();
+  const splash = splashController({
+    createWindow: () => win,
+    logError: () => {},
+    log: (line) => lines.push(line),
+    clock: () => now,
+  });
+  splash.show();
+  now = 1180;
+  win.emit("ready-to-show");
+  now = 1230;
+  await tick();
+  now = 1600;
+  splash.close();
+  assert.deepEqual(lines, [
+    "[main] splash asked for (+0 ms)",
+    "[main] splash shown (+180 ms)",
+    "[main] splash painted (+230 ms)",
+    "[main] splash closed by the boot (+600 ms, on screen 370 ms after painting)",
+  ]);
+});
+
+test("the log says how a splash ended when the boot did not close it", () => {
+  for (const [end, expected] of [
+    ["suppress", "[main] splash put away: the boot failed (+0 ms)"],
+    ["dismiss", "[main] splash closed by the user: the launch is cancelled (+0 ms)"],
+  ]) {
+    const lines = [];
+    const win = fakeSplash();
+    const splash = splashController({
+      createWindow: () => win,
+      logError: () => {},
+      log: (line) => lines.push(line),
+      clock: () => 0,
+    });
+    splash.show();
+    if (end === "suppress") splash.suppress();
+    else {
+      win.destroyed = true;
+      win.emit("closed");
+    }
+    assert.equal(lines.at(-1), expected, end);
+  }
+});
+
+test("a splash that never opens says so", () => {
+  const lines = [];
+  const splash = splashController({
+    createWindow: () => null,
+    logError: () => {},
+    log: (line) => lines.push(line),
+    clock: () => 0,
+  });
+  splash.show();
+  assert.deepEqual(lines, ["[main] splash asked for (+0 ms)", "[main] splash not opened: no window was made"]);
+});
