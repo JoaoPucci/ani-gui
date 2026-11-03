@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	guessBinds,
+	guessedId,
 	guessRow,
 	openedFromGuess,
 	openedFromRow,
@@ -36,6 +37,14 @@ describe('a play session opened from a guessed Continue match', () => {
 		expect(guessRow(true, 'hianime:show-1')).toBe('hianime:show-1');
 		expect(guessRow(false, 'hianime:show-1')).toBeUndefined();
 		expect(guessRow(true, null)).toBeUndefined();
+	});
+
+	it('names its guess apart from the page on its plays, and no other session does', () => {
+		// The backend records it on the resolve's row only when the play
+		// lands on the card's own listing; it is never the play's page.
+		expect(guessedId(true, '42')).toBe('42');
+		expect(guessedId(false, '42')).toBeUndefined();
+		expect(guessedId(true, '')).toBeUndefined();
 	});
 
 	it('carries the flag on every URL it builds for itself', () => {
