@@ -14,13 +14,16 @@
  * notice says the show was kept, not linked.
  *
  * Hide sets the player's slip aside for the card's row until the app
- * restarts: a module-level set, which lives as long as the renderer.
+ * restarts ($lib/history/guess-slip.ts).
  */
 
 import type { LinkOutcome } from '$lib/api';
-import { m } from '$lib/paraglide/messages';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
 import type { LinkDeps } from './link-offer';
+import { keptNotice } from './link-notices';
+import { hideRow, isRowHidden, slipState, type SlipState } from './guess-slip';
+
+export { __resetHiddenRowsForTests, type SlipState } from './guess-slip';
 
 export interface InPlaceLinkDeps extends LinkDeps {
 	notify: (notice: LinkNotice) => void;
@@ -28,15 +31,6 @@ export interface InPlaceLinkDeps extends LinkDeps {
 	 *  or an undo. */
 	refresh?: () => void;
 }
-
-/** What the player's slip shows: nothing, its held room while the
- *  offer is decided, the guess, or the note after a link elsewhere. */
-export type SlipState = 'none' | 'holding' | 'guess' | 'linked';
-
-/** Rows whose slip the viewer hid, for this run of the app. Read
- *  through `aside`, which carries what the page shows. */
-// eslint-disable-next-line svelte/prefer-svelte-reactivity
-const hiddenRows = new Set<string>();
 
 export class InPlaceLinkSession extends LinkSession {
 	/** Whether the viewer hid this row's slip. */
@@ -51,7 +45,7 @@ export class InPlaceLinkSession extends LinkSession {
 	#keeping: { title: string | null };
 
 	constructor(deps: InPlaceLinkDeps) {
-		const refresh = deps.refresh ?? (() => {});
+		const refresh = deps.refresh ?? noRefresh;
 		const keeping = { title: null as string | null };
 		super({
 			...deps,
@@ -69,23 +63,26 @@ export class InPlaceLinkSession extends LinkSession {
 
 	/** What the slip shows now. */
 	get slip(): SlipState {
-		if (this.#row === null || this.aside) return 'none';
-		if (this.linked) return 'linked';
-		if (!this.settled) return 'holding';
-		return this.offer ? 'guess' : 'none';
+		return slipState({
+			row: this.#row,
+			aside: this.aside,
+			linked: this.linked !== null,
+			settled: this.settled,
+			offered: this.offer !== null
+		});
 	}
 
 	override async arrive(row: string | null, pageId: string): Promise<void> {
 		this.#row = row;
 		this.#page = pageId;
-		this.aside = row !== null && hiddenRows.has(row);
+		this.aside = isRowHidden(row);
 		this.linked = null;
 		await super.arrive(row, pageId);
 	}
 
 	/** Hide the slip for this row until the app restarts. */
 	hide(): void {
-		if (this.#row) hiddenRows.add(this.#row);
+		if (this.#row) hideRow(this.#row);
 		this.aside = true;
 	}
 
@@ -124,13 +121,5 @@ export class InPlaceLinkSession extends LinkSession {
 	}
 }
 
-/** The notice a link leaves, reworded for a guess kept as it was. */
-function keptNotice(notice: LinkNotice, keptTitle: string | null): LinkNotice {
-	if (keptTitle === null || notice.kind !== 'success') return notice;
-	return { ...notice, message: m.play_link_kept_toast({ title: keptTitle }) };
-}
-
-/** Test seam: forget every hidden row, as a restart does. */
-export function __resetHiddenRowsForTests(): void {
-	hiddenRows.clear();
-}
+/** A surface that reads nothing from the history. */
+function noRefresh(): void {}

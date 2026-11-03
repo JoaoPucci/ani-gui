@@ -19,6 +19,13 @@ export function linkedNotice(title: string, onUndo: () => void): LinkNotice {
 	};
 }
 
+/** The notice a link leaves, reworded for a guess kept as it was —
+ *  `keptTitle` is the guessed show's when the link kept it. */
+export function keptNotice(notice: LinkNotice, keptTitle: string | null): LinkNotice {
+	if (keptTitle === null || notice.kind !== 'success') return notice;
+	return { ...notice, message: m.play_link_kept_toast({ title: keptTitle }) };
+}
+
 /** Why a link failed, as the picker says it. */
 export function linkFailure(e: unknown): string {
 	return kitsuEntryGone(e) ? m.detail_link_failed_gone() : m.detail_link_failed();
