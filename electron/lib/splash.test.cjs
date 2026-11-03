@@ -1127,6 +1127,7 @@ async function paintedSplash(t, { resting = false, answer = (n) => Promise.resol
   const win = fakeSplash();
   let answerShown = () => {};
   win.webContents.executeJavaScript = (code) => {
+    win.calls.push(`js:${code}`);
     const m = /splashProgress\.set\((\d+)\)/.exec(code);
     if (m) return answer(Number(m[1]));
     return new Promise((resolve) => (answerShown = resolve));
@@ -1319,4 +1320,49 @@ test("no language's network line says it starts regardless", () => {
   for (const locale of LOCALES) {
     assert.doesNotMatch(messagesFor(locale).splashNetworkSlow, /anyway|mesmo assim|de todos modos|всё равно|все равно|продолжится/i, locale);
   }
+});
+
+test("a page that never says it rendered still completes the rail, and the reveal waits for it to be seen", async (t) => {
+  // The window is revealed anyway once the wait for its render gives
+  // up (lib/app-window.cjs); the rail must not jump from almost
+  // complete to gone.
+  const { splash, win, at, flush, watch } = await paintedSplash(t);
+  await splash.progress("backend");
+  await splash.progress("flags");
+  at(SPLASH_MIN_ON_SCREEN_MS + 4000);
+  const step = watch(splash.pageReady(false));
+  await flush();
+  assert.equal(
+    win.calls.filter((c) => c.includes("splashProgress")).at(-1),
+    "js:window.splashProgress && window.splashProgress.set(3)",
+  );
+  assert.equal(step.done, false, "held");
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  await flush();
+  assert.equal(step.done, true);
+  assert.equal(lastSplashState().steps, 3);
+  splash.close();
+});
+
+test("a page that rendered completes the rail the same way", async (t) => {
+  const { splash, at, flush, watch } = await paintedSplash(t);
+  at(SPLASH_MIN_ON_SCREEN_MS + 400);
+  const step = watch(splash.pageReady(true));
+  await flush();
+  assert.equal(step.done, false);
+  t.mock.timers.tick(SPLASH_COMPLETE_HOLD_MS);
+  await flush();
+  assert.equal(step.done, true);
+  splash.close();
+});
+
+test("whatever steps did not land, the reveal's step lights the whole rail first", async (t) => {
+  const { splash, win, flush } = await paintedSplash(t);
+  splash.pageReady(false);
+  await flush();
+  assert.deepEqual(
+    win.calls.filter((c) => c.includes("splashProgress")),
+    ["js:window.splashProgress && window.splashProgress.set(3)"],
+  );
+  splash.close();
 });
