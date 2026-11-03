@@ -92,3 +92,11 @@ pub(crate) struct Lookup<'a> {
 
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
+
+#[cfg(test)]
+#[path = "franchise_walk_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_prop_test.rs"]
+mod prop_tests;
