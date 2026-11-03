@@ -138,21 +138,19 @@ test("remembering a display's unchanged size still makes it the newest", () => {
   assert.deepEqual(initialSize(store, { ...wayland, id: 2 }), { width: 1920, height: 1080 });
 });
 
-test("only the size granted as the launch reveals its window is recorded", (t) => {
+test("only the sizes granted while the launch's reveal settles are recorded", (t) => {
   // What the next launch must match is the size this launch's window
   // got as it was revealed maximized on the display it was made for.
-  // Recording starts as the reveal maximizes the window and ends once
-  // the reveal has settled, or when the user unmaximizes it after it
-  // has shown — a later maximize, or a maximized window moved to
-  // another monitor (by keyboard it stays maximized), is not recorded.
+  // Recording runs from just before the reveal maximizes the window
+  // until the reveal has settled; a later maximize, or a maximized
+  // window moved to another monitor (by keyboard it stays maximized),
+  // is not recorded.
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const writes = [];
   const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
   recorder.maximized({ width: 1, height: 1 }); // before the reveal
   recorder.revealing();
   recorder.maximized({ width: 1920, height: 1080 });
-  recorder.unmaximized(); // the reveal's own state flicker, before the show
-  recorder.shown();
   recorder.maximized({ width: 1920, height: 1048 }); // the compositor's configure
   t.mock.timers.tick(GRANT_SETTLE_MS);
   recorder.maximized({ width: 2560, height: 1400 }); // moved by keyboard, still maximized
@@ -162,14 +160,17 @@ test("only the size granted as the launch reveals its window is recorded", (t) =
   ]);
 });
 
-test("an unmaximize after the window has shown ends the recording at once", (t) => {
+test("the reveal's own unmaximize while it settles does not stop the recording", (t) => {
+  // Measured on GNOME under Wayland: the window reports unmaximized
+  // for a moment after its show, before the compositor's maximized
+  // configure arrives with the size that must be kept.
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const writes = [];
   const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
   recorder.revealing();
+  recorder.maximized({ width: 1920, height: 1080 });
   recorder.shown();
-  recorder.maximized({ width: 1920, height: 1048 });
   recorder.unmaximized();
-  recorder.maximized({ width: 1280, height: 1000 });
-  assert.deepEqual(writes, [{ width: 1920, height: 1048 }]);
+  recorder.maximized({ width: 1920, height: 1048 });
+  assert.deepEqual(writes.at(-1), { width: 1920, height: 1048 });
 });
