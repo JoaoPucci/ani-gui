@@ -2192,7 +2192,8 @@
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
-				version
+				version,
+				caption: storedCaption(id)
 			});
 			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
 				playStream(args, emit, signal)
