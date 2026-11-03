@@ -586,12 +586,13 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // shows (lib/splash-progress.cjs). The rail hears it, and its page
     // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
     // before the window replaces the splash; and when it lands too late
-    // for the minimum to show it, the splash holds until that stretch
-    // has been on screen for SPLASH_COMPLETE_HOLD_MS. A wait that gave
-    // up on the render lights nothing: the window is revealed anyway.
+    // for the minimum to show it, the splash holds until
+    // SPLASH_COMPLETE_HOLD_MS after it landed. A wait that gave up on the
+    // render completes the rail the same way before the window is
+    // revealed anyway, so the rail is always seen complete.
     beforeShow: () =>
       revealGate(() => splash.whenShown(), {
-        ready: appReady.ready.then((rendered) => rendered === true && splash.progress("page")),
+        ready: appReady.ready.then((rendered) => splash.pageReady(rendered)),
       }),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window

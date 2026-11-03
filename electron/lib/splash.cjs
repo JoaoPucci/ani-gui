@@ -330,6 +330,17 @@ function splashController({
     // it), and one landing well inside a minimum the reveal waits for;
     // after a paint too late for the reveal's wait there is no minimum,
     // and the step is held. A splash that goes ends the hold.
+    // The app's window is about to be revealed: its first page has
+    // rendered, or the wait for that gave up (`rendered` false). Either
+    // way the rail is lit whole, any step that never landed included,
+    // and held for the completion beat (progress), so no reveal closes
+    // the splash on a rail that is not seen complete.
+    pageReady(rendered) {
+      if (rendered !== true && state.opened) {
+        log(`[main] splash completes its rail for a page that did not say it rendered (${since()})`);
+      }
+      return this.progress("page");
+    },
     progress(step) {
       const n = STEPS.indexOf(step) + 1;
       if (n <= steps || !state.opened) return Promise.resolve();
