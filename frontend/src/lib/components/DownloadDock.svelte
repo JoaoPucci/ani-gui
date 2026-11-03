@@ -17,6 +17,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
+	import { rowState } from '$lib/download/row-state';
 	import { formatSpeed, totalSpeed } from '$lib/download/speed';
 	import { dockLabel } from '$lib/download/dock-label';
 	import {
@@ -207,20 +208,34 @@
 										? m.download_dock_ep_label_range_static({ episode: item.episode })
 										: m.download_dock_ep_label_single({ episode: item.episode })}
 							<!-- Each action is described by its row: the title and
-							     episode, then Queued for a queued row, or the
-							     report a finished row carries. -->
-							{@const described =
-								item.status === 'queued'
-									? `${item.id}-text ${item.id}-queued`
-									: (item.status === 'done' || item.status === 'error') && terminalReportText(item)
-										? `${item.id}-text ${item.id}-report`
-										: `${item.id}-text`}
+							     episode, then where a download under way stands
+							     ($lib/download/row-state), or the report a finished
+							     row carries. Read when the item is reached: nothing
+							     here is a live region, so the speed ticking over
+							     announces nothing. -->
+							{@const standing = rowState(item)}
+							{@const described = [
+								`${item.id}-text`,
+								standing.state !== null ? `${item.id}-state` : null,
+								standing.note !== null ? `${item.id}-note` : null,
+								(item.status === 'done' || item.status === 'error') && terminalReportText(item)
+									? `${item.id}-report`
+									: null
+							]
+								.filter((id) => id !== null)
+								.join(' ')}
 							<li class="dl-row dl-row-{item.status}" title={item.title} role="none">
 								<span class="dl-row-text" id="{item.id}-text">
 									<span class="dl-row-title">{item.title}</span>
 									<span class="dl-row-sep" aria-hidden="true">·</span>
 									<span class="dl-row-ep">{epLabel}</span>
 								</span>
+								{#if standing.state !== null}
+									<span class="dl-sr" id="{item.id}-state">{standing.state}</span>
+								{/if}
+								{#if standing.note !== null}
+									<span class="dl-sr" id="{item.id}-note">{standing.note}</span>
+								{/if}
 
 								<!-- Active/pending: thin indeterminate bar fills the
 								     remaining inline space + a single cancel (X).
@@ -229,9 +244,7 @@
 									{#if item.status === 'queued'}
 										<!-- Waiting for one of the downloads running at once
 										     to end ($lib/download/queue). -->
-										<span class="dl-row-queued" id="{item.id}-queued"
-											>{m.download_dock_queued()}</span
-										>
+										<span class="dl-row-queued">{m.download_dock_queued()}</span>
 									{:else}
 										<span
 											class="dl-row-bar dl-row-bar-indet"
@@ -519,6 +532,19 @@
 		color: var(--brand);
 		white-space: nowrap;
 		flex-shrink: 0;
+	}
+	/* Read by assistive technology, not shown: the row's bar says the
+	   same to the eye. */
+	.dl-sr {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
 	}
 	.dl-row-queued {
 		flex-shrink: 0;
