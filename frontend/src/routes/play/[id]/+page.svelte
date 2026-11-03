@@ -188,12 +188,11 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
-		guessedId,
-		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
 		landedElsewhere,
+		sessionShow,
 		withGuess,
 		withLanding,
 		withRow
@@ -230,6 +229,12 @@
 		notify: (notice) => toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined })
 	});
 	$effect(() => void playLink.arrive(fromGuess ? fromRow : null, id));
+	// What the session's plays name as their show: its page's, its guess
+	// named apart, or once the card was linked from here, the link
+	// ($lib/play/play-origin).
+	const playingAs = $derived(
+		sessionShow({ id, guess: fromGuess, row: fromRow, linked: playLink.linked?.id ?? null })
+	);
 	$effect(() => {
 		if (playLink.open) return holdPlayback(untrack(() => videoEl));
 	});
@@ -2219,13 +2224,13 @@
 				mode,
 				quality,
 				show: detail,
-				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
 				version,
 				// The click may take this warm's session: it answers for the
-				// guessed card's row as the click would.
-				guessRow: guessRow(fromGuess, fromRow),
-				guessId: guessedId(fromGuess, id)
+				// guessed card's row, naming its show, as the click would.
+				kitsuId: playingAs.kitsuId,
+				guessRow: playingAs.guessRow,
+				guessId: playingAs.guessId
 			});
 			void getOrFire(
 				makeKey(id, targetEp, mode, quality, version, args.guess_row),
@@ -2276,6 +2281,9 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
+		// What the switch names as its show: the page's, or a guess named
+		// apart — the link, once the card was linked from here.
+		const as = playingAs;
 		const quality = playQuality(config);
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
@@ -2284,13 +2292,13 @@
 			mode,
 			quality,
 			show,
-			kitsuId: recordableId(owner.showId, guess),
 			version,
 			caption: storedCaption(owner.showId),
-			guessRow: guessRow(guess, row),
+			kitsuId: as.kitsuId,
+			guessRow: as.guessRow,
 			// The guess, apart from the page's id: the resolve records it on
 			// the card's row when the switch lands on that row's listing.
-			guessId: guessedId(guess, owner.showId)
+			guessId: as.guessId
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2365,7 +2373,7 @@
 			// and mirrored as a play from the show's page is.
 			const record = playedRecord(
 				{ ...playArgs, episode: String(played) },
-				owner.showId,
+				as.recordAs,
 				guess,
 				outcome.session
 			);
@@ -2375,7 +2383,7 @@
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: record.mirror,
+					mirror: record.mirror && as.mirrors,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
