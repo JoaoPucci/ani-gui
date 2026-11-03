@@ -205,3 +205,30 @@ describe('downloads', () => {
 		expect(panel()?.textContent).toContain("You're all caught up");
 	});
 });
+
+describe('keys in the panel off the player', () => {
+	it("still reach the app's own shortcuts, such as / for search", async () => {
+		const root = await launch();
+		const id = downloadStore.add({
+			title: 'Frieren',
+			episode: '4',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/v'
+		});
+		downloadStore.markDone(id, '/v');
+		await settle();
+		(bell(root) as HTMLButtonElement).click();
+		await settle();
+		const seen: string[] = [];
+		const spy = (e: KeyboardEvent) => seen.push(e.key);
+		window.addEventListener('keydown', spy);
+		try {
+			const lead = panel()?.querySelector<HTMLElement>('.nr-lead') as HTMLElement;
+			lead.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+			expect(seen).toEqual(['/']);
+		} finally {
+			window.removeEventListener('keydown', spy);
+		}
+	});
+});
