@@ -1,0 +1,130 @@
+/**
+ * The notification center's state: the list, whether its panel is
+ * open, and the toasts held while something is fullscreen. One
+ * instance lives for the window (`noticeCenter`), created only when the
+ * center's flag is on; with the flag off nothing here runs, so nothing
+ * is read from or written to its storage.
+ *
+ * The rules live in pure modules — the list in ./model, arrival in
+ * ./arrival — and this class only holds their state and calls out:
+ * to storage for events, and to `toast` for a notice that arrives as
+ * a toast.
+ */
+import { IDLE, arrival, release, type Moment } from './arrival';
+import {
+	STORAGE_KEY,
+	bellTone,
+	dismiss,
+	markAllRead,
+	markRead,
+	prune,
+	raise,
+	resolveKey,
+	restore,
+	serialize,
+	unreadCount,
+	withdraw,
+	type Change,
+	type Notice,
+	type NoticeData,
+	type RaiseInput
+} from './model';
+import type { SourceChange } from './sources';
+
+/** The storage the center keeps its events in. */
+export type NoticeStorage = Pick<Storage, 'getItem' | 'setItem'>;
+
+export interface CenterDeps {
+	storage: NoticeStorage | null;
+	now: () => number;
+	/** Shows a notice as a toast. */
+	toast: (n: Notice) => void;
+}
+
+export class NoticeCenter {
+	rows = $state<Notice[]>([]);
+	open = $state(false);
+	/** The row opened in place in the panel (on the player, where
+	 *  nothing navigates away). */
+	expanded = $state<string | null>(null);
+	moment = $state<Moment>(IDLE);
+	private held: string[] = [];
+
+	constructor(private readonly deps: CenterDeps) {}
+
+	/** Read the stored events. Whatever storage refuses is treated as
+	 *  nothing stored. */
+	load(): void {
+		let raw: string | null;
+		try {
+			raw = this.deps.storage?.getItem(STORAGE_KEY) ?? null;
+		} catch {
+			raw = null;
+		}
+		this.rows = restore(raw, this.deps.now());
+	}
+
+	count(updateOnBadge: boolean): number {
+		return unreadCount(this.rows, { updateOnBadge });
+	}
+
+	tone(updateOnBadge: boolean): 'attention' | 'neutral' {
+		return bellTone(this.rows, { updateOnBadge });
+	}
+
+	raise(input: RaiseInput): void {
+		this.apply(raise(this.rows, input, this.deps.now()));
+	}
+
+	resolve(key: string, at: number, data?: NoticeData): void {
+		this.apply(resolveKey(this.rows, key, at, data));
+	}
+
+	/** Apply what a source asks for. */
+	take(changes: readonly SourceChange[]): void {
+		for (const c of changes) {
+			if (c.op === 'raise') this.raise(c.input);
+			else if (c.op === 'resolve') this.resolve(c.key, c.at, c.data);
+			else this.set(withdraw(this.rows, c.key));
+		}
+	}
+
+	markRead(key: string): void {
+		this.set(markRead(this.rows, key));
+	}
+
+	markAllRead(): void {
+		this.set(markAllRead(this.rows));
+	}
+
+	dismiss(key: string): void {
+		if (this.expanded === key) this.expanded = null;
+		this.set(dismiss(this.rows, key));
+	}
+
+	/** What the window is doing changed: held toasts show once it
+	 *  leaves fullscreen. */
+	setMoment(at: Moment): void {
+		this.moment = at;
+		const out = release(this.held, this.rows, at);
+		this.held = out.held;
+		for (const n of out.show) this.deps.toast(n);
+	}
+
+	private apply(c: Change): void {
+		this.set(c.list);
+		if (!c.notice) return;
+		const how = arrival(c.notice, c.fresh, this.moment);
+		if (how === 'toast') this.deps.toast(c.notice);
+		else if (how === 'hold') this.held.push(c.notice.key);
+	}
+
+	private set(list: Notice[]): void {
+		this.rows = prune(list, this.deps.now());
+		try {
+			this.deps.storage?.setItem(STORAGE_KEY, serialize(this.rows));
+		} catch {
+			// Storage full or refused: the list still works this session.
+		}
+	}
+}
