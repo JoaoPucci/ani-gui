@@ -199,9 +199,12 @@ test("the stall line sits outside the flow, so its coming and going moves nothin
   const css = read("splash.css");
   assert.match(css, /\.readout \{[^}]*position: relative;/);
   assert.match(css, /\.status \{[^}]*position: absolute;/);
-  // A longer line, in any language, ends in an ellipsis inside the
-  // title column rather than running off the window.
-  assert.match(css, /\.status \{[^}]*max-inline-size: 100%;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+  // A longer line, in any language, wraps inside the title column
+  // rather than running off the window or being cut short: the network
+  // line is longer than the column in every language
+  // (the end-to-end suite checks it fits the window).
+  assert.match(css, /\.status \{[^}]*max-inline-size: 100%;/);
+  assert.doesNotMatch(css, /\.status \{[^}]*(nowrap|text-overflow)/);
 });
 
 test("the rail hangs under the title without pushing it off the gate's centre", () => {
@@ -327,19 +330,51 @@ test("a page told nothing to say never shows a stall line", () => {
   assert.equal(page.set(1), 1);
 });
 
-test("the stall line says the same thing at every step for now, in every language the app ships", () => {
-  // The backend step is where a named job would go — a migration, a
-  // cache reclaim — once the backend reports one; until then every
-  // step says the generic line.
+test("a stalled flags step says the network is slow, and every other stalled step says the app is starting", () => {
+  // Measured, only two things ever hold a step past 700 ms: a stalled
+  // network, with the flags fetch running to its two-second cap, and a
+  // first-time database on a slow disk. While the flags step stalls the
+  // app is waiting on the network, and it then starts with what it
+  // already has on the device: the saved flags if they are fresh, the
+  // built-in defaults if not. The line says that much and no more.
   assert.deepEqual(STEPS, ["backend", "flags", "page"]);
   assert.equal(STALL_MS, 700);
   for (const locale of LOCALES) {
     const m = messagesFor(locale);
-    assert.equal(typeof m.splashStartingUp, "string");
-    assert.ok(m.splashStartingUp.length > 0, locale);
-    assert.deepEqual(stallTexts(m), [m.splashStartingUp, m.splashStartingUp, m.splashStartingUp], locale);
+    for (const key of ["splashStartingUp", "splashNetworkSlow"]) {
+      assert.equal(typeof m[key], "string", `${locale} ${key}`);
+      assert.ok(m[key].length > 0, `${locale} ${key}`);
+    }
+    assert.notEqual(m.splashNetworkSlow, m.splashStartingUp, locale);
+    assert.deepEqual(stallTexts(m), [m.splashStartingUp, m.splashNetworkSlow, m.splashStartingUp], locale);
+    // No line names a job the backend does not report.
+    assert.deepEqual(
+      Object.keys(m).filter((k) => /library/i.test(k)),
+      [],
+      locale,
+    );
   }
-  assert.notEqual(messagesFor("ru").splashStartingUp, messagesFor("en").splashStartingUp);
+  for (const locale of LOCALES.filter((l) => l !== "en")) {
+    assert.notEqual(messagesFor(locale).splashNetworkSlow, messagesFor("en").splashNetworkSlow, locale);
+  }
+});
+
+test("on the page, the backend's stall says the generic line and the flags' stall the network line", () => {
+  const m = messagesFor("en");
+  const query = new URLSearchParams(splashPageQuery({ version: "0.18.0", stallTexts: stallTexts(m) }));
+  const page = progressPage(`?${query}`);
+  page.tick(STALL_MS);
+  assert.equal(page.status(), m.splashStartingUp, "backend pending");
+  page.set(1);
+  assert.equal(page.status(), null, "the next step's line is other words");
+  page.tick(STALL_MS - 1);
+  assert.equal(page.status(), null);
+  page.tick(1);
+  assert.equal(page.status(), m.splashNetworkSlow, "flags pending");
+  page.set(2);
+  assert.equal(page.status(), null);
+  page.tick(STALL_MS);
+  assert.equal(page.status(), m.splashStartingUp, "page pending");
 });
 
 test("the splash page is opened with its version, its stall timing and its stall lines", () => {

@@ -344,6 +344,53 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
   }
 });
 
+test("every language's stall lines fit the splash, whole, without moving its title", async () => {
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { LOCALES, messagesFor } = main.require("./lib/main-messages.cjs");
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
+      const out: Record<string, unknown>[] = [];
+      try {
+        for (const locale of LOCALES as string[]) {
+          for (const text of new Set(stallTexts(messagesFor(locale)) as string[])) {
+            await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.18.0", stallTexts: [] }) });
+            out.push(
+              await w.webContents.executeJavaScript(
+                `(() => {
+                  const title = () => document.querySelector('.wordmark').getBoundingClientRect().top;
+                  const before = title();
+                  const s = document.querySelector('.status');
+                  s.textContent = ${JSON.stringify(text)};
+                  s.classList.add('on');
+                  const r = s.getBoundingClientRect();
+                  return { locale: ${JSON.stringify(locale)}, text: s.textContent,
+                    fits: r.right <= innerWidth && r.bottom <= innerHeight && s.scrollWidth <= s.clientWidth,
+                    still: title() === before };
+                })()`,
+              ),
+            );
+          }
+        }
+      } finally {
+        w.destroy();
+      }
+      return out;
+    });
+    expect(seen.length).toBeGreaterThanOrEqual(8);
+    for (const line of seen) expect(line).toMatchObject({ fits: true, still: true });
+  } finally {
+    await app.close();
+  }
+});
+
 test("the app's window paints the app's dark background and is revealed once its page has rendered", async () => {
   // A slow first render (a cold Vite compile, a cold disk) used to show
   // a white frame between the splash and Home.
