@@ -188,6 +188,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
+		guessedId,
 		guessRow,
 		openedFromGuess,
 		openedFromRow,
@@ -2198,7 +2199,8 @@
 				version,
 				// The click may take this warm's session: it answers for the
 				// guessed card's row as the click would.
-				guessRow: guessRow(fromGuess, fromRow)
+				guessRow: guessRow(fromGuess, fromRow),
+				guessId: guessedId(fromGuess, id)
 			});
 			void getOrFire(
 				makeKey(id, targetEp, mode, quality, version, args.guess_row),
@@ -2260,7 +2262,10 @@
 			kitsuId: recordableId(owner.showId, guess),
 			version,
 			caption: storedCaption(owner.showId),
-			guessRow: guessRow(guess, row)
+			guessRow: guessRow(guess, row),
+			// The guess, apart from the page's id: the resolve records it on
+			// the card's row when the switch lands on that row's listing.
+			guessId: guessedId(guess, owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.

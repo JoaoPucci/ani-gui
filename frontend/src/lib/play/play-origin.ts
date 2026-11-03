@@ -45,6 +45,15 @@ export function guessRow(guess: boolean, row: string | null): string | undefined
 	return guess && row ? row : undefined;
 }
 
+/** The Kitsu id a guessed session's plays name as its guess, apart
+ *  from the page's (`recordableId` withholds that): the backend records
+ *  it on the row a resolve writes only when the play landed on the
+ *  card's own listing, so a session whose mark-watched never lands
+ *  still names its show. Undefined for every other session. */
+export function guessedId(guess: boolean, id: string): string | undefined {
+	return guess && id ? id : undefined;
+}
+
 /** `query` (a `?…` play query) carrying the guess flag when `guess`. */
 export function withGuess(query: string, guess: boolean): string {
 	if (!guess) return query;

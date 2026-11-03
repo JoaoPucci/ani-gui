@@ -89,6 +89,7 @@ fn args() -> PlayArgs {
         kitsu_id: None,
         version: None,
         guess_row: None,
+        guess_id: None,
         caption: None,
     }
 }
