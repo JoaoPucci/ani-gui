@@ -258,6 +258,32 @@ describe('play route — the quality the setting names, and the menu that change
 		expect(qualityRow()?.textContent).not.toContain(m.play_quality_auto());
 	});
 
+	it("moves through the player's menu with the arrow keys, which leave the player alone", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		const video = playerVideo();
+		video.volume = 0.5;
+		const time = video.currentTime;
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		menuItems()[0].focus();
+		const press = (key: string) =>
+			(document.activeElement ?? document.body).dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true })
+			);
+		press('ArrowDown');
+		expect(document.activeElement).toBe(menuItems()[1]);
+		press('ArrowUp');
+		expect(document.activeElement).toBe(menuItems()[0]);
+		press('End');
+		expect(document.activeElement).toBe(menuItems()[menuItems().length - 1]);
+		press('ArrowLeft');
+		press('ArrowRight');
+		expect(video.volume).toBe(0.5);
+		expect(video.currentTime).toBe(time);
+	});
+
 	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
 		// The settings answer after the master's levels have arrived: the
 		// engine is made not to start on its own, and starts once the
@@ -540,8 +566,50 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		expect(focused()).toBe(label(360));
 		press('Home');
 		expect(focused()).toBe(m.play_controls_menu_quality_label());
+
+		// Left goes back to the main list, onto the Quality row; Right
+		// there opens the levels again; anywhere else the horizontal
+		// arrows stay in the menu rather than seek.
+		press('ArrowLeft');
+		await until(() => moreRadios().length === 0, 'the main list');
+		await until(() => document.activeElement === moreQualityRow(), 'focus on the quality row');
+		press('ArrowRight');
+		await until(() => moreRadios().length > 0, 'the levels again');
+		await until(() => document.activeElement === moreItems()[0], 'focus on the back row');
+		press('ArrowDown');
+		press('ArrowRight');
+		expect(focused()).toBe(m.play_quality_auto());
+		expect(moreRadios().length).toBeGreaterThan(0);
 		expect(video.volume).toBe(0.5);
 		expect(video.currentTime).toBe(time);
+	});
+
+	it('moves focus into the menu as it opens', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreItems().length > 0, 'the more menu');
+		const first = moreItems().find((el) => !(el as HTMLButtonElement).disabled);
+		await until(() => document.activeElement === first, 'focus on the first enabled item');
+	});
+
+	it('drops back to the main list when a mid-drill update leaves one level', async () => {
+		const hls = await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[2]] });
+		await until(() => moreRadios().length === 0, 'the main list');
+		await until(
+			() => moreQualityRow()?.getAttribute('aria-disabled') === 'true',
+			'the row with nothing to open'
+		);
+		await until(
+			() =>
+				document.activeElement instanceof HTMLElement &&
+				moreItems().includes(document.activeElement),
+			'focus in the main list'
+		);
 	});
 
 	it('drops back to the main list when the stream retires under the open levels', async () => {
@@ -552,13 +620,21 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		await until(() => moreRadios().length > 0, 'the levels');
 
 		// Another session attaches: the levels retire with the old one.
-		// Focus goes to the menu's own button, which nothing disables,
-		// rather than to an item a switch may have disabled.
+		// Focus goes to the main list's first item a switch has not
+		// disabled, staying in the menu, where the arrows move it.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'hls' });
 		await until(() => hlsInstances().length > 1, 'the next engine');
 		await until(() => moreRadios().length === 0, 'the main list');
 		expect(target.querySelector('#np-more-menu')).not.toBe(null);
-		await until(() => document.activeElement === moreButton(), 'focus on the menu button');
+		await until(() => {
+			const el = document.activeElement;
+			return (
+				el instanceof HTMLButtonElement &&
+				moreItems().includes(el) &&
+				!el.disabled &&
+				el.getAttribute('role') === 'menuitem'
+			);
+		}, 'focus on an enabled item of the main list');
 	});
 
 	it('names the one level of a single-level stream, with nothing to open', async () => {
