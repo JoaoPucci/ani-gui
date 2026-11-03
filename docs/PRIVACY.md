@@ -16,8 +16,10 @@ connect one, your anime tracker. Each is described below.**
 
 If you have not connected an account (AniList or MyAnimeList), none
 of these requests carries an account or any other identifier of
-yours. Like any request over the internet, each one shows the service
-your IP address.
+yours. With one connected, two kinds do: the requests to your tracker
+carry your sign-in, and the request for your tracker avatar goes to an
+address that names your account (below). Like any request over the
+internet, each one shows the service your IP address.
 
 ## What ani-gui stores locally
 
@@ -205,8 +207,8 @@ each kind of request:
   than running once on opening, so paging the grid or the strip to new
   episodes, or changing the audio mode or quality setting, resolves
   what is newly in view. These requests carry the search terms you
-  typed or the anime IDs you're browsing; they do not carry any account
-  identifier unless you've connected one. A request to hianime's own
+  typed or the anime IDs you're browsing, and no account identifier,
+  whether or not you have connected an account. A request to hianime's own
   site follows a redirect only while it stays on that site; one that
   points anywhere else is not followed, so the site it names never
   receives the request. Resolving an episode through
@@ -242,7 +244,10 @@ each kind of request:
   hosts, for instance), some as soon as a catalogue answer names them,
   and cached on disk. A cached image is not fetched again until the
   size limit removes it or you clear the cache. These requests carry
-  no identifier of yours.
+  no identifier of yours, except the avatar's: its address is the one
+  your tracker gives for your account, and it names the account
+  (AniList's and MyAnimeList's avatar addresses carry your user id), so
+  the host serving it can tell whose avatar is asked for.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
@@ -279,7 +284,12 @@ each kind of request:
   subtitle files are fetched when playback starts — in the app, or in an
   external player or Syncplay the app hands the stream to — and by a
   download, which fetches the segments through the bundled tool and the
-  subtitle files beside them without any playback.
+  subtitle files beside them without any playback. Syncplay, once the
+  app has launched it, connects on its own to the Syncplay server and
+  room you choose in its dialog or its own settings, under the name
+  you give it there; the
+  app passes it only the stream, its subtitle files and the player's
+  options.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
