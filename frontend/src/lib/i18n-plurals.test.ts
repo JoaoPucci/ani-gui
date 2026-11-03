@@ -40,6 +40,80 @@ const SPEED = '1.2 MB/s';
 
 const ROWS: Row[] = [
 	{
+		message: 'notices_download_done_title',
+		en: { 0: '0 episodes downloaded', 1: '1 episode downloaded', 2: '2 episodes downloaded' },
+		'pt-BR': { 0: '0 episódios baixados', 1: '1 episódio baixado', 2: '2 episódios baixados' },
+		'es-419': {
+			0: '0 episodios descargados',
+			1: '1 episodio descargado',
+			2: '2 episodios descargados'
+		},
+		ru: {
+			1: 'Скачан 1 эпизод',
+			2: 'Скачано 2 эпизода',
+			5: 'Скачано 5 эпизодов',
+			21: 'Скачан 21 эпизод',
+			22: 'Скачано 22 эпизода',
+			25: 'Скачано 25 эпизодов',
+			11: 'Скачано 11 эпизодов'
+		}
+	},
+	{
+		message: 'notices_outage_meta',
+		inputs: (n) => ({ count: n, time: '14:02' }),
+		en: {
+			0: 'Since 14:02 · 0 attempts failed',
+			1: 'Since 14:02 · 1 attempt failed',
+			2: 'Since 14:02 · 2 attempts failed'
+		},
+		'pt-BR': {
+			0: 'Desde 14:02 · 0 tentativas falharam',
+			1: 'Desde 14:02 · 1 tentativa falhou',
+			2: 'Desde 14:02 · 2 tentativas falharam'
+		},
+		'es-419': {
+			0: 'Desde 14:02 · 0 intentos fallaron',
+			1: 'Desde 14:02 · 1 intento falló',
+			2: 'Desde 14:02 · 2 intentos fallaron'
+		},
+		ru: {
+			1: 'С 14:02 · 1 неудачная попытка',
+			2: 'С 14:02 · 2 неудачные попытки',
+			5: 'С 14:02 · 5 неудачных попыток',
+			21: 'С 14:02 · 21 неудачная попытка',
+			22: 'С 14:02 · 22 неудачные попытки',
+			25: 'С 14:02 · 25 неудачных попыток',
+			11: 'С 14:02 · 11 неудачных попыток'
+		}
+	},
+	{
+		message: 'notices_bell_label_unread',
+		en: {
+			0: 'Notifications, 0 unread',
+			1: 'Notifications, 1 unread',
+			2: 'Notifications, 2 unread'
+		},
+		'pt-BR': {
+			0: 'Notificações, 0 não lidas',
+			1: 'Notificações, 1 não lida',
+			2: 'Notificações, 2 não lidas'
+		},
+		'es-419': {
+			0: 'Notificaciones, 0 sin leer',
+			1: 'Notificaciones, 1 sin leer',
+			2: 'Notificaciones, 2 sin leer'
+		},
+		ru: {
+			1: 'Уведомления, 1 непрочитанное',
+			2: 'Уведомления, 2 непрочитанных',
+			5: 'Уведомления, 5 непрочитанных',
+			21: 'Уведомления, 21 непрочитанное',
+			22: 'Уведомления, 22 непрочитанных',
+			25: 'Уведомления, 25 непрочитанных',
+			11: 'Уведомления, 11 непрочитанных'
+		}
+	},
+	{
 		message: 'search_count_word',
 		en: { 0: 'results', 1: 'result', 2: 'results' },
 		'pt-BR': { 0: 'resultados', 1: 'resultado', 2: 'resultados' },

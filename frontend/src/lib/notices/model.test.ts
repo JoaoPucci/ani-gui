@@ -168,6 +168,18 @@ describe('retention', () => {
 		expect(list.some((n) => n.key === outage.key)).toBe(true);
 	});
 
+	it('breaks a tie between events of the same moment by key, so the cut is stable', () => {
+		const inputs = Array.from({ length: MAX_ROWS + 1 }, (_, i) => failed(i));
+		const list = inputs.reduce<Notice[]>((l, i) => raise(l, i, NOW).list, []);
+		const kept = prune(list, NOW).map((n) => n.key);
+		expect(kept).toHaveLength(MAX_ROWS);
+		expect(
+			prune([...list].reverse(), NOW)
+				.map((n) => n.key)
+				.sort()
+		).toEqual([...kept].sort());
+	});
+
 	it('treats a row dated in the future as new, not as kept forever', () => {
 		const list = build([failed(1)], NOW + MAX_AGE_MS * 2);
 		expect(prune(list, NOW)).toHaveLength(1);
