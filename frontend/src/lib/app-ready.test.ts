@@ -24,4 +24,14 @@ describe('signalAppReady', () => {
 			while (frames.length) frames.shift()?.();
 		}).not.toThrow();
 	});
+
+	it('uses the browser frame clock by default', () => {
+		const frames: Array<() => void> = [];
+		vi.stubGlobal('requestAnimationFrame', (cb: () => void) => frames.push(cb));
+		const appReady = vi.fn();
+		signalAppReady({ aniGui: { appReady } });
+		while (frames.length) frames.shift()?.();
+		expect(appReady).toHaveBeenCalledOnce();
+		vi.unstubAllGlobals();
+	});
 });
