@@ -60,8 +60,8 @@ pub use decl::{FlagDecl, FlagKind, FlagValue};
 pub use resolve::Resolved;
 pub use store::FlagStore;
 
-/// Every flag this build declares. Empty until the first consumer
-/// lands: a declaration comes with the code that reads it.
+/// Every flag this build declares. A declaration comes with the code
+/// that reads it.
 ///
 /// Declare each flag as a `pub const FlagDecl`, list it here, and read
 /// it through that same constant with [`Resolved::enabled`] or
@@ -69,7 +69,7 @@ pub use store::FlagStore;
 /// a typo would turn into a silent default. Then register a test case
 /// for its default and for every retreat in `matrix::CASES`: a test
 /// fails while any value of a declared flag has none.
-pub const DECLARED: &[FlagDecl] = &[];
+pub const DECLARED: &[FlagDecl] = &[crate::notices::NOTIFICATION_CENTER];
 
 #[cfg(test)]
 pub(crate) mod test_decls;
