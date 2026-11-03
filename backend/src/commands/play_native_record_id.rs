@@ -6,18 +6,18 @@ use crate::app::AppState;
 use crate::history::guard::{Epoch, Held};
 
 /// The given id when the cache can already say the cour guard accepts
-/// pairing it with the watch, so it can go on with the row's own
-/// write. Otherwise none, and the id waits for the guard's verdict, so
-/// the row never carries an id the guard refuses.
+/// pairing it with the show titled `title`, so it can go on with the
+/// row's own write — a watch's, or a play's resolve's. Otherwise none,
+/// and the id waits for the guard's verdict, so the row never carries
+/// an id the guard refuses. Nothing here reads Kitsu.
 pub(super) fn judged_by_cache(
     state: &AppState,
-    watch: &Watch,
+    title: &str,
     given: Option<&str>,
 ) -> Option<String> {
     given
         .filter(|k| {
-            crate::commands::kitsu::cached_cour_pairing_verdict(state, &watch.title, k)
-                == Some(false)
+            crate::commands::kitsu::cached_cour_pairing_verdict(state, title, k) == Some(false)
         })
         .and_then(crate::history::kitsu_id_of)
 }

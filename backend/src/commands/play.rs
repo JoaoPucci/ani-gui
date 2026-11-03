@@ -239,7 +239,13 @@ fn write_history_on_cache_hit(
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
         watched_at: None,
-        kitsu_id: None,
+        // The page's id, when the cache alone accepts it — as a fresh
+        // resolve records it.
+        kitsu_id: crate::commands::play_native_record::resolved_id(
+            state,
+            &cached.show_title,
+            args.recordable_kitsu_id(&cached.show_id),
+        ),
         own_number: true,
     };
     // A show removed from history while the cached stream was being
@@ -248,7 +254,7 @@ fn write_history_on_cache_hit(
         if held.overtaken_since(asked, &cached.show_id) {
             return Ok(());
         }
-        held.upsert(entry)?;
+        held.upsert_resolved(entry)?;
         held.played_from(&cached.show_id, asked.page);
         Ok::<_, AniError>(())
     });
@@ -487,6 +493,7 @@ where
             &native,
             &args.episode,
             asked,
+            args.recordable_kitsu_id(&native.slug),
         );
     }
     // A successful resolve is a positive availability fact, same

@@ -58,14 +58,29 @@ fn put_numbering(state: &AppState, native: &NativeResolved) {
 /// handoff keeps too: the offset and any former tag are put right
 /// first, whatever happens. A play overtaken by a later watch records
 /// no row.
+///
+/// `kitsu_id` is the Kitsu id the play may record
+/// ([`crate::commands::play::PlayArgs::recordable_kitsu_id`]): the row
+/// carries it from this write when the cache alone accepts it
+/// ([`resolved_id`]).
 pub(crate) fn record_fresh_watch(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
+    kitsu_id: Option<&str>,
 ) {
     stamp_numbering(state, native, asked);
-    write_history(state, native, requested, asked);
+    write_history(state, native, requested, asked, kitsu_id);
+}
+
+/// The Kitsu id a play's resolve records on the row of the show titled
+/// `title`: `kitsu_id`, the id the play may record, when it is one and
+/// the cache alone can say the cour guard accepts it. Otherwise none,
+/// and the id waits for the play's watch — mark-watched — whose guard
+/// can read Kitsu. Nothing here reads Kitsu.
+pub(crate) fn resolved_id(state: &AppState, title: &str, kitsu_id: Option<&str>) -> Option<String> {
+    judged_by_cache(state, title, kitsu_id.and_then(crate::history::kitsu_id_in))
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
@@ -177,7 +192,7 @@ pub(crate) async fn record_watch_requested_at(
     // Only a Kitsu id is one: anything else the page sent is no id, and
     // reaches neither the row nor the mapping and its played mark.
     let given = kitsu_id.and_then(crate::history::kitsu_id_in);
-    let judged = judged_by_cache(state, watch, given);
+    let judged = judged_by_cache(state, &watch.title, given);
     // The watch's moment travels with the row, in the same write, so
     // the recency the resume and the strip rank by is not left to a
     // store the row was not written to; the cache's copy follows.
@@ -259,11 +274,18 @@ pub(crate) async fn record_watch_requested_at(
 /// `asked` is the play's request: a show removed from history while
 /// the play resolved, or watched since it began, gets no row from it
 /// ([`crate::history::guard`]).
+///
+/// `kitsu_id` is the Kitsu id the play may record: the row carries it
+/// now when the cache alone accepts it ([`resolved_id`]), so a play
+/// whose watch is never recorded — the window closed before
+/// mark-watched — still names its show. Otherwise the row keeps the id
+/// it had, and the watch settles it.
 pub(crate) fn write_history(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
+    kitsu_id: Option<&str>,
 ) {
     let entry = crate::history::HistoryEntry {
         ep_no: matched_episode(native, requested),
@@ -272,14 +294,14 @@ pub(crate) fn write_history(
         // A resolve is not a watch: the row keeps the moment of the
         // watch before it, if any.
         watched_at: None,
-        kitsu_id: None,
+        kitsu_id: resolved_id(state, &native.title, kitsu_id),
         own_number: true,
     };
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
         if held.overtaken_since(asked, &native.slug) {
             return Ok(());
         }
-        held.upsert(entry)?;
+        held.upsert_resolved(entry)?;
         held.played_from(&native.slug, asked.page);
         Ok::<_, crate::error::AniError>(())
     });
