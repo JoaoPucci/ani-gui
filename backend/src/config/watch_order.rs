@@ -12,8 +12,11 @@ pub const RELEASED: &str = "released";
 /// `"linked"`.
 #[must_use]
 pub fn normalize(value: &str) -> &'static str {
-    let _ = value;
-    LINKED
+    if value == RELEASED {
+        RELEASED
+    } else {
+        LINKED
+    }
 }
 
 /// Read the stored value as [`normalize`] does.
@@ -22,7 +25,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let value = <String as serde::Deserialize>::deserialize(deserializer)?;
-    Ok(value)
+    Ok(normalize(&value).to_string())
 }
 
 #[cfg(test)]
