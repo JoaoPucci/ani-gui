@@ -48,7 +48,7 @@ Platform support tiers:
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
 
 - **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Its backend carries its own C library, so the AppImage does not need a distribution as new as the one it was built on. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
-- **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui_<version>_amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
+- **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui-<version>-amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
 
 </details>
 
@@ -71,11 +71,11 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    . "$HOME/.cargo/env"   # (or re-open the shell) so `cargo` is on PATH
    ```
    Windows: download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs) — it sets up the MSVC toolchain and offers to install the Visual Studio build tools it needs.
-2. **Install Node 20–24 and enable corepack.** The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
+2. **Install Node 22.12–24 and enable corepack.** Packaging needs 22.12 or later: electron-builder runs `@electron/rebuild`, which requires it. The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
    # re-open the shell (or `source ~/.bashrc`) so nvm is on PATH
-   nvm install 20
+   nvm install 22
    corepack enable
    ```
    Windows: install Node from [nodejs.org](https://nodejs.org) (or `winget install OpenJS.NodeJS.LTS`), then run `corepack enable` once in an **elevated** terminal opened after the install — the command writes its pnpm shims beside Node in `C:\Program Files\nodejs`, which a regular terminal cannot write to (the failure is `EPERM`). A user-scoped Node install (nvm-windows, or Node placed under your profile) needs no elevation.

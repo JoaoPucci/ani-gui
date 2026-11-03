@@ -1262,6 +1262,27 @@ the shape against the app as it is then.
   path wiring on the hand-off, or a yt-dlp the user installed
   themselves.
 
+## Chromium's namespace sandbox in the AppImage
+
+The AppImage starts Electron with `--no-sandbox` on every host. The
+reason is the setuid helper: the image runs from a read-only FUSE mount,
+so `chrome-sandbox` inside it cannot be SUID. But Chromium has a second
+sandbox that needs no helper, built on unprivileged user namespaces, and
+the unconditional flag gives that one up too on hosts where it would
+work.
+
+electron-builder 26's AppRun already tries to keep it: it passes
+`--no-sandbox` only when `unshare -Ur true` fails. The repack
+(`electron/lib/appimage-tree.cjs`) overrides that probe on purpose.
+`unshare` succeeding does not show that Chromium's sandbox will start,
+because Ubuntu's AppArmor restriction on user namespaces grants its
+exceptions per binary, and a sandbox that fails to start aborts the
+launch. Keeping the namespace sandbox needs a probe that answers for the
+app's own binary, or a way to fall back when the sandboxed start fails.
+It waited because it changes which hosts run sandboxed, which wants
+testing across distributions rather than riding along with a toolchain
+bump.
+
 ## Update information in the AppImage
 
 The AppImage carries no update information and releases publish no
