@@ -467,16 +467,15 @@ test("a write to an obfuscating or absent keyring is refused before anything is 
   }
 });
 
-test("a write whose keyring status fails is encryption_unavailable", async () => {
+test("a write whose keyring cannot be asked is io_error, not a missing keyring", async () => {
+  // A helper that died or never started says nothing about the keyring;
+  // encryption_unavailable would tell the user to install one.
   const keyring = keyringOf();
-  keyring.status = () => Promise.reject(new Error("keyring helper ended"));
-  const r = await writeToken({
-    file: () => FILE,
-    fs: memFs(),
-    keyring,
-    payload: {},
-  });
-  assert.deepEqual(r, { ok: false, kind: "encryption_unavailable" });
+  keyring.status = () => Promise.reject(new Error("keyring helper ended (SIGKILL)"));
+  const fs = memFs({ [FILE]: "enc:old" });
+  const r = await writeToken({ file: () => FILE, fs, keyring, payload: {} });
+  assert.deepEqual(r, { ok: false, kind: "io_error", message: "keyring helper ended (SIGKILL)" });
+  assert.equal(fs.store.get(FILE).toString(), "enc:old");
 });
 
 test("a write with no payload object is bad_request", async () => {
