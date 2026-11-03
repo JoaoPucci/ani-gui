@@ -238,6 +238,17 @@ authority directed, never a route an agent picks for itself:
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
 
+### New features ship switched off
+
+The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. So it may only move a declared flag toward the safer side: a kill switch to `false`, or a fallback to an earlier behaviour (`backend/src/flags/decl.rs`). It cannot switch anything on. The rule follows from that:
+
+- **Every new user-facing feature ships off by default.** The release that introduces it carries it behind a gate that is off in that build.
+- **A release switches it on, never the remote file.** Turning a feature on is a change to its default, shipped in a release like any other change.
+- **The remote file stays the emergency off switch.** From the release that turns a feature on, it is declared as a kill switch, so `flags.json` can switch it off again without a release.
+- **Both states are tested.** While the feature ships off, its tests cover it off and on. Once it is a declared flag, the flag matrix (`backend/src/flags/matrix.rs`) holds it to a case for every value it allows.
+
+Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and this rule is to be revised then.
+
 ## 14. Scope is negotiable, delivery is not
 
 Never drop a piece of work on the grounds that it is too large. "Too
