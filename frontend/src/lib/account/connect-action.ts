@@ -23,7 +23,7 @@
 
 import { m } from '$lib/paraglide/messages';
 import { connectAccount, type ConnectFlowDeps, type ConnectFlowResult } from './connect-flow';
-import { restoreAfterFailedConnect } from './state-helpers';
+import { guarded, restore, type Attempt } from './connect-attempt';
 import { connectFailureMessage } from './connect-messages';
 import { KEYRING_WAIT_MS } from './keyring-wait';
 import { noticeUnlessLanded, realTimers } from './landed-notice';
@@ -57,15 +57,6 @@ export interface CancelConnectDeps {
 	store: ConnectActionStore;
 	cancelOAuth(): Promise<boolean>;
 	pushToast(toast: ErrorToast): unknown;
-}
-
-/** A sign-in under way: the state the click found, whether a cancel
- *  that could not reach the main process gave up on it, and whether it
- *  sent its sign-in to be saved. */
-interface Attempt {
-	prev: ProviderState;
-	abandoned: boolean;
-	saveSent: boolean;
 }
 
 const attempts = new Map<Provider, Attempt>();
@@ -139,27 +130,11 @@ async function settleRejected(
 		reread: () => deps.store.reread(provider),
 		landed: () => deps.store.byProvider[provider].kind === 'connected',
 		push: () => deps.pushToast({ kind: 'error', message: m.account_connect_error_unknown() }),
-		dismiss: (id) => deps.dismissToast(id),
+		dismiss: deps.dismissToast,
 		waitMs: KEYRING_WAIT_MS,
 		...realTimers
 	});
 	await seedIfConnected(provider, deps);
-}
-
-/**
- * The flow's save, held back once the sign-in is abandoned: the user
- * was told it was cancelled. A save sent before that is noted, since it
- * may land.
- */
-function guarded(flow: ConnectFlowDeps, attempt: Attempt): ConnectFlowDeps {
-	return {
-		...flow,
-		persistAccount: (provider, payload) => {
-			if (attempt.abandoned) return Promise.resolve({ ok: false, kind: 'superseded' });
-			attempt.saveSent = true;
-			return flow.persistAccount(provider, payload);
-		}
-	};
 }
 
 /**
@@ -206,25 +181,4 @@ function settleFailed(
 		return;
 	}
 	deps.pushToast({ kind: 'error', message: connectFailureMessage(r) });
-}
-
-/**
- * Put the provider back where a failed sign-in found it (see
- * `restoreAfterFailedConnect`). Every branch goes through a store
- * setter, which clears the change flag and wakes whoever waits on it.
- */
-function restore(store: ConnectActionStore, provider: Provider, prev: ProviderState): void {
-	const restored = restoreAfterFailedConnect(prev);
-	if (restored.kind === 'expired') {
-		store.setExpired(provider, restored.account);
-		return;
-	}
-	if (restored.kind === 'error') {
-		// setError takes the account from the state it replaces: put the
-		// sign-in back first so the error keeps it.
-		if (restored.account) store.setExpired(provider, restored.account);
-		store.setError(provider, restored.message);
-		return;
-	}
-	store.setDisconnected(provider);
 }

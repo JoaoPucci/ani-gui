@@ -75,7 +75,7 @@ async function settleRejected(provider: Provider, cb: ChipDisconnectCallbacks): 
 		reread: () => cb.reread(provider),
 		landed: () => cb.stateOf(provider).kind === 'disconnected',
 		push: () => cb.pushToast({ kind: 'error', message: cb.tokenClearFailedMessage() }),
-		dismiss: (id) => cb.dismissToast(id),
+		dismiss: cb.dismissToast,
 		waitMs: KEYRING_WAIT_MS,
 		...realTimers
 	});
