@@ -89,8 +89,9 @@ fn now_ms() -> i64 {
 ///
 /// The stamp orders Continue Watching and, when two providers have
 /// each left a row for one show, picks the one to resume from. The
-/// embedded player stamps on mark-watched, once playback has
-/// reported progress; a handoff stamps once the player has started.
+/// embedded player stamps on mark-watched, which the renderer sends as
+/// the play's session arrives; a handoff stamps once the player has
+/// started.
 /// A failed write is logged and swallowed, like the row's; a row
 /// that could not be written is not stamped at all. The row carries
 /// the moment too, so a cache that refuses the stamp does not leave
@@ -135,8 +136,8 @@ impl Watch {
 /// the caller knows the Kitsu id, the id on the row and the show's
 /// reverse mapping. A handoff records once its player has started —
 /// the spawn is the watch, and a player that failed to start leaves
-/// nothing behind; the embedded player records on mark-watched, once
-/// playback has reported progress. The mapping is what lets the row be
+/// nothing behind; the embedded player records on mark-watched, which
+/// the renderer sends as the play's session arrives. The mapping is what lets the row be
 /// found by the Kitsu id, and what puts its stamp in the running when
 /// two providers have each left a row. A watch without a show id (a
 /// cached row from before the field) records nothing.
