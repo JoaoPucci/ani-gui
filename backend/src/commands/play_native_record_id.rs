@@ -22,6 +22,15 @@ pub(super) fn judged_by_cache(
         .and_then(crate::history::kitsu_id_of)
 }
 
+/// The Kitsu id a play's resolve records on the row of the show titled
+/// `title`: `kitsu_id`, the id the play may record, when it is one and
+/// the cache alone can say the cour guard accepts it
+/// ([`judged_by_cache`]). Otherwise none, and the id waits for the
+/// play's watch — mark-watched — whose guard can read Kitsu.
+pub(crate) fn resolved_id(state: &AppState, title: &str, kitsu_id: Option<&str>) -> Option<String> {
+    judged_by_cache(state, title, kitsu_id.and_then(crate::history::kitsu_id_in))
+}
+
 /// Put an id the guard accepted on the row, once the guard has read
 /// Kitsu for it. An id that is not digits is not recorded.
 pub(super) fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str, begun: Epoch) {

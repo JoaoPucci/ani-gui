@@ -13,6 +13,7 @@ use crate::history::guard::{Asked, Epoch};
 
 #[path = "play_native_record_id.rs"]
 mod record_id;
+pub(crate) use record_id::resolved_id;
 use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id};
 
 #[path = "play_native_record_matched.rs"]
@@ -72,15 +73,6 @@ pub(crate) fn record_fresh_watch(
 ) {
     stamp_numbering(state, native, asked);
     write_history(state, native, requested, asked, kitsu_id);
-}
-
-/// The Kitsu id a play's resolve records on the row of the show titled
-/// `title`: `kitsu_id`, the id the play may record, when it is one and
-/// the cache alone can say the cour guard accepts it. Otherwise none,
-/// and the id waits for the play's watch — mark-watched — whose guard
-/// can read Kitsu. Nothing here reads Kitsu.
-pub(crate) fn resolved_id(state: &AppState, title: &str, kitsu_id: Option<&str>) -> Option<String> {
-    judged_by_cache(state, title, kitsu_id.and_then(crate::history::kitsu_id_in))
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
