@@ -313,23 +313,24 @@ no longer declared.
 **What a signature adds.** Two things are used only under a signature:
 a rollout's `true`, which turns a feature on, and the file's notices
 for the notification center with its donation-ask number, which are
-content rather than a retreat. Each launch fetches
-`flags.json.minisig` beside the file, from the same branch and host, and
-verifies the file's exact bytes with minisign (Ed25519 over BLAKE2b-512,
-the prehashed form only) against the public keys compiled into the
-build (`flags::signature::TRUSTED_KEYS`). A verified file is used
-whole; any other file keeps its flags but loses its notices block and
-every rollout it sets to `true`, and what is cached is that admitted
+content rather than a retreat. Each launch fetches `flags.json.minisig`
+beside the file, from the same branch and host, and verifies the file's
+exact bytes with minisign (Ed25519 over BLAKE2b-512, the prehashed form
+only) against the public keys compiled into the build
+(`flags::signature::TRUSTED_KEYS`). A verified file is used whole; any
+other file keeps its flags but loses its notices block and every
+rollout it sets to `true`, and what is cached is that admitted
 document. The cache marks an entry verified when its document holds
-something only a verified file keeps (a notices block, a rollout
-turned on). An entry without the mark is admitted again when it is
-read, as an unsigned file under the reading build's declarations. That
-covers a cache written before the signature check, which kept the file
-as fetched, and one written by a build that did not yet declare a
-rollout the reading build does: neither can turn a feature on or show
-a notice, and their other flags are kept. The shipped build trusts no key yet, so no notice is used and no
-rollout is turned on. Signing, trusting and rotating a key are
-in [`development.md`](./development.md#signing-the-flags-file).
+something only a verified file keeps (a notices block, a rollout turned
+on). An entry without the mark is admitted again when it is read, as an
+unsigned file under the reading build's declarations. That covers a
+cache written before the signature check, which kept the file as
+fetched, and one written by a build that did not yet declare a rollout
+the reading build does: neither can turn a feature on or show a notice,
+and their other flags are kept. The shipped build trusts no key yet, so
+no notice is used and no rollout is turned on. Signing, trusting and
+rotating a key are in
+[`development.md`](./development.md#signing-the-flags-file).
 
 What a signature does not cover: the cached copy is the user's own disk
 and is read back without checking again, so verified notices, and a
@@ -483,20 +484,21 @@ body, or malformed JSON.
 `remote-flags.json` in the cache root, together with the time it was
 fetched. When the file does not arrive within the cap, the cached copy
 decides the flags if it is at most seven days old, and the defaults
-decide them otherwise. A copy dated in the
-future (a clock set back) counts as too old. The cached copy goes
-through the same resolution as a fetched file, so a cache written by
-another build, or edited by hand, still resolves only to values this
-build declares. Why seven days: every value an unverified document can
-produce is a default or a declared retreat, so such a cached copy is
-never less safe than the defaults it stands in for; a verified copy may
-also hold a rollout turned on and notices, which the maintainer signed
-(see "What a signature does not cover" above). Its age limits how long
-a change the maintainer has since made, a lifted retreat or a rollout
-turned off again, waits on a machine that cannot reach GitHub. A week covers a stretch of launches without the network,
-such as a trip, a captive portal or a blocked CDN, so a feature switched
-off for a bad release stays off through it. And even on a machine that
-never reaches the file again, a lifted retreat clears within the week.
+decide them otherwise. A copy dated in the future (a clock set back)
+counts as too old. The cached copy goes through the same resolution as
+a fetched file, so a cache written by another build, or edited by hand,
+still resolves only to values this build declares. Why seven days:
+every value an unverified document can produce is a default or a
+declared retreat, so such a cached copy is never less safe than the
+defaults it stands in for; a verified copy may also hold a rollout
+turned on and notices, which the maintainer signed (see "What a
+signature does not cover" above). Its age limits how long a change the
+maintainer has since made, a lifted retreat or a rollout turned off
+again, waits on a machine that cannot reach GitHub. A week covers a
+stretch of launches without the network, such as a trip, a captive
+portal or a blocked CDN, so a feature switched off for a bad release
+stays off through it. And even on a machine that never reaches the file
+again, a lifted retreat clears within the week.
 
 **Test runs bring their own flags.** A test run is a launch with
 `ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the
@@ -659,18 +661,19 @@ row's page while the source is not answering, and nowhere otherwise.
 ask's schedule, a pure state machine (`$lib/notices/donation`, wired by
 `$lib/notices/donation-ask`): once each time the number rises past the
 last one the install acted on, never in the first fourteen days after
-the first launch with the center on (when the ask first runs), never while a video plays, something is fullscreen or
-the player is open (it waits for a moment when none is true), and a new
-install records the number current when it first sees one and reacts
-only to rises after it. The ask is one pinned toast with two answers:
-Donate, which opens the About page's Support section, and Not now. The
-number is acted on when the toast is shown, so either answer, or
-neither, ends it until the number rises again. A toast still up when a
-video starts, something goes fullscreen or the player opens is taken
-down, and does not come back. There is no permanent
-opt-out in this version; the stored state reserves an `optOut` field so
-one can be added without a migration. The state is kept in the
-window's `localStorage` (`ani-gui.donation-ask.v1`).
+the first launch with the center on (when the ask first runs), never
+while a video plays, something is fullscreen or the player is open (it
+waits for a moment when none is true), and a new install records the
+number current when it first sees one and reacts only to rises after
+it. The ask is one pinned toast with two answers: Donate, which opens
+the About page's Support section, and Not now. The number is acted on
+when the toast is shown, so either answer, or neither, ends it until
+the number rises again. A toast still up when a video starts, something
+goes fullscreen or the player opens is taken down, and does not come
+back. There is no permanent opt-out in this version; the stored state
+reserves an `optOut` field so one can be added without a migration. The
+state is kept in the window's `localStorage`
+(`ani-gui.donation-ask.v1`).
 
 ## Embedded playback
 

@@ -151,7 +151,7 @@ fn check_one(decl: &FlagDecl) -> Result<(), String> {
         return Err(format!("{name:?} is not a lower-case snake_case name"));
     }
     if decl.safe_because.trim().is_empty() {
-        return Err(format!("{name} does not say why its retreat is safe"));
+        return Err(format!("{name} does not say why its other values are safe"));
     }
     if let FlagKind::Fallback { current, earlier } = decl.kind {
         check_fallback(name, current, earlier)?;
