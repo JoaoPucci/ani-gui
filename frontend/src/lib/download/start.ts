@@ -77,9 +77,11 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			// The episode verdict — the show is there, this episode is
 			// not — is a unit variant with no message; the dock row
 			// carries the same copy the play page shows for it. A
-			// catalogue miss and every upstream status likewise read as
-			// they do on the play page. (`scraper` does not: in a download
-			// it is the download tool failing, not the provider.)
+			// catalogue miss, every upstream status and a provider answer
+			// this version could not read likewise read as they do on the
+			// play page: the download walks the same provider, and raises
+			// no parse failure of its own. (`scraper` does not: in a
+			// download it is the download tool failing, not the provider.)
 			const kind = payloadKind(e);
 			if (kind === 'episode_unavailable') {
 				// Whether the row suggests the other audio is the
@@ -91,7 +93,7 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 				}).then((message) => downloadStore.markError(id, message));
 				return;
 			}
-			if (kind === 'no_results' || kind === 'upstream') {
+			if (kind === 'no_results' || kind === 'upstream' || kind === 'parse_failed') {
 				downloadStore.markError(id, describePlayFailure(e, { otherAudio: null }));
 				return;
 			}
