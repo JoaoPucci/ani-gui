@@ -28,6 +28,12 @@ export interface PlayArgsInput {
 	/** The version remembered for the show (`storedChoice` in
 	 *  `$lib/versions/version-choice.ts`); omitted when none is. */
 	version?: VersionKind;
+	/** The history row a guessed Continue card opened the play from
+	 *  (`guessRow` in `./play-origin`). */
+	guessRow?: string;
+	/** The captions choice remembered for the show (`storedCaption` in
+	 *  `$lib/play/caption-choice.ts`); omitted when none is. */
+	caption?: string;
 }
 
 export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
@@ -44,5 +50,7 @@ export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
 	if (input.prefetch === true) args.prefetch = true;
 	if (input.kitsuId) args.kitsu_id = input.kitsuId;
 	if (input.version) args.version = input.version;
+	if (input.guessRow) args.guess_row = input.guessRow;
+	if (input.caption) args.caption = input.caption;
 	return args;
 }

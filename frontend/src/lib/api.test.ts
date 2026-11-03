@@ -566,6 +566,29 @@ describe('playStream', () => {
 		await unnamed;
 	});
 
+	it("names the show's remembered captions choice, and nothing when none is", async () => {
+		// The backend cuts a listing past its cap by the choice, as the
+		// player starts by it.
+		const named = playStream(
+			{ title: 'X', episode: '5', mode: 'sub', caption: 'es-419' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('caption')).toBe('es-419');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await named;
+
+		const unnamed = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const plain = FakeEventSource.instances[1];
+		expect(new URL(plain.url).searchParams.has('caption')).toBe(false);
+		plain.dispatch('done', JSON.stringify(donePayload()));
+		await unnamed;
+	});
+
 	it('omits prefetch param entirely when not set or false', async () => {
 		// Click path: leave the field default. Backend treats absence
 		// as false, history-write fires.
@@ -614,6 +637,28 @@ describe('playStream', () => {
 		expect(es.url).toContain('subtype=movie');
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
+	});
+
+	it("names the guessed card's row on the SSE query when given, and only then", async () => {
+		// The session then says whether the play landed on that row's own
+		// listing, which is what lets the guess be recorded on it.
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('guess_row')).toBe('hianime:x-1');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+		const plain = playStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es2 = FakeEventSource.instances[1];
+		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
+		es2.dispatch('done', JSON.stringify(donePayload()));
+		await plain;
 	});
 
 	it('appends kitsu_id to the SSE query when provided', async () => {
@@ -1107,6 +1152,36 @@ describe('kitsuTitleMatchGet', () => {
 		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
 		const got = await kitsuTitleMatchGet('Whatever', 1, 'hianime');
 		expect(got).toBeNull();
+	});
+});
+
+describe('the title match of a row that names a year', () => {
+	it('asks for the guess its year keyed', async () => {
+		const fetchMock = mockFetchOnce('7730');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
+		const url = new URL(lastCall(fetchMock).url);
+		expect(url.searchParams.get('year')).toBe('2000');
+	});
+
+	it('stores the guess under its year', async () => {
+		const fetchMock = mockFetchOnce(null, 204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchPut("JoJo's Bizarre Adventure", 1, '7730', 'hianime', 2000);
+		expect(JSON.parse(lastCall(fetchMock).init?.body as string)).toEqual({
+			title: "JoJo's Bizarre Adventure",
+			cour: 1,
+			kitsu_id: '7730',
+			provider: 'hianime',
+			year: 2000
+		});
+	});
+
+	it('names no year for a row that names none', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet('Demon Slayer', 1, 'hianime', null);
+		expect(new URL(lastCall(fetchMock).url).searchParams.has('year')).toBe(false);
 	});
 });
 

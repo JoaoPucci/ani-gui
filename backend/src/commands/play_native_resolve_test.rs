@@ -32,6 +32,7 @@ async fn run(
             episode,
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: expected,
             year: None,
             subtype: None,
@@ -184,6 +185,7 @@ async fn a_detail_refusal_stops_the_alias_walk() {
             episode: "2",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(3),
             year: Some(2026),
             subtype: None,
@@ -282,6 +284,7 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
             episode: "2",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(3),
             year: None,
             subtype: None,
@@ -327,6 +330,7 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
             episode: "2",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(3),
             year: None,
             subtype: None,
@@ -385,6 +389,7 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
             episode: "2",
             mode: "dub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(3),
             year: None,
             subtype: None,
@@ -514,6 +519,7 @@ async fn run_chain(fate: &TableProvider) -> std::result::Result<NativeResolved, 
             episode: "2",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(2),
             year: None,
             subtype: None,
@@ -555,6 +561,7 @@ async fn the_transient_verdict_carries_the_failing_attempts_instant() {
             episode: "1",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(2),
             year: None,
             subtype: None,
@@ -618,6 +625,7 @@ async fn a_transport_dead_pick_leaves_a_transient_verdict() {
             episode: "1",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(2),
             year: None,
             subtype: None,
@@ -938,6 +946,7 @@ async fn a_stalled_provider_cannot_outlive_the_resolve_deadline() {
             episode: "1",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: None,
             year: None,
             subtype: None,
@@ -1048,6 +1057,7 @@ async fn a_resolved_play_carries_the_sources_referer() {
         episode: "1",
         mode: "sub",
         quality: "best",
+        wanted: crate::scraper::track_preference::Wanted::locale("en"),
         expected_count: Some(1),
         year: None,
         subtype: None,
@@ -1162,6 +1172,7 @@ fn listing_request() -> NativeResolveRequest<'static> {
         episode: "1",
         mode: "sub",
         quality: "best",
+        wanted: crate::scraper::track_preference::Wanted::locale("en"),
         expected_count: Some(1),
         year: None,
         subtype: None,
@@ -1195,7 +1206,7 @@ async fn a_listing_past_the_cap_is_bounded_where_the_resolve_is_built_and_keeps_
         .collect();
     assert_eq!(
         kept, expected,
-        "the first cap-many in listing order, the default in the last slot"
+        "tracks of no known language: the first in listing order, the default kept among them"
     );
     assert!(
         native.subtitles.last().is_some_and(|t| t.default),
@@ -1239,6 +1250,7 @@ async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
         episode: "1",
         mode: "sub",
         quality: "best",
+        wanted: crate::scraper::track_preference::Wanted::locale("en"),
         expected_count: Some(1),
         year: None,
         subtype: None,
@@ -1335,7 +1347,12 @@ async fn the_episode_step_answers_the_episodes_verdict_directly() {
     let provider = NoStreamProvider;
     let picked = one_episode_show();
     let unlisted = crate::commands::play_native_episode::resolve_episode(
-        &provider, &picked, "9", "sub", "best",
+        &provider,
+        &picked,
+        "9",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect_err("no ninth episode");
@@ -1346,7 +1363,12 @@ async fn the_episode_step_answers_the_episodes_verdict_directly() {
     );
     assert!(!unlisted.clean_miss);
     let no_stream = crate::commands::play_native_episode::resolve_episode(
-        &provider, &picked, "1", "sub", "best",
+        &provider,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect_err("no stream for the first");
@@ -1356,4 +1378,124 @@ async fn the_episode_step_answers_the_episodes_verdict_directly() {
         no_stream.error
     );
     assert!(!no_stream.clean_miss);
+}
+
+/// Steel Ball Run's first episode lists 33 subtitle tracks, and the
+/// cap of 16 cut it alphabetically: Portuguese, Spanish, Russian and
+/// Japanese were among the 17 dropped. A listing that long is kept
+/// whole.
+#[tokio::test]
+async fn a_listing_of_every_language_a_provider_offers_is_kept_whole() {
+    let tracks: Vec<_> = (0..33).map(|n| listing_track(n, n == 7)).collect();
+    let native = resolve_native(
+        &ListingProvider(tracks.clone()),
+        listing_request(),
+        &mut |_| {},
+    )
+    .await
+    .expect("resolved");
+    assert_eq!(native.subtitles, tracks);
+}
+
+/// Past the cap the user's language is kept wherever the listing puts
+/// it: a Brazilian user's track at the end of a listing longer than
+/// the cap survives, and so does the default.
+#[tokio::test]
+async fn past_the_cap_the_users_language_is_kept_wherever_the_listing_puts_it() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let total = SUBTITLE_TRACK_CAP + 6;
+    let mut tracks: Vec<_> = (0..total)
+        .map(|n| listing_track(n, n == total - 2))
+        .collect();
+    tracks[total - 1].lang = "pt-BR".into();
+    let req = NativeResolveRequest {
+        wanted: crate::scraper::track_preference::Wanted::locale("pt-BR"),
+        ..listing_request()
+    };
+    let native = resolve_native(&ListingProvider(tracks.clone()), req, &mut |_| {})
+        .await
+        .expect("resolved");
+    assert_eq!(native.subtitles.len(), SUBTITLE_TRACK_CAP);
+    assert!(
+        native.subtitles.iter().any(|t| t.lang == "pt-BR"),
+        "the user's language kept"
+    );
+    assert!(
+        native.subtitles.iter().any(|t| t.default),
+        "the default kept"
+    );
+    let urls: Vec<&str> = native.subtitles.iter().map(|t| t.url.as_str()).collect();
+    let mut in_order = urls.clone();
+    in_order.sort_by_key(|u| tracks.iter().position(|t| t.url == *u));
+    assert_eq!(urls, in_order, "kept in the listing's order");
+}
+
+/// A listing that names one file twice keeps it once, and a default
+/// flag on either copy stays with it.
+#[tokio::test]
+async fn a_file_listed_twice_is_kept_once() {
+    let mut tracks: Vec<_> = (0..4).map(|n| listing_track(n, false)).collect();
+    let mut again = tracks[1].clone();
+    again.default = true;
+    tracks.push(again);
+    let native = resolve_native(&ListingProvider(tracks), listing_request(), &mut |_| {})
+        .await
+        .expect("resolved");
+    let urls: Vec<&str> = native.subtitles.iter().map(|t| t.url.as_str()).collect();
+    assert_eq!(
+        urls,
+        [
+            "https://cdn.example/x/subs/0.vtt",
+            "https://cdn.example/x/subs/1.vtt",
+            "https://cdn.example/x/subs/2.vtt",
+            "https://cdn.example/x/subs/3.vtt",
+        ]
+    );
+    assert!(native.subtitles[1].default, "the copy's default flag kept");
+}
+
+mod each_file_once_props {
+    use super::super::each_file_once;
+    use crate::scraper::provider::SubtitleTrack;
+    use proptest::prelude::*;
+
+    /// Listings drawing their files from a few URLs, so repeats are
+    /// common, with any default flags.
+    fn listing() -> impl Strategy<Value = Vec<SubtitleTrack>> {
+        proptest::collection::vec((0u8..6, any::<bool>()), 0..20).prop_map(|rows| {
+            rows.into_iter()
+                .enumerate()
+                .map(|(i, (file, default))| SubtitleTrack {
+                    lang: format!("l{i}"),
+                    label: format!("Track {i}"),
+                    default,
+                    url: format!("https://cdn.example/subs/{file}.vtt"),
+                })
+                .collect()
+        })
+    }
+
+    proptest! {
+        /// Each file is kept once, at its first place, as the first
+        /// copy listed it — except that it is a default when any copy
+        /// was — and the order of first places is the listing's.
+        #[test]
+        fn each_file_is_kept_once_at_its_first_place(tracks in listing()) {
+            let kept = each_file_once(tracks.clone());
+            let mut firsts: Vec<&SubtitleTrack> = Vec::new();
+            for t in &tracks {
+                if !firsts.iter().any(|f| f.url == t.url) {
+                    firsts.push(t);
+                }
+            }
+            prop_assert_eq!(kept.len(), firsts.len());
+            for (k, f) in kept.iter().zip(&firsts) {
+                prop_assert_eq!(&k.url, &f.url);
+                prop_assert_eq!(&k.lang, &f.lang);
+                prop_assert_eq!(&k.label, &f.label);
+                let any_default = tracks.iter().any(|t| t.url == f.url && t.default);
+                prop_assert_eq!(k.default, any_default);
+            }
+        }
+    }
 }

@@ -214,17 +214,22 @@ pub fn referer_header(referer: &str) -> Option<HeaderValue> {
 /// point at before it is read into memory.
 pub const SUBTITLE_BODY_CAP: usize = 4 * 1024 * 1024;
 
-/// The most tracks a listing may carry into the app. An episode's
-/// subtitles are a handful of languages — the listings seen so far
-/// carry one — so sixteen leaves room for every language a site is
-/// likely to offer and refuses the listing a malformed or hostile
-/// payload could pad to hundreds, each track a request and a body
-/// of its own. The tracks past the cap are dropped in listing order,
-/// so a listing that is merely long keeps its first ones.
-pub const SUBTITLE_TRACK_CAP: usize = 16;
+/// The most tracks a listing may carry into the app. A provider lists
+/// every language it carries — Steel Ball Run's first episode 33,
+/// Black Clover's 9 — so sixty-four keeps every listing seen whole,
+/// with room to spare, and still refuses the listing a malformed or
+/// hostile payload could pad to hundreds. A track costs nothing until
+/// it is used: the player loads only the track shown, a hand-off's
+/// command line takes what fits, and a cached row's check reads a
+/// few. Past the cap the tracks kept are the user's most wanted
+/// ([`crate::scraper::track_preference::most_wanted_within`]).
+pub const SUBTITLE_TRACK_CAP: usize = 64;
 
-/// The tracks of a listing the app accepts: the first
-/// [`SUBTITLE_TRACK_CAP`] of them, and how many were left behind.
+/// The first [`SUBTITLE_TRACK_CAP`] tracks of a listing, and how many
+/// were left behind: the session's and the sidecar writer's backstop
+/// for a listing that did not come through the resolve, which has
+/// already cut every listing it builds by preference
+/// ([`crate::commands::play_native_resolve::tracks_within_cap`]).
 #[must_use]
 pub fn within_track_cap<T>(tracks: &[T]) -> (&[T], usize) {
     let kept = tracks.len().min(SUBTITLE_TRACK_CAP);

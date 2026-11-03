@@ -75,6 +75,8 @@ fn play_args() -> PlayArgs {
         prefetch: false,
         kitsu_id: None,
         version: None,
+        guess_row: None,
+        caption: None,
     }
 }
 
