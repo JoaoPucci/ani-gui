@@ -18,6 +18,11 @@ import { cancelConnect, connectProvider, type ConnectActionDeps } from './connec
 import type { ConnectFlowDeps } from './connect-flow';
 import type { PersistedAccount, Provider } from './types';
 
+// Resolve the locale once while no window is stubbed. Paraglide's first
+// lookup records the locale it resolved, in localStorage when a window
+// exists; the fake windows below carry none.
+m.account_connect_error_unknown();
+
 function account(overrides: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
 		access_token: 'old-bearer',
