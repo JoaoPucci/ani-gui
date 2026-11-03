@@ -10,6 +10,14 @@
 // once and is what the row names afterwards. A stream of one level
 // shows its row too, naming that level, with the level as its one
 // entry and no Auto.
+//
+// With the app's custom controls off, Chromium's native controls have
+// no quality menu and the in-player one is gone, so the page's ⋯ menu
+// carries the same picker: a Quality row naming what plays, opening
+// the same levels, a pick reaching the engine the same way. A stream
+// of one level names its level there with nothing to open. With the
+// custom controls on, the in-player menu is the one picker and the ⋯
+// menu offers none.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -147,9 +155,11 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function useShowHandlers() {
+function useShowHandlers(customControls = true) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json({ ...appConfig(), use_custom_player_controls: customControls })
+		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
@@ -173,8 +183,8 @@ function useShowHandlers() {
 	);
 }
 
-async function mountHls(): Promise<FakeHlsT> {
-	useShowHandlers();
+async function mountHls(customControls = true): Promise<FakeHlsT> {
+	useShowHandlers(customControls);
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
@@ -369,5 +379,169 @@ describe('play route — the quality the setting names, and the menu that change
 		menuButton().click();
 		await until(() => qualityRow() !== undefined, 'the quality row');
 		expect(qualityRow()?.textContent).toContain(label(1080));
+	});
+});
+
+function moreButton(): HTMLButtonElement {
+	const button = target.querySelector<HTMLButtonElement>(
+		`button[aria-label="${m.play_more_aria_label()}"]`
+	);
+	if (!button) throw new Error('no more button');
+	return button;
+}
+
+function moreItems(): HTMLElement[] {
+	return [...target.querySelectorAll<HTMLElement>('#np-more-menu [role^="menuitem"]')];
+}
+
+function moreQualityRow(): HTMLElement | undefined {
+	return moreItems().find(
+		(el) =>
+			el.getAttribute('role') === 'menuitem' &&
+			el.textContent?.includes(m.play_controls_menu_quality_label())
+	);
+}
+
+function moreRadios(): HTMLElement[] {
+	return moreItems().filter((el) => el.getAttribute('role') === 'menuitemradio');
+}
+
+const names = (els: HTMLElement[]) => els.map((el) => el.textContent?.replace('✓', '').trim());
+
+const escape = () =>
+	document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+/** Native controls, a master of three levels playing its highest. */
+async function nativeMaster(): Promise<FakeHlsT> {
+	const hls = await mountHls(false);
+	hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+	await until(() => hls.starts === 1, 'the engine to start');
+	hls.emit(EVENTS.FRAG_CHANGED, { frag: { type: 'main', level: 2 } });
+	await tick();
+	return hls;
+}
+
+describe("play route — the ⋯ menu's quality picker, with the custom controls off", () => {
+	it('lists the levels, applies a pick, and names it afterwards', async () => {
+		const hls = await nativeMaster();
+		// The in-player menu goes with the custom controls.
+		expect(target.querySelector(`button[aria-label="${m.play_controls_menu_aria_label()}"]`)).toBe(
+			null
+		);
+
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		const row = moreQualityRow();
+		expect(row?.textContent).toContain(m.play_quality_auto_playing({ quality: label(1080) }));
+		expect(row?.getAttribute('aria-haspopup')).toBe('menu');
+
+		row?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		expect(names(moreRadios())).toEqual([
+			m.play_quality_auto(),
+			label(1080),
+			label(720),
+			label(360)
+		]);
+		expect(moreRadios().map((el) => el.getAttribute('aria-checked'))).toEqual([
+			'true',
+			'false',
+			'false',
+			'false'
+		]);
+		// The list's actions are gone, and focus is on the list's first
+		// row, which names it, rather than lost with the row clicked.
+		expect(
+			moreItems().some((el) => el.textContent?.includes(m.play_controls_menu_download()))
+		).toBe(false);
+		await until(
+			() => moreItems()[0] !== undefined && document.activeElement === moreItems()[0],
+			'focus on the list'
+		);
+		expect(moreItems()[0].textContent).toContain(m.play_controls_menu_quality_label());
+
+		moreRadios()[2].click();
+		expect(hls.nexts).toEqual([1]);
+		await until(() => target.querySelector('#np-more-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(moreButton());
+
+		// It reopens on its main list, the row naming the pin.
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row again');
+		expect(moreRadios()).toEqual([]);
+		expect(moreQualityRow()?.textContent).toContain(label(720));
+		expect(moreQualityRow()?.textContent).not.toContain(m.play_quality_auto());
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels again');
+		expect(moreRadios().map((el) => el.getAttribute('aria-checked'))).toEqual([
+			'false',
+			'false',
+			'true',
+			'false'
+		]);
+	});
+
+	it('goes back to the main list from the levels, by the back row and by Escape', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+
+		// The back row: the main list, focus on the row that opened it.
+		moreItems()[0].click();
+		await until(() => moreRadios().length === 0, 'the main list');
+		await until(() => document.activeElement === moreQualityRow(), 'focus on the quality row');
+
+		// Escape in the levels goes back one step; on the main list it
+		// closes the menu and hands focus to its button.
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels again');
+		escape();
+		await until(() => moreRadios().length === 0, 'the main list after Escape');
+		expect(target.querySelector('#np-more-menu')).not.toBe(null);
+		await until(
+			() => document.activeElement === moreQualityRow(),
+			'focus on the quality row after Escape'
+		);
+		escape();
+		await until(() => target.querySelector('#np-more-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(moreButton());
+	});
+
+	it('names the one level of a single-level stream, with nothing to open', async () => {
+		const hls = await mountHls(false);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[2]] });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await tick();
+
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		const row = moreQualityRow();
+		expect(row?.textContent).toContain(label(1080));
+		expect(row?.textContent).not.toContain(m.play_quality_auto());
+		expect(row?.getAttribute('aria-disabled')).toBe('true');
+		expect(row?.hasAttribute('aria-haspopup')).toBe(false);
+
+		row?.click();
+		await tick();
+		expect(moreRadios()).toEqual([]);
+		expect(target.querySelector('#np-more-menu')).not.toBe(null);
+		expect(hls.nexts).toEqual([]);
+		expect(hls.loads).toEqual([]);
+	});
+
+	it('offers no quality row while the custom controls carry the picker', async () => {
+		const hls = await mountHls(true);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await tick();
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the in-player quality row');
+		menuButton().click();
+
+		moreButton().click();
+		await until(() => moreItems().length > 0, 'the more menu');
+		expect(moreQualityRow()).toBeUndefined();
 	});
 });
