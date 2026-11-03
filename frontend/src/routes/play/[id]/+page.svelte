@@ -605,7 +605,11 @@
 	 *  language picked; the play cache keys on the choice, so they
 	 *  answer no switch now, and the ones still running are dropped. */
 	function rememberPick(choice: string) {
-		if (!rememberCaption(recordableId(id, fromGuess) ?? '', choice)) return;
+		const showId = recordableId(id, fromGuess) ?? '';
+		const before = storedCaption(showId);
+		if (!rememberCaption(showId, choice)) return;
+		// The choice standing again: nothing a warm was asked for moved.
+		if (before === choice) return;
 		clearBackgroundForShow(id);
 		captionPicks += 1;
 	}
