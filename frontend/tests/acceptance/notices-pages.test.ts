@@ -102,7 +102,7 @@ describe("a notice's page", () => {
 		await tick();
 		expect(target.querySelector('h1')).toBeNull();
 		expect(target.textContent).not.toContain('dismissed or resolved');
-		expect(target.textContent).toContain("Notifications aren't turned on in this version.");
+		expect(target.textContent).toContain('Notifications are turned off.');
 	});
 });
 

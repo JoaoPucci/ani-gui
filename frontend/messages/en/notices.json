@@ -20,7 +20,7 @@
 	"resolved_sr": "Resolved.",
 	"toast_view": "View",
 	"detail_missing": "This notification is no longer here. It may have been dismissed or resolved.",
-	"detail_off": "Notifications aren't turned on in this version.",
+	"detail_off": "Notifications are turned off.",
 	"update_title": "ani-gui {tag} is available",
 	"update_meta": "You have {current}",
 	"update_body": "A newer release of ani-gui is out. Open it to read what changed and how to install it.",
@@ -44,14 +44,14 @@
 			"declarations": ["input last", "input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} attempt to reach it failed, at {last}. ani-gui made no extra requests to find this out.",
-				"countPlural=*": "{count} attempts in a row to reach it failed, the last at {last}. ani-gui made no extra requests to find this out."
+				"countPlural=one": "{count} attempt to reach it failed ({last}). ani-gui made no extra requests to find this out.",
+				"countPlural=*": "{count} attempts in a row to reach it failed; the latest: {last}. ani-gui made no extra requests to find this out."
 			}
 		}
 	],
 	"outage_resolved_title": "The streaming source is answering again",
 	"outage_resolved_meta": "Back since {time}",
-	"outage_resolved_body": "The source answered again at {time}. Playing should work as usual.",
+	"outage_resolved_body": "The source answered again ({time}). Playing should work as usual.",
 	"outage_line": "The streaming source hasn't answered since {time}. We don't know why yet; playing may fail.",
 	"outage_line_details": "Details",
 	"download_done_title": [

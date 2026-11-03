@@ -49,7 +49,7 @@ describe('what each notice says', () => {
 		expect(c.meta).toMatch(/^Since 11:00\s?AM · 6 attempts failed$/);
 		expect(c.body[0].text).toContain("We don't know why yet");
 		expect(c.body[2].label).toBe('What ani-gui saw');
-		expect(c.body[2].text).toMatch(/6 attempts in a row .* the last at 11:55\s?AM/);
+		expect(c.body[2].text).toMatch(/6 attempts in a row .* the latest: 11:55\s?AM\./);
 		expect(c.body[2].text).toContain('no extra requests');
 		expect(c.action).toBeNull();
 	});
@@ -65,7 +65,7 @@ describe('what each notice says', () => {
 		const c = copyOf(n, NOW);
 		expect(c.title).toBe('The streaming source is answering again');
 		expect(c.meta).toMatch(/^Back since 11:00\s?AM$/);
-		expect(c.body[0].text).toMatch(/answered again at 11:00\s?AM/);
+		expect(c.body[0].text).toMatch(/answered again \(11:00\s?AM\)/);
 	});
 
 	it('finished downloads count their episodes and reveal their folder', () => {
