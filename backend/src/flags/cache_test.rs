@@ -201,3 +201,16 @@ async fn an_entry_written_from_a_verified_document_keeps_its_turn_on() {
     );
     assert_eq!(got.flags.get("notices"), Some(&notices_block()));
 }
+
+/// The mark is the document's own evidence, taken as it is written: an
+/// entry handed in marked verified, whose document holds nothing only a
+/// verified file keeps, is written unmarked.
+#[tokio::test]
+async fn the_mark_is_taken_from_the_document_as_it_is_written() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let mut claimed = entry(42);
+    claimed.verified = true;
+    write(&path, &claimed).await;
+    assert!(!read(&path).await.expect("an entry").verified);
+}
