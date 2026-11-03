@@ -293,7 +293,9 @@
 	// the per-show accent color and lets fullscreen target
 	// .player-frame (so the Skip OP/Outro overlay stays visible
 	// in fullscreen). Native is more battle-tested for PiP,
-	// caption picker, and the like. Default is native.
+	// caption picker, and the like. The setting defaults to custom
+	// (`Config::default`, backend/src/config/mod.rs); until the
+	// settings answer, the page reads it as off.
 	const USE_CUSTOM_PLAYER_CONTROLS = $derived(config?.use_custom_player_controls === true);
 
 	// Custom controls — Chromium's native media controls don't
@@ -3068,7 +3070,7 @@
 			{/if}
 
 			<!-- Custom controls overlay — toggled by the
-				     USE_CUSTOM_PLAYER_CONTROLS feature flag (off by
+				     use_custom_player_controls setting (on by
 				     default). When on, replaces Chromium's native
 				     timeline so the progress bar can take the
 				     per-show accent color. -->
