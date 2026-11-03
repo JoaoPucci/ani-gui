@@ -59,6 +59,28 @@ describe('handoffArgs', () => {
 		).toBe(false);
 	});
 
+	it("hands off the show's remembered captions choice, so the player starts where the embedded one would", () => {
+		const args = handoffArgs({
+			title: 'The Show',
+			episode: 3,
+			kitsuId: '42',
+			config: { mode: 'sub', quality: 'best' },
+			detail,
+			caption: 'off'
+		});
+		expect(args.caption).toBe('off');
+		expect(
+			'caption' in
+				handoffArgs({
+					title: 'The Show',
+					episode: 3,
+					kitsuId: '42',
+					config: { mode: 'sub', quality: 'best' },
+					detail
+				})
+		).toBe(false);
+	});
+
 	it('defaults to sub and best, and sends no id when the page has none', () => {
 		const args = handoffArgs({
 			title: 'The Show',

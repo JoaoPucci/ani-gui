@@ -323,6 +323,10 @@ export interface HistoryEntry {
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
+	/** The release year the row's show key names among its slug's words
+	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
+	 *  the backend; absent when it names none. */
+	key_year?: number;
 }
 
 /** Input to `cmd_create_session`. */
@@ -383,6 +387,10 @@ export interface CreateSessionResponse {
 	versions?: VersionInfo[];
 	/** The version that played, when there are several. */
 	version?: VersionKind;
+	/** Whether a play that named a guessed card's row (`guess_row`)
+	 *  landed on that row's own listing. Absent (false) otherwise and
+	 *  from older backends. */
+	own_listing?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -702,6 +710,15 @@ export interface PlayArgs {
 	 *  resolution cache on it, so a stamp or an eviction names the
 	 *  version its play named. */
 	version?: VersionKind;
+	/** The history row a Continue card whose show was only a guess
+	 *  opened the play from. The session answers whether the play
+	 *  landed on that row's own listing (`own_listing`). */
+	guess_row?: string;
+	/** The captions choice remembered for the show
+	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
+	 *  backend orders the subtitle tracks it hands an external player,
+	 *  and cuts a listing past its cap, by it. Absent when none is. */
+	caption?: string;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
@@ -808,6 +825,8 @@ export function playStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
+	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -1312,11 +1331,15 @@ export function kitsuEpisodes(
 export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
 	if (provider !== null) qs.set('provider', provider);
+	// A row that names a year keeps its guess apart from a row titled
+	// alike that names another.
+	if (year !== null) qs.set('year', String(year));
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1331,9 +1354,11 @@ export function kitsuTitleMatchPut(
 	title: string,
 	cour: number,
 	kitsuId: string,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<void> {
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
+	const body = { title, cour, kitsu_id: kitsuId, provider };
+	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
 }
 
 /**

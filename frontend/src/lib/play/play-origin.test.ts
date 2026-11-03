@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { openedFromGuess, openedFromRow, recordableId, withGuess, withRow } from './play-origin';
+import {
+	guessBinds,
+	guessRow,
+	openedFromGuess,
+	openedFromRow,
+	recordableId,
+	withGuess,
+	withRow
+} from './play-origin';
 
 describe('a play session opened from a guessed Continue match', () => {
 	it('is told by the guess flag in its URL', () => {
@@ -12,6 +20,22 @@ describe('a play session opened from a guessed Continue match', () => {
 		expect(recordableId('42', true)).toBeUndefined();
 		expect(recordableId('42', false)).toBe('42');
 		expect(recordableId('', false)).toBeUndefined();
+	});
+
+	it("records its play once the play landed on the card's own listing", () => {
+		// The backend says so when the play names the card's row
+		// (`guess_row`) and lands on that row's listing.
+		expect(guessBinds(true, { own_listing: true })).toBe(true);
+		expect(guessBinds(true, { own_listing: false })).toBe(false);
+		expect(guessBinds(true, {})).toBe(false);
+		// A session no guess opened records its play as it always did.
+		expect(guessBinds(false, {})).toBe(true);
+	});
+
+	it("names the card's row on its plays, and no other session does", () => {
+		expect(guessRow(true, 'hianime:show-1')).toBe('hianime:show-1');
+		expect(guessRow(false, 'hianime:show-1')).toBeUndefined();
+		expect(guessRow(true, null)).toBeUndefined();
 	});
 
 	it('carries the flag on every URL it builds for itself', () => {

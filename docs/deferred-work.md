@@ -382,6 +382,53 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
+- **Some guessed Continue cards still open the wrong show.** A
+  Continue row that recorded no show is matched by a Kitsu search for
+  its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
+  narrowed first by `frontend/src/lib/history/pick-rank.ts`). Over the
+  season picker's recorded cases these still pick another entry, and a
+  click on the card opens that one, playing whatever the provider lists
+  for it, if anything:
+
+  - [Oshi no Ko], which hianime titles "My Star": "My Star" takes Fuyu
+    no Suta-furu-tsu, and "My Star: Season 2" and "My Star Season 3"
+    take My Hero Academia 7.
+  - "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2" takes Part 1,
+    the only hit Kitsu's search returns for it.
+  - "Jujutsu Kaisen (TV)" takes the New Year's Special, and "Jujutsu
+    Kaisen 2nd Season" its recap.
+  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2, and
+    "Haikyuu!!: To the Top 2nd Season" takes To the Top.
+  - "That Time I Got Reincarnated as a Slime Season 2" takes the 2nd
+    Season's Part 2.
+  - "Attack on Titan: Final Season, Part 1" takes the Final Chapters'
+    Part 1.
+  - "Bakemonogatari (The Monogatari Series)" takes Off & Monster
+    Season.
+  - "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)"
+    takes Stone Ocean Part 2.
+
+  It waited because no rule tried fixed these without breaking picks
+  that are right. Refusing a season row any hit that does not carry
+  its season, rather than falling back to Kitsu's first hit, emptied
+  the pick for Gintama Season 2, 4 and 5 and for Kaguya-sama's second
+  season, whose Kitsu slugs do not spell the season the way that rule
+  reads one (Gintama' is `gintama-2`). Preferring a
+  season hit with no extra Part number sent Attack on Titan Season 3 to
+  its specials and the Slime season to a recap. Stripping "(TV)",
+  "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
+  pick.
+
+  There is no control on a card to correct its show. What corrects one
+  is playing the show from its own page: when that play lands on the
+  card's listing, the line records the show and the card goes by it
+  from then on — unless the cross-cour guard refuses the record, as it
+  does for the Slime season (the entry on a later season Kitsu titles
+  only with a bare number). Worth revisiting when the guess can read
+  more of the provider's listing than its title and the year its key
+  names — the year it aired, or its episode count — or when another
+  wrong pick on a user's card is reported.
+
 ## Interface
 
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**
@@ -508,17 +555,67 @@ starting it, and delete it when you find it done.
   settings; and external players and Syncplay receive the tracks as
   files and style them themselves, so this is the embedded player
   only.
-- **Subtitle track selection: a locale-aware default, and a remembered
-  choice.** Which track shows when an episode opens is the provider's
-  call, in every app locale: the browser turns on the track the
-  provider flagged default, the rest start hidden, and the page flips
-  one to showing only when the user picks it. Nothing is remembered —
-  the next episode starts from the provider's flag again.
+- **One set of player controls.** The player has two: the app's own,
+  and Chromium's native ones, which Settings swaps in when "Custom
+  player controls" (`use_custom_player_controls`, on by default) is
+  turned off. Every player feature has to work through
+  both, so it is built twice. The per-show subtitle memory is the
+  latest case: a pick in the app's captions menu is recorded as it
+  is made, while a pick in the browser's menu has to be inferred from
+  the video's text-track changes.
 
-  It waits on evidence. Every hianime listing captured or played so
-  far carried English alone, flagged default, so an app-language
-  preference has nothing to choose between yet. A payload that flags
-  no track at all starts with every subtitle off.
+  Investigate choosing one. Before deciding, measure what the native
+  path still offers that the custom one does not — the setting's own
+  hint names picture-in-picture and the native captions menu — and
+  decide from that.
+- **The starting captions on a playlist-only stream.** The app
+  applies a session's starting captions — the language last picked on
+  the show (Off included), else the app's language — only where the
+  session lists sidecar subtitle tracks. A stream whose subtitles
+  exist only inside its own playlist never gets one, whichever player
+  controls are on: hls.js's own choice plays, a language or Off
+  picked in the app's captions menu is remembered but not applied on
+  the show's next such episode, and with the custom controls off a
+  pick in Chromium's own menu is not remembered at all, since that is
+  recorded only once the app has applied a start.
+
+  It waits because no episode seen has that shape — every one lists
+  its tracks beside the stream — and because the obvious fix, taking
+  the captions as they stand when such a session starts, would let
+  hls.js's own switching of playlist tracks read as the viewer's pick.
+
+  The gap is in where the start is applied, not in either menu, so
+  choosing one set of player controls (above) would not remove it.
+- **Sidecar subtitles on a stream that also carries its own.** Each
+  time hls.js switches its own subtitle track it disables every
+  labelled subtitle track but the one it chose
+  (`SubtitleTrackController.toggleTrackModes`), the app's sidecar
+  `<track>`s included, and it reads the captions again on every
+  change to them. On a stream whose playlist lists subtitle
+  renditions as well as sidecar tracks, then, a sidecar track picked
+  from the captions menu goes off the moment it is picked: showing it
+  reads to hls.js as "none of mine", so it switches to none. The
+  session's start fares the same way. When hls.js picks its playlist
+  track after the sidecar tracks attach, that track replaces the
+  start; when it picked before, the start's own change makes it
+  switch to none, and every track goes off. The pick and the first
+  order were measured on the packaged app with a fixture stream of
+  that shape; the second follows from the same code.
+
+  It waits because the provider serves no such stream. Episodes
+  resolved across sub and dub in November 2026 carried no
+  `EXT-X-MEDIA` subtitle rendition and no closed captions, and each
+  had a single level. With no playlist tracks hls.js's subtitle track
+  stays at none and it never switches: a minute of playback, a pick
+  and a seek leave the sidecar tracks as the app set them.
+
+  Undoing hls.js's change after it happens is not the fix: with the
+  custom controls off, a caption change the app did not make is read
+  as the viewer's pick (`$lib/play/caption-watch`) — all but a track
+  turned on beside the one the app set, and hls.js switches that one
+  off first. The fix
+  belongs in keeping hls.js's own subtitle selection in step with the
+  captions menu.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are

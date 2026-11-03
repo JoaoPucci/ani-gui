@@ -13,6 +13,7 @@ fn args(stream: &str) -> LaunchArgs {
         player_kind: ExternalPlayerKind::Mpv,
         custom_args_template: None,
         subtitle_urls: Vec::new(),
+        subtitles_off: false,
     }
 }
 

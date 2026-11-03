@@ -565,6 +565,9 @@
 	</aside>
 
 	<div class="main-area">
+		<!-- The player's captions menu caps its height at this bar's
+		     bottom edge, found by its class (routes/play/[id]/+page.svelte,
+		     fitCcMenu): renaming this class means renaming that lookup. -->
 		<header class="topbar">
 			{#if canGoBack}
 				<Breadcrumb

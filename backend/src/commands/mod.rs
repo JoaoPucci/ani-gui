@@ -26,6 +26,7 @@ mod availability_served_mode;
 pub(crate) mod availability_ttl;
 mod availability_unread;
 pub(crate) mod availability_warm;
+pub mod command_line;
 pub mod cour;
 mod cour_keyword_form;
 mod cour_ordinal_form;
@@ -125,7 +126,9 @@ pub mod proxy_url;
 pub mod session;
 pub mod settings;
 pub mod syncplay;
+pub(crate) mod title_match_rows;
 pub(crate) mod title_match_store;
+pub(crate) mod title_match_year;
 pub(crate) mod tracker_map;
 
 pub use app_info::app_info;
