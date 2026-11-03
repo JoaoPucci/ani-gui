@@ -100,7 +100,7 @@
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
-	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
@@ -590,7 +590,24 @@
 		const pick = noteCaptionChange(video, video.textTracks);
 		if (pick === null) return;
 		const choice = captionChoiceOf(video.textTracks, pick);
-		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+		if (choice !== undefined) rememberPick(choice);
+	}
+
+	/** Captions picks the show has remembered on this page. The page's
+	 *  warms read the choice, so each pick runs them again. */
+	let captionPicks = $state(0);
+
+	/** Remember a captions pick for the show — under its id, unless the
+	 *  session was opened from a guessed match, which records nothing
+	 *  under the guess — and warm again for it. The backend keeps the
+	 *  tracks a listing past its cap has room for by the choice, so the
+	 *  warms standing, asked for the choice before, may lack the
+	 *  language picked; the play cache keys on the choice, so they
+	 *  answer no switch now, and the ones still running are dropped. */
+	function rememberPick(choice: string) {
+		if (!rememberCaption(recordableId(id, fromGuess) ?? '', choice)) return;
+		clearBackgroundForShow(id);
+		captionPicks += 1;
 	}
 
 	/** The UI locale, which the subtitle track a session starts on
@@ -611,10 +628,8 @@
 		if (!videoEl) return;
 		applyCaptionPick(videoEl.textTracks, target);
 		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
-		// Under the show's id, unless the session was opened from a
-		// guessed match, which records nothing under the guess.
 		const choice = captionChoiceOf(videoEl.textTracks, target);
-		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+		if (choice !== undefined) rememberPick(choice);
 	}
 
 	function setVolume(v: number) {
@@ -2157,6 +2172,8 @@
 	// Widening the radius here changes how many are queued, not how
 	// many are in flight.
 	$effect(() => {
+		// A captions pick names another choice: warm again for it.
+		void captionPicks;
 		if (!detail || !config || !episodes) return;
 		// Wait for the airing answer — warming on mount with airing
 		// still in flight would resolve greyed-out future episodes.
@@ -2202,7 +2219,7 @@
 				guessRow: guessRow(fromGuess, fromRow)
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, quality, version, args.guess_row),
+				makeKey(id, targetEp, mode, quality, version, args.guess_row, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2283,7 +2300,15 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality, version, playArgs.guess_row),
+						makeKey(
+							owner.showId,
+							targetEp,
+							mode,
+							quality,
+							version,
+							playArgs.guess_row,
+							playArgs.caption
+						),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);

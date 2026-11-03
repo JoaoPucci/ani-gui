@@ -48,7 +48,7 @@ export function warmResumeEpisode(
 	stream: ResumeWarmStream
 ): Promise<unknown> {
 	return getOrFireNow(
-		makeKey(key.showId, key.episode, key.mode, key.quality, key.version),
+		makeKey(key.showId, key.episode, key.mode, key.quality, key.version, undefined, args.caption),
 		(emit, signal) => stream({ ...args, prefetch: true }, emit, signal)
 	);
 }

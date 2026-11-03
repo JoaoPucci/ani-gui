@@ -1313,8 +1313,9 @@
 				caption: storedCaption(id)
 			});
 			const warmedVisit = visit;
-			const warm = getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
-				playStream(args, emit, signal)
+			const warm = getOrFire(
+				makeKey(id, ep, mode, quality, version, undefined, args.caption),
+				(emit, signal) => playStream(args, emit, signal)
 			);
 			// The warm paid for a listing: the resume row is read again —
 			// once per warm, not on every re-run that finds it cached.
@@ -1578,7 +1579,7 @@
 			owner,
 			() =>
 				getOrFire(
-					makeKey(owner.showId, ep, mode, quality, version),
+					makeKey(owner.showId, ep, mode, quality, version, undefined, playArgs.caption),
 					(emit, signal) => playStream(playArgs, emit, signal),
 					(p) => {
 						actionProgress = progressLabel(p);
