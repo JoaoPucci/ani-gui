@@ -570,13 +570,13 @@ fn delete_takes_a_bare_rows_title_matches_under_anidbs_label_too() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("naruto-20", "Naruto")]).unwrap();
-    put(&s, &tm("anidb.app:naruto:c1"), "11");
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
     // The skip times found through that match are the show's too.
     put(&s, "aniskip:v2:11:21:1", "[]");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
-    assert_eq!(cached(&s, &tm("anidb.app:naruto:c1")), None);
+    assert_eq!(cached(&s, "title-match:v3:anidb.app:naruto:c1"), None);
     assert_eq!(
         cached(&s, "aniskip:v2:11:21:1"),
         None,

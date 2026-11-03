@@ -6,7 +6,7 @@ use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use crate::scraper::provider::ProviderId;
 use std::path::PathBuf;
 
-fn state() -> AppState {
+pub(super) fn state() -> AppState {
     AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -109,10 +109,7 @@ fn a_bare_rows_title_match_lives_under_the_legacy_segment() {
     );
     assert!(crate::cache::meta_cache_get(
         &s.cache_pool,
-        &format!(
-            "{}legacy:stone ocean:c1",
-            crate::cache::families::title_match()
-        )
+        &format!("{}1", title_match_prefix(None, "stone ocean"))
     )
     .expect("read")
     .is_some());
