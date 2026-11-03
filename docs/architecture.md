@@ -358,11 +358,12 @@ three-second limit below.
    opening to read — and only then is it mapped, already maximized and
    painted, and the splash closes. A launch whose window is ready later
    than that pays nothing for the minimum; a warm one, whose window is
-   ready as soon as the splash has painted, pays up to that half second.
-   A page that renders less than 250 ms before the minimum runs out, or
-   after it, or after a splash that painted too late for the minimum,
-   holds the reveal until the rail's last stretch has been on screen
-   for 250 ms (150 ms on the still frame).
+   ready as soon as the splash has painted, pays up to that half second
+   for it. The rail's completion hold can add to either: a page that
+   renders less than 250 ms before the minimum runs out (150 ms on the
+   still frame), or after it, or after a splash that painted too late
+   for the minimum, holds the reveal until 250 ms (150 ms) after it
+   rendered, so the rail's last stretch is seen lit.
    The two are never on screen competing, so it does not matter that
    native Wayland ignores always-on-top. A splash that never paints, or
    is minimized, holds the window no longer than that first second. The
@@ -392,22 +393,22 @@ wait for that render gave up is revealed with the last stretch unlit.
 The splash waits at most 150 ms, about a millisecond in practice, for
 its page to take the last step. A last step landing so late that the
 splash's minimum time on screen would not show it then holds the splash
-until that stretch has been on screen for 250 ms (150 ms on the still
-frame), so the rail is seen complete before the app's window replaces
-it. A line under the rail, in the app's language, appears only once the
-pending step has taken longer than 700 ms, and goes when that step
-lands. While the flags step stalls it says "Network is slow — starting
-in a moment…": the app is waiting on the flags fetch, for at most its
-two-second cap, and what it starts with (the file if it lands in time,
-else the saved copy or the defaults) is not decided yet. A slow read of
-the saved copy can hold that step too, rarely. Any other stalled step
-says "Starting up…". The splash's motion starts only when the main
-process tells it to, once the window is on screen and the reduced-motion
-setting is known; under reduced motion it rests on a still frame and its
-rail lights without a wipe, and the page's own fallback timer, for a
-signal that never comes, rests it too rather than starting the motion.
-The mark is `mark.svg` alone, and the layout holds for a mark of another
-shape, so a new mark replaces one file.
+until 250 ms (150 ms on the still frame) after that step landed, so the
+rail is seen complete before the app's window replaces it. A line under
+the rail, in the app's language, appears only once the pending step has
+taken longer than 700 ms, and goes when that step lands. While the flags
+step stalls it says "Network is slow — starting in a moment…": the app
+is waiting on the flags fetch, for at most its two-second cap, and what
+it starts with (the file if it lands in time, else the saved copy or the
+defaults) is not decided yet. A slow read of the saved copy can hold
+that step too, rarely. Any other stalled step says "Starting up…". The
+splash's motion starts only when the main process tells it to, once the
+window is on screen and the reduced-motion setting is known; under
+reduced motion it rests on a still frame and its rail lights without a
+wipe, and the page's own fallback timer, for a signal that never comes,
+rests it too rather than starting the motion. The mark is `mark.svg`
+alone, and the layout holds for a mark of another shape, so a new mark
+replaces one file.
 
 The store accepts one decision and refuses every later one. A backend
 consumer reads the flags with `FlagStore::settled()`, which waits for

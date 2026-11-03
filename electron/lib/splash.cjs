@@ -322,13 +322,14 @@ function splashController({
     // know, changes nothing. Resolves once the page has answered, or
     // after STEP_ANSWER_WAIT_MS.
     //
-    // The last step also holds until its stretch has been on screen
-    // for SPLASH_COMPLETE_HOLD_MS (SPLASH_COMPLETE_HOLD_REDUCED_MS on
-    // the still frame), so a page that renders late does not close the
-    // splash in the instant its rail completes. The minimum time on
-    // screen (whenShown) already covers a step landing well inside it,
-    // and a step before the paint: neither is held. A splash that goes
-    // ends the hold.
+    // The last step also holds until SPLASH_COMPLETE_HOLD_MS
+    // (SPLASH_COMPLETE_HOLD_REDUCED_MS on the still frame) after it
+    // landed, the page's answer included, so a page that renders late
+    // does not close the splash in the instant its rail completes. Not
+    // held: a step before the paint (the minimum after the paint shows
+    // it), and one landing well inside a minimum the reveal waits for;
+    // after a paint too late for the reveal's wait there is no minimum,
+    // and the step is held. A splash that goes ends the hold.
     progress(step) {
       const n = STEPS.indexOf(step) + 1;
       if (n <= steps || !state.opened) return Promise.resolve();
@@ -391,7 +392,9 @@ function lastSplashState() {
 /** The longest the app's window waits for the splash to paint. The
  *  splash is a light static page and paints well within this; the bound
  *  is for one that never does. With the minimum time on screen after a
- *  paint, the whole wait is at most this plus SPLASH_MIN_ON_SCREEN_MS. */
+ *  paint, whenShown waits at most this plus SPLASH_MIN_ON_SCREEN_MS; the
+ *  rail's completion hold (SPLASH_COMPLETE_HOLD_MS) can keep the reveal
+ *  up to that long after the last step lands. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
 /** How long the splash stays on screen after it has painted before the
@@ -405,11 +408,11 @@ const SPLASH_MIN_ON_SCREEN_MS = 500;
  *  frame, which reads at once. */
 const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 300;
 
-/** How long the rail's last stretch stays on screen, once lit, before
- *  the app's window may replace the splash: its 300 ms wipe (splash.css)
- *  is on an ease-out curve that is 99% of the way by 250 ms. Only a
- *  last step landing late enough that the minimum would not show it
- *  this long waits for it. */
+/** How long after the rail's last step lands the app's window may
+ *  replace the splash, the page's answer to the step included: the
+ *  stretch's 300 ms wipe (splash.css) is on an ease-out curve that is
+ *  99% of the way by 250 ms. Only a last step landing late enough that
+ *  the minimum would not show it this long waits for it. */
 const SPLASH_COMPLETE_HOLD_MS = 250;
 
 /** The same on the still frame, where the stretch lights at once. */
