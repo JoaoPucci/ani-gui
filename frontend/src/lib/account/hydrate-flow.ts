@@ -85,15 +85,26 @@ function kindOf(target: HydrateTarget, p: Provider): ProviderState['kind'] {
 }
 
 /** Read the provider once; true when the answer was applied, false
- *  when a change overtook it. */
-async function readOnce(target: HydrateTarget, p: Provider, wait: KeyringWait): Promise<boolean> {
+ *  when a change overtook it or `accept` turned the answer down. */
+async function readOnce(
+	target: HydrateTarget,
+	p: Provider,
+	wait: KeyringWait,
+	accept: (read: ReadPersistedAccountResult) => boolean = () => true
+): Promise<boolean> {
 	const generation = target.accountGeneration[p];
 	const reading = readPersistedAccount(p);
 	wait.track(reading);
 	const read = await reading;
-	if (target.accountGeneration[p] !== generation) return false;
+	if (target.accountGeneration[p] !== generation || !accept(read)) return false;
 	applyRead(target, p, read);
 	return true;
+}
+
+/** Whether a read says what the disk holds: a sign-in, or none. A read
+ *  the keyring could not answer says neither. */
+function readTheDisk(read: ReadPersistedAccountResult): boolean {
+	return read.ok || read.kind === 'not_found';
 }
 
 /**
@@ -101,12 +112,14 @@ async function readOnce(target: HydrateTarget, p: Provider, wait: KeyringWait): 
  * after an account action whose bridge call rejected, the disk is the
  * only one who knows whether its write or clear landed. A change under
  * way is left alone (it settles the provider itself), and a read a
- * change overtakes is dropped, as in the hydrate. True when the answer
- * was applied.
+ * change overtakes is dropped, as in the hydrate. So is a read the
+ * keyring could not answer: unlike the hydrate's, this one replaces a
+ * state the action restored, and a failed read says nothing about what
+ * the action did. True when the answer was applied.
  */
 export function rereadAccount(target: HydrateTarget, p: Provider): Promise<boolean> {
 	if (changing(target, p)) return Promise.resolve(false);
-	return readOnce(target, p, waitFor(target));
+	return readOnce(target, p, waitFor(target), readTheDisk);
 }
 
 /**

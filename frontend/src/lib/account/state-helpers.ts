@@ -61,8 +61,8 @@ function accountFromState(state: ProviderState): PersistedAccount | null {
  *  - `disconnected` / `connecting` → fall through to `disconnected`
  *    (nothing to preserve)
  *  - `connected` → fall through to `disconnected` as a defensive
- *    fallback for the type system; `connectProvider` sets `connecting`
- *    before this call, so this branch isn't reachable in practice
+ *    fallback for the type system; the page offers no Connect from a
+ *    connected provider, so this branch isn't reachable in practice
  */
 export function restoreAfterFailedConnect(prev: ProviderState): ProviderState {
 	if (prev.kind === 'expired') return prev;
@@ -71,9 +71,9 @@ export function restoreAfterFailedConnect(prev: ProviderState): ProviderState {
 }
 
 /**
- * Map an OAuth-flow error kind into the matching i18n key suffix the
- * sign-in uses to look up the toast message (`connect-action`). Centralised so it
- * and tests agree on the table.
+ * Map an OAuth-flow error kind into the i18n key suffix that
+ * `connect-messages` turns into the sign-in's notice. Centralised so it
+ * and the tests agree on the table.
  */
 export function connectErrorKey(kind: string): string {
 	switch (kind) {

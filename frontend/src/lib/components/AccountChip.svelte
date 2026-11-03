@@ -91,7 +91,8 @@
 				unknownErrorMessage: () => m.account_connect_error_unknown(),
 				tokenClearFailedMessage: () => m.account_disconnect_error_token_clear(),
 				reread: (p) => accountStore.reread(p),
-				stateOf: (p) => accountStore.byProvider[p]
+				stateOf: (p) => accountStore.byProvider[p],
+				dismissToast: (id) => toastStore.dismiss(id)
 			}
 		);
 	}

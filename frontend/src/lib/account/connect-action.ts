@@ -11,18 +11,22 @@
  * it at once — clearing `connecting`, which wakes a keyring read
  * waiting on it — and is read again from the disk, which knows whether
  * a sign-in was saved. The user is told the sign-in failed unless the
- * disk shows it landed.
+ * disk shows it landed. A keyring slow to answer the read does not
+ * hold the notice back (`landed-notice`).
  *
  * A cancel whose bridge call rejects still cancels: the sign-in it was
- * for is abandoned and the provider put back. Whatever the abandoned
- * sign-in does later is learned from the disk, never applied over a
- * newer state.
+ * for is abandoned and the provider put back. The abandoned sign-in
+ * saves nothing from then on. A save it had already sent is learned
+ * from the disk once any newer change has settled, never applied over
+ * it.
  */
 
 import { m } from '$lib/paraglide/messages';
 import { connectAccount, type ConnectFlowDeps, type ConnectFlowResult } from './connect-flow';
 import { restoreAfterFailedConnect } from './state-helpers';
 import { connectFailureMessage } from './connect-messages';
+import { KEYRING_WAIT_MS } from './keyring-wait';
+import { noticeUnlessLanded, realTimers } from './landed-notice';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
 /** What a connect reads and writes on the account store. */
@@ -34,6 +38,8 @@ export interface ConnectActionStore {
 	setExpired(provider: Provider, account: PersistedAccount): void;
 	setError(provider: Provider, message: string): void;
 	reread(provider: Provider): Promise<boolean>;
+	accountChanging: Record<Provider, boolean>;
+	nextChange(provider: Provider): Promise<void>;
 }
 
 type ErrorToast = { kind: 'error'; message: string };
@@ -42,20 +48,24 @@ export interface ConnectActionDeps {
 	store: ConnectActionStore;
 	flow: ConnectFlowDeps;
 	seedConnectedList(provider: Provider, bearer: string): Promise<void>;
-	pushToast(toast: ErrorToast): void;
+	/** Show a notice; returns its id. */
+	pushToast(toast: ErrorToast): string;
+	dismissToast(id: string): void;
 }
 
 export interface CancelConnectDeps {
 	store: ConnectActionStore;
 	cancelOAuth(): Promise<boolean>;
-	pushToast(toast: ErrorToast): void;
+	pushToast(toast: ErrorToast): unknown;
 }
 
-/** A sign-in under way: the state the click found, and whether a
- *  cancel that could not reach the main process gave up on it. */
+/** A sign-in under way: the state the click found, whether a cancel
+ *  that could not reach the main process gave up on it, and whether it
+ *  sent its sign-in to be saved. */
 interface Attempt {
 	prev: ProviderState;
 	abandoned: boolean;
+	saveSent: boolean;
 }
 
 const attempts = new Map<Provider, Attempt>();
@@ -65,18 +75,24 @@ const attempts = new Map<Provider, Attempt>();
  * expired, error). Settles the provider whatever the flow does.
  */
 export async function connectProvider(provider: Provider, deps: ConnectActionDeps): Promise<void> {
-	const attempt: Attempt = { prev: deps.store.byProvider[provider], abandoned: false };
+	const attempt: Attempt = {
+		prev: deps.store.byProvider[provider],
+		abandoned: false,
+		saveSent: false
+	};
 	deps.store.setConnecting(provider);
 	attempts.set(provider, attempt);
 	let r: ConnectFlowResult | null;
 	try {
-		r = await connectAccount(provider, deps.flow);
+		r = await connectAccount(provider, guarded(deps.flow, attempt));
 	} catch {
 		r = null;
 	}
 	if (attempts.get(provider) === attempt) attempts.delete(provider);
 	if (attempt.abandoned) {
-		await deps.store.reread(provider);
+		// In the background: it may wait on a newer sign-in left open in
+		// the browser.
+		void settleAbandoned(provider, attempt, deps);
 		return;
 	}
 	if (r === null) return settleRejected(provider, attempt.prev, deps);
@@ -119,9 +135,57 @@ async function settleRejected(
 	deps: ConnectActionDeps
 ): Promise<void> {
 	restore(deps.store, provider, prev);
-	const read = await deps.store.reread(provider);
-	if (read && deps.store.byProvider[provider].kind === 'connected') return;
-	deps.pushToast({ kind: 'error', message: m.account_connect_error_unknown() });
+	await noticeUnlessLanded({
+		reread: () => deps.store.reread(provider),
+		landed: () => deps.store.byProvider[provider].kind === 'connected',
+		push: () => deps.pushToast({ kind: 'error', message: m.account_connect_error_unknown() }),
+		dismiss: (id) => deps.dismissToast(id),
+		waitMs: KEYRING_WAIT_MS,
+		...realTimers
+	});
+	await seedIfConnected(provider, deps);
+}
+
+/**
+ * The flow's save, held back once the sign-in is abandoned: the user
+ * was told it was cancelled. A save sent before that is noted, since it
+ * may land.
+ */
+function guarded(flow: ConnectFlowDeps, attempt: Attempt): ConnectFlowDeps {
+	return {
+		...flow,
+		persistAccount: (provider, payload) => {
+			if (attempt.abandoned) return Promise.resolve({ ok: false, kind: 'superseded' });
+			attempt.saveSent = true;
+			return flow.persistAccount(provider, payload);
+		}
+	};
+}
+
+/**
+ * An abandoned sign-in settled. The provider was put back when it was
+ * abandoned, so only a save it had already sent matters: once any newer
+ * change has settled, read the disk to learn whether that save landed.
+ */
+async function settleAbandoned(
+	provider: Provider,
+	attempt: Attempt,
+	deps: ConnectActionDeps
+): Promise<void> {
+	if (!attempt.saveSent) return;
+	while (changing(deps.store, provider)) await deps.store.nextChange(provider);
+	if (await deps.store.reread(provider)) await seedIfConnected(provider, deps);
+}
+
+function changing(store: ConnectActionStore, provider: Provider): boolean {
+	return store.accountChanging[provider] || store.byProvider[provider].kind === 'connecting';
+}
+
+/** A sign-in found saved on the disk gets its list seeded, as a
+ *  sign-in that succeeded does. */
+async function seedIfConnected(provider: Provider, deps: ConnectActionDeps): Promise<void> {
+	const s = deps.store.byProvider[provider];
+	if (s.kind === 'connected') await deps.seedConnectedList(provider, s.account.access_token);
 }
 
 /** Tell the user why a sign-in that answered did not succeed. */

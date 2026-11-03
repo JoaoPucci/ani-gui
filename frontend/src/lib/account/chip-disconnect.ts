@@ -10,11 +10,15 @@
  * cleared. The provider then leaves its account change at once, in the
  * error state a failed clear sets (which wakes a keyring read waiting
  * on the change), and is read again from the disk, which knows. The
- * user is told the clear failed unless the disk shows it landed.
+ * user is told the clear failed unless the disk shows it landed; a
+ * keyring slow to answer does not hold that notice back
+ * (`landed-notice`).
  */
 
 import type { DisconnectFlowDeps, DisconnectResult } from './connect-flow';
 import type { Provider, ProviderState } from './types';
+import { KEYRING_WAIT_MS } from './keyring-wait';
+import { noticeUnlessLanded, realTimers } from './landed-notice';
 
 export interface ChipDisconnectDeps extends DisconnectFlowDeps {
 	disconnectAccount: (
@@ -27,7 +31,9 @@ export interface ChipDisconnectDeps extends DisconnectFlowDeps {
 export interface ChipDisconnectCallbacks {
 	setError(provider: Provider, message: string): void;
 	setDisconnected(provider: Provider): void;
-	pushToast(t: { kind: 'error'; message: string }): void;
+	/** Show a notice; returns its id. */
+	pushToast(t: { kind: 'error'; message: string }): string;
+	dismissToast(id: string): void;
 	unknownErrorMessage(): string;
 	tokenClearFailedMessage(): string;
 	/** Read the provider's saved sign-in again and apply it; true when
@@ -65,7 +71,12 @@ export async function handleChipDisconnect(
  *  state, read the disk, and say the clear failed unless it landed. */
 async function settleRejected(provider: Provider, cb: ChipDisconnectCallbacks): Promise<void> {
 	cb.setError(provider, cb.unknownErrorMessage());
-	const read = await cb.reread(provider);
-	if (read && cb.stateOf(provider).kind === 'disconnected') return;
-	cb.pushToast({ kind: 'error', message: cb.tokenClearFailedMessage() });
+	await noticeUnlessLanded({
+		reread: () => cb.reread(provider),
+		landed: () => cb.stateOf(provider).kind === 'disconnected',
+		push: () => cb.pushToast({ kind: 'error', message: cb.tokenClearFailedMessage() }),
+		dismiss: (id) => cb.dismissToast(id),
+		waitMs: KEYRING_WAIT_MS,
+		...realTimers
+	});
 }

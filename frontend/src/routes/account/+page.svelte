@@ -6,9 +6,10 @@
   `connect(provider)` adapter; PKCE method is picked per provider
   (S256 for AniList, plain for MAL) via `pkceForProvider`.
 
-  All visible strings via Paraglide per AGENTS.md §6. Imperative
-  connect-flow logic delegated to $lib/account/connect-flow to keep
-  the page itself a thin adapter — per AGENTS.md §2.
+  All visible strings via Paraglide per AGENTS.md §6. Sign in, Cancel
+  and Disconnect are delegated to $lib/account/connect-action and
+  $lib/account/chip-disconnect to keep the page itself a thin adapter
+  — per AGENTS.md §2.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -32,7 +33,7 @@
 		dropListCache,
 		dropProviderCache
 	} from '$lib/account/api';
-	import { bearerFor, disconnectAccount } from '$lib/account/connect-flow';
+	import { disconnectAccount } from '$lib/account/connect-flow';
 	import {
 		cancelConnect as cancelConnectAction,
 		connectProvider
@@ -119,7 +120,8 @@
 				persistAccount
 			},
 			seedConnectedList,
-			pushToast: (t) => toastStore.push(t)
+			pushToast: (t) => toastStore.push(t),
+			dismissToast: (id) => toastStore.dismiss(id)
 		});
 	}
 
@@ -156,7 +158,8 @@
 				unknownErrorMessage: () => m.account_connect_error_unknown(),
 				tokenClearFailedMessage: () => m.account_disconnect_error_token_clear(),
 				reread: (p) => accountStore.reread(p),
-				stateOf: (p) => accountStore.byProvider[p]
+				stateOf: (p) => accountStore.byProvider[p],
+				dismissToast: (id) => toastStore.dismiss(id)
 			}
 		);
 	}
@@ -186,9 +189,6 @@
 				return m.account_card_status_disconnected();
 		}
 	}
-	// Used by template, kept exported so connect-flow tests can pin
-	// the helper without test-only exports leaking from +page.svelte.
-	void bearerFor;
 </script>
 
 <svelte:head>
