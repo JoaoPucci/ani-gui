@@ -23,6 +23,18 @@
 	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
+	import WatchOrderPanel from '$lib/watch-order/mock/WatchOrderPanel.svelte';
+	import { numeral as mockNumeral } from '$lib/watch-order/mock/meta';
+	import {
+		similarHidden as mockSimilarHidden,
+		stripRunFor as mockRunFor,
+		stripView as mockStripView
+	} from '$lib/watch-order/mock/strip-view';
+	import {
+		loadMockPrefs,
+		saveMockPrefs,
+		type WatchOrderMockPrefs
+	} from '$lib/watch-order/mock/prefs';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -1393,6 +1405,23 @@
 		saveHeroPrefs(browserStorage(), next);
 	}
 
+	// Watch-order mockups (0.19.0 design review) — fixture data behind
+	// the diagnostics toggle; see $lib/watch-order/mock.
+	let mockPrefs = $state(loadMockPrefs(browserStorage()));
+	function chooseMockPrefs(next: WatchOrderMockPrefs) {
+		mockPrefs = next;
+		saveMockPrefs(browserStorage(), next);
+	}
+	const mockToday = new Date().toISOString().slice(0, 10);
+	const mockRun = $derived(mockPrefs.enabled ? mockRunFor(id) : null);
+	// "08 of 09" in the masthead eyebrow, only where the run is one
+	// line: a bare number there reads as nothing in particular.
+	const mockPlace = $derived(mockRun ? mockStripView(mockRun, id, mockPrefs.order) : null);
+	const mockHidden = $derived(
+		mockRun && mockPlace ? mockSimilarHidden(mockRun, mockPlace) : new Set<string>()
+	);
+	const similarShown = $derived((similar ?? []).filter((s) => !mockHidden.has(s.id)));
+
 	// `raw` is the upstream URL `url` proxies; a load failure is noted
 	// against it, and the next pick passes it over.
 	function heroFor(d: KitsuAnimeRef): {
@@ -1805,6 +1834,15 @@
 						<span class="eyebrow-key">{subtypeLabel(detail.subtype)}</span>
 						<span class="eyebrow-rule" aria-hidden="true"></span>
 						<span class="eyebrow-value">{statusLabel(detail.status)}</span>
+						{#if mockPlace && mockPlace.position !== null && mockPlace.total !== null}
+							<span class="eyebrow-rule" aria-hidden="true"></span>
+							<span class="eyebrow-value"
+								>{m.watchorder_strip_position({
+									position: mockNumeral(mockPlace.position),
+									total: mockNumeral(mockPlace.total)
+								})}</span
+							>
+						{/if}
 					</p>
 
 					<h1 class="title">{detail.canonical_title}</h1>
@@ -2001,6 +2039,16 @@
 					<span class="action-notice-rule" aria-hidden="true"></span>
 					<span>{actionNotice}</span>
 				</div>
+			{/if}
+
+			{#if mockRun && mockPrefs.placement === 'top'}
+				<WatchOrderPanel
+					run={mockRun}
+					{id}
+					prefs={mockPrefs}
+					today={mockToday}
+					onchoose={chooseMockPrefs}
+				/>
 			{/if}
 
 			<!-- Body: synopsis + episodes stacked vertically. The previous
@@ -2380,13 +2428,22 @@
 			<!-- Similar titles strip — placeholder for AniList recommendations.
 		     Today: re-uses kitsuSearch with the canonical title's first
 		     1-2 words to surface franchise neighbours / look-alikes. -->
-			{#if similar && similar.length > 0}
+			{#if mockRun && mockPrefs.placement === 'bottom'}
+				<WatchOrderPanel
+					run={mockRun}
+					{id}
+					prefs={mockPrefs}
+					today={mockToday}
+					onchoose={chooseMockPrefs}
+				/>
+			{/if}
+			{#if similarShown.length > 0}
 				<section class="similar">
 					<Strip
 						eyebrow={m.detail_similar_strip_eyebrow()}
 						caption={m.detail_similar_strip_caption()}
 					>
-						{#each similar as hit (hit.id)}
+						{#each similarShown as hit (hit.id)}
 							<PosterCard anime={hit} />
 						{/each}
 					</Strip>
