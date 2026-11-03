@@ -6,7 +6,8 @@
 use crate::app::AppState;
 use crate::cache::meta_cache_entries_prefix;
 use crate::commands::kitsu::{
-    title_match_prefix_at, FIRST_SEGMENTED_TITLE_MATCH_VERSION, TITLE_MATCH_VERSION,
+    title_match_prefix_at, FIRST_SEGMENTED_TITLE_MATCH_VERSION,
+    FIRST_YEAR_KEYED_TITLE_MATCH_VERSION, TITLE_MATCH_VERSION,
 };
 use crate::commands::title_match_store::retired_title_match_prefixes;
 use crate::error::Result;
@@ -64,10 +65,6 @@ pub(crate) fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 fn current_prefixes(id: &str, title: &str) -> Vec<String> {
     prefixes_at(TITLE_MATCH_VERSION, id, title)
 }
-
-/// The first version that keys a row's title match by the year the row
-/// names.
-const FIRST_YEAR_KEYED_TITLE_MATCH_VERSION: u32 = 4;
 
 /// [`current_prefixes`] as `version` wrote them, from
 /// [`FIRST_YEAR_KEYED_TITLE_MATCH_VERSION`] on.

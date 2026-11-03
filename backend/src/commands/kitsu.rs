@@ -351,6 +351,10 @@ pub(crate) const TITLE_MATCH_VERSION: u32 = 5;
 /// alone.
 pub(crate) const FIRST_SEGMENTED_TITLE_MATCH_VERSION: u32 = 3;
 
+/// The first version that keys a row's title match by the year the row
+/// names ([`crate::commands::title_match_year`]).
+pub(crate) const FIRST_YEAR_KEYED_TITLE_MATCH_VERSION: u32 = 4;
+
 fn title_match_key(
     provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
