@@ -5,8 +5,9 @@
 // app's window is not mapped until the splash has painted
 // (revealMaximized), so the two never compete for the top, whether or
 // not the platform honours always-on-top (native Wayland does not).
-// It closes once the app's window shows (see bootApp in
-// lib/startup.cjs).
+// It closes as the app's window shows, in that window's reveal
+// (main.js), with bootApp's close in lib/startup.cjs as the fallback.
+// A splash the user closes first cancels the launch (onDismissed).
 
 const path = require("node:path");
 

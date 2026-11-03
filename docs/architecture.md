@@ -354,10 +354,12 @@ three-second limit below.
    size and scale), kept in `window-geometry.json` under the app's
    user data, else at the work area. On Wayland, which reports no work
    area until a window is on screen, that remembered size is what lets
-   the window appear at its final size: only the first launch on a
-   display, or after its size, scale or top bar changes, paints at the
-   full screen and takes a one-time height correction from the
-   compositor as it appears. Measured on GNOME under Wayland and on
+   the window appear at its final size. The first launch on a display,
+   or one after the display's size or scale changes, paints at the full
+   screen; one after its top bar changes paints at the old remembered
+   size. Either takes a one-time correction from the compositor as it
+   appears. Closing the splash before the app's window appears cancels
+   the launch. Measured on GNOME under Wayland and on
    Xvfb; X11 with a real window manager and Windows were not
    measured.
 

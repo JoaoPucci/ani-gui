@@ -508,8 +508,8 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // The maximize puts the window on screen — maximizing a hidden
   // window shows it — and emits a first `show` before the listeners
   // below exist. The `show` Step 2 waits for is the next one: the
-  // show() openFirstPage makes right after, where the first load and
-  // the first-show guard are held too.
+  // show() revealMaximized makes right after attaching them, in the
+  // reveal openFirstPage holds behind the first load's failure guard.
   const mapped = () => {
     win.once("show", () => {
       if (!win.isMaximized()) win.maximize();
@@ -995,9 +995,11 @@ function reportBootFailure(err) {
   // A failed boot has no window worth bringing forward: a later launch
   // that arrives while this one says why must not re-show it.
   keeper.failed();
-  // What is on screen, if anything, is the window that failed: blank
-  // and frameless. Hidden, not closed — closing the last window would
-  // start a quit of its own, and that one exits with code 0.
+  // A failed boot's window is normally never revealed; what is on
+  // screen is the splash (put away by the boot) and, rarely, a window
+  // that failed after it was revealed. Hidden, not closed — closing the
+  // last window would start a quit of its own, and that one exits with
+  // code 0.
   for (const win of BrowserWindow.getAllWindows()) win.hide();
   return showBounded(
     bootFailureDialog({
