@@ -46,13 +46,14 @@ async fn a_file_signed_by_a_trusted_key_keeps_its_notices() {
     .expect("document");
     assert!(doc.get(NOTICES_KEY).is_some());
     assert_eq!(doc.get("some_feature"), Some(&serde_json::json!(false)));
-    let asked: Vec<String> = server
+    let mut asked: Vec<String> = server
         .received_requests()
         .await
         .expect("recorded")
         .iter()
         .map(|r| r.url.path().to_string())
         .collect();
+    asked.sort();
     assert_eq!(asked, ["/flags/flags.json", "/flags/flags.json.minisig"]);
 }
 
