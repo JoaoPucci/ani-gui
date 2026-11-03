@@ -292,24 +292,29 @@ test("the rail lights a stretch per step landed, in order, and never goes back",
   assert.equal(page.set(9), 3);
 });
 
-test("the stall line comes only once a step has been pending 700 ms, and goes when it lands", () => {
+test("the stall line comes only once a step has been pending 700 ms, and stays until the splash closes", () => {
+  // The maintainer saw "Starting up…" appear, go, and come back on one
+  // slow launch: a line that has appeared stays, and only its words
+  // change, when the reason does (below). It used to go whenever its
+  // step landed.
   const page = progressPage(texts);
   page.tick(699);
   assert.equal(page.status(), null, "not before 700 ms");
   page.tick(1);
   assert.equal(page.status(), "Backend…");
   page.set(1);
-  assert.equal(page.status(), null, "gone once the step lands");
-  // The next step gets its own 700 ms, counted from the last landing.
+  assert.equal(page.status(), "Backend…", "still up once the step lands");
+  // The next step's own words come once it has been pending 700 ms,
+  // counted from the last landing.
   page.tick(699);
-  assert.equal(page.status(), null);
+  assert.equal(page.status(), "Backend…");
   page.tick(1);
   assert.equal(page.status(), "Flags…");
   page.set(2);
   page.tick(300);
   page.set(3);
   page.tick(5000);
-  assert.equal(page.status(), null, "nothing pending, nothing said");
+  assert.notEqual(page.status(), null, "nothing pending, still up");
 });
 
 test("a stall line that would say the same at the next step stays up instead of blinking", () => {
@@ -321,7 +326,7 @@ test("a stall line that would say the same at the next step stays up instead of 
   page.tick(5000);
   assert.equal(page.status(), "Same");
   page.set(3);
-  assert.equal(page.status(), null);
+  assert.equal(page.status(), "Same");
 });
 
 test("a page told nothing to say never shows a stall line", () => {
@@ -357,31 +362,68 @@ test("a stalled flags step says the network is slow, and every other stalled ste
   }
 });
 
-test("on the page, the backend's stall says the generic line and the flags' stall the network line", () => {
+/** The splash page as the launch opens it, in English, on a fake clock. */
+function launchPage() {
   const m = messagesFor("en");
-  const query = new URLSearchParams(splashPageQuery({ version: "0.18.0", stallTexts: stallTexts(m) }));
-  const page = progressPage(`?${query}`);
+  const query = new URLSearchParams(
+    splashPageQuery({ version: "0.18.0", stallTexts: stallTexts(m), generic: m.splashStartingUp }),
+  );
+  return { m, page: progressPage(`?${query}`) };
+}
+
+test("a stall, a landing, a quick step and another stall: the line never leaves", () => {
+  // The maintainer's launch: the backend stalled, landed, the flags
+  // came quickly, the page stalled. The line read "Starting up…"
+  // throughout, with no gap.
+  const { m, page } = launchPage();
   page.tick(STALL_MS);
-  assert.equal(page.status(), m.splashStartingUp, "backend pending");
+  assert.equal(page.status(), m.splashStartingUp, "backend stalled");
   page.set(1);
-  assert.equal(page.status(), null, "the next step's line is other words");
-  page.tick(STALL_MS - 1);
-  assert.equal(page.status(), null);
-  page.tick(1);
-  assert.equal(page.status(), m.splashNetworkSlow, "flags pending");
+  assert.equal(page.status(), m.splashStartingUp, "backend landed: still up");
+  page.tick(200);
   page.set(2);
-  assert.equal(page.status(), null);
+  assert.equal(page.status(), m.splashStartingUp, "flags came quickly: still up, same words");
+  page.tick(STALL_MS * 3);
+  assert.equal(page.status(), m.splashStartingUp, "page stalled: still up, same words");
+  page.set(3);
+  assert.equal(page.status(), m.splashStartingUp);
+});
+
+test("the line's words follow the reason: generic, then the network while the flags stall, then generic again at once", () => {
+  const { m, page } = launchPage();
   page.tick(STALL_MS);
-  assert.equal(page.status(), m.splashStartingUp, "page pending");
+  assert.equal(page.status(), m.splashStartingUp, "backend stalled");
+  page.set(1);
+  // The flags step is not stalled yet: the generic line stands.
+  page.tick(STALL_MS - 1);
+  assert.equal(page.status(), m.splashStartingUp);
+  page.tick(1);
+  assert.equal(page.status(), m.splashNetworkSlow, "flags stalled");
+  page.set(2);
+  // The network is no longer the reason: back to the generic line at
+  // once, never hidden on the way.
+  assert.equal(page.status(), m.splashStartingUp, "flags landed");
+  page.tick(STALL_MS * 3);
+  assert.equal(page.status(), m.splashStartingUp, "page stalled");
+});
+
+test("a line that first appears for the network goes back to the generic line once the flags land", () => {
+  const { m, page } = launchPage();
+  page.set(1);
+  page.tick(STALL_MS);
+  assert.equal(page.status(), m.splashNetworkSlow);
+  page.set(3);
+  assert.equal(page.status(), m.splashStartingUp);
 });
 
 test("the splash page is opened with its version, its stall timing and its stall lines", () => {
-  assert.deepEqual(splashPageQuery({ version: "0.18.0", stallTexts: ["a", "b", "c"] }), {
+  assert.deepEqual(splashPageQuery({ version: "0.18.0", stallTexts: ["a", "b", "c"], generic: "g" }), {
     v: "0.18.0",
     st: "700",
     t1: "a",
     t2: "b",
     t3: "c",
+    tg: "g",
   });
   const win = fakeSplash();
   const splash = splashController({
@@ -389,9 +431,10 @@ test("the splash page is opened with its version, its stall timing and its stall
     logError: () => {},
     version: "0.18.0",
     stallTexts: () => ["a", "b", "c"],
+    stallGeneric: () => "g",
   });
   splash.show();
-  assert.deepEqual(win.loadOptions.query, { v: "0.18.0", st: "700", t1: "a", t2: "b", t3: "c" });
+  assert.deepEqual(win.loadOptions.query, { v: "0.18.0", st: "700", t1: "a", t2: "b", t3: "c", tg: "g" });
   splash.close();
 });
 

@@ -311,8 +311,11 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
       const run = (code: string) => w.webContents.executeJavaScript(code);
       const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
-        const texts = stallTexts(messagesFor("en"));
-        await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.0.0", stallTexts: texts }) });
+        const en = messagesFor("en");
+        const texts = stallTexts(en);
+        await w.loadFile(SPLASH_PAGE, {
+          query: splashPageQuery({ version: "0.0.0", stallTexts: texts, generic: en.splashStartingUp }),
+        });
         const look = () =>
           run(
             "({ lit: document.querySelectorAll('.rail i.lit').length," +
@@ -327,7 +330,7 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
         const stalled = await look();
         const lit3 = await run("window.splashProgress.set(3)");
         const done = await look();
-        return { expected: texts[1], start, lit1, early, stalled, lit3, done };
+        return { expected: texts[1], generic: en.splashStartingUp, start, lit1, early, stalled, lit3, done };
       } finally {
         w.destroy();
       }
@@ -338,7 +341,9 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
     expect(seen.stalled).toMatchObject({ lit: 1, status: seen.expected });
     expect(seen.stalled.title).toBe(seen.early.title);
     expect(seen.lit3).toBe(3);
-    expect(seen.done).toMatchObject({ lit: 3, status: null });
+    // Up until the splash closes, back to the generic words once the
+    // network is no longer the reason.
+    expect(seen.done).toMatchObject({ lit: 3, status: seen.generic });
   } finally {
     await app.close();
   }
