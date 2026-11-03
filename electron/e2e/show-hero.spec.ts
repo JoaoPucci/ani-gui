@@ -44,7 +44,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { appInfo, defaultSettings } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary } from './launch';
 
 /** The app's minimum window; a width where the topbar is short of
  *  room, so the order in which pill and trail give way shows (the spec
@@ -139,7 +139,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 	const png = bannerPng();
 	await page.route('**/api/**', async (r) => {
 		const p = new URL(r.request().url()).pathname;
