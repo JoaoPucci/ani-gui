@@ -104,6 +104,30 @@ describe('withSearchOrigin', () => {
 			)
 		);
 	});
+
+	it('replays the run that drew `//` as the origin (fast-check seed 877037045)', () => {
+		// This seed's 25th case draws the origin `//or%`, which the URL
+		// parser refuses (a malformed host behind `//`); fast-check
+		// shrank it to `//`. The property above failed on it before
+		// searchOrigin caught the refusal.
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({ label: fc.string(), href: fc.option(fc.string(), { nil: undefined }) }),
+					{ minLength: 1, maxLength: 5 }
+				),
+				fc.option(fc.string(), { nil: null }),
+				(trail, origin) => {
+					const out = withSearchOrigin(trail, origin, '/anime/[id]');
+					expect(out.length - trail.length).toBeGreaterThanOrEqual(0);
+					expect(out.length - trail.length).toBeLessThanOrEqual(1);
+					expect(out.at(-1)).toEqual(trail.at(-1));
+				}
+			),
+			{ seed: 877037045 }
+		);
+		expect(withSearchOrigin([home, show], '//', '/anime/[id]')).toEqual([home, show]);
+	});
 });
 
 describe('goesBack', () => {
@@ -127,6 +151,101 @@ describe('searchOrigin', () => {
 		// the parser rejects. The withSearchOrigin property drew it.
 		expect(searchOrigin('\\/')).toBeNull();
 		expect(searchOrigin('//')).toBeNull();
+	});
+
+	it('answers null for every address shape the URL parser refuses', () => {
+		// Each of these makes `new URL(origin, base)` throw: an empty or
+		// malformed host behind a scheme-relative `//` (however it is
+		// spelled: backslashes, leading whitespace or control
+		// characters), a scheme with no host, an unclosed IPv6 host.
+		for (const origin of [
+			'//',
+			'\\/',
+			'\\\\',
+			'/\\',
+			' //',
+			'\t//',
+			'\n//',
+			'\u0000//',
+			'http://',
+			'https://',
+			'//[',
+			'//a b',
+			'http://[::1',
+			'//%'
+		]) {
+			expect(() => searchOrigin(origin), JSON.stringify(origin)).not.toThrow();
+			expect(searchOrigin(origin), JSON.stringify(origin)).toBeNull();
+		}
+	});
+
+	it("answers null for a search that is not this app's own search page", () => {
+		// The page behind is recorded as a path on this app (its
+		// pathname and query, $lib/history/nav-depth). An address that
+		// leaves the app, or names some other page whose path merely
+		// ends in /search, is not the search the reader ran, and the
+		// breadcrumb would link it as one.
+		for (const origin of [
+			'//search?q=a',
+			'///search?q=a',
+			'/\\search?q=a',
+			'//evil.example/search?q=a',
+			'http://app.invalid/search?q=a',
+			'https://evil.example/search?q=a',
+			'file:///search?q=a',
+			'javascript:alert(1)//search?q=a',
+			'/anime/search?q=a',
+			'search?q=a',
+			'\\search?q=a',
+			' /search?q=a',
+			'/search?q=a ',
+			'/./search?q=a',
+			'/x/../search?q=a',
+			'/search/?q=a',
+			'/search?q=a#top',
+			'/search?q=a b',
+			'//search?q=a b%'
+		]) {
+			expect(searchOrigin(origin), JSON.stringify(origin)).toBeNull();
+		}
+	});
+
+	it('answers a search the reader ran however its query is encoded', () => {
+		for (const origin of [
+			'/search?q=a%20b',
+			'/search?q=a+b',
+			'/search?q=Journey%27s%20End',
+			'/search?q=%E3%83%95%E3%83%AA%E3%83%BC%E3%83%AC%E3%83%B3',
+			'/search?type=tv&q=a',
+			'/search?q=a&page=2'
+		]) {
+			expect(searchOrigin(origin), origin).toBe(origin);
+		}
+	});
+
+	it('never throws, and answers either nothing or the address it was given', () => {
+		fc.assert(
+			fc.property(
+				fc.oneof(
+					fc.string(),
+					fc.string({ unit: 'binary' }),
+					fc.webUrl({ withQueryParameters: true, withFragments: true }),
+					fc
+						.tuple(
+							fc.constantFrom('', '/', '//', '\\', '/\\', ' ', '\t', 'http:', 'http://', 'a:'),
+							fc.constantFrom('', 'search', '/search', 'search/'),
+							fc.constantFrom('', '?', '?q=', '?q=a', '?q=%', '#q=a'),
+							fc.string()
+						)
+						.map((parts) => parts.join(''))
+				),
+				(origin) => {
+					const out = searchOrigin(origin);
+					expect(out === null || out === origin).toBe(true);
+				}
+			),
+			{ numRuns: 2000 }
+		);
 	});
 });
 
