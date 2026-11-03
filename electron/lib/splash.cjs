@@ -230,11 +230,15 @@ function splashController({
       clearTimeout(timer);
       if (typeof first !== "object" || over || !alive()) return;
       const min = first.resting ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
+      // Counted from the paint: a window ready long after it waits for
+      // nothing more.
+      const remaining = min - (clock() - paintedAt);
+      if (remaining <= 0) return;
       let minTimer;
       await Promise.race([
         released,
         new Promise((resolve) => {
-          minTimer = setTimeout(resolve, min);
+          minTimer = setTimeout(resolve, remaining);
         }),
       ]);
       clearTimeout(minTimer);
@@ -249,6 +253,8 @@ function splashController({
       over = true;
       suppressed = true;
       state.suppressed = true;
+      // Put away: it can no longer be on screen, so nothing waits on it.
+      markUp();
       if (alive()) {
         log(`[main] splash put away: the boot failed (${since()})`);
         win.hide();

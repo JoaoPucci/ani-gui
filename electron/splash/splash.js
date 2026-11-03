@@ -4,5 +4,8 @@
 // motion setting is known, either to start the motion (`shown`) or to
 // rest on the finished still frame (`reduced`). The splash opens before
 // that setting is read, so the page must never start motion on its own:
-// this rests it instead.
-setTimeout(() => document.body.classList.add('reduced'), 1000);
+// this rests it instead — unless the main process has already started
+// the motion, which it leaves alone.
+setTimeout(() => {
+  if (!document.body.classList.contains('shown')) document.body.classList.add('reduced');
+}, 1000);

@@ -1,6 +1,8 @@
 /* The launch splash ("pull-down"). Base styles are the finished, threaded frame;
    animations only describe how it is reached and the transport beat.
-   Everything is paused until <body> gets `shown` (see splash.js). The
+   Everything is paused until the main process adds `shown` to <body>
+   (lib/splash.cjs), or rests the page on its still frame with
+   `reduced`, which splash.js also does if no word comes. The
    opening is done by 500 ms after that: lamp lit at 320, first frame
    landed at 499. */
 
@@ -150,8 +152,8 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
    reduced motion (GNOME's setting reaches Chromium only through a
    switch added after this window opened), or when the fallback rests
    the page. */
-body.reduced *, body.reduced *::before, body.reduced *::after {
+body.reduced:not(.shown) *, body.reduced:not(.shown) *::before, body.reduced:not(.shown) *::after {
   animation: none !important; transition: none !important;
 }
-body.reduced .counter { display: none; }
-body.reduced .still, body.reduced .unit { display: inline; }
+body.reduced:not(.shown) .counter { display: none; }
+body.reduced:not(.shown) .still, body.reduced:not(.shown) .unit { display: inline; }
