@@ -27,9 +27,14 @@ ani-gui keeps the following on your computer only:
   configuration, etc. Stored as plain TOML under your OS's
   configuration directory (`$XDG_CONFIG_HOME/ani-gui/config.toml` on
   Linux, equivalent paths on macOS and Windows).
-- **Metadata cache** — anime details, episode lists, thumbnails, and
-  similar information fetched from public APIs. Stored in a local
-  SQLite database under your OS's cache directory.
+- **Metadata cache** — anime details, episode lists and similar
+  information fetched from public APIs. Stored in a local SQLite
+  database under your OS's cache directory.
+- **Image cache** — posters, covers, banners, episode thumbnails and,
+  with an account connected, your tracker avatar, as files under your
+  OS's cache directory (`$XDG_CACHE_HOME/ani-gui/images/` on Linux).
+  The oldest are removed once the cache passes the size limit set in
+  Settings, and Settings can clear it.
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and when,
   and the Kitsu id of the show you played. More about each show you
@@ -174,10 +179,12 @@ checks for updates (below) and, with an account connected, refreshes
 its sign-in if it has expired; both happen again when changing the
 language reloads the window. The app always opens on the home page,
 which as it loads fetches its catalogue rows and their images,
-resolves your Continue Watching rows and checks with the streaming
-site that they are still available, checks the availability of shows
-on the page that the app has not checked before, and, with an account
-connected, fetches your tracker list for the Watch Later rail. For
+resolves your Continue Watching rows and checks that they are still
+available, checks the availability of the shows on the page — asking
+the streaming site about those it has no recent answer for — and, with
+an account connected, loads the Watch Later rail from your saved
+tracker list, asking the tracker to confirm who you are and fetching
+the list again when the saved copy is six hours old or more. For
 each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
@@ -187,8 +194,8 @@ each kind of request:
   Searches and episode listings are asked for as you browse and play;
   the rows of shows on the home page and the search page, and a show
   page's strip of related shows, ask the streaming catalogue in the
-  background whether the shows they list that the app has not checked
-  before are available there; and a background warm a page runs asks
+  background whether the shows they list are available there, for the
+  shows the app has no recent answer for; and a background warm a page runs asks
   for what is in view — the
   detail page for the episode its Play button targets, which is the
   resume point when there is one, and the play page for the episode
@@ -229,11 +236,13 @@ each kind of request:
   for, and asks every megaplay server for the one network whose streams
   it can play, whichever network the listing named. So the hosts a megaplay page leads
   to are that network's, and no other's.
-- **Images** — posters, covers, banners and, with an account
-  connected, your tracker avatar are fetched from the host the
-  catalogue or tracker names for them (Kitsu's and AniList's image
-  hosts, for instance) and cached on disk, so each is fetched once.
-  These requests carry no identifier of yours.
+- **Images** — posters, covers, banners, episode thumbnails and, with
+  an account connected, your tracker avatar are fetched from the host
+  the catalogue or tracker names for them (Kitsu's and AniList's image
+  hosts, for instance), some as soon as a catalogue answer names them,
+  and cached on disk. A cached image is not fetched again until the
+  size limit removes it or you clear the cache. These requests carry
+  no identifier of yours.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
@@ -285,10 +294,11 @@ each kind of request:
 - **Update check (automatic, on launch)** — ani-gui asks GitHub's
   public releases API (`api.github.com`) for the project's newest
   release, so it can tell you when a new version is out. It asks again
-  when changing the language reloads the window. Besides GitHub's
-  standard `Accept` and API-version headers, the request carries only
-  the User-Agent `ani-gui`: not the version you run, which is compared
-  on your machine, and no account information. Which release it asks for follows the
+  when changing the language reloads the window. Besides standard
+  headers that say nothing about you (GitHub's `Accept` and
+  API-version headers, and the compression it accepts), the request
+  carries only the User-Agent `ani-gui`: not the version you run,
+  which is compared on your machine, and no account information. Which release it asks for follows the
   "Include pre-releases in update check" setting, and the choice shows
   in the request's address. With the setting on (the default), it asks
   for the newest release of any kind
@@ -309,8 +319,8 @@ each kind of request:
   settings are on. The request names the show's MyAnimeList id, looked
   up from its Kitsu entry, the episode number, and the episode's
   length in seconds. A show with no MyAnimeList id, a play with no
-  Kitsu entry, and an episode with a fractional number are not asked
-  about. No account information is sent. Answers are cached, so
+  Kitsu entry, and an episode numbered 0 or with a fractional number
+  are not asked about. No account information is sent. Answers are cached, so
   playing the episode again does not ask again while the cached times
   last. The auto-skip settings do not stop the request, and no setting
   does.
