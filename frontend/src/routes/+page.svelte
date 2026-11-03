@@ -107,7 +107,7 @@
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
-	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { guessedId, recordableId, withGuess, withLanding, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { cardRow } from '$lib/history/card-row';
@@ -933,9 +933,13 @@
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
 				resolve('/play/[id]', { id }) +
-					withRow(
-						withGuess(buildPlayQuery(session as CreateSessionResponse, ep), guess === true),
-						row ?? null
+					withLanding(
+						withRow(
+							withGuess(buildPlayQuery(session as CreateSessionResponse, ep), guess === true),
+							row ?? null
+						),
+						guess === true,
+						session as CreateSessionResponse
 					)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */

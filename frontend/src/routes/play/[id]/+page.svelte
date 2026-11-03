@@ -193,7 +193,9 @@
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
+		landedElsewhere,
 		withGuess,
+		withLanding,
 		withRow
 	} from '$lib/play/play-origin';
 	import { guessedQuery } from '$lib/history/guessed-context';
@@ -2393,7 +2395,11 @@
 			// flag. A navigation that fails is not a failed play.
 			await goto(
 				resolve('/play/[id]', { id: owner.showId }) +
-					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
+					withLanding(
+						withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
+						guess,
+						outcome.session
+					),
 				{ replaceState: true }
 			).catch(() => {
 				// Nothing replaced the stream on screen: its error stands —
@@ -3569,6 +3575,7 @@
 				title={playLink.offer?.entry.title ?? null}
 				linkedTitle={playLink.linked?.title ?? null}
 				busy={playLink.busy}
+				canKeep={!landedElsewhere(page.url.searchParams)}
 				onchange={() => void playLink.start(episodeNum)}
 				onright={() => void playLink.confirmCurrent()}
 				onopen={() => {

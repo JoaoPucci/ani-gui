@@ -5,7 +5,8 @@
   player, so it is not there either.
 
   While the session is a guess it says which history title the guess
-  was made from and offers "That's right" and "Not this show? Change".
+  was made from and offers "That's right" and "Not this show? Change";
+  "That's right" only when the play landed on the card's own listing.
   After a link to another show it stays and says what is playing is
   still the guessed show, with a way to the linked one; the toast holds
   the Undo. Hide sets it aside for the card's row until the app
@@ -25,6 +26,7 @@
 		title,
 		linkedTitle,
 		busy = false,
+		canKeep = true,
 		onchange,
 		onright,
 		onopen,
@@ -37,6 +39,10 @@
 		linkedTitle: string | null;
 		/** A link in flight. */
 		busy?: boolean;
+		/** Whether "That's right" is offered: not when the play landed on
+		 *  another listing than the card's, where it would record that
+		 *  listing's show on the card's line. */
+		canKeep?: boolean;
 		onchange: () => void;
 		onright: () => void;
 		onopen: () => void;
@@ -73,9 +79,11 @@
 		{#if view === 'guess' && title !== null}
 			<p class="text" id="guess-slip-text">{m.play_link_guess_note({ title })}</p>
 			<span class="actions">
-				<button type="button" class="act" onclick={onright} disabled={busy}
-					>{m.play_link_guess_right()}</button
-				>
+				{#if canKeep}
+					<button type="button" class="act" onclick={onright} disabled={busy}
+						>{m.play_link_guess_right()}</button
+					>
+				{/if}
 				<button type="button" class="act act-strong" onclick={onchange} disabled={busy}
 					>{m.detail_link_not_this()} {m.detail_link_change()}</button
 				>

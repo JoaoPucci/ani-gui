@@ -16,6 +16,7 @@
 
 const GUESS_PARAM = 'guess';
 const ROW_PARAM = 'row';
+const LANDED_PARAM = 'landed';
 
 /** Whether the play URL's query marks a session opened from a guess. */
 export function openedFromGuess(search: URLSearchParams): boolean {
@@ -75,4 +76,24 @@ export function withRow(query: string, row: string | null): string {
 	if (!row) return query;
 	const param = `${ROW_PARAM}=${encodeURIComponent(row)}`;
 	return `${query}${query.length > 1 ? '&' : ''}${param}`;
+}
+
+/** `query` (a `?…` play query) saying the guessed session's play landed
+ *  on another listing than the card's own (`own_listing` false). The
+ *  player then offers no "That's right": the guess was never tested
+ *  against the card's listing, and keeping it would record the other
+ *  listing's show on the card's line. Nothing for any other session. */
+export function withLanding(
+	query: string,
+	guess: boolean,
+	session: { own_listing?: boolean }
+): string {
+	if (!guess || session.own_listing === true) return query;
+	return `${query}${query.length > 1 ? '&' : ''}${LANDED_PARAM}=other`;
+}
+
+/** Whether the play URL's query says the guessed session's play landed
+ *  on another listing than the card's own. */
+export function landedElsewhere(search: URLSearchParams): boolean {
+	return search.get(LANDED_PARAM) === 'other';
 }
