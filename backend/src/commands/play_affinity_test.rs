@@ -94,6 +94,7 @@ async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_pr
         prefetch: false,
         kitsu_id: Some("580".into()),
         version: None,
+        guess_row: None,
         caption: None,
     };
     let got = play_with_progress(&state, &args, |_| {}).await;
