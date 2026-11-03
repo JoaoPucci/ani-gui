@@ -27,6 +27,7 @@
 use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
+use super::health::{Health, HealthRun};
 use super::reservation::{SlotGuard, SlotSchedule};
 
 pub use super::outcome::ScrapeOutcome;
@@ -128,6 +129,10 @@ pub(super) struct GateState {
 /// reports back via [`ScraperGate::record_outcome`].
 pub struct ScraperGate {
     inner: Mutex<GateState>,
+    /// Whether the provider is answering, from the same outcomes, for
+    /// the notification center (see [`super::health`]). Its own lock:
+    /// it never decides an admit.
+    health: Mutex<HealthRun>,
 }
 
 impl ScraperGate {
@@ -147,6 +152,7 @@ impl ScraperGate {
                 last_recovery_at: None,
                 answered: false,
             }),
+            health: Mutex::new(HealthRun::default()),
         }
     }
 
@@ -374,6 +380,29 @@ impl ScraperGate {
     }
 }
 
+impl ScraperGate {
+    /// [`ScraperGate::record`], also noted for whether the provider is
+    /// answering: `priority` says whether a user was waiting on the
+    /// request. Every caller that knows the priority records through
+    /// this.
+    pub fn record_from(
+        &self,
+        priority: ScrapePriority,
+        outcome: ScrapeOutcome,
+        started_at: Instant,
+    ) {
+        self.record(outcome, started_at);
+        let _ = priority;
+    }
+
+    /// Whether the provider is answering, as the notification center
+    /// reads it. A read, never a state change.
+    #[must_use]
+    pub fn health(&self) -> Health {
+        Health::Answering
+    }
+}
+
 // `record_outcome` lives in a `#[path]` child module so its
 // complexity counts against its own file while the gate's state
 // stays private to this module tree.
@@ -393,3 +422,7 @@ impl Default for ScraperGate {
 #[cfg(test)]
 #[path = "gate_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "gate_health_test.rs"]
+mod health_tests;
