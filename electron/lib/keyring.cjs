@@ -18,8 +18,10 @@
 // deletes or rewrites a token file either: a read that fails leaves the
 // file where it was.
 //
-// On Windows (DPAPI) and macOS, safeStorage answers in-process without
-// a prompt, and is called directly.
+// On Windows the keyring is DPAPI, which answers in-process without a
+// prompt, and safeStorage is called directly. macOS is not packaged and
+// is called directly too, though its Keychain can prompt and block the
+// same way; it is not handled here.
 
 const { KEYRING_HELPER_SWITCH, REPLY_MARK } = require("./keyring-helper.cjs");
 
@@ -201,8 +203,10 @@ async function writeToken({ file, fs, keyring, payload }) {
   let status;
   try {
     status = await keyring.status();
-  } catch {
-    status = { available: false, backend: null };
+  } catch (err) {
+    // The keyring could not be asked (the helper ended or never
+    // started): that says nothing about whether one is installed.
+    return { ok: false, kind: "io_error", message: message(err) };
   }
   if (!isRealEncryption(status))
     return { ok: false, kind: "encryption_unavailable" };
