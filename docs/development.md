@@ -321,6 +321,15 @@ git commit -m "chore: start the remote flags file"
 git push -u origin flags
 ```
 
+On another checkout, once the branch exists, make the same worktree
+from the repository root (the same two commands in bash and
+PowerShell):
+
+```sh
+git fetch origin flags
+git worktree add ../ani-gui-flags flags
+```
+
 Until the branch exists, every launch gets a 404 and uses the
 defaults, which is also what an empty `flags` object does, and each
 session retries the file after 3, 10 and 30 minutes and then hourly.
