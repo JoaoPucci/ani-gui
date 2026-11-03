@@ -51,7 +51,9 @@ let current = { rendered: false, gaveUp: false, beforeReveal: false };
  *
  * The renderer sends the word after two animation frames, which run in
  * a hidden window only because `paintWhenInitiallyHidden` is left at its
- * default (true); turned off, every launch would wait out the bound.
+ * default (true). Turned off, `ready-to-show` never fires either, and
+ * the window is never revealed (packaged: the boot fails at the
+ * first-show deadline).
  */
 function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown = () => false } = {}) {
   const state = { rendered: false, gaveUp: false, beforeReveal: false };
@@ -66,7 +68,7 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
     state.gaveUp = !rendered;
     settle(rendered);
   };
-  // Matched by the sending window's id: Electron may hand over another
+  // Matched by the sending contents' id: Electron may hand over another
   // wrapper of the same contents.
   function onReady(event) {
     if (!event || !event.sender || event.sender.id !== contents.id) return;
@@ -84,10 +86,11 @@ function lastAppReady() {
   return { ...current };
 }
 
-/** The reveal's gate. Stub. */
+/** The reveal's gate: open once the splash is done (`splashShown`, a
+ *  function returning its wait) and the renderer has said its first
+ *  page rendered, or the wait for it gave up. */
 function revealGate(splashShown, appReady) {
-  void appReady;
-  return splashShown();
+  return Promise.all([splashShown(), appReady.ready]);
 }
 
 module.exports = {

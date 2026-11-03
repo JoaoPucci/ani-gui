@@ -51,7 +51,7 @@ const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController } = require("./lib/splash.cjs");
-const { appReadyWaiter, appWindowOptions } = require("./lib/app-window.cjs");
+const { appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
   initialSize,
@@ -573,7 +573,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // is it mapped (maximized) and shown, and the splash put away. The
     // two are never on screen competing, on any platform. A later window
     // finds no splash, and waits only for its renderer.
-    beforeShow: () => Promise.all([splash.whenShown(), appReady.ready]),
+    beforeShow: () => revealGate(() => splash.whenShown(), appReady),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
