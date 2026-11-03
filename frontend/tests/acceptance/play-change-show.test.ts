@@ -308,6 +308,26 @@ describe('the picker on the player', () => {
 	});
 });
 
+describe('the player behind the picker', () => {
+	it('takes none of its shortcuts while the picker is open', async () => {
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		const v = target.querySelector<HTMLVideoElement>('.player-video-slot video')!;
+		await openPicker();
+		const before = v.muted;
+		const inside = dialog()!.querySelector('button')!;
+		inside.focus();
+		inside.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+		await settle();
+		expect(v.muted).toBe(before);
+		// …and takes them again once it closes.
+		button(m.detail_link_cancel_button())!.click();
+		await until(() => dialog() === null, 'the picker to close');
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+		await until(() => v.muted !== before, 'the mute shortcut');
+	});
+});
+
 describe('linking from the player', () => {
 	it("links the card's own row only, and the slip says what is still playing", async () => {
 		await openPlayer();

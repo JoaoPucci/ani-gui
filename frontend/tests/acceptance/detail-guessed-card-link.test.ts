@@ -229,6 +229,8 @@ describe('the show page a guessed Continue card opened', () => {
 		await openShowPage(GUESS, { guessed: CARD });
 		await until(hasNote, 'the matched-from line');
 		expect(button(m.detail_link_change())).not.toBeNull();
+		// The app's one mark for a guess.
+		expect(target.querySelector('.guess-note [data-guess-mark]')).not.toBeNull();
 		// Quiet: no dialog on arrival.
 		expect(target.querySelector('dialog')).toBeNull();
 	});

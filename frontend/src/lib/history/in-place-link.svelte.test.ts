@@ -247,3 +247,39 @@ describe('a surface that reads nothing from the history', () => {
 		expect(s.slip).toBe('guess');
 	});
 });
+
+describe('a "That\'s right" that fails', () => {
+	it('says so in a notice, since the picker that shows errors is closed', async () => {
+		const f = fake();
+		f.deps.link = async () => Promise.reject(new Error('down'));
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.confirmCurrent();
+		expect(f.notices.at(-1)).toEqual({ kind: 'error', message: m.detail_link_failed() });
+		expect(s.slip).toBe('guess');
+	});
+});
+
+describe('a later arrival', () => {
+	it("forgets the earlier offer's rows, so a link links the new card's", async () => {
+		const f = fake();
+		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
+		f.rows = [CARD, other];
+		f.deps.group = async (card) => [card];
+		const linked: string[][] = [];
+		const link = f.deps.link;
+		f.deps.link = async (rows, id) => {
+			linked.push(rows);
+			return link(rows, id);
+		};
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(s.group).toEqual([CARD.id]);
+		await s.arrive(other.id, GUESS.id);
+		expect(s.group).toBeNull();
+		await s.confirmCurrent();
+		expect(linked.at(-1)).toEqual([other.id]);
+	});
+});
