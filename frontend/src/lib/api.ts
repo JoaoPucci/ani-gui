@@ -1357,7 +1357,7 @@ export interface Franchise {
 /** The franchise around `kitsuId`: the run it belongs to and what sits
  *  around it. */
 export function kitsuFranchise(kitsuId: string): Promise<Franchise> {
-	return Promise.reject(new Error(`kitsuFranchise(${kitsuId}): not yet`));
+	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`);
 }
 
 export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
