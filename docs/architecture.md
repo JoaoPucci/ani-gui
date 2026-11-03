@@ -331,7 +331,7 @@ where the release that fixes its cause is known.
 that rule, no value the file can select is riskier than the default, so
 someone who rewrote the file in transit, or got write access to the
 branch, could only switch features off or bring back older behaviour.
-The flags are therefore read whatever the signature below says; the
+The flags are therefore read whatever the signature above says; the
 signature gates only the notices block. A flag kind whose file value is
 riskier than its default, such as turning something on or relaxing a
 check, would need the flags themselves to be read only under a verified

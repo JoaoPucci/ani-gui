@@ -421,8 +421,8 @@ the maintainer. Anyone holding it can put text and a link in front of
 every user.
 
 These steps need [minisign](https://jedisct1.github.io/minisign/)
-0.11 or later. They are written for bash on Linux; the PowerShell form
-of the one command that differs is under step 3.
+0.11 or later. Each step is given for bash on Linux and for
+PowerShell 7 on Windows.
 
 **0. Keep the file's bytes as they are pushed (once).** The signature
 covers the exact bytes, and the `flags` branch does not carry the main
@@ -437,11 +437,23 @@ git commit -m "chore: keep the flags file's bytes as signed"
 git push
 ```
 
+```powershell
+Set-Content -NoNewline -Path .gitattributes -Value "flags.json -text`n*.minisig -text`n"
+git add .gitattributes
+git commit -m "chore: keep the flags file's bytes as signed"
+git push
+```
+
 **1. Make the key pair (once per key).**
 
 ```sh
 mkdir -p ~/.minisign
 minisign -G -p ~/.minisign/ani-gui-flags.pub -s ~/.minisign/ani-gui-flags.key
+```
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.minisign" | Out-Null
+minisign -G -p "$HOME\.minisign\ani-gui-flags.pub" -s "$HOME\.minisign\ani-gui-flags.key"
 ```
 
 minisign asks for a password for the secret key. `ani-gui-flags.pub`
@@ -473,10 +485,18 @@ git push
 
 `-S` writes `flags.json.minisig` beside the file with minisign's default
 prehashed signature, the only kind the app accepts; `-V` checks it
-before it is pushed. In PowerShell 7 the signing command is one line:
+before it is pushed. In PowerShell 7 (Windows' `python3` may be the
+Store's placeholder; `py -3` or `Get-Content flags.json | ConvertFrom-Json`
+checks the JSON instead):
 
 ```powershell
-minisign -S -s $HOME\.minisign\ani-gui-flags.key -m flags.json -t "flags.json $(Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ)"
+git pull
+Get-Content flags.json | ConvertFrom-Json | Out-Null
+minisign -S -s "$HOME\.minisign\ani-gui-flags.key" -m flags.json -t "flags.json $(Get-Date -AsUTC -UFormat '%Y-%m-%dT%H:%M:%SZ')"
+minisign -V -p "$HOME\.minisign\ani-gui-flags.pub" -m flags.json
+git add flags.json flags.json.minisig
+git commit -m "chore: publish a notice"
+git push
 ```
 
 After pushing, wait out the CDN's five-minute cache: until both files
@@ -492,9 +512,11 @@ to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is
 out, sign with the new key only. A release later, remove the old key
 from the list. If a secret key is lost or leaked, delete
 `flags.json.minisig` from the branch at once, and ship a release that
-removes that key. Installs drop the notices on their next launch that
-reaches the file; one that cannot reach it keeps its cached copy, and
-the notices in it, for up to seven days.
+removes that key. An install drops the notices once a launch has
+downloaded the unsigned file: on that launch if the file arrives within
+its two-second wait, otherwise on the next. One that cannot reach the
+file keeps its cached copy, and the notices in it, for up to seven
+days.
 
 ## Code style
 
