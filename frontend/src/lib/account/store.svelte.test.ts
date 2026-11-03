@@ -354,7 +354,8 @@ describe('accountStore.hydrate', () => {
 		});
 
 		it('does not read a provider whose connect is under way when the hydrate starts', async () => {
-			// The account page remounted mid-connect: its hydrate waits.
+			// The account page remounted mid-connect: its hydrate waits, and
+			// the sign-in the connect lands is the provider's state.
 			const calls = countingSlowBridge();
 			accountStore.setConnecting('anilist');
 			void accountStore.hydrate();
@@ -363,7 +364,9 @@ describe('accountStore.hydrate', () => {
 			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
 			accountStore.setConnected('anilist', payload({ access_token: 'new' }));
 			await flush();
-			expect(calls.count('anilist')).toBe(1);
+			expect(calls.count('anilist')).toBe(0);
+			const s = accountStore.byProvider.anilist;
+			expect(s.kind === 'connected' && s.account.access_token).toBe('new');
 		});
 
 		it('leaves a disconnect under way alone until it lands', async () => {
@@ -393,6 +396,37 @@ describe('accountStore.hydrate', () => {
 			calls.answer('inhouse', { ok: false, kind: 'not_found' });
 			await vi.advanceTimersByTimeAsync(KEYRING_WAIT_MS * 2);
 			expect(accountStore.keyringWaiting).toBe(false);
+		});
+
+		it('leaves the outcome a change reported, short of signed out, as it is', async () => {
+			// A connect whose save failed reports an error; reading the disk
+			// afterwards must not paper over it with "signed out".
+			const calls = countingSlowBridge();
+			void accountStore.hydrate();
+			accountStore.setConnecting('anilist');
+			calls.answer('anilist', { ok: false, kind: 'not_found' });
+			await flush();
+			accountStore.setError('anilist', 'persist failed');
+			await flush();
+			expect(calls.count('anilist')).toBe(1);
+			expect(accountStore.byProvider.anilist.kind).toBe('error');
+		});
+
+		it('settles while one provider waits for a connect, so the others get their refresh', async () => {
+			// An abandoned browser sign-in holds its provider's read for up to
+			// the OAuth timeout; the rest of the hydrate, and the refresh of an
+			// expired sign-in elsewhere that follows it, do not wait for it.
+			const calls = countingSlowBridge();
+			accountStore.setConnecting('anilist');
+			let state = 'held';
+			void accountStore.hydrate().then(() => (state = 'settled'));
+			calls.answer('mal', { ok: false, kind: 'not_found' });
+			calls.answer('inhouse', { ok: false, kind: 'not_found' });
+			await flush();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(state).toBe('settled');
+			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+			expect(calls.count('anilist')).toBe(0);
 		});
 
 		it('says it is waiting on the keyring once a read runs past the wait, and stops when it answers', async () => {
