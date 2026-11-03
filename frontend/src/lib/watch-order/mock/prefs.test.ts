@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	loadMockPrefs,
+	MOCK_OPTIONS,
 	MOCK_PREFS_DEFAULT,
 	MOCK_PREFS_STORAGE_KEY,
 	parseMockPrefs,
@@ -36,19 +37,23 @@ describe('watch-order mockup prefs', () => {
 		expect(p).toMatchObject({ enabled: true, switcher: false, strip: 'trio', order: 'linked' });
 	});
 
-	it("starts the strip in the maintainer's chosen arrangement, with the second round's other choices", () => {
-		expect(parseMockPrefs(null)).toMatchObject({
-			strip: 'trio',
-			wording: 'role',
-			resume: 'chip'
-		});
+	it("starts the strip in the maintainer's chosen arrangement", () => {
+		expect(parseMockPrefs(null)).toMatchObject({ strip: 'trio', cta: 'stack' });
 	});
 
-	it("keeps the second round's choices", () => {
-		const p = parseMockPrefs(
-			JSON.stringify({ wording: 'watch', cta: 'stack', resume: 'sentence', strip: 'rail' })
-		);
-		expect(p).toMatchObject({ wording: 'watch', cta: 'stack', resume: 'sentence', strip: 'rail' });
+	it('keeps the stack and rail choices', () => {
+		const p = parseMockPrefs(JSON.stringify({ cta: 'button', strip: 'rail' }));
+		expect(p).toMatchObject({ cta: 'button', strip: 'rail' });
+	});
+
+	it('offers no switch for a choice the maintainer has made', () => {
+		// Relation wording, the watching card, the strip under the
+		// masthead and short titles were decided in the first two
+		// review rounds; the real strip has no other option to show.
+		for (const decided of ['wording', 'resume', 'placement', 'titles']) {
+			expect(Object.keys(MOCK_OPTIONS)).not.toContain(decided);
+			expect(Object.keys(parseMockPrefs(null))).not.toContain(decided);
+		}
 	});
 
 	it("starts the third round on the maintainer's poster stack, centred in the footer, with every poster", () => {

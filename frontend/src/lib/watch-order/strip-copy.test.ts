@@ -11,13 +11,7 @@ describe('the strip copy', () => {
 			['parent', false, 'Parent story'],
 			['parent', true, 'Parent stories'],
 			['released_before', false, 'Released before'],
-			['released_after', false, 'Released after'],
-			['previous', false, 'Previous'],
-			['next', false, 'Next'],
-			['watch_before', false, 'Watch before'],
-			['watch_after', false, 'Watch after'],
-			['before', false, 'Before'],
-			['after', false, 'After']
+			['released_after', false, 'Released after']
 		];
 		for (const [word, plural, text] of cases) {
 			expect(columnKeyText({ word, plural })).toBe(text);
