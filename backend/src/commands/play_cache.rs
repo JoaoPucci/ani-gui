@@ -360,3 +360,7 @@ mod tests;
 #[cfg(test)]
 #[path = "play_cache_replay_prop_test.rs"]
 mod replay_prop_tests;
+
+#[cfg(test)]
+#[path = "play_ui_locale_test.rs"]
+mod ui_locale_tests;
