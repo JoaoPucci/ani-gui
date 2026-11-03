@@ -49,7 +49,7 @@ describe('what each notice says', () => {
 		expect(c.meta).toMatch(/^Since 11:00\s?AM · 6 attempts failed$/);
 		expect(c.body[0].text).toContain("We don't know why yet");
 		expect(c.body[2].label).toBe('What ani-gui saw');
-		expect(c.body[2].text).toMatch(/6 attempts in a row .* the latest: 11:55\s?AM\./);
+		expect(c.body[2].text).toMatch(/6 attempts in a row to reach it failed\. Latest: 11:55\s?AM\./);
 		expect(c.body[2].text).toContain('no extra requests');
 		expect(c.action).toBeNull();
 	});
