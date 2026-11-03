@@ -150,13 +150,19 @@ fi
 #    moves it back and aborts. From electron-builder 26 the
 #    `customUnInstall` hook runs before that sequence, so a removal of
 #    its own lands even when the update aborts, and the restored
-#    install is missing the file. A grep for the command at the start
-#    of a line is the whole check: NSIS comments start with `;`, so a
-#    commented-out line does not match. `$INSTDIR` is NSIS's, not the
-#    shell's, so it stays in single quotes.
+#    install is missing the file.
+#
+#    The check is a grep, case-insensitive as NSIS instructions are,
+#    for a `Delete` or `RMDir` at the start of a line naming `$INSTDIR`
+#    on that same line. NSIS comments start with `;`, so a commented-out
+#    line does not match. It does not see a removal split across a `\`
+#    continuation, one that reaches `$INSTDIR` through a variable or a
+#    macro, or a `Rename` out of it; a green run means no such command
+#    is written plainly, not that none can happen. `$INSTDIR` is
+#    NSIS's, not the shell's, so it stays in single quotes.
 NSH=electron/build-resources/installer.nsh
 # shellcheck disable=SC2016
-if [ -f "$NSH" ] && grep -nE '^[[:space:]]*(Delete|RMDir)[[:space:]].*\$INSTDIR' "$NSH" >&2; then
+if [ -f "$NSH" ] && grep -inE '^[[:space:]]*(Delete|RMDir)[[:space:]].*\$INSTDIR' "$NSH" >&2; then
     printf 'arch/windows_deps FAIL: %s removes files under $INSTDIR — the uninstall sequence already does, and a removal in customUnInstall survives an aborted update\n' "$NSH" >&2
     failed=1
 fi
