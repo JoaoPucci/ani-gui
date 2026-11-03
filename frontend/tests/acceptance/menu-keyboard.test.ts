@@ -343,6 +343,55 @@ describe('the download dock’s menu', () => {
 		expect(menu()!.querySelector('[aria-live], [role="status"], [role="progressbar"]')).toBeNull();
 	});
 
+	it('tells a finished download from a failed one, and says why it failed', async () => {
+		const done = downloadStore.add({
+			title: 'Frieren',
+			episode: '1',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		downloadStore.markDone(done, '/dl');
+		const failed = downloadStore.add({
+			title: 'Dandadan',
+			episode: '2',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		downloadStore.markError(failed, m.download_failure_tool_spawn());
+		const queued = downloadStore.add({
+			title: 'Mushishi',
+			episode: '3',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		downloadStore.markQueued(queued, new AbortController());
+		app = mount(DownloadDock, { target });
+		await settle();
+		await openMenu();
+		const description = (el: HTMLElement) =>
+			(el.getAttribute('aria-describedby') ?? '')
+				.split(' ')
+				.map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+				.join(' ');
+		// Newest first: queued (Cancel), failed (Dismiss), done (Reveal, Dismiss).
+		const [onQueued, onFailed, onDoneReveal, onDoneDismiss] = items().map(description);
+		expect(onQueued).toContain(m.download_dock_queued());
+		expect(onFailed).toContain(m.download_dock_state_failed());
+		expect(onFailed).toContain(m.download_failure_tool_spawn());
+		expect(onDoneReveal).toContain(m.download_dock_state_done());
+		expect(onDoneDismiss).toContain(m.download_dock_state_done());
+		expect(onDoneDismiss).not.toContain(m.download_dock_state_failed());
+		// The row's visible marks are said once, through the description:
+		// the Queued label and the failure's "!" are hidden from the tree.
+		for (const mark of menu()!.querySelectorAll('span.dl-row-queued, span.dl-row-error')) {
+			expect(mark.getAttribute('aria-hidden')).toBe('true');
+		}
+		expect(menu()!.querySelectorAll('span.dl-row-queued, span.dl-row-error')).toHaveLength(2);
+	});
+
 	it('opens on its first item and steps through every action, wrapping', async () => {
 		seed();
 		app = mount(DownloadDock, { target });

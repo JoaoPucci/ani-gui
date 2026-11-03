@@ -57,17 +57,31 @@ describe('rowState', () => {
 	it('adds the report a running download carries, and never the raw tool line', () => {
 		const retry = item({ progressStatus: { key: 'retry_ffmpeg', path: null } });
 		expect(rowState(retry).note).toBe(m.download_status_retry_ffmpeg());
-		const raw = item({ progress: '[download]  42.0% of 300MiB' });
+		// The backend's yt-dlp template: format and bytes so far.
+		const raw = item({ progress: 'ani-gui-progress 1080 123456' });
 		expect(rowState(raw).note).toBeNull();
 	});
 
-	it('leaves a finished or failed row to its own report', () => {
-		for (const status of ['done', 'error'] as const) {
-			expect(rowState(item({ status }))).toEqual({ state: null, note: null });
-		}
+	it('says a finished download is downloaded', () => {
+		expect(rowState(item({ status: 'done' }))).toEqual({
+			state: m.download_dock_state_done(),
+			note: null
+		});
 	});
 
-	it('answers a state for every download still under way, and a note only from a report', () => {
+	it('says a failed download failed, and why', () => {
+		const why = m.download_failure_tool_spawn();
+		expect(rowState(item({ status: 'error', error: why }))).toEqual({
+			state: m.download_dock_state_failed(),
+			note: why
+		});
+		expect(rowState(item({ status: 'error', error: null }))).toEqual({
+			state: m.download_dock_state_failed(),
+			note: null
+		});
+	});
+
+	it('answers a state for every download, and a running one’s note only from a report', () => {
 		const keys: ProgressStatusKey[] = [
 			'already_here',
 			'abandoned_claim',
@@ -77,7 +91,9 @@ describe('rowState', () => {
 		];
 		fc.assert(
 			fc.property(
-				fc.constantFrom('queued', 'pending', 'active') as fc.Arbitrary<DownloadItem['status']>,
+				fc.constantFrom('queued', 'pending', 'active', 'done') as fc.Arbitrary<
+					DownloadItem['status']
+				>,
 				fc.option(fc.integer({ min: 0, max: 1e9 })),
 				fc.option(fc.constantFrom(...keys)),
 				fc.option(fc.string()),
