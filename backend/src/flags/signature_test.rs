@@ -105,6 +105,6 @@ fn only_a_verified_file_keeps_its_notices_and_every_file_keeps_its_flags() {
 
 #[test]
 fn the_shipped_build_trusts_no_key_until_the_maintainer_adds_one() {
-    assert!(super::TRUSTED_KEYS.is_empty());
+    assert!(std::hint::black_box(super::TRUSTED_KEYS).is_empty());
     assert_eq!(super::SIGNATURE_SUFFIX, ".minisig");
 }
