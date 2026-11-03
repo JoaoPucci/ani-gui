@@ -227,9 +227,8 @@ async function openFirstPage(
  * (lib/launch-flags.cjs, bounded), then open the window against the
  * backend with those flags; the window's reveal takes the splash down
  * as it shows (main.js), and the boot closes it again here in case
- * nothing did. `showSplash` may open the splash later than it is asked
- * (main.js waits on the reduced-motion read); a splash that cannot be
- * shown is logged and the boot goes on without it. A failure ends the
+ * nothing did. A splash that cannot be shown is logged and the boot
+ * goes on without it. A failure ends the
  * process with code 1, in this order:
  *
  *   0. The splash is put away for good (`suppressSplash`): hidden, not

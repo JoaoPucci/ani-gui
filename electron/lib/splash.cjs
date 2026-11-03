@@ -156,9 +156,10 @@ function splashController({
         return;
       }
       splash[SPLASH_MARK] = true;
-      // The page holds its motion until it is told the window is on
-      // screen (splash.js falls back to a timer), so the opening plays
-      // once the window manager has mapped the window.
+      // The page holds its first frame until the shown signal, sent
+      // once the window is on screen and the motion preference is
+      // known, so the opening plays once the window manager has mapped
+      // the window and never before the preference is known.
       splash.once("show", () => {
         log(`[main] splash shown (${since()})`);
         windowShown = true;
@@ -199,9 +200,6 @@ function splashController({
       }
       win = null;
     },
-    // Resolves once the splash is on screen — or there is none to wait
-    // for (never asked to open, failed to, put away, gone) — and in any
-    // case within SPLASH_SHOW_WAIT_MS.
     // The desktop's reduced-motion preference, once read: until then
     // the splash holds its first frame, and it is sent with the shown
     // signal.
@@ -277,9 +275,10 @@ function lastSplashState() {
   return { ...current };
 }
 
-/** The longest the app's window waits for the splash to be on screen.
- *  The splash is a light static page and paints well within this; the
- *  bound is for one that never does. */
+/** The longest the app's window waits for the splash to paint. The
+ *  splash is a light static page and paints well within this; the bound
+ *  is for one that never does. With the minimum time on screen after a
+ *  paint, the whole wait is at most this plus SPLASH_MIN_ON_SCREEN_MS. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
 /** How long the splash stays on screen after it has painted before the

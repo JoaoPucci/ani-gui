@@ -569,8 +569,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
     // The window loads hidden; at ready-to-show it waits, up to a
-    // second, for the splash to have rendered a frame, and only then is
-    // mapped (maximized) and shown, and the splash put away. The two
+    // second, for the splash to have rendered a frame, then for what is
+    // left of the splash's minimum time on screen after that paint, and
+    // only then is mapped (maximized) and shown, and the splash put
+    // away. The two
     // are never on screen competing, on any platform. A later window
     // finds no splash and waits for nothing.
     beforeShow: () => splash.whenShown(),
