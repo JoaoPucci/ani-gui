@@ -485,6 +485,10 @@ export interface Config {
 	 *  (UI falls back to AniList-first). Drives the topbar chip + the
 	 *  Watch Later rail order, not write-back (which fans to all). */
 	primary_account: string;
+	/** The order franchise surfaces show a run in: the order Kitsu's
+	 *  prequel and sequel links give (the default) or start dates. The
+	 *  backend reads an unknown stored value as `'linked'`. */
+	watch_order: 'linked' | 'released';
 }
 
 /** Single-size thumbnail Kitsu exposes for episodes (no tiny/small variants). */

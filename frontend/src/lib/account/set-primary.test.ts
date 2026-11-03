@@ -19,7 +19,8 @@ function cfg(primary = ''): Config {
 		auto_skip_ed: false,
 		use_custom_player_controls: false,
 		update_include_prereleases: true,
-		primary_account: primary
+		primary_account: primary,
+		watch_order: 'linked'
 	};
 }
 

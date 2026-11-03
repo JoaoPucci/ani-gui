@@ -61,7 +61,8 @@ const CONFIG = {
 	use_custom_player_controls: true,
 	auto_update_anicli: false,
 	update_include_prereleases: false,
-	primary_account: ''
+	primary_account: '',
+	watch_order: 'linked'
 };
 
 /** Handlers every scenario here needs: settings plus the two rails the

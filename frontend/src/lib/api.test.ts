@@ -1455,7 +1455,8 @@ describe('settingsGet', () => {
 			auto_skip_ed: false,
 			use_custom_player_controls: false,
 			update_include_prereleases: true,
-			primary_account: ''
+			primary_account: '',
+			watch_order: 'linked'
 		};
 		const fetchMock = mockFetchOnce(cfg);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1483,7 +1484,8 @@ describe('settingsPut', () => {
 			auto_skip_ed: true,
 			use_custom_player_controls: true,
 			update_include_prereleases: false,
-			primary_account: 'mal'
+			primary_account: 'mal',
+			watch_order: 'linked'
 		};
 		const fetchMock = mockFetchOnce(null, 204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;

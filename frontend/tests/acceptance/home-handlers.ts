@@ -62,7 +62,8 @@ export function appConfig(mode: 'sub' | 'dub' = 'sub') {
 		use_custom_player_controls: true,
 		auto_update_anicli: false,
 		update_include_prereleases: false,
-		primary_account: ''
+		primary_account: '',
+		watch_order: 'linked'
 	};
 }
 
