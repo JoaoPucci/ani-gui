@@ -192,15 +192,25 @@ test("nothing on the splash counts: its readout slot is empty, moving or still",
 const vm = require("node:vm");
 
 /** Run the splash's version.js against a page loaded with `search`,
- *  returning the text it leaves in the version line. */
+ *  returning what it leaves in the version line: its text, with an
+ *  element written as `[class:text]`. */
 function versionShown(search) {
-  const line = { textContent: "" };
+  let children = [];
+  const line = {
+    append: (...nodes) => children.push(...nodes),
+    set textContent(text) {
+      children = [text];
+    },
+  };
   vm.runInNewContext(read("version.js"), {
     location: { search },
     URLSearchParams,
-    document: { querySelector: (sel) => (sel === ".version" ? line : null) },
+    document: {
+      querySelector: (sel) => (sel === ".version" ? line : null),
+      createElement: () => ({ className: "", textContent: "" }),
+    },
   });
-  return line.textContent;
+  return children.map((c) => (typeof c === "string" ? c : `[${c.className}:${c.textContent}]`)).join("");
 }
 
 test("the line above the title is the app's version, in the page before it paints", () => {
@@ -209,8 +219,10 @@ test("the line above the title is the app's version, in the page before it paint
   // page is parsed — not deferred — so the first paint carries it.
   assert.match(html, /<p class="eyebrow version"><\/p>\s*<script src="version\.js"><\/script>/);
   assert.doesNotMatch(html, /version\.js"[^>]*\b(defer|async)\b/);
-  assert.equal(versionShown("?v=0.18.0"), "v0.18.0");
-  assert.equal(versionShown("?v=0.18.0-dev"), "v0.18.0-dev");
+  // The leading "v" is set apart, in the app's accent; the version
+  // itself, "-dev" included, is plain text.
+  assert.equal(versionShown("?v=0.18.0"), "[v:v]0.18.0");
+  assert.equal(versionShown("?v=0.18.0-dev"), "[v:v]0.18.0-dev");
   // A page opened without one (a browser preview) shows no line, and
   // the query is never taken as markup or as anything but a version.
   assert.equal(versionShown(""), "");
@@ -220,6 +232,7 @@ test("the line above the title is the app's version, in the page before it paint
   assert.match(css, /\.eyebrow:empty \{ display: none; \}/);
   // The eyebrow's capitals would turn "v0.18.0-dev" into "V0.18.0-DEV".
   assert.match(css, /\.version \{ text-transform: none; \}/);
+  assert.match(css, /\.version \.v \{ color: var\(--brand\); \}/);
 });
 
 test("the splash's version is labelled as the app's rail and About label it", () => {

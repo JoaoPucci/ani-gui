@@ -254,7 +254,7 @@ test("the splash page, opened as the launch opens it, shows the app's version ab
   // script writes into — rather than the main process's record.
   const { app } = await launchAppWithStubs();
   try {
-    const [version, shown] = await app.evaluate(async ({ app: a, BrowserWindow }) => {
+    const [version, shown, colours] = await app.evaluate(async ({ app: a, BrowserWindow }) => {
       const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
       const { SPLASH_PAGE, splashWindowOptions } = main.require("./lib/splash.cjs");
       const w = new BrowserWindow(splashWindowOptions());
@@ -263,12 +263,24 @@ test("the splash page, opened as the launch opens it, shows the app's version ab
         const text = await w.webContents.executeJavaScript(
           "document.querySelector('.title').innerText",
         );
-        return [a.getVersion(), text as string];
+        // The leading "v" in the app's accent, the rest as the line is.
+        const c = await w.webContents.executeJavaScript(
+          "(() => { const line = document.querySelector('.version');" +
+            " const v = line.querySelector('.v');" +
+            " return { v: v && v.textContent, mark: v && getComputedStyle(v).color," +
+            " line: getComputedStyle(line).color," +
+            " brand: getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() }; })()",
+        );
+        return [a.getVersion(), text as string, c as Record<string, string | null>];
       } finally {
         w.destroy();
       }
     });
     expect(shown.split(/\s+/).filter(Boolean)).toEqual([`v${version}`, "ani-gui"]);
+    expect(colours.v).toBe("v");
+    expect(colours.brand).toBe("#d77a3b");
+    expect(colours.mark).toBe("rgb(215, 122, 59)");
+    expect(colours.line).not.toBe(colours.mark);
   } finally {
     await app.close();
   }
