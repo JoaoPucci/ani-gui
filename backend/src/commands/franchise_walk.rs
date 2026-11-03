@@ -93,7 +93,7 @@ pub fn plan(
             listings,
             details: Vec::new(),
         },
-        Ok(run) => around::assemble(anchor, &run, &lookup),
+        Ok(run) => Plan::Done(around::assemble(anchor, &run, &lookup)),
     }
 }
 
@@ -139,10 +139,18 @@ pub(crate) fn id_key(id: &str) -> (u64, String) {
     (id.parse().unwrap_or(u64::MAX), id.to_string())
 }
 
+#[path = "franchise_walk_alt.rs"]
+mod alt;
 #[path = "franchise_walk_around.rs"]
 mod around;
+#[path = "franchise_walk_links.rs"]
+mod links;
+#[path = "franchise_walk_meet.rs"]
+mod meet;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
+#[path = "franchise_walk_run.rs"]
+mod walking;
 
 #[cfg(test)]
 #[path = "franchise_walk_test.rs"]
