@@ -51,6 +51,7 @@ pub mod launch;
 pub mod refresh;
 pub mod remote;
 pub mod resolve;
+pub mod signature;
 pub mod store;
 
 pub use decl::{FlagDecl, FlagKind, FlagValue};

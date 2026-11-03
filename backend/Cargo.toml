@@ -69,6 +69,11 @@ cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 # ANSI escape stripping for spawned tools' output
 strip-ansi-escapes = "0.2"
 
+# minisign signature verification for the remote flags file: Ed25519
+# over a BLAKE2b-512 hash, pure Rust with no dependencies of its own, so
+# the packages carry nothing new on either platform.
+minisign-verify = "0.3.0"
+
 # URLs + bytes streaming
 url = "2.5"
 bytes = "1.7"
