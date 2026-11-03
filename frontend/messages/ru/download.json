@@ -66,14 +66,14 @@
 			"declarations": ["input available", "local availablePlural = available: plural"],
 			"selectors": ["availablePlural"],
 			"match": {
-				"availablePlural=one": " — анонсировано {announced}, но вышел пока только {available}.",
-				"availablePlural=few": " — анонсировано {announced}, но вышло пока только {available}.",
-				"availablePlural=*": " — анонсировано {announced}, но вышло пока только {available}."
+				"availablePlural=one": ". Анонсировано {announced}, но вышел пока только {available}.",
+				"availablePlural=few": ". Анонсировано {announced}, но вышло пока только {available}.",
+				"availablePlural=*": ". Анонсировано {announced}, но вышло пока только {available}."
 			}
 		}
 	],
 	"hint_all_nogap_suffix": ".",
-	"hint_all_unknown": "Число эпизодов неизвестно — задайте через диапазон.",
+	"hint_all_unknown": "Число эпизодов неизвестно. Выберите эпизоды в режиме «Диапазон».",
 	"hint_range": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -90,7 +90,7 @@
 	"button_browse": "Обзор…",
 	"hint_filename_prefix": "Файлы сохраняются как ",
 	"hint_filename_template": "{title} Episode N.mp4",
-	"hint_filename_suffix": " — схема именования не настраивается.",
+	"hint_filename_suffix": ". Имя файла изменить нельзя.",
 	"button_cancel": "Отмена",
 	"button_confirm": "Начать загрузку",
 	"button_confirming": "Запуск…",
@@ -103,9 +103,9 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Загрузка {count} серии",
-				"countPlural=few": "Загрузка {count} серий",
-				"countPlural=*": "Загрузка {count} серий"
+				"countPlural=one": "Загрузка {count} эпизода",
+				"countPlural=few": "Загрузка {count} эпизодов",
+				"countPlural=*": "Загрузка {count} эпизодов"
 			}
 		}
 	],
@@ -114,9 +114,9 @@
 			"declarations": ["input count", "input queued", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Загрузка {count} серии · {queued} в очереди",
-				"countPlural=few": "Загрузка {count} серий · {queued} в очереди",
-				"countPlural=*": "Загрузка {count} серий · {queued} в очереди"
+				"countPlural=one": "Загрузка {count} эпизода · {queued} в очереди",
+				"countPlural=few": "Загрузка {count} эпизодов · {queued} в очереди",
+				"countPlural=*": "Загрузка {count} эпизодов · {queued} в очереди"
 			}
 		}
 	],
@@ -186,27 +186,27 @@
 	"dock_dismiss_aria_label": "Скрыть",
 	"dock_dismiss_title": "Скрыть",
 	"error_ffmpeg_missing_headline": "Для загрузки нужен ffmpeg",
-	"error_ffmpeg_missing_body_win32": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установщик обычно загружает его при установке — запустите установщик ещё раз с подключением к Интернету или установите ffmpeg вручную.",
-	"error_ffmpeg_missing_body_linux": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установите его через менеджер пакетов вашего дистрибутива — например `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora) или `sudo pacman -S ffmpeg` (Arch).",
-	"error_ffmpeg_missing_body_darwin": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установите его через Homebrew командой `brew install ffmpeg` или загрузите сборку вручную.",
+	"error_ffmpeg_missing_body_win32": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установщик обычно скачивает его при установке. Запустите установщик ещё раз с подключением к интернету или установите ffmpeg вручную.",
+	"error_ffmpeg_missing_body_linux": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установите его через менеджер пакетов вашего дистрибутива, например `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora) или `sudo pacman -S ffmpeg` (Arch).",
+	"error_ffmpeg_missing_body_darwin": "ani-gui использует ffmpeg для сохранения загрузок в MP4, но он не установлен в системе. Установите его через Homebrew командой `brew install ffmpeg` или скачайте сборку вручную.",
 	"error_ffmpeg_missing_action_label": "Скачать ffmpeg",
-	"status_already_here": "Этот эпизод уже есть в этой папке; существующий файл сохранён.",
-	"status_abandoned_claim": "Прерванная загрузка оставила пустой файл: {path}; удалите его и попробуйте снова.",
-	"status_claim_pending": "Другая загрузка ещё записывает {path}; попробуйте снова чуть позже.",
-	"status_repackage_retry": "yt-dlp не смог переупаковать поток; повторная попытка через ffmpeg.",
-	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой; повторная попытка через ffmpeg.",
+	"status_already_here": "Этот эпизод уже есть в этой папке. Существующий файл сохранён.",
+	"status_abandoned_claim": "Прерванная загрузка оставила пустой файл: {path}. Удалите его и попробуйте снова.",
+	"status_claim_pending": "Другая загрузка ещё записывает {path}. Попробуйте снова чуть позже.",
+	"status_repackage_retry": "yt-dlp не смог переупаковать поток. Повторная попытка через ffmpeg.",
+	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой. Повторная попытка через ffmpeg.",
 	"range_error_not_a_number": "Укажите оба номера эпизодов.",
 	"range_error_below_one": "Нумерация эпизодов начинается с 1.",
-	"range_error_start_over_max": "Первый эпизод не может быть больше {max} — это последний доступный.",
-	"range_error_end_over_max": "Последний эпизод не может быть больше {max} — это последний доступный.",
+	"range_error_start_over_max": "Первый эпизод не может быть позже {max}, последнего доступного.",
+	"range_error_end_over_max": "Последний эпизод не может быть позже {max}, последнего доступного.",
 	"range_error_over_cap": [
 		{
 			"declarations": ["input max", "local maxPlural = max: plural"],
 			"selectors": ["maxPlural"],
 			"match": {
-				"maxPlural=one": "Нельзя загрузить больше {max} эпизода этого тайтла.",
-				"maxPlural=few": "Нельзя загрузить больше {max} эпизодов этого тайтла.",
-				"maxPlural=*": "Нельзя загрузить больше {max} эпизодов этого тайтла."
+				"maxPlural=one": "Нельзя скачать больше {max} эпизода этого тайтла.",
+				"maxPlural=few": "Нельзя скачать больше {max} эпизодов этого тайтла.",
+				"maxPlural=*": "Нельзя скачать больше {max} эпизодов этого тайтла."
 			}
 		}
 	],
@@ -216,7 +216,7 @@
 	"failure_write": "Не удалось сохранить файл в папку загрузок. Проверьте, что папка существует, доступна для записи и на диске есть место.",
 	"failure_no_folder": "Папка для загрузок не задана. Выберите её и попробуйте снова.",
 	"failure_tool": "Программа загрузки завершилась с ошибкой. Попробуйте позже.",
-	"failure_tool_spawn": "Не удалось запустить программу загрузки. Если вы устанавливали yt-dlp или ffmpeg сами, проверьте, что они запускаются; иначе переустановите ani-gui.",
+	"failure_tool_spawn": "Не удалось запустить программу загрузки. Если вы устанавливали yt-dlp или ffmpeg сами, проверьте, что они запускаются. Если не устанавливали, переустановите ani-gui.",
 	"speed_kbps": "{value} КБ/с",
 	"speed_mbps": "{value} МБ/с"
 }

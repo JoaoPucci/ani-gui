@@ -194,7 +194,7 @@ describe('describePlayFailure', () => {
 	it('matches the scraper branch when no_results is not present', () => {
 		expect(
 			describePlayFailure({ kind: 'scraper', detail: 'allmanga 503' }, { otherAudio: null })
-		).toMatch(/streaming source looks unhappy/);
+		).toMatch(/streaming source seems to be having trouble/);
 	});
 
 	it('matches the timeout branch', () => {
@@ -205,10 +205,10 @@ describe('describePlayFailure', () => {
 
 	it('matches the network branch for a failure to connect', () => {
 		expect(describePlayFailure({ kind: 'network' }, { otherAudio: null })).toMatch(
-			/Network trouble/
+			/Couldn't reach the streaming source/
 		);
 		expect(describePlayFailure({ kind: 'gate_refused' }, { otherAudio: null })).toMatch(
-			/Network trouble/
+			/Couldn't reach the streaming source/
 		);
 	});
 
@@ -425,7 +425,7 @@ describe('describePlayFailure — an episode missing from this audio', () => {
 		const msg = describePlayFailure(e, { otherAudio: false });
 		expect(msg).toBe(m.play_play_failure_episode_unavailable());
 		expect(msg).not.toMatch(OTHER_AUDIO);
-		expect(msg).toMatch(/try another episode or try again later\.$/);
+		expect(msg).toMatch(/Try another episode, or try again later\.$/);
 	});
 
 	it('does not promise an audio nobody has asked about', () => {

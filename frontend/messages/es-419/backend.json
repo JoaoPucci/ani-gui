@@ -1,14 +1,14 @@
 {
-	"error_account_refresh_rejected": "El servicio de seguimiento rechazó renovar este inicio de sesión. Vuelve a conectar la cuenta para seguir sincronizando.",
-	"error_account_unsupported_pkce": "No se pudo iniciar sesión: el servicio de la cuenta no acepta el método de inicio de sesión que pidió la app. Actualiza la app e inténtalo de nuevo.",
+	"error_account_refresh_rejected": "El rastreador se negó a renovar esta sesión. Vuelve a conectar la cuenta para seguir sincronizando.",
+	"error_account_unsupported_pkce": "No se pudo iniciar sesión porque el servicio no acepta el método que usa la app. Actualiza la app e inténtalo de nuevo.",
 	"error_cache_generic": "La base de datos local de la app falló. Reinicia la app e inténtalo de nuevo.",
-	"error_config_parse": "El archivo de configuración no se pudo leer o guardar. Reinicia la app o, si lo editaste, corrige el archivo a mano.",
+	"error_config_parse": "El archivo de ajustes no se pudo leer o guardar. Reinicia la app o, si lo editaste, corrige el archivo a mano.",
 	"error_download_ffmpeg_missing": "Esta descarga necesita ffmpeg, y no está instalado.",
 	"error_download_tool_failed": "El programa de descarga se detuvo con un error antes de terminar el archivo. Inténtalo más tarde.",
-	"error_download_tool_spawn_failed": "No se pudo iniciar el programa de descarga. Si instalaste yt-dlp o ffmpeg por tu cuenta, revisa que se ejecute; si no, reinstala ani-gui.",
+	"error_download_tool_spawn_failed": "No se pudo iniciar el programa de descarga. Si instalaste yt-dlp o ffmpeg por tu cuenta, revisa que se ejecute. Si no los instalaste tú, reinstala ani-gui.",
 	"error_io_generic": "No se pudo leer o escribir un archivo en esta computadora. Revisa el espacio libre y los permisos e inténtalo de nuevo.",
 	"error_metadata_source": "El servicio de la cuenta no pudo completar esta solicitud. Inténtalo de nuevo o vuelve a conectar la cuenta en Ajustes.",
-	"error_network_rate_limited": "El servicio está ocupado ahora. Espera unos segundos e inténtalo de nuevo.",
+	"error_network_rate_limited": "El servicio está ocupado en este momento. Espera unos segundos e inténtalo de nuevo.",
 	"error_network_unreachable": "No se pudo conectar con el servicio. Revisa tu conexión e inténtalo de nuevo.",
 	"error_network_upstream": "El servicio respondió con un error (HTTP {status}). Inténtalo más tarde.",
 	"error_play_episode_unavailable": "La fuente tiene este título, pero no tiene stream de este episodio en el audio elegido.",
@@ -20,6 +20,6 @@
 	"error_scraper_parse_failed": "El servicio envió una respuesta que la app no pudo leer. Inténtalo más tarde.",
 	"error_scraper_timeout": "El servicio tardó demasiado en responder. Inténtalo de nuevo en un momento.",
 	"error_search_no_results": "No se encontró este título en la fuente de streaming.",
-	"error_stream_invalid_token": "Esta sesión ya no es válida: un enlace de stream expiró o se rechazó el inicio de sesión de una cuenta. Inicia el episodio de nuevo o vuelve a conectar la cuenta en Ajustes.",
-	"error_syncplay_spawn_failed": "No se pudo iniciar Syncplay ({binary}). Revisa que esté instalado y su ruta en Ajustes."
+	"error_stream_invalid_token": "Esta sesión ya no es válida. Puede que un enlace del video haya expirado o que se haya rechazado el inicio de sesión de una cuenta. Inicia el episodio de nuevo o vuelve a conectar la cuenta en Ajustes.",
+	"error_syncplay_spawn_failed": "No se pudo iniciar Syncplay ({binary}). Revisa que esté instalado y que la ruta en Ajustes sea correcta."
 }

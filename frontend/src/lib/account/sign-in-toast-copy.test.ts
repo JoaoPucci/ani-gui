@@ -13,7 +13,7 @@ describe('signInToastCopy', () => {
 		],
 		[
 			'unreachable',
-			"Couldn't reach MAL to renew your sign-in. It may still be valid; the app keeps trying.",
+			"Couldn't reach MAL to renew your sign-in. It may still be valid, and the app keeps trying.",
 			'Try now',
 			'retry'
 		],

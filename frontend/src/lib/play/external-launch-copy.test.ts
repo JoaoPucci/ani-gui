@@ -41,7 +41,9 @@ describe('describeExternalLaunchFailure', () => {
 		// consistent across both surfaces (no debug-y "External
 		// player failed: scraper" leak).
 		expect(describeExternalLaunchFailure({ kind: 'timeout' }, null)).toMatch(/took too long/);
-		expect(describeExternalLaunchFailure({ kind: 'network' }, null)).toMatch(/Network trouble/);
+		expect(describeExternalLaunchFailure({ kind: 'network' }, null)).toMatch(
+			/Couldn't reach the streaming source/
+		);
 	});
 
 	it('rejects payloads with the wrong shape and falls back to generic copy', () => {

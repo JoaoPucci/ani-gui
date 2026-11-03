@@ -8,7 +8,7 @@
 	"hero_pager_dot_label": "Show {title}",
 	"hero_error_eyebrow_key": "Off-air",
 	"hero_error_title": "The catalogue is unreachable.",
-	"hero_error_body": "Kitsu didn't answer. Search still works locally — type a title.",
+	"hero_error_body": "Kitsu didn't answer. You can still search locally by typing a title.",
 	"hero_error_cta": "Open Search",
 	"hero_skeleton_eyebrow_key": "Loading",
 	"strip_continue_eyebrow": "Continue watching",
@@ -40,7 +40,7 @@
 			}
 		}
 	],
-	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
+	"clear_confirm_body": "This clears ani-gui's watch history. It can't be undone.",
 	"clear_confirm_button": "Clear all",
 	"hero_error_eyebrow_value": "No answer from Kitsu"
 }

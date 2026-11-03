@@ -31,7 +31,7 @@
 	"cache_reclaim_expired": "Vencidos: {count}",
 	"section_retired_sweep": "Limpieza tras quitar un proveedor",
 	"retired_sweep_superseded": "Estas entradas del historial fueron reemplazadas por otras más recientes del mismo anime, así que se eliminaron:",
-	"retired_sweep_renumbered": "Estas entradas del historial se conservaron; solo cambió cómo se guarda su episodio:",
+	"retired_sweep_renumbered": "Estas entradas del historial se conservaron. Solo cambió cómo se guarda su episodio:",
 	"retired_sweep_stored": "Registros guardados que ya nada lee, eliminados: {count}",
 	"section_legacy_sweep": "Eliminado al actualizar",
 	"legacy_sweep_description": "Estos archivos ya no se usan, así que se eliminaron:",

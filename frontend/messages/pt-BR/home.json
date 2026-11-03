@@ -7,12 +7,12 @@
 	"hero_cta_browse": "Explorar o catálogo",
 	"hero_pager_dot_label": "Mostrar {title}",
 	"hero_error_eyebrow_key": "Fora do ar",
-	"hero_error_title": "O catálogo está inacessível.",
-	"hero_error_body": "O Kitsu não respondeu. A busca ainda funciona localmente — digite um título.",
+	"hero_error_title": "Não foi possível acessar o catálogo.",
+	"hero_error_body": "O Kitsu não respondeu. Você ainda pode buscar localmente digitando um título.",
 	"hero_error_cta": "Abrir busca",
 	"hero_skeleton_eyebrow_key": "Carregando",
 	"strip_continue_eyebrow": "Continuar assistindo",
-	"strip_continue_caption": "retomar do histórico",
+	"strip_continue_caption": "continue de onde parou",
 	"resume_ep_key": "EP",
 	"resume_episode_label": "Episódio {episode}",
 	"error_resume_headline": "Não foi possível retomar {title}",
@@ -25,7 +25,7 @@
 	"delete_card_aria_label": "Remover {title} do histórico",
 	"delete_confirm_eyebrow": "Remover",
 	"delete_confirm_title": "Remover \"{title}\" do histórico?",
-	"delete_confirm_body": "Você pode adicionar de volta assistindo novamente.",
+	"delete_confirm_body": "Ele volta se você assistir ao anime de novo.",
 	"delete_confirm_button": "Remover",
 	"clear_menu_button_aria": "Opções do histórico",
 	"clear_menu_item": "Limpar histórico",
@@ -41,7 +41,7 @@
 			}
 		}
 	],
-	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Não pode ser desfeito.",
+	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Essa ação não pode ser desfeita.",
 	"clear_confirm_button": "Limpar tudo",
 	"hero_error_eyebrow_value": "Sem resposta do Kitsu"
 }

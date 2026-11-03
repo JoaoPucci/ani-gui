@@ -3,7 +3,7 @@
 	"title": "About ani-gui",
 	"tagline": "Browse and watch anime",
 	"version_prefix": "Version",
-	"intro": "ani-gui finds and plays anime on its own — Kitsu drives metadata, AniList feeds the home page's trending row, and aniskip marks OP/ED windows. Playback runs in the embedded hls.js player or hands off to an external one when you prefer.",
+	"intro": "ani-gui finds and plays anime on its own. Show details come from Kitsu, the trending row on Home from AniList, and aniskip marks openings and endings. Episodes play in the built-in player, or in an external player if you prefer.",
 	"section_donate_title": "Support",
 	"section_donate_hint": "ETH on mainnet",
 	"donate_intro": "If ani-gui has saved you time, a tip helps keep development going. Click the address to copy it, then paste into your wallet.",
@@ -11,7 +11,7 @@
 	"donate_copy_label": "Copy",
 	"donate_copy_button_aria": "Copy Ethereum address to clipboard",
 	"donate_copied_toast": "Address copied to clipboard.",
-	"donate_copy_failed_toast": "Couldn't access the clipboard — copy the address manually.",
+	"donate_copy_failed_toast": "Couldn't access the clipboard. Copy the address by hand.",
 	"section_assets_title": "Assets",
 	"section_assets_hint": "Animations and illustrations",
 	"section_bundled_tools_title": "Bundled tools",
@@ -24,7 +24,7 @@
 	"dep_version_unversioned": "—",
 	"bundled_tool_note_curl_impersonate": "HTTP transport for source resolution. The provider turns away ordinary requests, so playback and downloads depend on it.",
 	"bundled_tool_note_yt_dlp": "Download engine. Fetches the episode in parallel fragments and retries the ones that fail, so a flaky connection does not restart the whole file.",
-	"bundled_tool_note_ffmpeg": ".deb declares it as Recommends; AppImage relies on the system install. Used to mux downloaded segments into MP4.",
-	"asset_note_lottie_loading": "Drives the LoadingOverlay used during play resolution and similar waits.",
+	"bundled_tool_note_ffmpeg": "Joins downloaded segments into an MP4. The .deb package recommends it, and the AppImage uses the copy installed on your system.",
+	"asset_note_lottie_loading": "Plays while an episode loads and during other waits.",
 	"asset_name_lottie_loading": "Loading animation (LottieFiles)"
 }
