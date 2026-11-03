@@ -10,11 +10,12 @@
  * fill up with stale "Sent to mpv." rows piling on a single retry
  * burst. Pinned rows (`duration: null`) wait for the user and are never
  * trimmed, so a stack of pinned rows can go past the cap by the one
- * passing row pushed beside them. Two kinds pin: the sign-in notice,
- * one per provider, and the busy notice of a held tracker write, one
- * per tracker and show — so saves of several shows inside one
- * cool-down stack one each. None outlives its write — at most three
- * waits of up to two minutes each — and the user can dismiss any.
+ * passing row pushed beside them. Three kinds pin: the sign-in notice,
+ * one per provider; the busy notice of a held tracker write, one per
+ * tracker and show — so saves of several shows inside one cool-down
+ * stack one each, and none outlives its write, at most three waits of
+ * up to two minutes each; and the keyring notice, one, up while a
+ * saved sign-in waits on the keyring. The user can dismiss any.
  */
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
