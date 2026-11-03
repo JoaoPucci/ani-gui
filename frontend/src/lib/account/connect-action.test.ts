@@ -79,13 +79,20 @@ let toasts: { kind: 'error'; message: string }[] = [];
 let seeded: string[] = [];
 
 /** Records each notice; a withdrawn one leaves the list. */
+let nextToastId = 0;
+const toastIds = new Map<string, { kind: 'error'; message: string }>();
+
 function pushToast(t: { kind: 'error'; message: string }): string {
 	toasts.push(t);
-	return String(toasts.length - 1);
+	const id = String(nextToastId++);
+	toastIds.set(id, t);
+	return id;
 }
 
 function dismissToast(id: string): void {
-	toasts.splice(Number(id), 1);
+	const t = toastIds.get(id);
+	if (t) toasts.splice(toasts.indexOf(t), 1);
+	toastIds.delete(id);
 }
 
 function deps(f: ConnectFlowDeps): ConnectActionDeps {
@@ -341,6 +348,51 @@ describe('cancelConnect', () => {
 		const s = accountStore.byProvider.anilist;
 		expect(s.kind === 'connected' && s.account.access_token).toBe('new-bearer');
 		expect(seeded).toEqual(['anilist new-bearer']);
+	});
+
+	it('an abandoned save already sent leaves a newer sign-in that succeeded as it is', async () => {
+		const save = deferred<{ ok: true }>();
+		const firstRun = connectProvider(
+			'anilist',
+			deps(
+				flow({
+					persistAccount: async (p, payload) => {
+						const r = await save.promise;
+						disk[p] = payload;
+						return r;
+					}
+				})
+			)
+		);
+		await settle();
+		await cancelConnect(
+			'anilist',
+			cancelDeps(() => Promise.reject(new Error('ipc gone')))
+		);
+		const second = deferred<{ ok: true; code: string; state: string }>();
+		const secondRun = connectProvider(
+			'anilist',
+			deps(
+				flow({
+					openOAuth: () => second.promise,
+					exchangeCode: async () => ({ ...NEW_TOKENS, access_token: 'newer-bearer' }),
+					persistAccount: async (p, payload) => {
+						disk[p] = payload;
+						return { ok: true };
+					}
+				})
+			)
+		);
+		await settle();
+		save.resolve({ ok: true });
+		await firstRun;
+		second.resolve({ ok: true, code: 'code', state: 'st' });
+		await secondRun;
+		await settle();
+		const s = accountStore.byProvider.anilist;
+		expect(s.kind === 'connected' && s.account.access_token).toBe('newer-bearer');
+		expect(s.kind === 'connected' && s.lastSyncedAt).not.toBeNull();
+		expect(seeded).toEqual(['anilist newer-bearer']);
 	});
 
 	it('an abandoned sign-in does not overwrite a newer one under way', async () => {
