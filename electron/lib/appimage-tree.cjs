@@ -43,29 +43,44 @@ function openTreeToAll(root) {
  * `--no-sandbox` only when an `unshare -Ur true` probe fails.
  *
  * `--no-sandbox` goes between the binary and the user's args on both,
- * in place of that array where it is present: the image mounts
+ * in place of that array where it is present. The image mounts
  * read-only through FUSE, so `chrome-sandbox` inside it cannot carry
  * the SUID bit Chromium's setuid sandbox demands, and the flag has to
- * be on argv when the process spawns whatever the probe says. Returns true
- * when the file was changed, false when it already carried the patch,
- * as an image a previous repack produced does. Throws when neither
- * pattern matches and the patch is absent: electron-builder's template
- * drifted and this needs an update.
+ * be on argv when the process spawns. The probe would keep Chromium's
+ * namespace sandbox where user namespaces work, but `unshare`
+ * succeeding does not prove Chromium's own sandbox will start —
+ * AppArmor's user-namespace restriction grants its exceptions per
+ * binary, so `unshare` and the app can get different answers — and a
+ * failed start aborts the launch. So the flag stays unconditional, as
+ * it was before electron-builder 26, at the cost of the namespace
+ * sandbox on hosts where it would have worked. The probe itself still
+ * runs; its result goes unused.
+ *
+ * Returns true when the file was changed, false when it already
+ * carried the patch, as an image a previous repack produced does.
+ * Throws, leaving the file as it was, unless both exec lines match:
+ * electron-builder's template drifted and this needs an update.
  */
+const EXEC_BARE = /^(\s*)exec "\$BIN"(?: "\$\{NO_SANDBOX\[@\]\}")?$/m;
+const EXEC_ARGS = /^(\s*)exec "\$BIN"(?: "\$\{NO_SANDBOX\[@\]\}")? "\$\{args\[@\]\}"$/m;
+
 function patchAppRun(appRunPath) {
 	const original = fs.readFileSync(appRunPath, 'utf8');
 	if (original.includes('exec "$BIN" --no-sandbox')) return false;
-	const patched = original
-		.replace(/^(\s*)exec "\$BIN"(?: "\$\{NO_SANDBOX\[@\]\}")?$/m, '$1exec "$BIN" --no-sandbox')
-		.replace(
-			/^(\s*)exec "\$BIN"(?: "\$\{NO_SANDBOX\[@\]\}")? "\$\{args\[@\]\}"$/m,
-			'$1exec "$BIN" --no-sandbox "${args[@]}"'
-		);
-	if (patched === original) {
+	const matched = [EXEC_BARE, EXEC_ARGS].filter((re) => re.test(original)).length;
+	if (matched === 0) {
 		throw new Error(
 			`AppRun patch matched nothing — has electron-builder's template changed? ${appRunPath}`
 		);
 	}
+	if (matched === 1) {
+		throw new Error(
+			`AppRun patch matched one exec line of two — has electron-builder's template changed? ${appRunPath}`
+		);
+	}
+	const patched = original
+		.replace(EXEC_BARE, '$1exec "$BIN" --no-sandbox')
+		.replace(EXEC_ARGS, '$1exec "$BIN" --no-sandbox "${args[@]}"');
 	fs.writeFileSync(appRunPath, patched, { mode: 0o755 });
 	return true;
 }
