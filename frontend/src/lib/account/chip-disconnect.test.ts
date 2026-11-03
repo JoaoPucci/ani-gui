@@ -123,7 +123,10 @@ describe('handleChipDisconnect', () => {
 			const cb = {
 				setError: vi.fn((p: string, msg: string) => order.push(`setError ${p} ${msg}`)),
 				setDisconnected: vi.fn(),
-				pushToast: vi.fn((t: { message: string }) => order.push(`toast ${t.message}`)),
+				pushToast: vi.fn((t: { message: string }) => {
+					order.push(`toast ${t.message}`);
+					return 'toast-id';
+				}),
 				unknownErrorMessage: () => 'unknown',
 				tokenClearFailedMessage: () => 'token clear failed',
 				reread: vi.fn(async (p: string) => {

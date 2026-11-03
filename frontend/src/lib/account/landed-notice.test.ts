@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { noticeUnlessLanded } from './landed-notice';
+import { noticeUnlessLanded, realTimers } from './landed-notice';
 
 function harness(landed: boolean) {
 	const timers: { fn: () => void; ms: number; cleared: boolean }[] = [];
@@ -95,5 +95,20 @@ describe('noticeUnlessLanded', () => {
 			clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
 		});
 		await expect(run).resolves.toBeUndefined();
+	});
+
+	it('the real timers fire once their time is up, and not once cleared', () => {
+		vi.useFakeTimers();
+		try {
+			const fired = vi.fn();
+			const kept = vi.fn();
+			realTimers.setTimer(kept, 10);
+			realTimers.clearTimer(realTimers.setTimer(fired, 10));
+			vi.advanceTimersByTime(10);
+			expect(kept).toHaveBeenCalledTimes(1);
+			expect(fired).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
