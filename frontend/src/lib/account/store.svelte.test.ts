@@ -255,6 +255,24 @@ describe('accountStore.hydrate', () => {
 			};
 			return (p: string, r: unknown) => answers[p]?.(r);
 		}
+		function countingSlowBridge() {
+			const answers: Partial<Record<string, Answer>> = {};
+			const counts: Record<string, number> = {};
+			(globalThis as { window?: { aniGui?: unknown } }).window = {
+				aniGui: {
+					account: {
+						getToken: (p: string) => {
+							counts[p] = (counts[p] ?? 0) + 1;
+							return new Promise((resolve) => (answers[p] = resolve));
+						}
+					}
+				}
+			};
+			return {
+				answer: (p: string, r: unknown) => answers[p]?.(r),
+				count: (p: string) => counts[p] ?? 0
+			};
+		}
 		const flush = async () => {
 			for (let i = 0; i < 5; i++) await Promise.resolve();
 		};
@@ -314,6 +332,55 @@ describe('accountStore.hydrate', () => {
 			answer('anilist', { ok: true, payload: payload() });
 			await flush();
 			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		});
+
+		it('leaves a connect under way alone, and reads again once it is cancelled', async () => {
+			// The keyring answers while the user is still in the browser's
+			// sign-in: the provider stays connecting (its Cancel button with
+			// it) until the connect settles one way or the other.
+			const calls = countingSlowBridge();
+			void accountStore.hydrate();
+			accountStore.setConnecting('anilist');
+			calls.answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+			expect(calls.count('anilist')).toBe(1);
+			accountStore.setDisconnected('anilist'); // the connect was cancelled
+			await flush();
+			expect(calls.count('anilist')).toBe(2);
+			calls.answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		});
+
+		it('does not read a provider whose connect is under way when the hydrate starts', async () => {
+			// The account page remounted mid-connect: its hydrate waits.
+			const calls = countingSlowBridge();
+			accountStore.setConnecting('anilist');
+			void accountStore.hydrate();
+			await flush();
+			expect(calls.count('anilist')).toBe(0);
+			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+			accountStore.setConnected('anilist', payload({ access_token: 'new' }));
+			await flush();
+			expect(calls.count('anilist')).toBe(1);
+		});
+
+		it('leaves a disconnect under way alone until it lands', async () => {
+			const calls = countingSlowBridge();
+			accountStore.setConnected('anilist', payload());
+			void accountStore.hydrate();
+			accountStore.beginAccountChange('anilist');
+			calls.answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			// Not read again while the disconnect clears the saved sign-in.
+			expect(calls.count('anilist')).toBe(1);
+			accountStore.setDisconnected('anilist');
+			await flush();
+			expect(calls.count('anilist')).toBe(2);
+			calls.answer('anilist', { ok: false, kind: 'not_found' });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
 		});
 
 		it('says it is waiting on the keyring once a read runs past the wait, and stops when it answers', async () => {
