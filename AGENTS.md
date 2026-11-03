@@ -240,16 +240,19 @@ authority directed, never a route an agent picks for itself:
 
 ### New features ship switched off
 
-The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. Because of that, it must only ever move a declared flag toward the safer side: a kill switch to `false`, or a fallback to an earlier behaviour (`backend/src/flags/decl.rs`). Nothing in the code checks which side is safer. Each declaration states its case in `safe_because`, and review holds it to that. So no declaration may list a value that switches a feature on, and a feature's on-state is never a fallback's "earlier" behaviour. The rule follows from that:
+The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) may be signed with minisign, and the backend checks the signature against the public keys built into the app (`backend/src/flags/signature.rs`, `TRUSTED_KEYS`). What a file may do depends on that check:
 
-- **Every new user-facing feature ships off by default.** In the release that introduces it, the gate is a build-time default that is off, not a declared flag. No declared kind defaults to off (a kill switch defaults to `true`), so declaring the feature as a kill switch "to gate it" would ship it on.
-- **A release switches it on after a grace period, never the remote file.** The release that turns a feature on comes about four released versions after the one that introduced it. Turning it on is a change to its default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
-- **The remote file stays the emergency off switch.** The release that turns a feature on also declares it in `DECLARED`: as a kill switch, or as a fallback whose earlier behaviour is what the feature replaced. From then on `flags.json` can switch it off, or back, without a release.
-- **Both states are tested.** While the feature ships off, its tests cover it off and on. That is a review rule; nothing checks it until the feature is declared. Once it is declared, the flag matrix (`backend/src/flags/matrix.rs`) holds it to a case for every value it allows.
+- **Any file, verified or not, may move a declared flag toward the safer side:** a kill switch to `false`, a fallback to an earlier behaviour, a rollout to `false` (`backend/src/flags/decl.rs`). Nothing in the code checks which side is safer. Each declaration states its case in `safe_because`, and review holds it to that. So a kill switch or a fallback never lists a value that switches a feature on, and a feature's on-state is never a fallback's "earlier" behaviour.
+- **Only a verified file may turn a feature on:** a rollout's `true`. From any file whose signature does not verify, the backend drops that value before the flags are decided or cached (`signature::admit`), and the feature stays off. The notices the file carries are dropped the same way.
+
+The rule follows from that:
+
+- **Every new user-facing feature ships off.** The release that introduces it declares it in `DECLARED` as a rollout (`FlagKind::Rollout`), which defaults to `false`. A kill switch defaults to `true`, so declaring a new feature as one would ship it on.
+- **A signed file turns it on, once it has been checked.** The maintainer publishes `true` for it in a signed `flags.json` (`docs/development.md`, "Signing the flags file"). While no build trusts a key, nothing can turn it on.
+- **A release makes it the default after a grace period.** About four released versions after the one that introduced it, a release declares it as a kill switch instead, or as a fallback whose earlier behaviour is what the feature replaced, which ships it on. The grace period is a policy that review holds; nothing in the code counts releases. From then on `flags.json` is the emergency off switch, signed or not.
+- **Both states are tested.** From the release that declares it, the flag matrix (`backend/src/flags/matrix.rs`) holds every declared flag to a case for every value it allows. A feature the renderer gates covers it off and on in its frontend tests as well.
 
 The rule covers user-facing features, not the flags mechanism itself. The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of that mechanism. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own. It is the only exemption. Every other user-facing feature follows the rule.
-
-Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and this rule is to be revised then.
 
 ## 14. Scope is negotiable, delivery is not
 
