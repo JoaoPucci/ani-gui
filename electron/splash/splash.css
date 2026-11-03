@@ -6,9 +6,6 @@
    opening is done by 500 ms after that: lamp lit at 320, first frame
    landed at 499. */
 
-@property --pulled { syntax: '<integer>'; inherits: false; initial-value: 0; }
-@counter-style frames { system: extends decimal; pad: 4 "0"; }
-
 :root {
   --ink-000: #0c0a09; --ink-050: #14110f; --ink-100: #1c1815; --ink-200: #2a2521; --ink-300: #524a44;
   --bone-100: #f4ece1; --bone-200: #d8cfc2; --bone-300: #b6ad9f; --bone-400: #877f73;
@@ -125,28 +122,15 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
   letter-spacing: -0.02em; color: var(--bone-100);
   padding-block-end: 12px; border-block-end: 1px solid var(--ink-200);
 }
-.readout { display: flex; align-items: baseline; gap: 8px; }
-
-/* The counter: frames pulled through the gate, ticking as each lands
-   (the pull ends 28% into the beat). */
-.counter {
-  font-size: 22px; letter-spacing: 0.04em; color: var(--bone-200);
-  counter-reset: pulled var(--pulled);
-  animation: count calc(var(--beat) * 1000) steps(1000, jump-start)
-    calc(var(--thread-at) + var(--beat) * 0.28) forwards;
-}
-.counter::after { content: counter(pulled, frames); }
-@keyframes count { from { --pulled: 0; } to { --pulled: 1000; } }
-.still { display: none; font-size: 22px; letter-spacing: 0.04em; color: var(--bone-200); }
-.unit { display: none; }
+/* The readout: a slot under the title, empty for now. An empty slot
+   takes no line, so the reel title and its rule centre on the gate
+   instead of riding above it; whatever fills the slot brings its own. */
+.readout:empty { display: none; }
 
 /* — Reduced motion: no transport. The film rests threaded, the lit frame
-   squarely in the gate, and the readout states the gauge instead of a
-   counter stopped at 0000. */
+   squarely in the gate. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
-  .counter { display: none; }
-  .still, .unit { display: inline; }
 }
 /* The same still frame when the main process says the desktop asks for
    reduced motion (GNOME's setting reaches Chromium only through a
@@ -155,5 +139,3 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 body.reduced *, body.reduced *::before, body.reduced *::after {
   animation: none !important; transition: none !important;
 }
-body.reduced .counter { display: none; }
-body.reduced .still, body.reduced .unit { display: inline; }
