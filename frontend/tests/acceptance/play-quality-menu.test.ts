@@ -425,7 +425,7 @@ describe('play route — the quality the setting names, and the menu that change
 				el.textContent?.includes(m.play_controls_menu_quality_label())
 		);
 		opener?.focus();
-		for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+		for (const mod of ['altKey', 'ctrlKey', 'metaKey'] as const) {
 			expect(pressWith('ArrowRight', { [mod]: true })).toBe(false);
 		}
 		await tick();
@@ -792,7 +792,7 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		await until(() => moreRadios().length > 0, 'the levels');
 		await until(() => document.activeElement === moreItems()[0], 'focus on the back row');
 		const back = document.activeElement;
-		for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+		for (const mod of ['altKey', 'ctrlKey', 'metaKey'] as const) {
 			expect(pressWith('ArrowLeft', { [mod]: true })).toBe(false);
 			expect(pressWith('ArrowDown', { [mod]: true })).toBe(false);
 		}

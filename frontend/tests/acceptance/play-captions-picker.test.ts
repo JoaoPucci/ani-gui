@@ -474,7 +474,7 @@ describe('the captions menu with many languages', () => {
 		await openMenu();
 		const before = document.activeElement;
 		for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'End']) {
-			for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+			for (const mod of ['altKey', 'ctrlKey', 'metaKey'] as const) {
 				const taken = !document.activeElement?.dispatchEvent(
 					new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, [mod]: true })
 				);

@@ -80,10 +80,13 @@ describe('plainKey', () => {
 		expect(plainKey(chord('ArrowLeft', { altKey: true }))).toBeNull();
 		expect(plainKey(chord('ArrowDown', { ctrlKey: true }))).toBeNull();
 		expect(plainKey(chord('ArrowRight', { metaKey: true }))).toBeNull();
-		expect(plainKey(chord('End', { shiftKey: true }))).toBeNull();
 	});
 
-	it('answers any key with any modifier held as not the menu’s, and any plain key as itself', () => {
+	it('takes a Shift-modified key as the key: the player reads Shift+arrows as arrows, so passing them on would seek', () => {
+		expect(plainKey(chord('ArrowDown', { shiftKey: true }))).toBe('ArrowDown');
+	});
+
+	it('answers any key with Alt, Ctrl or Meta held as not the menu’s, and any other as itself', () => {
 		fc.assert(
 			fc.property(
 				fc.string(),
@@ -92,7 +95,7 @@ describe('plainKey', () => {
 				fc.boolean(),
 				fc.boolean(),
 				(key, altKey, ctrlKey, metaKey, shiftKey) => {
-					const held = altKey || ctrlKey || metaKey || shiftKey;
+					const held = altKey || ctrlKey || metaKey;
 					expect(plainKey({ key, altKey, ctrlKey, metaKey, shiftKey })).toBe(held ? null : key);
 				}
 			)
