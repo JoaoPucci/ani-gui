@@ -51,7 +51,9 @@ function initialSize(store, display) {
 function remember(store, display, bounds) {
   const key = displayKey(display);
   const old = store[key];
-  if (old && old.width === bounds.width && old.height === bounds.height) return store;
+  const keys = Object.keys(store);
+  const unchanged = old && old.width === bounds.width && old.height === bounds.height;
+  if (unchanged && keys[keys.length - 1] === key) return store;
   const entries = Object.entries(store).filter(([k]) => k !== key);
   entries.push([key, { width: bounds.width, height: bounds.height }]);
   return Object.fromEntries(entries.slice(-MAX_DISPLAYS));
@@ -77,10 +79,22 @@ function writeGeometry(file, store, fs) {
   }
 }
 
-/** Records the launch's granted size. Stub. */
-function grantedSizeRecorder({ display, save }) {
-  void display;
-  return { maximized: (size) => save(size), unmaximized() {} };
+/**
+ * Records the size this launch's window is granted when it is revealed
+ * maximized on the display it was made for, through `save`, until the
+ * user first unmaximizes it. A later maximize may be on another monitor
+ * (Wayland gives no window position to tell), so it is not recorded.
+ */
+function grantedSizeRecorder({ save }) {
+  let recording = true;
+  return {
+    maximized(size) {
+      if (recording) save({ width: size.width, height: size.height });
+    },
+    unmaximized() {
+      recording = false;
+    },
+  };
 }
 
 module.exports = {

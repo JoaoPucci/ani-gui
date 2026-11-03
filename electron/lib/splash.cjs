@@ -63,6 +63,9 @@ function splashWindowOptions() {
  *   last window and no quit follows.
  * - `show` after `close` or `suppress` opens nothing: the boot is
  *   already past the splash.
+ * - `dismissed` says whether the splash was closed by any hand but the
+ *   boot's — the user, or a quit — which `onDismissed` also reports:
+ *   the launch is cancelled.
  * - `suppress` puts it away for good when the boot fails: hidden, not
  *   closed, and a paint that arrives later does not show it again —
  *   it would come back always on top, over the dialog that says why
@@ -76,7 +79,8 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
   const up = new Promise((resolve) => (markUp = resolve));
   let win = null;
   let suppressed = false;
-  // Set when the splash closes by any hand but the boot's: the user.
+  // Set when the splash closes by any hand but the boot's: the user,
+  // or a quit already under way.
   let dismissedByUser = false;
   // Set once the boot is past the splash: shown its window, or failed.
   let over = false;
@@ -141,16 +145,16 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
     // Resolves once the splash is on screen — or there is none to wait
     // for (never asked to open, failed to, put away, gone) — and in any
     // case within SPLASH_SHOW_WAIT_MS.
-    // Whether the user closed the splash before the boot did: the
-    // launch is cancelled, and the app's window must not be revealed.
-    dismissed() {
-      return dismissedByUser;
-    },
     whenShown() {
       if (!state.opened || over || !alive()) return Promise.resolve();
       let timer;
       const late = new Promise((resolve) => (timer = setTimeout(resolve, SPLASH_SHOW_WAIT_MS)));
       return Promise.race([up, late]).finally(() => clearTimeout(timer));
+    },
+    // Whether the user closed the splash before the boot did: the
+    // launch is cancelled, and the app's window must not be revealed.
+    dismissed() {
+      return dismissedByUser;
     },
     suppress() {
       over = true;
@@ -185,10 +189,11 @@ const SPLASH_SHOW_WAIT_MS = 1000;
  * it already maximized (the open-maximized pattern main.js describes),
  * attach what must act from the map on (`onMapped`), show it, and then
  * `afterShow` — the splash's close, at the moment the window is up. A
- * window gone meanwhile is left alone.
+ * window gone meanwhile is left alone, and so is a launch `cancelled`
+ * by the user closing the splash first.
  */
-function revealMaximized(win, { onMapped, afterShow }) {
-  if (win.isDestroyed()) return;
+function revealMaximized(win, { onMapped, afterShow, cancelled = () => false }) {
+  if (win.isDestroyed() || cancelled()) return;
   win.maximize();
   onMapped();
   win.show();

@@ -51,7 +51,13 @@ const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController } = require("./lib/splash.cjs");
-const { initialSize, readGeometry, remember, writeGeometry } = require("./lib/window-geometry.cjs");
+const {
+  grantedSizeRecorder,
+  initialSize,
+  readGeometry,
+  remember,
+  writeGeometry,
+} = require("./lib/window-geometry.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
@@ -536,17 +542,23 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // Remember the size the desktop granted the maximized window, for
   // the next launch's hidden window. Read on resize too: on Wayland
   // the compositor's configure can land after the maximize event.
-  // Kept under the display the window was made for: Wayland exposes no
-  // real window position, so matching the bounds to a display could
-  // file one monitor's size under another's key.
+  // Kept under the display the window was made for, and only for the
+  // launch's own maximize (lib/window-geometry.cjs): Wayland exposes no
+  // real window position, so a later maximize could be on any monitor.
+  const granted = grantedSizeRecorder({
+    save: (size) => {
+      const stored = readGeometry(geometryFile(), fs);
+      const next = remember(stored, display, size);
+      if (next !== stored) writeGeometry(geometryFile(), next, fs);
+    },
+  });
   const rememberMaximized = () => {
     if (win.isDestroyed() || !win.isMaximized() || win.isFullScreen()) return;
-    const stored = readGeometry(geometryFile(), fs);
-    const next = remember(stored, display, win.getBounds());
-    if (next !== stored) writeGeometry(geometryFile(), next, fs);
+    granted.maximized(win.getBounds());
   };
   win.on("maximize", rememberMaximized);
   win.on("resize", rememberMaximized);
+  win.on("unmaximize", () => granted.unmaximized());
   win.on("unmaximize", sendMaxState);
 
   // A window that never gets its first page — a load that fails, an
@@ -564,11 +576,14 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
-    reveal: () => {
-      // A launch the user cancelled by closing the splash is quitting.
-      if (splash.dismissed()) return;
-      revealMaximized(win, { onMapped: mapped, afterShow: () => splash.close() });
-    },
+    // A launch the user cancelled by closing the splash is quitting,
+    // and reveals nothing.
+    reveal: () =>
+      revealMaximized(win, {
+        cancelled: () => splash.dismissed(),
+        onMapped: mapped,
+        afterShow: () => splash.close(),
+      }),
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });

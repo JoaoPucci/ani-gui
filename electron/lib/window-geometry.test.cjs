@@ -143,7 +143,7 @@ test("the size is recorded for the launch's own maximize, not after the user unm
   // Once the user unmaximizes it, a later maximize — perhaps on another
   // monitor, which Wayland gives no position to tell — is not recorded.
   const writes = [];
-  const recorder = grantedSizeRecorder({ display: wayland, save: (size) => writes.push(size) });
+  const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
   recorder.maximized({ width: 1920, height: 1080 });
   recorder.maximized({ width: 1920, height: 1048 });
   recorder.unmaximized();

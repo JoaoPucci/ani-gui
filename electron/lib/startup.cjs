@@ -45,6 +45,11 @@ async function loadFirstPage(win, url, logError, onFailed = () => {}) {
       onFailed();
       throw err;
     }
+    // An error status already decided this open failed; a navigation
+    // taking over does not undo that.
+    if (typeof status === "number" && status >= 400) {
+      throw new Error(`first page answered ${status} (${url})`);
+    }
     logError("[main] first page superseded before it finished loading:", err);
     return;
   } finally {
