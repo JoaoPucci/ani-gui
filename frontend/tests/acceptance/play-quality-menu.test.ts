@@ -178,7 +178,8 @@ function useShowHandlers(customControls = true) {
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		// The backend answers with a list, empty when aniskip has none.
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 	);
 }
@@ -196,6 +197,25 @@ async function mountHls(customControls = true): Promise<FakeHlsT> {
 const label = (height: number) => m.play_quality_height({ height: String(height) });
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+// A key press starts at the element with focus and bubbles from there.
+const press = (key: string) =>
+	(document.activeElement ?? document.body).dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true })
+	);
+
+/** Gives the video a duration, at 100 s, and proves the player's seek
+ *  key moves it here: the page seeks only once it knows the duration,
+ *  so without this a press that reached the player could not show. */
+async function seekable(video: HTMLVideoElement) {
+	Object.defineProperty(video, 'duration', { configurable: true, value: 600 });
+	video.dispatchEvent(new Event('durationchange'));
+	await tick();
+	video.currentTime = 100;
+	document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+	await until(() => video.currentTime !== 100, 'the seek key to move the video');
+	video.currentTime = 100;
+}
 
 function menuButton(): HTMLButtonElement {
 	const button = target.querySelector<HTMLButtonElement>(
@@ -264,24 +284,62 @@ describe('play route — the quality the setting names, and the menu that change
 		await until(() => hls.starts === 1, 'the engine to start');
 		const video = playerVideo();
 		video.volume = 0.5;
-		const time = video.currentTime;
+		await seekable(video);
 		menuButton().click();
 		await until(() => qualityRow() !== undefined, 'the quality row');
-		menuItems()[0].focus();
-		const press = (key: string) =>
-			(document.activeElement ?? document.body).dispatchEvent(
-				new KeyboardEvent('keydown', { key, bubbles: true })
-			);
+		// Focus goes into the menu as it opens.
+		await until(() => document.activeElement === menuItems()[0], 'focus on the first item');
 		press('ArrowDown');
 		expect(document.activeElement).toBe(menuItems()[1]);
 		press('ArrowUp');
 		expect(document.activeElement).toBe(menuItems()[0]);
 		press('End');
 		expect(document.activeElement).toBe(menuItems()[menuItems().length - 1]);
+		// Each checked on its own: a Left and a Right that both seek
+		// would cancel out.
 		press('ArrowLeft');
+		expect(video.currentTime).toBe(100);
 		press('ArrowRight');
+		expect(video.currentTime).toBe(100);
+
+		// Right on a row that opens a list opens it, onto its back row;
+		// Left goes back onto the row. Quality, then Speed.
+		for (const name of [m.play_controls_menu_quality_label(), m.play_controls_menu_speed_label()]) {
+			const opener = () =>
+				menuItems().find(
+					(el) => el.getAttribute('aria-haspopup') === 'menu' && el.textContent?.includes(name)
+				);
+			opener()?.focus();
+			press('ArrowRight');
+			await until(
+				() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+				`the ${name} list`
+			);
+			await until(() => document.activeElement === menuItems()[0], `focus on the ${name} back row`);
+			press('ArrowRight');
+			expect(document.activeElement).toBe(menuItems()[0]);
+			expect(video.currentTime).toBe(100);
+			press('ArrowLeft');
+			await until(() => document.activeElement === opener(), `focus back on the ${name} row`);
+		}
+
+		// By the pointer as well: the row opens onto the back row, and the
+		// back row returns to the row.
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		await until(() => document.activeElement === menuItems()[0], 'focus on the back row');
+		menuItems()[0].click();
+		await until(
+			() => document.activeElement?.getAttribute('aria-haspopup') === 'menu',
+			'focus back on the quality row'
+		);
+		expect(document.activeElement?.textContent).toContain(m.play_controls_menu_quality_label());
+
 		expect(video.volume).toBe(0.5);
-		expect(video.currentTime).toBe(time);
+		expect(video.currentTime).toBe(100);
 	});
 
 	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
@@ -542,17 +600,13 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		await nativeMaster();
 		const video = playerVideo();
 		video.volume = 0.5;
-		const time = video.currentTime;
+		await seekable(video);
 		moreButton().click();
 		await until(() => moreQualityRow() !== undefined, 'the quality row');
 		moreQualityRow()?.click();
 		await until(() => moreRadios().length > 0, 'the levels');
 		await until(() => document.activeElement === moreItems()[0], 'focus on the list');
 
-		const press = (key: string) =>
-			(document.activeElement ?? document.body).dispatchEvent(
-				new KeyboardEvent('keydown', { key, bubbles: true })
-			);
 		const focused = () => document.activeElement?.textContent?.replace('✓', '').trim();
 		// Back row, Auto, then the levels, wrapping at the ends.
 		press('ArrowDown');
@@ -580,9 +634,10 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		press('ArrowDown');
 		press('ArrowRight');
 		expect(focused()).toBe(m.play_quality_auto());
+		expect(video.currentTime).toBe(100);
 		expect(moreRadios().length).toBeGreaterThan(0);
 		expect(video.volume).toBe(0.5);
-		expect(video.currentTime).toBe(time);
+		expect(video.currentTime).toBe(100);
 	});
 
 	it('moves focus into the menu as it opens', async () => {
