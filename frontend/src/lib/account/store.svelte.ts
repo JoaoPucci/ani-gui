@@ -11,19 +11,12 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
-import { persistAccount, readPersistedAccount, refreshTokens } from './api';
-import type { ReadPersistedAccountResult } from './bridge';
-import { KeyringWait } from './keyring-wait';
+import { persistAccount, refreshTokens } from './api';
+import { hydrateAccounts } from './hydrate-flow';
 import { refreshExpiredAccounts } from './refresh-flow';
-import { beginOwnWrite, ownWrites } from './own-writes';
+import { beginOwnWrite } from './own-writes';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
-import {
-	failuresAfterHydrate,
-	failuresAfterRetry,
-	hydratedState,
-	isSignInChange,
-	withFailure
-} from './hydrated-state';
+import { failuresAfterRetry, withFailure } from './hydrated-state';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -70,7 +63,8 @@ class AccountStore {
 	 */
 	accountChanging: Record<Provider, boolean> = { anilist: false, mal: false, inhouse: false };
 
-	private bumpGeneration(provider: Provider): void {
+	/** Move a provider's generation: its account changed. */
+	bumpGeneration(provider: Provider): void {
 		this.accountGeneration = {
 			...this.accountGeneration,
 			[provider]: this.accountGeneration[provider] + 1
@@ -102,56 +96,18 @@ class AccountStore {
 	 */
 	keyringWaiting = $state(false);
 
-	private keyringWait = new KeyringWait(
-		{
-			setTimer: (fn, ms) => setTimeout(() => fn(), ms),
-			clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
-		},
-		(waiting) => {
-			this.keyringWaiting = waiting;
-		}
-	);
-
 	/**
 	 * Read every provider's persisted token (via the OS keyring) and seed
-	 * the store. Called at cold launch from `+layout.svelte`'s onMount,
-	 * and again when the account page mounts.
-	 *
-	 * Asynchronous, provider by provider: a keyring that is locked or not
-	 * answering holds only its own reads, and the app renders signed out
-	 * until each answers. A read that answers after the provider's state
-	 * changed (a connect or disconnect while it waited) is dropped: what
-	 * the user did since is newer than what it read. A provider whose
-	 * re-read holds a different sign-in moves its generation, so a
-	 * renewal still out for the old one is superseded.
+	 * the store, each provider as its read answers (see
+	 * `$lib/account/hydrate-flow`). Called at cold launch from
+	 * `+layout.svelte`'s onMount, and again when the account page mounts.
 	 *
 	 * AniList 1-year JWT expiry is checked here: if `expires_at_epoch_s`
 	 * is in the past, state is `expired` (renderer surfaces a Sign-in-
 	 * again CTA rather than letting the next API call fail with 401).
 	 */
 	hydrate(): Promise<void> {
-		const providers: Provider[] = ['anilist', 'mal', 'inhouse'];
-		const reads = providers.map((p) => {
-			const generation = this.accountGeneration[p];
-			return readPersistedAccount(p).then((read) => this.applyRead(p, generation, read));
-		});
-		const settled = Promise.all(reads);
-		this.keyringWait.track(settled);
-		// Every hydrate path (cold launch AND the account page) must give a
-		// just-expired-but-refreshable provider a chance to refresh, so
-		// hydrate() owns it rather than each caller remembering.
-		return settled.then(() => this.refreshExpired());
-	}
-
-	/** Seed one provider from its keychain read, unless superseded. */
-	private applyRead(p: Provider, generation: number, read: ReadPersistedAccountResult): void {
-		if (this.accountGeneration[p] !== generation) return;
-		const prev = this.byProvider;
-		const state = hydratedState(prev[p], read, Math.floor(Date.now() / 1000));
-		if (isSignInChange(prev[p], state, ownWrites(p))) this.bumpGeneration(p);
-		const next = { ...prev, [p]: state };
-		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
-		this.byProvider = next;
+		return hydrateAccounts(this);
 	}
 
 	/**
