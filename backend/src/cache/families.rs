@@ -27,12 +27,13 @@
 //!   removal reads to find the Kitsu ids a show was known by
 //!   (`history_forget*`), and which the detail page's lookup reads for
 //!   a row whose recorded entry Kitsu answered gone
-//!   (`history_forget_titles::title_match_ids`).
+//!   (`history_forget_titles::current_title_match_ids`).
 //!
-//! Those two readers also read the versions before the current one, by
-//! prefix. Their rows are not declared: the reclaim deletes them at the
-//! first launch after each version bump, so the readers find them only
-//! until then. What that costs:
+//! The removal also reads the versions before the current one, by
+//! prefix; the detail page's lookup reads the current version alone.
+//! The earlier versions' rows are not declared: the reclaim deletes
+//! them at the first launch after each version bump, so the removal
+//! finds them only until then. What that costs:
 //!
 //! - a removal finds fewer Kitsu ids for a show known only by an old
 //!   mapping or match. Skip times and stream addresses under those ids
@@ -160,10 +161,15 @@ pub(crate) fn mapping() -> String {
 /// The title matches, at the version this build reads.
 #[must_use]
 pub(crate) fn title_match() -> String {
-    format!(
-        "title-match:v{}:",
-        crate::commands::kitsu::TITLE_MATCH_VERSION
-    )
+    title_match_at(crate::commands::kitsu::TITLE_MATCH_VERSION)
+}
+
+/// The title matches as `version` keyed them: [`title_match`] for the
+/// current one, and the prefix a reader of an earlier version's rows
+/// asks for until the launch reclaims them.
+#[must_use]
+pub(crate) fn title_match_at(version: u32) -> String {
+    format!("title-match:v{version}:")
 }
 
 /// The play resolutions, at the schema this build reads.
