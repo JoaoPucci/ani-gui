@@ -71,8 +71,20 @@ function splashWindowOptions() {
  *   it would come back always on top, over the dialog that says why
  *   the boot failed.
  */
-function splashController({ createWindow, logError, onDismissed = () => {} }) {
+function splashController({
+  createWindow,
+  logError,
+  onDismissed = () => {},
+  log = () => {},
+  clock = () => Date.now(),
+}) {
   const state = fresh();
+  // One info line per step of the splash's life, timed from when it
+  // was asked for: enough for a run's log to say whether a splash was
+  // seen, and for how long.
+  let askedAt = null;
+  let paintedAt = null;
+  const since = () => `+${clock() - askedAt} ms`;
   current = state;
   // Settles once the splash is on screen, or can no longer get there.
   let markUp = () => {};
@@ -88,6 +100,8 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
   return {
     show() {
       if (over) return;
+      askedAt = clock();
+      log(`[main] splash asked for (${since()})`);
       let splash;
       try {
         splash = createWindow(splashWindowOptions());
@@ -97,6 +111,7 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
         return;
       }
       if (!splash) {
+        log("[main] splash not opened: no window was made");
         markUp();
         return;
       }
@@ -105,9 +120,12 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
       // screen (splash.js falls back to a timer), so the opening plays
       // once the window manager has mapped the window.
       splash.once("show", () => {
+        log(`[main] splash shown (${since()})`);
         Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL))
           .then(() => {
             state.shown = true;
+            paintedAt = clock();
+            log(`[main] splash painted (${since()})`);
           })
           .catch((err) => logError("[main] could not tell the splash it is shown:", err))
           .finally(markUp);
@@ -123,6 +141,7 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
         const byUser = win === splash && !over;
         if (win === splash) win = null;
         if (byUser) {
+          log(`[main] splash closed by the user: the launch is cancelled (${since()})`);
           dismissedByUser = true;
           over = true;
           onDismissed();
@@ -138,6 +157,8 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
       over = true;
       if (alive()) {
         state.closed = true;
+        const onScreen = paintedAt === null ? "never painted" : `on screen ${clock() - paintedAt} ms after painting`;
+        log(`[main] splash closed by the boot (${since()}, ${onScreen})`);
         win.close();
       }
       win = null;
@@ -161,7 +182,10 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
       over = true;
       suppressed = true;
       state.suppressed = true;
-      if (alive()) win.hide();
+      if (alive()) {
+        log(`[main] splash put away: the boot failed (${since()})`);
+        win.hide();
+      }
     },
   };
 }

@@ -377,6 +377,7 @@ const splash = splashController({
   // window loads hidden it is still open, so no window-all-closed
   // would quit of itself.
   onDismissed: () => app.quit(),
+  log: console.log,
 });
 
 /** Where the window's remembered maximized size lives: beside the
