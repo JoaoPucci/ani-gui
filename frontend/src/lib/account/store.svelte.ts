@@ -58,9 +58,10 @@ class AccountStore {
 	 * generation up front but leaves `byProvider` as `connected` until its
 	 * async clear finishes; a refresh entering that window would see a
 	 * stable (already-bumped) generation and pass its checks, so the
-	 * generation counter alone can't gate it. Consumers (fresh-bearer)
-	 * treat a changing provider as non-refreshable so a post-disconnect
-	 * refresh can't enqueue a resurrecting write.
+	 * generation counter alone can't gate it. Consumers: fresh-bearer
+	 * treats a changing provider as non-refreshable so a post-disconnect
+	 * refresh can't enqueue a resurrecting write, and the hydrate's
+	 * keyring reads wait for it to clear (`$lib/account/hydrate-flow`).
 	 */
 	accountChanging: Record<Provider, boolean> = { anilist: false, mal: false, inhouse: false };
 
@@ -114,7 +115,8 @@ class AccountStore {
 
 	private changes = new AccountChanges();
 
-	/** Resolves at the provider's next state change (see `setChanging`). */
+	/** Resolves at the provider's next state change made through a
+	 *  setter (each passes through `setChanging`). */
 	nextChange(provider: Provider): Promise<void> {
 		return this.changes.next(provider);
 	}

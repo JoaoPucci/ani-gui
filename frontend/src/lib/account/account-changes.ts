@@ -1,6 +1,7 @@
 /**
  * Waiting for a provider's account state to move: a promise per waiter,
- * resolved at the provider's next state change. Used by the hydrate's
+ * resolved at the provider's next state change made through the
+ * store's setters. Used by the hydrate's
  * reads to hold a retry until a change under way has settled.
  */
 
