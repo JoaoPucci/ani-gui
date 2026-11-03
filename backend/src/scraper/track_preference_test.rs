@@ -305,6 +305,43 @@ fn a_track_whose_lang_is_a_three_letter_code_is_read_by_it() {
     );
 }
 
+/// A locale given as a three-letter code reads as the language it
+/// names, in any case, as the built-in player reads it: `Intl.Locale`
+/// takes `zho` for `zh` and `por-BR` for `pt-BR`. A bare Chinese code
+/// reads in Simplified, as a bare `zh` does.
+#[test]
+fn a_locale_given_as_a_three_letter_code_reads_as_its_language() {
+    assert_eq!(
+        labels_first(&steel_ball_run(), "zho", 2),
+        ["Chinese (- Simplified)", "Chinese (- Traditional)"]
+    );
+    assert_eq!(
+        labels_first(&steel_ball_run(), "CHI", 2),
+        ["Chinese (- Simplified)", "Chinese (- Traditional)"]
+    );
+    assert_eq!(
+        labels_first(&steel_ball_run(), "por-BR", 2),
+        ["Portuguese (- Brazil)", "Portuguese (- Portugal)"]
+    );
+    assert_eq!(
+        labels_first(&steel_ball_run(), "Spa", 3),
+        [
+            "Spanish (- Latin America)",
+            "Spanish (- Latin America | SDH)",
+            "Spanish (- Spain)"
+        ]
+    );
+    assert_eq!(labels_first(&steel_ball_run(), "jpn", 1), ["Japanese"]);
+    assert_eq!(labels_first(&steel_ball_run(), "rus", 1), ["Russian"]);
+    // The case the order property first failed on, its locale spelled
+    // as a code: the locale's Chinese leads the provider's default.
+    let ordinary_default = vec![
+        track("zh-Hant", "zh-Hant", false, 0),
+        track("es-419", "es-419", true, 1),
+    ];
+    assert_eq!(labels_first(&ordinary_default, "zho", 1), ["zh-Hant"]);
+}
+
 /// Past the cap the most wanted are kept: cut to four, a Brazilian
 /// user's Portuguese tracks survive where listing order would have
 /// kept Arabic, both Chinese tracks and Croatian; and what is kept
