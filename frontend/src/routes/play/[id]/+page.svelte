@@ -2614,15 +2614,29 @@
 		closeMore();
 		moreAnchor?.focus();
 	}
-	// A stream retiring takes the levels with it: the menu falls back
-	// to its main list, focus to its first row.
+	// A stream retiring takes the levels with it, and one of a single
+	// level leaves nothing to choose: the menu falls back to its main
+	// list, focus to the menu's button — the main list's first item may
+	// be disabled by the switch that retired the stream.
 	$effect(() => {
-		if (!moreQualityOpen || moreQuality) return;
+		if (!moreQualityOpen || moreQuality?.choosable) return;
 		moreQualityOpen = false;
-		void tick().then(() =>
-			document.querySelector<HTMLElement>('#np-more-menu [role="menuitem"]')?.focus()
-		);
+		void tick().then(() => moreAnchor?.focus());
 	});
+	// The arrow keys move between the menu's items, as a menu's should,
+	// rather than reaching the player's volume and seek keys.
+	function onMoreMenuKey(e: KeyboardEvent) {
+		const menu = e.currentTarget as HTMLElement;
+		const items = Array.from(
+			menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')
+		);
+		const at = items.indexOf(document.activeElement as HTMLButtonElement);
+		const next = menuKeyStep(e.key, at, items.length);
+		if (next === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		items[next].focus();
+	}
 	$effect(() => {
 		if (!moreOpen) return;
 		// Click outside the menu OR its trigger closes it; Escape closes
@@ -3752,6 +3766,8 @@
 							class="more-menu"
 							role="menu"
 							aria-label={m.play_more_aria_label()}
+							tabindex="-1"
+							onkeydown={onMoreMenuKey}
 							transition:settle={{ duration: 120 }}
 						>
 							{#if moreQualityOpen && moreQuality}
@@ -4604,7 +4620,7 @@
 	.more-row-still {
 		cursor: default;
 	}
-	.more-row-still:hover {
+	.more-item.more-row-still:hover:not(:disabled) {
 		background: transparent;
 	}
 	/* Heights line up down the list: tabular figures, so 1080p and
