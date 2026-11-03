@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 524bbd68a8362cada338ad8df7cd3bd27128e80b916061df5af20a1d5148bc9f # shrinks to words = ["a", "a"], joins = [true, false, false, false], n = 35, m = 35, kw_a = "Season", kw_b = "Season"

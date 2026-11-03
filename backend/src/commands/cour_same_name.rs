@@ -25,7 +25,10 @@ use super::cour_ordinal_form::{ORDINAL_SUFFIXES, ORDINAL_WORDS};
 /// once case and punctuation are folded, or the same name before a
 /// trailing cour suffix with the same cour number however the suffix
 /// is spelled ("Season 2", "2nd Season", "Second Season", "Part 2",
-/// "Cour 2"). A title with no words names nothing.
+/// "Cour 2"). Words of letters alone may run together on either side
+/// ([`joined`]): a show key spells Re:ZERO "rezero" where Kitsu's
+/// titles keep "re" and "zero" apart. A title with no words names
+/// nothing.
 #[must_use]
 pub fn names_the_entry<'a>(
     provider_title: &str,
@@ -35,11 +38,32 @@ pub fn names_the_entry<'a>(
     if wanted.is_empty() {
         return false;
     }
-    let wanted_cour = split_cour(&wanted);
+    let wanted_name = joined(&wanted);
+    let wanted_cour = split_cour(&wanted).map(|(name, cour)| (joined(name), cour));
     entry_titles.into_iter().any(|t| {
         let have = words(t);
-        have == wanted || (wanted_cour.is_some() && split_cour(&have) == wanted_cour)
+        joined(&have) == wanted_name
+            || (wanted_cour.is_some()
+                && split_cour(&have).map(|(name, cour)| (joined(name), cour)) == wanted_cour)
     })
+}
+
+/// The words as one name, two neighbouring words of letters alone run
+/// together and every other pair kept apart. A word with a digit in it
+/// never joins its neighbour, so no number reads as another: "season
+/// 1 2" is not "season 12", nor "show 2" "show2".
+fn joined(words: &[String]) -> String {
+    let letters = |w: &str| w.chars().all(char::is_alphabetic);
+    let mut name = String::new();
+    let mut previous: Option<&str> = None;
+    for word in words {
+        if previous.is_some_and(|p| !(letters(p) && letters(word))) {
+            name.push(' ');
+        }
+        name.push_str(word);
+        previous = Some(word);
+    }
+    name
 }
 
 /// The title's words: lowercased, split on everything that is not a
