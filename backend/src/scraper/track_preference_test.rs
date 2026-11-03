@@ -398,13 +398,28 @@ fn locale() -> impl Strategy<Value = String> {
     ]
 }
 
-/// The primary subtag of a tag, lowercased.
+/// The language a tag names: its primary subtag, lowercased, with a
+/// three-letter code read as the two-letter tag it stands for. The
+/// codes are spelled out for the languages the property knows; the
+/// order reads every code its table carries the same way, as the
+/// built-in player's `Intl.Locale` does.
 fn primary(tag: &str) -> String {
-    tag.trim()
+    let subtag = tag
+        .trim()
         .split(['-', '_'])
         .next()
         .unwrap_or_default()
-        .to_ascii_lowercase()
+        .to_ascii_lowercase();
+    let language = match subtag.as_str() {
+        "eng" => "en",
+        "por" => "pt",
+        "spa" => "es",
+        "jpn" => "ja",
+        "chi" | "zho" => "zh",
+        "rus" => "ru",
+        other => other,
+    };
+    language.to_string()
 }
 
 proptest! {
