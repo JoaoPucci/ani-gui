@@ -271,3 +271,43 @@ fn read_config_rejects_non_toml_body() {
     let r = read_config(&path);
     assert!(matches!(r, Err(AniError::Config)));
 }
+
+#[test]
+fn watch_order_defaults_to_linked() {
+    assert_eq!(Config::default().watch_order, "linked");
+}
+
+#[test]
+fn watch_order_round_trips_through_toml() {
+    let c = Config {
+        watch_order: "released".into(),
+        ..Config::default()
+    };
+    let s = toml::to_string(&c).unwrap();
+    let parsed: Config = toml::from_str(&s).unwrap();
+    assert_eq!(parsed.watch_order, "released");
+}
+
+#[test]
+fn watch_order_absent_in_old_config_decodes_as_linked() {
+    let body = "mode = \"sub\"\nquality = \"best\"\n";
+    let cfg: Config = toml::from_str(body).unwrap();
+    assert_eq!(cfg.watch_order, "linked");
+}
+
+#[test]
+fn an_unknown_watch_order_decodes_as_linked() {
+    // A newer build may write an order this one does not know: it
+    // degrades to the default instead of failing the whole file.
+    let body = "watch_order = \"story\"\n";
+    let cfg: Config = toml::from_str(body).unwrap();
+    assert_eq!(cfg.watch_order, "linked");
+}
+
+#[test]
+fn an_unknown_watch_order_from_the_settings_page_reads_as_linked() {
+    let mut v = serde_json::to_value(Config::default()).unwrap();
+    v["watch_order"] = serde_json::json!("Released");
+    let cfg: Config = serde_json::from_value(v).unwrap();
+    assert_eq!(cfg.watch_order, "linked");
+}

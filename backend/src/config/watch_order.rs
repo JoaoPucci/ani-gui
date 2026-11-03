@@ -24,3 +24,7 @@ where
     let value = <String as serde::Deserialize>::deserialize(deserializer)?;
     Ok(value)
 }
+
+#[cfg(test)]
+#[path = "watch_order_prop_test.rs"]
+mod prop_tests;
