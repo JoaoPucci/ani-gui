@@ -147,3 +147,7 @@ mod kitsu_id_compare_test;
 #[cfg(test)]
 #[path = "anilist_unanswered_test.rs"]
 mod anilist_unanswered_test;
+
+#[cfg(test)]
+#[path = "guessed_from_test.rs"]
+mod guessed_from_test;

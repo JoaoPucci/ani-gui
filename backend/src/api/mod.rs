@@ -880,6 +880,10 @@ mod title_match_year_tests;
 mod mark_watched_guess_tests;
 
 #[cfg(test)]
+#[path = "history_guessed_from_test.rs"]
+mod history_guessed_from_tests;
+
+#[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]
 mod kitsu_id_boundary_test;
 

@@ -107,11 +107,9 @@ function serve() {
 		...homeHandlers({}, [
 			...linkBackendHandlers(backend),
 			// The JoJo card's own row leads here, watched last, and the
-			// 2012 listing's row hides behind it. A guessed play of the
-			// card that lands on the 2012 listing stamps that row later,
-			// and then it leads instead: the pill links what the card
-			// shows, the 2012 row. Which row Home should offer then is an
-			// open decision on PR #336.
+			// 2012 listing's row hides behind it. The case where the 2012
+			// row was written by the card's own guessed play, and watched
+			// later, is below ("the line clicked").
 			http.get(`${API_BASE}/api/watched-at`, () =>
 				HttpResponse.json({ [JOJO_CARD]: 2_000, [JOJO_PLAYED]: 1_000 })
 			),
@@ -339,5 +337,78 @@ describe("a guessed card's failed resume", () => {
 		const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
 		expect(button(m.home_link_pick_button(), overlay)).toBeNull();
 		expect(overlay.textContent).not.toContain(m.home_resume_guess_note({ title: 'Gintama' }));
+	});
+});
+
+describe('a card whose guessed play wrote a row on another listing stands for the line clicked', () => {
+	// JoJo's 2000 card, guessed as the 2012 series, played the 2012
+	// series, whose resolve landed on the 2012 listing and wrote that row
+	// later than the card's own. The backend names the card that row
+	// came from (`guessed_from`). The merged card still shows the latest
+	// progress, and stands for the 2000 line: its pill, its failed resume
+	// and its player all correct that line.
+	beforeEach(() => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === JOJO_PLAYED ? { ...r, guessed_from: JOJO_CARD } : r
+		);
+		server.use(
+			http.get(`${API_BASE}/api/watched-at`, () =>
+				HttpResponse.json({ [JOJO_CARD]: 1_000, [JOJO_PLAYED]: 2_000 })
+			)
+		);
+	});
+
+	async function openMerged() {
+		app = mount(HomePage, { target });
+		await until(() => showLine(JOJO_PLAYED).includes(JOJO_GUESS_TITLE), 'the merged JoJo card');
+		await settle();
+		// One card for the two lines: the newer row's.
+		expect(cell(JOJO_CARD)).toBeNull();
+	}
+
+	it('its pill links the 2000 line alone; then each line is a card of its own show', async () => {
+		await openMerged();
+		pill(JOJO_PLAYED)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		expect(backend.linkCalls[0].card).toBe(JOJO_CARD);
+		expect(backend.linkCalls[0].rows).toEqual([JOJO_CARD]);
+		expect(backend.rows.find((r) => r.id === JOJO_CARD)?.kitsu_id).toBe(JOJO_RIGHT);
+		expect(backend.rows.find((r) => r.id === JOJO_PLAYED)?.kitsu_id).toBeUndefined();
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the 2000 line as the OVA');
+		await until(
+			() => showLine(JOJO_PLAYED).includes(JOJO_GUESS_TITLE),
+			'the 2012 row as the 2012 series'
+		);
+	});
+
+	it('its resume plays as a guess of the 2000 line, from the newer progress', async () => {
+		await openMerged();
+		cell(JOJO_PLAYED)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		const url = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(url.searchParams.get('guess_row')).toBe(JOJO_CARD);
+		// The 2012 row is at episode 2: Continue goes on to 3.
+		expect(url.searchParams.get('episode')).toBe('3');
+	});
+
+	it("its failed resume picks the 2000 line's show", async () => {
+		await openMerged();
+		cell(JOJO_PLAYED)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
+		await until(() => button(m.home_link_pick_button(), overlay) !== null, 'the pick button');
+		button(m.home_link_pick_button(), overlay)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		expect(backend.linkCalls[0].card).toBe(JOJO_CARD);
+		expect(backend.linkCalls[0].rows).toEqual([JOJO_CARD]);
 	});
 });

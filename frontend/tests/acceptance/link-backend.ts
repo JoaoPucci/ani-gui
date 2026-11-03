@@ -17,6 +17,8 @@ export interface Row {
 	id: string;
 	title: string;
 	kitsu_id?: string;
+	/** The card whose guessed play wrote this row on another listing. */
+	guessed_from?: string;
 }
 
 export interface LinkBackend {
