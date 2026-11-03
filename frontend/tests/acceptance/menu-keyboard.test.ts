@@ -47,6 +47,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { downloadStore } from '../../src/lib/download/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
+import { formatSpeed } from '../../src/lib/download/speed';
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -291,6 +292,55 @@ describe('the download dock’s menu', () => {
 			.join(' ');
 		expect(description).toContain('Frieren');
 		expect(description).toContain(m.download_dock_queued());
+	});
+
+	it('tells where each download stands, without announcing every change', async () => {
+		downloadStore.add({
+			title: 'Frieren',
+			episode: '1',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		const retrying = downloadStore.add({
+			title: 'Dandadan',
+			episode: '2',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		downloadStore.markActive(retrying, new AbortController());
+		downloadStore.setProgress(retrying, 'status.download.retry_ffmpeg');
+		const running = downloadStore.add({
+			title: 'Mushishi',
+			episode: '3',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/dl'
+		});
+		downloadStore.markActive(running, new AbortController());
+		downloadStore.setProgress(running, 'status.download.rate 2500000');
+		app = mount(DownloadDock, { target });
+		await settle();
+		await openMenu();
+		const description = (el: HTMLElement) =>
+			(el.getAttribute('aria-describedby') ?? '')
+				.split(' ')
+				.map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+				.join(' ');
+		// Newest first: running, retrying, starting.
+		const [onRunning, onRetrying, onStarting] = items().map(description);
+		expect(onRunning).toContain('Mushishi');
+		expect(onRunning).toContain(
+			m.download_dock_state_downloading_speed({ speed: formatSpeed(2_500_000) })
+		);
+		expect(onRetrying).toContain(m.download_dock_state_downloading());
+		expect(onRetrying).toContain(m.download_status_retry_ffmpeg());
+		expect(onStarting).toContain('Frieren');
+		expect(onStarting).toContain(m.download_dock_state_starting());
+		// A description is read when the item is reached; nothing in the
+		// menu speaks up on its own as the speed ticks.
+		expect(menu()!.querySelector('[aria-live], [role="status"], [role="progressbar"]')).toBeNull();
 	});
 
 	it('opens on its first item and steps through every action, wrapping', async () => {
