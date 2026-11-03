@@ -85,7 +85,7 @@ fn cache_in(dir: &Path) -> PathBuf {
 }
 
 async fn seed(path: &Path, fetched_at: u64, flags: Document) {
-    cache::write(path, &CacheEntry { fetched_at, flags }).await;
+    cache::write(path, &CacheEntry::admitted(fetched_at, flags)).await;
 }
 
 /// Run a launch's refresh in its own task; hand back the store and the
@@ -351,10 +351,7 @@ async fn slow_read(delay: Duration, entry: Option<CacheEntry>) -> Option<CacheEn
 async fn the_fetch_does_not_wait_for_a_slow_cache_read() {
     let script = Script::new(vec![(Duration::from_millis(300), Some(file_doc()))]);
     let store = FlagStore::pending(TEST_DECLS);
-    let entry = CacheEntry {
-        fetched_at: NOW,
-        flags: cached_doc(),
-    };
+    let entry = CacheEntry::admitted(NOW, cached_doc());
     let started = tokio::time::Instant::now();
     let task = {
         let store = store.clone();
@@ -378,10 +375,7 @@ async fn the_cap_counts_from_the_start_not_from_the_end_of_the_cache_read() {
     // ends two seconds in, and the cache decides then.
     let script = Script::new(vec![(Duration::from_secs(20), Some(file_doc()))]);
     let store = FlagStore::pending(TEST_DECLS);
-    let entry = CacheEntry {
-        fetched_at: NOW,
-        flags: cached_doc(),
-    };
+    let entry = CacheEntry::admitted(NOW, cached_doc());
     let started = tokio::time::Instant::now();
     let task = {
         let store = store.clone();
@@ -402,10 +396,7 @@ async fn the_cap_counts_from_the_start_not_from_the_end_of_the_cache_read() {
 async fn a_cache_read_slower_than_the_cap_decides_when_it_ends() {
     let script = Script::new(vec![(Duration::from_secs(20), Some(file_doc()))]);
     let store = FlagStore::pending(TEST_DECLS);
-    let entry = CacheEntry {
-        fetched_at: NOW,
-        flags: cached_doc(),
-    };
+    let entry = CacheEntry::admitted(NOW, cached_doc());
     let started = tokio::time::Instant::now();
     let task = {
         let store = store.clone();
@@ -425,10 +416,7 @@ async fn a_cache_read_slower_than_the_cap_decides_when_it_ends() {
 async fn a_fetch_that_fails_at_once_decides_from_the_cache_once_it_is_read() {
     let script = Script::new(vec![(Duration::from_millis(10), None)]);
     let store = FlagStore::pending(TEST_DECLS);
-    let entry = CacheEntry {
-        fetched_at: NOW,
-        flags: cached_doc(),
-    };
+    let entry = CacheEntry::admitted(NOW, cached_doc());
     let started = tokio::time::Instant::now();
     let read = slow_read(Duration::from_millis(400), Some(entry));
     refresh_from(&store, read, None, script.fetcher(), || NOW).await;
@@ -472,10 +460,7 @@ async fn a_file_that_beats_a_slow_cache_read_decides_even_past_the_cap() {
     // but before there is any cache to decide with.
     let script = Script::new(vec![(Duration::from_millis(2200), Some(file_doc()))]);
     let store = FlagStore::pending(TEST_DECLS);
-    let entry = CacheEntry {
-        fetched_at: NOW,
-        flags: cached_doc(),
-    };
+    let entry = CacheEntry::admitted(NOW, cached_doc());
     let started = tokio::time::Instant::now();
     let task = {
         let store = store.clone();

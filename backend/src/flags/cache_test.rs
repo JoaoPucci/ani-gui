@@ -8,10 +8,7 @@ const DAY: u64 = 24 * 60 * 60;
 
 fn entry(fetched_at: u64) -> CacheEntry {
     let doc = serde_json::json!({ "test_kill": false });
-    CacheEntry {
-        fetched_at,
-        flags: doc.as_object().expect("object").clone(),
-    }
+    CacheEntry::admitted(fetched_at, doc.as_object().expect("object").clone())
 }
 
 #[test]
