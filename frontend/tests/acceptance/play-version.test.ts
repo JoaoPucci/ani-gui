@@ -279,15 +279,8 @@ describe("play route — the show's remembered captions choice", () => {
 		);
 		for (const es of FakeEventSource.instances) expect(captionOf(es)).toBe('es-419');
 
-		const warm = FakeEventSource.instances.find((es) => episodeOf(es) === '4')!;
-		warm.dispatch(
-			'done',
-			JSON.stringify({
-				session_id: 'session-4',
-				media_url: `${API_BASE}/s/session-4/file.mp4`,
-				media_kind: 'mp4'
-			})
-		);
+		// That warm is the only stream the page opened, and
+		// `mountPlaying` has already answered it.
 		const opened = FakeEventSource.instances.length;
 		const next = () =>
 			target.querySelector(
