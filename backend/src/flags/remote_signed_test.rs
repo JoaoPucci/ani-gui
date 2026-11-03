@@ -139,8 +139,13 @@ async fn serve_delayed(file_ms: u64, sig: ResponseTemplate) -> (MockServer, Stri
     (server, url)
 }
 
+/// A file that arrives at once and a signature that hangs: the attempt
+/// ends within the launch's wait, flags kept and notices dropped. The
+/// signature's hold is bounded by its grace after the file, not by the
+/// launch's wait: a file arriving late in the wait, beside a hung
+/// signature, ends past it by up to the grace.
 #[tokio::test]
-async fn a_hung_signature_does_not_hold_the_flags_past_the_launchs_wait() {
+async fn a_hung_signature_beside_a_prompt_file_ends_within_the_launchs_wait() {
     let hung = ResponseTemplate::new(200)
         .set_body_string(SIG)
         .set_delay(std::time::Duration::from_secs(60));
