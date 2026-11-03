@@ -39,6 +39,11 @@ const TRANSLATIONS = {
     quitAnyway: "Quit anyway",
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Starting up…",
+    // While the flags step stalls the app waits on the network, then
+    // starts with what it already has: the flags saved on the device
+    // if they are fresh, the built-in defaults if not. Both are already
+    // on the device, so the line holds either way.
+    splashNetworkSlow: "Network is slow — starting with what's already on this device…",
   },
   "pt-BR": {
     bootFailed: "Não foi possível iniciar o ani-gui",
@@ -53,6 +58,7 @@ const TRANSLATIONS = {
     quitAnyway: "Sair mesmo assim",
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Iniciando…",
+    splashNetworkSlow: "A rede está lenta — iniciando com o que já está neste dispositivo…",
   },
   "es-419": {
     bootFailed: "No se pudo iniciar ani-gui",
@@ -67,6 +73,7 @@ const TRANSLATIONS = {
     quitAnyway: "Salir de todos modos",
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Iniciando…",
+    splashNetworkSlow: "La red está lenta — iniciando con lo que ya hay en este dispositivo…",
   },
   ru: {
     bootFailed: "Не удалось запустить ani-gui",
@@ -82,6 +89,7 @@ const TRANSLATIONS = {
     quitAnyway: "Всё равно выйти",
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Запуск…",
+    splashNetworkSlow: "Сеть работает медленно — запускаемся с тем, что уже есть на устройстве…",
   },
 };
 

@@ -159,7 +159,9 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 .rail i.lit::after { clip-path: inset(0 0 0 0); }
 .status {
   position: absolute; inset-inline-start: 0; inset-block-start: calc(100% + 10px);
-  max-inline-size: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Wraps inside the title column: the network line takes two or three
+     lines in every language, and the window has room for them. */
+  max-inline-size: 100%; line-height: 1.45;
   font-size: 11px; letter-spacing: 0.06em; text-transform: none; color: var(--bone-300);
   opacity: 0;
 }

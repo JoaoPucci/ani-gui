@@ -387,15 +387,18 @@ first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
 wait for that render gave up is revealed with the last stretch unlit.
 The splash waits at most 150 ms, about a millisecond in practice, for
 its page to take the last step before the app's window replaces it. A
-line under the rail says "Starting up…", in the app's language, only
-once the pending step has taken longer than 700 ms, and goes when that
-step lands. The splash's motion starts only when the main process tells
-it to, once the window is on screen and the reduced-motion setting is
-known; under reduced motion it rests on a still frame and its rail
-lights without a wipe, and the page's own fallback timer, for a signal
-that never comes, rests it too rather than starting the motion. The mark
-is `mark.svg` alone, and the layout holds for a mark of another shape,
-so a new mark replaces one file.
+line under the rail, in the app's language, appears only once the
+pending step has taken longer than 700 ms, and goes when that step
+lands. While the flags step stalls it says "Network is slow — starting
+with what's already on this device…": the app then starts with the flags
+saved on the device if they are fresh, or with its built-in defaults.
+Any other stalled step says "Starting up…". The splash's motion starts
+only when the main process tells it to, once the window is on screen and
+the reduced-motion setting is known; under reduced motion it rests on a
+still frame and its rail lights without a wipe, and the page's own
+fallback timer, for a signal that never comes, rests it too rather than
+starting the motion. The mark is `mark.svg` alone, and the layout holds
+for a mark of another shape, so a new mark replaces one file.
 
 The store accepts one decision and refuses every later one. A backend
 consumer reads the flags with `FlagStore::settled()`, which waits for
