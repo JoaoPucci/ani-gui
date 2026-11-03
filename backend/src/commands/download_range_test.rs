@@ -197,3 +197,97 @@ async fn a_range_that_fails_to_start_still_records_the_listings_it_picked() {
         );
     }
 }
+
+/// A listing longer than the track cap, every track but the last in
+/// a known language the viewer neither picked nor reads the app in,
+/// the last in Vietnamese — the one a cut by the locale alone drops.
+fn long_listing() -> Vec<crate::scraper::provider::SubtitleTrack> {
+    const OTHERS: [&str; 8] = ["de", "fr", "it", "ja", "ko", "nl", "pl", "ru"];
+    let cap = crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    (0..=cap)
+        .map(|i| crate::scraper::provider::SubtitleTrack {
+            lang: if i == cap {
+                "vi".into()
+            } else {
+                OTHERS[i % OTHERS.len()].into()
+            },
+            label: format!("Track {i}"),
+            default: false,
+            url: format!("https://cdn.example/subs/{i}.vtt"),
+        })
+        .collect()
+}
+
+/// A download cuts a listing past the track cap as a play does: the
+/// show's remembered language first, so the file it writes beside the
+/// media carries the language the viewer picked in the player.
+#[tokio::test]
+async fn a_range_keeps_the_shows_remembered_language_past_the_track_cap() {
+    use super::{Attempt, RangeStartAttempt};
+    use crate::scraper::provider::{BrowseHit, StreamSource};
+    use crate::scraper::table_provider::{listing_of, TableProvider};
+    let provider = TableProvider::new()
+        .search_default(vec![BrowseHit {
+            slug: "the-show-1".into(),
+            title: "The Show".into(),
+            kind: Some("TV".into()),
+            jname: None,
+        }])
+        .listing(1, listing_of(1, 3))
+        .year(1, Some(2020))
+        .stream_from(
+            1001,
+            "sub",
+            StreamSource {
+                master_url: "https://cdn.example/master.m3u8".into(),
+                referer: None,
+                subtitles: long_listing(),
+            },
+        )
+        .mode(1001, "sub", true);
+    let args: super::DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show", "episode": "1-3", "mode": "sub",
+        "episode_count": 3, "year": 2020, "subtype": "TV", "caption": "vi",
+    }))
+    .expect("args");
+    let mut attempt = RangeStartAttempt {
+        args: &args,
+        first: 1,
+        quality: "best",
+        locale: "en",
+        answered_by: None,
+        tail: None,
+        heard: None,
+    };
+    let (_, _, first) = attempt.run(&provider).await.expect("started");
+    assert!(
+        first.subtitles.iter().any(|t| t.lang == "vi"),
+        "the remembered language is kept"
+    );
+}
+
+/// A single episode's download asks the resolve for the same.
+#[test]
+fn a_download_asks_for_the_shows_remembered_language() {
+    let args: super::DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show", "episode": "2", "mode": "sub", "caption": "vi",
+    }))
+    .expect("args");
+    assert_eq!(
+        args.native_request("best", "en", None, None)
+            .wanted
+            .remembered,
+        Some("vi")
+    );
+    let off: super::DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show", "episode": "2", "mode": "sub", "caption": "off",
+    }))
+    .expect("args");
+    assert_eq!(
+        off.native_request("best", "en", None, None)
+            .wanted
+            .remembered,
+        None,
+        "Off is about showing, not about which tracks to keep"
+    );
+}
