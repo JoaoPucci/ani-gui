@@ -331,8 +331,8 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-/// - v4: the title guess searches Kitsu without the dashes that lead a
-///   word, which Kitsu read as exclusions, and the reverse resolve it
+/// - v4: the title guess searches Kitsu without the dashes no letter or
+///   digit leads, which Kitsu read as exclusions, and the reverse resolve it
 ///   falls back to reads words a show key runs together as the entry's.
 ///   A v3 row can hold a pick either rule made wrong — a pick among the
 ///   hits Kitsu returned for Re:ZERO without "Starting", or Season 2

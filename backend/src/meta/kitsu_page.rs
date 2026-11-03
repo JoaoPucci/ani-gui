@@ -81,26 +81,37 @@ pub fn next_offset(
     (has_next_link || counted_more).then_some(next)
 }
 
-/// The text a search for `query` sends Kitsu as `filter[text]`: its
-/// words, less the dashes that lead any of them.
+/// The text a search for `query` sends Kitsu as `filter[text]`: the
+/// query with every `-` that no ASCII letter or digit precedes turned
+/// into a gap, and its words single-spaced.
 ///
-/// Kitsu reads a word that starts with `-` as one to exclude. The
-/// provider titles Re:ZERO's seasons "Re:ZERO -Starting Life in Another
-/// World- Season N", and sent as typed that title asks for Re:ZERO
-/// without "Starting" — Kitsu answers Zoids Genesis. Nothing a user or
-/// a provider title means by a dash is an exclusion, so none is sent.
-/// A dash inside or after a word, and any other dash, Kitsu reads as
-/// text, as it does `+`, `|`, `~`, quotes, brackets, OR and NOT; those
-/// reach it as typed. A word that was only dashes is dropped: Kitsu
-/// answers a lone `-` as it answers nothing.
+/// Kitsu reads such a dash as "exclude what follows". The provider
+/// titles Re:ZERO's seasons "Re:ZERO -Starting Life in Another World-
+/// Season N", and sent as typed that title asks for Re:ZERO without
+/// "Starting" — Kitsu answers Zoids Genesis. A dash after punctuation
+/// excludes too ("naruto:-shippuden", "naruto (-shippuden)"); one
+/// after a letter or digit ("World-", "naruto-shippuden") is text.
+/// Nothing a user or a provider title means by a dash is an exclusion,
+/// so none is sent. Other dash characters, `+`, `|`, `~`, quotes,
+/// brackets, OR and NOT read as text and reach Kitsu as typed. A query
+/// of nothing but dashes is sent empty: Kitsu answers a lone `-` as it
+/// answers nothing.
 #[must_use]
 pub fn search_text(query: &str) -> String {
-    query
-        .split_whitespace()
-        .map(|word| word.trim_start_matches('-'))
-        .filter(|word| !word.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
+    let mut previous: Option<char> = None;
+    let gapped: String = query
+        .chars()
+        .map(|c| {
+            let excludes = c == '-' && !previous.is_some_and(|p| p.is_ascii_alphanumeric());
+            previous = Some(c);
+            if excludes {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    gapped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]

@@ -6,8 +6,8 @@
 //! the first page of the ranked one. The normalized query is the text
 //! Kitsu is sent ([`crate::meta::kitsu_page::search_text`]), so two
 //! queries Kitsu reads alike share a page. A page earlier builds cached
-//! for a query with a word led by a dash, which they sent Kitsu as an
-//! exclusion, is under a key no query reaches now — that dash is never
+//! for a query with a dash no letter or digit led, which they sent Kitsu
+//! as an exclusion, is under a key no query reaches now — that dash is never
 //! in the text — and the launch reclaim takes it once it expires. `v4`
 //! entries were fetched by page number; a `v3` entry was fetched by
 //! offset, which Kitsu answered a page late, so it is not read. Pages live
