@@ -37,8 +37,9 @@ pub fn keeps_recorded<'a>(
 
 /// `candidate`, the id the play `args` would record on the row `played`,
 /// unless the play is a guessed session's and the row records another
-/// ([`keeps_recorded`]). A history that cannot be read keeps a guessed
-/// session's id back: what the row records is not known.
+/// ([`keeps_recorded`]). A recorded show Kitsu answered gone does not
+/// count. A history that cannot be read keeps a guessed session's id
+/// back: what the row records is not known.
 pub(crate) fn guarded<'a>(
     state: &AppState,
     args: &PlayArgs,
@@ -51,10 +52,13 @@ pub(crate) fn guarded<'a>(
     let Ok(rows) = crate::history::read_all(&state.history_path) else {
         return None;
     };
+    // A recorded show Kitsu answered gone is no link: the line is a guess
+    // again, and a play of the guess on its own listing repairs it.
     let recorded = rows
         .iter()
         .find(|r| r.id == played)
-        .and_then(|r| r.kitsu_id.as_deref());
+        .and_then(|r| r.kitsu_id.as_deref())
+        .filter(|id| !crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false));
     keeps_recorded(true, recorded, candidate)
 }
 

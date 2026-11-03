@@ -46,6 +46,8 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
             asked.begun,
         )
         .await;
+        // A play of the row itself: no guessed card's.
+        crate::commands::guessed_from::record(state, None, &watch.show_id);
         return Ok(());
     }
 
@@ -60,6 +62,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
         asked.begun,
     )
     .await;
+    crate::commands::guessed_from::record(state, None, &watch.show_id);
     Ok(())
 }
 

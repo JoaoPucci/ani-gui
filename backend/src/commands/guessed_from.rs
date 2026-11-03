@@ -20,8 +20,9 @@
 //! with no such play — costs only the grouping: the card stands for its
 //! newer row again, as it did before the note existed.
 //!
-//! Every play that records a row settles the note for it: a guessed
-//! card's play of another listing sets it, any other play takes it away,
+//! Every play that records a row — in the player, an external player or
+//! Syncplay — settles the note for it: a guessed card's play of another
+//! listing sets it, any other play takes it away,
 //! since the row's latest play is then its own. Removing the row takes
 //! it with the row's other cache rows.
 

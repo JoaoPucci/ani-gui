@@ -1316,7 +1316,7 @@
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
 			<!-- The line the card stands for: a row its guessed play wrote on
 			     another listing stands for the line clicked ($lib/history/card-row). -->
-			{@const line = cardRow(entry, history ?? [], historyMatches)}
+			{@const line = cardRow(entry, history ?? [], historyMatches, (id) => rowTrust.isGuess(id))}
 			{@const guessed =
 				resumable && match && rowTrust.isGuess(line) && !settledRows.has(line) ? match : null}
 			<!-- Both transitions are gated on `deleteBusy` so they only
