@@ -18,6 +18,8 @@ import type { NoticeData } from './model';
 import type { PublishedMemory } from './published-memory';
 import type { SourceChange } from './sources';
 
+export { parsePublished } from './published-parse';
+
 export type Priority = 'info' | 'warning' | 'critical';
 
 export interface Published {
@@ -35,62 +37,7 @@ export interface PublishedAnswer {
 	items: Published[];
 }
 
-const NOTHING: PublishedAnswer = { donationAsk: null, items: [] };
-const PRIORITIES: readonly string[] = ['info', 'warning', 'critical'];
-
 export const publishedKey = (id: string): string => `remote:${id}`;
-
-/** The backend's answer, each notice checked field by field. */
-export function parsePublished(raw: unknown): PublishedAnswer {
-	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return NOTHING;
-	const o = raw as Record<string, unknown>;
-	const n = o.donation_ask;
-	const donationAsk = typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : null;
-	const items: Published[] = [];
-	for (const r of Array.isArray(o.items) ? o.items : []) {
-		const p = notice(r);
-		if (p && !items.some((i) => i.id === p.id)) items.push(p);
-	}
-	return { donationAsk, items };
-}
-
-function notice(r: unknown): Published | null {
-	if (typeof r !== 'object' || r === null) return null;
-	const o = r as Record<string, unknown>;
-	const priority = o.priority ?? 'info';
-	if (!text(o.id) || !text(o.title) || !optionalText(o.body)) return null;
-	if (typeof priority !== 'string' || !PRIORITIES.includes(priority)) return null;
-	const link = o.link == null ? null : plainLink(o.link);
-	if (o.link != null && link === null) return null;
-	return {
-		id: o.id as string,
-		title: o.title as string,
-		body: (o.body as string | null | undefined) ?? null,
-		link,
-		priority: priority as Priority,
-		aboutSource: o.about_source === true
-	};
-}
-
-const text = (v: unknown): boolean => typeof v === 'string' && v.length > 0;
-const optionalText = (v: unknown): boolean => v == null || text(v);
-
-/** `v` as an http or https address with no credentials, or null. */
-function plainLink(v: unknown): string | null {
-	if (typeof v !== 'string') return null;
-	let url: URL;
-	try {
-		url = new URL(v);
-	} catch {
-		return null;
-	}
-	const plain =
-		(url.protocol === 'http:' || url.protocol === 'https:') &&
-		url.username === '' &&
-		url.password === '' &&
-		url.hostname !== '';
-	return plain ? url.href : null;
-}
 
 /** The rows the published notices raise: one each, except those about
  *  the source and those dismissed at an earlier launch; one read then is
