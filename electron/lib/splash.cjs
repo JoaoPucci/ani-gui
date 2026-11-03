@@ -107,6 +107,7 @@ function splashController({
         splash = createWindow(splashWindowOptions());
       } catch (err) {
         logError("[main] could not show the splash:", err);
+        log("[main] splash not opened: the window could not be made");
         markUp();
         return;
       }
@@ -141,7 +142,9 @@ function splashController({
         const byUser = win === splash && !over;
         if (win === splash) win = null;
         if (byUser) {
-          log(`[main] splash closed by the user: the launch is cancelled (${since()})`);
+          log(
+          `[main] splash closed before the boot was done (by the user or a quit): the launch is cancelled (${since()})`,
+        );
           dismissedByUser = true;
           over = true;
           onDismissed();
