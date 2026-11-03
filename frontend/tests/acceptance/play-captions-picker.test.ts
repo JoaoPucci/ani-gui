@@ -468,6 +468,22 @@ describe('the captions menu with many languages', () => {
 		expect(video.volume).toBe(0.5);
 	});
 
+	it('leaves modified arrows to the browser', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		await openMenu();
+		const before = document.activeElement;
+		for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'End']) {
+			for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+				const taken = !document.activeElement?.dispatchEvent(
+					new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, [mod]: true })
+				);
+				expect(taken).toBe(false);
+				expect(document.activeElement).toBe(before);
+			}
+		}
+	});
+
 	it('keeps the horizontal arrows in the menu, rather than seeking', async () => {
 		handlers();
 		const video = await mountAt('many-1', '1', MANY.length);

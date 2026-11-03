@@ -204,6 +204,13 @@ const press = (key: string) =>
 		new KeyboardEvent('keydown', { key, bubbles: true })
 	);
 
+/** Presses `key` with modifiers where focus is; true when something
+ *  took it (prevented its default). */
+const pressWith = (key: string, mods: KeyboardEventInit) =>
+	!(document.activeElement ?? document.body).dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods })
+	);
+
 /** Gives the video a duration, at 100 s, and proves the player's seek
  *  key moves it here: the page seeks only once it knows the duration,
  *  so without this a press that reached the player could not show. */
@@ -401,6 +408,29 @@ describe('play route — the quality the setting names, and the menu that change
 			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
 			'the speeds'
 		);
+	});
+
+	it("leaves modified arrows to the browser in the player's menu", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		menuButton().click();
+		await until(() => document.activeElement === menuItems()[0], 'focus on the first item');
+		const first = document.activeElement;
+		expect(pressWith('ArrowDown', { altKey: true })).toBe(false);
+		expect(document.activeElement).toBe(first);
+		const opener = menuItems().find(
+			(el) =>
+				el.getAttribute('aria-haspopup') === 'menu' &&
+				el.textContent?.includes(m.play_controls_menu_quality_label())
+		);
+		opener?.focus();
+		for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+			expect(pressWith('ArrowRight', { [mod]: true })).toBe(false);
+		}
+		await tick();
+		expect(menuItems().some((el) => el.getAttribute('role') === 'menuitemradio')).toBe(false);
+		expect(document.activeElement).toBe(opener);
 	});
 
 	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
@@ -752,6 +782,23 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 				el.getAttribute('role') === 'menuitem'
 			);
 		}, 'focus on an enabled item of the main list');
+	});
+
+	it('leaves modified arrows to the browser: Alt+ArrowLeft in the levels does not go back', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		await until(() => document.activeElement === moreItems()[0], 'focus on the back row');
+		const back = document.activeElement;
+		for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+			expect(pressWith('ArrowLeft', { [mod]: true })).toBe(false);
+			expect(pressWith('ArrowDown', { [mod]: true })).toBe(false);
+		}
+		await tick();
+		expect(moreRadios().length).toBeGreaterThan(0);
+		expect(document.activeElement).toBe(back);
 	});
 
 	it('names the one level of a single-level stream, with nothing to open', async () => {
