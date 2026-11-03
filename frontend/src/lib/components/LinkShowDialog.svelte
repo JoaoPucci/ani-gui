@@ -20,6 +20,7 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import type { LinkCandidate, LinkWarning } from '$lib/history/link-candidates';
+	import { focusBack, openerOf } from '$lib/history/focus-return';
 
 	interface Props {
 		open: boolean;
@@ -95,15 +96,12 @@
 	$effect.pre(() => {
 		if (!open || shown) return;
 		shown = true;
-		// Focus left on the page itself, as a closed overlay leaves it,
-		// is no place to go back to.
-		const active = document.activeElement;
-		if (active instanceof HTMLElement && active !== document.body) opener = active;
+		opener = openerOf(document.activeElement, document.body);
 	});
 	$effect(() => {
 		if (open || !shown) return;
 		shown = false;
-		const back = opener?.isConnected ? opener : (returnFocus?.() ?? null);
+		const back = focusBack(opener, returnFocus);
 		opener = null;
 		lastPicked = null;
 		back?.focus();
