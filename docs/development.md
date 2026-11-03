@@ -321,6 +321,15 @@ git commit -m "chore: start the remote flags file"
 git push -u origin flags
 ```
 
+On another checkout, once the branch exists, make the same worktree
+from the repository root (the same two commands in bash and
+PowerShell):
+
+```sh
+git fetch origin flags
+git worktree add ../ani-gui-flags flags
+```
+
 Until the branch exists, every launch gets a 404 and uses the
 defaults, which is also what an empty `flags` object does, and each
 session retries the file after 3, 10 and 30 minutes and then hourly.
@@ -339,17 +348,40 @@ behaviours its declaration lists:
 }
 ```
 
-**Flipping a flag.** Edit `flags.json` in the worktree above, then
-check, sign, commit and push it with step 3 of
-[Signing the flags file](#signing-the-flags-file), giving the commit a
-message such as `chore: switch some_kill_switch off`. Sign every edit,
-a flag change included: the signature covers the whole file, so an edit
-pushed without a fresh one leaves every install keeping the flags and
-dropping every notice the file carries, until a matching signature is
-pushed. GitHub's web editor cannot sign, so an edit made there does the
-same; make edits in the worktree. Before any build trusts a key there
-is nothing to drop, and step 3 without its two `minisign` lines is
-enough.
+**Flipping a flag.** Edit `flags.json` in the worktree above, not in
+GitHub's web editor, and publish it. Once `flags.json.minisig` is on the
+branch, publish every edit, a flag change included, with step 3 of
+[Signing the flags file](#signing-the-flags-file): the signature covers
+the whole file, and an edit pushed without a fresh one drops every
+notice the file carries (step 3 says how). Until then there is nothing
+to drop, and the file is published unsigned. In bash:
+
+```sh
+cd ../ani-gui-flags &&
+  git pull &&
+  python3 -m json.tool flags.json &&
+  git commit -am "chore: switch some_kill_switch off" &&
+  git push
+```
+
+In PowerShell (on `py -3`, see step 3):
+
+```powershell
+& {
+  Set-Location -ErrorAction Stop ..\ani-gui-flags
+  git pull
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
+  py -3 -m json.tool flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
+  git commit -am "chore: switch some_kill_switch off"
+  if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+  git push
+  if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+}
+```
+
+Each command runs only if the one before it succeeded, so a file that
+is not JSON is never committed or pushed.
 
 `python3 -m json.tool` checks only that the file is JSON. Two other
 mistakes get past it and fail differently:
@@ -367,7 +399,7 @@ and confirm the values with `GET /api/flags` (below).
 
 **Lifting a retreat.** Set the flag back to its default (`true`, or
 the current behaviour's name), or remove its entry, and publish the
-file as above, signed. Removing
+file as above. Removing
 the whole file, or the branch, also works in the end. But installs then
 get a 404, which counts as a failed fetch, so each one keeps the copy it
 cached for up to seven days.
@@ -482,7 +514,7 @@ cd ../ani-gui-flags &&
     -t "flags.json $(date -u +%Y-%m-%dT%H:%M:%SZ)" &&
   minisign -V -p ~/.minisign/ani-gui-flags.pub -m flags.json &&
   git add flags.json flags.json.minisig &&
-  git commit -m "chore: publish a notice" &&
+  git commit -m "chore: say what changed" &&
   git push
 ```
 
@@ -490,8 +522,9 @@ cd ../ani-gui-flags &&
 prehashed signature, the only kind the app accepts; `-V` checks it
 before it is pushed. Each command runs only if the one before it
 succeeded, so a file that is not JSON, or a signature that does not
-verify, is never committed or pushed. In PowerShell (Windows' `python3` may be the
-Store's placeholder, so the check uses `py -3`; PowerShell's own
+verify, is never committed or pushed. Put what changed in the commit
+message. In PowerShell (Windows' `python3` may be the Store's
+placeholder, so the check uses `py -3`; PowerShell's own
 `ConvertFrom-Json` accepts comments the app does not, so it is no
 substitute):
 
@@ -508,7 +541,7 @@ substitute):
   if ($LASTEXITCODE -ne 0) { throw 'the signature does not verify' }
   git add flags.json flags.json.minisig
   if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
-  git commit -m "chore: publish a notice"
+  git commit -m "chore: say what changed"
   if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
   git push
   if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
@@ -517,11 +550,12 @@ substitute):
 
 After pushing, wait out the CDN's five-minute cache: until both files
 are fresh it can serve the new file with the old signature, and a
-launch in that window keeps the flags and drops the notices. An edit pushed without a fresh signature leaves the
-old signature beside new bytes: installs keep the flags and drop the
-notices until a matching signature is pushed. GitHub's web editor
-cannot sign, so a notice edit made there needs the steps above
-afterwards.
+launch in that window keeps the flags and drops the notices. An edit
+pushed without a fresh signature leaves the old signature beside new
+bytes: installs keep the flags and drop the notices until a matching
+signature is pushed. GitHub's web editor cannot sign, so make every
+edit in the worktree; an edit already made there needs this step at
+once.
 
 **4. Rotating the key.** Make the new pair (step 1), add its public key
 to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is

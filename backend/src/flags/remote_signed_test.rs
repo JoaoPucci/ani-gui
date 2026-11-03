@@ -164,6 +164,7 @@ async fn a_hung_signature_beside_a_prompt_file_ends_within_the_launchs_wait() {
         "{:?}",
         started.elapsed()
     );
+    assert_eq!(doc.get("some_feature"), Some(&serde_json::json!(false)));
     assert_eq!(doc.get(NOTICES_KEY), None);
 }
 
