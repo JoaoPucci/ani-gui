@@ -7,10 +7,10 @@
 //! The resolve is not the watch: it records no watch moment, and a
 //! watch waiting to be recorded still records after it. Where only a
 //! Kitsu read could judge the pairing, or the cache refuses it, the
-//! id waits for the watch as before. The renderer sends a guessed
-//! Continue session's id only with its mark-watched; the guessed cases
-//! here hold the backend to the same rule as a second line: a guessed
-//! resolve records its id only on its card's own listing.
+//! id waits for the watch as before. A guessed Continue session's
+//! resolve names its guess apart from the page (`guess_id`, beside
+//! `guess_row`), and records it only when the play landed on the
+//! card's own listing — under the same cache-only check.
 
 use super::*;
 use crate::commands::play_native_test_provider::{
@@ -323,4 +323,124 @@ async fn a_replay_whose_page_the_cache_refuses_records_no_id() {
         .expect("replays");
     assert!(resp.cache_hit);
     assert_eq!(row(&state, &key(CUMULATIVE_S2_SLUG)).kitsu_id, None);
+}
+
+/// A play of the stitched show's episode 5 that a guessed Continue card
+/// asked for: the card's row `guess_row` and its guess `guess_id`, sent
+/// as the renderer sends a guessed resolve — with no page id.
+fn guessed(guess_id: Option<&str>, guess_row: Option<&str>) -> PlayArgs {
+    let mut v = serde_json::json!({
+        "title": STITCHED,
+        "episode": "5",
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+    });
+    if let Some(id) = guess_id {
+        v["guess_id"] = serde_json::json!(id);
+    }
+    if let Some(row) = guess_row {
+        v["guess_row"] = serde_json::json!(row);
+    }
+    serde_json::from_value(v).expect("args")
+}
+
+#[tokio::test]
+async fn a_guessed_resolve_on_its_cards_listing_records_the_guess() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let own = key(STITCHED_SLUG);
+    let resp = play_with_progress(&state, &guessed(Some("45412"), Some(&own)), |_| {})
+        .await
+        .expect("plays");
+    assert!(resp.own_listing);
+    let row = row(&state, &own);
+    assert_eq!(row.kitsu_id.as_deref(), Some("45412"));
+    assert_eq!(row.watched_at, None, "a resolve is not a watch");
+}
+
+#[tokio::test]
+async fn a_guessed_replay_on_its_cards_listing_records_the_guess() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let own = key(STITCHED_SLUG);
+    let asked = guessed(Some("45412"), Some(&own));
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &asked.resolution_key(),
+        &CachedResolution {
+            upstream_url: format!("{}/x/master.m3u8", upstream.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: own.clone(),
+            show_title: STITCHED.into(),
+            resolved_slot: Some(5),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("5".into()),
+            former_episode: None,
+            versions: Vec::new(),
+            version: None,
+            episode_unverified: false,
+        },
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(row(&state, &own).kitsu_id.as_deref(), Some("45412"));
+}
+
+#[tokio::test]
+async fn a_guessed_resolve_that_lands_elsewhere_records_no_guess() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let other = key("another-show-4");
+    play_with_progress(&state, &guessed(Some("45412"), Some(&other)), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(row(&state, &key(STITCHED_SLUG)).kitsu_id, None);
+}
+
+#[tokio::test]
+async fn a_guess_no_card_row_names_is_not_recorded() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    play_with_progress(&state, &guessed(Some("45412"), None), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(row(&state, &key(STITCHED_SLUG)).kitsu_id, None);
+}
+
+#[tokio::test]
+async fn a_guess_the_cache_refuses_is_not_recorded_on_its_own_listing() {
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap_season()));
+    cache_detail(&state, "77", "cumulative-show");
+    let own = key(CUMULATIVE_S2_SLUG);
+    let args: PlayArgs = serde_json::from_value(serde_json::json!({
+        "title": CUMULATIVE_S2,
+        "episode": "1",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "guess_row": own,
+        "guess_id": "77",
+    }))
+    .expect("args");
+    let resp = play_with_progress(&state, &args, |_| {})
+        .await
+        .expect("plays");
+    assert!(resp.own_listing);
+    assert_eq!(row(&state, &own).kitsu_id, None);
 }

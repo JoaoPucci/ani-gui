@@ -261,6 +261,8 @@ describe("play route — a guessed card's session", () => {
 		const asked = await switchInGuessedSession(3, 4, true);
 		expect(asked.searchParams.get('guess_row')).toBe(ROW);
 		expect(asked.searchParams.has('kitsu_id')).toBe(false);
+		// The switch's resolve names the guess apart from the page.
+		expect(asked.searchParams.get('guess_id')).toBe(KITSU_ID);
 		expect(stamped.at(-1)).toMatchObject({ episode: '4', kitsu_id: KITSU_ID });
 		await until(() => writes.length >= TRACKERS.length, 'both trackers written');
 		for (const provider of TRACKERS) {
