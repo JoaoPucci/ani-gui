@@ -19,7 +19,7 @@
  * saved sign-in must be left as it was.
  */
 import { expect, test } from "@playwright/test";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -32,6 +32,15 @@ test.beforeAll(() => {
     throw new Error(
       `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
     );
+  }
+  // Chromium loads libsecret at run time to reach the secret service;
+  // without it safeStorage falls back to basic_text at once, the bus is
+  // never asked, and nothing here would be tested.
+  const libraries = execFileSync("/sbin/ldconfig", ["-p"], {
+    encoding: "utf8",
+  });
+  if (!libraries.includes("libsecret-1.so.0")) {
+    throw new Error("prereq missing: libsecret-1.so.0\ninstall: libsecret-1-0");
   }
 });
 
