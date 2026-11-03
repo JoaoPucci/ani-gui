@@ -46,3 +46,44 @@ fn a_success_after_an_outage_reads_as_answering_again() {
     assert!(matches!(gate.health(), Health::AnsweringAgain { .. }));
     assert!(!gate.is_open());
 }
+
+#[test]
+fn a_success_that_started_before_the_outage_does_not_end_it() {
+    let gate = ScraperGate::new();
+    let before = Instant::now();
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    for _ in 0..4 {
+        fail(&gate, ScrapePriority::Interactive);
+    }
+    gate.record_from(ScrapePriority::Interactive, ScrapeOutcome::Success, before);
+    assert!(gate.is_open(), "the breaker refused the stale success");
+    assert!(
+        matches!(gate.health(), Health::NotAnswering { .. }),
+        "{:?}",
+        gate.health()
+    );
+}
+
+#[test]
+fn failures_that_started_before_a_recovery_do_not_bring_the_outage_back() {
+    let gate = ScraperGate::new();
+    let before = Instant::now();
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    for _ in 0..4 {
+        fail(&gate, ScrapePriority::Interactive);
+    }
+    gate.record_from(
+        ScrapePriority::Interactive,
+        ScrapeOutcome::Success,
+        Instant::now(),
+    );
+    for _ in 0..4 {
+        gate.record_from(ScrapePriority::Interactive, ScrapeOutcome::Failure, before);
+    }
+    assert!(!gate.is_open(), "the breaker refused the stale failures");
+    assert!(
+        matches!(gate.health(), Health::AnsweringAgain { .. }),
+        "{:?}",
+        gate.health()
+    );
+}
