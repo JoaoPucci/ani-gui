@@ -342,6 +342,29 @@ describe('play route — the quality the setting names, and the menu that change
 		expect(video.currentTime).toBe(100);
 	});
 
+	it("keeps focus in the player's menu when the stream retires under its levels", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the next engine');
+		await until(
+			() => !menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the main list'
+		);
+		await until(() => {
+			const el = document.activeElement;
+			return el instanceof HTMLButtonElement && menuItems().includes(el) && !el.disabled;
+		}, 'focus on an enabled item of the menu');
+	});
+
 	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
 		// The settings answer after the master's levels have arrived: the
 		// engine is made not to start on its own, and starts once the
