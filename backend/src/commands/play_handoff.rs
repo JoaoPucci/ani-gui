@@ -51,6 +51,7 @@ pub async fn resolve_launch_args(
     let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(
         quality,
+        &cfg.locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -127,7 +128,12 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: subtitle_urls_default_first(&native.subtitles),
+        subtitle_urls: subtitle_urls_preferred(&native.subtitles, args.wanted(&cfg.locale)),
+        subtitles_off: args.captions_off()
+            || !crate::scraper::track_preference::has_start(
+                &native.subtitles,
+                args.wanted(&cfg.locale),
+            ),
     }
 }
 
@@ -138,17 +144,17 @@ pub(crate) fn window_title(show: &str, episode: &str) -> String {
     format!("{show} · ep {episode}")
 }
 
-/// The tracks' URLs with the provider's default first: a player that
-/// takes one subtitle file takes the first listed. The provider's
-/// order stands among the rest, and among several defaults.
+/// The tracks' URLs most wanted first
+/// ([`crate::scraper::track_preference::preference_order`]): a player
+/// that takes one subtitle file takes the first listed, and a command
+/// line that cannot carry them all keeps the first ones.
 #[must_use]
-pub fn subtitle_urls_default_first(
+pub fn subtitle_urls_preferred(
     tracks: &[crate::scraper::provider::SubtitleTrack],
+    wanted: crate::scraper::track_preference::Wanted<'_>,
 ) -> Vec<String> {
-    let (defaults, rest): (Vec<_>, Vec<_>) = tracks.iter().partition(|t| t.default);
-    defaults
+    crate::scraper::track_preference::preferred_first(tracks, wanted)
         .into_iter()
-        .chain(rest)
         .map(|t| t.url.clone())
         .collect()
 }

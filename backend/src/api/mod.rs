@@ -173,10 +173,31 @@ async fn get_proxy_base_url(State(state): State<Arc<AppState>>) -> Result<Json<S
     Ok(Json(proxy_url::proxy_base_url(&state)?))
 }
 
+/// A history row as Continue Watching reads it: the row, and the
+/// release year its show key names among its slug's words
+/// ([`crate::scraper::provider::key_year`]) — the renderer does not
+/// read slugs, and the year is what tells apart listings a provider
+/// titles alike ("JoJo's Bizarre Adventure", three times over).
+#[derive(serde::Serialize)]
+struct HistoryRow {
+    #[serde(flatten)]
+    entry: HistoryEntry,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_year: Option<u32>,
+}
+
 async fn get_history(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<HistoryEntry>>, AniError> {
-    Ok(Json(h_inner::history_list(&state)?))
+) -> Result<Json<Vec<HistoryRow>>, AniError> {
+    Ok(Json(
+        h_inner::history_list(&state)?
+            .into_iter()
+            .map(|entry| HistoryRow {
+                key_year: crate::scraper::provider::key_year(&entry.id),
+                entry,
+            })
+            .collect(),
+    ))
 }
 
 async fn delete_history(State(state): State<Arc<AppState>>) -> Result<StatusCode, AniError> {
@@ -350,6 +371,10 @@ struct TitleMatchQuery {
     /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
+    /// The year the row names, which keeps its guess apart from a
+    /// row's titled alike ([`crate::commands::title_match_year`]).
+    #[serde(default)]
+    year: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -367,7 +392,8 @@ async fn get_title_match(
 ) -> Result<Json<Option<String>>, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
-    let stored = kitsu_inner::title_match_get(&state, provider, &q.title, q.cour)?;
+    let title = crate::commands::title_match_year::keyed_title(&q.title, q.year);
+    let stored = kitsu_inner::title_match_get(&state, provider, &title, q.cour)?;
     Ok(Json(stored_kitsu_id(stored)))
 }
 
@@ -390,6 +416,9 @@ struct TitleMatchBody {
     /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
+    /// The year the row names ([`TitleMatchQuery::year`]).
+    #[serde(default)]
+    year: Option<u32>,
 }
 
 async fn put_title_match(
@@ -399,10 +428,11 @@ async fn put_title_match(
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
     let kitsu_id = crate::kitsu_id::require(&body.kitsu_id)?;
-    crate::commands::title_match_store::store_title_match(
+    crate::commands::title_match_store::store_title_match_for_year(
         &state,
         provider,
         &body.title,
+        body.year,
         body.cour,
         kitsu_id,
     )?;
@@ -694,10 +724,13 @@ async fn post_play_mark_watched(
             // build theirs: the episode the click played, as the app
             // numbers it.
             let watch = crate::commands::play_cache::cached_watch(&cached, &args.episode);
+            // A guessed card's watch carries the guessed id only onto
+            // that card's own listing: a resolve since the session's may
+            // have landed elsewhere.
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
-                args.kitsu_id.as_deref(),
+                args.recordable_kitsu_id(&cached.show_id),
                 begun,
             )
             .await;
@@ -800,6 +833,18 @@ async fn post_play_cache_evict(
 #[cfg(test)]
 #[path = "kitsu_map_test.rs"]
 mod kitsu_map_tests;
+
+#[cfg(test)]
+#[path = "history_key_year_test.rs"]
+mod history_key_year_tests;
+
+#[cfg(test)]
+#[path = "title_match_year_test.rs"]
+mod title_match_year_tests;
+
+#[cfg(test)]
+#[path = "mark_watched_guess_test.rs"]
+mod mark_watched_guess_tests;
 
 #[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]

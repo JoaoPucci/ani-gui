@@ -1,7 +1,8 @@
 /**
  * A Svelte action for images that fade in once their pixels arrive —
- * an episode still or a Continue card's image, including one a held-back
- * fill brings later.
+ * an episode still on a show's page or in the player, including one a
+ * held-back fill brings later. A Continue card's artwork has its own
+ * reveal, `$lib/history/reveal-image`.
  *
  * The fade starts on `load`, not when the element is inserted: an
  * animation run on insertion is usually spent before a cold image's
