@@ -4,10 +4,13 @@
  * reaches, the earliest start, then the lowest id; where every member
  * has a prequel (the run is one loop), the earliest member.
  */
+import { byStart } from './by-start';
 import type { RunLink, WatchEntry } from './types';
 
 /** The first entry's id, or null for an empty run. */
 export function nameId(entries: readonly WatchEntry[], links: readonly RunLink[]): string | null {
-	void links;
-	return entries.at(-1)?.id ?? null;
+	const reached = new Set(links.filter(([a, b]) => a !== b).map(([, b]) => b));
+	const roots = entries.filter((e) => !reached.has(e.id));
+	const pool = roots.length > 0 ? roots : entries;
+	return [...pool].sort(byStart)[0]?.id ?? null;
 }
