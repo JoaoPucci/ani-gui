@@ -350,6 +350,20 @@ describe('changing the show', () => {
 	});
 });
 
+describe('the episode the picker names', () => {
+	it('is the one Continue Watching picks up at, as the card and the page show it', async () => {
+		// The row saved episode 5; the card, and the page's Continue,
+		// offer episode 6.
+		await openShowPage(GUESS, { guessed: CARD });
+		await until(hasNote, 'the matched-from line');
+		button(m.detail_link_change())!.click();
+		await until(() => target.querySelector('[role="dialog"]') !== null, 'the picker');
+		const text = target.querySelector('[role="dialog"]')!.textContent ?? '';
+		expect(text).toContain(m.detail_link_dialog_body({ episode: '6' }));
+		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '5' }));
+	});
+});
+
 describe('the picker, by keyboard and while it links', () => {
 	it('gives focus back to Change when closed', async () => {
 		await openShowPage(GUESS, { guessed: CARD });

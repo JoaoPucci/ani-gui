@@ -93,7 +93,11 @@ describe('linkWarnings', () => {
 	it('warns when the saved title names a season the show does not', () => {
 		const gintama4 = row('hianime:gintama-season-4-1381', 'Gintama Season 4');
 		expect(
-			linkWarnings(gintama4, ref('10083', { canonical_title: 'Gintama°', slug: 'gintama-2015-tv' }))
+			linkWarnings(
+				gintama4,
+				ref('10083', { canonical_title: 'Gintama°', slug: 'gintama-2015-tv' }),
+				1
+			)
 		).toEqual(['season']);
 	});
 
@@ -108,27 +112,38 @@ describe('linkWarnings', () => {
 				ref('46598', {
 					canonical_title: 'JoJo no Kimyou na Bouken: Stone Ocean Part 3',
 					slug: 'jojo-no-kimyou-na-bouken-stone-ocean-part-3'
-				})
+				}),
+				1
 			)
 		).toEqual([]);
 		expect(
 			linkWarnings(
 				row('x-1', 'Show Season 2'),
-				ref('5', { canonical_title: 'Show II', slug: 'show-season-2' })
+				ref('5', { canonical_title: 'Show II', slug: 'show-season-2' }),
+				1
 			)
 		).toEqual([]);
 	});
 
-	it('warns when the history is past the show’s episode count', () => {
+	it('warns when the episode the card offers is past the show’s episode count', () => {
 		const naruto = row('hianime:naruto-shippuden-600', 'Naruto: Shippuden', '425');
 		expect(
-			linkWarnings(naruto, ref('12625', { canonical_title: 'Naruto', episode_count: 1 }))
+			linkWarnings(naruto, ref('12625', { canonical_title: 'Naruto', episode_count: 1 }), 426)
 		).toEqual(['episode']);
 		expect(
-			linkWarnings(naruto, ref('1555', { canonical_title: 'Naruto', episode_count: 500 }))
+			linkWarnings(naruto, ref('1555', { canonical_title: 'Naruto', episode_count: 500 }), 426)
 		).toEqual([]);
 		expect(
-			linkWarnings(naruto, ref('1555', { canonical_title: 'Naruto', episode_count: null }))
+			linkWarnings(naruto, ref('1555', { canonical_title: 'Naruto', episode_count: null }), 426)
 		).toEqual([]);
+	});
+
+	it('measures the episode the card offers, not the one the row saved', () => {
+		// The row saved episode 1 and the card offers 2: the one-episode
+		// special is too short for the card, though not for the row.
+		const special = ref('12625', { canonical_title: 'Black Clover Special', episode_count: 1 });
+		expect(linkWarnings(row('hianime:black-clover-949', 'Black Clover', '1'), special, 2)).toEqual([
+			'episode'
+		]);
 	});
 });

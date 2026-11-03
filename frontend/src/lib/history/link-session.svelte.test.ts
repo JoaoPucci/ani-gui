@@ -80,13 +80,42 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 	return f;
 }
 
+describe('the episode the picker names', () => {
+	it('is the one the surface it opened from shows for the card', async () => {
+		const s = new LinkSession(fake().deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start(7);
+		expect(s.episode).toBe('7');
+	});
+
+	it('is the episode a Continue click plays when the surface names none', async () => {
+		const s = new LinkSession(fake().deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		expect(s.episode).toBe('4');
+	});
+
+	it('is what the episode warning measures against the chosen show', async () => {
+		const s = new LinkSession(fake().deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start(52);
+		s.choose({ ref: RIGHT, current: false });
+		expect(s.warnings).toContain('episode');
+		await s.start(51);
+		s.choose({ ref: RIGHT, current: false });
+		expect(s.warnings).not.toContain('episode');
+	});
+});
+
 describe('LinkSession', () => {
 	it('offers the link on the page a guessed card opened, and only there', async () => {
 		const f = fake();
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		expect(s.offer?.entry.id).toBe(CARD.id);
-		expect(s.episode).toBe('3');
+		// The episode a Continue click plays next, as the card shows it:
+		// the row is at episode 3.
+		expect(s.episode).toBe('4');
 		await s.arrive(null, GUESS);
 		expect(s.offer).toBeNull();
 	});
