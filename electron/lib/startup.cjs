@@ -177,7 +177,8 @@ async function waitBeforeShow(contents, beforeShow, logError) {
   if (gone) throw new Error(`renderer gone before the first show (${gone.reason})`);
 }
 
-async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async () => {} }) {
+async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async () => {}, reveal }) {
+  void reveal;
   const contents = win.webContents;
   let failed = false;
   // `beforeShow` is what must be on screen first — the splash, which a

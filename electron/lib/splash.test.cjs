@@ -10,7 +10,7 @@ const {
   SPLASH_PAGE,
   SPLASH_SHOW_WAIT_MS,
   lastSplashState,
-  mapAfterSplash,
+  revealMaximized,
   splashController,
   splashWindowOptions,
 } = require("./splash.cjs");
@@ -355,56 +355,34 @@ test("every way the splash cannot reach the screen releases the wait at once, no
   assert.equal(await settlesAtOnce(t, eWait), false, "still out");
 });
 
-/** A fake of the app's window: records when it is mapped. */
+/** A fake of the app's window: records what is done to it. */
 function fakeAppWindow() {
   const win = { calls: [], destroyed: false };
   win.isDestroyed = () => win.destroyed;
   win.maximize = () => win.calls.push("maximize");
+  win.show = () => win.calls.push("show");
   return win;
 }
 
-test("the app's window is not mapped until the splash has painted, even where nothing keeps the splash on top", async (t) => {
-  // On native Wayland always-on-top is ignored, so a mapped app window
-  // would cover the splash. The splash is shown first and alone; the
-  // app's window is mapped (maximized) only once it has painted.
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const splashWin = fakeSplash();
-  let painted;
-  splashWin.webContents.executeJavaScript = () => new Promise((resolve) => (painted = resolve));
-  const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
-  splash.show();
-  splashWin.emit("ready-to-show");
+test("revealing the app's window maps it maximized, shows it, then puts the splash away", () => {
+  // Maximizing a hidden window maps it already maximized — the
+  // open-maximized pattern; the listeners that act from the map on are
+  // attached after it, and the splash goes once the window is shown,
+  // not when its page later finishes loading.
   const app = fakeAppWindow();
-  const mapped = mapAfterSplash(app, () => splash.whenShown(), () => app.calls.push("listening"));
-  for (let i = 0; i < 5; i++) await tick();
-  assert.deepEqual(app.calls, [], "not mapped while the splash has not painted");
-  painted(true);
-  await mapped;
-  assert.deepEqual(app.calls, ["maximize", "listening"]);
+  revealMaximized(app, {
+    onMapped: () => app.calls.push("listening"),
+    afterShow: () => app.calls.push("splash-closed"),
+  });
+  assert.deepEqual(app.calls, ["maximize", "listening", "show", "splash-closed"]);
 });
 
-test("a splash that never paints holds the app's window back no longer than its bound", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const splashWin = fakeSplash();
-  splashWin.webContents.executeJavaScript = () => new Promise(() => {});
-  const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
-  splash.show();
-  splashWin.emit("ready-to-show");
-  const app = fakeAppWindow();
-  const mapped = mapAfterSplash(app, () => splash.whenShown(), () => {});
-  t.mock.timers.tick(SPLASH_SHOW_WAIT_MS - 1);
-  for (let i = 0; i < 5; i++) await tick();
-  assert.deepEqual(app.calls, []);
-  t.mock.timers.tick(1);
-  await mapped;
-  assert.deepEqual(app.calls, ["maximize"]);
-});
-
-test("an app window gone before the splash painted is not mapped", async () => {
+test("an app window gone before it is revealed is left alone", () => {
   const app = fakeAppWindow();
   app.destroyed = true;
-  let listening = false;
-  await mapAfterSplash(app, async () => {}, () => (listening = true));
+  revealMaximized(app, {
+    onMapped: () => app.calls.push("listening"),
+    afterShow: () => app.calls.push("splash-closed"),
+  });
   assert.deepEqual(app.calls, []);
-  assert.equal(listening, false);
 });

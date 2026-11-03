@@ -25,6 +25,7 @@ const {
   openFirstPage,
 } = require("./startup.cjs");
 const { FLAGS_WAIT_MS, waitForLaunchFlags } = require("./launch-flags.cjs");
+const { splashController } = require("./splash.cjs");
 
 // Electron's loadURL rejections carry the net error name as `code`.
 const loadError = (code, errno, url) =>
@@ -675,4 +676,113 @@ test("a renderer that dies while the window waits to show fails the boot, and th
   release();
   await assert.rejects(opened, /renderer gone/);
   assert.equal(win.shows, 0);
+});
+
+// The reveal — mapping the window maximized, showing it and closing
+// the splash — stands in for the plain show, and is held to the same
+// guard: a window whose first page failed is never revealed.
+
+/** A window whose reveal is counted; `load` plays its first load. */
+const revealable = (load) => {
+  const win = showableWindow(load);
+  win.reveals = 0;
+  return win;
+};
+const reveal = (win) => () => (win.reveals += 1);
+
+test("the window is revealed, not merely shown, once it is ready and what must come first has", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = revealable(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0);
+  release();
+  await opened;
+  assert.equal(win.reveals, 1);
+  assert.equal(win.shows, 0, "the reveal does the showing");
+});
+
+test("a first page that fails while the window waits is never revealed", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = revealable(fails(loadError("ERR_FAILED", -2, "app://localhost/")));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await assert.rejects(opened);
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0);
+});
+
+test("an error page that paints after its failure is never revealed", async () => {
+  const win = revealable(answers(404));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: async () => {},
+    reveal: reveal(win),
+  });
+  await assert.rejects(opened, /404/);
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0);
+});
+
+test("a renderer that dies while the window waits is never revealed", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = revealable(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  release();
+  await assert.rejects(opened, /renderer gone/);
+  assert.equal(win.reveals, 0);
+});
+
+test("the app's window is not revealed until the splash has painted, even where nothing keeps the splash on top", async () => {
+  // On native Wayland always-on-top is ignored: the splash must be on
+  // screen first and alone, so the app's window waits for its paint.
+  const splashWin = new EventEmitter();
+  splashWin.isDestroyed = () => false;
+  splashWin.show = () => splashWin.emit("show");
+  splashWin.loadFile = async () => {};
+  let painted;
+  splashWin.webContents = {
+    executeJavaScript: () => new Promise((resolve) => (painted = resolve)),
+  };
+  const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
+  splash.show();
+  splashWin.emit("ready-to-show");
+  const win = revealable(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => splash.whenShown(),
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0, "not revealed while the splash has not painted");
+  painted(true);
+  await opened;
+  assert.equal(win.reveals, 1);
 });

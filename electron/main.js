@@ -50,7 +50,7 @@ const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
-const { mapAfterSplash, splashController } = require("./lib/splash.cjs");
+const { revealMaximized, splashController } = require("./lib/splash.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
@@ -470,9 +470,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // hidden, so the underlying surface is created with the maximize
   // hint already set. Most launches end here — the WM honors the
   // hint at map time and the window appears maximized in one shot.
-  // That call is what maps the window, so it is made only once the
-  // splash has painted (mapAfterSplash, lib/splash.cjs): the splash is
-  // on screen first and alone, and the page loads hidden meanwhile.
+  // That call is what maps the window, so it is made only when the
+  // window is revealed (revealMaximized, lib/splash.cjs): once its page
+  // has painted hidden and the splash has painted, so the splash is on
+  // screen first and alone.
   //
   // Step 2 — post-show fallback: ~1 launch in 5 mutter drops the
   // pre-show hint under load and the window comes up at workArea
@@ -530,7 +531,11 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // mapped (maximized) and shown, and the splash put away. The two
     // are never on screen competing, on any platform. A later window
     // finds no splash and waits for nothing.
-    beforeShow: () => mapAfterSplash(win, () => splash.whenShown(), mapped),
+    beforeShow: () => splash.whenShown(),
+    // Map maximized, show, and put the splash away at that moment —
+    // not when the page later finishes loading. Never for a window
+    // whose first page failed (lib/startup.cjs).
+    reveal: () => revealMaximized(win, { onMapped: mapped, afterShow: () => splash.close() }),
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
