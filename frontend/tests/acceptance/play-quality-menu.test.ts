@@ -365,6 +365,44 @@ describe('play route — the quality the setting names, and the menu that change
 		}, 'focus on an enabled item of the menu');
 	});
 
+	it("leaves the player's Quality list when its menu has nothing left to show, the stream still attached", async () => {
+		// A lone level nothing names has no menu (`qualityMenu` is null)
+		// while the stream's view is still there: the list closes, and
+		// the menu is as if it had never been opened — focus in it, and
+		// Right on Speed opens Speed.
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [{ height: 0, width: 0, bitrate: 0 }] });
+		await until(
+			() => !menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the main list'
+		);
+		await until(() => {
+			const el = document.activeElement;
+			return el instanceof HTMLButtonElement && menuItems().includes(el) && !el.disabled;
+		}, 'focus on an enabled item of the menu');
+		const speed = () =>
+			menuItems().find(
+				(el) =>
+					el.getAttribute('aria-haspopup') === 'menu' &&
+					el.textContent?.includes(m.play_controls_menu_speed_label())
+			);
+		speed()?.focus();
+		press('ArrowRight');
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the speeds'
+		);
+	});
+
 	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
 		// The settings answer after the master's levels have arrived: the
 		// engine is made not to start on its own, and starts once the
