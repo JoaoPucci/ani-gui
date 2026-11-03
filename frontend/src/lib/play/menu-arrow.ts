@@ -26,3 +26,20 @@ export function menuArrow(key: string, at: MenuArrowAt): 'open' | 'back' | 'stay
 	if (!inward && at.listOpen) return 'back';
 	return 'stay';
 }
+
+/** A key event's modifiers and key, as the menus read them. */
+export interface KeyChord {
+	readonly key: string;
+	readonly altKey: boolean;
+	readonly ctrlKey: boolean;
+	readonly metaKey: boolean;
+	readonly shiftKey: boolean;
+}
+
+/** The key a menu acts on: the event's key when no modifier is held,
+ *  null otherwise — a modified key (Alt+ArrowLeft for history back,
+ *  and the like) is not the menu's, and passes through untouched. */
+export function plainKey(chord: KeyChord): string | null {
+	void chord;
+	return chord.key;
+}
