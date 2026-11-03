@@ -202,3 +202,18 @@ test("electron-builder 26's AppRun passes --no-sandbox on both exec lines, whate
 		fs.rmSync(root, { recursive: true, force: true });
 	}
 });
+
+// A template that drifts on one exec line only would otherwise be
+// written half-patched and reported as done; the next pass would then
+// find `exec "$BIN" --no-sandbox` and call it fully patched. Both lines
+// are patched or the repack stops.
+test('an AppRun where only one exec line is recognised stops the repack, unchanged', () => {
+	const drifted = TEMPLATE.replace('exec "$BIN" "${args[@]}"', 'exec "$BIN" --some-new-flag "${args[@]}"');
+	const { root, app } = withAppRun(drifted);
+	try {
+		assert.throws(() => prepareTree(app), /AppRun patch matched/);
+		assert.equal(fs.readFileSync(path.join(app, 'AppRun'), 'utf8'), drifted);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
