@@ -128,3 +128,11 @@ impl KitsuClient {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "kitsu_franchise_read_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "kitsu_franchise_read_prop_test.rs"]
+mod prop_tests;

@@ -47,6 +47,13 @@
       "size": 2919,
       "sha256": "628cb8ec4a8fa41e4e90371be0911f4f2c8a93d8ffc578555a4fba542f7ce3e7",
       "notes": "The search term the show key hianime:rezero-starting-life-in-another-world-season-4-4587 makes: anime/49746 alone, slug re-zero-kara-hajimeru-isekai-seikatsu-4, whose titles spell \"Re:ZERO\" as two words where the key runs them together."
+    },
+    "franchise_rel_7730.json": {
+      "request": "GET /anime/7730/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=0",
+      "captured_at": "2026-11-03",
+      "size": 6930,
+      "sha256": "814da0af1dccc938d7c7708d747b9a303b19ae8f98ae3c9ef4a4d6e94bc5e02f",
+      "notes": "The franchise read of the 2000 JoJo OVA (anime/7730): sequel the 1993 OVA (610), prequel the 2012 series (7158), the Stardust Crusaders series (8063) as alternative_version, and the manga (1899) as adaptation; meta.count 4."
     }
   }
 }
