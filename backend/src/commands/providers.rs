@@ -660,7 +660,7 @@ where
             .and_then(|ne| ne.failed_at)
             .or_else(|| client.last_attempt_at())
             .unwrap_or(started);
-        gate_of(provider).record(outcome, observed_at);
+        gate_of(provider).record_from(priority, outcome, observed_at);
     }
     match result {
         Ok(value) if A::is_inconclusive(&value) => {

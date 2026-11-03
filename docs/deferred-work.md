@@ -617,35 +617,36 @@ starting it, and delete it when you find it done.
   belongs in keeping hls.js's own subtitle selection in step with the
   captions menu.
 - **Illustrated brand assets** — post-1.0.
-- **A notification center.** Two jobs, and the second is the reason
-  the feature exists. The first is aggregation: the app's notices are
-  scattered today — update availability is a topbar badge with its
-  dialog, download outcomes live on the dock's terminal rows, and the
-  diagnostics page holds boot-time notices — and a single surface
-  would give them, and whatever later features emit, somewhere to go
-  when the user was not looking. The second is telling users about
-  outages like the provider failure of 2026-08-27 — the outage that
-  led the app to hianime: every
-  uncached play failed as unreachable and
-  the app had nowhere to say the problem was the provider's, not
-  their setup's. That job needs a
-  notice source that does not exist yet — the app inferring an outage
-  from its own failures, or fetching announcements from somewhere it
-  trusts — and choosing one is the design work, along with which
-  signals feed the surface and what persistence they get.
-
-  Tracker sign-in problems are among the notices the first job would
-  gather. A tracker can refuse to
-  renew a sign-in, which means reconnecting, or fail to answer the
-  renewal, which means the sign-in may still be valid and the app keeps
-  trying. Until the centre exists, a pinned toast carries both, and it
-  is the stopgap rather than the design: one toast per incident is all
-  it can do. It is not kept anywhere, so once dismissed it is gone.
-  While the sign-in stays expired, the amber dot on the account chip is
-  the only trace. A sign-in still valid whose renewal was refused
-  leaves none. A tracker list
-  pull for the Watch Later rail that fails for any other reason is
-  quieter still: the rail keeps its saved copy and nothing says so.
+- **Notices the notification center does not gather yet.** The center
+  (`frontend/src/lib/notices/`) lists updates, finished and failed
+  downloads, and the streaming source not answering. The notices it was
+  also meant to gather still live where they arise. Tracker sign-in
+  problems are a pinned toast, one per incident and kept nowhere: a
+  tracker can refuse to renew a sign-in, which means reconnecting, or
+  fail to answer the renewal, which means the sign-in may still be
+  valid and the app keeps trying, and once the toast is dismissed the
+  amber dot on the account chip is the only trace of an expired one
+  and a refused renewal of a still-valid one leaves none. A tracker
+  list pull for the Watch Later rail that fails for any other reason
+  says nothing at all: the rail keeps its saved copy. Progress that did
+  not save to a tracker is a four-second toast. The files removed at
+  startup are a section of the diagnostics page. The proposal also
+  listed "what's new" after an update, a new episode of a show in
+  progress, and opt-in system notifications, which on Windows need
+  `app.setAppUserModelId` and a check on a Windows machine. They waited
+  because the center's first version was scoped to the notices the
+  maintainer's design decisions covered.
+- **Published notices and the donation ask are read but not shown.**
+  The flags file may carry a notices block: the backend keeps it, as it
+  came, with the launch's flags (`FlagStore::notices`), and the strict
+  parser for it (`backend/src/notices/remote.rs`) and the donation
+  ask's schedule (`frontend/src/lib/notices/donation.ts`) are built and
+  tested, but nothing serves the block to the window and nothing shows
+  either. Content from the file is trusted only once the file is
+  signed and the signature verified (minisign, as proposed for the
+  in-app updater); after that it needs a route for the window, the rows
+  (an announcement about the source joining the outage row rather than
+  adding one) and the ask's toast.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
   entry has been matched to a Kitsu show, is a button that tries to

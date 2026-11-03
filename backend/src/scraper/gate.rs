@@ -27,6 +27,7 @@
 use std::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
+use super::health::{Health, HealthRun, Observation};
 use super::reservation::{SlotGuard, SlotSchedule};
 
 pub use super::outcome::ScrapeOutcome;
@@ -128,6 +129,10 @@ pub(super) struct GateState {
 /// reports back via [`ScraperGate::record_outcome`].
 pub struct ScraperGate {
     inner: Mutex<GateState>,
+    /// Whether the provider is answering, from the same outcomes, for
+    /// the notification center (see [`super::health`]). Its own lock:
+    /// it never decides an admit.
+    health: Mutex<HealthRun>,
 }
 
 impl ScraperGate {
@@ -147,6 +152,7 @@ impl ScraperGate {
                 last_recovery_at: None,
                 answered: false,
             }),
+            health: Mutex::new(HealthRun::default()),
         }
     }
 
@@ -327,8 +333,9 @@ impl ScraperGate {
     /// window and resume paced, instead of being refused and losing
     /// their rows. Without a hint the window falls back to
     /// [`BREAKER_COOLDOWN`]. Interactive admits ignore the window as
-    /// they ignore the breaker.
-    pub fn record(&self, outcome: ScrapeOutcome, started_at: Instant) {
+    /// they ignore the breaker. Returns whether the outcome was taken
+    /// as evidence: `false` for one refused as stale.
+    pub fn record(&self, outcome: ScrapeOutcome, started_at: Instant) -> bool {
         match outcome {
             ScrapeOutcome::Success => self.record_outcome(true, started_at),
             ScrapeOutcome::Failure => self.record_outcome(false, started_at),
@@ -341,7 +348,7 @@ impl ScraperGate {
                     // a newer accepted success already proved that
                     // state is gone — same filter as the untyped
                     // failure path.
-                    return;
+                    return false;
                 }
                 // A rate limit is the provider answering.
                 s.answered = true;
@@ -369,9 +376,48 @@ impl ScraperGate {
                 s.half_open_trial_at = None;
                 s.open_until = None;
                 s.opened_at = None;
+                true
             }
         }
     }
+}
+
+impl ScraperGate {
+    /// [`ScraperGate::record`], also noted for whether the provider is
+    /// answering: `priority` says whether a user was waiting on the
+    /// request. Only an outcome the breaker takes as evidence reaches
+    /// the outage rule; one it refuses as stale reaches neither. Every
+    /// caller that knows the priority records through this.
+    pub fn record_from(
+        &self,
+        priority: ScrapePriority,
+        outcome: ScrapeOutcome,
+        started_at: Instant,
+    ) {
+        if !self.record(outcome, started_at) {
+            // Stale evidence the breaker refused says nothing about
+            // the source now, to the outage rule either.
+            return;
+        }
+        let observation = Observation::of(outcome, priority == ScrapePriority::Interactive);
+        let mut run = self.health.lock().expect("health lock");
+        *run = run.observe(observation, unix_ms());
+    }
+
+    /// Whether the provider is answering, as the notification center
+    /// reads it. A read, never a state change.
+    #[must_use]
+    pub fn health(&self) -> Health {
+        self.health.lock().expect("health lock").health()
+    }
+}
+
+/// The wall clock, in ms since the Unix epoch: the times the renderer
+/// shows ("since 14:02") are the user's clock, not the monotonic one.
+fn unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 // `record_outcome` lives in a `#[path]` child module so its
@@ -393,3 +439,7 @@ impl Default for ScraperGate {
 #[cfg(test)]
 #[path = "gate_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "gate_health_test.rs"]
+mod health_tests;

@@ -247,7 +247,7 @@ where
                         .and_then(|ne| ne.failed_at)
                         .or_else(|| client.last_attempt_at())
                         .unwrap_or(episode_started_at);
-                    gate.record(outcome, observed_at);
+                    gate.record_from(prio, outcome, observed_at);
                 }
                 return Err(match failed {
                     Err(ne) => ne.error,

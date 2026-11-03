@@ -68,6 +68,8 @@ impl Origin {
 struct Snapshot {
     flags: Resolved,
     origin: Origin,
+    /// The deciding document's notices block (see [`crate::notices`]).
+    notices: Option<serde_json::Value>,
 }
 
 /// The launch's flags, shared by every handler.
@@ -94,6 +96,7 @@ impl FlagStore {
         let (tx, _rx) = watch::channel(Snapshot {
             flags: resolve(decls, None),
             origin,
+            notices: None,
         });
         Self {
             decls,
@@ -132,6 +135,15 @@ impl FlagStore {
         self.current()
     }
 
+    /// The notices block of the document that decided the launch's
+    /// flags (see [`crate::notices`]), when it had one. Decided with the
+    /// flags, so like them it never changes in a session; `None` before
+    /// the store settles.
+    #[must_use]
+    pub fn notices(&self) -> Option<serde_json::Value> {
+        self.tx.borrow().notices.clone()
+    }
+
     /// Wait, without a limit, until the flags are decided.
     #[cfg(test)]
     pub(crate) async fn decided(&self) {
@@ -143,11 +155,18 @@ impl FlagStore {
     /// already. Returns whether this call decided them.
     pub(crate) fn settle(&self, doc: Option<&Document>, origin: Origin) -> bool {
         let flags = resolve(self.decls, doc);
+        let notices = doc
+            .and_then(|d| d.get(crate::notices::NOTICES_KEY))
+            .cloned();
         self.tx.send_if_modified(|snap| {
             if snap.origin != Origin::Pending {
                 return false;
             }
-            *snap = Snapshot { flags, origin };
+            *snap = Snapshot {
+                flags,
+                origin,
+                notices,
+            };
             true
         })
     }
@@ -156,3 +175,7 @@ impl FlagStore {
 #[cfg(test)]
 #[path = "store_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "store_notices_test.rs"]
+mod notices_tests;

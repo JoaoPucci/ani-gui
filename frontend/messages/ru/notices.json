@@ -1,0 +1,77 @@
+{
+	"bell_label": "Уведомления",
+	"bell_label_unread": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Уведомления, {count} непрочитанное",
+				"countPlural=few": "Уведомления, {count} непрочитанных",
+				"countPlural=*": "Уведомления, {count} непрочитанных"
+			}
+		}
+	],
+	"panel_title": "Уведомления",
+	"mark_all_read": "Отметить все как прочитанные",
+	"empty_title": "Всё прочитано",
+	"empty_body": "Здесь появляются обновления, завершённые и неудачные загрузки и сбои источника стриминга.",
+	"dismiss": "Скрыть",
+	"dismiss_aria": "Скрыть: {title}",
+	"unread_sr": "Не прочитано.",
+	"resolved_sr": "Решено.",
+	"toast_view": "Открыть",
+	"detail_missing": "Этого уведомления здесь больше нет. Возможно, оно было скрыто или проблема решена.",
+	"detail_off": "Уведомления отключены.",
+	"update_title": "Доступна версия ani-gui {tag}",
+	"update_meta": "У вас {current}",
+	"update_body": "Вышла новая версия ani-gui. Откройте, чтобы узнать, что изменилось и как её установить.",
+	"update_action": "Что нового",
+	"outage_title": "Источник стриминга не отвечает",
+	"outage_meta": [
+		{
+			"declarations": ["input time", "input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "С {time} · {count} неудачная попытка",
+				"countPlural=few": "С {time} · {count} неудачные попытки",
+				"countPlural=*": "С {time} · {count} неудачных попыток"
+			}
+		}
+	],
+	"outage_body": "Источник не отвечает с {time}. Мы пока не знаем почему: возможно, он недоступен, или что-то между вами и ним блокирует доступ. Отсюда эти случаи неотличимы.",
+	"outage_body_still": "Каталог, поиск и ваши списки работают. Источник нужен только для воспроизведения и загрузки.",
+	"outage_evidence_label": "Что заметил ani-gui",
+	"outage_evidence": [
+		{
+			"declarations": ["input last", "input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Неудачных попыток связаться с ним подряд: {count}, последняя — {last}. Чтобы это выяснить, ani-gui не делал дополнительных запросов.",
+				"countPlural=few": "Неудачных попыток связаться с ним подряд: {count}, последняя — {last}. Чтобы это выяснить, ani-gui не делал дополнительных запросов.",
+				"countPlural=*": "Неудачных попыток связаться с ним подряд: {count}, последняя — {last}. Чтобы это выяснить, ani-gui не делал дополнительных запросов."
+			}
+		}
+	],
+	"outage_resolved_title": "Источник стриминга снова отвечает",
+	"outage_resolved_meta": "Снова работает с {time}",
+	"outage_resolved_body": "Источник снова ответил ({time}). Воспроизведение должно работать как обычно.",
+	"outage_line": "Источник стриминга не отвечает с {time}. Мы пока не знаем почему. Воспроизведение может не работать.",
+	"outage_line_details": "Подробнее",
+	"download_done_title": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Скачан {count} эпизод",
+				"countPlural=few": "Скачано {count} эпизода",
+				"countPlural=*": "Скачано {count} эпизодов"
+			}
+		}
+	],
+	"download_done_body": "Сохранено в {folder}",
+	"download_done_action": "Показать в папке",
+	"download_failed_title": "Не удалось выполнить загрузку",
+	"download_failed_meta": "{title} · Эпизод {episode}",
+	"download_failed_reason_label": "Что пошло не так",
+	"download_failed_reason_unknown": "Загрузка остановилась без объяснения причины."
+}

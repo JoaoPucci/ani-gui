@@ -3132,3 +3132,29 @@ async fn refusals_by_every_provider_asked_are_a_refusal_by_name() {
     .expect_err("refused");
     assert!(ne.refused_by_name);
 }
+
+#[tokio::test]
+async fn a_users_failed_walks_reach_the_outage_rule() {
+    use crate::scraper::health::{Health, OUTAGE_FAILURES};
+    let gates = Gates::new();
+    for _ in 0..OUTAGE_FAILURES {
+        let mut attempt = Scripted::new(&[
+            (
+                ProviderId::TestA,
+                Behavior::Unreachable(|| AniError::Network),
+            ),
+            (
+                ProviderId::TestB,
+                Behavior::Unreachable(|| AniError::Network),
+            ),
+        ]);
+        let _ = run(&gates, ScrapePriority::Interactive, &mut attempt).await;
+    }
+    // The fallback is the last provider, so every walk asked it: its
+    // run holds a user's failures and is long enough to speak.
+    assert!(
+        matches!(gates.b.health(), Health::NotAnswering { .. }),
+        "{:?}",
+        gates.b.health()
+    );
+}

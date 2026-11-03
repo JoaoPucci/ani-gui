@@ -30,6 +30,7 @@ mod account;
 mod airing;
 mod flags;
 mod refill;
+mod source_health;
 mod sse_abort;
 mod syncplay;
 mod update;
@@ -117,6 +118,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
         .route("/api/flags", get(flags::get_flags))
+        .route("/api/source-health", get(source_health::get_source_health))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
         .route(
             "/api/title-match",
@@ -863,6 +865,10 @@ mod kitsu_search_page_test;
 #[cfg(test)]
 #[path = "flags_test.rs"]
 mod flags_tests;
+
+#[cfg(test)]
+#[path = "source_health_test.rs"]
+mod source_health_tests;
 
 #[cfg(test)]
 mod tests {

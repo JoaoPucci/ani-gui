@@ -179,7 +179,16 @@ ani-gui keeps the following on your computer only:
 - **Remote flags cache** — the last copy of the project's remote flags
   file the app fetched (see below), and when it was fetched, in
   `remote-flags.json` under your OS's cache directory. It holds only
-  the maintainer's switches, nothing about you.
+  what the maintainer wrote for every install — switches, and any
+  notices published there — nothing about you.
+- **Notifications** — while the notification center is on (it ships
+  off), the finished and failed downloads it lists: the show's title,
+  the episode, the download folder and, for a failure, its reason, with
+  when each happened and whether you have read it. At most 50, none
+  older than 30 days, in the app window's local storage
+  (`ani-gui.notices.v1`). Nothing else it shows is stored: an update and
+  the streaming source not answering are worked out again at each
+  start.
 
 ## What ani-gui transmits to public services
 
@@ -348,8 +357,11 @@ kind of request:
   when it was made, and that it comes from ani-gui.
   Nothing else is sent: no account
   information, nothing about what you watch, and no identifier of your
-  install. The file holds only the switches; GitHub's own privacy
-  statement governs the request:
+  install. The file holds what the maintainer writes for every install:
+  the switches and, when there are any, notices for the notification
+  center. Reading the notices is part of the same request and sends
+  nothing more; this version reads them but does not show them yet.
+  GitHub's own privacy statement governs the request:
   <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
 - **Aniskip OP/ED timing (automatic, when an episode plays in the
   app)** — once an episode playing in the app's own player has a
@@ -368,6 +380,11 @@ kind of request:
 There is no analytics or telemetry: no request reports how you use
 the app, and the update check and the remote flags file are the only
 requests that go to the project's own repository.
+
+The notification center makes no request of its own. What it says about
+the streaming source not answering comes from the app's own requests:
+the backend notes how each one it already makes turns out, and the
+window reads that back from the backend on your computer.
 
 ## Connecting and disconnecting an account
 

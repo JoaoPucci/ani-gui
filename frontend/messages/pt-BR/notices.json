@@ -1,0 +1,77 @@
+{
+	"bell_label": "Notificações",
+	"bell_label_unread": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "Notificações, {count} não lidas",
+				"count=*, countPlural=one": "Notificações, {count} não lida",
+				"count=*, countPlural=*": "Notificações, {count} não lidas"
+			}
+		}
+	],
+	"panel_title": "Notificações",
+	"mark_all_read": "Marcar todas como lidas",
+	"empty_title": "Tudo em dia",
+	"empty_body": "Atualizações, downloads concluídos ou com falha e problemas com a fonte de streaming aparecem aqui.",
+	"dismiss": "Dispensar",
+	"dismiss_aria": "Dispensar: {title}",
+	"unread_sr": "Não lida.",
+	"resolved_sr": "Resolvido.",
+	"toast_view": "Ver",
+	"detail_missing": "Esta notificação não está mais aqui. Ela pode ter sido dispensada ou resolvida.",
+	"detail_off": "As notificações estão desativadas.",
+	"update_title": "O ani-gui {tag} está disponível",
+	"update_meta": "Você está na {current}",
+	"update_body": "Saiu uma versão mais nova do ani-gui. Abra para ver o que mudou e como instalar.",
+	"update_action": "Ver as novidades",
+	"outage_title": "A fonte de streaming não está respondendo",
+	"outage_meta": [
+		{
+			"declarations": ["input time", "input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "Desde {time} · {count} tentativas falharam",
+				"count=*, countPlural=one": "Desde {time} · {count} tentativa falhou",
+				"count=*, countPlural=*": "Desde {time} · {count} tentativas falharam"
+			}
+		}
+	],
+	"outage_body": "A fonte não responde desde {time}. Ainda não sabemos por quê: ela pode estar fora do ar, ou algo entre você e ela pode estar bloqueando. Daqui não dá para distinguir os dois casos.",
+	"outage_body_still": "A navegação, a busca e suas listas continuam funcionando. Só a reprodução e os downloads dependem da fonte.",
+	"outage_evidence_label": "O que o ani-gui observou",
+	"outage_evidence": [
+		{
+			"declarations": ["input last", "input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} tentativas seguidas de alcançá-la falharam. Última: {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso.",
+				"count=*, countPlural=one": "{count} tentativa de alcançá-la falhou ({last}). O ani-gui não fez nenhuma requisição extra para descobrir isso.",
+				"count=*, countPlural=*": "{count} tentativas seguidas de alcançá-la falharam. Última: {last}. O ani-gui não fez nenhuma requisição extra para descobrir isso."
+			}
+		}
+	],
+	"outage_resolved_title": "A fonte de streaming voltou a responder",
+	"outage_resolved_meta": "Funcionando de novo desde {time}",
+	"outage_resolved_body": "A fonte voltou a responder ({time}). A reprodução deve funcionar normalmente.",
+	"outage_line": "A fonte de streaming não responde desde {time}. Ainda não sabemos por quê. A reprodução pode falhar.",
+	"outage_line_details": "Detalhes",
+	"download_done_title": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} episódios baixados",
+				"count=*, countPlural=one": "{count} episódio baixado",
+				"count=*, countPlural=*": "{count} episódios baixados"
+			}
+		}
+	],
+	"download_done_body": "Salvo em {folder}",
+	"download_done_action": "Mostrar na pasta",
+	"download_failed_title": "Um download falhou",
+	"download_failed_meta": "{title} · Episódio {episode}",
+	"download_failed_reason_label": "O que deu errado",
+	"download_failed_reason_unknown": "O download parou sem dizer por quê."
+}
