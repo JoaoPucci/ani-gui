@@ -130,6 +130,9 @@ function splashController({
   let paintedAt = null;
   // Whether the splash painted resting on its still frame.
   let restingAtPaint = false;
+  // Whether the reveal waits for the minimum time on screen: not when
+  // it stopped waiting for a paint that came too late (whenShown).
+  let minimumHeld = true;
   const since = () => `+${clock() - askedAt} ms`;
   current = state;
   // Settles when the splash can no longer reach the screen (no
@@ -174,8 +177,8 @@ function splashController({
     const min = restingAtPaint ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
     const hold = restingAtPaint ? SPLASH_COMPLETE_HOLD_REDUCED_MS : SPLASH_COMPLETE_HOLD_MS;
     const seenUntil = landedAt + hold;
-    // The reveal waits for the minimum anyway; hold only past it.
-    if (seenUntil <= paintedAt + min) return;
+    // Where the reveal waits for the minimum, hold only past it.
+    if (minimumHeld && seenUntil <= paintedAt + min) return;
     const remaining = Math.min(hold, seenUntil - clock());
     if (remaining <= 0) return;
     log(`[main] splash holds ${remaining} ms for its completed rail (${since()})`);
@@ -290,6 +293,7 @@ function splashController({
         late,
       ]);
       clearTimeout(timer);
+      if (first === "late") minimumHeld = false;
       if (typeof first !== "object" || over || !alive()) return;
       const min = first.resting ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
       // Counted from the paint: a window ready long after it waits for
@@ -402,10 +406,11 @@ const SPLASH_MIN_ON_SCREEN_MS = 500;
 const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 300;
 
 /** How long the rail's last stretch stays on screen, once lit, before
- *  the app's window may replace the splash: the length of its wipe
- *  (splash.css). Only a last step landing late enough that the minimum
- *  would not show it this long waits for it. */
-const SPLASH_COMPLETE_HOLD_MS = 300;
+ *  the app's window may replace the splash: its 300 ms wipe (splash.css)
+ *  is on an ease-out curve that is 99% of the way by 250 ms. Only a
+ *  last step landing late enough that the minimum would not show it
+ *  this long waits for it. */
+const SPLASH_COMPLETE_HOLD_MS = 250;
 
 /** The same on the still frame, where the stretch lights at once. */
 const SPLASH_COMPLETE_HOLD_REDUCED_MS = 150;
