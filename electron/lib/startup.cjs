@@ -11,10 +11,11 @@
  * before the first page finishes loading, and the window that
  * navigation lands in still works, so that rejection is logged and
  * dropped — unless the commit had already answered an error status
- * (below), which decides the load failed whatever replaces it. Every other rejection — a refused connection, a renderer
- * that crashed mid-load (ERR_FAILED) — leaves a window with nothing on
- * it, a close button included (see awaitFirstShow), so it propagates
- * and fails the boot.
+ * (below), which decides the load failed whatever replaces it.
+ * Every other rejection — a refused connection, a renderer that
+ * crashed mid-load (ERR_FAILED) — leaves a window with nothing on it,
+ * a close button included (see awaitFirstShow), so it propagates and
+ * fails the boot.
  *
  * So does a page that arrives as an error page. `loadURL` resolves
  * for anything that arrives, and the app serves its own error pages:
