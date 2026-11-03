@@ -170,6 +170,16 @@ test("nothing on the splash counts: its readout slot is empty, moving or still",
   const css = read("splash.css");
   assert.doesNotMatch(css, /counter\(|counter-reset|@counter-style|--pulled/);
   assert.doesNotMatch(css, /\.(counter|still|unit)\b/);
+  // Nor anywhere else: the page's words are its reel title alone, no
+  // style writes text into it, and no script does either.
+  const body = /<body>([\s\S]*)<\/body>/.exec(html)[1];
+  const words = body.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean);
+  assert.deepEqual(words, ["reel", "1", "ani-gui"]);
+  assert.doesNotMatch(css, /\bcontent:|@property/);
+  assert.doesNotMatch(read("splash.js"), /textContent|innerText|innerHTML|createTextNode|insertAdjacent/);
+  // An empty slot is hidden, so the title column centres on the gate
+  // without the row gap a hidden-in-place slot would still take.
+  assert.match(css, /\.readout:empty \{ display: none; \}/);
 });
 
 test("the mark comes from mark.svg alone, so a new identity swaps one file", () => {
