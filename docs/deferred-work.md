@@ -428,6 +428,21 @@ starting it, and delete it when you find it done.
   more of the provider's listing than its title and the year its key
   names — the year it aired, or its episode count — or when another
   wrong pick on a user's card is reported.
+- **A hand-edited locale can order subtitles one way for the external
+  player and another for the built-in one.** The backend orders an
+  episode's tracks for an external player, a download, and any cut by
+  the raw `locale` string in `config.toml`
+  (`scraper/track_preference.rs`). The built-in player starts by the
+  locale Paraglide resolved, and the renderer adopts the configured
+  value only when it is one of the app's own locales
+  (`settings/boot-locale.ts`). The Settings page writes only those, so
+  only a hand edit splits the two. The two readers also differ on
+  malformed tags: the backend's `parse_tag` accepts `_` separators and
+  empty subtags (`pt_BR`, `zhO-`), and the player's `Intl.Locale`
+  rejects both. Making the parser stricter would not fix the split,
+  though. A hand-edited `pt_BR` would then read as no language in the
+  backend, while the player orders by whatever locale Paraglide fell
+  back to. Found when the order's property test drew `zhO-`.
 
 ## Interface
 
