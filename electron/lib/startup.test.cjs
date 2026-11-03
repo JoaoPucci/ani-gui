@@ -782,7 +782,8 @@ test("the app's window is not revealed until the splash has painted, even where 
   win.emit("ready-to-show");
   for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.equal(win.reveals, 0, "not revealed while the splash has not painted");
-  painted(true);
+  splash.motionPreference(false);
+  painted(false);
   await opened;
   assert.equal(win.reveals, 1);
 });

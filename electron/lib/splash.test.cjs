@@ -8,6 +8,8 @@ const { EventEmitter } = require("node:events");
 const {
   SPLASH_MARK,
   SPLASH_PAGE,
+  SPLASH_MIN_ON_SCREEN_MS,
+  SPLASH_MIN_ON_SCREEN_REDUCED_MS,
   SPLASH_SHOW_WAIT_MS,
   lastSplashState,
   revealMaximized,
@@ -171,42 +173,135 @@ test("under reduced motion nothing on the splash moves", () => {
   assert.match(read("splash.css"), /@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*animation: none !important/);
 });
 
-test("the splash's motion waits for the window to show, with a timer only as the fallback", () => {
+test("the splash holds still until it is told to move, and its fallback never starts motion", () => {
+  // The splash opens before the app knows whether reduced motion is on,
+  // so the page must not move on its own: its fallback, for a signal
+  // that never comes, settles on the finished still frame.
   const css = read("splash.css");
   assert.match(css, /body:not\(\.shown\)[^{]*\{[^}]*animation-play-state: paused/);
-  const fallback = /^setTimeout\(\(\) => document\.body\.classList\.add\('shown'\), (\d+)\);$/m.exec(
+  assert.match(css, /body\.reduced \*[^{]*\{[^}]*animation: none !important/);
+  const fallback = /^setTimeout\(\(\) => document\.body\.classList\.add\('reduced'\), (\d+)\);$/m.exec(
     read("splash.js"),
   );
-  assert.ok(fallback, "splash.js starts the motion on a timer");
+  assert.ok(fallback, "splash.js falls back to the still frame on a timer");
   assert.ok(Number(fallback[1]) <= 1000, `fallback after ${fallback[1]} ms`);
+  assert.doesNotMatch(read("splash.js"), /classList\.add\('shown'\)/);
 });
 
 const tick = () => new Promise((r) => setImmediate(r));
 
-test("the splash is told it is shown when its window shows, and answers once it has painted", async () => {
+/** A fake splash window whose shown signal answers when `answer` is
+ *  called, recording the signal's code. */
+function answeringSplash() {
   const win = fakeSplash();
-  let painted;
+  win.answer = () => {};
   win.webContents.executeJavaScript = (code) => {
     win.calls.push(`js:${code}`);
-    return new Promise((resolve) => (painted = resolve));
+    return new Promise((resolve) => (win.answer = resolve));
   };
+  return win;
+}
+const signals = (win) => win.calls.filter((c) => c.startsWith("js:"));
+
+test("the splash opens at once, and is told to move only once the motion preference is known", async () => {
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  await tick();
+  assert.deepEqual(signals(win), [], "no signal before the preference");
+  splash.motionPreference(false);
+  const [signal] = signals(win);
+  assert.ok(signal.includes("classList.add('shown')"), signal);
+  // It answers after two animation frames: a frame with the splash in
+  // it has been rendered, which the window being mapped does not mean.
+  assert.equal((signal.match(/requestAnimationFrame/g) || []).length, 2);
+});
+
+test("a preference known before the window shows is sent as it shows", () => {
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  splash.motionPreference(false);
+  assert.deepEqual(signals(win), []);
+  win.emit("ready-to-show");
+  assert.equal(signals(win).length, 1);
+});
+
+test("under reduced motion the splash is told to rest on its still frame, never to move", () => {
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(true);
+  const [signal] = signals(win);
+  assert.ok(signal.includes("classList.add('reduced')"), signal);
+  assert.ok(!signal.includes("classList.add('shown')"), signal);
+});
+
+test("the app's window waits until the splash has been on screen long enough for its opening to read", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  assert.equal(SPLASH_MIN_ON_SCREEN_MS, 500);
+  const win = answeringSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });
   splash.show();
   let up = false;
   const waiting = splash.whenShown().then(() => (up = true));
   win.emit("ready-to-show");
-  const signal = win.calls.find((c) => c.startsWith("js:"));
-  assert.ok(signal && signal.includes("classList.add('shown')"), JSON.stringify(win.calls));
-  // It waits two animation frames, so it answers after a frame with
-  // the splash in it has been drawn, not when the window is mapped.
-  assert.equal((signal.match(/requestAnimationFrame/g) || []).length, 2);
-  await tick();
-  assert.equal(up, false, "mapped is not painted");
-  assert.equal(lastSplashState().shown, false);
-  painted(true);
+  splash.motionPreference(false);
+  win.answer(false);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(lastSplashState().shown, true);
+  assert.equal(up, false, "painted, but not yet on screen long enough");
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_MS - 1);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(up, false);
+  t.mock.timers.tick(1);
   await waiting;
   assert.equal(up, true);
-  assert.equal(lastSplashState().shown, true);
+});
+
+test("a splash resting on its still frame needs a shorter time on screen", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  assert.equal(SPLASH_MIN_ON_SCREEN_REDUCED_MS, 300);
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  let up = false;
+  const waiting = splash.whenShown().then(() => (up = true));
+  win.emit("ready-to-show");
+  splash.motionPreference(true);
+  // The page answers whether it is resting: here it is.
+  win.answer(true);
+  for (let i = 0; i < 5; i++) await tick();
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_REDUCED_MS - 1);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(up, false);
+  t.mock.timers.tick(1);
+  await waiting;
+  assert.equal(up, true);
+});
+
+test("a splash that paints late still gets its time on screen, and the wait stays bounded", async (t) => {
+  // The paint is waited for at most SPLASH_SHOW_WAIT_MS; a paint inside
+  // that is followed by the minimum, so the wait never exceeds both.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  let up = false;
+  const waiting = splash.whenShown().then(() => (up = true));
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  t.mock.timers.tick(SPLASH_SHOW_WAIT_MS - 100);
+  win.answer(false);
+  for (let i = 0; i < 5; i++) await tick();
+  t.mock.timers.tick(100);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(up, false, "the bound on the paint does not cut the minimum short");
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_MS - 100);
+  await waiting;
+  assert.equal(up, true);
 });
 
 test("a splash that cannot be told it is shown keeps its fallback, is only logged, and holds nothing up", async () => {
@@ -219,6 +314,7 @@ test("a splash that cannot be told it is shown keeps its fallback, is only logge
   splash.show();
   const waiting = splash.whenShown();
   win.emit("ready-to-show");
+  splash.motionPreference(false);
   await waiting;
   assert.equal(logged.length, 1);
 });
@@ -248,6 +344,7 @@ test("what happened to the launch's splash can be read back afterwards", async (
   splash.show();
   assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false });
   win.emit("ready-to-show");
+  splash.motionPreference(false);
   await tick();
   splash.close();
   assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false });
@@ -261,6 +358,7 @@ test("the app's window can wait for the splash to be on screen, for a bounded ti
   // A fast start (a test run's, or a warm one) could otherwise show the
   // app's window before the splash had painted, and close a splash
   // nobody saw.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });
   splash.show();
@@ -269,10 +367,12 @@ test("the app's window can wait for the splash to be on screen, for a bounded ti
   await new Promise((r) => setImmediate(r));
   assert.equal(up, false);
   win.emit("ready-to-show");
+  splash.motionPreference(false);
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_MS);
   await waiting;
   assert.equal(up, true);
 
-  t.mock.timers.enable({ apis: ["setTimeout"] });
   const stuck = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
   stuck.show();
   let gaveUp = false;
@@ -326,6 +426,7 @@ test("every way the splash cannot reach the screen releases the wait at once, no
   b.show();
   const bWait = b.whenShown();
   failing.emit("ready-to-show");
+  b.motionPreference(false);
   assert.equal(await settlesAtOnce(t, bWait), true, "signal failed");
   // The signal answers.
   const fine = fakeSplash();
@@ -333,7 +434,11 @@ test("every way the splash cannot reach the screen releases the wait at once, no
   c.show();
   const cWait = c.whenShown();
   fine.emit("ready-to-show");
-  assert.equal(await settlesAtOnce(t, cWait), true, "painted");
+  c.motionPreference(false);
+  // Painted: it then has its minimum time on screen to serve.
+  assert.equal(await settlesAtOnce(t, cWait), false, "painted, serving its minimum");
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_MS);
+  assert.equal(await settlesAtOnce(t, cWait), true, "painted, minimum served");
   // The window cannot be made, or none is.
   for (const createWindow of [
     () => {
@@ -451,6 +556,7 @@ test("a launch's log says when the splash was asked for, shown, painted and clos
   now = 1180;
   win.emit("ready-to-show");
   now = 1230;
+  splash.motionPreference(false);
   await tick();
   now = 1600;
   splash.close();

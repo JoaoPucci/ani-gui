@@ -169,6 +169,9 @@ function splashController({
     // Resolves once the splash is on screen — or there is none to wait
     // for (never asked to open, failed to, put away, gone) — and in any
     // case within SPLASH_SHOW_WAIT_MS.
+    motionPreference(reduced) {
+      void reduced;
+    },
     whenShown() {
       if (!state.opened || over || !alive()) return Promise.resolve();
       let timer;
@@ -212,6 +215,10 @@ function lastSplashState() {
  *  bound is for one that never does. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
+/** Stubs. */
+const SPLASH_MIN_ON_SCREEN_MS = 0;
+const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 0;
+
 /**
  * Reveal the app's window: `maximize()` the hidden window, which maps
  * it already maximized (the open-maximized pattern main.js describes),
@@ -229,6 +236,8 @@ function revealMaximized(win, { onMapped, afterShow, cancelled = () => false }) 
 }
 
 module.exports = {
+  SPLASH_MIN_ON_SCREEN_MS,
+  SPLASH_MIN_ON_SCREEN_REDUCED_MS,
   SPLASH_SHOW_WAIT_MS,
   revealMaximized,
   SPLASH_MARK,
