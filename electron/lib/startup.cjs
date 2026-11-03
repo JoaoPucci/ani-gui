@@ -10,7 +10,8 @@
  * with ERR_ABORTED whenever another main-frame navigation starts
  * before the first page finishes loading, and the window that
  * navigation lands in still works, so that rejection is logged and
- * dropped. Every other rejection — a refused connection, a renderer
+ * dropped — unless the commit had already answered an error status
+ * (below), which decides the load failed whatever replaces it. Every other rejection — a refused connection, a renderer
  * that crashed mid-load (ERR_FAILED) — leaves a window with nothing on
  * it, a close button included (see awaitFirstShow), so it propagates
  * and fails the boot.
@@ -150,23 +151,6 @@ function awaitFirstShow(win, { timeoutMs }) {
 }
 
 /**
- * Load the window's first page, and show the window once it is ready
- * to be shown — the one place it is shown. Rejects when either the
- * load (loadFirstPage) or the guard (awaitFirstShow) fails.
- *
- * The show follows ready-to-show and does not wait for the load. The
- * two finish in either order — an error page paints like any other —
- * so once the open has failed, the show is off: the boot's report
- * hides the failed window, and a first paint arriving afterwards must
- * not put it back on screen.
- *
- * A window that is gone is not a failure. A quit while it loads — the
- * user closing the splash, on a boot taking its time — destroys it,
- * and the load rejects like a crashed renderer's (ERR_FAILED) while
- * the app is already quitting. That is a quit, and the open resolves
- * with nothing to report.
- */
-/**
  * Wait for `beforeShow`, keeping the first-show guard's watch on the
  * renderer meanwhile: one that dies during the wait fails the boot, as
  * it would before ready-to-show. A wait that fails is logged and ends.
@@ -187,6 +171,25 @@ async function waitBeforeShow(contents, beforeShow, logError) {
   if (gone) throw new Error(`renderer gone before the first show (${gone.reason})`);
 }
 
+/**
+ * Load the window's first page, and reveal the window (`reveal`, a
+ * plain show unless main.js passes its own) once it is ready to be
+ * shown and `beforeShow` has settled — the one place it is put on
+ * screen. Rejects when either the load (loadFirstPage) or the guard
+ * (awaitFirstShow) fails.
+ *
+ * The reveal follows ready-to-show and does not wait for the load. The
+ * two finish in either order — an error page paints like any other —
+ * so once the open has failed (an error status at the commit, or a
+ * rejected load), the reveal is off: a first paint arriving afterwards
+ * must not put a failed window on screen.
+ *
+ * A window that is gone is not a failure. A quit while it loads — the
+ * user closing the splash, on a boot taking its time — destroys it,
+ * and the load rejects like a crashed renderer's (ERR_FAILED) while
+ * the app is already quitting. That is a quit, and the open resolves
+ * with nothing to report.
+ */
 async function openFirstPage(
   win,
   url,

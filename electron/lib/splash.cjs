@@ -151,8 +151,9 @@ function splashController({ createWindow, logError, onDismissed = () => {} }) {
       const late = new Promise((resolve) => (timer = setTimeout(resolve, SPLASH_SHOW_WAIT_MS)));
       return Promise.race([up, late]).finally(() => clearTimeout(timer));
     },
-    // Whether the user closed the splash before the boot did: the
-    // launch is cancelled, and the app's window must not be revealed.
+    // Whether the user (or a quit) closed the splash before the boot
+    // did: the launch is cancelled, and the app's window must not be
+    // revealed.
     dismissed() {
       return dismissedByUser;
     },
