@@ -2451,6 +2451,7 @@
 			open={linkSession.open}
 			savedTitle={linkSession.offer.entry.title}
 			episode={linkSession.episode}
+			currentLabel={m.detail_link_shown_now()}
 			candidates={linkSession.candidates}
 			failed={linkSession.failed}
 			chosen={linkSession.chosen}

@@ -1,15 +1,19 @@
 <!--
   LinkShowDialog — says which show a guessed history row really is.
 
-  Opened from the quiet note a show page carries when a guessed
-  Continue card opened it, never on arrival. Two steps in one card:
+  Opened from the show page's quiet note, the player's slip and ⋯ menu,
+  and Home's guessed cards, never on arrival. A modal <dialog> in the
+  top layer (showModal()), so it shows over a fullscreen player too.
+  Two steps in one card:
   pick a show from the candidates (or search for one), then confirm
   with what the link changes and anything worth a second look. The
   candidates, the search and the link itself are the caller's
   ($lib/history/link-offer.ts); this only renders them and reports the
   choice.
 
-  Esc and the backdrop close it while nothing is in flight.
+  Esc and the backdrop close it while nothing is in flight. The show
+  the card shows now is labelled as the surface it opened from names
+  it (`currentLabel`): on this page, playing now, on the card.
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
@@ -21,8 +25,11 @@
 		open: boolean;
 		/** The title the history row saved. */
 		savedTitle: string;
-		/** The episode the row is at, as the card shows it. */
+		/** The episode the card offers, as the card shows it. */
 		episode: string;
+		/** What the show the card shows now is called where the picker
+		 *  opened: "On this page", "Playing now", "On the card". */
+		currentLabel: string;
 		/** The shows offered; null while they load. */
 		candidates: LinkCandidate[] | null;
 		/** Whether the last load or search failed. */
@@ -46,6 +53,7 @@
 		open,
 		savedTitle,
 		episode,
+		currentLabel,
 		candidates,
 		failed,
 		chosen,
@@ -60,6 +68,7 @@
 	}: Props = $props();
 
 	let query = $state('');
+	let dialog: HTMLDialogElement | undefined = $state();
 	let searchInput: HTMLInputElement | undefined = $state();
 	let confirmBtn: HTMLButtonElement | undefined = $state();
 	let list: HTMLUListElement | undefined = $state();
@@ -68,6 +77,10 @@
 	/** What had focus when the dialog opened, given it back on close. */
 	let opener: HTMLElement | null = null;
 
+	// Into the top layer once it is in the document.
+	$effect(() => {
+		if (dialog && !dialog.open) dialog.showModal();
+	});
 	$effect.pre(() => {
 		if (open && !opener && document.activeElement instanceof HTMLElement) {
 			opener = document.activeElement;
@@ -132,13 +145,16 @@
 <svelte:window onkeydown={onKey} />
 
 {#if open}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div
-		class="ls-backdrop"
-		role="dialog"
-		aria-modal="true"
+	<!-- The dialog itself is the backdrop's click target: a click that
+	     lands on it, not on the card, is a click outside. -->
+	<dialog
+		bind:this={dialog}
+		class="ls-dialog"
 		aria-labelledby="ls-title"
-		tabindex="-1"
+		oncancel={(e) => {
+			e.preventDefault();
+			close();
+		}}
 		onclick={(e) => {
 			if (e.target === e.currentTarget) close();
 		}}
@@ -260,7 +276,7 @@
 										</span>
 									</span>
 									{#if c.current}
-										<span class="ls-current">{m.detail_link_shown_now()}</span>
+										<span class="ls-current">{currentLabel}</span>
 									{/if}
 								</button>
 							</li>
@@ -274,18 +290,25 @@
 				</footer>
 			{/if}
 		</div>
-	</div>
+	</dialog>
 {/if}
 
 <style>
-	.ls-backdrop {
-		position: fixed;
-		inset: 0;
-		background: color-mix(in oklab, var(--ink-000) 72%, transparent);
-		display: grid;
-		place-items: center;
-		z-index: 100;
-		animation: ls-fade var(--dur-fast) var(--ease-out-soft) both;
+	/* The top layer centres a modal dialog; it carries no box of its
+	   own, only the card's. */
+	.ls-dialog {
+		padding: 0;
+		margin: auto;
+		border: 0;
+		background: none;
+		color: inherit;
+		max-inline-size: none;
+		max-block-size: none;
+		overflow: visible;
+	}
+	.ls-dialog::backdrop {
+		background: color-mix(in oklab, var(--ink-000, #000) 72%, transparent);
+		animation: ls-fade var(--dur-fast, 120ms) ease-out both;
 	}
 	@keyframes ls-fade {
 		from {
@@ -311,7 +334,7 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ls-backdrop,
+		.ls-dialog::backdrop,
 		.ls-card {
 			animation: none;
 		}
