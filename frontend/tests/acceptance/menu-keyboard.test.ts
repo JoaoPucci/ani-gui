@@ -8,9 +8,10 @@
 // first and last; Left and Right go nowhere and reach nothing else —
 // the download dock opens over the play page, whose player takes the
 // arrows as volume and seek keys. A typed character stays in the menu
-// too: n, f and m are the player's keys. Escape and Shift+Tab close the menu
-// with focus back on its button; Tab closes it with focus moving on
-// from the button. A key with Alt, Ctrl or Meta held is the browser's.
+// too: n, p, f and m are the player's keys. Escape and Shift+Tab close
+// the menu with focus back on its button; Tab closes it with focus
+// moving on from the button. A key with Alt, Ctrl or Meta held is
+// the browser's.
 //
 // The dock's items change while it is open: a download that ends
 // swaps its Cancel for Reveal and Dismiss, and a dismissed row takes
