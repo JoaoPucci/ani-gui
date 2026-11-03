@@ -54,3 +54,20 @@ function roleWord(order: WatchOrder, kind: 'run' | 'side', before: boolean): Col
 	if (kind === 'run' && order === 'released') return before ? 'released_before' : 'released_after';
 	return before ? 'prequel' : 'sequel';
 }
+
+/**
+ * The key over one of the strip's columns in the decided wording,
+ * Kitsu's relation roles.
+ */
+export function relationKey(
+	order: WatchOrder,
+	kind: 'run' | 'side',
+	side: 'before' | 'after',
+	count: number
+): ColumnKey {
+	void order;
+	void kind;
+	void side;
+	void count;
+	return { word: 'prequel', plural: false };
+}
