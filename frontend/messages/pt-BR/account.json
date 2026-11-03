@@ -56,6 +56,7 @@
 	"signin_unreachable_action": "Tentar agora",
 	"signin_unknown_message": "Não foi possível renovar seu login no {provider}. Tente de novo ou reconecte se continuar falhando.",
 	"signin_unknown_action": "Tentar de novo",
+	"keyring_waiting": "Aguardando o chaveiro do sistema. Suas contas carregam assim que ele responder; desbloqueie-o se ele pedir.",
 	"primary_badge": "Principal",
 	"primary_make": "Tornar principal",
 	"primary_hint": "Exibido na barra superior. O trilho Assistir mais tarde ordena pelo que foi atualizado mais recentemente no seu rastreador; quando um título está em ambos, é usada a cópia deste rastreador. O progresso continua sendo sincronizado com todos os rastreadores conectados.",
