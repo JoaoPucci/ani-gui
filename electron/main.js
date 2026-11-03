@@ -51,6 +51,7 @@ const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController } = require("./lib/splash.cjs");
+const { initialSize, readGeometry, remember, writeGeometry } = require("./lib/window-geometry.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
@@ -367,16 +368,25 @@ const splash = splashController({
   logError: console.error,
 });
 
+/** Where the window's remembered maximized size lives: beside the
+ *  app's other per-user state, under this profile's userData. */
+const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
+
 async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
-  // Pre-compute the work area so the window opens at the maximized
-  // size in one shot. Setting the constructor width/height to the
-  // work-area size avoids the "open at 1280×800, then animate to
-  // maximized" flash some WMs (mutter, kwin) animate when you call
-  // `win.maximize()` against a smaller initial size. After the
-  // window is up we still call `maximize()` so the WM tracks the
-  // maximized state — that lets the user un-maximize back to a
-  // sensible default and lets a snap shortcut work.
-  const { width: workW, height: workH } = screen.getPrimaryDisplay().workAreaSize;
+  // Pre-compute the maximized size so the window opens at it in one
+  // shot. Setting the constructor width/height to it avoids the "open
+  // at 1280×800, then animate to maximized" flash some WMs (mutter,
+  // kwin) animate when you call `win.maximize()` against a smaller
+  // initial size. The size is the one the desktop granted the last
+  // time this display maximized the window, else the work area
+  // (lib/window-geometry.cjs): native Wayland reports no work area, so
+  // there only the remembered size matches the maximized one, and the
+  // hidden page is painted at the size it will be revealed at. We
+  // still call `maximize()` so the WM tracks the maximized state —
+  // that lets the user un-maximize back to a sensible default and lets
+  // a snap shortcut work.
+  const display = screen.getPrimaryDisplay();
+  const { width: workW, height: workH } = initialSize(readGeometry(geometryFile(), fs), display);
   const win = new BrowserWindow({
     width: workW,
     height: workH,
@@ -518,6 +528,17 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     }
   };
   win.on("maximize", sendMaxState);
+  // Remember the size the desktop granted the maximized window, for
+  // the next launch's hidden window. Read on resize too: on Wayland
+  // the compositor's configure can land after the maximize event.
+  const rememberMaximized = () => {
+    if (win.isDestroyed() || !win.isMaximized()) return;
+    const bounds = win.getBounds();
+    const on = screen.getDisplayMatching(bounds);
+    writeGeometry(geometryFile(), remember(readGeometry(geometryFile(), fs), on, bounds), fs);
+  };
+  win.on("maximize", rememberMaximized);
+  win.on("resize", rememberMaximized);
   win.on("unmaximize", sendMaxState);
 
   // A window that never gets its first page — a load that fails, an

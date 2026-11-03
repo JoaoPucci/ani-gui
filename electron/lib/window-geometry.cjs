@@ -19,37 +19,54 @@
 const MAX_DISPLAYS = 8;
 
 /** What identifies a display's maximized size: which display, its
- *  size and its scale. Stub. */
+ *  size and its scale. */
 function displayKey(display) {
-  void display;
-  return "";
+  const { width, height } = display.bounds;
+  return `${display.id}:${width}x${height}@${display.scaleFactor}`;
 }
 
-/** The size to make the hidden window on `display`. Stub. */
+/** Whether `size` could be a window's size on `display`. */
+function fits(size, display) {
+  if (!size || typeof size !== "object") return false;
+  const ok = (v, max) => Number.isInteger(v) && v > 0 && v <= max;
+  return ok(size.width, display.bounds.width) && ok(size.height, display.bounds.height);
+}
+
+/** The size to make the hidden window on `display`: the maximized
+ *  size remembered for it, or its work area. */
 function initialSize(store, display) {
-  void store;
-  return { ...display.workAreaSize };
+  const remembered = store[displayKey(display)];
+  if (fits(remembered, display)) return { width: remembered.width, height: remembered.height };
+  return { width: display.workAreaSize.width, height: display.workAreaSize.height };
 }
 
-/** `store` with the maximized `bounds` remembered for `display`. Stub. */
+/** `store` with the maximized `bounds` remembered for `display`, as
+ *  its newest entry, keeping at most MAX_DISPLAYS. */
 function remember(store, display, bounds) {
-  void display;
-  void bounds;
-  return store;
+  const key = displayKey(display);
+  const entries = Object.entries(store).filter(([k]) => k !== key);
+  entries.push([key, { width: bounds.width, height: bounds.height }]);
+  return Object.fromEntries(entries.slice(-MAX_DISPLAYS));
 }
 
-/** The remembered sizes in `file`, or none. Stub. */
+/** The remembered sizes in `file`, or none. */
 function readGeometry(file, fs) {
-  void file;
-  void fs;
-  return {};
+  try {
+    const value = JSON.parse(fs.readFileSync(file, "utf-8"));
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
 }
 
-/** Write `store` to `file`; a failure only loses the memory. Stub. */
+/** Write `store` to `file`; a failure only loses the memory. */
 function writeGeometry(file, store, fs) {
-  void file;
-  void store;
-  void fs;
+  try {
+    fs.mkdirSync(require("node:path").dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(store));
+  } catch {
+    // The next launch makes the window at the work area instead.
+  }
 }
 
 module.exports = { MAX_DISPLAYS, displayKey, initialSize, readGeometry, remember, writeGeometry };
