@@ -2543,6 +2543,9 @@ mod guess_row_tests;
 #[path = "play_played_test.rs"]
 mod played_tests;
 #[cfg(test)]
+#[path = "play_records_id_test.rs"]
+mod records_id_tests;
+#[cfg(test)]
 #[path = "play_referer_prop_test.rs"]
 mod referer_prop_tests;
 #[cfg(test)]
