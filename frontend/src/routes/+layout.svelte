@@ -25,7 +25,8 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
-	import { breadcrumb, defaultTrailFor, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
+	import { breadcrumb, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import {
 		imageProxyUrl,
 		kitsuSearch,
@@ -131,9 +132,11 @@
 		}
 		canGoBack = shouldShowBackButton(navDepth);
 		// Reset the breadcrumb to a default URL-only trail on every
-		// navigation. Routes with richer labels (anime title, episode
-		// number) overwrite this in onMount once their data lands.
-		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
+		// navigation, keeping a trail the page on this address already
+		// named itself with: SvelteKit runs this only after the page has
+		// rendered, so a page that stayed mounted, or whose data landed
+		// first, has named itself by now ($lib/page-trail).
+		pageTrail.reset(page.url.pathname, page.route?.id ?? null);
 	});
 
 	// Sign-in notices: one pinned `warning` toast per provider whose

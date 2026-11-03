@@ -143,7 +143,7 @@
 	import type { DownloadArgs } from '$lib/api';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -1175,7 +1175,10 @@
 			});
 		void detailServed
 			.then((d) => {
-				if (id !== currentId) return; // navigation raced ahead
+				// Navigation raced ahead: another show, or another page
+				// altogether (the player keeps the same id), whose trail
+				// this show must not name.
+				if (id !== currentId || refills.signal.aborted) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -1187,8 +1190,9 @@
 				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
-				// instead of "Anime".
-				breadcrumb.set([
+				// instead of "Anime" — whether the layout's reset for
+				// this navigation has run yet or not.
+				pageTrail.name(page.url.pathname, [
 					{ label: m.breadcrumb_home(), href: '/' },
 					{ label: d.canonical_title ?? m.breadcrumb_anime() }
 				]);
