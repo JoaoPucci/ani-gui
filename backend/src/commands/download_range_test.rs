@@ -266,6 +266,53 @@ async fn a_range_keeps_the_shows_remembered_language_past_the_track_cap() {
     );
 }
 
+/// The episodes after a range's first resolve the same way.
+#[tokio::test]
+async fn a_ranges_later_episode_keeps_the_shows_remembered_language_too() {
+    use super::{Attempt, RangeStartAttempt};
+    use crate::scraper::provider::{BrowseHit, StreamSource};
+    use crate::scraper::table_provider::{listing_of, TableProvider};
+    let source = || StreamSource {
+        master_url: "https://cdn.example/master.m3u8".into(),
+        referer: None,
+        subtitles: long_listing(),
+    };
+    let provider = TableProvider::new()
+        .search_default(vec![BrowseHit {
+            slug: "the-show-1".into(),
+            title: "The Show".into(),
+            kind: Some("TV".into()),
+            jname: None,
+        }])
+        .listing(1, listing_of(1, 3))
+        .year(1, Some(2020))
+        .stream_from(1001, "sub", source())
+        .mode(1001, "sub", true)
+        .stream_from(1002, "sub", source())
+        .mode(1002, "sub", true);
+    let args: super::DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "The Show", "episode": "1-3", "mode": "sub",
+        "episode_count": 3, "year": 2020, "subtype": "TV", "caption": "vi",
+    }))
+    .expect("args");
+    let mut attempt = RangeStartAttempt {
+        args: &args,
+        first: 1,
+        quality: "best",
+        locale: "en",
+        answered_by: None,
+        tail: None,
+        heard: None,
+    };
+    let (picked, _, _) = attempt.run(&provider).await.expect("started");
+    let (_, second) = super::resolve_episode(&provider, picked, "2", &args, "best", "en").await;
+    let second = second.expect("the second episode resolves");
+    assert!(
+        second.subtitles.iter().any(|t| t.lang == "vi"),
+        "the remembered language is kept"
+    );
+}
+
 /// A single episode's download asks the resolve for the same.
 #[test]
 fn a_download_asks_for_the_shows_remembered_language() {
