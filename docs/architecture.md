@@ -319,14 +319,23 @@ what is cached is that admitted document. The shipped build trusts no
 key yet, so no notice is used. Signing, trusting and rotating a key are
 in [`development.md`](./development.md#signing-the-flags-file).
 
-**Why the file is not signed.** With every declaration held to that
-rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
-write access to the branch, could only switch features off or bring
-back older behaviour. A future flag that needs a riskier value, such as
-turning something on or relaxing a check, must not be declared until
-the file is verified. The verifier to adopt then is the minisign
-signature check proposed for the in-app updater (#342) and the
-notification center (#351).
+What a signature does not cover: the cached copy is the user's own disk
+and is read back without checking again, so verified notices stay in
+use for up to the cache's seven days on a machine that cannot reach the
+file, including after the signature is withdrawn; and an older signed
+pair of file and signature, republished, verifies again. A notice meant
+to end is therefore removed from the file, and bounded by `max_app`
+where the release that fixes its cause is known.
+
+**Why the flags need no signature.** With every declaration held to
+that rule, no value the file can select is riskier than the default, so
+someone who rewrote the file in transit, or got write access to the
+branch, could only switch features off or bring back older behaviour.
+The flags are therefore read whatever the signature below says; the
+signature gates only the notices block. A flag kind whose file value is
+riskier than its default, such as turning something on or relaxing a
+check, would need the flags themselves to be read only under a verified
+signature, which no code does today.
 
 **Decided once per launch, behind the splash.** The flags are decided
 once, within two seconds of the backend starting its refresh (just

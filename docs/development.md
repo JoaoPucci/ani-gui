@@ -298,7 +298,7 @@ the installed app's shell profile, and hands over to it if it is running.
 
 The maintainer can switch a declared flag without a release by editing
 one file on the repository's `flags` branch. What a flag may do, and
-why the file is not signed, is in
+why its flags need no signature, is in
 [`architecture.md`](./architecture.md#remote-flags). Only a flag
 declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
 build ignores names it does not declare and values its declaration
@@ -421,8 +421,21 @@ the maintainer. Anyone holding it can put text and a link in front of
 every user.
 
 These steps need [minisign](https://jedisct1.github.io/minisign/)
-0.11 or later. They are written for bash on Linux; on Windows run the
-same `minisign` commands in PowerShell with the paths changed.
+0.11 or later. They are written for bash on Linux; the PowerShell form
+of the one command that differs is under step 3.
+
+**0. Keep the file's bytes as they are pushed (once).** The signature
+covers the exact bytes, and the `flags` branch does not carry the main
+branch's `.gitattributes`. A checkout that converts line endings (Git
+for Windows with `core.autocrlf=true`) would sign bytes that are not the
+ones GitHub serves. In the branch's worktree:
+
+```sh
+printf 'flags.json -text\n*.minisig -text\n' > .gitattributes
+git add .gitattributes
+git commit -m "chore: keep the flags file's bytes as signed"
+git push
+```
 
 **1. Make the key pair (once per key).**
 
@@ -436,8 +449,11 @@ holds two lines; the second is the public key, a base64 string starting
 `RW`.
 
 **2. Trust the key in a release.** Add that second line to
-`TRUSTED_KEYS` in `backend/src/flags/signature.rs`, update the test that
-pins the list, and ship the release. Installs on older releases ignore
+`TRUSTED_KEYS` in `backend/src/flags/signature.rs`, update the two
+tests that pin the shipped build as trusting no key
+(`the_shipped_build_trusts_no_key_until_the_maintainer_adds_one` in
+`signature_test.rs` and `the_shipped_build_trusts_no_signature_yet` in
+`remote_signed_test.rs`), and ship the release. Installs on older releases ignore
 signed content; that is the safe direction.
 
 **3. Sign and publish.** After every edit of `flags.json`, sign the
@@ -457,7 +473,15 @@ git push
 
 `-S` writes `flags.json.minisig` beside the file with minisign's default
 prehashed signature, the only kind the app accepts; `-V` checks it
-before it is pushed. An edit pushed without a fresh signature leaves the
+before it is pushed. In PowerShell 7 the signing command is one line:
+
+```powershell
+minisign -S -s $HOME\.minisign\ani-gui-flags.key -m flags.json -t "flags.json $(Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ)"
+```
+
+After pushing, wait out the CDN's five-minute cache: until both files
+are fresh it can serve the new file with the old signature, and a
+launch in that window keeps the flags and drops the notices. An edit pushed without a fresh signature leaves the
 old signature beside new bytes: installs keep the flags and drop the
 notices until a matching signature is pushed. GitHub's web editor
 cannot sign, so a notice edit made there needs the steps above
@@ -467,8 +491,10 @@ afterwards.
 to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is
 out, sign with the new key only. A release later, remove the old key
 from the list. If a secret key is lost or leaked, delete
-`flags.json.minisig` from the branch at once (every install then drops
-the notices), and ship a release that removes that key.
+`flags.json.minisig` from the branch at once, and ship a release that
+removes that key. Installs drop the notices on their next launch that
+reaches the file; one that cannot reach it keeps its cached copy, and
+the notices in it, for up to seven days.
 
 ## Code style
 

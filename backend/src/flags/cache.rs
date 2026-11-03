@@ -7,7 +7,10 @@
 //! apply. The entry holds the document rather than resolved values,
 //! so it goes through the same resolution as a fetched file: a cache
 //! written by another build, or edited by hand, still resolves only to
-//! values this build declares.
+//! values this build declares. The notices block it may hold is kept
+//! only if it verified when fetched (see [`super::signature`]); it is
+//! not checked again on reading, so a hand edit of the user's own cache
+//! reaches only that user's notices.
 //!
 //! **Why seven days.** Every value a document can resolve to is a
 //! flag's default or a declared retreat from it, so a cached document
