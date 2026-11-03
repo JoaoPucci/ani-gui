@@ -1,7 +1,8 @@
 //! The cross-cour verdicts against Kitsu entries as Kitsu serves them
 //! (slug, canonical title, titles and abbreviations read from
-//! kitsu.io on 2026-11-01), each paired with the hianime card title the
-//! picker's recorded pools list for it.
+//! kitsu.io on 2026-11-01, Re:ZERO's seasons on 2026-11-03), each
+//! paired with the hianime card title the picker's recorded pools list
+//! for it, or the words of the show key hianime files it under.
 
 use super::*;
 use crate::commands::cour::cour_from_title;
@@ -228,6 +229,48 @@ fn kitsu(id: &str) -> KitsuAnimeRef {
             ],
             &["JoJo no Kimyou na Bouken: Sutōn Ōshan", "Jojo part 6"],
         ),
+        "47235" => entry(
+            "47235",
+            "re-zero-kara-hajimeru-isekai-seikatsu-3",
+            "Re:Zero kara Hajimeru Isekai Seikatsu 3",
+            &[
+                ("en", "Re:ZERO -Starting Life in Another World- Season 3"),
+                ("en_jp", "Re:Zero kara Hajimeru Isekai Seikatsu 3"),
+                ("ja_jp", "Re:ゼロから始める異世界生活 3"),
+            ],
+            &[],
+        ),
+        "49746" => entry(
+            "49746",
+            "re-zero-kara-hajimeru-isekai-seikatsu-4",
+            "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+            &[
+                ("en", "Re:ZERO -Starting Life in Another World- Season 4"),
+                ("en_jp", "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season"),
+                ("ja_jp", "Re:ゼロから始める異世界生活 4th season"),
+            ],
+            &[],
+        ),
+        "43247" => entry(
+            "43247",
+            "rezero-season-2-part-2",
+            "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+            &[
+                (
+                    "en",
+                    "Re:ZERO -Starting Life in Another World- Season 2 Part 2",
+                ),
+                (
+                    "en_jp",
+                    "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+                ),
+                ("ja_jp", "ゼロから始める異世界生活"),
+            ],
+            &[
+                "Re:Zero - Starting Life in Another World 2 Part 2",
+                "Re: Life in a different world from zero 2nd Season Part 2",
+            ],
+        ),
         other => panic!("no recorded entry {other}"),
     }
 }
@@ -348,5 +391,57 @@ fn a_legacy_episode_count_tail_does_not_hide_the_name() {
     assert!(refuses(
         "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2 (12 episodes)",
         "44294"
+    ));
+}
+
+/// The show key's words run "Re:ZERO" together as "rezero", where
+/// Kitsu's titles keep "re" and "zero" apart; the entry's slug marks
+/// the season with a bare `-4`, which is no cour suffix. The hit names
+/// the term all the same, so the resolve takes it.
+#[test]
+fn a_hit_whose_titles_split_a_word_the_slug_runs_together_is_taken() {
+    for (term, id) in [
+        ("rezero starting life in another world season 4", "49746"),
+        ("rezero starting life in another world season 3", "47235"),
+        ("rezero starting life in another world season 2", "42198"),
+    ] {
+        let cour = crate::commands::cour::cour_from_slug(&term.replace(' ', "-"));
+        assert!(hit_agrees(cour, term, &kitsu(id)), "{term} → {id}");
+    }
+}
+
+/// Run together or not, the words name one season: another season's
+/// entry is still passed over, and so is the second part of the
+/// season the words name.
+#[test]
+fn a_run_together_word_takes_no_other_season() {
+    for (term, id) in [
+        ("rezero starting life in another world season 3", "49746"),
+        ("rezero starting life in another world season 4", "47235"),
+        ("rezero starting life in another world season 4", "42198"),
+        ("rezero starting life in another world season 2", "43247"),
+    ] {
+        let cour = crate::commands::cour::cour_from_slug(&term.replace(' ', "-"));
+        let hit = kitsu(id);
+        let named = super::super::cour_same_name::names_the_entry(term, entry_names(&hit));
+        assert!(!named, "{term} names {id}");
+        if id != "43247" {
+            assert!(!hit_agrees(cour, term, &hit), "{term} → {id}");
+        }
+    }
+}
+
+/// The mapping guard reads the provider's title the same way: a card
+/// whose title runs a word of the entry's together is not refused, and
+/// another season's card still is.
+#[test]
+fn the_guard_reads_a_run_together_title_as_the_entry_s() {
+    assert!(!refuses(
+        "ReZERO Starting Life in Another World Season 4",
+        "49746"
+    ));
+    assert!(refuses(
+        "ReZERO Starting Life in Another World Season 3",
+        "49746"
     ));
 }

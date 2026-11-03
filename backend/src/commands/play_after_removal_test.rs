@@ -386,7 +386,10 @@ fn a_resolution_row_with_no_page_is_no_removed_shows() {
     seed_row(&state, "hianime:the-show-100");
     crate::cache::meta_cache_put(
         &state.cache_pool,
-        "title-match:v3:hianime:the show:c1",
+        &format!(
+            "{}hianime:the show:c1",
+            crate::cache::families::title_match()
+        ),
         "",
         3600,
     )

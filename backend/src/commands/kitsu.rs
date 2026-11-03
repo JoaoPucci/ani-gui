@@ -337,12 +337,23 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   one-episode special for the TV series, the 2012 JoJo for the
 ///   2000 OVA — so v3 rows are not read and the next load picks again;
 ///   the launch's cache reclaim deletes them (`crate::cache::families`).
-pub(crate) const TITLE_MATCH_VERSION: u32 = 4;
+/// - v5: the title guess searches Kitsu without the dashes no ASCII
+///   letter or digit leads, which Kitsu read as exclusions, and the
+///   reverse resolve it falls back to reads words a show key runs
+///   together as the entry's. A v4 row can hold a pick either rule made
+///   wrong — a pick among the hits Kitsu returned for Re:ZERO without
+///   "Starting", or Season 2 Part 2 for Re:ZERO Season 2; re-keying
+///   lets the next load re-derive it.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 5;
 
 /// The first version whose keys name the provider segment
 /// ([`title_match_prefix`]); the versions before it keyed the title
 /// alone.
 pub(crate) const FIRST_SEGMENTED_TITLE_MATCH_VERSION: u32 = 3;
+
+/// The first version that keys a row's title match by the year the row
+/// names ([`crate::commands::title_match_year`]).
+pub(crate) const FIRST_YEAR_KEYED_TITLE_MATCH_VERSION: u32 = 4;
 
 fn title_match_key(
     provider: Option<crate::scraper::provider::ProviderId>,
@@ -488,7 +499,13 @@ pub fn title_match_put(
 ///   row can bind a hentai's key to an
 ///   undated entry one of whose names it is listed under; re-keying
 ///   lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 9;
+/// - v10: words a show key runs together name the entry whose titles
+///   keep them apart ("rezero" is "Re:ZERO"). A v9 row can bind a
+///   season's key to a later part of it — Re:ZERO Season 2's to Season
+///   2 Part 2, taken on its slug's cour after the resolve passed over
+///   Season 2 — or to nothing it could name at all; re-keying lets the
+///   next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 10;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("{}{show_id}", crate::cache::families::mapping())
@@ -1712,6 +1729,56 @@ mod tests {
             .expect("put")
         });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_mapping_guessed_before_run_together_words_named_the_entry_is_not_read() {
+        // The reverse resolve did not read a key's "rezero" as Kitsu's
+        // "re zero": it passed over Re:ZERO Season 2, Kitsu's first hit
+        // for the Season 2 key's words, and bound the key to Season 2
+        // Part 2, whose slug alone carried the key's cour.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:rezero-starting-life-in-another-world-season-2-100";
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v9:{key}"),
+                "43247",
+                60,
+            )
+            .expect("put")
+        });
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_title_match_guessed_before_a_dash_led_word_reached_kitsu_is_not_read() {
+        // The title guess searched Kitsu with the provider's title as
+        // typed, a dash before "Starting" and all, which Kitsu read as
+        // "without Starting"; and the reverse resolve it falls back to
+        // bound the Season 2 key to Season 2 Part 2. Either stored its
+        // pick under the title.
+        let state = state_with_kitsu_at("http://unused");
+        let title = "Re:ZERO -Starting Life in Another World- Season 2";
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("title-match:v4:hianime:{}:c2", title.to_lowercase()),
+                "43247",
+                60,
+            )
+            .expect("put")
+        });
+        assert_eq!(
+            title_match_get(
+                &state,
+                Some(crate::scraper::provider::ProviderId::Hianime),
+                title,
+                2
+            )
+            .expect("get ok"),
+            None
+        );
     }
 
     #[test]
