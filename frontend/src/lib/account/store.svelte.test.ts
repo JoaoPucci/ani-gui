@@ -383,6 +383,18 @@ describe('accountStore.hydrate', () => {
 			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
 		});
 
+		it('does not say it is waiting on the keyring while a read waits for a connect', async () => {
+			// The wait is the user's sign-in in the browser, not the keyring.
+			vi.useFakeTimers();
+			const calls = countingSlowBridge();
+			accountStore.setConnecting('anilist');
+			void accountStore.hydrate();
+			calls.answer('mal', { ok: false, kind: 'not_found' });
+			calls.answer('inhouse', { ok: false, kind: 'not_found' });
+			await vi.advanceTimersByTimeAsync(KEYRING_WAIT_MS * 2);
+			expect(accountStore.keyringWaiting).toBe(false);
+		});
+
 		it('says it is waiting on the keyring once a read runs past the wait, and stops when it answers', async () => {
 			vi.useFakeTimers();
 			const answer = stubSlowBridge();
