@@ -42,5 +42,8 @@
 	],
 	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
 	"clear_confirm_button": "Clear all",
-	"hero_error_eyebrow_value": "No answer from Kitsu"
+	"hero_error_eyebrow_value": "No answer from Kitsu",
+	"resume_guess_note": "This card’s show was guessed from “{title}” in your history. If it’s the wrong show, pick the right one.",
+	"link_pick_button": "Pick the right show",
+	"link_on_card": "On the card"
 }

@@ -132,6 +132,12 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { appLinkDeps } from '$lib/history/link-deps';
+	import { rereadLinked } from '$lib/history/reread-linked';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { continueEpisode } from '$lib/play/next-episode';
@@ -439,7 +445,40 @@
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
 	let resumeBusy = $state<string | null>(null);
 	let resumeProgress = $state<string | null>(null);
-	let resumeFailure = $state<{ title: string; message: string } | null>(null);
+	let resumeFailure = $state<{
+		title: string;
+		message: string;
+		/** A guessed card's failure: its row, guess and episode, for the
+		 *  overlay's "Pick the right show". */
+		guess?: { row: string; matchId: string; title: string; episode: number };
+	} | null>(null);
+
+	// A guessed card's way to the picker — its pill, and its failed
+	// resume's button. A link reads the cards again where they stand;
+	// nothing navigates ($lib/history/in-place-link.svelte.ts).
+	const cardLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) =>
+			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
+		refresh: () => void rereadCards()
+	});
+	async function openCardLink(row: string, matchId: string, episode: number) {
+		resumeFailure = null;
+		await cardLink.arrive(row, matchId);
+		if (cardLink.offer) void cardLink.start(episode);
+	}
+	async function rereadCards() {
+		const next = await rereadLinked(history ?? [], {
+			list: historyList,
+			order: (rows) => sortByWatchedAt(rows, historyWatchedAt),
+			rematch: (h) =>
+				void rowTrust
+					.resolveMatch(h)
+					.then((match) => publishLoaderCap(h.id, match, match?.episode_count ?? null, true))
+		});
+		history = next;
+		for (const h of next) historyById.set(h.id, h);
+	}
 
 	const heroRotation = $derived<KitsuAnimeRef[]>(
 		trending && trending.length > 0 ? trending.slice(0, HERO_ROTATION_COUNT) : []
@@ -846,7 +885,14 @@
 			// Moved on while the message was worded: it is about a click
 			// the viewer left behind.
 			if (isCurrent?.() === false) return;
-			resumeFailure = { title, message };
+			const row = args.guess ? historyById.get(args.row ?? '') : undefined;
+			resumeFailure = {
+				title,
+				message,
+				guess: row
+					? { row: row.id, matchId: args.match.id, title: row.title, episode: args.episode }
+					: undefined
+			};
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
@@ -1242,6 +1288,7 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
+			{@const guessed = resumable && match && rowTrust.isGuess(entry.id) ? match : null}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,
 		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
@@ -1309,6 +1356,22 @@
 					</a>
 				{/if}
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				<!-- A guessed card's pill, on hover or keyboard focus, at the
+				     corner the delete chip leaves free: it opens the picker
+				     in place. -->
+				{#if guessed}
+					<button
+						type="button"
+						class="resume-link"
+						onclick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							void openCardLink(entry.id, guessed.id, nextEpisode);
+						}}
+					>
+						<GuessMark size={14} />{m.detail_link_not_this()}
+					</button>
+				{/if}
 				<!-- Delete chip sits AFTER the card in DOM so role-based
 			     queries land on the card first (Playwright's
 			     `getByRole('button').first()` was picking up the
@@ -1344,9 +1407,42 @@
 {#if resumeFailure}
 	<ErrorOverlay
 		headline={m.home_error_resume_headline({ title: resumeFailure.title })}
-		body={resumeFailure.message}
+		body={resumeFailure.guess
+			? `${resumeFailure.message} ${m.home_resume_guess_note({ title: resumeFailure.guess.title })}`
+			: resumeFailure.message}
 		onDismiss={() => (resumeFailure = null)}
+		pickLabel={resumeFailure.guess ? m.home_link_pick_button() : undefined}
+		pickIcon={guessMarkIcon}
+		onPick={() => {
+			const g = resumeFailure?.guess;
+			if (g) void openCardLink(g.row, g.matchId, g.episode);
+		}}
 	/>
+{/if}
+
+{#snippet guessMarkIcon()}<GuessMark size={16} />{/snippet}
+
+{#if cardLink.offer}
+	<!-- Home's own accent, not the last per-show one a card set. -->
+	<div class="card-link-accent">
+		<LinkShowDialog
+			open={cardLink.open}
+			savedTitle={cardLink.offer.entry.title}
+			episode={cardLink.episode}
+			currentLabel={m.home_link_on_card()}
+			candidates={cardLink.candidates}
+			failed={cardLink.failed}
+			chosen={cardLink.chosen}
+			warnings={cardLink.warnings}
+			rowCount={cardLink.group?.length ?? null}
+			busy={cardLink.busy}
+			error={cardLink.error}
+			onSearch={(q) => void cardLink.search(q)}
+			onChoose={(c) => cardLink.choose(c)}
+			onConfirm={() => void cardLink.confirm()}
+			onCancel={() => cardLink.cancel()}
+		/>
+	</div>
 {/if}
 
 <ConfirmDialog
@@ -1870,6 +1966,59 @@
 	   land on the exact same beat of the hover transition. The chip
 	   sits outside the card's click target (resume-card is a sibling,
 	   not an ancestor) so its click never triggers play. */
+	/* A guessed card's "≈ Not this show?" pill: shown as the delete
+	   chip is, on hover or keyboard focus, at the other top corner. */
+	.resume-link {
+		position: absolute;
+		z-index: 2;
+		inset-block-start: var(--space-2);
+		inset-inline-start: var(--space-2);
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		padding: var(--space-1) var(--space-3);
+		border: 1px solid color-mix(in oklab, var(--accent-persimmon) 45%, var(--ink-300));
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--ink-000) 84%, transparent);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		color: var(--bone-100);
+		cursor: pointer;
+		opacity: 0;
+		transform: scale(0.92);
+		pointer-events: none;
+		transition:
+			opacity var(--dur-fast) var(--ease-out-soft),
+			transform var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	.resume-cell:hover .resume-link,
+	.resume-cell:focus-within .resume-link {
+		opacity: 1;
+		/* Rides the card's hover lift, as the delete chip does. */
+		transform: translateY(-3px);
+		pointer-events: auto;
+	}
+	.resume-link:hover,
+	.resume-link:focus-visible {
+		border-color: var(--accent-persimmon);
+	}
+	.resume-link:focus-visible {
+		outline: 2px solid var(--accent-persimmon);
+		outline-offset: 2px;
+	}
+	.resume-link :global(.guess-mark) {
+		color: var(--accent-persimmon);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.resume-link {
+			transition: none;
+		}
+	}
+	.card-link-accent {
+		display: contents;
+		--accent: var(--accent-persimmon);
+	}
 	.resume-delete {
 		position: absolute;
 		/* Anchored half-outside the top-right corner so the chip

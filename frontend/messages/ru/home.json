@@ -43,5 +43,8 @@
 	],
 	"clear_confirm_body": "Это очистит историю просмотров ani-gui. Действие необратимо.",
 	"clear_confirm_button": "Очистить всё",
-	"hero_error_eyebrow_value": "Kitsu не отвечает"
+	"hero_error_eyebrow_value": "Kitsu не отвечает",
+	"resume_guess_note": "Тайтл этой карточки угадан по «{title}» из вашей истории. Если это не тот тайтл, выберите правильный.",
+	"link_pick_button": "Выбрать правильный тайтл",
+	"link_on_card": "На карточке"
 }
