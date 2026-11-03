@@ -85,3 +85,35 @@ async fn the_shipped_build_trusts_no_signature_yet() {
         .expect("document");
     assert_eq!(doc.get(NOTICES_KEY), None);
 }
+
+#[tokio::test]
+async fn a_signature_that_never_comes_costs_the_notices_not_the_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(FILE))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json.minisig"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(SIG)
+                .set_delay(std::time::Duration::from_secs(5)),
+        )
+        .mount(&server)
+        .await;
+    let url = format!("{}/flags/flags.json", server.uri());
+    let started = std::time::Instant::now();
+    let doc = fetch_trusting(
+        &reqwest::Client::new(),
+        &url,
+        std::time::Duration::from_millis(800),
+        &[KEY_ONE.trim()],
+    )
+    .await
+    .expect("the flags arrive without their signature");
+    assert_eq!(doc.get(NOTICES_KEY), None);
+    assert_eq!(doc.get("some_feature"), Some(&serde_json::json!(false)));
+    assert!(started.elapsed() < std::time::Duration::from_secs(3));
+}

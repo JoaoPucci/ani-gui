@@ -108,3 +108,13 @@ fn the_shipped_build_trusts_no_key_until_the_maintainer_adds_one() {
     assert!(std::hint::black_box(super::TRUSTED_KEYS).is_empty());
     assert_eq!(super::SIGNATURE_SUFFIX, ".minisig");
 }
+
+#[test]
+fn no_test_key_is_ever_trusted() {
+    for key in [KEY_ONE, KEY_TWO] {
+        assert!(
+            !std::hint::black_box(super::TRUSTED_KEYS).contains(&key.trim()),
+            "a fixture key, whose secret anyone can derive, is in TRUSTED_KEYS"
+        );
+    }
+}
