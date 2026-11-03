@@ -247,6 +247,8 @@ The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/
 - **The remote file stays the emergency off switch.** The release that turns a feature on also declares it in `DECLARED`: as a kill switch, or as a fallback whose earlier behaviour is what the feature replaced. From then on `flags.json` can switch it off, or back, without a release.
 - **Both states are tested.** While the feature ships off, its tests cover it off and on. That is a review rule; nothing checks it until the feature is declared. Once it is declared, the flag matrix (`backend/src/flags/matrix.rs`) holds it to a case for every value it allows.
 
+The rule covers user-facing features, not the flags mechanism itself. The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of that mechanism. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own. It is the only exemption. Every other user-facing feature follows the rule.
+
 Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and this rule is to be revised then.
 
 ## 14. Scope is negotiable, delivery is not
