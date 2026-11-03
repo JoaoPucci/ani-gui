@@ -1694,7 +1694,8 @@
 			mode,
 			quality,
 			kitsuId: id,
-			version: versionChoice
+			version: versionChoice,
+			caption: storedCaption(id)
 		});
 		downloadModalOpen = true;
 	}

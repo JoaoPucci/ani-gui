@@ -26,6 +26,9 @@ export interface BuildDownloadArgsInput {
 	/** The version remembered for the show; a range download starts
 	 *  from it and keeps to it. Omitted when none is. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show (`storedCaption`
+	 *  in `$lib/play/caption-choice.ts`); omitted when none is. */
+	caption?: string;
 }
 
 export function buildDownloadArgs(input: BuildDownloadArgsInput): DownloadArgs {
@@ -39,6 +42,7 @@ export function buildDownloadArgs(input: BuildDownloadArgsInput): DownloadArgs {
 		subtype: input.detail.subtype ?? undefined,
 		alt_titles: altTitlesFromKitsu(input.detail),
 		kitsu_id: input.kitsuId,
-		version: input.version
+		version: input.version,
+		caption: input.caption
 	};
 }

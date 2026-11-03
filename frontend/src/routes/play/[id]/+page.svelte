@@ -2769,7 +2769,8 @@
 			mode,
 			quality,
 			kitsuId: id,
-			version: storedChoice(id)
+			version: storedChoice(id),
+			caption: storedCaption(id)
 		});
 		downloadModalOpen = true;
 	}
