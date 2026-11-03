@@ -11,7 +11,7 @@
 //! only if it verified when fetched (see [`super::signature`]); it is
 //! not checked again on reading, so a hand edit of the user's own cache
 //! reaches only that user's notices. An entry without the mark this
-//! build writes ([`CacheEntry::admitted`]) predates the signature check
+//! build writes (the `admitted` field) predates the signature check
 //! and held the file as fetched: it is read as an unsigned file, its
 //! notices dropped.
 //!
