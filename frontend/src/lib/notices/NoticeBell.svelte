@@ -112,10 +112,13 @@
 		};
 	});
 
-	// On the player, keys pressed in the panel are the panel's: they
-	// must not also seek, change the volume or toggle fullscreen, whose
-	// shortcuts listen on the document and the window. Elsewhere they
-	// go on to the app's own shortcuts (`/` and Ctrl+K for search).
+	// Escape is the panel's everywhere: it closes the panel and goes no
+	// further. On the player every key pressed in the panel is the
+	// panel's, so none also seeks, changes the volume or toggles
+	// fullscreen through the shortcuts listening on the document and the
+	// window. Elsewhere other keys go on to the app's own shortcuts, and
+	// the search ones (`/`, Ctrl/Cmd+K) close the panel as the search
+	// takes the focus.
 	function onPanelKey(e: KeyboardEvent) {
 		// Escape is the panel's alone, so no other popover closes with it.
 		if (onPlayer || e.key === 'Escape') e.stopPropagation();
