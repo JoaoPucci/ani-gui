@@ -846,3 +846,15 @@ test("a 404 whose load is then superseded still fails the boot", async () => {
   await assert.rejects(opened, /404/);
   assert.equal(win.reveals, 0);
 });
+
+test("a first page that commits without an error status and is then superseded still opens", async () => {
+  for (const status of [200, -1]) {
+    const logged = [];
+    const win = pageWindow(async (w, url) => {
+      w.webContents.emit("did-navigate", {}, url, status, "");
+      throw aborted();
+    });
+    await loadFirstPage(win, "app://localhost/", (...args) => logged.push(args));
+    assert.equal(logged.length, 1, String(status));
+  }
+});

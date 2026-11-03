@@ -94,10 +94,16 @@ function grantedSizeRecorder({ save }) {
     unmaximized() {
       recording = false;
     },
+    revealing() {},
+    shown() {},
   };
 }
 
+/** Stub. */
+const GRANT_SETTLE_MS = 0;
+
 module.exports = {
+  GRANT_SETTLE_MS,
   MAX_DISPLAYS,
   displayKey,
   grantedSizeRecorder,

@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const {
   MAX_DISPLAYS,
+  GRANT_SETTLE_MS,
   displayKey,
   grantedSizeRecorder,
   initialSize,
@@ -137,19 +138,38 @@ test("remembering a display's unchanged size still makes it the newest", () => {
   assert.deepEqual(initialSize(store, { ...wayland, id: 2 }), { width: 1920, height: 1080 });
 });
 
-test("the size is recorded for the launch's own maximize, not after the user unmaximizes", () => {
+test("only the size granted as the launch reveals its window is recorded", (t) => {
   // What the next launch must match is the size this launch's window
-  // got when it was revealed maximized on the display it was made for.
-  // Once the user unmaximizes it, a later maximize — perhaps on another
-  // monitor, which Wayland gives no position to tell — is not recorded.
+  // got as it was revealed maximized on the display it was made for.
+  // Recording starts as the reveal maximizes the window and ends once
+  // the reveal has settled, or when the user unmaximizes it after it
+  // has shown — a later maximize, or a maximized window moved to
+  // another monitor (by keyboard it stays maximized), is not recorded.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const writes = [];
   const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
+  recorder.maximized({ width: 1, height: 1 }); // before the reveal
+  recorder.revealing();
   recorder.maximized({ width: 1920, height: 1080 });
-  recorder.maximized({ width: 1920, height: 1048 });
-  recorder.unmaximized();
-  recorder.maximized({ width: 2560, height: 1400 });
+  recorder.unmaximized(); // the reveal's own state flicker, before the show
+  recorder.shown();
+  recorder.maximized({ width: 1920, height: 1048 }); // the compositor's configure
+  t.mock.timers.tick(GRANT_SETTLE_MS);
+  recorder.maximized({ width: 2560, height: 1400 }); // moved by keyboard, still maximized
   assert.deepEqual(writes, [
     { width: 1920, height: 1080 },
     { width: 1920, height: 1048 },
   ]);
+});
+
+test("an unmaximize after the window has shown ends the recording at once", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const writes = [];
+  const recorder = grantedSizeRecorder({ save: (size) => writes.push(size) });
+  recorder.revealing();
+  recorder.shown();
+  recorder.maximized({ width: 1920, height: 1048 });
+  recorder.unmaximized();
+  recorder.maximized({ width: 1280, height: 1000 });
+  assert.deepEqual(writes, [{ width: 1920, height: 1048 }]);
 });
