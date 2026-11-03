@@ -179,10 +179,13 @@ test("the splash holds still until it is told to move, and its fallback never st
   // that never comes, settles on the finished still frame.
   const css = read("splash.css");
   assert.match(css, /body:not\(\.shown\)[^{]*\{[^}]*animation-play-state: paused/);
-  assert.match(css, /body\.reduced \*[^{]*\{[^}]*animation: none !important/);
-  const fallback = /^setTimeout\(\(\) => document\.body\.classList\.add\('reduced'\), (\d+)\);$/m.exec(
-    read("splash.js"),
-  );
+  // Resting applies only to a page not already moving: the fallback
+  // must not freeze a motion the main process has started.
+  assert.match(css, /body\.reduced:not\(\.shown\) \*[^{]*\{[^}]*animation: none !important/);
+  const fallback =
+    /^setTimeout\(\(\) => \{\n\s+if \(!document\.body\.classList\.contains\('shown'\)\) document\.body\.classList\.add\('reduced'\);\n\}, (\d+)\);$/m.exec(
+      read("splash.js"),
+    );
   assert.ok(fallback, "splash.js falls back to the still frame on a timer");
   assert.ok(Number(fallback[1]) <= 1000, `fallback after ${fallback[1]} ms`);
   assert.doesNotMatch(read("splash.js"), /classList\.add\('shown'\)/);
@@ -637,4 +640,71 @@ test("a splash closed before it painted says it never painted", () => {
     "[main] splash asked for (+0 ms)",
     "[main] splash closed by the boot (+90 ms, never painted)",
   ]);
+});
+
+test("a window ready long after the splash painted pays nothing for the minimum", async (t) => {
+  // The minimum counts from the paint, not from when the window asks.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  win.answer(false);
+  for (let i = 0; i < 5; i++) await tick();
+  now += 2000;
+  t.mock.timers.tick(2000);
+  assert.equal(await settlesAtOnce(t, splash.whenShown()), true);
+});
+
+test("a window ready part-way through the minimum waits only the rest of it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => now });
+  splash.show();
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  win.answer(false);
+  for (let i = 0; i < 5; i++) await tick();
+  now += 300;
+  t.mock.timers.tick(300);
+  const waiting = splash.whenShown();
+  assert.equal(await settlesAtOnce(t, waiting), false);
+  now += SPLASH_MIN_ON_SCREEN_MS - 300;
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_MS - 300);
+  assert.equal(await settlesAtOnce(t, waiting), true);
+});
+
+test("a splash put away during its minimum releases the wait at once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  const waiting = splash.whenShown();
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  win.answer(false);
+  for (let i = 0; i < 5; i++) await tick();
+  splash.suppress();
+  assert.equal(await settlesAtOnce(t, waiting), true);
+});
+
+test("the shorter minimum follows the page's answer, which also reflects the system's own setting", async (t) => {
+  // Where Chromium itself reports reduced motion (Windows, say), the
+  // main process may pass no preference while the page still rests.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = answeringSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  let up = false;
+  const waiting = splash.whenShown().then(() => (up = true));
+  win.emit("ready-to-show");
+  splash.motionPreference(false);
+  win.answer(true);
+  for (let i = 0; i < 5; i++) await tick();
+  t.mock.timers.tick(SPLASH_MIN_ON_SCREEN_REDUCED_MS);
+  await waiting;
+  assert.equal(up, true);
 });
