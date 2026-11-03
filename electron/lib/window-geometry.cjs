@@ -79,28 +79,47 @@ function writeGeometry(file, store, fs) {
   }
 }
 
+/** How long after the reveal begins its granted size is still being
+ *  settled: the compositor's configure lands within ~100 ms on GNOME,
+ *  so two seconds is generous, and short enough that a user's later
+ *  move is not mistaken for it. */
+const GRANT_SETTLE_MS = 2000;
+
 /**
- * Records the size this launch's window is granted when it is revealed
- * maximized on the display it was made for, through `save`, until the
- * user first unmaximizes it. A later maximize may be on another monitor
- * (Wayland gives no window position to tell), so it is not recorded.
+ * Records the size this launch's window is granted as it is revealed
+ * maximized on the display it was made for, through `save`. Recording
+ * starts at `revealing()` — just before the reveal maximizes the
+ * window — and ends GRANT_SETTLE_MS later, or at an unmaximize once the
+ * window has `shown()`. A later maximize, or a maximized window moved
+ * to another monitor (by keyboard it stays maximized, and Wayland gives
+ * no position to tell), is not recorded.
  */
-function grantedSizeRecorder({ save }) {
-  let recording = true;
+function grantedSizeRecorder({ save, setTimer = (fn, ms) => setTimeout(fn, ms) }) {
+  let recording = false;
+  let shownYet = false;
+  let done = false;
   return {
+    revealing() {
+      if (done) return;
+      recording = true;
+      setTimer(() => {
+        recording = false;
+        done = true;
+      }, GRANT_SETTLE_MS);
+    },
+    shown() {
+      shownYet = true;
+    },
     maximized(size) {
       if (recording) save({ width: size.width, height: size.height });
     },
     unmaximized() {
+      if (!shownYet) return;
       recording = false;
+      done = true;
     },
-    revealing() {},
-    shown() {},
   };
 }
-
-/** Stub. */
-const GRANT_SETTLE_MS = 0;
 
 module.exports = {
   GRANT_SETTLE_MS,

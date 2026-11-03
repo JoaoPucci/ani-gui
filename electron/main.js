@@ -521,6 +521,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       if (!win.isMaximized()) win.maximize();
     });
     win.once("show", () => keeper.shown(win));
+    win.once("show", () => granted.shown());
   };
   win.on("closed", () => keeper.closed(win));
 
@@ -543,8 +544,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // the next launch's hidden window. Read on resize too: on Wayland
   // the compositor's configure can land after the maximize event.
   // Kept under the display the window was made for, and only for the
-  // launch's own maximize (lib/window-geometry.cjs): Wayland exposes no
-  // real window position, so a later maximize could be on any monitor.
+  // size granted as the reveal maximizes it (lib/window-geometry.cjs):
+  // Wayland exposes no real window position, so a later maximize, or a
+  // maximized window moved by keyboard, could be on any monitor.
   const granted = grantedSizeRecorder({
     save: (size) => {
       const stored = readGeometry(geometryFile(), fs);
@@ -578,12 +580,14 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // whose first page failed (lib/startup.cjs).
     // A launch the user cancelled by closing the splash is quitting,
     // and reveals nothing.
-    reveal: () =>
+    reveal: () => {
+      granted.revealing();
       revealMaximized(win, {
         cancelled: () => splash.dismissed(),
         onMapped: mapped,
         afterShow: () => splash.close(),
-      }),
+      });
+    },
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
