@@ -121,9 +121,9 @@ export class NoticeCenter {
 	}
 
 	private apply(c: Change): void {
-		if (!c.changed) return;
+		// A change always touches a row; one that changes nothing has none.
+		if (!c.changed || !c.notice) return;
 		this.set(c.list);
-		if (!c.notice) return;
 		const how = arrival(c.notice, c.fresh, this.deps.moment?.() ?? this.moment);
 		if (how === 'toast') this.deps.toast(c.notice);
 		else if (how === 'hold') this.held.push(c.notice.key);
