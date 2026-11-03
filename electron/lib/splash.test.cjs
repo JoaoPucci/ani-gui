@@ -246,7 +246,7 @@ test("the app's window waits until the splash has been on screen long enough for
   t.mock.timers.enable({ apis: ["setTimeout"] });
   assert.equal(SPLASH_MIN_ON_SCREEN_MS, 500);
   const win = answeringSplash();
-  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => 0 });
   splash.show();
   let up = false;
   const waiting = splash.whenShown().then(() => (up = true));
@@ -268,7 +268,7 @@ test("a splash resting on its still frame needs a shorter time on screen", async
   t.mock.timers.enable({ apis: ["setTimeout"] });
   assert.equal(SPLASH_MIN_ON_SCREEN_REDUCED_MS, 300);
   const win = answeringSplash();
-  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => 0 });
   splash.show();
   let up = false;
   const waiting = splash.whenShown().then(() => (up = true));
@@ -290,7 +290,7 @@ test("a splash that paints late still gets its time on screen, and the wait stay
   // that is followed by the minimum, so the wait never exceeds both.
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const win = answeringSplash();
-  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  const splash = splashController({ createWindow: () => win, logError: () => {}, clock: () => 0 });
   splash.show();
   let up = false;
   const waiting = splash.whenShown().then(() => (up = true));
