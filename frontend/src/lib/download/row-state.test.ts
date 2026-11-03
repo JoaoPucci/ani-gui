@@ -81,6 +81,18 @@ describe('rowState', () => {
 		});
 	});
 
+	it('leaves a failure that carries its own report to the report, which names the cause', () => {
+		// An abandoned file fails the download with a write error; the
+		// generic folder advice would come before, and point away from,
+		// the report that names the file.
+		const failed = item({
+			status: 'error',
+			error: m.download_failure_write(),
+			progressStatus: { key: 'abandoned_claim', path: '/dl/x.mp4' }
+		});
+		expect(rowState(failed)).toEqual({ state: m.download_dock_state_failed(), note: null });
+	});
+
 	it('answers a state for every download, and a running one’s note only from a report', () => {
 		const keys: ProgressStatusKey[] = [
 			'already_here',
