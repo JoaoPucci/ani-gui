@@ -37,7 +37,7 @@
 		}
 	],
 	"outage_body": "The source hasn't answered since {time}. We don't know why yet: it may be down, or something between you and it may be blocking it. From here the two look the same.",
-	"outage_body_still": "Browsing, search and your lists still work; only playing and downloading need the source.",
+	"outage_body_still": "Browsing, search and your lists still work. Only playing and downloading need the source.",
 	"outage_evidence_label": "What ani-gui saw",
 	"outage_evidence": [
 		{
@@ -45,14 +45,14 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} attempt to reach it failed ({last}). ani-gui made no extra requests to find this out.",
-				"countPlural=*": "{count} attempts in a row to reach it failed; the latest: {last}. ani-gui made no extra requests to find this out."
+				"countPlural=*": "{count} attempts in a row to reach it failed. Latest: {last}. ani-gui made no extra requests to find this out."
 			}
 		}
 	],
 	"outage_resolved_title": "The streaming source is answering again",
 	"outage_resolved_meta": "Back since {time}",
 	"outage_resolved_body": "The source answered again ({time}). Playing should work as usual.",
-	"outage_line": "The streaming source hasn't answered since {time}. We don't know why yet; playing may fail.",
+	"outage_line": "The streaming source hasn't answered since {time}. We don't know why yet. Playing may fail.",
 	"outage_line_details": "Details",
 	"download_done_title": [
 		{
