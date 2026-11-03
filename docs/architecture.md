@@ -342,16 +342,20 @@ three-second limit below.
    session. The preload marks that case with `window.aniGui.flagsOrigin`
    set to null, so a renderer consumer that must agree with the backend
    can ask `GET /api/flags` itself.
-4. The splash is put away only once it has rendered a frame: the boot's
-   window waits up to a second for the splash to answer that it has
-   painted before its own show completes the boot, so even a fast start
-   renders the splash rather than closing it unseen. The app's window
-   itself is mapped earlier, blank and frameless; on X11 and Windows
-   the splash stays above it, but on native Wayland, which ignores
-   always-on-top, the app's window may cover the splash, and the wait
-   then lasts its full second (see `docs/deferred-work.md`). A splash
-   that is minimized is not waited on past that second either. The
-   splash then closes.
+4. The splash is on screen first and alone. The app's window loads and
+   paints its first page hidden; once it is ready to show, it waits up
+   to a second for the splash to answer that it has rendered a frame,
+   and only then is it mapped, already maximized and painted, and the
+   splash closes. The two are never on screen competing, so it does
+   not matter that native Wayland ignores always-on-top. A splash that
+   never paints, or is minimized, holds the window no longer than that
+   second. On Wayland the compositor gives no work area until a window
+   is on screen, so the hidden window paints at the full screen size
+   and takes its maximized size (below the top bar) from the
+   compositor as it appears: a one-time height correction, measured at
+   up to about 85 ms after the window appears on GNOME. Measured on
+   GNOME under Wayland and on Xvfb; X11 with a real window manager and
+   Windows were not measured.
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate
 a frame at a time, beside a reel title and a frame counter
