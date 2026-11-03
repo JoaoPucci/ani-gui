@@ -371,8 +371,10 @@ test("every language's stall lines fit the splash, whole, without moving its tit
                   s.textContent = ${JSON.stringify(text)};
                   s.classList.add('on');
                   const r = s.getBoundingClientRect();
+                  const lineHeight = parseFloat(getComputedStyle(s).lineHeight);
                   return { locale: ${JSON.stringify(locale)}, text: s.textContent,
                     fits: r.right <= innerWidth && r.bottom <= innerHeight && s.scrollWidth <= s.clientWidth,
+                    lines: Math.round(r.height / lineHeight),
                     still: title() === before };
                 })()`,
               ),
@@ -384,8 +386,13 @@ test("every language's stall lines fit the splash, whole, without moving its tit
       }
       return out;
     });
-    expect(seen.length).toBeGreaterThanOrEqual(8);
-    for (const line of seen) expect(line).toMatchObject({ fits: true, still: true });
+    // Two lines per language, each a real line of text.
+    expect(seen.length).toBe(8);
+    for (const line of seen) {
+      expect(line).toMatchObject({ fits: true, still: true });
+      expect(String(line.text).length).toBeGreaterThan(0);
+      expect(line.lines).toBeLessThanOrEqual(3);
+    }
   } finally {
     await app.close();
   }

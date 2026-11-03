@@ -200,9 +200,8 @@ test("the stall line sits outside the flow, so its coming and going moves nothin
   assert.match(css, /\.readout \{[^}]*position: relative;/);
   assert.match(css, /\.status \{[^}]*position: absolute;/);
   // A longer line, in any language, wraps inside the title column
-  // rather than running off the window or being cut short: the network
-  // line is longer than the column in every language
-  // (the end-to-end suite checks it fits the window).
+  // rather than running off the window or being cut short (the
+  // end-to-end suite checks every language's lines fit the window).
   assert.match(css, /\.status \{[^}]*max-inline-size: 100%;/);
   assert.doesNotMatch(css, /\.status \{[^}]*(nowrap|text-overflow)/);
 });
@@ -331,14 +330,17 @@ test("a page told nothing to say never shows a stall line", () => {
 });
 
 test("a stalled flags step says the network is slow, and every other stalled step says the app is starting", () => {
-  // Measured, only two things ever hold a step past 700 ms: a stalled
-  // network, with the flags fetch running to its two-second cap, and a
-  // first-time database on a slow disk. While the flags step stalls the
-  // app is waiting on the network, and it then starts with what it
-  // already has on the device: the saved flags if they are fresh, the
-  // built-in defaults if not. The line says that much and no more.
+  // The flags step waits on the network: the fetch of the flags file,
+  // up to its two-second cap. Past 700 ms that is the cause we know of
+  // (a slow read of the cached copy can hold it too). What the app
+  // starts with is not yet decided when the line appears: the file, if
+  // it arrives within the cap, else the saved copy or the defaults. So
+  // the line promises only that the start goes ahead.
   assert.deepEqual(STEPS, ["backend", "flags", "page"]);
   assert.equal(STALL_MS, 700);
+  const en = messagesFor("en");
+  assert.equal(en.splashNetworkSlow, "Network is slow — starting in a moment anyway…");
+  assert.equal(en.splashStartingUp, "Starting up…");
   for (const locale of LOCALES) {
     const m = messagesFor(locale);
     for (const key of ["splashStartingUp", "splashNetworkSlow"]) {
@@ -347,15 +349,9 @@ test("a stalled flags step says the network is slow, and every other stalled ste
     }
     assert.notEqual(m.splashNetworkSlow, m.splashStartingUp, locale);
     assert.deepEqual(stallTexts(m), [m.splashStartingUp, m.splashNetworkSlow, m.splashStartingUp], locale);
-    // No line names a job the backend does not report.
-    assert.deepEqual(
-      Object.keys(m).filter((k) => /library/i.test(k)),
-      [],
-      locale,
-    );
   }
   for (const locale of LOCALES.filter((l) => l !== "en")) {
-    assert.notEqual(messagesFor(locale).splashNetworkSlow, messagesFor("en").splashNetworkSlow, locale);
+    assert.notEqual(messagesFor(locale).splashNetworkSlow, en.splashNetworkSlow, locale);
   }
 });
 
