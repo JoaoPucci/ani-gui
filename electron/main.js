@@ -590,10 +590,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // SPLASH_COMPLETE_HOLD_MS after it landed. A wait that gave up on the
     // render completes the rail the same way before the window is
     // revealed anyway, so the rail is always seen complete.
-    beforeShow: () =>
-      revealGate(() => splash.whenShown(), {
-        ready: appReady.ready.then((rendered) => splash.pageReady(rendered)),
-      }),
+    beforeShow: () => revealGate(splash, appReady),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
