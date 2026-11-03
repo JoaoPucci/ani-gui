@@ -93,8 +93,11 @@ function splashController({
   onDismissed = () => {},
   log = () => {},
   clock = () => Date.now(),
+  // The version the splash shows above its title (splashVersionLabel).
+  version = "",
 }) {
   const state = fresh();
+  state.version = version;
   // One info line per step of the splash's life, timed from when it
   // was asked for: enough for a run's log to say whether a splash was
   // seen, and for how long.
@@ -188,7 +191,7 @@ function splashController({
       });
       win = splash;
       state.opened = true;
-      Promise.resolve(splash.loadFile(SPLASH_PAGE)).catch((err) =>
+      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query: { v: version } })).catch((err) =>
         logError("[main] the splash failed to load:", err),
       );
     },
@@ -272,7 +275,15 @@ function splashController({
 let current = fresh();
 
 function fresh() {
-  return { opened: false, shown: false, closed: false, suppressed: false };
+  return { opened: false, shown: false, closed: false, suppressed: false, version: "" };
+}
+
+/** The version the splash shows above its title, labelled as the app's
+ *  rail and About label theirs (frontend `$lib/version.ts`): the bare
+ *  version, with `-dev` marking a dev run. Electron's version and the
+ *  frontend's move together in every release. */
+function splashVersionLabel(version, isDev) {
+  return isDev ? `${version}-dev` : version;
 }
 
 function lastSplashState() {
@@ -321,5 +332,6 @@ module.exports = {
   SPLASH_PAGE,
   lastSplashState,
   splashController,
+  splashVersionLabel,
   splashWindowOptions,
 };

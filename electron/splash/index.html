@@ -4,8 +4,9 @@
   comes up, then the claw pulls the film down one frame at a time — move,
   hold, move, hold — the intermittent motion every projector makes. The
   loop is seamless because the strip advances exactly one frame pitch.
-  Nothing on it counts: the splash measures nothing, so the readout
-  under the title is an empty slot.
+  Nothing on it counts: the line above the title is the app's version
+  (version.js), and the readout under the title is an empty slot, since
+  the splash measures nothing.
 
   The mark is mark.svg alone, and the layout holds for a mark of another
   shape, so a new mark replaces one file.
@@ -35,7 +36,8 @@
       <span class="plate"></span>
     </div>
     <section class="title">
-      <p class="eyebrow">reel <span class="num">1</span></p>
+      <p class="eyebrow version"></p>
+      <script src="version.js"></script>
       <h1 class="wordmark">ani-gui</h1>
       <p class="readout" aria-hidden="true"></p>
     </section>

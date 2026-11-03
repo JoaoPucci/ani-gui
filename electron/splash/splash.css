@@ -116,14 +116,18 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
   margin: 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--bone-300); font-variant-numeric: tabular-nums;
 }
-.eyebrow .num { color: var(--brand); }
+/* The app's version above the title (version.js), as written: the
+   eyebrow's capitals would make "v0.18.0-dev" read "V0.18.0-DEV".
+   Hidden while empty, as in a page opened without one. */
+.version { text-transform: none; }
+.eyebrow:empty { display: none; }
 .wordmark {
   margin: 0; font-family: var(--font-display); font-weight: 400; font-style: italic; font-size: 46px; line-height: 1;
   letter-spacing: -0.02em; color: var(--bone-100);
   padding-block-end: 12px; border-block-end: 1px solid var(--ink-200);
 }
 /* The readout: a slot under the title, empty for now. Hidden while
-   empty, so the column's row gap doesn't push the reel title and its
+   empty, so the column's row gap doesn't push the title and its
    rule off the gate's centre. */
 .readout:empty { display: none; }
 

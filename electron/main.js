@@ -50,7 +50,7 @@ const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
-const { revealMaximized, splashController } = require("./lib/splash.cjs");
+const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
 const { appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
@@ -379,6 +379,10 @@ const splash = splashController({
   // would quit of itself.
   onDismissed: () => app.quit(),
   log: console.log,
+  // Above the splash's title. A dev run is the one that loads the Vite
+  // dev server (IS_DEV), whose frontend labels the rail's version
+  // `-dev` (import.meta.env.DEV); the splash marks it the same.
+  version: splashVersionLabel(app.getVersion(), IS_DEV),
 });
 
 /** Where the window's remembered maximized size lives: beside the
