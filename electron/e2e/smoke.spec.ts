@@ -247,19 +247,30 @@ test("the app's window paints the app's dark background and is revealed once its
   // a white frame between the splash and Home.
   const { app } = await launchAppWithStubs();
   try {
-    // Once the reveal is over, only the app's window is left.
+    const readyRecord = () =>
+      app.evaluate(() => {
+        const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+        return main.require("./lib/app-window.cjs").lastAppReady();
+      });
+    // Wait out the reveal: the splash gone, and the wait for the
+    // renderer settled either way.
     await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    await expect
+      .poll(async () => {
+        const r = await readyRecord();
+        return r.rendered || r.gaveUp;
+      }, { timeout: 5_000 })
+      .toBe(true);
     const backgrounds = await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().map((w) => w.getBackgroundColor().toLowerCase()),
+      BrowserWindow.getAllWindows()
+        .filter((w) => !w.isDestroyed() && (w as unknown as Record<string, unknown>).aniGuiSplash !== true)
+        .map((w) => w.getBackgroundColor().toLowerCase()),
     );
     expect(backgrounds).toEqual(["#0c0a09"]);
     // The renderer said its first page had rendered while the window
-    // was still hidden: the reveal waited for it.
-    const ready = await app.evaluate(() => {
-      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
-      return main.require("./lib/app-window.cjs").lastAppReady();
-    });
-    expect(ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
+    // was still hidden. That the reveal waits for this word is the
+    // reveal gate's own unit test (lib/app-window.test.cjs).
+    expect(await readyRecord()).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
   } finally {
     await app.close();
   }

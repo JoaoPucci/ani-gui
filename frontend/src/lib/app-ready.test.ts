@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { signalAppReady } from './app-ready';
 
 describe('signalAppReady', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it('tells the main process once the first page has been through two frames', () => {
 		const frames: Array<() => void> = [];
 		const raf = (cb: () => void) => frames.push(cb);
@@ -32,6 +36,5 @@ describe('signalAppReady', () => {
 		signalAppReady({ aniGui: { appReady } });
 		while (frames.length) frames.shift()?.();
 		expect(appReady).toHaveBeenCalledOnce();
-		vi.unstubAllGlobals();
 	});
 });
