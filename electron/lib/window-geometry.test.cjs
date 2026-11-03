@@ -7,6 +7,7 @@ const path = require("node:path");
 const {
   MAX_DISPLAYS,
   displayKey,
+  grantedSizeRecorder,
   initialSize,
   readGeometry,
   remember,
@@ -121,4 +122,34 @@ test("a remembered size taller or wider than today's work area is cut to it", ()
 test("remembering the same size again leaves the store as it was", () => {
   const store = remember({}, wayland, { x: 0, y: 32, width: 1920, height: 1048 });
   assert.equal(remember(store, wayland, { x: 0, y: 32, width: 1920, height: 1048 }), store);
+});
+
+test("remembering a display's unchanged size still makes it the newest", () => {
+  let store = {};
+  for (let id = 1; id <= MAX_DISPLAYS; id += 1) {
+    store = remember(store, { ...wayland, id }, { x: 0, y: 0, width: 1000 + id, height: 700 });
+  }
+  // Display 1, used again at the same size, is the newest now ...
+  store = remember(store, { ...wayland, id: 1 }, { x: 0, y: 0, width: 1001, height: 700 });
+  // ... so a new display evicts display 2, not display 1.
+  store = remember(store, { ...wayland, id: 99 }, { x: 0, y: 0, width: 900, height: 600 });
+  assert.deepEqual(initialSize(store, { ...wayland, id: 1 }), { width: 1001, height: 700 });
+  assert.deepEqual(initialSize(store, { ...wayland, id: 2 }), { width: 1920, height: 1080 });
+});
+
+test("the size is recorded for the launch's own maximize, not after the user unmaximizes", () => {
+  // What the next launch must match is the size this launch's window
+  // got when it was revealed maximized on the display it was made for.
+  // Once the user unmaximizes it, a later maximize — perhaps on another
+  // monitor, which Wayland gives no position to tell — is not recorded.
+  const writes = [];
+  const recorder = grantedSizeRecorder({ display: wayland, save: (size) => writes.push(size) });
+  recorder.maximized({ width: 1920, height: 1080 });
+  recorder.maximized({ width: 1920, height: 1048 });
+  recorder.unmaximized();
+  recorder.maximized({ width: 2560, height: 1400 });
+  assert.deepEqual(writes, [
+    { width: 1920, height: 1080 },
+    { width: 1920, height: 1048 },
+  ]);
 });

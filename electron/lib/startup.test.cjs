@@ -828,3 +828,21 @@ test("a load that fails in the same turn the wait ends is never revealed", async
   await assert.rejects(opened);
   assert.equal(win.reveals, 0);
 });
+
+test("a 404 whose load is then superseded still fails the boot", async () => {
+  // Once the error status has decided the open failed, a later
+  // navigation taking over must not turn it into a success that leaves
+  // a hidden window and nothing on screen.
+  const win = revealable(async (w, url) => {
+    w.webContents.emit("did-navigate", {}, url, 404, "");
+    throw aborted();
+  });
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await assert.rejects(opened, /404/);
+  assert.equal(win.reveals, 0);
+});

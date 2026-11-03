@@ -426,3 +426,13 @@ test("closing or putting away the splash is not the user dismissing it", () => {
     assert.equal(splash.dismissed(), false, end);
   }
 });
+
+test("a launch cancelled by closing the splash reveals nothing", () => {
+  const app = fakeAppWindow();
+  revealMaximized(app, {
+    cancelled: () => true,
+    onMapped: () => app.calls.push("listening"),
+    afterShow: () => app.calls.push("splash-closed"),
+  });
+  assert.deepEqual(app.calls, []);
+});

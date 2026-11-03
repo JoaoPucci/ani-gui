@@ -77,4 +77,18 @@ function writeGeometry(file, store, fs) {
   }
 }
 
-module.exports = { MAX_DISPLAYS, displayKey, initialSize, readGeometry, remember, writeGeometry };
+/** Records the launch's granted size. Stub. */
+function grantedSizeRecorder({ display, save }) {
+  void display;
+  return { maximized: (size) => save(size), unmaximized() {} };
+}
+
+module.exports = {
+  MAX_DISPLAYS,
+  displayKey,
+  grantedSizeRecorder,
+  initialSize,
+  readGeometry,
+  remember,
+  writeGeometry,
+};
