@@ -118,8 +118,10 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 }
 /* The app's version above the title (version.js), as written: the
    eyebrow's capitals would make "v0.18.0-dev" read "V0.18.0-DEV".
+   Its leading "v" takes the app's accent.
    Hidden while empty, as in a page opened without one. */
 .version { text-transform: none; }
+.version .v { color: var(--brand); }
 .eyebrow:empty { display: none; }
 .wordmark {
   margin: 0; font-family: var(--font-display); font-weight: 400; font-style: italic; font-size: 46px; line-height: 1;
