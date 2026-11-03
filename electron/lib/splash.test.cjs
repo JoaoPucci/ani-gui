@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { EventEmitter } = require("node:events");
+const fc = require("fast-check");
 
 const {
   SPLASH_MARK,
@@ -231,6 +232,12 @@ test("the splash's version is labelled as the app's rail and About label it", ()
     assert.equal(splashVersionLabel(v, false), v);
     assert.equal(splashVersionLabel(v, true), `${v}-dev`);
   }
+  // Any version: shown as given, and marked only in a dev run.
+  fc.assert(
+    fc.property(fc.string(), fc.boolean(), (v, dev) => {
+      assert.equal(splashVersionLabel(v, dev), dev ? `${v}-dev` : v);
+    }),
+  );
 });
 
 test("the splash is opened with the version it shows, and its record keeps it", () => {
