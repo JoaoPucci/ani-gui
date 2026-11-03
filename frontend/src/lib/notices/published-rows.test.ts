@@ -3,7 +3,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { arrival, IDLE } from './arrival';
 import { copyOf, toastOf } from './copy';
-import { canDismiss, isKind, lifetimeOf, raise, toneOf, unreadCount, type Notice } from './model';
+import {
+	canDismiss,
+	isKind,
+	lifetimeOf,
+	ordered,
+	raise,
+	toneOf,
+	unreadCount,
+	type Notice
+} from './model';
 import { act } from './panel';
 import { serialize } from './storage';
 
@@ -55,6 +64,18 @@ describe('a published notice', () => {
 		expect(toneOf(published({ priority: 'warning' }))).toBe('live');
 		expect(toneOf(published({ priority: 'critical' }))).toBe('failure');
 		expect(toneOf(published({ priority: 'loud' }))).toBe('info');
+	});
+
+	it('sorts with the live problems when critical, as when a warning', () => {
+		const at = (n: Notice, t: number) => ({ ...n, at: t });
+		const critical = at({ ...published({ priority: 'critical' }), key: 'remote:c' }, NOW);
+		const warning = at({ ...published({ priority: 'warning' }), key: 'remote:w' }, NOW - 10);
+		const info = at({ ...published({ priority: 'info' }), key: 'remote:i' }, NOW + 10);
+		expect(ordered([info, warning, critical]).map((n) => n.key)).toEqual([
+			'remote:c',
+			'remote:w',
+			'remote:i'
+		]);
 	});
 
 	it('may be dismissed', () => {

@@ -20,8 +20,11 @@ import { http, HttpResponse } from 'msw';
 
 import { page, setUrl } from './page-state.svelte';
 import {
+	NOT_ANSWERING,
 	QUIET,
 	bell,
+	health,
+	playingVideo,
 	bootLayout,
 	installWindow,
 	panel,
@@ -73,9 +76,13 @@ const MAINT = {
 	about_source: false
 };
 
-async function launch(flags: Record<string, boolean> | undefined, openExternal = vi.fn()) {
+async function launch(
+	flags: Record<string, boolean> | undefined,
+	openExternal = vi.fn(),
+	url = '/'
+) {
 	__resetApiBaseForTests(API_BASE);
-	setUrl('/');
+	setUrl(url);
 	server.use(
 		http.get(`${API_BASE}/api/notices`, () => {
 			published.reads += 1;
@@ -137,11 +144,50 @@ describe('a notice from a verified flags file', () => {
 	});
 });
 
+// That an unverified file's notices are dropped is the backend's half:
+// backend/src/api/notices_test.rs, flags/signature_minisign_test.rs and
+// flags/launch_test.rs. Here, the window's half: the empty answer it
+// then gets shows nothing.
 describe('an unverified flags file', () => {
-	it('has its notices dropped by the backend, so nothing shows', async () => {
+	it('gets an empty answer from the backend, which shows nothing', async () => {
 		published.answer = { donation_ask: null, items: [] };
 		const root = await launch({ notification_center: true });
 		expect(published.reads).toBe(1);
+		expect(toastTexts()).toEqual([]);
+		bell(root)?.click();
+		await settle();
+		expect(rows()).toEqual([]);
+	});
+});
+
+describe('a notice about the source', () => {
+	const NOTE = {
+		...MAINT,
+		id: 'src',
+		title: 'The source is down for maintenance',
+		body: 'It should be back tonight.',
+		about_source: true
+	};
+
+	it('joins the outage row while the source is not answering, at once', async () => {
+		published.answer = { donation_ask: null, items: [NOTE] };
+		health.answer = [NOT_ANSWERING];
+		const root = await launch({ notification_center: true }, vi.fn(), '/play/123');
+		bell(root)?.click();
+		await settle();
+		expect(rows()).toHaveLength(1);
+		rows()[0].querySelector<HTMLButtonElement>('button.nr-lead')?.click();
+		await settle();
+		const text = rows()[0].textContent ?? '';
+		expect(text).toContain("The streaming source isn't answering");
+		expect(text).toContain('From the developer');
+		expect(text).toContain('The source is down for maintenance');
+		expect(text).toContain('https://github.com/JoaoPucci/ani-gui');
+	});
+
+	it('shows nowhere while the source answers', async () => {
+		published.answer = { donation_ask: null, items: [NOTE] };
+		const root = await launch({ notification_center: true });
 		expect(toastTexts()).toEqual([]);
 		bell(root)?.click();
 		await settle();
@@ -207,6 +253,45 @@ describe('the donation ask', () => {
 		published.answer = { donation_ask: 2, items: [] };
 		await launch({ notification_center: true });
 		expect(toastTexts()).toEqual([]);
+	});
+
+	it('waits while a video plays, and asks once it stops', async () => {
+		installedLongAgo(1);
+		published.answer = { donation_ask: 2, items: [] };
+		const video = playingVideo();
+		try {
+			await launch({ notification_center: true });
+			expect(toastTexts()).toEqual([]);
+			video.stop();
+			await settle();
+			expect(toastTexts()).toEqual([ASK]);
+		} finally {
+			video.remove();
+		}
+	});
+
+	it('waits while the player is open', async () => {
+		installedLongAgo(1);
+		published.answer = { donation_ask: 2, items: [] };
+		await launch({ notification_center: true }, vi.fn(), '/play/123');
+		expect(toastTexts()).toEqual([]);
+	});
+
+	it('goes when a video starts while it is up, and does not come back', async () => {
+		installedLongAgo(1);
+		published.answer = { donation_ask: 2, items: [] };
+		await launch({ notification_center: true });
+		expect(toastTexts()).toEqual([ASK]);
+		const video = playingVideo();
+		try {
+			await settle();
+			expect(toastTexts()).toEqual([]);
+			video.stop();
+			await settle();
+			expect(toastTexts()).toEqual([]);
+		} finally {
+			video.remove();
+		}
 	});
 
 	it('records the number a new install sees, and does not ask for it', async () => {
