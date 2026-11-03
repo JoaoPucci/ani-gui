@@ -568,6 +568,10 @@ describe('play route — the quality the setting names, and the menu that change
 		expect(pressWith('m', {})).toBe(true);
 		expect(video.muted).toBe(false);
 		expect(document.activeElement).toBe(menuItems()[0]);
+		// The menu is named as its button is.
+		expect(target.querySelector('#pc-overflow-menu')?.getAttribute('aria-label')).toBe(
+			m.play_controls_menu_aria_label()
+		);
 
 		// Shift+Tab heads back to the button, and the menu closes.
 		expect(pressWith('Tab', { shiftKey: true })).toBe(true);

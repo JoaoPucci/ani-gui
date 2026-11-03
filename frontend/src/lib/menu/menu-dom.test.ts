@@ -377,6 +377,22 @@ describe('focusAfter', () => {
 		expect(document.activeElement).toBe(after);
 	});
 
+	it('passes over a control taken out of the tab order, and one that refuses focus', () => {
+		build(['a']);
+		const outOfOrder = document.createElement('button');
+		outOfOrder.tabIndex = -1;
+		// What a hidden or inert control does: its focus() changes nothing.
+		const refusing = document.createElement('button');
+		refusing.focus = () => {};
+		const link = document.createElement('a');
+		link.href = '#x';
+		link.tabIndex = -1;
+		after.before(outOfOrder, link, refusing);
+		item('a').focus();
+		focusAfter(menu);
+		expect(document.activeElement).toBe(after);
+	});
+
 	it('leaves focus alone when nothing follows', () => {
 		build(['a']);
 		item('a').focus();

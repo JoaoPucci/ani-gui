@@ -542,6 +542,11 @@ describe('the captions menu with many languages', () => {
 			!document.activeElement?.dispatchEvent(
 				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods })
 			);
+		// The menu is named by its heading.
+		const menuEl = document.querySelector('#pc-cc-menu')!;
+		const heading = document.getElementById(menuEl.getAttribute('aria-labelledby') ?? '');
+		expect(heading?.textContent).toBe(m.play_controls_cc_menu_heading());
+		expect(menuEl.contains(heading)).toBe(true);
 		// m is the player's mute key.
 		expect(taken('m')).toBe(true);
 		expect(video.muted).toBe(false);
