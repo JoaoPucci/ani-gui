@@ -136,6 +136,11 @@ test("a secret service that never answers keeps neither the window nor the first
     XDG_DATA_HOME: path.join(tmp, "data"),
     ANI_GUI_UNATTENDED: "1",
     DBUS_SESSION_BUS_ADDRESS: bus.address,
+    // Chromium asks the secret service only on a desktop it recognises;
+    // on any other (a CI runner has none) safeStorage falls back to
+    // basic_text at once and never touches the bus. A GNOME desktop is
+    // where the freeze was seen.
+    XDG_CURRENT_DESKTOP: "GNOME",
   });
   const pid = app.process().pid;
   try {
