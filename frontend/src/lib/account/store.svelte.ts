@@ -2,7 +2,7 @@
  * Per-provider account state. Svelte 5 rune store; pattern matches
  * `lib/download/store.svelte.ts`.
  *
- * State is sourced from Electron's safeStorage on boot, mutated by
+ * State is sourced from the OS keyring on boot, mutated by
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
@@ -12,6 +12,8 @@
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { persistAccount, readPersistedAccount, refreshTokens } from './api';
+import type { ReadPersistedAccountResult } from './bridge';
+import { KeyringWait } from './keyring-wait';
 import { refreshExpiredAccounts } from './refresh-flow';
 import { beginOwnWrite, ownWrites } from './own-writes';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
@@ -94,9 +96,32 @@ class AccountStore {
 	}
 
 	/**
-	 * Read every provider's persisted token (via Electron safeStorage)
-	 * and seed the store. Called at cold launch from `+layout.svelte`'s
-	 * onMount, and again when the account page mounts. A provider whose
+	 * True while a keyring read has run past `KEYRING_WAIT_MS` without an
+	 * answer (see `$lib/account/keyring-wait`). Read by the layout's
+	 * keyring notice.
+	 */
+	keyringWaiting = $state(false);
+
+	private keyringWait = new KeyringWait(
+		{
+			setTimer: (fn, ms) => setTimeout(() => fn(), ms),
+			clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
+		},
+		(waiting) => {
+			this.keyringWaiting = waiting;
+		}
+	);
+
+	/**
+	 * Read every provider's persisted token (via the OS keyring) and seed
+	 * the store. Called at cold launch from `+layout.svelte`'s onMount,
+	 * and again when the account page mounts.
+	 *
+	 * Asynchronous, provider by provider: a keyring that is locked or not
+	 * answering holds only its own reads, and the app renders signed out
+	 * until each answers. A read that answers after the provider's state
+	 * changed (a connect or disconnect while it waited) is dropped: what
+	 * the user did since is newer than what it read. A provider whose
 	 * re-read holds a different sign-in moves its generation, so a
 	 * renewal still out for the old one is superseded.
 	 *
@@ -104,21 +129,29 @@ class AccountStore {
 	 * is in the past, state is `expired` (renderer surfaces a Sign-in-
 	 * again CTA rather than letting the next API call fail with 401).
 	 */
-	hydrate(): void {
+	hydrate(): Promise<void> {
 		const providers: Provider[] = ['anilist', 'mal', 'inhouse'];
-		const prev = this.byProvider;
-		const next = { ...prev };
-		const nowSec = Math.floor(Date.now() / 1000);
-		for (const p of providers) {
-			next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
-			if (isSignInChange(prev[p], next[p], ownWrites(p))) this.bumpGeneration(p);
-		}
-		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
-		this.byProvider = next;
+		const reads = providers.map((p) => {
+			const generation = this.accountGeneration[p];
+			return readPersistedAccount(p).then((read) => this.applyRead(p, generation, read));
+		});
+		const settled = Promise.all(reads);
+		this.keyringWait.track(settled);
 		// Every hydrate path (cold launch AND the account page) must give a
 		// just-expired-but-refreshable provider a chance to refresh, so
-		// hydrate() owns it rather than each caller remembering. Fire-and-forget — safe to ignore.
-		void this.refreshExpired();
+		// hydrate() owns it rather than each caller remembering.
+		return settled.then(() => this.refreshExpired());
+	}
+
+	/** Seed one provider from its keychain read, unless superseded. */
+	private applyRead(p: Provider, generation: number, read: ReadPersistedAccountResult): void {
+		if (this.accountGeneration[p] !== generation) return;
+		const prev = this.byProvider;
+		const state = hydratedState(prev[p], read, Math.floor(Date.now() / 1000));
+		if (isSignInChange(prev[p], state, ownWrites(p))) this.bumpGeneration(p);
+		const next = { ...prev, [p]: state };
+		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
+		this.byProvider = next;
 	}
 
 	/**
