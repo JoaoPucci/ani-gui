@@ -37,6 +37,22 @@ pub fn slug_words(slug: &str) -> Option<&str> {
     Some(words)
 }
 
+/// The release year a show key names among its slug's words — the
+/// `2000` of `hianime:jojos-bizarre-adventure-2000-5182` — when one
+/// stands there.
+///
+/// A year is a word of four digits from 1960 to 2039: the numeric id
+/// after the words is never one, and neither is a number outside the
+/// years shows were made in ("blade-runner-2049", "mob-psycho-100").
+#[must_use]
+pub fn key_year(id: &str) -> Option<u32> {
+    slug_words(&ShowKey::parse(id).slug)?
+        .split('-')
+        .filter(|w| w.len() == 4 && w.bytes().all(|b| b.is_ascii_digit()))
+        .filter_map(|w| w.parse::<u32>().ok())
+        .find(|y| (1960..2040).contains(y))
+}
+
 /// Whether a play that landed on `played` played the listing the
 /// history row `row` names — the test a play asked from a guessed
 /// Continue card passes before the card's guess may become the row's
@@ -133,3 +149,7 @@ impl std::fmt::Display for ShowKey {
 #[cfg(test)]
 #[path = "show_key_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "show_key_year_test.rs"]
+mod year_tests;

@@ -323,6 +323,10 @@ export interface HistoryEntry {
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
+	/** The release year the row's show key names among its slug's words
+	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
+	 *  the backend; absent when it names none. */
+	key_year?: number;
 }
 
 /** Input to `cmd_create_session`. */
@@ -1327,11 +1331,15 @@ export function kitsuEpisodes(
 export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
 	if (provider !== null) qs.set('provider', provider);
+	// A row that names a year keeps its guess apart from a row titled
+	// alike that names another.
+	if (year !== null) qs.set('year', String(year));
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1346,9 +1354,11 @@ export function kitsuTitleMatchPut(
 	title: string,
 	cour: number,
 	kitsuId: string,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<void> {
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
+	const body = { title, cour, kitsu_id: kitsuId, provider };
+	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
 }
 
 /**

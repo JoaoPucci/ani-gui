@@ -382,6 +382,53 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
+- **Some guessed Continue cards still open the wrong show.** A
+  Continue row that recorded no show is matched by a Kitsu search for
+  its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
+  narrowed first by `frontend/src/lib/history/pick-rank.ts`). Over the
+  season picker's recorded cases these still pick another entry, and a
+  click on the card opens that one, playing whatever the provider lists
+  for it, if anything:
+
+  - [Oshi no Ko], which hianime titles "My Star": "My Star" takes Fuyu
+    no Suta-furu-tsu, and "My Star: Season 2" and "My Star Season 3"
+    take My Hero Academia 7.
+  - "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2" takes Part 1,
+    the only hit Kitsu's search returns for it.
+  - "Jujutsu Kaisen (TV)" takes the New Year's Special, and "Jujutsu
+    Kaisen 2nd Season" its recap.
+  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2, and
+    "Haikyuu!!: To the Top 2nd Season" takes To the Top.
+  - "That Time I Got Reincarnated as a Slime Season 2" takes the 2nd
+    Season's Part 2.
+  - "Attack on Titan: Final Season, Part 1" takes the Final Chapters'
+    Part 1.
+  - "Bakemonogatari (The Monogatari Series)" takes Off & Monster
+    Season.
+  - "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)"
+    takes Stone Ocean Part 2.
+
+  It waited because no rule tried fixed these without breaking picks
+  that are right. Refusing a season row any hit that does not carry
+  its season, rather than falling back to Kitsu's first hit, emptied
+  the pick for Gintama Season 2, 4 and 5 and for Kaguya-sama's second
+  season, whose Kitsu slugs do not spell the season the way that rule
+  reads one (Gintama' is `gintama-2`). Preferring a
+  season hit with no extra Part number sent Attack on Titan Season 3 to
+  its specials and the Slime season to a recap. Stripping "(TV)",
+  "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
+  pick.
+
+  There is no control on a card to correct its show. What corrects one
+  is playing the show from its own page: when that play lands on the
+  card's listing, the line records the show and the card goes by it
+  from then on — unless the cross-cour guard refuses the record, as it
+  does for the Slime season (the entry on a later season Kitsu titles
+  only with a bare number). Worth revisiting when the guess can read
+  more of the provider's listing than its title and the year its key
+  names — the year it aired, or its episode count — or when another
+  wrong pick on a user's card is reported.
+
 ## Interface
 
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**
