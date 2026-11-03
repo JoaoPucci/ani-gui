@@ -104,3 +104,21 @@ test("a write that cannot land only loses the memory", () => {
   };
   assert.doesNotThrow(() => writeGeometry("/nowhere/window-geometry.json", {}, throwing));
 });
+
+test("a remembered size taller or wider than today's work area is cut to it", () => {
+  // A panel that grew since: the window must not be made taller than
+  // the area it will be maximized into.
+  const x11 = {
+    id: 3,
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    workAreaSize: { width: 1920, height: 1000 },
+    scaleFactor: 1,
+  };
+  const store = remember({}, x11, { x: 0, y: 0, width: 1920, height: 1040 });
+  assert.deepEqual(initialSize(store, x11), { width: 1920, height: 1000 });
+});
+
+test("remembering the same size again leaves the store as it was", () => {
+  const store = remember({}, wayland, { x: 0, y: 32, width: 1920, height: 1048 });
+  assert.equal(remember(store, wayland, { x: 0, y: 32, width: 1920, height: 1048 }), store);
+});

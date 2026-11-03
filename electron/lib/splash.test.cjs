@@ -386,3 +386,43 @@ test("an app window gone before it is revealed is left alone", () => {
   });
   assert.deepEqual(app.calls, []);
 });
+
+test("a splash the user closes asks the app to quit, and the boot reveals nothing", () => {
+  // Once the app's window exists (hidden, loading), closing the splash
+  // from the taskbar closes no last window, so no quit would follow of
+  // itself; the user asked to stop the launch.
+  const win = fakeSplash();
+  let quits = 0;
+  const splash = splashController({
+    createWindow: () => win,
+    logError: () => {},
+    onDismissed: () => (quits += 1),
+  });
+  splash.show();
+  win.emit("ready-to-show");
+  assert.equal(splash.dismissed(), false);
+  win.destroyed = true;
+  win.emit("closed");
+  assert.equal(quits, 1);
+  assert.equal(splash.dismissed(), true);
+});
+
+test("closing or putting away the splash is not the user dismissing it", () => {
+  for (const end of ["close", "suppress"]) {
+    const win = fakeSplash();
+    let quits = 0;
+    const splash = splashController({
+      createWindow: () => win,
+      logError: () => {},
+      onDismissed: () => (quits += 1),
+    });
+    splash.show();
+    splash[end]();
+    if (end === "suppress") {
+      win.destroyed = true;
+      win.emit("closed");
+    }
+    assert.equal(quits, 0, end);
+    assert.equal(splash.dismissed(), false, end);
+  }
+});

@@ -132,6 +132,9 @@ function splashController({ createWindow, logError }) {
     // Resolves once the splash is on screen — or there is none to wait
     // for (never asked to open, failed to, put away, gone) — and in any
     // case within SPLASH_SHOW_WAIT_MS.
+    dismissed() {
+      return false;
+    },
     whenShown() {
       if (!state.opened || over || !alive()) return Promise.resolve();
       let timer;

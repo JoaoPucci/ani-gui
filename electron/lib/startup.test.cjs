@@ -786,3 +786,45 @@ test("the app's window is not revealed until the splash has painted, even where 
   await opened;
   assert.equal(win.reveals, 1);
 });
+
+test("an error page that paints before its load has finished is never revealed", async () => {
+  // The 404 is known at the commit; the load resolves only at its end,
+  // and the page's first paint can come in between.
+  let finish;
+  const win = revealable(async (w, url) => {
+    w.webContents.emit("did-navigate", {}, url, 404, "");
+    w.emit("ready-to-show");
+    await new Promise((resolve) => (finish = resolve));
+  });
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: async () => {},
+    reveal: reveal(win),
+  });
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  finish();
+  await assert.rejects(opened, /404/);
+  assert.equal(win.reveals, 0);
+});
+
+test("a load that fails in the same turn the wait ends is never revealed", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  let failLoad;
+  const win = revealable(
+    () => new Promise((_resolve, reject) => (failLoad = reject)),
+  );
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  failLoad(loadError("ERR_FAILED", -2, "app://localhost/"));
+  release();
+  await assert.rejects(opened);
+  assert.equal(win.reveals, 0);
+});
