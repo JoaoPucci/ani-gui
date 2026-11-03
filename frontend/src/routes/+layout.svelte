@@ -46,6 +46,9 @@
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
+	import NoticeBell from '$lib/notices/NoticeBell.svelte';
+	import NoticeHost from '$lib/notices/NoticeHost.svelte';
+	import { centerEnabled } from '$lib/notices/enabled';
 	import { downloadFailureStore } from '$lib/download/failure-store.svelte';
 	import { selectFfmpegMissingCopy } from '$lib/download/ffmpeg-missing-copy';
 	import { checkForUpdate } from '$lib/update/check';
@@ -95,6 +98,11 @@
 	const isSettings = $derived(routeId.startsWith('/settings'));
 	const isDiagnostics = $derived(routeId.startsWith('/diagnostics'));
 	const isAbout = $derived(routeId.startsWith('/about'));
+	// The notification center runs only behind its launch flag, read
+	// once ($lib/notices/enabled). On the player its notices open in
+	// place rather than navigating away from the episode.
+	const noticesOn = centerEnabled();
+	const onPlayer = $derived(routeId.startsWith('/play'));
 
 	// Back-stack position. Layout adapter; the rules live in
 	// `$lib/history/nav-depth` so they're unit-testable. We hand the
@@ -669,6 +677,9 @@
 					</div>
 				{/if}
 			</form>
+			{#if noticesOn}
+				<NoticeBell {onPlayer} />
+			{/if}
 			<UpdateBadge />
 			<DownloadDock />
 			<AccountChip />
@@ -692,6 +703,10 @@
   (50 vs 40).
 -->
 <ToastHost downloadBarEnabled={config?.download_bottom_bar_enabled !== false} />
+
+{#if noticesOn}
+	<NoticeHost {onPlayer} {appVersion} />
+{/if}
 
 <!-- UpdateDialog — opens when the user clicks the UpdateBadge in
      the topbar. Lives here at the layout root so the modal sits

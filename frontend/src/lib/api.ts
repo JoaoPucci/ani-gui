@@ -611,6 +611,13 @@ export function yearFromKitsuRef(ref: KitsuAnimeRef | null | undefined): number 
 	return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** `GET /api/source-health`: whether each streaming provider is
+ *  answering, from the outcomes the app's own requests recorded. The
+ *  body is read by `$lib/notices/sources`' `parseHealth`. */
+export function sourceHealth(): Promise<unknown> {
+	return getJson<unknown>('/api/source-health');
+}
+
 export function appInfo(): Promise<AppInfo> {
 	return getJson<AppInfo>('/api/app-info');
 }

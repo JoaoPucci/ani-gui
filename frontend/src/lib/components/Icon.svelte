@@ -22,7 +22,8 @@
 		| 'external'
 		| 'arrow-back'
 		| 'arrow-right'
-		| 'update';
+		| 'update'
+		| 'bell';
 
 	let { name, size = 18 }: { name: IconName; size?: number } = $props();
 </script>
@@ -198,5 +199,23 @@
 		<circle cx="12" cy="12" r="9" />
 		<path d="M12 7 V15" />
 		<path d="M8 12 L12 16 L16 12" />
+	</svg>
+{:else if name === 'bell'}
+	<!-- The notification center's bell: crown, straight-shouldered
+	     body, flared lip and the clapper as a short bar below. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<path d="M12 3 V4.5" />
+		<path d="M6.5 16.5 V10.5 A5.5 5.5 0 0 1 17.5 10.5 V16.5 L19.5 18.5 H4.5 Z" />
+		<path d="M10.5 21 H13.5" />
 	</svg>
 {/if}
