@@ -80,6 +80,11 @@ pub struct DownloadArgs {
     /// ([`crate::commands::play::PlayArgs::version`]).
     #[serde(default)]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The captions choice remembered for the show
+    /// ([`crate::commands::play::PlayArgs::caption`]), which decides
+    /// which tracks a listing past the cap keeps, as it does for a play.
+    #[serde(default)]
+    pub caption: Option<String>,
     /// Absolute path to the directory the download lands in. The
     /// frontend's confirmation modal opens on `paths::download_dir()`
     /// and lets the user pick a different folder; the chosen path
@@ -90,6 +95,16 @@ pub struct DownloadArgs {
 }
 
 impl DownloadArgs {
+    /// What the viewer wants of a listing, with `locale` the UI's
+    /// ([`crate::commands::play::PlayArgs::wanted`]).
+    #[must_use]
+    pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
+        crate::scraper::track_preference::Wanted {
+            remembered: self.caption.as_deref().filter(|c| *c != "off"),
+            locale,
+        }
+    }
+
     /// The native resolve this download asks for, at `quality`.
     #[must_use]
     pub fn native_request<'a>(
@@ -105,7 +120,7 @@ impl DownloadArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
-            wanted: crate::scraper::track_preference::Wanted::locale(locale),
+            wanted: self.wanted(locale),
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),

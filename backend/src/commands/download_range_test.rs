@@ -291,3 +291,29 @@ fn a_download_asks_for_the_shows_remembered_language() {
         "Off is about showing, not about which tracks to keep"
     );
 }
+
+mod wanted_props {
+    use proptest::prelude::*;
+
+    proptest! {
+        /// A download wants what a play of the same request wants:
+        /// the remembered language unless it is Off, and the locale.
+        #[test]
+        fn a_download_wants_what_the_play_wants(
+            caption in proptest::option::of(prop_oneof![
+                Just("off".to_string()),
+                "[a-z]{2}(-[A-Z0-9]{2,3})?",
+            ]),
+            locale in prop_oneof![Just("en"), Just("pt-BR"), Just("ja")],
+        ) {
+            let body = serde_json::json!({
+                "title": "The Show", "episode": "2", "mode": "sub", "caption": caption,
+            });
+            let download: super::super::DownloadArgs =
+                serde_json::from_value(body.clone()).expect("download args");
+            let play: crate::commands::play::PlayArgs =
+                serde_json::from_value(body).expect("play args");
+            prop_assert_eq!(download.wanted(locale), play.wanted(locale));
+        }
+    }
+}
