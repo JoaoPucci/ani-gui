@@ -24,8 +24,10 @@ export function onTopView(
 	choice: OnTopChoice,
 	hintSeen: boolean
 ): OnTopView {
-	void platform;
-	void choice;
-	void hintSeen;
-	return { card: false, pin: null };
+	const wayland = platform === 'wayland';
+	const withPin = choice !== 'card';
+	return {
+		card: wayland && choice !== 'pin' && !hintSeen,
+		pin: withPin ? (wayland ? 'explain' : 'toggle') : null
+	};
 }

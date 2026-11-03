@@ -53,16 +53,40 @@ export const MINI_MOCK_OPTION_KEYS = Object.keys(MINI_MOCK_OPTIONS) as MiniMockO
 
 /** Stored text read as prefs; anything unknown falls back to the default. */
 export function parseMiniMockPrefs(raw: string | null): MiniMockPrefs {
-	void raw;
-	return MINI_MOCK_PREFS_DEFAULT;
+	let v: unknown;
+	try {
+		v = JSON.parse(raw ?? 'null');
+	} catch {
+		v = null;
+	}
+	if (typeof v !== 'object' || v === null) return MINI_MOCK_PREFS_DEFAULT;
+	const o = v as Record<string, unknown>;
+	const out: Record<string, unknown> = {
+		enabled: o.enabled === true,
+		switcher: o.switcher === true,
+		hintSeen: o.hintSeen === true
+	};
+	for (const key of MINI_MOCK_OPTION_KEYS) {
+		const allowed: readonly string[] = MINI_MOCK_OPTIONS[key];
+		out[key] = allowed.find((a) => a === o[key]) ?? MINI_MOCK_PREFS_DEFAULT[key];
+	}
+	return out as unknown as MiniMockPrefs;
 }
 
 export function loadMiniMockPrefs(storage: StorageLike | null): MiniMockPrefs {
-	void storage;
-	return MINI_MOCK_PREFS_DEFAULT;
+	let stored: string | null;
+	try {
+		stored = storage?.getItem(MINI_MOCK_PREFS_STORAGE_KEY) ?? null;
+	} catch {
+		stored = null;
+	}
+	return parseMiniMockPrefs(stored);
 }
 
 export function saveMiniMockPrefs(storage: StorageLike | null, prefs: MiniMockPrefs): void {
-	void storage;
-	void prefs;
+	try {
+		storage?.setItem(MINI_MOCK_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+	} catch {
+		// Not persisted: this session still uses it.
+	}
 }

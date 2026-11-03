@@ -23,11 +23,16 @@ export interface MiniChromeState {
 }
 
 export function miniChromeShown(state: MiniChromeState): boolean {
-	void state;
-	return false;
+	return (
+		state.pointerActive ||
+		state.focusWithin ||
+		state.paused ||
+		state.timelineHover ||
+		state.menuOpen ||
+		state.cardShown
+	);
 }
 
 export function miniFadeMs(reduced: boolean): number {
-	void reduced;
-	return 0;
+	return reduced ? 0 : MINI_FADE_MS;
 }

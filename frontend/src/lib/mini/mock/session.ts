@@ -51,13 +51,64 @@ export interface MiniSessions {
 }
 
 export function createMiniSessions(): MiniSessions {
+	let current: MiniSession | null = null;
+	// The held page's restore, until that page leaves.
+	let restore: (() => void) | null = null;
+	// Callbacks to call, not state anything renders.
+	const listeners = new Set<(session: MiniSession | null) => void>();
+	const set = (next: MiniSession | null) => {
+		current = next;
+		for (const listener of [...listeners]) listener(current);
+	};
+	const end = (): MiniSession | null => {
+		const s = current;
+		if (s) set(null);
+		return s;
+	};
+	const close = () => {
+		const s = end();
+		if (!s) return;
+		const back = restore;
+		restore = null;
+		if (back) {
+			s.video.pause();
+			back();
+		} else {
+			s.hooks.dispose();
+		}
+	};
 	return {
-		current: null,
-		open() {},
-		holds: () => false,
-		pageGone() {},
-		returnToApp: () => null,
-		close() {},
-		subscribe: () => () => {}
+		get current() {
+			return current;
+		},
+		open(session) {
+			if (current && current !== session) close();
+			restore = session.hooks.restore;
+			set(session);
+		},
+		holds: (video) => current?.video === video,
+		pageGone(video) {
+			if (current?.video === video) restore = null;
+		},
+		returnToApp() {
+			const s = end();
+			if (!s) return null;
+			const back = restore;
+			restore = null;
+			if (back) {
+				back();
+				return 'restored';
+			}
+			s.hooks.dispose();
+			return 'navigate';
+		},
+		close,
+		subscribe(listener) {
+			listeners.add(listener);
+			listener(current);
+			return () => {
+				listeners.delete(listener);
+			};
+		}
 	};
 }

@@ -8,6 +8,7 @@
  * `isMiniShortcut` is the main player's key into the mini player,
  * under the same suppression rules as its other letter keys.
  */
+import { decidePlayerKeyAction } from '$lib/play/keyboard';
 import type { PlayerKeyAction, PlayerKeyContext } from '$lib/play/keyboard';
 
 export type MiniKeyAction =
@@ -20,11 +21,13 @@ export interface MiniKeyContext extends PlayerKeyContext {
 }
 
 export function decideMiniKeyAction(ctx: MiniKeyContext): MiniKeyAction | null {
-	void ctx;
-	return null;
+	if (ctx.key === 'Escape') return ctx.menuOpen ? { kind: 'closeMenu' } : null;
+	const action = decidePlayerKeyAction(ctx);
+	if (action?.kind === 'fullscreen') return { kind: 'return' };
+	return action;
 }
 
 export function isMiniShortcut(ctx: PlayerKeyContext): boolean {
-	void ctx;
-	return false;
+	if (ctx.inField || ctx.modifier || ctx.repeat) return false;
+	return ctx.key === 'i' || ctx.key === 'I';
 }

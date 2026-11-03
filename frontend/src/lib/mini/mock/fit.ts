@@ -23,13 +23,12 @@ export interface MiniControlSet {
 }
 
 export function miniControlSet(width: number, layout: MiniLayout): MiniControlSet {
-	void width;
-	void layout;
+	const compact = width < MINI_COMPACT_BELOW;
 	return {
-		compact: false,
-		episodeSteps: 'buttons',
-		clusterFlanks: null,
-		time: 'both',
-		mute: true
+		compact,
+		episodeSteps: compact ? 'timeline' : 'buttons',
+		clusterFlanks: layout === 'centre' ? 'skip' : null,
+		time: compact ? 'current' : 'both',
+		mute: !compact
 	};
 }
