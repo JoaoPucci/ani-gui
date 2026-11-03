@@ -4163,6 +4163,7 @@
 			open={playLink.open}
 			savedTitle={playLink.offer.entry.title}
 			episode={playLink.episode}
+			playing
 			currentLabel={m.play_link_playing_now()}
 			candidates={playLink.candidates}
 			failed={playLink.failed}

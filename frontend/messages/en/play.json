@@ -151,5 +151,8 @@
 	"link_hide_aria": "Hide this notice",
 	"link_slip_aria": "Guessed show",
 	"link_menu_item": "Not this show…",
-	"link_playing_now": "Playing now"
+	"link_playing_now": "Playing now",
+	"link_change_button": "Not this show? Change",
+	"link_dialog_body": "Episode {episode} is playing. Pick the show it really is.",
+	"link_warning_episode": "Episode {episode} is playing, but this show lists {count} episodes."
 }

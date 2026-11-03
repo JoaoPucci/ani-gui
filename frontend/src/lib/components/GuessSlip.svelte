@@ -12,13 +12,16 @@
   the Undo. Hide sets it aside for the card's row until the app
   restarts ($lib/history/in-place-link.svelte.ts).
 
-  Its shell paints while the offer is decided ("holding"), so the text
-  landing moves nothing; the text arrives with a short fade, none under
-  reduced motion.
+  While the offer is decided ("holding") it keeps its room, empty: no
+  mark, text or button that the answer may take away, so the text
+  landing moves nothing. The text arrives with a short fade, none under
+  reduced motion. When nothing is offered the room slides shut, at once
+  under reduced motion.
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import GuessMark from './GuessMark.svelte';
+	import { slide } from '$lib/motion/transitions';
 	import type { SlipState } from '$lib/history/in-place-link.svelte';
 
 	let {
@@ -56,6 +59,7 @@
 	aria-label={view === 'holding' ? m.play_link_slip_aria() : undefined}
 	data-testid="guess-slip"
 	data-state={view}
+	out:slide={{ duration: 180 }}
 >
 	{#if view === 'linked'}
 		<svg class="mark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -74,33 +78,33 @@
 				>{m.play_link_open_linked()}</button
 			>
 		</span>
-	{:else}
+	{:else if view === 'guess' && title !== null}
 		<GuessMark class="mark" />
-		{#if view === 'guess' && title !== null}
-			<p class="text" id="guess-slip-text">{m.play_link_guess_note({ title })}</p>
-			<span class="actions">
-				{#if canKeep}
-					<button type="button" class="act" onclick={onright} disabled={busy}
-						>{m.play_link_guess_right()}</button
-					>
-				{/if}
-				<button type="button" class="act act-strong" onclick={onchange} disabled={busy}
-					>{m.detail_link_not_this()} {m.detail_link_change()}</button
+		<p class="text" id="guess-slip-text">{m.play_link_guess_note({ title })}</p>
+		<span class="actions">
+			{#if canKeep}
+				<button type="button" class="act" onclick={onright} disabled={busy}
+					>{m.play_link_guess_right()}</button
 				>
-			</span>
-		{/if}
+			{/if}
+			<button type="button" class="act act-strong" onclick={onchange} disabled={busy}
+				>{m.play_link_change_button()}</button
+			>
+		</span>
 	{/if}
-	<button type="button" class="hide" aria-label={m.play_link_hide_aria()} onclick={onhide}>
-		<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
-			><path
-				d="M6 6 18 18 M18 6 6 18"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.25"
-				stroke-linecap="round"
-			/></svg
-		>
-	</button>
+	{#if view !== 'holding'}
+		<button type="button" class="hide" aria-label={m.play_link_hide_aria()} onclick={onhide}>
+			<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
+				><path
+					d="M6 6 18 18 M18 6 6 18"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2.25"
+					stroke-linecap="round"
+				/></svg
+			>
+		</button>
+	{/if}
 </aside>
 
 <style>
@@ -125,6 +129,11 @@
 		font-size: var(--type-meta);
 		line-height: var(--leading-prose);
 		color: var(--bone-300);
+	}
+	/* The room held while the offer is decided: nothing painted in it. */
+	.guess-slip[data-state='holding'] {
+		border-color: transparent;
+		background: none;
 	}
 	.guess-slip :global(.mark) {
 		color: color-mix(in oklab, var(--accent) 85%, var(--bone-100));

@@ -33,8 +33,8 @@ export interface LinkDeps {
 	/** Continue Watching's match for a row, with whether it is trusted. */
 	resolve: (entry: HistoryEntry) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>;
 	search: (query: string) => Promise<KitsuAnimeRef[]>;
-	/** `rows` leads with the card's own row. */
-	link: (rows: string[], kitsuId: string) => Promise<LinkOutcome>;
+	/** Link `rows` from the card whose row is `card`. */
+	link: (card: string, rows: string[], kitsuId: string) => Promise<LinkOutcome>;
 	/** The rows of `rows` a link from the card `card` would write. */
 	group: (card: string, rows: string[]) => Promise<string[]>;
 	unlink: (kitsuId: string, rows: LinkedRow[]) => Promise<UnlinkOutcome>;
@@ -118,7 +118,7 @@ export async function confirmLink(
 	offer: LinkOffer,
 	kitsuId: string
 ): Promise<LinkOutcome> {
-	return deps.link(await guessedGroup(deps, offer), kitsuId);
+	return deps.link(offer.entry.id, await guessedGroup(deps, offer), kitsuId);
 }
 
 /** Undo `outcome`; true when every row it linked got its id back. */

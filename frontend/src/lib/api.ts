@@ -650,13 +650,13 @@ export interface UnlinkOutcome {
 	kept: string[];
 }
 
-/** Link history rows to the show the user named for them: `rows`
- *  leads with the card's own row, the card the link is made from, and
- *  only the rows of that card's listing are written. Rejects with
- *  Kitsu's 404/410 for an entry Kitsu deleted. */
-export function historyLink(rows: string[], kitsuId: string): Promise<LinkOutcome> {
+/** Link history rows to the show the user named for them, from the
+ *  card whose row is `card`: only the rows of that card's listing among
+ *  `rows` are written. The card is named even when no row is left to
+ *  link. Rejects with Kitsu's 404/410 for an entry Kitsu deleted. */
+export function historyLink(card: string, rows: string[], kitsuId: string): Promise<LinkOutcome> {
 	return postJson<LinkOutcome>('/api/history/link', {
-		card: rows[0],
+		card,
 		rows,
 		kitsu_id: kitsuId
 	});

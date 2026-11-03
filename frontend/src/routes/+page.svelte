@@ -111,6 +111,7 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { cardRow } from '$lib/history/card-row';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
@@ -465,8 +466,24 @@
 	});
 	async function openCardLink(row: string, matchId: string, episode: number) {
 		resumeFailure = null;
+		if (await stillGuessed(row, matchId)) void cardLink.start(episode);
+	}
+	// Rows found no longer guessed since the cards were read: a link made
+	// elsewhere, a play that recorded the show. Their pill goes rather
+	// than open nothing, and the cards are read again.
+	const settledRows = new SvelteSet<string>();
+	async function stillGuessed(row: string, matchId: string): Promise<boolean> {
 		await cardLink.arrive(row, matchId);
-		if (cardLink.offer) void cardLink.start(episode);
+		if (cardLink.offer) return true;
+		settledRows.add(row);
+		void rereadCards();
+		return false;
+	}
+	/** The card that stands for the history row `row`. */
+	function cardButton(row: string): HTMLElement | null {
+		return document.querySelector<HTMLElement>(
+			`.resume-cell[data-card-row="${CSS.escape(row)}"] .resume-card`
+		);
 	}
 	async function rereadCards() {
 		const next = await rereadLinked(history ?? [], {
@@ -886,7 +903,11 @@
 			// Moved on while the message was worded: it is about a click
 			// the viewer left behind.
 			if (isCurrent?.() === false) return;
-			const row = args.guess ? historyById.get(args.row ?? '') : undefined;
+			// A guess still standing gets the pick; one settled since the
+			// cards were read gets none.
+			const guessed = args.guess ? historyById.get(args.row ?? '') : undefined;
+			const row = guessed && (await stillGuessed(guessed.id, args.match.id)) ? guessed : undefined;
+			if (isCurrent?.() === false) return;
 			resumeFailure = {
 				title,
 				message,
@@ -1296,7 +1317,8 @@
 			<!-- The line the card stands for: a row its guessed play wrote on
 			     another listing stands for the line clicked ($lib/history/card-row). -->
 			{@const line = cardRow(entry, history ?? [], historyMatches)}
-			{@const guessed = resumable && match && rowTrust.isGuess(line) ? match : null}
+			{@const guessed =
+				resumable && match && rowTrust.isGuess(line) && !settledRows.has(line) ? match : null}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,
 		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
@@ -1438,10 +1460,12 @@
 {#snippet guessMarkIcon()}<GuessMark size={16} />{/snippet}
 
 {#if cardLink.offer}
+	{@const linkRow = cardLink.offer.entry.id}
 	<!-- Home's own accent, not the last per-show one a card set. -->
 	<div class="card-link-accent">
 		<LinkShowDialog
 			open={cardLink.open}
+			returnFocus={() => cardButton(linkRow)}
 			savedTitle={cardLink.offer.entry.title}
 			episode={cardLink.episode}
 			currentLabel={m.home_link_on_card()}

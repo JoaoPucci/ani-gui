@@ -25,8 +25,15 @@
 		open: boolean;
 		/** The title the history row saved. */
 		savedTitle: string;
-		/** The episode the card offers, as the card shows it. */
+		/** The episode the card offers, as the card shows it — or, on the
+		 *  player (`playing`), the episode playing. */
 		episode: string;
+		/** Whether `episode` is the one playing now, not the one Continue
+		 *  Watching picks up at. */
+		playing?: boolean;
+		/** Where focus goes on close when what had it when the picker
+		 *  opened is gone, as a failed resume's overlay is. */
+		returnFocus?: () => HTMLElement | null;
 		/** What the show the card shows now is called where the picker
 		 *  opened: "On this page", "Playing now", "On the card". */
 		currentLabel: string;
@@ -53,6 +60,8 @@
 		open,
 		savedTitle,
 		episode,
+		playing = false,
+		returnFocus,
 		currentLabel,
 		candidates,
 		failed,
@@ -76,22 +85,28 @@
 	let lastPicked: string | null = null;
 	/** What had focus when the dialog opened, given it back on close. */
 	let opener: HTMLElement | null = null;
+	/** Whether the dialog has been open since it last closed. */
+	let shown = false;
 
 	// Into the top layer once it is in the document.
 	$effect(() => {
 		if (dialog && !dialog.open) dialog.showModal();
 	});
 	$effect.pre(() => {
-		if (open && !opener && document.activeElement instanceof HTMLElement) {
-			opener = document.activeElement;
-		}
+		if (!open || shown) return;
+		shown = true;
+		// Focus left on the page itself, as a closed overlay leaves it,
+		// is no place to go back to.
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && active !== document.body) opener = active;
 	});
 	$effect(() => {
-		if (open) return;
-		const back = opener;
+		if (open || !shown) return;
+		shown = false;
+		const back = opener?.isConnected ? opener : (returnFocus?.() ?? null);
 		opener = null;
 		lastPicked = null;
-		if (back?.isConnected) back.focus();
+		back?.focus();
 	});
 	$effect(() => {
 		if (!open) return;
@@ -177,7 +192,9 @@
 						{m.detail_link_dialog_title({ title: savedTitle })}
 					</h2>
 					<p class="ls-body">
-						{m.detail_link_dialog_body({ episode })}
+						{playing
+							? m.play_link_dialog_body({ episode })
+							: m.detail_link_dialog_body({ episode })}
 					</p>
 				{/if}
 			</header>
@@ -193,7 +210,7 @@
 						{/if}
 						{#if warnings.includes('episode')}
 							<li>
-								{m.detail_link_warning_episode({
+								{(playing ? m.play_link_warning_episode : m.detail_link_warning_episode)({
 									episode,
 									count: String(chosen.ref.episode_count ?? '')
 								})}

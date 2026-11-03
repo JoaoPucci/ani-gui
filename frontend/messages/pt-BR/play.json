@@ -152,5 +152,8 @@
 	"link_hide_aria": "Ocultar este aviso",
 	"link_slip_aria": "Anime deduzido",
 	"link_menu_item": "Não é este anime…",
-	"link_playing_now": "Passando agora"
+	"link_playing_now": "Passando agora",
+	"link_change_button": "Não é este anime? Alterar",
+	"link_dialog_body": "O episódio {episode} está passando agora. Escolha o anime que ele realmente é.",
+	"link_warning_episode": "O episódio {episode} está passando agora, mas este anime tem {count} episódios."
 }

@@ -106,7 +106,7 @@ export class LinkSession extends LinkPicker {
 		this.error = null;
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
-			const outcome = await this.#deps.link(rows, chosen.ref.id);
+			const outcome = await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
 			this.open = false;
 			this.offer = null;
 			this.#deps.notify(

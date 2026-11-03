@@ -151,5 +151,8 @@
 	"link_hide_aria": "Ocultar este aviso",
 	"link_slip_aria": "Serie deducida",
 	"link_menu_item": "No es esta serie…",
-	"link_playing_now": "Reproduciendo"
+	"link_playing_now": "Reproduciendo",
+	"link_change_button": "¿No es esta serie? Cambiar",
+	"link_dialog_body": "Se está reproduciendo el episodio {episode}. Elige la serie que realmente es.",
+	"link_warning_episode": "Se está reproduciendo el episodio {episode}, pero esta serie tiene {count} episodios."
 }

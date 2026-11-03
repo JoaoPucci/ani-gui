@@ -152,5 +152,8 @@
 	"link_hide_aria": "Скрыть это уведомление",
 	"link_slip_aria": "Угаданный тайтл",
 	"link_menu_item": "Не тот тайтл…",
-	"link_playing_now": "Сейчас играет"
+	"link_playing_now": "Сейчас играет",
+	"link_change_button": "Не тот тайтл? Изменить",
+	"link_dialog_body": "Сейчас идёт серия {episode}. Выберите, какой это тайтл на самом деле.",
+	"link_warning_episode": "Сейчас идёт серия {episode}, а у этого тайтла серий: {count}."
 }
