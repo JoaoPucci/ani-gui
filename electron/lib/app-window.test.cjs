@@ -16,6 +16,7 @@ const {
   appReadyWaiter,
   appWindowOptions,
   lastAppReady,
+  revealGate,
 } = require("./app-window.cjs");
 const { splashWindowOptions } = require("./splash.cjs");
 
@@ -91,13 +92,49 @@ test("the word can come before the wait is looked at, and still counts", async (
 
 test("the record says whether the word came while the window was still hidden", async () => {
   const ipc = new EventEmitter();
-  const contents = sender();
   let shown = true;
-  const waiter = appReadyWaiter(contents, ipc, { isShown: () => shown });
-  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  const late = sender();
+  const waiter = appReadyWaiter(late, ipc, { isShown: () => shown, timeoutMs: 50 });
+  ipc.emit(APP_READY_CHANNEL, { sender: late });
   await waiter.ready;
   assert.equal(lastAppReady().beforeReveal, false, "the window was already up");
   shown = false;
-  const again = appReadyWaiter(sender(), ipc, { isShown: () => shown });
-  void again;
+  const early = sender();
+  const again = appReadyWaiter(early, ipc, { isShown: () => shown, timeoutMs: 50 });
+  ipc.emit(APP_READY_CHANNEL, { sender: early });
+  await again.ready;
+  assert.equal(lastAppReady().beforeReveal, true, "the window was still hidden");
+});
+
+test("the reveal waits for the renderer's word even once the splash is done", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let splashDone;
+  const splashShown = new Promise((resolve) => (splashDone = resolve));
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc);
+  let open = false;
+  revealGate(() => splashShown, waiter).then(() => (open = true));
+  splashDone();
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(open, false, "the splash is done but the page has not rendered");
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(open, true);
+});
+
+test("the reveal waits for the splash even once the page has rendered", async () => {
+  let splashDone;
+  const splashShown = new Promise((resolve) => (splashDone = resolve));
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  let open = false;
+  revealGate(() => splashShown, waiter).then(() => (open = true));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(open, false);
+  splashDone();
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(open, true);
 });

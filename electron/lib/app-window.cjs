@@ -84,7 +84,14 @@ function lastAppReady() {
   return { ...current };
 }
 
+/** The reveal's gate. Stub. */
+function revealGate(splashShown, appReady) {
+  void appReady;
+  return splashShown();
+}
+
 module.exports = {
+  revealGate,
   APP_BACKGROUND,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
