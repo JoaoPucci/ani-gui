@@ -45,6 +45,14 @@ describe('buildPlayArgs', () => {
 		expect('guess_row' in buildPlayArgs(base)).toBe(false);
 	});
 
+	it("names a guessed card's guess when a guess asks, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
+		const args = buildPlayArgs({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
+		expect(args.guess_id).toBe('42');
+		expect('kitsu_id' in args).toBe(false);
+		expect('guess_id' in buildPlayArgs(base)).toBe(false);
+	});
+
 	it('marks a warm as a prefetch, and only a warm', () => {
 		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
 		expect(buildPlayArgs({ ...base, prefetch: true }).prefetch).toBe(true);

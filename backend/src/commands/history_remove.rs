@@ -49,7 +49,8 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         // its offset. The Kitsu ids the remaining rows claim, and the
         // ones this row was known by: what the rows and the cache say,
         // and the pages this process saw each played from — a row
-        // records its page only once its watch's verdict is in.
+        // records its page only once a verdict is in: the cache's,
+        // when the play resolves, or its watch's.
         let mut claimed = super::history_forget_skips::claimed_ids(state, &entries)?;
         for entry in &entries {
             claimed.extend(held.pages_of(&entry.id));

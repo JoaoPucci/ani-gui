@@ -184,3 +184,42 @@ proptest! {
         prop_assert_eq!(args.recordable_kitsu_id(&played), want);
     }
 }
+
+proptest! {
+    /// The id a play's resolve may record: what its watch may record;
+    /// else, for a play a guessed card asked for, the card's guess
+    /// exactly when the played key is the card's own listing. A guess
+    /// with no card's row behind it, or one that landed elsewhere, is
+    /// never recorded.
+    #[test]
+    fn a_resolve_records_a_guess_only_where_it_lands(
+        kitsu_id in prop::option::of("[1-9][0-9]{0,5}"),
+        guess_id in prop::option::of("[1-9][0-9]{0,5}"),
+        guess_row in prop::option::of(key()),
+        played in key(),
+        own in any::<bool>(),
+    ) {
+        let played = match (&guess_row, own) {
+            (Some(row), true) => row.clone(),
+            _ => played,
+        };
+        let mut v = serde_json::json!({ "title": "t", "episode": "1", "mode": "sub" });
+        if let Some(id) = &kitsu_id {
+            v["kitsu_id"] = serde_json::json!(id);
+        }
+        if let Some(id) = &guess_id {
+            v["guess_id"] = serde_json::json!(id);
+        }
+        if let Some(row) = &guess_row {
+            v["guess_row"] = serde_json::json!(row);
+        }
+        let args: PlayArgs = serde_json::from_value(v).expect("args");
+        let lands = args.lands_on_guess_row(&played);
+        let want = match &guess_row {
+            None => kitsu_id.as_deref(),
+            Some(_) if lands => kitsu_id.as_deref().or(guess_id.as_deref()),
+            Some(_) => None,
+        };
+        prop_assert_eq!(args.resolve_kitsu_id(&played), want);
+    }
+}
