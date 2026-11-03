@@ -125,6 +125,12 @@ pub struct PlayArgs {
     /// when none is.
     #[serde(default)]
     pub caption: Option<String>,
+    /// The locale the renderer runs in, which the built-in player
+    /// starts by. It wins over `config.toml`'s, which the renderer
+    /// adopts only when it is one of the app's own locales. `None` from
+    /// a caller that names none, which orders by the configured one.
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 impl PlayArgs {
@@ -150,8 +156,8 @@ impl PlayArgs {
         self.kitsu_id.as_deref()
     }
 
-    /// What the viewer wants of a listing, with `configured` the UI's
-    /// locale (`config.toml`'s).
+    /// What the viewer wants of a listing: the renderer's locale, or
+    /// `configured` (`config.toml`'s) when the request names none.
     #[must_use]
     pub fn wanted<'a>(
         &'a self,
@@ -159,7 +165,7 @@ impl PlayArgs {
     ) -> crate::scraper::track_preference::Wanted<'a> {
         crate::scraper::track_preference::Wanted {
             remembered: self.caption.as_deref().filter(|c| *c != "off"),
-            locale: configured,
+            locale: self.locale.as_deref().unwrap_or(configured),
         }
     }
 
@@ -169,7 +175,7 @@ impl PlayArgs {
     pub(crate) fn viewer(&self) -> crate::commands::play_cache::Viewer<'_> {
         crate::commands::play_cache::Viewer {
             remembered: self.caption.as_deref(),
-            locale: None,
+            locale: self.locale.as_deref(),
         }
     }
 
@@ -672,6 +678,7 @@ pub(crate) mod tests {
             kitsu_id in proptest::option::of("[a-z0-9-]{1,12}"),
         ) {
             let args = PlayArgs {
+                locale: None,
                 title,
                 episode,
                 mode,
@@ -740,6 +747,7 @@ pub(crate) mod tests {
     async fn the_exact_cap_stamp_derives_extras_with_no_prior_row() {
         let state = state_with_proxy_origin();
         let args = PlayArgs {
+            locale: None,
             title: "x".into(),
             episode: "3".into(),
             mode: "sub".into(),
@@ -812,6 +820,7 @@ pub(crate) mod tests {
             },
         );
         let args = PlayArgs {
+            locale: None,
             title: "x".into(),
             episode: "3".into(),
             mode: "sub".into(),
@@ -873,6 +882,7 @@ pub(crate) mod tests {
             crate::scraper::table_provider::TableProvider::new(),
         ));
         let mk = |title: &str| PlayArgs {
+            locale: None,
             title: title.into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -933,6 +943,7 @@ pub(crate) mod tests {
 
     fn uncached_args(title: &str) -> PlayArgs {
         PlayArgs {
+            locale: None,
             title: title.into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -1213,6 +1224,7 @@ pub(crate) mod tests {
         cached.show_title = "The Sequel".into();
         crate::commands::numbering_offset::put(&state, "the-sequel-88", 40);
         let args = PlayArgs {
+            locale: None,
             title: "The Sequel".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -1528,6 +1540,7 @@ pub(crate) mod tests {
 
     fn external_args(title: &str, episode: &str) -> PlayArgs {
         PlayArgs {
+            locale: None,
             title: title.into(),
             episode: episode.into(),
             mode: "sub".into(),
@@ -1682,6 +1695,7 @@ pub(crate) mod tests {
         let mut state = state;
         state.history_path = td.path().join("history");
         let args = PlayArgs {
+            locale: None,
             title: "Recap Show".into(),
             episode: "3.5".into(),
             mode: "sub".into(),
@@ -1729,6 +1743,7 @@ pub(crate) mod tests {
         let mut state = state_with_proxy_origin();
         state.history_path = tmp.path().join("history");
         let args = PlayArgs {
+            locale: None,
             title: "Recap Show".into(),
             episode: "24.5".into(),
             mode: "sub".into(),
@@ -2184,6 +2199,7 @@ pub(crate) mod tests {
     #[test]
     fn play_args_quality_defaults_to_best() {
         let args = PlayArgs {
+            locale: None,
             title: "test".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -2337,6 +2353,7 @@ pub(crate) mod tests {
         // told about.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Race Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -2403,6 +2420,7 @@ pub(crate) mod tests {
         // TTL and target episodes the provider has not listed.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Cap Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -2456,6 +2474,7 @@ pub(crate) mod tests {
         // back to the primary's clean miss.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Dub Show".into(),
             episode: "1".into(),
             mode: "dub".into(),
@@ -2514,6 +2533,7 @@ pub(crate) mod tests {
         // count self-heals via the next mode-aware probe.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Dub Show".into(),
             episode: "1".into(),
             mode: "dub".into(),

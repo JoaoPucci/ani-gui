@@ -23,7 +23,8 @@ use crate::scraper::provider::SubtitleTrack;
 pub struct Wanted<'a> {
     /// The language last picked on the show, if one was.
     pub remembered: Option<&'a str>,
-    /// The UI locale (a BCP 47 tag, the app's setting).
+    /// The UI locale (a BCP 47 tag): the one the renderer runs in,
+    /// or the app's setting when a request names none.
     pub locale: &'a str,
 }
 
@@ -46,8 +47,8 @@ use tag::parse_tag;
 mod rank;
 use rank::rank;
 
-/// The listing's indices, most wanted first, for a user in `locale`
-/// (a BCP 47 tag, the app's own setting).
+/// The listing's indices, most wanted first, for what `wanted`
+/// names ([`Wanted`]).
 #[must_use]
 pub fn preference_order(tracks: &[SubtitleTrack], wanted: Wanted<'_>) -> Vec<usize> {
     let remembered = wanted.remembered.and_then(parse_tag);

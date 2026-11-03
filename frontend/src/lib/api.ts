@@ -29,6 +29,7 @@ import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
 import {
@@ -721,17 +722,39 @@ export interface PlayArgs {
 	caption?: string;
 }
 
+/** `args` naming the locale the renderer runs in. The backend orders
+ *  the subtitle tracks it hands a player, a download or a cut listing
+ *  by it, so they follow the locale the built-in player starts by
+ *  rather than `config.toml`'s, which the renderer adopts only when it
+ *  is one of the app's own (`$lib/settings/boot-locale.ts`). */
+function withUiLocale<T extends object>(args: T): T & { locale: string } {
+	return { ...args, locale: uiLocale() };
+}
+
+/** The locale the renderer runs in, or an empty one when Paraglide
+ *  can resolve none (it throws then, as `boot-locale.ts` also allows
+ *  for). The play page reads the same empty locale for the built-in
+ *  player, and the backend reads it as no language, as the player
+ *  does — so both orders still agree, and the play does not fail. */
+function uiLocale(): string {
+	try {
+		return getLocale();
+	} catch {
+		return '';
+	}
+}
+
 /** Play an episode in the embedded player. Returns the session URLs
  *  the renderer feeds to hls.js after navigating to /play. */
 export function play(args: PlayArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/play', args, { lane: 'resolve' });
+	return postJson<CreateSessionResponse>('/api/play', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Play an episode in the user's external media player (default mpv).
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -741,7 +764,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -827,6 +850,7 @@ export function playStream(
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
 	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -960,6 +984,7 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
+	params.set('locale', uiLocale());
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>

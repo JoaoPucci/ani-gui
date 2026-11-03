@@ -83,6 +83,7 @@ async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_pr
     let state = state_over(&primary, &fallback);
     write_cache(&state, "580", "sub", true, Some(ProviderId::TestB));
     let args = PlayArgs {
+        locale: None,
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),

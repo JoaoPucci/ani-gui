@@ -87,17 +87,23 @@ pub struct DownloadArgs {
     /// chain on the backend.
     #[serde(default)]
     pub download_dir: Option<String>,
+    /// The locale the renderer runs in ([`super::play::PlayArgs::locale`]).
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 impl DownloadArgs {
-    /// The locale the download orders subtitle tracks by: the one in
-    /// the `config.toml` at `config_path`. A single episode and a range
-    /// both read it here.
+    /// The locale the download orders subtitle tracks by: the
+    /// renderer's, or the one in the `config.toml` at `config_path`
+    /// when the request names none. A single episode and a range both
+    /// read it here.
     #[must_use]
     pub fn ordering_locale(&self, config_path: &std::path::Path) -> String {
-        crate::config::read_config(config_path)
-            .unwrap_or_default()
-            .locale
+        self.locale.clone().unwrap_or_else(|| {
+            crate::config::read_config(config_path)
+                .unwrap_or_default()
+                .locale
+        })
     }
 
     /// The native resolve this download asks for, at `quality`.
