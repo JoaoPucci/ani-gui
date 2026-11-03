@@ -341,7 +341,7 @@ test("a stalled flags step says the network is slow, and every other stalled ste
   assert.deepEqual(STEPS, ["backend", "flags", "page"]);
   assert.equal(STALL_MS, 700);
   const en = messagesFor("en");
-  assert.equal(en.splashNetworkSlow, "Network is slow — starting in a moment anyway…");
+  assert.equal(en.splashNetworkSlow, "Network is slow — starting in a moment…");
   assert.equal(en.splashStartingUp, "Starting up…");
   for (const locale of LOCALES) {
     const m = messagesFor(locale);
