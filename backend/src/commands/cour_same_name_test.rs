@@ -68,6 +68,56 @@ fn a_bare_suffix_is_not_a_name() {
     assert!(!names_the_entry("Season 2", ["2nd Season"]));
 }
 
+#[test]
+fn words_a_slug_runs_together_name_the_entry() {
+    // hianime's key for Re:ZERO Season 4 is
+    // `rezero-starting-life-in-another-world-season-4-4587`; Kitsu
+    // titles the entry "Re:ZERO -Starting Life in Another World- Season
+    // 4", so "rezero" is Kitsu's "re" and "zero" run together.
+    let entry = [
+        "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+        "Re:ZERO -Starting Life in Another World- Season 4",
+        "Re:ゼロから始める異世界生活 4th season",
+    ];
+    assert!(names_the_entry(
+        "rezero starting life in another world season 4",
+        entry
+    ));
+    // The cour suffix may still be spelled either way.
+    assert!(names_the_entry(
+        "rezero starting life in another world 4th season",
+        entry
+    ));
+}
+
+#[test]
+fn words_run_together_still_name_no_other_season() {
+    let season_4 = ["Re:ZERO -Starting Life in Another World- Season 4"];
+    let season_3 = ["Re:ZERO -Starting Life in Another World- Season 3"];
+    assert!(!names_the_entry(
+        "rezero starting life in another world season 3",
+        season_4
+    ));
+    assert!(!names_the_entry(
+        "rezero starting life in another world season 4",
+        season_3
+    ));
+    assert!(!names_the_entry(
+        "rezero starting life in another world",
+        season_4
+    ));
+}
+
+#[test]
+fn numbers_are_never_run_together() {
+    // Only letters meet across a gap: two numbers stay two, so a
+    // season and part never read as one larger number, and a number
+    // stays apart from the word beside it.
+    assert!(!names_the_entry("Show Season 1 2", ["Show Season 12"]));
+    assert!(!names_the_entry("Show 1 2", ["Show 12"]));
+    assert!(!names_the_entry("Show 2", ["Show2"]));
+}
+
 mod props {
     use super::super::names_the_entry;
     use proptest::prelude::*;
@@ -169,12 +219,60 @@ mod props {
             n in 1u32..40,
             kw in prop::sample::select(KEYWORDS.to_vec()),
         ) {
-            prop_assume!(a != b);
+            // Names that differ only in where their words break are
+            // one name run together ("re zero" and "rezero").
+            prop_assume!(a.replace(' ', "") != b.replace(' ', ""));
             for provider in spellings(&a, n, kw) {
                 for kitsu in spellings(&b, n, kw) {
                     prop_assert!(!names_the_entry(&provider, [kitsu.as_str()]), "{} / {}", provider, kitsu);
                 }
             }
+        }
+
+        /// A name whose words are run together, in any places, names
+        /// the entry it names with them apart, in every spelling of the
+        /// same cour; never one of another cour.
+        #[test]
+        fn a_name_run_together_names_only_its_own_cour(
+            words in prop::collection::vec("[a-z]{1,6}", 2..5),
+            joins in prop::collection::vec(any::<bool>(), 4),
+            n in 1u32..40,
+            m in 1u32..40,
+            kw_a in prop::sample::select(KEYWORDS.to_vec()),
+            kw_b in prop::sample::select(KEYWORDS.to_vec()),
+        ) {
+            let apart = words.join(" ");
+            let mut together = words[0].clone();
+            for (w, join) in words[1..].iter().zip(&joins) {
+                if !*join {
+                    together.push(' ');
+                }
+                together.push_str(w);
+            }
+            for provider in spellings(&together, n, kw_a) {
+                for kitsu in spellings(&apart, m, kw_b) {
+                    prop_assert_eq!(
+                        names_the_entry(&provider, [kitsu.as_str()]),
+                        n == m,
+                        "{} / {}", provider, kitsu
+                    );
+                }
+            }
+        }
+
+        /// Numbers never run together: a cour written as two numbers
+        /// never names an entry whose cour is the two written as one.
+        #[test]
+        fn two_numbers_are_never_one(
+            name in "[a-z]{2,6}( [a-z]{2,6}){0,2}",
+            a in 1u32..100,
+            b in 0u32..100,
+            kw in prop::sample::select(KEYWORDS.to_vec()),
+        ) {
+            let provider = format!("{name} {kw} {a} {b}");
+            let kitsu = format!("{name} {kw} {a}{b}");
+            prop_assert!(!names_the_entry(&provider, [kitsu.as_str()]), "{} / {}", provider, kitsu);
+            prop_assert!(!names_the_entry(&kitsu, [provider.as_str()]), "{} / {}", kitsu, provider);
         }
     }
 }

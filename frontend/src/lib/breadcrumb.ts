@@ -21,6 +21,7 @@
 
 import { writable } from 'svelte/store';
 import { m } from '$lib/paraglide/messages';
+import { searchOrigin } from '$lib/search-origin';
 
 export interface BreadcrumbSegment {
 	label: string;
@@ -51,21 +52,6 @@ export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
 	if (routeId.startsWith('/anime')) return [home, { label: m.breadcrumb_anime() }];
 	if (routeId.startsWith('/play')) return [home, { label: m.breadcrumb_watching() }];
 	return [home];
-}
-
-/** `origin` when it is a search the reader ran (the search page with a
- *  query on it), else null: the one page behind that the breadcrumb
- *  names and steps back to. */
-export function searchOrigin(origin: string | null): string | null {
-	if (!origin) return null;
-	let url: URL;
-	try {
-		url = new URL(origin, 'http://app.invalid');
-	} catch {
-		return null; // not an address the page behind can have
-	}
-	const ran = url.pathname.endsWith('/search') && (url.searchParams.get('q') ?? '').trim() !== '';
-	return ran ? origin : null;
 }
 
 /**

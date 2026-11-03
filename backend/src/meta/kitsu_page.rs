@@ -81,6 +81,39 @@ pub fn next_offset(
     (has_next_link || counted_more).then_some(next)
 }
 
+/// The text a search for `query` sends Kitsu as `filter[text]`: the
+/// query with every `-` that no ASCII letter or digit precedes turned
+/// into a gap, and its words single-spaced.
+///
+/// Kitsu reads such a dash as "exclude what follows". The provider
+/// titles Re:ZERO's seasons "Re:ZERO -Starting Life in Another World-
+/// Season N", and sent as typed that title asks for Re:ZERO without
+/// "Starting" — Kitsu answers Zoids Genesis. A dash after punctuation
+/// excludes too ("naruto:-shippuden", "naruto (-shippuden)"); one
+/// after a letter or digit ("World-", "naruto-shippuden") is text.
+/// Nothing a user or a provider title means by a dash is an exclusion,
+/// so none is sent. Other dash characters, `+`, `|`, `~`, quotes,
+/// brackets, OR and NOT read as text and reach Kitsu as typed. A query
+/// of nothing but dashes is sent empty: Kitsu answers a lone `-` as it
+/// answers nothing.
+#[must_use]
+pub fn search_text(query: &str) -> String {
+    let mut previous: Option<char> = None;
+    let gapped: String = query
+        .chars()
+        .map(|c| {
+            let excludes = c == '-' && !previous.is_some_and(|p| p.is_ascii_alphanumeric());
+            previous = Some(c);
+            if excludes {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    gapped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 #[cfg(test)]
 #[path = "kitsu_page_test.rs"]
 mod tests;

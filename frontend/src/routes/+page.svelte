@@ -107,7 +107,7 @@
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
-	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -806,7 +806,10 @@
 			caption: storedCaption(a.match.id),
 			// A guess names its card's row, and the session answers whether
 			// the play landed on that row's own listing.
-			guessRow: a.row
+			guessRow: a.row,
+			// …and its guess, apart from the page's id, which the resolve
+			// records on that row when it lands there.
+			guessId: guessedId(a.guess === true, a.match.id)
 		});
 	// A Continue click awaits its session before it opens the player;
 	// one that answers after the viewer left home, or started a

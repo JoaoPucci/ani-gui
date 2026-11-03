@@ -2,7 +2,7 @@
  * Per-provider account state. Svelte 5 rune store; pattern matches
  * `lib/download/store.svelte.ts`.
  *
- * State is sourced from Electron's safeStorage on boot, mutated by
+ * State is sourced from the OS keyring on boot, mutated by
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
@@ -11,17 +11,13 @@
  */
 
 import type { PersistedAccount, Provider, ProviderState } from './types';
-import { persistAccount, readPersistedAccount, refreshTokens } from './api';
+import { persistAccount, refreshTokens } from './api';
+import { hydrateAccounts } from './hydrate-flow';
+import { AccountChanges } from './account-changes';
 import { refreshExpiredAccounts } from './refresh-flow';
-import { beginOwnWrite, ownWrites } from './own-writes';
+import { beginOwnWrite } from './own-writes';
 import { NO_RENEWAL_FAILURES, type RenewalFailure, type RenewalFailures } from './renewal-failure';
-import {
-	failuresAfterHydrate,
-	failuresAfterRetry,
-	hydratedState,
-	isSignInChange,
-	withFailure
-} from './hydrated-state';
+import { failuresAfterRetry, withFailure } from './hydrated-state';
 
 class AccountStore {
 	byProvider = $state<Record<Provider, ProviderState>>({
@@ -62,13 +58,15 @@ class AccountStore {
 	 * generation up front but leaves `byProvider` as `connected` until its
 	 * async clear finishes; a refresh entering that window would see a
 	 * stable (already-bumped) generation and pass its checks, so the
-	 * generation counter alone can't gate it. Consumers (fresh-bearer)
-	 * treat a changing provider as non-refreshable so a post-disconnect
-	 * refresh can't enqueue a resurrecting write.
+	 * generation counter alone can't gate it. Consumers: fresh-bearer
+	 * treats a changing provider as non-refreshable so a post-disconnect
+	 * refresh can't enqueue a resurrecting write, and the hydrate's
+	 * keyring reads wait for it to clear (`$lib/account/hydrate-flow`).
 	 */
 	accountChanging: Record<Provider, boolean> = { anilist: false, mal: false, inhouse: false };
 
-	private bumpGeneration(provider: Provider): void {
+	/** Move a provider's generation: its account changed. */
+	bumpGeneration(provider: Provider): void {
 		this.accountGeneration = {
 			...this.accountGeneration,
 			[provider]: this.accountGeneration[provider] + 1
@@ -78,6 +76,7 @@ class AccountStore {
 	/** Mark / clear the in-progress-change flag for a provider. */
 	private setChanging(provider: Provider, changing: boolean): void {
 		this.accountChanging = { ...this.accountChanging, [provider]: changing };
+		this.changes.notify(provider);
 	}
 
 	/**
@@ -94,31 +93,32 @@ class AccountStore {
 	}
 
 	/**
-	 * Read every provider's persisted token (via Electron safeStorage)
-	 * and seed the store. Called at cold launch from `+layout.svelte`'s
-	 * onMount, and again when the account page mounts. A provider whose
-	 * re-read holds a different sign-in moves its generation, so a
-	 * renewal still out for the old one is superseded.
+	 * True while a keyring read has run past `KEYRING_WAIT_MS` without an
+	 * answer (see `$lib/account/keyring-wait`). Read by the layout's
+	 * keyring notice.
+	 */
+	keyringWaiting = $state(false);
+
+	/**
+	 * Read every provider's persisted token (via the OS keyring) and seed
+	 * the store, each provider as its read answers (see
+	 * `$lib/account/hydrate-flow`). Called at cold launch from
+	 * `+layout.svelte`'s onMount, and again when the account page mounts.
 	 *
 	 * AniList 1-year JWT expiry is checked here: if `expires_at_epoch_s`
 	 * is in the past, state is `expired` (renderer surfaces a Sign-in-
 	 * again CTA rather than letting the next API call fail with 401).
 	 */
-	hydrate(): void {
-		const providers: Provider[] = ['anilist', 'mal', 'inhouse'];
-		const prev = this.byProvider;
-		const next = { ...prev };
-		const nowSec = Math.floor(Date.now() / 1000);
-		for (const p of providers) {
-			next[p] = hydratedState(prev[p], readPersistedAccount(p), nowSec);
-			if (isSignInChange(prev[p], next[p], ownWrites(p))) this.bumpGeneration(p);
-		}
-		this.renewalFailure = failuresAfterHydrate(prev, next, this.renewalFailure);
-		this.byProvider = next;
-		// Every hydrate path (cold launch AND the account page) must give a
-		// just-expired-but-refreshable provider a chance to refresh, so
-		// hydrate() owns it rather than each caller remembering. Fire-and-forget — safe to ignore.
-		void this.refreshExpired();
+	hydrate(): Promise<void> {
+		return hydrateAccounts(this);
+	}
+
+	private changes = new AccountChanges();
+
+	/** Resolves at the provider's next state change made through a
+	 *  setter (each passes through `setChanging`). */
+	nextChange(provider: Provider): Promise<void> {
+		return this.changes.next(provider);
 	}
 
 	/**
@@ -126,26 +126,30 @@ class AccountStore {
 	 * usable refresh token (MAL's ~1h access token), re-persisting the
 	 * rotated tokens and flipping it back to `connected`. AniList carries
 	 * no refresh token, so it stays expired → reauth. Best-effort and
-	 * safe to `void` from the layout's onMount after hydrate.
+	 * safe to `void` from the layout's onMount after hydrate. `only`
+	 * limits it to one provider.
 	 */
-	refreshExpired(): Promise<void> {
-		return refreshExpiredAccounts({
-			byProvider: () => this.byProvider,
-			onRefreshed: (provider, account) => this.setConnected(provider, account),
-			refreshTokens,
-			persistAccount,
-			// Post-await staleness guard: the per-provider generation counter
-			// advances on any account change (and synchronously at the start
-			// of an async disconnect), so a refresh that resolved after a
-			// mid-flight disconnect / re-auth is dropped — even before the
-			// store snapshot catches up.
-			generation: (provider) => this.accountGeneration[provider],
-			onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
-			ownWrite: beginOwnWrite,
-			// Don't even start an expired refresh for a provider whose
-			// disconnect is mid-flight.
-			changing: (provider) => this.accountChanging[provider]
-		});
+	refreshExpired(only?: Provider): Promise<void> {
+		return refreshExpiredAccounts(
+			{
+				byProvider: () => this.byProvider,
+				onRefreshed: (provider, account) => this.setConnected(provider, account),
+				refreshTokens,
+				persistAccount,
+				// Post-await staleness guard: the per-provider generation counter
+				// advances on any account change (and synchronously at the start
+				// of an async disconnect), so a refresh that resolved after a
+				// mid-flight disconnect / re-auth is dropped — even before the
+				// store snapshot catches up.
+				generation: (provider) => this.accountGeneration[provider],
+				onRenewalFailed: (provider, failure) => this.noteRenewalFailed(provider, failure),
+				ownWrite: beginOwnWrite,
+				// Don't even start an expired refresh for a provider whose
+				// disconnect is mid-flight.
+				changing: (provider) => this.accountChanging[provider]
+			},
+			only
+		);
 	}
 
 	/**
