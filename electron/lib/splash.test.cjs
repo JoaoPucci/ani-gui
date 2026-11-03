@@ -465,7 +465,7 @@ test("a launch's log says when the splash was asked for, shown, painted and clos
 test("the log says how a splash ended when the boot did not close it", () => {
   for (const [end, expected] of [
     ["suppress", "[main] splash put away: the boot failed (+0 ms)"],
-    ["dismiss", "[main] splash closed by the user: the launch is cancelled (+0 ms)"],
+    ["dismiss", "[main] splash closed before the boot was done (by the user or a quit): the launch is cancelled (+0 ms)"],
   ]) {
     const lines = [];
     const win = fakeSplash();
@@ -495,4 +495,40 @@ test("a splash that never opens says so", () => {
   });
   splash.show();
   assert.deepEqual(lines, ["[main] splash asked for (+0 ms)", "[main] splash not opened: no window was made"]);
+});
+
+test("a splash whose window cannot be made says so in the log, not only as an error", () => {
+  const lines = [];
+  const splash = splashController({
+    createWindow: () => {
+      throw new Error("no display");
+    },
+    logError: () => {},
+    log: (line) => lines.push(line),
+    clock: () => 0,
+  });
+  splash.show();
+  assert.deepEqual(lines, [
+    "[main] splash asked for (+0 ms)",
+    "[main] splash not opened: the window could not be made",
+  ]);
+});
+
+test("a splash closed before it painted says it never painted", () => {
+  let now = 0;
+  const lines = [];
+  const win = fakeSplash();
+  const splash = splashController({
+    createWindow: () => win,
+    logError: () => {},
+    log: (line) => lines.push(line),
+    clock: () => now,
+  });
+  splash.show();
+  now = 90;
+  splash.close();
+  assert.deepEqual(lines, [
+    "[main] splash asked for (+0 ms)",
+    "[main] splash closed by the boot (+90 ms, never painted)",
+  ]);
 });
