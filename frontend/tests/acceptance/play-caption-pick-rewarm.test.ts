@@ -36,6 +36,7 @@ vi.mock('$lib/account/push-watched', () => ({
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
+import { rememberCaption } from '../../src/lib/play/caption-choice';
 
 const KITSU_ID = '42';
 
@@ -206,5 +207,24 @@ describe('play route — a captions pick and the warmed next episode', () => {
 		await until(() => watched.includes('4'), 'the switch to the next episode');
 		expect(before.closed).toBe(true);
 		expect(FakeEventSource.instances.length).toBe(opened);
+	});
+
+	it('leaves the warms running when the pick is the language already remembered', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		handlers();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-3', episode: '3', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => playerVideo().textTracks.length === 2, 'the tracks attached');
+		await until(() => warmsOf('4').length === 1, 'the warm of the next episode');
+		const warm = warmsOf('4')[0];
+		expect(params(warm).get('caption')).toBe('es-419');
+
+		// The page starts on the language remembered; picking it again
+		// changes nothing a warm was asked for.
+		await pick('Spanish (Latin America)');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(warm.closed).toBe(false);
+		expect(warmsOf('4')).toHaveLength(1);
 	});
 });
