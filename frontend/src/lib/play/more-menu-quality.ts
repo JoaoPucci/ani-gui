@@ -50,7 +50,10 @@ export interface MoreMenuArrowAt {
  *  from the Quality row, go back from them, or nothing — kept in the
  *  menu, so it does not seek; null for any other key. */
 export function moreMenuArrow(key: string, at: MoreMenuArrowAt): 'open' | 'back' | 'stay' | null {
-	void key;
-	void at;
-	return null;
+	if (key !== 'ArrowLeft' && key !== 'ArrowRight') return null;
+	// Into the line is Right, or Left where the page reads right to left.
+	const inward = (key === 'ArrowRight') !== at.rtl;
+	if (inward && !at.qualityOpen && at.onQualityRow) return 'open';
+	if (!inward && at.qualityOpen) return 'back';
+	return 'stay';
 }

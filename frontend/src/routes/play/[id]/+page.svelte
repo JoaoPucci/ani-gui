@@ -126,7 +126,7 @@
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
-	import { moreMenuEscape, moreMenuQuality } from '$lib/play/more-menu-quality';
+	import { moreMenuArrow, moreMenuEscape, moreMenuQuality } from '$lib/play/more-menu-quality';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -2584,10 +2584,23 @@
 	function toggleMore() {
 		moreOpen = !moreOpen;
 		moreQualityOpen = false;
+		moreMenuWidth = null;
+		// Focus goes into the menu as it opens, where the arrow keys
+		// move it rather than reaching the player.
+		if (moreOpen) void tick().then(focusFirstMoreItem);
 	}
 	function closeMore() {
 		moreOpen = false;
 		moreQualityOpen = false;
+		moreMenuWidth = null;
+	}
+	/** Focus the ⋯ menu's first enabled item; false when it has none. */
+	function focusFirstMoreItem(): boolean {
+		const first = document.querySelector<HTMLElement>(
+			'#np-more-menu [role^="menuitem"]:not(:disabled)'
+		);
+		first?.focus();
+		return first !== null;
 	}
 	// The quality picker rides the ⋯ menu while the custom controls are
 	// off: the native controls have none, and the in-player menu goes
@@ -2596,16 +2609,21 @@
 	let moreQualityOpen = $state(false);
 	let moreQualityRow = $state<HTMLButtonElement | null>(null);
 	let moreQualityBack = $state<HTMLButtonElement | null>(null);
+	// The menu's width while the levels show: the main list's, so the
+	// right-anchored menu does not jump narrower as its contents swap.
+	let moreMenuWidth = $state<number | null>(null);
 	// Each swap of the menu's contents moves focus to the row that
 	// names where it now is, so it is never lost with the row clicked.
 	async function openMoreQuality() {
 		if (!moreQuality?.choosable) return;
+		moreMenuWidth = document.getElementById('np-more-menu')?.offsetWidth ?? null;
 		moreQualityOpen = true;
 		await tick();
 		moreQualityBack?.focus();
 	}
 	async function closeMoreQuality() {
 		moreQualityOpen = false;
+		moreMenuWidth = null;
 		await tick();
 		moreQualityRow?.focus();
 	}
@@ -2616,16 +2634,49 @@
 	}
 	// A stream retiring takes the levels with it, and one of a single
 	// level leaves nothing to choose: the menu falls back to its main
-	// list, focus to the menu's button — the main list's first item may
-	// be disabled by the switch that retired the stream.
+	// list, focus to its first item the switch has not disabled (the
+	// menu's button when none is left).
 	$effect(() => {
 		if (!moreQualityOpen || moreQuality?.choosable) return;
 		moreQualityOpen = false;
-		void tick().then(() => moreAnchor?.focus());
+		moreMenuWidth = null;
+		void tick().then(() => {
+			if (!focusFirstMoreItem()) moreAnchor?.focus();
+		});
 	});
 	// The arrow keys move between the menu's items, as a menu's should,
 	// rather than reaching the player's volume and seek keys.
+	// Left and Right open the levels from the Quality row and go back
+	// from them, and otherwise stay in the menu rather than seek.
 	function onMoreMenuKey(e: KeyboardEvent) {
+		const menu = e.currentTarget as HTMLElement;
+		const arrow = moreMenuArrow(e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			qualityOpen: moreQualityOpen,
+			onQualityRow: moreQualityRow !== null && document.activeElement === moreQualityRow
+		});
+		if (arrow !== null) {
+			e.preventDefault();
+			e.stopPropagation();
+			if (arrow === 'open') void openMoreQuality();
+			if (arrow === 'back') void closeMoreQuality();
+			return;
+		}
+		stepMenuFocus(e);
+	}
+	// The in-player menu steps the same way; its horizontal arrows stay
+	// in it rather than seek.
+	function onPcMenuKey(e: KeyboardEvent) {
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		stepMenuFocus(e);
+	}
+	/** ArrowDown, ArrowUp, Home and End move focus between the menu's
+	 *  enabled items, wrapping at the ends, and go no further. */
+	function stepMenuFocus(e: KeyboardEvent) {
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(
 			menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')
@@ -3265,7 +3316,13 @@
 								</svg>
 							</button>
 							{#if pcMenuOpen}
-								<div id="pc-overflow-menu" class="pc-menu" role="menu" tabindex="-1">
+								<div
+									id="pc-overflow-menu"
+									class="pc-menu"
+									role="menu"
+									tabindex="-1"
+									onkeydown={onPcMenuKey}
+								>
 									{#if pcSpeedExpanded}
 										<button
 											type="button"
@@ -3768,6 +3825,7 @@
 							aria-label={m.play_more_aria_label()}
 							tabindex="-1"
 							onkeydown={onMoreMenuKey}
+							style:min-inline-size={moreMenuWidth === null ? undefined : `${moreMenuWidth}px`}
 							transition:settle={{ duration: 120 }}
 						>
 							{#if moreQualityOpen && moreQuality}
@@ -4643,9 +4701,9 @@
 		border-end-end-radius: 0;
 		margin-block-end: var(--space-1);
 	}
+	/* The check sits in the icon column, so the level names share one
+	   edge with the back row's label and the main list's. */
 	.more-radio {
-		gap: var(--space-2);
-		padding-inline-start: var(--space-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.more-radio-on {
@@ -4654,7 +4712,8 @@
 	.more-check {
 		display: inline-flex;
 		justify-content: center;
-		inline-size: 1.25rem;
+		inline-size: 18px;
+		flex-shrink: 0;
 		font-weight: 700;
 		color: var(--accent);
 	}
