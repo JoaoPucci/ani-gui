@@ -9,8 +9,9 @@ import type { Notice } from './model';
 
 export const PUBLISHED_STORAGE_KEY = 'ani-gui.notices.published.v1';
 
-/** Ids kept of each list: well past the eight notices a file carries,
- *  so a notice still published is never forgotten, and bounded. */
+/** Ids kept of each list, the latest last. Well past the eight
+ *  notices a file carries, and an id still published is moved to the
+ *  end at each launch (`keepPublished`), so it is never the one let go. */
 export const MAX_REMEMBERED = 64;
 
 export interface PublishedMemory {
@@ -61,8 +62,20 @@ export function remember(
 	return { read: add(m.read, read), dismissed: add(m.dismissed, gone) };
 }
 
+/** `list` with `more` at its end, each once, the latest kept. */
 function add(list: readonly string[], more: ReadonlyArray<string | null>): string[] {
-	const out = [...list];
-	for (const id of more) if (id !== null && !out.includes(id)) out.push(id);
-	return out.slice(-MAX_REMEMBERED);
+	const fresh = more.filter((id): id is string => id !== null);
+	return [...list.filter((id) => !fresh.includes(id)), ...new Set(fresh)].slice(-MAX_REMEMBERED);
+}
+
+/** `m` with the ids the file still publishes moved to the end of each
+ *  list, so the ones let go when a list is full are those no longer
+ *  published. */
+export function keepPublished(m: PublishedMemory, published: readonly string[]): PublishedMemory {
+	const keep = (list: readonly string[]) =>
+		add(
+			list,
+			list.filter((id) => published.includes(id))
+		);
+	return { read: keep(m.read), dismissed: keep(m.dismissed) };
 }

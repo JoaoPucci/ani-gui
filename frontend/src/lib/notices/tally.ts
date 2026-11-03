@@ -21,13 +21,12 @@ export function toneOf(n: Notice): Tone {
 	return 'info';
 }
 
-/** Display order: live conditions first, then newest first. */
+/** Display order: live conditions first, a critical published notice
+ *  among them, then newest first. */
 export function ordered(list: readonly Notice[]): Notice[] {
-	return list.slice().sort((a, b) => {
-		const la = toneOf(a) === 'live' ? 0 : 1;
-		const lb = toneOf(b) === 'live' ? 0 : 1;
-		return la - lb || b.at - a.at;
-	});
+	const rank = (n: Notice) =>
+		toneOf(n) === 'live' || (n.kind === 'remote' && toneOf(n) === 'failure') ? 0 : 1;
+	return list.slice().sort((a, b) => rank(a) - rank(b) || b.at - a.at);
 }
 
 export interface CountOptions {

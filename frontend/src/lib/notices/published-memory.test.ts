@@ -62,11 +62,14 @@ describe('keeping what is still published', () => {
 	});
 
 	it('keeps a notice dismissed early while the file still publishes it', () => {
+		// A file carries at most eight notices, so a launch dismisses at
+		// most eight; each launch moves what is still published to the end.
 		let m: PublishedMemory = { read: [], dismissed: ['early'] };
-		const many = Array.from({ length: MAX_REMEMBERED + 5 }, (_, i) => remote(`n${i}`));
-		m = keepPublished(m, ['early']);
-		m = remember(m, many, []);
-		m = keepPublished(m, ['early']);
+		for (let launch = 0; launch < 12; launch++) {
+			m = keepPublished(m, ['early']);
+			const batch = Array.from({ length: 8 }, (_, i) => remote(`l${launch}n${i}`));
+			m = remember(m, batch, []);
+		}
 		expect(m.dismissed).toContain('early');
 		expect(m.dismissed).toHaveLength(MAX_REMEMBERED);
 	});
