@@ -19,11 +19,18 @@
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
 	import { formatSpeed, totalSpeed } from '$lib/download/speed';
 	import { dockLabel } from '$lib/download/dock-label';
-	import { focusFirstItem, focusedIndex, onMenuKey, refocusMenu } from '$lib/menu/menu-dom';
+	import {
+		focusAfter,
+		focusFirstItem,
+		focusedIndex,
+		onMenuKey,
+		refocusMenu
+	} from '$lib/menu/menu-dom';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
+	let wrap = $state<HTMLElement | null>(null);
 
 	const itemsView = $derived(downloadStore.items as DownloadItem[]);
 	const activeCount = $derived(downloadStore.active.length);
@@ -43,7 +50,12 @@
 	});
 
 	// A dock that goes with its last row takes its menu with it, and
-	// the next download's dock comes back closed.
+	// the next download's dock comes back closed. Focus in it moves on,
+	// before it goes, to the control after it, as Tab would.
+	$effect.pre(() => {
+		if (hasItems || !wrap) return;
+		if (wrap.contains(document.activeElement)) focusAfter(wrap);
+	});
 	$effect(() => {
 		if (!hasItems) open = false;
 	});
@@ -112,7 +124,11 @@
 </script>
 
 {#if hasItems}
-	<div class="dl-dock-wrap" transition:slide={{ axis: 'x', duration: 220, easing: cubicOut }}>
+	<div
+		class="dl-dock-wrap"
+		bind:this={wrap}
+		transition:slide={{ axis: 'x', duration: 220, easing: cubicOut }}
+	>
 		<button
 			bind:this={trigger}
 			type="button"
@@ -178,7 +194,7 @@
 					<p class="dl-dock-empty">{m.download_dock_empty()}</p>
 				{:else}
 					<!-- A menu holds items, not a list: the rows step aside for
-					     their actions, each described by its row's text. -->
+					     their actions. -->
 					<ul class="dl-dock-list" role="none">
 						{#each itemsView as item (item.id)}
 							{@const epLabel =
@@ -190,10 +206,15 @@
 									: item.rangeTotal
 										? m.download_dock_ep_label_range_static({ episode: item.episode })
 										: m.download_dock_ep_label_single({ episode: item.episode })}
+							<!-- Each action is described by its row: the title and
+							     episode, then Queued for a queued row, or the
+							     report a finished row carries. -->
 							{@const described =
-								(item.status === 'done' || item.status === 'error') && terminalReportText(item)
-									? `${item.id}-text ${item.id}-report`
-									: `${item.id}-text`}
+								item.status === 'queued'
+									? `${item.id}-text ${item.id}-queued`
+									: (item.status === 'done' || item.status === 'error') && terminalReportText(item)
+										? `${item.id}-text ${item.id}-report`
+										: `${item.id}-text`}
 							<li class="dl-row dl-row-{item.status}" title={item.title} role="none">
 								<span class="dl-row-text" id="{item.id}-text">
 									<span class="dl-row-title">{item.title}</span>
@@ -208,7 +229,9 @@
 									{#if item.status === 'queued'}
 										<!-- Waiting for one of the downloads running at once
 										     to end ($lib/download/queue). -->
-										<span class="dl-row-queued">{m.download_dock_queued()}</span>
+										<span class="dl-row-queued" id="{item.id}-queued"
+											>{m.download_dock_queued()}</span
+										>
 									{:else}
 										<span
 											class="dl-row-bar dl-row-bar-indet"

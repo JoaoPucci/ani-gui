@@ -146,7 +146,8 @@
 				tabindex="-1"
 				onkeydown={onMenuKeydown}
 			>
-				<header id="account-chip-pop-header" class="account-chip-pop-header">
+				<!-- Not a <header>: that would be a landmark inside the menu. -->
+				<div id="account-chip-pop-header" class="account-chip-pop-header">
 					<span class="account-chip-pop-provider">{providerLabel(descriptor.provider)}</span>
 					<span class="account-chip-pop-username">{descriptor.username}</span>
 					{#if warningLabel(descriptor.warning)}
@@ -154,7 +155,7 @@
 							>{warningLabel(descriptor.warning)}</span
 						>
 					{/if}
-				</header>
+				</div>
 				<button type="button" class="account-chip-pop-action" role="menuitem" onclick={onManage}>
 					{m.account_chip_pop_manage()}
 				</button>

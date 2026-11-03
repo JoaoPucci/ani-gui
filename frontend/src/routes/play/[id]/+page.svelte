@@ -28,7 +28,7 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -136,7 +136,7 @@
 		type DrillMenu
 	} from '$lib/play/drill-menu';
 	import { plainKey } from '$lib/play/menu-arrow';
-	import { stepMenuFocus } from '$lib/menu/menu-dom';
+	import { onMenuTabOrType, stepMenuFocus } from '$lib/menu/menu-dom';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -586,6 +586,10 @@
 	 *  arrows do not see them. */
 	function onCcMenuKey(e: KeyboardEvent) {
 		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		const close = () => flushSync(() => (ccMenuOpen = false));
+		if (onMenuTabOrType(e, { anchor: ccMenuAnchor, close })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
 		const at = items.indexOf(document.activeElement as HTMLElement);
@@ -2698,6 +2702,9 @@
 	function onMoreMenuKey(e: KeyboardEvent) {
 		// A modified key (Alt+ArrowLeft for history back) is not the menu's.
 		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		if (onMenuTabOrType(e, { anchor: moreAnchor, close: () => flushSync(closeMore) })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const step = drillArrow(moreMenu, e.key, {
 			rtl: getComputedStyle(menu).direction === 'rtl',
@@ -2724,6 +2731,7 @@
 	// stay in the menu rather than seek.
 	function onPcMenuKey(e: KeyboardEvent) {
 		if (plainKey(e) === null) return;
+		if (onMenuTabOrType(e, { anchor: pcMenuAnchor, close: () => flushSync(closePcMenu) })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const opener = focusedOpener<PcList>(['speed', 'quality']);
 		const step = drillArrow(pcMenu, e.key, {

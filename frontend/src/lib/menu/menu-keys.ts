@@ -1,12 +1,13 @@
 /**
  * What a key does in one of the app's popup menus (`role="menu"`):
  * the account chip's, the download dock's, the Continue row's, and,
- * for the vertical keys, the play page's.
+ * for the vertical keys, Tab and typed characters, the play page's.
  *
  * Down and Up move through the menu's items and wrap at the ends, Home
  * and End go to the first and last; Left and Right are held in the
  * menu — these menus open nothing sideways, and on the play page the
- * player would take them as seek keys. Escape closes the menu with
+ * player would take them as seek keys. A typed character is held too,
+ * Space aside (it presses the item): n, f and m are the player's. Escape closes the menu with
  * focus back on its button, and so does Shift+Tab, the button being
  * where that key heads; Tab closes it and moves on past the button.
  * A key with Alt, Ctrl or Meta held is the browser's, as it is the
@@ -28,6 +29,12 @@ export type MenuKeyStep =
 	/** Close, letting Tab move focus on from the menu's button. */
 	| { readonly kind: 'leave' };
 
+/** Whether `key` types one character: a key name ('Enter', 'Tab') is
+ *  longer. Space is the press of the focused item, and is not one. */
+export function typed(key: string): boolean {
+	return [...key].length === 1 && key !== ' ';
+}
+
 /** The step for `chord` with focus on the enabled item at `at` (-1 for
  *  none) of `count`; null for a key the menu leaves to the browser —
  *  Enter and Space among them, which press the item. */
@@ -36,7 +43,7 @@ export function menuKey(chord: KeyChord, at: number, count: number): MenuKeyStep
 	if (key === null) return null;
 	if (key === 'Escape') return { kind: 'dismiss' };
 	if (key === 'Tab') return chord.shiftKey ? { kind: 'dismiss' } : { kind: 'leave' };
-	if (key === 'ArrowLeft' || key === 'ArrowRight') return { kind: 'hold' };
+	if (key === 'ArrowLeft' || key === 'ArrowRight' || typed(key)) return { kind: 'hold' };
 	const index = menuKeyStep(key, at, count);
 	if (index !== null) return { kind: 'focus', index };
 	// An empty menu has nowhere to step to, but the vertical keys are

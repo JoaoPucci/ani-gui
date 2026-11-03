@@ -6,7 +6,7 @@
  */
 
 import { menuKeyStep } from '../play/caption-menu-fit';
-import { menuKey, refocusAfterChange } from './menu-keys';
+import { menuKey, refocusAfterChange, typed, type MenuKeyStep } from './menu-keys';
 
 /** A menu's items that take focus: every menuitem role, enabled. */
 const ITEMS = '[role^="menuitem"]:not(:disabled)';
@@ -47,18 +47,14 @@ export function stepMenuFocus(e: KeyboardEvent): void {
 export interface MenuKeyTarget {
 	/** The menu's button, which focus returns to. */
 	readonly anchor: HTMLElement | null;
-	/** Closes the menu. For Tab it must take the menu out of the page
-	 *  before returning (Svelte's `flushSync`), so the browser's Tab
-	 *  moves on from the button rather than into the closing menu. */
+	/** Closes the menu. The components take the menu out of the page
+	 *  before returning (Svelte's `flushSync`), so that for Tab nothing
+	 *  of it is left for the browser to move into from the button. */
 	close(): void;
 }
 
-/** A key pressed in a popup menu — the event's current target — as
- *  `menuKey` answers it. */
-export function onMenuKey(e: KeyboardEvent, target: MenuKeyTarget): void {
-	const items = menuItems(e.currentTarget as HTMLElement);
-	const step = menuKey(e, items.indexOf(document.activeElement as HTMLElement), items.length);
-	if (step === null) return;
+/** Applies `step` to the menu's `items`. */
+function apply(e: KeyboardEvent, step: MenuKeyStep, items: HTMLElement[], target: MenuKeyTarget) {
 	if (step.kind === 'leave') {
 		target.anchor?.focus();
 		target.close();
@@ -71,6 +67,38 @@ export function onMenuKey(e: KeyboardEvent, target: MenuKeyTarget): void {
 		target.close();
 		target.anchor?.focus();
 	}
+}
+
+/** A key pressed in a popup menu — the event's current target — as
+ *  `menuKey` answers it. */
+export function onMenuKey(e: KeyboardEvent, target: MenuKeyTarget): void {
+	const items = menuItems(e.currentTarget as HTMLElement);
+	const step = menuKey(e, items.indexOf(document.activeElement as HTMLElement), items.length);
+	if (step !== null) apply(e, step, items, target);
+}
+
+/** Tab, Shift+Tab and typed characters in one of the play page's menus,
+ *  whose arrows and Escape follow rules of their own: answered as
+ *  `onMenuKey` answers them. True when the key was the menu's. */
+export function onMenuTabOrType(e: KeyboardEvent, target: MenuKeyTarget): boolean {
+	if (e.key !== 'Tab' && !typed(e.key)) return false;
+	const step = menuKey(e, -1, 0);
+	if (step === null) return false;
+	apply(e, step, [], target);
+	return true;
+}
+
+/** What takes focus from the keyboard. */
+const TABBABLE =
+	'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+/** Focuses the first control after `el` in the page's order, outside
+ *  it: where Tab would go from `el`'s end. Nothing when none follows. */
+export function focusAfter(el: Element): void {
+	const next = Array.from(document.querySelectorAll<HTMLElement>(TABBABLE)).find(
+		(c) => !el.contains(c) && !!(el.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING)
+	);
+	next?.focus();
 }
 
 /** After the menu's items changed while it was open: when the item
