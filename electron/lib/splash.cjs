@@ -97,7 +97,8 @@ function splashController({
   // The version the splash shows above its title (splashVersionLabel).
   version = "",
   // What the line under the rail says while each step stalls
-  // (lib/splash-progress.cjs), read when the splash opens.
+  // (lib/splash-progress.cjs), read when the splash opens; the generic
+  // words (below) take over from a step's own once that step lands.
   stallTexts = () => [],
   // The line's generic words, which take over at once from a step's own
   // when that step lands, read when the splash opens.
@@ -201,13 +202,18 @@ function splashController({
       log(`[main] splash asked for (${since()})`);
       // The page's query is settled before any window exists, so
       // nothing past this point is left half made.
+      // Each read on its own, so one failing keeps the other.
       let texts = [];
       let generic = "";
       try {
         texts = stallTexts();
+      } catch (err) {
+        logError("[main] the splash's stall lines could not be read:", err);
+      }
+      try {
         generic = stallGeneric();
       } catch (err) {
-        logError("[main] the splash's stall line could not be read:", err);
+        logError("[main] the splash's generic stall line could not be read:", err);
       }
       const query = splashPageQuery({ version, stallTexts: texts, generic });
       let splash;

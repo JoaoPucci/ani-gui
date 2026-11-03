@@ -137,10 +137,11 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 /* The readout under the title: the progress rail (progress.js), a
    strip of film edge — perforations — in three stretches, one per step
    of the boot, each lit in the brand colour as its step lands. Under
-   it, out of the flow so its coming and going moves nothing, the line
-   that appears only when a step stalls. A stretch wipes in and the line
-   fades only once the splash is told to move; a step that lands before
-   that, or under reduced motion, just shows. */
+   it, out of the flow so its appearing moves nothing, the line that
+   appears only when a step stalls and then stays, changing only its
+   words. A stretch wipes in and the line fades in only once the splash
+   is told to move; a step that lands before that, or under reduced
+   motion, just shows. */
 .readout { position: relative; }
 .rail {
   display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 6px;

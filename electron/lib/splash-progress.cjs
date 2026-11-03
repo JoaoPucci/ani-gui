@@ -22,6 +22,8 @@ const STALL_MS = 700;
 /**
  * What the stall line says while each step is pending, from the main
  * process's own message table (lib/main-messages.cjs), in step order.
+ * Once a step whose words are its own (the network, for the flags
+ * step) lands, the generic line (`splashStartingUp`) takes over at once.
  *
  * The causes we know of for a step past STALL_MS: a stalled network,
  * which holds the flags step up to the fetch's two-second cap; a
