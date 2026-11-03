@@ -71,7 +71,14 @@ const mainList = <L extends string>(open: boolean): DrillMenu<L> => ({
 	width: null
 });
 
-/** The menu after `event`, and where focus goes. */
+/** The menu closed: itself when it already is, so a step that changes
+ *  nothing hands back the same object. */
+const closedFrom = <L extends string>(menu: DrillMenu<L>): DrillMenu<L> =>
+	!menu.open && menu.list === null && menu.width === null ? menu : mainList(false);
+
+/** The menu after `event`, and where focus goes. A step that changes
+ *  nothing returns the menu it was given, so a caller comparing by
+ *  identity sees no change. */
 export function drillStep<L extends string>(
 	menu: DrillMenu<L>,
 	event: DrillEvent<L>
@@ -82,9 +89,9 @@ export function drillStep<L extends string>(
 				? { menu: mainList(false), focus: null }
 				: { menu: mainList(true), focus: { kind: 'first' } };
 		case 'close':
-			return { menu: mainList(false), focus: null };
+			return { menu: closedFrom(menu), focus: null };
 		case 'dismiss':
-			return { menu: mainList(false), focus: { kind: 'anchor' } };
+			return { menu: closedFrom(menu), focus: { kind: 'anchor' } };
 		case 'openList':
 			if (!menu.open || menu.list !== null || !event.choosable) return { menu, focus: null };
 			return {
