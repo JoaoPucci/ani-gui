@@ -38,10 +38,15 @@ function openTreeToAll(root) {
  *   exec "$BIN"
  *   exec "$BIN" "${args[@]}"
  *
- * `--no-sandbox` goes between the binary and the user's args on both:
- * the image mounts read-only through FUSE, so `chrome-sandbox` inside
- * it cannot carry the SUID bit Chromium's setuid sandbox demands, and
- * the flag has to be on argv when the process spawns. Returns true
+ * or, from electron-builder 26 on, the same two lines with
+ * `"${NO_SANDBOX[@]}"` after the binary — an array that carries
+ * `--no-sandbox` only when an `unshare -Ur true` probe fails.
+ *
+ * `--no-sandbox` goes between the binary and the user's args on both,
+ * in place of that array where it is present: the image mounts
+ * read-only through FUSE, so `chrome-sandbox` inside it cannot carry
+ * the SUID bit Chromium's setuid sandbox demands, and the flag has to
+ * be on argv when the process spawns whatever the probe says. Returns true
  * when the file was changed, false when it already carried the patch,
  * as an image a previous repack produced does. Throws when neither
  * pattern matches and the patch is absent: electron-builder's template
@@ -51,8 +56,11 @@ function patchAppRun(appRunPath) {
 	const original = fs.readFileSync(appRunPath, 'utf8');
 	if (original.includes('exec "$BIN" --no-sandbox')) return false;
 	const patched = original
-		.replace(/^(\s*)exec "\$BIN"$/m, '$1exec "$BIN" --no-sandbox')
-		.replace(/^(\s*)exec "\$BIN" "\$\{args\[@\]\}"$/m, '$1exec "$BIN" --no-sandbox "${args[@]}"');
+		.replace(/^(\s*)exec "\$BIN"(?: "\$\{NO_SANDBOX\[@\]\}")?$/m, '$1exec "$BIN" --no-sandbox')
+		.replace(
+			/^(\s*)exec "\$BIN"(?: "\$\{NO_SANDBOX\[@\]\}")? "\$\{args\[@\]\}"$/m,
+			'$1exec "$BIN" --no-sandbox "${args[@]}"'
+		);
 	if (patched === original) {
 		throw new Error(
 			`AppRun patch matched nothing — has electron-builder's template changed? ${appRunPath}`
