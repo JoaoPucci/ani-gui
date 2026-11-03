@@ -755,24 +755,36 @@
 		playbackRate = rate;
 		closePcMenu();
 	}
-	// Mini-player mockup (0.21.0 design review, Diagnostics → Debug):
+	// Mini-player mockup (0.21.0 design review; Debug in the rail):
 	// the page hands its own video to the simulated mini window and
 	// its frame shows the placeholder until the video comes back. Its
 	// teardown goes with the video, so the main window can leave this
 	// page while the mini plays ($lib/mini/mock/session).
 	let miniHere = $state(false);
+	// What the mini window shows of this page, kept current while the
+	// page is here: once it goes, the route no longer names the episode.
+	let miniEpisode = $state(1);
+	let miniHref = $state('');
+	$effect(() => {
+		miniEpisode = episodeNum;
+		miniHref = page.url.pathname + page.url.search;
+	});
 	function openMini() {
 		closePcMenu();
-		if (!miniMock.prefs.enabled || miniHere || resumeHolding || switchBusy) return;
+		if (!miniMock.prefs.enabled || miniHere || resumeHolding || switchBusy || playerError) return;
 		const opened = miniMock.open(
 			{
 				video: ownVideo,
 				show: {
 					id,
 					title: detail?.canonical_title ?? '',
-					episode: episodeNum,
+					get episode() {
+						return miniEpisode;
+					},
 					accent,
-					playHref: page.url.pathname + page.url.search
+					get playHref() {
+						return miniHref;
+					}
 				},
 				hooks: {
 					dispose: () => {

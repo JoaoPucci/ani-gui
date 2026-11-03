@@ -23,7 +23,8 @@
 	let sim = $state<MiniSim>('none');
 	let skip = $state(false);
 	// Wayland: a click in the main window raises it over the mini,
-	// which the app cannot prevent (proposal, section 4). The mockup
+	// which the app cannot prevent (the mini-player proposal, PR #345,
+	// section 4). The mockup
 	// shows that by hiding the simulated window until it is raised.
 	let covered = $state(false);
 	let slot: HTMLElement | null = null;
@@ -81,6 +82,8 @@
 		setPrefs(patch: Partial<MiniMockPrefs>) {
 			prefs = { ...prefs, ...patch };
 			saveMiniMockPrefs(browserStorage(), prefs);
+			// Turning the mockups off ends the session with them.
+			if (!prefs.enabled) sessions.close();
 		},
 		setSim(next: MiniSim) {
 			sim = next;
@@ -181,6 +184,9 @@
 	// Where the window opens: the remembered size and, where the
 	// platform allows, the remembered place; on Wayland the compositor
 	// places it, which the mockup shows as the middle of the display.
+	// It runs when a session opens or the platform changes, not on
+	// every other preference.
+	const platform = $derived(prefs.platform);
 	$effect(() => {
 		const s = session;
 		if (!s) return;
@@ -190,7 +196,7 @@
 			remembered: readBounds(),
 			displays: [{ id: 0, workArea: display }],
 			mainDisplayId: 0,
-			positionAllowed: prefs.platform !== 'wayland',
+			positionAllowed: platform !== 'wayland',
 			ratio: ratioOf(s.video)
 		});
 		const pos = p.position ?? {

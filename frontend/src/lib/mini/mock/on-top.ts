@@ -5,16 +5,15 @@
  * pin in the strip, where shown, toggles it. On native Wayland no app
  * can ask (no protocol exists; Electron documents setAlwaysOnTop as
  * unsupported there), so the window says the desktop decides and how
- * to pin it from the window menu: once, as a card at first open,
- * and/or behind the pin, which then explains instead of toggling.
+ * to pin it from the window menu: once by itself at the first open
+ * (as a card over the picture, or as the pin's explainer), and/or
+ * behind the pin, which then explains instead of toggling.
  */
 
 export type MiniPlatform = 'wayland' | 'windows' | 'x11';
 export type OnTopChoice = 'card' | 'pin' | 'both';
 
 export interface OnTopView {
-	/** The one-time card shows now. */
-	card: boolean;
 	/** What the first open on Wayland shows by itself, until seen: the
 	 *  card over the picture, the pin's explainer, or nothing. */
 	firstOpen: 'card' | 'popover' | null;
@@ -29,9 +28,9 @@ export function onTopView(
 ): OnTopView {
 	const wayland = platform === 'wayland';
 	const withPin = choice !== 'card';
+	const first = choice === 'card' ? 'card' : choice === 'both' ? 'popover' : null;
 	return {
-		card: wayland && choice !== 'pin' && !hintSeen,
-		firstOpen: null,
+		firstOpen: wayland && !hintSeen ? first : null,
 		pin: withPin ? (wayland ? 'explain' : 'toggle') : null
 	};
 }
@@ -43,9 +42,9 @@ export type OnTopCopy = 'gnome' | 'kde' | 'other';
  * The explainer for a desktop, from XDG_CURRENT_DESKTOP (a
  * colon-separated list, e.g. "ubuntu:GNOME"). GNOME's names the
  * window menu's "Always on Top" only once someone has confirmed it
- * works on the app's frameless window (the proposal's appendix,
- * step 4); until then GNOME gets the general copy. KDE gets its
- * window rule.
+ * works on the app's frameless window (step 4 of the mini-player
+ * proposal's appendix, PR #345); until then GNOME gets the general
+ * copy. KDE gets its window menu's "Keep Above Others".
  */
 export function onTopCopy(desktop: string | null, gnomeMenuConfirmed: boolean): OnTopCopy {
 	const names = (desktop ?? '').toLowerCase().split(':');

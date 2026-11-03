@@ -1,5 +1,5 @@
 <!-- The top bar's sign that an episode plays in the mini player, once
-     the main window is somewhere other than that episode's page. A
+     the main window is somewhere other than that show's play page. A
      click brings playback back. -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';

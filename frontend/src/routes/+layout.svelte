@@ -681,7 +681,7 @@
 					</div>
 				{/if}
 			</form>
-			{#if miniMock.session && page.url.pathname !== `/play/${miniMock.session.show.id}`}
+			{#if miniMock.prefs.enabled && miniMock.session && page.url.pathname !== `/play/${miniMock.session.show.id}`}
 				<MiniChip
 					title={miniMock.session.show.title}
 					episode={miniMock.session.show.episode}

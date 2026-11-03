@@ -3,16 +3,18 @@
  * window holds, and how it ends.
  *
  * The real window will be a second Electron window that takes the
- * stream over at a handed point (docs/proposals/mini-player.md,
+ * stream over at a handed point (the mini-player proposal, PR #345,
  * section 3). The mockup moves the play page's own video element into
  * a window drawn inside the main one, so the picture and its native
  * subtitles are the real ones, and so that the main window can go
  * back to where the viewer came from while it plays, the page hands
  * the session its own teardown instead of running it on leaving.
  *
- * At most one session: opening another ends the one before with its
- * own teardown. `returnToApp` and `close` end it; the first restores
- * the page's player, the second stops playback.
+ * At most one session: opening another closes the one before.
+ * `returnToApp` and `close` end it. Returning gives the video back to
+ * a play page still there, or runs the page's teardown once that page
+ * is gone. Closing stops playback: paused and given back to a page
+ * still there, or torn down.
  */
 
 export interface MiniShow {
@@ -27,7 +29,8 @@ export interface MiniShow {
 export interface MiniSessionHooks {
 	/** The page's own teardown: stops the engine, releases the video. */
 	dispose(): void;
-	/** Puts the video back in the page's player; null once the page is gone. */
+	/** Puts the video back in the page's player; null where the page
+	 *  cannot take it back. The session forgets it once the page goes. */
 	restore: (() => void) | null;
 }
 

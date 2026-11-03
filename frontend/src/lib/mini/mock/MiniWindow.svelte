@@ -167,14 +167,17 @@
 	onMount(() => {
 		wake();
 		return () => {
-			if (idle) clearTimeout(idle);
+			// No timer outlives the window: a click's toggle due after
+			// Close would start the stream again.
+			for (const t of [idle, clickTimer, glyphTimer]) if (t) clearTimeout(t);
 		};
 	});
 
 	const set = $derived(miniControlSet(width, prefs.layout));
 	const view = $derived(onTopView(prefs.platform, prefs.onTop, prefs.hintSeen));
-	// Which explainer: the GNOME menu's steps only once appendix step 4
-	// confirms them; the switch shows each text for review.
+	// Which explainer: the GNOME menu's steps only once step 4 of the
+	// mini-player proposal's appendix (PR #345) confirms them; the
+	// switch shows each text for review.
 	const copyKind = $derived(
 		onTopCopy(prefs.copy === 'kde' ? 'KDE' : 'GNOME', prefs.copy === 'gnome')
 	);
@@ -194,9 +197,9 @@
 	// leaves with the chrome and counts as seen. Opened from the pin,
 	// it stays until dismissed.
 	let popoverSoft = $state(false);
-	const cardShown = $derived(view.card && prefs.onTop === 'card');
+	const cardShown = $derived(view.firstOpen === 'card');
 	onMount(() => {
-		if (view.card && prefs.onTop === 'both' && !set.compact) {
+		if (view.firstOpen === 'popover' && !set.compact) {
 			popoverOpen = true;
 			popoverSoft = true;
 		}
@@ -204,7 +207,7 @@
 	function dismissHint() {
 		popoverOpen = false;
 		popoverSoft = false;
-		if (view.card) onHintSeen();
+		if (!prefs.hintSeen) onHintSeen();
 	}
 	function closeMenus() {
 		ccOpen = false;
