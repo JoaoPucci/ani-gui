@@ -41,6 +41,11 @@
 //! asks the same of the moment its request began
 //! ([`Held::overtaken_since`]): a request that stalled while a later
 //! watch was recorded leaves that watch's row and stamp as they are.
+//! A play's resolve is not a watch, even when it puts down the page's
+//! Kitsu id the cache already accepts ([`Held::upsert_resolved`]): it
+//! leaves the moment where it is, so a watch asked for before it still
+//! records, and a watch's deferred verdict still lands over the id
+//! the resolve put down.
 //!
 //! A show is removed under its row's key, and not everything that
 //! would write of it has that key: skip times are cached under the
@@ -50,7 +55,8 @@
 //! the show was known by — the one its row recorded, the ones its
 //! mapping and title match named, and the pages this process saw it
 //! played from ([`Held::played_from`]), the row itself recording its
-//! page only once the watch's verdict is in — less any a remaining row
+//! page only once a verdict is in — the cache's, when the play
+//! resolves, or the watch's — less any a remaining row
 //! still claims. A play names the page it was asked from ([`Asked`])
 //! and loses to a removal of a show known by it
 //! ([`Held::removed_since`]); a skip-time lookup, and a detail read
@@ -113,8 +119,8 @@ struct Removals {
     /// no remaining row still claiming the id, since the last clear.
     kitsu: HashMap<String, u64>,
     /// The Kitsu pages each show in the history was played from, as
-    /// far as this process saw. A row records its page only once the
-    /// watch's verdict is in, and a removal before that has to know it.
+    /// far as this process saw. A row records its page only once a
+    /// verdict is in, and a removal before that has to know it.
     pages: HashMap<String, BTreeSet<String>>,
     /// The moment Kitsu last served each id, as far as this process
     /// saw: a failure of a read begun before it says nothing newer.
@@ -191,15 +197,27 @@ impl Held<'_> {
     /// # Errors
     /// The file cannot be read or written.
     pub fn upsert(&mut self, new: HistoryEntry) -> Result<()> {
-        let mut entries = self.rows()?;
         let id = new.id.clone();
         let watch = new.watched_at.is_some() || new.kitsu_id.is_some();
-        upsert(&mut entries, new);
-        self.write(&entries)?;
+        self.upsert_resolved(new)?;
         if watch {
             self.watched(&id);
         }
         Ok(())
+    }
+
+    /// Add or replace the row a play's resolve writes. A resolve is not
+    /// a watch, even when it records the page's Kitsu id the cache has
+    /// already judged: the moment stays where it is, so a watch asked
+    /// for before the resolve still records over it, and the id is the
+    /// one the play's own watch would write.
+    ///
+    /// # Errors
+    /// The file cannot be read or written.
+    pub fn upsert_resolved(&mut self, new: HistoryEntry) -> Result<()> {
+        let mut entries = self.rows()?;
+        upsert(&mut entries, new);
+        self.write(&entries)
     }
 
     /// Note that the row for `id` was given a watch moment or a Kitsu id.
