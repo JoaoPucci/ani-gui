@@ -231,12 +231,44 @@ test("the splash shows while the app starts, and is gone once the app's window h
     // It was on screen — opened and shown, not merely created — and
     // closed once the app's window had shown, not suppressed by a
     // failure.
+    // It was opened with the app's own version for the line above the
+    // title.
+    const version = await app.evaluate(({ app: a }) => a.getVersion());
     expect(await splashState(app)).toEqual({
       opened: true,
       shown: true,
       closed: true,
       suppressed: false,
+      version,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash page, opened as the launch opens it, shows the app's version above its title", async () => {
+  // The launch's own splash comes and goes before a spec can look at
+  // it, so the page is opened again here as the main process opens it
+  // (lib/splash.cjs): same window options, same query. This checks what
+  // Chromium renders — the page's CSP, the file:// query, the line the
+  // script writes into — rather than the main process's record.
+  const { app } = await launchAppWithStubs();
+  try {
+    const [version, shown] = await app.evaluate(async ({ app: a, BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const w = new BrowserWindow(splashWindowOptions());
+      try {
+        await w.loadFile(SPLASH_PAGE, { query: { v: a.getVersion() } });
+        const text = await w.webContents.executeJavaScript(
+          "document.querySelector('.title').innerText",
+        );
+        return [a.getVersion(), text as string];
+      } finally {
+        w.destroy();
+      }
+    });
+    expect(shown.split(/\s+/).filter(Boolean)).toEqual([`v${version}`, "ani-gui"]);
   } finally {
     await app.close();
   }

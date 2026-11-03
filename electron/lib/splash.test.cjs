@@ -14,6 +14,7 @@ const {
   lastSplashState,
   revealMaximized,
   splashController,
+  splashVersionLabel,
   splashWindowOptions,
 } = require("./splash.cjs");
 
@@ -70,7 +71,10 @@ function fakeSplash() {
     win.destroyed = true;
     win.emit("closed");
   };
-  win.loadFile = async (file) => win.calls.push(`load:${path.basename(file)}`);
+  win.loadFile = async (file, options) => {
+    win.calls.push(`load:${path.basename(file)}`);
+    win.loadOptions = options;
+  };
   win.webContents = {
     executeJavaScript: async (code) => {
       win.calls.push(`js:${code}`);
@@ -151,11 +155,11 @@ test("a splash window that cannot be created is logged, and nothing else happens
 const splashDir = path.dirname(SPLASH_PAGE);
 const read = (name) => fs.readFileSync(path.join(splashDir, name), "utf-8");
 
-test("the splash is the pull-down: a film strip of the mark beside a reel title", () => {
+test("the splash is the pull-down: a film strip of the mark beside the title", () => {
   const html = read("index.html");
   assert.match(html, /class="track"/);
   assert.match(html, /class="wordmark"/);
-  for (const file of ["splash.css", "splash.js", "mark.svg", "sprocket.svg"]) {
+  for (const file of ["splash.css", "splash.js", "version.js", "mark.svg", "sprocket.svg"]) {
     assert.ok(fs.existsSync(path.join(splashDir, file)), file);
   }
 });
@@ -170,16 +174,72 @@ test("nothing on the splash counts: its readout slot is empty, moving or still",
   const css = read("splash.css");
   assert.doesNotMatch(css, /counter\(|counter-reset|@counter-style|--pulled/);
   assert.doesNotMatch(css, /\.(counter|still|unit)\b/);
-  // Nor anywhere else: the page's words are its reel title alone, no
-  // style writes text into it, and no script does either.
+  // Nor anywhere else: the page's own words are its title alone — no
+  // reel number, since any number on a screen this brief reads as a
+  // count — no style writes text into it, and the only script that
+  // writes any writes the app's version (below).
   const body = /<body>([\s\S]*)<\/body>/.exec(html)[1];
   const words = body.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean);
-  assert.deepEqual(words, ["reel", "1", "ani-gui"]);
+  assert.deepEqual(words, ["ani-gui"]);
   assert.doesNotMatch(css, /\bcontent:|@property/);
   assert.doesNotMatch(read("splash.js"), /textContent|innerText|innerHTML|createTextNode|insertAdjacent/);
   // An empty slot is hidden, so the title column centres on the gate
   // without the row gap a hidden-in-place slot would still take.
   assert.match(css, /\.readout:empty \{ display: none; \}/);
+});
+
+const vm = require("node:vm");
+
+/** Run the splash's version.js against a page loaded with `search`,
+ *  returning the text it leaves in the version line. */
+function versionShown(search) {
+  const line = { textContent: "" };
+  vm.runInNewContext(read("version.js"), {
+    location: { search },
+    URLSearchParams,
+    document: { querySelector: (sel) => (sel === ".version" ? line : null) },
+  });
+  return line.textContent;
+}
+
+test("the line above the title is the app's version, in the page before it paints", () => {
+  const html = read("index.html");
+  // Empty in the page itself, and filled by a script that runs as the
+  // page is parsed — not deferred — so the first paint carries it.
+  assert.match(html, /<p class="eyebrow version"><\/p>\s*<script src="version\.js"><\/script>/);
+  assert.doesNotMatch(html, /version\.js"[^>]*\b(defer|async)\b/);
+  assert.equal(versionShown("?v=0.18.0"), "v0.18.0");
+  assert.equal(versionShown("?v=0.18.0-dev"), "v0.18.0-dev");
+  // A page opened without one (a browser preview) shows no line, and
+  // the query is never taken as markup or as anything but a version.
+  assert.equal(versionShown(""), "");
+  assert.equal(versionShown("?v=%3Cimg%20src%3Dx%3E"), "");
+  assert.equal(versionShown("?v=" + "9".repeat(80)), "");
+  const css = read("splash.css");
+  assert.match(css, /\.eyebrow:empty \{ display: none; \}/);
+  // The eyebrow's capitals would turn "v0.18.0-dev" into "V0.18.0-DEV".
+  assert.match(css, /\.version \{ text-transform: none; \}/);
+});
+
+test("the splash's version is labelled as the app's rail and About label it", () => {
+  // The rail and About show frontend/package.json's version, with
+  // "-dev" in a dev run ($lib/version.ts); the splash reads Electron's,
+  // which moves with it in every release, and marks a dev run the same.
+  const ver = (p) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", p), "utf-8")).version;
+  assert.equal(ver("package.json"), ver(path.join("..", "frontend", "package.json")));
+  for (const v of ["0.18.0", "1.2.3", "0.18.0-rc.1", ""]) {
+    assert.equal(splashVersionLabel(v, false), v);
+    assert.equal(splashVersionLabel(v, true), `${v}-dev`);
+  }
+});
+
+test("the splash is opened with the version it shows, and its record keeps it", () => {
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {}, version: "0.18.0" });
+  splash.show();
+  assert.deepEqual(win.loadOptions, { query: { v: "0.18.0" } });
+  assert.equal(lastSplashState().version, "0.18.0");
+  splash.close();
 });
 
 test("the mark comes from mark.svg alone, so a new identity swaps one file", () => {
@@ -366,18 +426,18 @@ test("what happened to the launch's splash can be read back afterwards", async (
   // reads this instead.
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });
-  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false });
+  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "" });
   splash.show();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "" });
   win.emit("ready-to-show");
   splash.motionPreference(false);
   await tick();
   splash.close();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "" });
   const failed = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
   failed.show();
   failed.suppress();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "" });
 });
 
 test("the app's window can wait for the splash to be on screen, for a bounded time", async (t) => {
