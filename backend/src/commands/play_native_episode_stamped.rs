@@ -23,12 +23,12 @@ pub async fn resolve_episode_stamped<P: Provider + ?Sized>(
     stamp: Option<&(u32, String)>,
     mode: &str,
     quality: &str,
-    locale: &str,
+    wanted: crate::scraper::track_preference::Wanted<'_>,
 ) -> std::result::Result<ResolvedEpisode, NativeError> {
     let request = stamp
         .and_then(|stamp| stamped_request(picked, episode, stamp))
         .unwrap_or_else(|| episode.to_string());
-    resolve_episode(client, picked, &request, mode, quality, locale).await
+    resolve_episode(client, picked, &request, mode, quality, wanted).await
 }
 
 /// The request for the stamp's row by its tag now, in the entry's

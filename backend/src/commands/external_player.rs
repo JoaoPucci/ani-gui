@@ -52,7 +52,9 @@ pub struct LaunchArgs {
     pub player_kind: ExternalPlayerKind,
     /// Free-text args template used only when `player_kind` is
     /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`,
-    /// `{subtitle}` (the first sidecar track's URL).
+    /// `{subtitle}` (the first sidecar track's URL — the one the
+    /// built-in player starts on; none when it starts on none, or for
+    /// a show remembered Off).
     /// A token containing a missing/empty placeholder is dropped
     /// from argv entirely (so optional flags don't end up as
     /// `--referrer=` with nothing after the equals).
@@ -66,6 +68,10 @@ pub struct LaunchArgs {
     /// itself; the referer flag it already gets covers those fetches.
     #[serde(default)]
     pub subtitle_urls: Vec<String>,
+    /// Whether the show's remembered captions choice is Off: the player
+    /// starts with its subtitles off.
+    #[serde(default)]
+    pub subtitles_off: bool,
 }
 
 /// Build the argv that would be passed to `Command::new(player).args(...)`.
@@ -79,10 +85,10 @@ pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
             args,
             "--force-media-title=",
             "--referrer=",
-            SubFlag::Each("--sub-file="),
+            SubFlag::Each("--sub-file=", "--sid=no"),
         ),
-        // VLC takes one --sub-file: the first track, the most wanted —
-        // the provider's default when it flags one.
+        // VLC takes one --sub-file: the first track, the one the
+        // built-in player starts on — none for a show remembered Off.
         ExternalPlayerKind::Vlc => build_argv_with_template(
             args,
             "--meta-title=",
@@ -93,7 +99,7 @@ pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
             args,
             "--mpv-force-media-title=",
             "--mpv-referrer=",
-            SubFlag::Each("--mpv-sub-file="),
+            SubFlag::Each("--mpv-sub-file=", "--mpv-sid=no"),
         ),
         ExternalPlayerKind::Custom => build_argv_custom(args),
     }
@@ -102,7 +108,9 @@ pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
 /// How a player takes sidecar tracks: one flag per track, or one
 /// flag for the first track only.
 enum SubFlag {
-    Each(&'static str),
+    /// One flag per track, and the flag that starts the player with
+    /// its subtitles off.
+    Each(&'static str, &'static str),
     First(&'static str),
 }
 

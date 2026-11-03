@@ -43,10 +43,17 @@ async fn a_tagged_continuation_maps_per_entry_numbers() {
     // at 1: per-entry request 1 is display 41.
     let picked = show(vec![ep(10, 1, Some("41")), ep(11, 2, Some("42"))]);
     let client = only_episode(10);
-    let url = resolve_episode(&client, &picked, "1", "sub", "best", "en")
-        .await
-        .expect("per-entry 1 is display 41")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("per-entry 1 is display 41")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -61,10 +68,17 @@ async fn a_fractional_request_maps_through_the_offset_too() {
         ep(11, 3, Some("42")),
     ]);
     let client = only_episode(12);
-    let url = resolve_episode(&client, &picked, "1.5", "sub", "best", "en")
-        .await
-        .expect("per-entry 1.5 is display 41.5")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "1.5",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("per-entry 1.5 is display 41.5")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -76,10 +90,17 @@ async fn a_zero_padded_integer_tag_still_answers_its_episode() {
     // the constructed "41" is the one place it dies.
     let picked = show(vec![ep(10, 1, Some("041")), ep(11, 2, Some("042"))]);
     let client = only_episode(10);
-    let url = resolve_episode(&client, &picked, "1", "sub", "best", "en")
-        .await
-        .expect("per-entry 1 is display 041 = 41")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("per-entry 1 is display 041 = 41")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -96,10 +117,17 @@ async fn a_trailing_zero_fraction_matches_the_normalized_click() {
         ep(4, 4, Some("3.50")),
     ]);
     let client = only_episode(4);
-    let url = resolve_episode(&client, &picked, "3.5", "sub", "best", "en")
-        .await
-        .expect("the normalized click finds the padded tag")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "3.5",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("the normalized click finds the padded tag")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -146,10 +174,17 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
         ep(5, 5, Some("4")),
     ]);
     let client = only_episode(5);
-    let url = resolve_episode(&client, &picked, "4", "sub", "best", "en")
-        .await
-        .expect("the tag-4 row carries episode 4")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "4",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("the tag-4 row carries episode 4")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -163,9 +198,16 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
 async fn a_reversed_range_resolves_to_the_episodes_own_verdict() {
     let picked = show(vec![ep(1, 1, None), ep(2, 2, None), ep(12, 12, None)]);
     let client = only_episode(12);
-    let ne = resolve_episode(&client, &picked, "12-1", "sub", "best", "en")
-        .await
-        .expect_err("a reversed pair names no episode");
+    let ne = resolve_episode(
+        &client,
+        &picked,
+        "12-1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect_err("a reversed pair names no episode");
     assert!(
         matches!(ne.error, AniError::EpisodeUnavailable),
         "expected the episode's verdict, got {:?}",
@@ -189,9 +231,16 @@ async fn a_recap_slot_without_its_true_episode_is_a_dead_end() {
         ep(4, 4, Some("3.5")),
     ]);
     let client = only_episode(4);
-    let ne = resolve_episode(&client, &picked, "4", "sub", "best", "en")
-        .await
-        .expect_err("the recap must not answer for episode 4");
+    let ne = resolve_episode(
+        &client,
+        &picked,
+        "4",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect_err("the recap must not answer for episode 4");
     assert!(
         matches!(ne.error, AniError::EpisodeUnavailable),
         "expected the episode's verdict, got {:?}",
@@ -207,10 +256,17 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
     // same display space the tags live in.
     let picked = show(vec![ep(10, 41, None), ep(11, 42, Some("42"))]);
     let client = only_episode(11);
-    let url = resolve_episode(&client, &picked, "2", "sub", "best", "en")
-        .await
-        .expect("per-entry 2 is display 42")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "2",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("per-entry 2 is display 42")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
@@ -259,10 +315,17 @@ async fn the_episode_step_asks_hianime_for_the_master_once() {
         },
         "https://hianime.test",
     );
-    let url = resolve_episode(&client, &picked, "1", "sub", "best", "en")
-        .await
-        .expect("resolved")
-        .master_url;
+    let url = resolve_episode(
+        &client,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("resolved")
+    .master_url;
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
     let masters = client
         .transport()
@@ -422,9 +485,16 @@ async fn the_episode_step_reads_the_stream_servers_own_not_found_page_as_the_epi
     let picked = show(vec![ep(12, 1, None)]);
     let client =
         crate::scraper::hianime::HianimeClient::with_base(NotFoundPage, "https://hianime.test");
-    let ne = resolve_episode(&client, &picked, "1", "sub", "best", "en")
-        .await
-        .expect_err("the host has nothing for the episode");
+    let ne = resolve_episode(
+        &client,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect_err("the host has nothing for the episode");
     assert!(
         matches!(ne.error, AniError::EpisodeUnavailable),
         "{:?}",
@@ -442,9 +512,16 @@ async fn the_episode_step_names_the_host_whose_connection_died() {
     let picked = show(vec![ep(11, 1, None)]);
     let client =
         crate::scraper::hianime::HianimeClient::with_base(DeadEmbedHost, "https://hianime.test");
-    let ne = resolve_episode(&client, &picked, "1", "sub", "best", "en")
-        .await
-        .expect_err("nothing served");
+    let ne = resolve_episode(
+        &client,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect_err("nothing served");
     assert!(
         matches!(
             &ne.error,
@@ -475,9 +552,16 @@ async fn a_timeout_the_provider_stamps_no_attempt_on_keeps_its_name() {
             crate::scraper::table_provider::Answer::fails(|| AniError::Timeout),
         )
     };
-    let ne = resolve_episode(&timed_out(), &picked, "1", "sub", "best", "en")
-        .await
-        .expect_err("nothing served");
+    let ne = resolve_episode(
+        &timed_out(),
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect_err("nothing served");
     assert!(
         matches!(ne.error, AniError::Timeout),
         "unstamped, the timeout is the deadline's shape: {:?}",
@@ -485,9 +569,16 @@ async fn a_timeout_the_provider_stamps_no_attempt_on_keeps_its_name() {
     );
     assert!(!ne.clean_miss);
     let stalled = timed_out().stamped(tokio::time::Instant::now());
-    let ne = resolve_episode(&stalled, &picked, "1", "sub", "best", "en")
-        .await
-        .expect_err("nothing served");
+    let ne = resolve_episode(
+        &stalled,
+        &picked,
+        "1",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect_err("nothing served");
     assert!(
         matches!(
             ne.error,
@@ -635,7 +726,7 @@ async fn the_episode_step_bounds_the_listing_and_keeps_its_default() {
         "1",
         "sub",
         "best",
-        "en",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect("resolved");
@@ -791,9 +882,16 @@ async fn a_request_for_a_rows_former_tag_still_finds_it() {
     rows.push(ep(14, 14, Some("13")));
     let picked = show(rows);
     let client = only_episode(13);
-    let resolved = resolve_episode(&client, &picked, "24.5", "sub", "best", "en")
-        .await
-        .expect("the former tag still names the recap");
+    let resolved = resolve_episode(
+        &client,
+        &picked,
+        "24.5",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("the former tag still names the recap");
     assert_eq!(resolved.slot, 13);
     assert_eq!(resolved.tag.as_deref(), Some("12.5"), "the row's tag now");
 }
@@ -804,9 +902,16 @@ async fn a_rows_tag_wins_over_another_rows_former_tag() {
     odd.former_tag = Some("4.5".into());
     let picked = show(vec![ep(19, 1, None), odd, ep(21, 4, Some("4.5"))]);
     let client = only_episode(21);
-    let resolved = resolve_episode(&client, &picked, "4.5", "sub", "best", "en")
-        .await
-        .expect("the row tagged 4.5 now");
+    let resolved = resolve_episode(
+        &client,
+        &picked,
+        "4.5",
+        "sub",
+        "best",
+        crate::scraper::track_preference::Wanted::locale("en"),
+    )
+    .await
+    .expect("the row tagged 4.5 now");
     assert_eq!(resolved.slot, 4);
 }
 
@@ -844,7 +949,7 @@ async fn a_stamp_still_naming_a_row_by_its_former_tag_takes_the_request_to_that_
         Some(&stamp),
         "sub",
         "best",
-        "en",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect("resolved");
@@ -865,7 +970,7 @@ async fn a_request_for_a_rows_tag_now_plays_it_once_the_stamp_names_the_row_by_i
         Some(&stamp),
         "sub",
         "best",
-        "en",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect("resolved");
@@ -882,7 +987,7 @@ async fn without_a_stamp_a_rows_tag_now_wins() {
         None,
         "sub",
         "best",
-        "en",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect("resolved");
@@ -902,7 +1007,7 @@ async fn a_stamp_on_a_row_with_no_former_tag_names_nothing_but_its_tag() {
         Some(&stamp),
         "sub",
         "best",
-        "en",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect("resolved");
@@ -930,7 +1035,7 @@ async fn a_cumulative_first_parts_recap_stamped_by_its_former_tag_is_found_by_it
         Some(&stamp),
         "sub",
         "best",
-        "en",
+        crate::scraper::track_preference::Wanted::locale("en"),
     )
     .await
     .expect("resolved");

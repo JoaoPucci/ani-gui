@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectCaptions, noteCaptionChange } from './caption-watch';
 import {
 	armSidecarTracks,
 	attachSidecarTracks,
@@ -41,6 +42,30 @@ describe('attachSidecarTracks', () => {
 		expect(tracks[1].hasAttribute('default')).toBe(false);
 		remove();
 		expect(v.querySelectorAll('track').length).toBe(0);
+	});
+});
+
+describe('the track a session starts on', () => {
+	// A track the stream's own playlist carries — hls.js adds it with
+	// addTextTrack — may already be showing when the sidecar tracks
+	// arrive, and the browser honours a `default` attribute only while
+	// no subtitle track shows. The start is applied to the video's
+	// tracks, so it holds whatever was showing.
+	it('turns off a track already showing when the start is off', () => {
+		const v = video();
+		const inManifest = v.addTextTrack('subtitles', 'Manifest', 'en');
+		inManifest.mode = 'showing';
+		attachSidecarTracks(v, [en, es], 'en', 'off');
+		expect(inManifest.mode).toBe('disabled');
+	});
+
+	it('turns off a track already showing when a sidecar track is the start', () => {
+		const v = video();
+		const inManifest = v.addTextTrack('subtitles', 'Manifest', 'en');
+		inManifest.mode = 'showing';
+		attachSidecarTracks(v, [en, es], 'es');
+		expect(inManifest.mode).toBe('disabled');
+		expect(v.querySelectorAll('track')[1].hasAttribute('default')).toBe(true);
 	});
 });
 
@@ -93,6 +118,23 @@ describe('armSidecarTracks', () => {
 		cleanup();
 		await settle();
 		expect(v.querySelectorAll('track').length).toBe(0);
+	});
+
+	// The session going is no pick of the viewer's, whether or not it
+	// had sidecar tracks: whatever its teardown does to the captions —
+	// a playlist's own track switched off — is not remembered.
+	it('stops taking caption changes for picks when the session goes, tracks or none', async () => {
+		globalThis.fetch = vi.fn(async () => new Response(JSON.stringify([]))) as typeof fetch;
+		const v = video();
+		expectCaptions(v, 0);
+		const cleanup = armSidecarTracks(v, 'http://127.0.0.1:31337', 'session-1');
+		await settle();
+		cleanup();
+		const list = [
+			{ kind: 'subtitles', mode: 'disabled' },
+			{ kind: 'subtitles', mode: 'showing' }
+		];
+		expect(noteCaptionChange(v, list)).toBeNull();
 	});
 
 	it('attaches nothing for an empty listing', async () => {

@@ -147,10 +147,11 @@ pub struct NativeResolveRequest<'a> {
     /// `best` keeps the adaptive master; anything else selects a
     /// variant from it, falling back to the master on a miss.
     pub quality: &'a str,
-    /// The user's locale (a BCP 47 tag, the app's setting), which
-    /// decides which subtitle tracks a listing past the cap keeps
+    /// What the viewer wants of the listing — the show's remembered
+    /// captions choice and the UI locale — which decides which
+    /// subtitle tracks a listing past the cap keeps
     /// ([`tracks_within_cap`]).
-    pub locale: &'a str,
+    pub wanted: crate::scraper::track_preference::Wanted<'a>,
     /// Kitsu's episode count, when known.
     pub expected_count: Option<u32>,
     /// The year the show premiered per Kitsu, when known. The
@@ -307,7 +308,7 @@ where
                             req.stamps_beside,
                             req.mode,
                             req.quality,
-                            req.locale,
+                            req.wanted,
                         )
                         .await;
                         let (versions, version) =
@@ -479,11 +480,14 @@ where
 /// range download, which resolves its episodes through the same step —
 /// shares the bound instead of each guarding its own.
 #[must_use]
-pub(crate) fn tracks_within_cap(tracks: Vec<SubtitleTrack>, locale: &str) -> Vec<SubtitleTrack> {
+pub(crate) fn tracks_within_cap(
+    tracks: Vec<SubtitleTrack>,
+    wanted: crate::scraper::track_preference::Wanted<'_>,
+) -> Vec<SubtitleTrack> {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
     let tracks = each_file_once(tracks);
     let (kept, dropped) =
-        crate::scraper::track_preference::most_wanted_within(tracks, SUBTITLE_TRACK_CAP, locale);
+        crate::scraper::track_preference::most_wanted_within(tracks, SUBTITLE_TRACK_CAP, wanted);
     if dropped > 0 {
         tracing::warn!(
             dropped,

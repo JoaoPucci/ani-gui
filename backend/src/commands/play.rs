@@ -113,9 +113,29 @@ pub struct PlayArgs {
     /// not carry, plays the pick's default.
     #[serde(default)]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The captions choice remembered for the show
+    /// (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. `None`
+    /// when none is.
+    #[serde(default)]
+    pub caption: Option<String>,
 }
 
 impl PlayArgs {
+    /// What the viewer wants of a listing, with `locale` the UI's.
+    #[must_use]
+    pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
+        crate::scraper::track_preference::Wanted {
+            remembered: self.caption.as_deref().filter(|c| *c != "off"),
+            locale,
+        }
+    }
+
+    /// Whether the show's remembered captions choice is Off.
+    #[must_use]
+    pub fn captions_off(&self) -> bool {
+        self.caption.as_deref() == Some("off")
+    }
+
     /// The resolution-cache key this play reads and writes: the
     /// request's own axes, its version among them.
     #[must_use]
@@ -147,7 +167,7 @@ impl PlayArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
-            locale,
+            wanted: self.wanted(locale),
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
@@ -321,7 +341,7 @@ where
     let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-            if let Some(resp) = try_serve_cached(state, &cached).await {
+            if let Some(resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await {
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -618,6 +638,7 @@ pub(crate) mod tests {
                 prefetch,
                 kitsu_id,
                 version: None,
+                caption: None,
             };
             let got = scrape_priority(&args);
             let want = if prefetch {
@@ -684,6 +705,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
             version: None,
+            caption: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -754,6 +776,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
             version: None,
+            caption: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -813,6 +836,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         };
         for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
             let r = play_with_progress(&state, &mk(&format!("absent show {i}")), |_| {}).await;
@@ -871,6 +895,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         }
     }
 
@@ -1149,6 +1174,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         };
         write_history_on_cache_hit(
             &state,
@@ -1174,7 +1200,7 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached).await.is_none());
+        assert!(try_serve_cached(&state, &cached, None).await.is_none());
     }
 
     #[tokio::test]
@@ -1194,7 +1220,7 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        let resp = try_serve_cached(&state, &cached).await.expect("hit");
+        let resp = try_serve_cached(&state, &cached, None).await.expect("hit");
         // Session is freshly created, but the upstream + kind match.
         assert!(resp.media_url.contains("/file.mp4"));
         assert_eq!(resp.media_kind, MediaKind::Mp4);
@@ -1223,7 +1249,7 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached).await.is_none());
+        assert!(try_serve_cached(&state, &cached, None).await.is_none());
     }
 
     #[tokio::test]
@@ -1244,7 +1270,7 @@ pub(crate) mod tests {
             "https://allmanga.to".into(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached).await.is_some());
+        assert!(try_serve_cached(&state, &cached, None).await.is_some());
     }
 
     /// A sidecar track is signed like the stream and expires on its
@@ -1274,7 +1300,7 @@ pub(crate) mod tests {
         );
         cached.subtitles = vec![track("en", true, &format!("{}/subs/en.vtt", server.uri()))];
         assert!(
-            try_serve_cached(&state, &cached).await.is_none(),
+            try_serve_cached(&state, &cached, None).await.is_none(),
             "a dead track is a dead row"
         );
     }
@@ -1339,6 +1365,7 @@ pub(crate) mod tests {
                 &state,
                 &row(&stalling),
                 deadline,
+                None,
             ),
         )
         .await
@@ -1370,7 +1397,9 @@ pub(crate) mod tests {
         let _ = crate::held::frozen_until(
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                crate::commands::play_cache::cached_row_is_live_within(&state, &again, deadline),
+                crate::commands::play_cache::cached_row_is_live_within(
+                    &state, &again, deadline, None,
+                ),
             ),
             stalled_again.asked(),
         )
@@ -1416,7 +1445,7 @@ pub(crate) mod tests {
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
             track("es", false, &format!("{}/subs/es.vtt", server.uri())),
         ];
-        assert!(try_serve_cached(&state, &cached).await.is_some());
+        assert!(try_serve_cached(&state, &cached, None).await.is_some());
         let asked: Vec<String> = server
             .received_requests()
             .await
@@ -1444,6 +1473,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         }
     }
 
@@ -1596,6 +1626,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -1641,6 +1672,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -2094,6 +2126,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            caption: None,
         };
         assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
     }
@@ -2245,6 +2278,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("race-1".into()),
             version: None,
+            caption: None,
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
         let at_start =
@@ -2309,6 +2343,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("cap-1".into()),
             version: None,
+            caption: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub").await;
@@ -2360,6 +2395,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-2".into()),
             version: None,
+            caption: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub").await;
@@ -2416,6 +2452,7 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-1".into()),
             version: None,
+            caption: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub").await;

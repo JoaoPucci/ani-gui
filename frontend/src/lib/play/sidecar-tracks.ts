@@ -14,6 +14,10 @@
  * exercised by the acceptance test on the mounted page.
  */
 
+import { applyCaptionPick } from './caption-pick';
+import { startingTrack } from './caption-start';
+import { expectCaptions, showingCaption } from './caption-watch';
+
 /** One listed track, as the proxy answers it. */
 export interface SidecarTrack {
 	lang: string;
@@ -70,10 +74,20 @@ export async function fetchSidecarTracks(
 	}
 }
 
-/** Append one `<track>` per listing; the returned function removes them. */
-export function attachSidecarTracks(video: HTMLVideoElement, tracks: SidecarTrack[]): () => void {
-	const elements = tracks.map((track) => {
-		const attrs = trackAttributes(track);
+/**
+ * Append one `<track>` per listing; the returned function removes them.
+ * The track the player starts on ({@link startingTrack}, for the
+ * user's `locale`) alone carries the `default` attribute.
+ */
+export function attachSidecarTracks(
+	video: HTMLVideoElement,
+	tracks: SidecarTrack[],
+	locale = '',
+	remembered?: string
+): () => void {
+	const start = startingTrack(tracks, locale, remembered);
+	const elements = tracks.map((track, i) => {
+		const attrs = { ...trackAttributes(track), default: i === start };
 		const el = document.createElement('track');
 		el.setAttribute('kind', attrs.kind);
 		el.setAttribute('srclang', attrs.srclang);
@@ -83,9 +97,27 @@ export function attachSidecarTracks(video: HTMLVideoElement, tracks: SidecarTrac
 		video.appendChild(el);
 		return el;
 	});
+	applyStart(video, start === null ? null : elements[start]);
 	return () => {
+		// The tracks going are no pick of the viewer's.
+		expectCaptions(video, null);
 		for (const el of elements) el.remove();
 	};
+}
+
+/**
+ * The start applied to the video's tracks, not left to the `default`
+ * attribute alone: the browser honours the attribute only while no
+ * subtitle track shows, and a track the stream's playlist carries may
+ * already be showing. Every subtitle track is turned off — disabled,
+ * so none is fetched — and the start's track, if any, turned on.
+ */
+function applyStart(video: HTMLVideoElement, start: HTMLTrackElement | null): void {
+	applyCaptionPick(video.textTracks, 'off');
+	if (start) start.track.mode = 'showing';
+	// What the app set, so the browser's own captions menu can be told
+	// from it ($lib/play/caption-watch).
+	expectCaptions(video, showingCaption(video.textTracks));
 }
 
 /**
@@ -97,16 +129,21 @@ export function attachSidecarTracks(video: HTMLVideoElement, tracks: SidecarTrac
 export function armSidecarTracks(
 	video: HTMLVideoElement,
 	mediaUrl: string,
-	sessionId: string
+	sessionId: string,
+	locale = '',
+	remembered?: string
 ): () => void {
 	const controller = new AbortController();
 	let detach: (() => void) | null = null;
 	void fetchSidecarTracks(mediaUrl, sessionId, controller.signal).then((tracks) => {
 		if (controller.signal.aborted || tracks.length === 0) return;
-		detach = attachSidecarTracks(video, tracks);
+		detach = attachSidecarTracks(video, tracks, locale, remembered);
 	});
 	return () => {
 		controller.abort();
+		// The session going is no pick of the viewer's, whether it had
+		// sidecar tracks or not.
+		expectCaptions(video, null);
 		detach?.();
 	};
 }

@@ -105,7 +105,7 @@ impl DownloadArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
-            locale,
+            wanted: crate::scraper::track_preference::Wanted::locale(locale),
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),

@@ -686,3 +686,25 @@ fn a_sources_list_of_rows_the_reader_cannot_use_is_a_parse_failure() {
         );
     }
 }
+
+/// A provider that lists its own `lang` field — the embed payload's —
+/// may write a tag, a code, a name or a locale with an underscore. A
+/// tag-shaped field stands as listed; anything else is read as a name,
+/// or else the label is, so the player's `srclang` is always a tag.
+#[test]
+fn a_listed_language_field_reads_as_a_tag() {
+    use crate::scraper::subtitle_language::listed_tag;
+    assert_eq!(listed_tag("en", "English"), "en");
+    assert_eq!(listed_tag("pt-BR", "Português"), "pt-BR");
+    assert_eq!(
+        listed_tag("xx", "Something"),
+        "xx",
+        "a tag-shaped field stands"
+    );
+    assert_eq!(listed_tag("pt_BR", "Portuguese"), "pt-BR");
+    assert_eq!(listed_tag("English", "English"), "en");
+    assert_eq!(listed_tag("Portuguese (Brazil)", "x"), "pt-BR");
+    assert_eq!(listed_tag("", "Spanish (- Latin America)"), "es-419");
+    assert_eq!(listed_tag("Klingon", "Klingon"), "und");
+    assert_eq!(listed_tag("", ""), "und");
+}

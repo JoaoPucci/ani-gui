@@ -115,6 +115,7 @@ fn play_args() -> PlayArgs {
         prefetch: false,
         kitsu_id: None,
         version: None,
+        caption: None,
     }
 }
 

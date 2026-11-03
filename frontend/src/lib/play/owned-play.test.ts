@@ -255,6 +255,19 @@ describe('playArgsFor', () => {
 		expect('version' in playArgsFor(base)).toBe(false);
 	});
 
+	it("names the show's remembered captions choice, and none when none is", () => {
+		const base = {
+			title: 'Show',
+			episode: 1,
+			mode: 'sub' as const,
+			quality: 'best',
+			show,
+			kitsuId: '42'
+		};
+		expect(playArgsFor({ ...base, caption: 'es-419' }).caption).toBe('es-419');
+		expect('caption' in playArgsFor(base)).toBe(false);
+	});
+
 	it('takes a missing show as no metadata', () => {
 		const args = playArgsFor({
 			title: 'Show',

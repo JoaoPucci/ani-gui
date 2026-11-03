@@ -132,7 +132,7 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
                 bounded
             })
             .map(|t| SubtitleTrack {
-                lang: t.lang,
+                lang: crate::scraper::subtitle_language::listed_tag(&t.lang, &t.label),
                 label: t.label,
                 default: t.default,
                 url: t.src,

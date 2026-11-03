@@ -449,6 +449,20 @@ proptest! {
         prop_assert!(lang == "und" || is_tag(&lang), "{:?} from {:?} under {:?}", lang, file, label);
     }
 
+    /// A tag-shaped `lang` field stands as listed; whatever else a
+    /// provider writes there reads as a well-formed tag or `und`.
+    #[test]
+    fn a_listed_language_field_is_a_tag_or_und(
+        tagged in "[a-z]{2,3}(-[A-Z]{2})?",
+        free in ".{0,24}",
+        label in ".{0,24}",
+    ) {
+        use crate::scraper::subtitle_language::listed_tag;
+        prop_assert_eq!(listed_tag(&tagged, &label), tagged.clone());
+        let read = listed_tag(&free, &label);
+        prop_assert!(read == "und" || is_tag(&read), "{:?} from {:?} under {:?}", read, free, label);
+    }
+
     /// The sources list is read row by row: the stream is the first
     /// row naming a file the transport can fetch, and rows of another
     /// shape around it — `null`, a string, a number, a list, an

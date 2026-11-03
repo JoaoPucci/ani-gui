@@ -215,10 +215,11 @@ fn launch_args_carry_the_resolves_referer() {
 }
 
 /// A player that takes one subtitle file takes the first listed, so
-/// the track the provider flagged default leads the list; the
-/// provider's order stands otherwise.
+/// the list leads with the track the built-in player starts on: the
+/// show's remembered language, else the user's, else the provider's
+/// default; the provider's order stands otherwise.
 #[test]
-fn launch_args_lead_with_the_providers_default_track() {
+fn launch_args_lead_with_the_track_the_built_in_player_starts_on() {
     use crate::scraper::provider::SubtitleTrack;
     let track = |lang: &str, default: bool| SubtitleTrack {
         lang: lang.into(),
@@ -256,22 +257,54 @@ fn launch_args_lead_with_the_providers_default_track() {
             "https://cdn.example/x/subs/es.vtt".to_string(),
         ]
     );
-    // The user's language follows the default: a player that takes the
-    // tracks in order, or a command line that cannot carry them all,
-    // reaches it before the alphabet's first.
+    // The user's language leads the default, as the built-in player
+    // starts: a player that takes one track, or a command line that
+    // cannot carry them all, reaches it first.
     let cfg = crate::config::Config {
         locale: "es-419".into(),
         ..crate::config::Config::default()
     };
-    let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
+    let launch = super::play_handoff::launch_args_for(native.clone(), &args_for(), &cfg);
     assert_eq!(
         launch.subtitle_urls,
         vec![
-            "https://cdn.example/x/subs/en.vtt".to_string(),
             "https://cdn.example/x/subs/es.vtt".to_string(),
+            "https://cdn.example/x/subs/en.vtt".to_string(),
             "https://cdn.example/x/subs/ar.vtt".to_string(),
         ]
     );
+    assert!(!launch.subtitles_off);
+    // The language last picked on the show leads the locale's.
+    let mut remembered = args_for();
+    remembered.caption = Some("ar".into());
+    let launch = super::play_handoff::launch_args_for(native.clone(), &remembered, &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec![
+            "https://cdn.example/x/subs/ar.vtt".to_string(),
+            "https://cdn.example/x/subs/es.vtt".to_string(),
+            "https://cdn.example/x/subs/en.vtt".to_string(),
+        ]
+    );
+    // Nothing in the user's language and no default: the built-in
+    // player starts with none, so the external one starts with its
+    // subtitles off too.
+    let mut no_start = native.clone();
+    no_start.subtitles = vec![track("ar", false), track("es", false)];
+    let pt = crate::config::Config {
+        locale: "pt-BR".into(),
+        ..crate::config::Config::default()
+    };
+    let launch = super::play_handoff::launch_args_for(no_start.clone(), &args_for(), &pt);
+    assert!(launch.subtitles_off, "no track to start on");
+    let launch = super::play_handoff::launch_args_for(no_start, &args_for(), &cfg);
+    assert!(!launch.subtitles_off, "the user's language is there");
+    // Off remembered: the same order, the player's subtitles off.
+    let mut off = args_for();
+    off.caption = Some("off".into());
+    let launch = super::play_handoff::launch_args_for(native, &off, &cfg);
+    assert_eq!(launch.subtitle_urls[0], "https://cdn.example/x/subs/es.vtt");
+    assert!(launch.subtitles_off);
 }
 
 mod default_first_props {
@@ -297,34 +330,38 @@ mod default_first_props {
     }
 
     proptest! {
-        /// Every URL survives, exactly once, and a default track — when
-        /// there is one — comes first.
+        /// Every URL survives, exactly once, and the first is the track
+        /// the built-in player starts on: one in the user's language
+        /// when the listing has one, else a default when it has one.
         #[test]
-        fn the_urls_are_a_permutation_led_by_a_default(tracks in tracks()) {
-            let urls = subtitle_urls_preferred(&tracks, "en");
+        fn the_urls_are_a_permutation_led_by_the_start(tracks in tracks()) {
+            let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale("en"));
             let mut expected: Vec<String> = tracks.iter().map(|t| t.url.clone()).collect();
             let mut got = urls.clone();
             expected.sort();
             got.sort();
             prop_assert_eq!(got, expected);
             if let Some(first) = urls.first() {
-                let first_is_default = tracks.iter().any(|t| t.default && &t.url == first);
-                let any_default = tracks.iter().any(|t| t.default);
-                prop_assert!(first_is_default || !any_default);
+                let first = tracks.iter().find(|t| &t.url == first).expect("listed");
+                if tracks.iter().any(|t| t.lang == "en") {
+                    prop_assert_eq!(first.lang.as_str(), "en");
+                } else if tracks.iter().any(|t| t.default) {
+                    prop_assert!(first.default);
+                }
             }
         }
 
         /// The URLs follow the preference order, the user's locale
-        /// deciding it: after the default, a user's own language, then
+        /// deciding it: the user's own language, then the default, then
         /// English, then the provider's order.
         #[test]
         fn the_urls_follow_the_preference_order(
             tracks in tracks(),
             locale in "(en|pt-BR|es-419|ru|[a-z]{2})",
         ) {
-            let urls = subtitle_urls_preferred(&tracks, &locale);
+            let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale(&locale));
             let expected: Vec<String> =
-                crate::scraper::track_preference::preference_order(&tracks, &locale)
+                crate::scraper::track_preference::preference_order(&tracks, crate::scraper::track_preference::Wanted::locale(&locale))
                     .into_iter()
                     .map(|i| tracks[i].url.clone())
                     .collect();

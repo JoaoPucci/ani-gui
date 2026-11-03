@@ -519,7 +519,7 @@ async fn a_resolves_hearing_spans_its_picks_listing_fetches() {
         episode: "1",
         mode: "sub",
         quality: "best",
-        locale: "en",
+        wanted: crate::scraper::track_preference::Wanted::locale("en"),
         expected_count: Some(3),
         year: Some(2020),
         subtype: Some("TV"),

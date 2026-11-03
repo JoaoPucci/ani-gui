@@ -76,6 +76,8 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
+	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
@@ -507,6 +509,29 @@
 		ccMenuOpen = !ccMenuOpen;
 	}
 
+	/** A captions pick the browser's own menu made — with the custom
+	 *  controls off — remembered for the show as the app's own menu's
+	 *  are ($lib/play/caption-watch). */
+	function rememberViewerPick(video: HTMLVideoElement) {
+		// With the app's own controls on there is no browser menu: a
+		// change the app did not make is hls.js's, not the viewer's.
+		if (USE_CUSTOM_PLAYER_CONTROLS) return;
+		const pick = noteCaptionChange(video, video.textTracks);
+		if (pick === null) return;
+		const choice = captionChoiceOf(video.textTracks, pick);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+	}
+
+	/** The UI locale, which the subtitle track a session starts on
+	 *  follows; empty when Paraglide has none resolved. */
+	function uiLocale(): string {
+		try {
+			return getLocale();
+		} catch {
+			return '';
+		}
+	}
+
 	/** Pick a subtitle track by its index in the TextTrackList, or
 	 *  'off' for none. Only the track shown is loaded; the rule is
 	 *  $lib/play/caption-pick's. */
@@ -514,6 +539,11 @@
 		ccMenuOpen = false;
 		if (!videoEl) return;
 		applyCaptionPick(videoEl.textTracks, target);
+		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
+		// Under the show's id, unless the session was opened from a
+		// guessed match, which records nothing under the guess.
+		const choice = captionChoiceOf(videoEl.textTracks, target);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
 	}
 
 	function setVolume(v: number) {
@@ -1645,6 +1675,7 @@
 		// thrash availableTracks' derivation chain.
 		const onTextTracksMutate = () => {
 			textTracksTick++;
+			rememberViewerPick(v);
 		};
 		v.textTracks.addEventListener('addtrack', onTextTracksMutate);
 		v.textTracks.addEventListener('removetrack', onTextTracksMutate);
@@ -1934,7 +1965,9 @@
 		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId));
+			sourceScope.add(
+				armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale(), storedCaption(id))
+			);
 		}
 	});
 
@@ -2150,7 +2183,8 @@
 			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
-			version
+			version,
+			caption: storedCaption(owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2526,7 +2560,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				// Body text is shaped by describeExternalLaunchFailure so
@@ -2594,7 +2629,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))

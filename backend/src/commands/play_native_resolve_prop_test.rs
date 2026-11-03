@@ -29,7 +29,7 @@ proptest! {
     /// them wherever the listing put it.
     #[test]
     fn the_first_cap_many_are_kept_in_order_with_the_default_among_them(tracks in listing()) {
-        let kept = tracks_within_cap(tracks.clone(), "en");
+        let kept = tracks_within_cap(tracks.clone(), crate::scraper::track_preference::Wanted::locale("en"));
         prop_assert_eq!(kept.len(), tracks.len().min(SUBTITLE_TRACK_CAP));
         let default_at = tracks.iter().position(|t| t.default);
         let expected: Vec<&str> = match default_at {

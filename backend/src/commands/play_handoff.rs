@@ -128,7 +128,12 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: subtitle_urls_preferred(&native.subtitles, &cfg.locale),
+        subtitle_urls: subtitle_urls_preferred(&native.subtitles, args.wanted(&cfg.locale)),
+        subtitles_off: args.captions_off()
+            || !crate::scraper::track_preference::has_start(
+                &native.subtitles,
+                args.wanted(&cfg.locale),
+            ),
     }
 }
 
@@ -146,9 +151,9 @@ pub(crate) fn window_title(show: &str, episode: &str) -> String {
 #[must_use]
 pub fn subtitle_urls_preferred(
     tracks: &[crate::scraper::provider::SubtitleTrack],
-    locale: &str,
+    wanted: crate::scraper::track_preference::Wanted<'_>,
 ) -> Vec<String> {
-    crate::scraper::track_preference::preferred_first(tracks, locale)
+    crate::scraper::track_preference::preferred_first(tracks, wanted)
         .into_iter()
         .map(|t| t.url.clone())
         .collect()
