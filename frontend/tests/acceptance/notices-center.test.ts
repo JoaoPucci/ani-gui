@@ -207,7 +207,7 @@ describe('downloads', () => {
 });
 
 describe('keys in the panel off the player', () => {
-	it("still reach the app's own shortcuts, such as / for search", async () => {
+	it("give way to the app's search shortcuts, / and Ctrl+K, which close the panel and focus the search", async () => {
 		const root = await launch();
 		const id = downloadStore.add({
 			title: 'Frieren',
@@ -236,6 +236,17 @@ describe('keys in the panel off the player', () => {
 			await settle();
 			expect(seen).toEqual(['/']);
 			expect(panel(), 'the search takes over from the panel').toBeNull();
+			const search = root.querySelector<HTMLInputElement>('input[type="search"]');
+			expect(document.activeElement, '/ puts the caret in the search').toBe(search);
+			search?.blur();
+			(bell(root) as HTMLButtonElement).click();
+			await settle();
+			const third = panel()?.querySelector<HTMLElement>('.nr-lead') as HTMLElement;
+			third.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+			await settle();
+			expect(seen).toEqual(['/', 'k']);
+			expect(panel(), 'Ctrl+K takes over from the panel too').toBeNull();
+			expect(document.activeElement, 'Ctrl+K puts the caret in the search').toBe(search);
 		} finally {
 			window.removeEventListener('keydown', spy);
 		}
