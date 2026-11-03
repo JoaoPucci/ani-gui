@@ -189,10 +189,10 @@
 	"error_ffmpeg_missing_body_darwin": "O ani-gui usa o ffmpeg para salvar os downloads como MP4, mas ele não está instalado neste sistema. Instale-o pelo Homebrew com `brew install ffmpeg`, ou baixe um build manualmente.",
 	"error_ffmpeg_missing_action_label": "Baixar ffmpeg",
 	"status_already_here": "Esse episódio já está nesta pasta. O arquivo existente foi mantido.",
-	"status_abandoned_claim": "Um download interrompido deixou um arquivo vazio em {path}. Exclua-o e tente de novo.",
-	"status_claim_pending": "Outro download está publicando {path} e ainda não terminou. Tente de novo daqui a pouco.",
-	"status_repackage_retry": "O yt-dlp não conseguiu reempacotar o stream. Tentando de novo com o ffmpeg.",
-	"status_retry_ffmpeg": "O yt-dlp falhou. Tentando de novo com o ffmpeg.",
+	"status_abandoned_claim": "Um download interrompido deixou um arquivo vazio em {path}. Exclua-o e tente novamente.",
+	"status_claim_pending": "Outro download está publicando {path} e ainda não terminou. Tente novamente daqui a pouco.",
+	"status_repackage_retry": "O yt-dlp não conseguiu reempacotar o stream. Tentando novamente com o ffmpeg.",
+	"status_retry_ffmpeg": "O yt-dlp falhou. Tentando novamente com o ffmpeg.",
 	"range_error_not_a_number": "Informe os dois números de episódio.",
 	"range_error_below_one": "A numeração dos episódios começa em 1.",
 	"range_error_start_over_max": "O primeiro episódio não pode passar de {max}, o último disponível.",
@@ -214,7 +214,7 @@
 	"failure_write": "Não foi possível salvar o arquivo na pasta de download. Verifique se a pasta existe, permite gravação e tem espaço livre.",
 	"failure_no_folder": "Nenhuma pasta de download definida. Escolha uma e tente novamente.",
 	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde.",
-	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele abre. Se não for o caso, reinstale o ani-gui.",
+	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele funciona. Se não instalou, reinstale o ani-gui.",
 	"speed_kbps": "{value} KB/s",
 	"speed_mbps": "{value} MB/s"
 }

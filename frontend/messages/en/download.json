@@ -195,7 +195,7 @@
 	"failure_write": "Couldn't save the file to the download folder. Check that the folder exists, is writable and has free space.",
 	"failure_no_folder": "No download folder is set. Choose one and try again.",
 	"failure_tool": "The downloader stopped with an error. Try again later.",
-	"failure_tool_spawn": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs. Otherwise, reinstall ani-gui.",
+	"failure_tool_spawn": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs. If you didn't, reinstall ani-gui.",
 	"speed_kbps": "{value} KB/s",
 	"speed_mbps": "{value} MB/s"
 }

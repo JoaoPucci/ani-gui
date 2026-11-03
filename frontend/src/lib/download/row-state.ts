@@ -12,7 +12,7 @@
  */
 
 import { m } from '$lib/paraglide/messages';
-import { reportText } from './report-copy';
+import { reportText, terminalReportText } from './report-copy';
 import { formatSpeed } from './speed';
 import type { DownloadItem } from './store.svelte';
 
@@ -42,6 +42,12 @@ export function rowState(item: DownloadItem): RowState {
 		case 'done':
 			return { state: m.download_dock_state_done(), note: null };
 		case 'error':
-			return { state: m.download_dock_state_failed(), note: item.error };
+			// A failure over an abandoned or half-published file carries
+			// a report naming it, which the row shows; the generic write
+			// error would come first and point away from it.
+			return {
+				state: m.download_dock_state_failed(),
+				note: terminalReportText(item) === null ? item.error : null
+			};
 	}
 }
