@@ -14,7 +14,7 @@ import { ownWrites } from './own-writes';
 import { failuresAfterHydrate, hydratedState, isSignInChange } from './hydrated-state';
 import { KeyringWait } from './keyring-wait';
 
-/** What a read and writes on the account store. */
+/** What a read reads and writes on the account store. */
 export interface HydrateTarget {
 	byProvider: Record<Provider, ProviderState>;
 	renewalFailure: RenewalFailures;

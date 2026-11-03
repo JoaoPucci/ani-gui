@@ -50,6 +50,7 @@ export interface ConnectActionDeps {
 	seedConnectedList(provider: Provider, bearer: string): Promise<void>;
 	/** Show a notice; returns its id. */
 	pushToast(toast: ErrorToast): string;
+	/** Called unbound: pass an arrow, not a store method. */
 	dismissToast(id: string): void;
 }
 
@@ -148,7 +149,11 @@ async function settleAbandoned(
 	deps: ConnectActionDeps
 ): Promise<void> {
 	if (!attempt.saveSent) return;
+	const waited = changing(deps.store, provider);
 	while (changing(deps.store, provider)) await deps.store.nextChange(provider);
+	// A newer sign-in that succeeded saved after this one, so the disk
+	// holds it: reading it back would only take it again.
+	if (waited && deps.store.byProvider[provider].kind === 'connected') return;
 	if (await deps.store.reread(provider)) await seedIfConnected(provider, deps);
 }
 

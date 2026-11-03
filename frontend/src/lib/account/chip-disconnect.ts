@@ -33,6 +33,7 @@ export interface ChipDisconnectCallbacks {
 	setDisconnected(provider: Provider): void;
 	/** Show a notice; returns its id. */
 	pushToast(t: { kind: 'error'; message: string }): string;
+	/** Called unbound: pass an arrow, not a store method. */
 	dismissToast(id: string): void;
 	unknownErrorMessage(): string;
 	tokenClearFailedMessage(): string;
