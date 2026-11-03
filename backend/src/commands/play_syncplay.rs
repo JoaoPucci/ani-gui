@@ -102,6 +102,7 @@ pub(crate) fn syncplay_launch_for(
         player_kind,
         player_binary,
         subtitle_urls: launch.subtitle_urls,
+        subtitles_off: launch.subtitles_off,
     }
 }
 

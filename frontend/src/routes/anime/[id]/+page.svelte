@@ -118,6 +118,7 @@
 		versionsToOffer,
 		versionsInMode
 	} from '$lib/versions/version-choice';
+	import { storedCaption } from '$lib/play/caption-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -951,7 +952,8 @@
 			quality,
 			show: d,
 			kitsuId: d.id,
-			version
+			version,
+			caption: storedCaption(d.id)
 		});
 		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
 	}
@@ -1315,7 +1317,8 @@
 				show: detail,
 				kitsuId: id,
 				prefetch: true,
-				version
+				version,
+				caption: storedCaption(id)
 			});
 			const warmedVisit = visit;
 			const warm = getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
@@ -1561,7 +1564,8 @@
 			quality,
 			show,
 			kitsuId: owner.showId,
-			version
+			version,
+			caption: storedCaption(owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.

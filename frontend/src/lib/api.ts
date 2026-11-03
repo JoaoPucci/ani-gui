@@ -742,6 +742,11 @@ export interface PlayArgs {
 	 *  opened the play from. The session answers whether the play
 	 *  landed on that row's own listing (`own_listing`). */
 	guess_row?: string;
+	/** The captions choice remembered for the show
+	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
+	 *  backend orders the subtitle tracks it hands an external player,
+	 *  and cuts a listing past its cap, by it. Absent when none is. */
+	caption?: string;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
@@ -849,6 +854,7 @@ export function playStream(
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>

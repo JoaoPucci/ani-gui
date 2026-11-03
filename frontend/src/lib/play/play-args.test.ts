@@ -60,6 +60,13 @@ describe('buildPlayArgs', () => {
 		expect('version' in buildPlayArgs({ ...base, version: undefined })).toBe(false);
 	});
 
+	it("names the show's remembered captions choice, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
+		expect(buildPlayArgs({ ...base, caption: 'pt-BR' }).caption).toBe('pt-BR');
+		expect(buildPlayArgs({ ...base, caption: 'off' }).caption).toBe('off');
+		expect('caption' in buildPlayArgs(base)).toBe(false);
+	});
+
 	it('sends no Kitsu id when there is none to record, and nulls without a record', () => {
 		const args = buildPlayArgs({
 			title: 'The Show',

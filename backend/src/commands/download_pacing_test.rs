@@ -70,11 +70,11 @@ fn a_downloads_tracks_are_fetched_one_at_a_time_while_playback_is_live() {
         super::super::download::SIDECAR_FETCH_CONCURRENCY
     );
     assert_eq!(
-        sidecar_phase_deadline(false),
+        sidecar_phase_deadline(false, 1),
         super::super::download::SIDECAR_PHASE_DEADLINE
     );
     assert!(
-        sidecar_phase_deadline(true) > sidecar_phase_deadline(false),
+        sidecar_phase_deadline(true, 1) > sidecar_phase_deadline(false, 1),
         "tracks taking their tokens one at a time in turn with the player's need the time"
     );
 }
@@ -88,7 +88,7 @@ proptest! {
         let n = sidecar_concurrency(live);
         prop_assert!(n == 1 || n == super::super::download::SIDECAR_FETCH_CONCURRENCY);
         prop_assert_eq!(n == 1, live);
-        let d = sidecar_phase_deadline(live);
+        let d = sidecar_phase_deadline(live, 1);
         prop_assert!(
             d == super::super::download::SIDECAR_PHASE_DEADLINE || d == SIDECAR_PHASE_DEADLINE_LIVE
         );
@@ -176,4 +176,63 @@ async fn a_change_before_the_wait_began_is_seen_at_once() {
 #[test]
 fn a_relayed_run_waits_its_turn_as_long_as_a_paced_run_may_last() {
     assert!(Duration::from_secs(u64::from(RELAYED_SOCKET_TIMEOUT_S)) >= PACED_RUN_CEILING);
+}
+
+/// The phase's deadlines were sized for a listing of sixteen tracks,
+/// and a longer listing gets each further track's share of that time:
+/// a refill of the host's budget while nothing plays — once the burst
+/// is spent each track waits that long for its token — and a
+/// sixteenth of the live deadline while playback is live, where the
+/// tracks go one at a time behind the player's need and the four
+/// minutes were sized as sixteen such turns. A listing of every
+/// language a provider offers (Steel Ball Run's first episode lists 33;
+/// the cap is 64) would otherwise run out of time with tracks still
+/// unfetched.
+#[test]
+fn a_long_listing_gets_each_further_tracks_share_of_the_time() {
+    use crate::proxy::host_budget::SEGMENT_REFILL;
+    for live in [false, true] {
+        assert_eq!(
+            sidecar_phase_deadline(live, 16),
+            sidecar_phase_deadline(live, 0)
+        );
+    }
+    assert_eq!(
+        sidecar_phase_deadline(false, 33),
+        super::super::download::SIDECAR_PHASE_DEADLINE + SEGMENT_REFILL * 17
+    );
+    assert_eq!(
+        sidecar_phase_deadline(false, 64),
+        super::super::download::SIDECAR_PHASE_DEADLINE + SEGMENT_REFILL * 48
+    );
+    assert_eq!(
+        sidecar_phase_deadline(true, 33),
+        SIDECAR_PHASE_DEADLINE_LIVE + SIDECAR_PHASE_DEADLINE_LIVE / 16 * 17
+    );
+}
+
+proptest! {
+    /// However many tracks, the deadline is the base for the phase's
+    /// liveness plus each track past sixteen's share — a refill while
+    /// nothing plays, a sixteenth of the live base while playback is
+    /// live: never shorter than the base, never shorter than what the
+    /// host's burst and refill take to hand every track a token, and
+    /// while live never shorter per track than the base was sized at.
+    #[test]
+    fn the_deadline_covers_every_tracks_turn(live in proptest::bool::ANY, tracks in 0usize..200) {
+        use crate::proxy::host_budget::{SEGMENT_BURST, SEGMENT_REFILL};
+        let base = sidecar_phase_deadline(live, 0);
+        let d = sidecar_phase_deadline(live, tracks);
+        let past = u32::try_from(tracks.saturating_sub(16)).expect("small");
+        let step = if live { SIDECAR_PHASE_DEADLINE_LIVE / 16 } else { SEGMENT_REFILL };
+        prop_assert_eq!(d, base + step * past);
+        let burst = usize::try_from(SEGMENT_BURST).expect("small");
+        let tokens = u32::try_from(tracks.saturating_sub(burst)).expect("small");
+        prop_assert!(d >= SEGMENT_REFILL * tokens);
+        if live {
+            let n = u32::try_from(tracks.max(16)).expect("small");
+            prop_assert!(d >= SIDECAR_PHASE_DEADLINE_LIVE / 16 * n);
+        }
+        prop_assert!(sidecar_phase_deadline(live, tracks + 1) >= d);
+    }
 }
