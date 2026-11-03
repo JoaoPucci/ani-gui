@@ -189,7 +189,7 @@ async function openPlayer(query: Record<string, string> = { guess: '1', row: CAR
 
 async function openPicker() {
 	await until(() => slipText().includes(guessNote()), 'the slip');
-	button(m.detail_link_change(), slip()!)!.click();
+	button(m.play_link_change_button(), slip()!)!.click();
 	await until(() => dialog()?.open === true, 'the picker');
 }
 
@@ -210,7 +210,10 @@ describe('the slip of a guessed session', () => {
 		await openPlayer();
 		await until(() => slipText().includes(guessNote()), 'the slip');
 		expect(button(m.play_link_guess_right(), slip()!)).not.toBeNull();
-		expect(button(m.detail_link_change(), slip()!)).not.toBeNull();
+		// One label, worded as one phrase in every language.
+		expect(button(m.play_link_change_button(), slip()!)?.textContent?.trim()).toBe(
+			m.play_link_change_button()
+		);
 		expect(slip()!.querySelector('svg[data-guess-mark]')).not.toBeNull();
 		// Attached to the now-playing row, outside the frame fullscreen
 		// shows.
@@ -226,7 +229,28 @@ describe('the slip of a guessed session', () => {
 		await openPlayer({ guess: '1', row: CARD, landed: 'other' });
 		await until(() => slipText().includes(guessNote()), 'the slip');
 		expect(button(m.play_link_guess_right(), slip()!)).toBeNull();
-		expect(button(m.detail_link_change(), slip()!)).not.toBeNull();
+		expect(button(m.play_link_change_button(), slip()!)).not.toBeNull();
+	});
+
+	it('holds its room with nothing in it while the guess is decided, and goes if there is none', async () => {
+		// The card's row records its show by now: nothing to offer.
+		backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: RIGHT } : r));
+		let answer: () => void = () => {};
+		const asked = new Promise<void>((r) => (answer = r));
+		server.use(
+			http.get(`${API_BASE}/api/history`, async () => {
+				await asked;
+				return HttpResponse.json(backend.rows);
+			})
+		);
+		await openPlayer();
+		await until(() => slip()?.dataset.state === 'holding', 'the held room');
+		// No mark, no text and no buttons in a room that may come to nothing.
+		expect(slip()!.querySelector('button')).toBeNull();
+		expect(slip()!.querySelector('svg')).toBeNull();
+		expect(slipText().trim()).toBe('');
+		answer();
+		await until(() => slip() === null, 'the room to go');
 	});
 
 	it('is not there for a session no guess opened', async () => {
@@ -260,8 +284,10 @@ describe('the ⋯ menu of a guessed session', () => {
 		entry.click();
 		await until(() => dialog()?.open === true, 'the picker');
 		const text = dialog()!.textContent ?? '';
-		// The episode the player and breadcrumb show.
-		expect(text).toContain(m.detail_link_dialog_body({ episode: '2' }));
+		// The episode the player and breadcrumb show, named as the one
+		// playing: Continue Watching picks up at the next one.
+		expect(text).toContain(m.play_link_dialog_body({ episode: '2' }));
+		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '2' }));
 		// The guessed show is the one playing, not one "on this page".
 		await until(
 			() => (dialog()!.textContent ?? '').includes(m.play_link_playing_now()),

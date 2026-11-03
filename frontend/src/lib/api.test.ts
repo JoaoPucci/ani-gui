@@ -2144,7 +2144,9 @@ describe('historyLink and historyUnlink', () => {
 		};
 		const fetchMock = mockFetchOnce(outcome);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		expect(await historyLink(['hianime:black-clover-949'], '13209')).toEqual(outcome);
+		expect(
+			await historyLink('hianime:black-clover-949', ['hianime:black-clover-949'], '13209')
+		).toEqual(outcome);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/link`);
 		expect(init?.method).toBe('POST');
@@ -2155,11 +2157,28 @@ describe('historyLink and historyUnlink', () => {
 		});
 	});
 
-	it("names the card's row, which leads the rows, as the link's card", async () => {
+	it("names the card's row as the link's card", async () => {
 		const fetchMock = mockFetchOnce({ kitsu_id: '13209', linked: [] });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await historyLink(['hianime:jojo-2000-5182', 'hianime:jojo-2012-708'], '13209');
+		await historyLink(
+			'hianime:jojo-2000-5182',
+			['hianime:jojo-2000-5182', 'hianime:jojo-2012-708'],
+			'13209'
+		);
 		expect(JSON.parse(String(lastCall(fetchMock).init?.body)).card).toBe('hianime:jojo-2000-5182');
+	});
+
+	it('names the card even when no row is left to link', async () => {
+		// The backend refuses a link with no card: an empty group still
+		// says which card it was made from.
+		const fetchMock = mockFetchOnce({ kitsu_id: '13209', linked: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyLink('hianime:jojo-2000-5182', [], '13209');
+		expect(JSON.parse(String(lastCall(fetchMock).init?.body))).toEqual({
+			card: 'hianime:jojo-2000-5182',
+			rows: [],
+			kitsu_id: '13209'
+		});
 	});
 
 	it('asks which of the rows a link from the card would write', async () => {

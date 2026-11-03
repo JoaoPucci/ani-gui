@@ -278,6 +278,37 @@ describe("a guessed Continue card's pill", () => {
 	});
 });
 
+describe('a card that stopped being a guess while Home was open', () => {
+	it('drops its pill rather than open nothing', async () => {
+		await openHome();
+		// Linked from elsewhere since Home read the cards.
+		backend.rows = backend.rows.map((r) =>
+			r.id === JOJO_CARD ? { ...r, kitsu_id: JOJO_RIGHT } : r
+		);
+		pill(JOJO_CARD)!.click();
+		await until(() => pill(JOJO_CARD) === null, 'the pill to go');
+		expect(dialog()).toBeNull();
+	});
+
+	it('offers no pick on its failed resume', async () => {
+		await openHome();
+		backend.rows = backend.rows.map((r) => (r.id === BC_CARD ? { ...r, kitsu_id: BC_RIGHT } : r));
+		cell(BC_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		await settle();
+		const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
+		expect(button(m.home_link_pick_button(), overlay)).toBeNull();
+		expect(overlay.textContent).not.toContain(m.home_resume_guess_note({ title: BC_TITLE }));
+	});
+});
+
 describe("a guessed card's failed resume", () => {
 	async function failResume() {
 		await openHome();
@@ -310,6 +341,16 @@ describe("a guessed card's failed resume", () => {
 		expect(target.querySelector('[role="alertdialog"]')).toBeNull();
 		await pickAndLink(BC_RIGHT_TITLE);
 		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the linked show');
+	});
+
+	it('gives focus back to the card when the picker it opened closes', async () => {
+		const overlay = await failResume();
+		button(m.home_link_pick_button(), overlay)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		button(m.detail_link_cancel_button())!.click();
+		await until(() => dialog() === null || dialog()?.open === false, 'the picker to close');
+		const card = cell(BC_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
+		await until(() => document.activeElement === card, 'focus on the card');
 	});
 
 	it('closes on Got it, leaving the viewer on Home and the card as it was', async () => {

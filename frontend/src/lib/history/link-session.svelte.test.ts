@@ -54,7 +54,7 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 				? { match: ref(e.kitsu_id), trusted: true }
 				: { match: ref(GUESS), trusted: false },
 		search: async (q) => (q === 'gintama' ? [RIGHT] : [ref(GUESS)]),
-		link: async (rows, kitsuId) => {
+		link: async (_card, rows, kitsuId) => {
 			f.rows = f.rows.map((r) => (rows.includes(r.id) ? { ...r, kitsu_id: kitsuId } : r));
 			return {
 				kitsu_id: kitsuId,
@@ -287,7 +287,7 @@ describe('LinkSession', () => {
 		await vi.waitFor(() => expect(s.group).toEqual([CARD.id, HIDDEN.id]));
 		s.choose(s.candidates![0]);
 		await s.confirm();
-		expect(link).toHaveBeenCalledWith([CARD.id, HIDDEN.id], GUESS);
+		expect(link).toHaveBeenCalledWith(CARD.id, [CARD.id, HIDDEN.id], GUESS);
 	});
 
 	it('keeps the latest search’s answer, whatever lands last', async () => {
@@ -341,7 +341,19 @@ describe('LinkSession', () => {
 		f.deps.history = history;
 		s.choose(s.candidates![0]);
 		await s.confirm();
-		expect(link).toHaveBeenCalledWith([CARD.id], GUESS);
+		expect(link).toHaveBeenCalledWith(CARD.id, [CARD.id], GUESS);
+	});
+
+	it('names the card on a link even when no row of its listing is left', async () => {
+		const link = vi.fn(fake().deps.link);
+		const f = fake({ link, group: async () => [] });
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await vi.waitFor(() => expect(s.group).toEqual([]));
+		s.choose(s.candidates![0]);
+		await s.confirm();
+		expect(link).toHaveBeenCalledWith(CARD.id, [], GUESS);
 	});
 
 	it('keeps the latest opening’s rows, whatever lands last', async () => {

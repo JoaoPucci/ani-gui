@@ -56,7 +56,7 @@ function deps(over: Partial<LinkDeps> = {}): LinkDeps {
 					? { match: ref('818'), trusted: false }
 					: { match: ref(GUESS), trusted: false },
 		search: async () => [],
-		link: async (rows, kitsuId) => ({
+		link: async (_card, rows, kitsuId) => ({
 			kitsu_id: kitsuId,
 			linked: rows.map((row) => ({ row, previous: null, ep_no: '1', watched_at: null }))
 		}),
@@ -245,7 +245,7 @@ describe("a row of another listing the card's guess matches", () => {
 		const link = vi.fn(jojo().link);
 		const offer = (await linkOffer(jojo(), JOJO_2000.id, '7158'))!;
 		await confirmLink(jojo({ link }), offer, '4013');
-		expect(link).toHaveBeenCalledWith([JOJO_2000.id], '4013');
+		expect(link).toHaveBeenCalledWith(JOJO_2000.id, [JOJO_2000.id], '4013');
 	});
 });
 
@@ -254,7 +254,7 @@ describe('confirmLink and undoLink', () => {
 		const link = vi.fn(deps().link);
 		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
 		const outcome = await confirmLink(deps({ link }), offer, '13209');
-		expect(link).toHaveBeenCalledWith([CARD.id, HIDDEN.id], '13209');
+		expect(link).toHaveBeenCalledWith(CARD.id, [CARD.id, HIDDEN.id], '13209');
 		expect(outcome.kitsu_id).toBe('13209');
 	});
 

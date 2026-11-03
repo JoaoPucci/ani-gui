@@ -55,7 +55,7 @@ function fake(): Fake {
 				: { match: GUESS, trusted: false },
 		search: async () => [GUESS, RIGHT],
 		group: async (_card, rows) => rows,
-		link: async (rows, kitsuId) => {
+		link: async (_card, rows, kitsuId) => {
 			f.rows = f.rows.map((r) => (rows.includes(r.id) ? { ...r, kitsu_id: kitsuId } : r));
 			return {
 				kitsu_id: kitsuId,
@@ -268,9 +268,9 @@ describe('a later arrival', () => {
 		f.deps.group = async (card) => [card];
 		const linked: string[][] = [];
 		const link = f.deps.link;
-		f.deps.link = async (rows, id) => {
+		f.deps.link = async (card, rows, id) => {
 			linked.push(rows);
-			return link(rows, id);
+			return link(card, rows, id);
 		};
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
