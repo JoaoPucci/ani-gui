@@ -15,15 +15,29 @@ const path = require("node:path");
  *  the app's window (electron/e2e/launch.ts). */
 const SPLASH_MARK = "aniGuiSplash";
 
-/** What the main process runs in the splash once its window shows:
- *  start the motion, then answer after two animation frames — once the
- *  renderer has produced a frame with the splash in it, which the
- *  window's "show" event (emitted when the window is mapped) does not
- *  mean. A hidden or covered splash may never answer; the wait on it
- *  is bounded (SPLASH_SHOW_WAIT_MS). */
-const SHOWN_SIGNAL =
-  "document.body.classList.add('shown');" +
-  " new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))";
+/**
+ * What the main process runs in the splash once its window shows and
+ * the motion preference is known: under reduced motion, rest on the
+ * finished still frame (`reduced`); otherwise start the motion
+ * (`shown`) — unless the page's own fallback has already rested it.
+ * It answers after two animation frames, once the renderer has
+ * produced a frame with the splash in it (which the window's "show"
+ * event, emitted when the window is mapped, does not mean), with
+ * whether the splash is resting — by this signal, the fallback, or the
+ * page's own reduced-motion media query. A hidden or covered splash
+ * may never answer; the wait on it is bounded (SPLASH_SHOW_WAIT_MS).
+ */
+function shownSignal(reduced) {
+  const start = reduced
+    ? "document.body.classList.add('reduced');"
+    : "if (!document.body.classList.contains('reduced')) document.body.classList.add('shown');";
+  return (
+    start +
+    " new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() =>" +
+    " r(document.body.classList.contains('reduced') ||" +
+    " matchMedia('(prefers-reduced-motion: reduce)').matches))))"
+  );
+}
 
 /** The page the splash loads. */
 const SPLASH_PAGE = path.join(__dirname, "..", "splash", "index.html");
@@ -86,9 +100,18 @@ function splashController({
   let paintedAt = null;
   const since = () => `+${clock() - askedAt} ms`;
   current = state;
-  // Settles once the splash is on screen, or can no longer get there.
+  // Settles when the splash can no longer reach the screen (no
+  // window, closed, signal failed): nothing to wait for any more.
   let markUp = () => {};
-  const up = new Promise((resolve) => (markUp = resolve));
+  const released = new Promise((resolve) => (markUp = resolve));
+  // Settles with whether the splash is resting once it has painted.
+  let markPainted = () => {};
+  const painted = new Promise((resolve) => (markPainted = resolve));
+  // The shown signal waits for both the window's show and the motion
+  // preference; it goes once.
+  let windowShown = false;
+  let preference = null;
+  let signalled = false;
   let win = null;
   let suppressed = false;
   // Set when the splash closes by any hand but the boot's: the user,
@@ -97,6 +120,22 @@ function splashController({
   // Set once the boot is past the splash: shown its window, or failed.
   let over = false;
   const alive = () => win && !win.isDestroyed();
+  const signal = () => {
+    if (signalled || !windowShown || preference === null || !alive()) return;
+    signalled = true;
+    const target = win;
+    Promise.resolve(target.webContents.executeJavaScript(shownSignal(preference)))
+      .then((resting) => {
+        state.shown = true;
+        paintedAt = clock();
+        log(`[main] splash painted (${since()})`);
+        markPainted(resting === true);
+      })
+      .catch((err) => {
+        logError("[main] could not tell the splash it is shown:", err);
+        markUp();
+      });
+  };
   return {
     show() {
       if (over) return;
@@ -122,14 +161,8 @@ function splashController({
       // once the window manager has mapped the window.
       splash.once("show", () => {
         log(`[main] splash shown (${since()})`);
-        Promise.resolve(splash.webContents.executeJavaScript(SHOWN_SIGNAL))
-          .then(() => {
-            state.shown = true;
-            paintedAt = clock();
-            log(`[main] splash painted (${since()})`);
-          })
-          .catch((err) => logError("[main] could not tell the splash it is shown:", err))
-          .finally(markUp);
+        windowShown = true;
+        signal();
       });
       splash.once("ready-to-show", () => {
         if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
@@ -169,14 +202,42 @@ function splashController({
     // Resolves once the splash is on screen — or there is none to wait
     // for (never asked to open, failed to, put away, gone) — and in any
     // case within SPLASH_SHOW_WAIT_MS.
+    // The desktop's reduced-motion preference, once read: until then
+    // the splash holds its first frame, and it is sent with the shown
+    // signal.
     motionPreference(reduced) {
-      void reduced;
+      if (preference !== null) return;
+      preference = reduced === true;
+      signal();
     },
-    whenShown() {
-      if (!state.opened || over || !alive()) return Promise.resolve();
+    // Resolves once the splash has painted and been on screen for its
+    // minimum (SPLASH_MIN_ON_SCREEN_MS, or the shorter
+    // SPLASH_MIN_ON_SCREEN_REDUCED_MS when it rests on its still
+    // frame) — or at once when there is nothing to wait for (never
+    // asked to open, failed to, put away, gone). The paint itself is
+    // waited for at most SPLASH_SHOW_WAIT_MS.
+    async whenShown() {
+      if (!state.opened || over || !alive()) return;
       let timer;
-      const late = new Promise((resolve) => (timer = setTimeout(resolve, SPLASH_SHOW_WAIT_MS)));
-      return Promise.race([up, late]).finally(() => clearTimeout(timer));
+      const late = new Promise((resolve) => {
+        timer = setTimeout(() => resolve("late"), SPLASH_SHOW_WAIT_MS);
+      });
+      const first = await Promise.race([
+        released.then(() => "released"),
+        painted.then((resting) => ({ resting })),
+        late,
+      ]);
+      clearTimeout(timer);
+      if (typeof first !== "object" || over || !alive()) return;
+      const min = first.resting ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
+      let minTimer;
+      await Promise.race([
+        released,
+        new Promise((resolve) => {
+          minTimer = setTimeout(resolve, min);
+        }),
+      ]);
+      clearTimeout(minTimer);
     },
     // Whether the user (or a quit) closed the splash before the boot
     // did: the launch is cancelled, and the app's window must not be
@@ -215,9 +276,16 @@ function lastSplashState() {
  *  bound is for one that never does. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
-/** Stubs. */
-const SPLASH_MIN_ON_SCREEN_MS = 0;
-const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 0;
+/** How long the splash stays on screen after it has painted before the
+ *  app's window may replace it: the pull-down's opening has read by
+ *  about 500 ms (lamp lit, title in, first frame landed at 499 ms). A
+ *  cold launch, whose window is ready later than that anyway, pays
+ *  nothing for it. */
+const SPLASH_MIN_ON_SCREEN_MS = 500;
+
+/** The same under reduced motion, when the splash rests on its still
+ *  frame, which reads at once. */
+const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 300;
 
 /**
  * Reveal the app's window: `maximize()` the hidden window, which maps

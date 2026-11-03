@@ -146,3 +146,12 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
   .counter { display: none; }
   .still, .unit { display: inline; }
 }
+/* The same still frame when the main process says the desktop asks for
+   reduced motion (GNOME's setting reaches Chromium only through a
+   switch added after this window opened), or when the fallback rests
+   the page. */
+body.reduced *, body.reduced *::before, body.reduced *::after {
+  animation: none !important; transition: none !important;
+}
+body.reduced .counter { display: none; }
+body.reduced .still, body.reduced .unit { display: inline; }

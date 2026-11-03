@@ -1053,11 +1053,13 @@ app.whenReady().then(() => {
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    // The splash, like any window, takes the reduced-motion preference
-    // it opens with, so it opens once that read has settled (within its
-    // own short budget).
+    // The splash opens at once, before the desktop's reduced-motion
+    // setting is read; it holds its first frame until the read settles
+    // and is then told to move or to rest on its still frame
+    // (lib/splash.cjs), so a reduced-motion user never sees motion.
     showSplash: () => {
-      reducedMotion.then(() => splash.show());
+      splash.show();
+      reducedMotion.then((reduced) => splash.motionPreference(reduced === true));
     },
     suppressSplash: () => splash.suppress(),
     // The launch's remote flags, decided by the backend within its
