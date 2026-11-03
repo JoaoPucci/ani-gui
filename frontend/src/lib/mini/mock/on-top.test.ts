@@ -41,7 +41,7 @@ describe('which explainer a Wayland desktop gets', () => {
 		expect(onTopCopy('GNOME', false)).toBe('other');
 	});
 
-	it('names the window rule on KDE, and speaks generally elsewhere', () => {
+	it('names the window menu on KDE, and speaks generally elsewhere', () => {
 		expect(onTopCopy('KDE', false)).toBe('kde');
 		expect(onTopCopy('Hyprland', true)).toBe('other');
 		expect(onTopCopy(null, true)).toBe('other');
