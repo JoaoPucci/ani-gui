@@ -125,7 +125,7 @@ export function similarHidden(run: WatchRun, view: StripView): ReadonlySet<strin
  * no poster appears twice on the page.
  */
 export function shownOnStrip(view: StripView, watching: WatchEntry | null): ReadonlySet<string> {
-	void view;
-	void watching;
-	return new Set();
+	const shown = [...view.before, ...view.after];
+	if (watching) shown.push(watching);
+	return new Set(shown.map((e) => e.id));
 }
