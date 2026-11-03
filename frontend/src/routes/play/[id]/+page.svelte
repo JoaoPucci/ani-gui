@@ -708,6 +708,15 @@
 		await tick();
 		document.querySelector<HTMLElement>(`#pc-overflow-menu [data-opens="${list}"]`)?.focus();
 	}
+	// The Quality list closes once its model has nothing to show — the
+	// stream retired, or a lone level nothing names or the engine could
+	// not load — and focus moves to the menu's first enabled item, since
+	// the row that had it goes with the list.
+	$effect(() => {
+		if (!pcQualityExpanded || qualityMenuModel) return;
+		pcQualityExpanded = false;
+		void tick().then(() => focusFirstPcItem());
+	});
 	function closePcMenu() {
 		pcMenuOpen = false;
 		pcSpeedExpanded = false;
@@ -1961,14 +1970,10 @@
 				holdsStart: true,
 				startAt,
 				onView: (view) => {
+					// A stream retiring takes its levels with it; both menus'
+					// Quality lists follow the model this feeds, and close
+					// (the effects beside closePcMenu and closeMore).
 					qualityView = view;
-					// A stream retiring takes its levels with it; the next
-					// one's menu opens on the main list.
-					if (!view && pcQualityExpanded) {
-						pcQualityExpanded = false;
-						// The row that had focus goes with the list.
-						void tick().then(() => focusFirstPcItem());
-					}
 				}
 			});
 			qualityControl = quality;
@@ -2702,8 +2707,9 @@
 		}
 		stepMenuFocus(e);
 	}
-	// The in-player menu steps the same way; its horizontal arrows stay
-	// in it rather than seek.
+	// The in-player menu steps the same way: Left and Right open Speed
+	// or Quality from its row and go back from the list, and otherwise
+	// stay in the menu rather than seek.
 	function onPcMenuKey(e: KeyboardEvent) {
 		const menu = e.currentTarget as HTMLElement;
 		const focused = document.activeElement as HTMLElement | null;
