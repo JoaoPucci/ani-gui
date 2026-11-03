@@ -835,8 +835,10 @@ const keyring = createKeyring({
   safeStorage,
   helper: keyringHelper,
 });
-// However the app ends; a helper waiting on the keyring answers no
-// signal but SIGKILL, and would outlive the app otherwise.
+// However this process exits; a helper waiting on the keyring answers
+// no signal but SIGKILL, and would outlive the app otherwise. A main
+// process that is killed or crashes runs no exit handler: its helper
+// ends when it next reads its closed input.
 process.on("exit", () => keyringHelper.stop());
 
 /**
