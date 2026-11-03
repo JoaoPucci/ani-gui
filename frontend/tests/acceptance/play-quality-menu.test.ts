@@ -408,8 +408,11 @@ function moreRadios(): HTMLElement[] {
 
 const names = (els: HTMLElement[]) => els.map((el) => el.textContent?.replace('✓', '').trim());
 
+// A key press starts at the element with focus and bubbles from there.
 const escape = () =>
-	document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+	(document.activeElement ?? document.body).dispatchEvent(
+		new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+	);
 
 /** Native controls, a master of three levels playing its highest. */
 async function nativeMaster(): Promise<FakeHlsT> {
