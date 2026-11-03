@@ -390,7 +390,8 @@ where
                 return Ok(resp);
             }
             // The row is not served: its provider is no longer walked,
-            // or the check failed — a URL dead or refused, or one the
+            // its tracks may be a listing cut for another choice, or
+            // the check failed — a URL dead or refused, or one the
             // host's budget kept from being asked within the check's
             // deadline, which reads the same. Evict it and fall through
             // to a fresh resolve. Eviction is explicit (not just
@@ -401,7 +402,7 @@ where
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                "play: cache row unservable (provider not walked, or check failed or timed out), evicted, resolving afresh",
+                "play: cache row unservable (provider not walked, or its tracks may be a cut listing, or check failed or timed out), evicted, resolving afresh",
             );
         }
     }

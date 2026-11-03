@@ -3,8 +3,9 @@
 //! related helpers live here:
 //!
 //!   • `cached_row_is_live` — the check both replays share: the
-//!     row's stream passes `upstream_head_ok` and every sidecar
-//!     track it lists passes `cached_track_ok`, with the row's
+//!     row comes from a walked provider and holds fewer tracks than
+//!     the cap, its stream passes `upstream_head_ok` and its most
+//!     wanted sidecar tracks pass `cached_track_ok`, with the row's
 //!     referer, asked together under one deadline.
 //!   • `try_serve_cached` — turns a `CachedResolution` row into a
 //!     fresh session response when the row is live. Used by the
@@ -129,7 +130,9 @@ pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
 /// walks ([`cached_row_is_walked`]). The checks ask whether URLs
 /// answer, and an answer is not the stream: a redirect counts as live,
 /// and a provider that has left can redirect every URL it ever served
-/// to another site, whose page the player would then be handed.
+/// to another site, whose page the player would then be handed. And it
+/// has to hold fewer tracks than the cap, since a row at the cap may be
+/// a listing cut for another choice ([`cached_row_may_be_cut`]).
 pub(crate) async fn cached_row_is_live(
     state: &AppState,
     cached: &CachedResolution,
@@ -229,9 +232,9 @@ pub(crate) async fn cached_row_is_live_within(
 
 /// Serve a cached row as a fresh CreateSessionResponse when the row
 /// is live ([`cached_row_is_live`]), or `None` when its provider is
-/// no longer walked, or its stream or one of its tracks is dead,
-/// unreachable or answers an error status — the caller falls through
-/// to a fresh resolve.
+/// no longer walked, its tracks may be a cut listing, or its stream
+/// or one of its tracks is dead, unreachable or answers an error
+/// status — the caller falls through to a fresh resolve.
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
@@ -292,7 +295,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row unservable (provider not walked, or the stream's HEAD or a track's read failed, or the check timed out), evicted, resolving afresh",
+            "play_external: cache row unservable (provider not walked, or its tracks may be a cut listing, or the stream's HEAD or a track's read failed, or the check timed out), evicted, resolving afresh",
         );
         return None;
     }
