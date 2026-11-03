@@ -104,6 +104,10 @@
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
+	import { miniMock } from '$lib/mini/mock/MiniHost.svelte';
+	import MiniIcon from '$lib/mini/mock/MiniIcon.svelte';
+	import MiniPlaceholder from '$lib/mini/mock/MiniPlaceholder.svelte';
+	import { isMiniShortcut } from '$lib/mini/mock/keys';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
@@ -751,6 +755,57 @@
 		playbackRate = rate;
 		closePcMenu();
 	}
+	// Mini-player mockup (0.21.0 design review, Diagnostics → Debug):
+	// the page hands its own video to the simulated mini window and
+	// its frame shows the placeholder until the video comes back. Its
+	// teardown goes with the video, so the main window can leave this
+	// page while the mini plays ($lib/mini/mock/session).
+	let miniHere = $state(false);
+	function openMini() {
+		closePcMenu();
+		if (!miniMock.prefs.enabled || miniHere || resumeHolding || switchBusy) return;
+		const opened = miniMock.open(
+			{
+				video: ownVideo,
+				show: {
+					id,
+					title: detail?.canonical_title ?? '',
+					episode: episodeNum,
+					accent,
+					playHref: page.url.pathname + page.url.search
+				},
+				hooks: {
+					dispose: () => {
+						sourceScope.flush();
+						teardown();
+						releasePlayerVideo(ownVideo);
+						showReleases.leave();
+					},
+					restore: () => {
+						miniHere = false;
+					}
+				}
+			},
+			{
+				prev: onPrev,
+				next: onNext,
+				hasPrev: () => hasPrev,
+				hasNext: () => hasNext,
+				fail: () => {
+					playerError = m.mini_handback_toast();
+				}
+			}
+		);
+		if (!opened) return;
+		miniHere = true;
+		if (miniMock.prefs.main === 'back') history.back();
+	}
+	onMount(() => {
+		// One engine: a mini window still playing another page's video
+		// closes before this page plays.
+		if (miniMock.session && !miniMock.holds(ownVideo)) miniMock.close();
+	});
+
 	async function onPip() {
 		closePcMenu();
 		if (!videoEl) return;
@@ -2054,6 +2109,11 @@
 		// and picture-in-picture, which shows it, closes. Abandoned
 		// resolves would otherwise keep streaming events to a closed
 		// page and hold the provider's rate-limit slots.
+		if (miniMock.holds(ownVideo)) {
+			// The mini window plays on; its session runs this teardown.
+			miniMock.pageGone(ownVideo);
+			return;
+		}
 		sourceScope.flush();
 		teardown();
 		releasePlayerVideo(ownVideo);
@@ -2789,6 +2849,9 @@
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
+			// The mini window answers its own keys; while it holds the
+			// video, this page's player has none to answer.
+			if (miniHere || t?.closest?.('.mini-window')) return;
 			const inField =
 				!!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 			const inButton =
@@ -2804,6 +2867,22 @@
 				modifier: e.ctrlKey || e.metaKey || e.altKey,
 				repeat: e.repeat
 			});
+			if (
+				!action &&
+				miniMock.prefs.enabled &&
+				miniMock.prefs.shortcut === 'i' &&
+				isMiniShortcut({
+					key: e.key,
+					inField,
+					inButton,
+					modifier: e.ctrlKey || e.metaKey || e.altKey,
+					repeat: e.repeat
+				})
+			) {
+				e.preventDefault();
+				openMini();
+				return;
+			}
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
 			//   Space → page scroll; arrows → page scroll; n/p/f/m → none.
@@ -2942,6 +3021,13 @@
 				{/if}
 				<p class="player-error-detail">{playerError}</p>
 			</div>
+		{:else if miniHere}
+			<MiniPlaceholder
+				still={miniMock.still}
+				covered={miniMock.prefs.platform === 'wayland'}
+				onPlayHere={() => miniMock.returnToApp()}
+				onClose={() => miniMock.close()}
+			/>
 		{:else}
 			<!-- Slot for the page's video, made in $lib/play/player-video
 			     and appended here whenever the slot is rendered.
@@ -3182,6 +3268,20 @@
 							</div>
 						{/if}
 
+						{#if miniMock.prefs.enabled}
+							<button
+								type="button"
+								class="pc-btn"
+								disabled={resumeHolding || switchBusy}
+								onclick={openMini}
+								aria-label={m.mini_entry_aria()}
+								title={miniMock.prefs.shortcut === 'i'
+									? m.mini_entry_title()
+									: m.mini_entry_label()}
+							>
+								<MiniIcon size={30} />
+							</button>
+						{/if}
 						<button
 							type="button"
 							class="pc-btn"
@@ -3413,22 +3513,29 @@
 												</svg>
 											</button>
 										{/if}
-										<button type="button" class="pc-menu-item" role="menuitem" onclick={onPip}>
-											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-												<rect
-													x="3"
-													y="5"
-													width="18"
-													height="14"
-													rx="2"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="2"
-												/>
-												<rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" />
-											</svg>
-											<span>{m.play_controls_menu_pip()}</span>
-										</button>
+										{#if miniMock.prefs.enabled}
+											<button type="button" class="pc-menu-item" role="menuitem" onclick={openMini}>
+												<MiniIcon size={20} />
+												<span>{m.mini_entry_label()}</span>
+											</button>
+										{:else}
+											<button type="button" class="pc-menu-item" role="menuitem" onclick={onPip}>
+												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+													<rect
+														x="3"
+														y="5"
+														width="18"
+														height="14"
+														rx="2"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+													/>
+													<rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" />
+												</svg>
+												<span>{m.play_controls_menu_pip()}</span>
+											</button>
+										{/if}
 										<!-- Syncplay (watch-party) entry. Launches the user's
 										     locally-installed Syncplay binary on the resolved
 										     stream URL; Syncplay opens its own room dialog +

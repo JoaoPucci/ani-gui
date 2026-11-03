@@ -18,7 +18,8 @@ export const MINI_MOCK_OPTIONS = {
 	lift: ['lift', 'stay'],
 	grip: ['chrome', 'always'],
 	failure: ['inline', 'hand-back'],
-	shortcut: ['i', 'none']
+	shortcut: ['i', 'none'],
+	copy: ['general', 'gnome', 'kde']
 } as const;
 
 type Options = typeof MINI_MOCK_OPTIONS;
@@ -37,7 +38,7 @@ export const MINI_MOCK_PREFS_DEFAULT: MiniMockPrefs = {
 	switcher: false,
 	hintSeen: false,
 	layout: 'bar',
-	main: 'back',
+	main: 'placeholder',
 	onTop: 'both',
 	platform: 'wayland',
 	gap: '1500',
@@ -45,7 +46,8 @@ export const MINI_MOCK_PREFS_DEFAULT: MiniMockPrefs = {
 	lift: 'lift',
 	grip: 'chrome',
 	failure: 'inline',
-	shortcut: 'i'
+	shortcut: 'i',
+	copy: 'general'
 };
 export const MINI_MOCK_PREFS_STORAGE_KEY = 'ani-gui:mini-player-mockups';
 

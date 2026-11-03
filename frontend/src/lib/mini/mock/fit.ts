@@ -31,7 +31,7 @@ export interface MiniControlSet {
 }
 
 /** px the cues rise, by layout: [default, compact]. */
-const CUE_LIFT = { bar: [48, 24], centre: [28, 20] } as const;
+const CUE_LIFT = { bar: [56, 36], centre: [32, 24] } as const;
 
 export function miniControlSet(width: number, layout: MiniLayout): MiniControlSet {
 	const compact = width < MINI_COMPACT_BELOW;
@@ -64,6 +64,5 @@ export function cueLifts(line: number | 'auto', snapToLines: boolean): boolean {
  * over 30.
  */
 export function cueSizePx(height: number): number {
-	void height;
-	return 0;
+	return Math.round(Math.max(14, Math.min(30, height * 0.056)));
 }

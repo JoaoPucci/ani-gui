@@ -13,14 +13,11 @@ export const PICTURE_CLICK_DELAY_MS = 220;
 export type PictureClick = 'closeMenus' | 'toggleLater';
 
 export function decidePictureClick(menuOpen: boolean): PictureClick {
-	void menuOpen;
-	return 'toggleLater';
+	return menuOpen ? 'closeMenus' : 'toggleLater';
 }
 
 export function seekFraction(clientX: number, left: number, width: number, rtl: boolean): number {
-	void clientX;
-	void left;
-	void width;
-	void rtl;
-	return 0;
+	if (width <= 0) return 0;
+	const f = Math.max(0, Math.min(1, (clientX - left) / width));
+	return rtl ? 1 - f : f;
 }

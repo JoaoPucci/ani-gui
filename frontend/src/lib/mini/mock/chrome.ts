@@ -43,9 +43,7 @@ export function miniFadeMs(reduced: boolean): number {
  * The rest of the chrome follows the usual rule.
  */
 export function miniStripShown(chromeShown: boolean, stalled: boolean): boolean {
-	void chromeShown;
-	void stalled;
-	return false;
+	return chromeShown || stalled;
 }
 
 /**
@@ -58,6 +56,6 @@ export function miniGripShown(input: {
 	grip: 'chrome' | 'always';
 	chromeShown: boolean;
 }): boolean {
-	void input;
-	return false;
+	if (input.platform !== 'wayland') return false;
+	return input.grip === 'always' || input.chromeShown;
 }
