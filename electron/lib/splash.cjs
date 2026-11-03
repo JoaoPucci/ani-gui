@@ -128,6 +128,8 @@ function splashController({
   // seen, and for how long.
   let askedAt = null;
   let paintedAt = null;
+  // Whether the splash painted resting on its still frame.
+  let restingAtPaint = false;
   const since = () => `+${clock() - askedAt} ms`;
   current = state;
   // Settles when the splash can no longer reach the screen (no
@@ -159,12 +161,32 @@ function splashController({
         state.shown = true;
         paintedAt = clock();
         log(`[main] splash painted (${since()})`);
+        restingAtPaint = resting === true;
         markPainted(resting === true);
       })
       .catch((err) => {
         logError("[main] could not tell the splash it is shown:", err);
         markUp();
       });
+  };
+  const holdForCompletion = async (landedAt) => {
+    if (paintedAt === null || !alive()) return;
+    const min = restingAtPaint ? SPLASH_MIN_ON_SCREEN_REDUCED_MS : SPLASH_MIN_ON_SCREEN_MS;
+    const hold = restingAtPaint ? SPLASH_COMPLETE_HOLD_REDUCED_MS : SPLASH_COMPLETE_HOLD_MS;
+    const seenUntil = landedAt + hold;
+    // The reveal waits for the minimum anyway; hold only past it.
+    if (seenUntil <= paintedAt + min) return;
+    const remaining = Math.min(hold, seenUntil - clock());
+    if (remaining <= 0) return;
+    log(`[main] splash holds ${remaining} ms for its completed rail (${since()})`);
+    let timer;
+    await Promise.race([
+      released,
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, remaining);
+      }),
+    ]);
+    clearTimeout(timer);
   };
   return {
     show() {
@@ -295,13 +317,24 @@ function splashController({
     // lights through it. A step already passed, or one it does not
     // know, changes nothing. Resolves once the page has answered, or
     // after STEP_ANSWER_WAIT_MS.
+    //
+    // The last step also holds until its stretch has been on screen
+    // for SPLASH_COMPLETE_HOLD_MS (SPLASH_COMPLETE_HOLD_REDUCED_MS on
+    // the still frame), so a page that renders late does not close the
+    // splash in the instant its rail completes. The minimum time on
+    // screen (whenShown) already covers a step landing well inside it,
+    // and a step before the paint: neither is held. A splash that goes
+    // ends the hold.
     progress(step) {
       const n = STEPS.indexOf(step) + 1;
       if (n <= steps || !state.opened) return Promise.resolve();
       steps = n;
       state.steps = n;
+      const landedAt = clock();
       log(`[main] splash step ${n}, ${step} (${since()})`);
-      return sendSteps();
+      const answered = sendSteps();
+      if (n < STEPS.length) return answered;
+      return answered.then(() => holdForCompletion(landedAt));
     },
     suppress() {
       over = true;
@@ -368,6 +401,15 @@ const SPLASH_MIN_ON_SCREEN_MS = 500;
  *  frame, which reads at once. */
 const SPLASH_MIN_ON_SCREEN_REDUCED_MS = 300;
 
+/** How long the rail's last stretch stays on screen, once lit, before
+ *  the app's window may replace the splash: the length of its wipe
+ *  (splash.css). Only a last step landing late enough that the minimum
+ *  would not show it this long waits for it. */
+const SPLASH_COMPLETE_HOLD_MS = 300;
+
+/** The same on the still frame, where the stretch lights at once. */
+const SPLASH_COMPLETE_HOLD_REDUCED_MS = 150;
+
 /**
  * Reveal the app's window: `maximize()` the hidden window, which maps
  * it already maximized (the open-maximized pattern main.js describes),
@@ -385,6 +427,8 @@ function revealMaximized(win, { onMapped, afterShow, cancelled = () => false }) 
 }
 
 module.exports = {
+  SPLASH_COMPLETE_HOLD_MS,
+  SPLASH_COMPLETE_HOLD_REDUCED_MS,
   SPLASH_MIN_ON_SCREEN_MS,
   SPLASH_MIN_ON_SCREEN_REDUCED_MS,
   SPLASH_SHOW_WAIT_MS,
