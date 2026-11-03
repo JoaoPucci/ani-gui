@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { defaultTrailFor, goesBack, searchOrigin, withSearchOrigin } from './breadcrumb';
+import {
+	defaultTrailFor,
+	goesBack,
+	searchOrigin,
+	labelCells,
+	withSearchOrigin,
+	yieldingSegment
+} from './breadcrumb';
 import fc from 'fast-check';
 import { m } from '$lib/paraglide/messages';
 
@@ -113,5 +120,55 @@ describe('searchOrigin', () => {
 		for (const origin of [null, '', '/', '/search', '/search?q=%20', '/anime/1?q=a']) {
 			expect(searchOrigin(origin)).toBeNull();
 		}
+	});
+});
+
+describe('yieldingSegment', () => {
+	const home = { label: 'Home', href: '/' };
+	const title = 'JoJo no Kimyou na Bouken Part 6: Stone Ocean';
+
+	it("gives way with the show's title on the show page and in the player", () => {
+		expect(
+			yieldingSegment([home, { label: 'Search', href: '/search?q=jojo' }, { label: title }])
+		).toBe(2);
+		expect(yieldingSegment([home, { label: title, href: '/anime/1' }, { label: 'EP 3' }])).toBe(1);
+	});
+
+	it('takes the last of equally long labels, and nothing from an empty trail', () => {
+		expect(
+			yieldingSegment([{ label: 'Home', href: '/' }, { label: 'Anime' }, { label: 'About' }])
+		).toBe(2);
+		expect(yieldingSegment([])).toBe(-1);
+	});
+
+	it('counts a full-width title by the cells it draws', () => {
+		expect(labelCells('Home')).toBe(4);
+		expect(labelCells('進撃の巨人')).toBe(10);
+		expect(labelCells('ｶﾞﾝﾀﾞﾑ')).toBe(6); // half-width kana and their marks stay narrow
+		expect(labelCells('Ｆｕｌｌ')).toBe(8);
+		expect(yieldingSegment([home, { label: 'Search', href: '/s' }, { label: '進撃の巨人' }])).toBe(
+			2
+		);
+	});
+
+	it('names a segment no other outlasts, and none after it as long', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.record({ label: fc.string({ unit: 'grapheme' }) }), {
+					minLength: 1,
+					maxLength: 6
+				}),
+				(trail) => {
+					const i = yieldingSegment(trail);
+					expect(i).toBeGreaterThanOrEqual(0);
+					expect(i).toBeLessThan(trail.length);
+					const len = labelCells;
+					trail.forEach((seg, j) => {
+						expect(len(seg.label)).toBeLessThanOrEqual(len(trail[i].label));
+						if (j > i) expect(len(seg.label)).toBeLessThan(len(trail[i].label));
+					});
+				}
+			)
+		);
 	});
 });
