@@ -643,13 +643,16 @@ describe('playStream', () => {
 		// The session then says whether the play landed on that row's own
 		// listing, which is what lets the guess be recorded on it.
 		const promise = playStream(
-			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1' },
+			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1', guess_id: '42' },
 			() => {}
 		);
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(new URL(es.url).searchParams.get('guess_row')).toBe('hianime:x-1');
+		// The guess rides beside it, apart from the page's id.
+		expect(new URL(es.url).searchParams.get('guess_id')).toBe('42');
+		expect(new URL(es.url).searchParams.has('kitsu_id')).toBe(false);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 		const plain = playStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
@@ -657,6 +660,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es2 = FakeEventSource.instances[1];
 		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
+		expect(new URL(es2.url).searchParams.has('guess_id')).toBe(false);
 		es2.dispatch('done', JSON.stringify(donePayload()));
 		await plain;
 	});
