@@ -110,6 +110,7 @@
 	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
+	import { cardRow } from '$lib/history/card-row';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
@@ -1288,7 +1289,10 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
-			{@const guessed = resumable && match && rowTrust.isGuess(entry.id) ? match : null}
+			<!-- The line the card stands for: a row its guessed play wrote on
+			     another listing stands for the line clicked ($lib/history/card-row). -->
+			{@const line = cardRow(entry, history ?? [], historyMatches)}
+			{@const guessed = resumable && match && rowTrust.isGuess(line) ? match : null}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,
 		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
@@ -1310,6 +1314,7 @@
 				class="resume-cell"
 				style="--accent: {accent};"
 				data-entry-id={entry.id}
+				data-card-row={line}
 				out:cwOutScale
 				animate:cwFlip
 			>
@@ -1335,7 +1340,13 @@
 						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							startResume(entry, match, match?.episode_count ?? null, match?.status === 'finished')}
+							startResume(
+								entry,
+								match,
+								match?.episode_count ?? null,
+								match?.status === 'finished',
+								line
+							)}
 					>
 						{@render cardFace(card, initials)}
 						{@render cardBody(card, target.displayTitle)}
@@ -1366,7 +1377,7 @@
 						onclick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
-							void openCardLink(entry.id, guessed.id, nextEpisode);
+							void openCardLink(line, guessed.id, nextEpisode);
 						}}
 					>
 						<GuessMark size={14} />{m.detail_link_not_this()}

@@ -250,6 +250,7 @@ fn write_history_on_cache_hit(
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
+    crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The episode played, as the app numbers it — the one the
         // cached resolve matched, or the request on a row from before
@@ -519,6 +520,7 @@ where
             asked,
             args.resolve_kitsu_id(&native.slug),
         );
+        crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &native.slug);
     }
     // A successful resolve is a positive availability fact, same
     // guard — carrying the episode cap the native episodes list

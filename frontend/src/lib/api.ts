@@ -327,6 +327,11 @@ export interface HistoryEntry {
 	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
 	 *  the backend; absent when it names none. */
 	key_year?: number;
+	/** The Continue card whose guessed play wrote this row on another
+	 *  listing — JoJo's 2000 card for the 2012 listing's row its play
+	 *  wrote. Home's card stands for that line while both show as the
+	 *  same show ($lib/history/card-row.ts). */
+	guessed_from?: string;
 }
 
 /** Input to `cmd_create_session`. */

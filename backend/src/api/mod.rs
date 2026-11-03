@@ -187,16 +187,25 @@ struct HistoryRow {
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
+    /// The Continue card whose guessed play wrote this row on another
+    /// listing ([`crate::commands::guessed_from`]): the renderer stands
+    /// the card for that line while both show as the same show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guessed_from: Option<String>,
 }
 
 async fn get_history(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<HistoryRow>>, AniError> {
+    // A cache that cannot list the notes leaves every card standing for
+    // its newer row, as before the notes existed.
+    let mut from = crate::commands::guessed_from::all(&state).unwrap_or_default();
     Ok(Json(
         h_inner::history_list(&state)?
             .into_iter()
             .map(|entry| HistoryRow {
                 key_year: crate::scraper::provider::key_year(&entry.id),
+                guessed_from: from.remove(&entry.id),
                 entry,
             })
             .collect(),
@@ -767,6 +776,13 @@ async fn post_play_mark_watched(
                 begun,
             )
             .await;
+            // Which card the row's play came from, when a guessed card's
+            // play landed on another listing; none otherwise.
+            crate::commands::guessed_from::record(
+                &state,
+                args.guess_row.as_deref(),
+                &cached.show_id,
+            );
         }
     }
     StatusCode::NO_CONTENT

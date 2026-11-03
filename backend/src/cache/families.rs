@@ -124,6 +124,9 @@ pub(crate) const KITSU_EXTERNAL_IDS: &str = "kitsu:external-ids:v2:k";
 pub(crate) const KITSU_MAL_MAP: &str = "kitsu:mal-map:v1:";
 /// A show's watched-at stamp.
 pub(crate) const WATCHED_AT: &str = "watched-at:v1:";
+/// The Continue card a row's guessed play came from
+/// (`commands::guessed_from`).
+pub(crate) const GUESSED_FROM: &str = "guessed-from:v1:";
 /// The mark a play leaves beside the reverse mapping it stored.
 pub(crate) const MAPPING_PLAYED: &str = "allmanga2kitsu:played:v1:";
 /// An airing show's status.
@@ -200,6 +203,7 @@ pub fn live() -> Vec<Family> {
         KITSU_EXTERNAL_IDS,
         KITSU_MAL_MAP,
         WATCHED_AT,
+        GUESSED_FROM,
         MAPPING_PLAYED,
         AIRING,
         ANISKIP,
