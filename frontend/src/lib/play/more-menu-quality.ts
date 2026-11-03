@@ -26,14 +26,12 @@ export function moreMenuQuality(
 	menu: QualityMenu | null,
 	customControls: boolean
 ): MoreQuality | null {
-	void menu;
-	void customControls;
-	return null;
+	if (customControls || !menu) return null;
+	return { menu, choosable: menu.items.length > 1 };
 }
 
 /** What Escape does in the ⋯ menu: leave the list of levels for the
  *  menu's main list, or close the menu. */
 export function moreMenuEscape(qualityOpen: boolean): 'back' | 'close' {
-	void qualityOpen;
-	return 'close';
+	return qualityOpen ? 'back' : 'close';
 }

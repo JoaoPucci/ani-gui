@@ -28,13 +28,14 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { settle } from '$lib/motion/settle';
+	import { fade } from '$lib/motion/transitions';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -125,6 +126,7 @@
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
+	import { moreMenuEscape, moreMenuQuality } from '$lib/play/more-menu-quality';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -2581,10 +2583,46 @@
 	let moreAnchor = $state<HTMLButtonElement | null>(null);
 	function toggleMore() {
 		moreOpen = !moreOpen;
+		moreQualityOpen = false;
 	}
 	function closeMore() {
 		moreOpen = false;
+		moreQualityOpen = false;
 	}
+	// The quality picker rides the ⋯ menu while the custom controls are
+	// off: the native controls have none, and the in-player menu goes
+	// with the custom bar. Same model, same pick ($lib/play/more-menu-quality).
+	const moreQuality = $derived(moreMenuQuality(qualityMenuModel, USE_CUSTOM_PLAYER_CONTROLS));
+	let moreQualityOpen = $state(false);
+	let moreQualityRow = $state<HTMLButtonElement | null>(null);
+	let moreQualityBack = $state<HTMLButtonElement | null>(null);
+	// Each swap of the menu's contents moves focus to the row that
+	// names where it now is, so it is never lost with the row clicked.
+	async function openMoreQuality() {
+		if (!moreQuality?.choosable) return;
+		moreQualityOpen = true;
+		await tick();
+		moreQualityBack?.focus();
+	}
+	async function closeMoreQuality() {
+		moreQualityOpen = false;
+		await tick();
+		moreQualityRow?.focus();
+	}
+	function pickMoreQuality(choice: 'auto' | number) {
+		pickQuality(choice);
+		closeMore();
+		moreAnchor?.focus();
+	}
+	// A stream retiring takes the levels with it: the menu falls back
+	// to its main list, focus to its first row.
+	$effect(() => {
+		if (!moreQualityOpen || moreQuality) return;
+		moreQualityOpen = false;
+		void tick().then(() =>
+			document.querySelector<HTMLElement>('#np-more-menu [role="menuitem"]')?.focus()
+		);
+	});
 	$effect(() => {
 		if (!moreOpen) return;
 		// Click outside the menu OR its trigger closes it; Escape closes
@@ -2599,10 +2637,13 @@
 			closeMore();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closeMore();
-				moreAnchor?.focus();
+			if (e.key !== 'Escape') return;
+			if (moreMenuEscape(moreQualityOpen) === 'back') {
+				void closeMoreQuality();
+				return;
 			}
+			closeMore();
+			moreAnchor?.focus();
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -3713,125 +3754,250 @@
 							aria-label={m.play_more_aria_label()}
 							transition:settle={{ duration: 120 }}
 						>
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									void onOpenExternal();
-								}}
-								disabled={switchBusy || externalBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M14 5h5v5M19 5L10 14M5 9v10h10"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span>
-							</button>
+							{#if moreQualityOpen && moreQuality}
+								<!-- The levels replace the menu's contents, as in the in-player
+     menu: a back row naming the list, then the levels. -->
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item more-back"
+										role="menuitem"
+										bind:this={moreQualityBack}
+										onclick={() => void closeMoreQuality()}
+									>
+										<svg
+											class="more-icon more-flip"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M15 6l-6 6 6 6"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_quality_label()}</span>
+									</button>
+									<div
+										class="more-pane"
+										role="group"
+										aria-label={m.play_controls_menu_quality_label()}
+									>
+										{#each moreQuality.menu.items as item (item.key)}
+											<button
+												type="button"
+												class="more-item more-radio"
+												class:more-radio-on={item.checked}
+												role="menuitemradio"
+												aria-checked={item.checked}
+												onclick={() => pickMoreQuality(item.key)}
+											>
+												<span class="more-check" aria-hidden="true"
+													>{#if item.checked}✓{/if}</span
+												>
+												<span>{item.label}</span>
+											</button>
+										{/each}
+									</div>
+								</div>
+							{:else}
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											void onOpenExternal();
+										}}
+										disabled={switchBusy || externalBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M14 5h5v5M19 5L10 14M5 9v10h10"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span
+											>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span
+										>
+									</button>
 
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									onDownload();
-								}}
-								disabled={switchBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{m.play_controls_menu_download()}</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											onDownload();
+										}}
+										disabled={switchBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_download()}</span>
+									</button>
 
-							<!-- "Watch together" lives here in addition to the
+									<!-- "Watch together" lives here in addition to the
 							     in-player hamburger (pc-menu) because the
 							     hamburger is gated on use_custom_player_controls.
 							     When the user opts into Chromium's native
 							     controls the hamburger disappears, and the
 							     more-menu becomes the only reachable surface
 							     for Syncplay launches. -->
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								disabled={syncplayBusy}
-								onclick={() => {
-									closeMore();
-									void onSyncplay();
-								}}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<circle
-										cx="9"
-										cy="8"
-										r="3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M3 19c0-3 3-5 6-5s6 2 6 5"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-									<circle
-										cx="17"
-										cy="9"
-										r="2.4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-								</svg>
-								<span>
-									{syncplayBusy
-										? m.play_hamburger_syncplay_busy_label()
-										: m.play_hamburger_syncplay_label()}
-								</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										disabled={syncplayBusy}
+										onclick={() => {
+											closeMore();
+											void onSyncplay();
+										}}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<circle
+												cx="9"
+												cy="8"
+												r="3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M3 19c0-3 3-5 6-5s6 2 6 5"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+											<circle
+												cx="17"
+												cy="9"
+												r="2.4"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+										</svg>
+										<span>
+											{syncplayBusy
+												? m.play_hamburger_syncplay_busy_label()
+												: m.play_hamburger_syncplay_label()}
+										</span>
+									</button>
+									<!-- Quality, while the custom controls are off: the native
+     controls have no quality menu and the in-player one goes with
+     the custom bar. Last, so the actions above keep their places.
+     A stream of one level names it with nothing to open. -->
+									{#if moreQuality}
+										<button
+											type="button"
+											class="more-item more-row-value"
+											class:more-row-still={!moreQuality.choosable}
+											role="menuitem"
+											aria-haspopup={moreQuality.choosable ? 'menu' : undefined}
+											aria-disabled={moreQuality.choosable ? undefined : 'true'}
+											bind:this={moreQualityRow}
+											onclick={() => void openMoreQuality()}
+										>
+											<svg
+												class="more-icon"
+												viewBox="0 0 24 24"
+												width="18"
+												height="18"
+												aria-hidden="true"
+											>
+												<path
+													d="M4 7h9m4 0h3M4 17h3m4 0h9"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+													stroke-linecap="round"
+												/>
+												<circle
+													cx="15"
+													cy="7"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+												<circle
+													cx="9"
+													cy="17"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+											</svg>
+											<span>{m.play_controls_menu_quality_label()}</span>
+											<span class="more-value">{moreQuality.menu.current}</span>
+											{#if moreQuality.choosable}
+												<svg
+													class="more-icon more-chev more-flip"
+													viewBox="0 0 24 24"
+													width="16"
+													height="16"
+													aria-hidden="true"
+												>
+													<path
+														d="M9 6l6 6-6 6"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2.25"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+													/>
+												</svg>
+											{/if}
+										</button>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -4424,6 +4590,61 @@
 	}
 	.more-icon {
 		flex-shrink: 0;
+	}
+	/* A pane is the menu's column; opening the levels swaps one pane
+	   for another, so the two never show at once. */
+	.more-pane {
+		display: flex;
+		flex-direction: column;
+	}
+	.more-row-value {
+		inline-size: 100%;
+	}
+	/* One level: the row names it, with nothing to open. */
+	.more-row-still {
+		cursor: default;
+	}
+	.more-row-still:hover {
+		background: transparent;
+	}
+	/* Heights line up down the list: tabular figures, so 1080p and
+	   720p share a column edge rather than wobbling with digit width. */
+	.more-value {
+		margin-inline-start: auto;
+		padding-inline-start: var(--space-3);
+		color: var(--bone-300);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.more-chev {
+		color: var(--bone-300);
+		margin-inline-start: calc(var(--space-1) * -1);
+	}
+	.more-back {
+		font-weight: 600;
+		border-block-end: 1px solid color-mix(in oklab, var(--accent) 20%, var(--bone-400));
+		border-end-start-radius: 0;
+		border-end-end-radius: 0;
+		margin-block-end: var(--space-1);
+	}
+	.more-radio {
+		gap: var(--space-2);
+		padding-inline-start: var(--space-2);
+		font-variant-numeric: tabular-nums;
+	}
+	.more-radio-on {
+		background: color-mix(in oklab, var(--accent) 10%, transparent);
+	}
+	.more-check {
+		display: inline-flex;
+		justify-content: center;
+		inline-size: 1.25rem;
+		font-weight: 700;
+		color: var(--accent);
+	}
+	/* Chevrons point along the inline axis, so they turn round in RTL. */
+	:global([dir='rtl']) .more-flip {
+		transform: scaleX(-1);
 	}
 	.bars {
 		display: inline-flex;
