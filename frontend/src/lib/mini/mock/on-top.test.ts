@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { onTopView } from './on-top';
+import { onTopCopy, onTopView } from './on-top';
 
 describe('how the window speaks about staying on top', () => {
 	it('shows the card once on Wayland, then never again', () => {
@@ -25,6 +25,32 @@ describe('how the window speaks about staying on top', () => {
 					const view = onTopView(platform, choice, seen);
 					expect(view.card).toBe(false);
 					expect(view.pin).not.toBe('explain');
+				}
+			)
+		);
+	});
+});
+
+describe('which explainer a Wayland desktop gets', () => {
+	it('names the window menu on GNOME only once the menu is confirmed', () => {
+		expect(onTopCopy('ubuntu:GNOME', true)).toBe('gnome');
+		expect(onTopCopy('GNOME', false)).toBe('other');
+	});
+
+	it('names the window rule on KDE, and speaks generally elsewhere', () => {
+		expect(onTopCopy('KDE', false)).toBe('kde');
+		expect(onTopCopy('Hyprland', true)).toBe('other');
+		expect(onTopCopy(null, true)).toBe('other');
+		expect(onTopCopy('', true)).toBe('other');
+	});
+
+	it('reads any entry of the list, in any case', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.constantFrom('ubuntu', 'X-Cinnamon', 'sway', 'pop'), { maxLength: 3 }),
+				fc.constantFrom('gnome', 'GNOME', 'Gnome'),
+				(others, gnome) => {
+					expect(onTopCopy([...others, gnome].join(':'), true)).toBe('gnome');
 				}
 			)
 		);

@@ -31,3 +31,20 @@ export function onTopView(
 		pin: withPin ? (wayland ? 'explain' : 'toggle') : null
 	};
 }
+
+/** Which explainer the Wayland pin shows. */
+export type OnTopCopy = 'gnome' | 'kde' | 'other';
+
+/**
+ * The explainer for a desktop, from XDG_CURRENT_DESKTOP (a
+ * colon-separated list, e.g. "ubuntu:GNOME"). GNOME's names the
+ * window menu's "Always on Top" only once someone has confirmed it
+ * works on the app's frameless window (the proposal's appendix,
+ * step 4); until then GNOME gets the general copy. KDE gets its
+ * window rule.
+ */
+export function onTopCopy(desktop: string | null, gnomeMenuConfirmed: boolean): OnTopCopy {
+	void desktop;
+	void gnomeMenuConfirmed;
+	return 'other';
+}
