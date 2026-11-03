@@ -51,3 +51,24 @@ test("a lane whose name or origin would not survive the command line is dropped"
   );
   assert.deepEqual(args, ["--ani-gui-api-base=http://127.0.0.1:1", "--ani-gui-lane-ok=http://127.0.0.1:5"]);
 });
+
+test("the launch's flags go as one flag, with their origin", () => {
+  const args = windowArguments({ apiBase: "http://127.0.0.1:1" }, null, {
+    origin: "file",
+    flags: { a: false, "b c": "old=new" },
+  });
+  const flagsArg = args.find((a) => a.startsWith("--ani-gui-flags="));
+  assert.ok(flagsArg, JSON.stringify(args));
+  assert.deepEqual(
+    JSON.parse(decodeURIComponent(flagsArg.slice("--ani-gui-flags=".length))),
+    { a: false, "b c": "old=new" },
+  );
+  assert.ok(!/\s/.test(flagsArg), "survives the command line unquoted");
+  assert.ok(args.includes("--ani-gui-flags-origin=file"));
+});
+
+test("no flags from the backend sends no flags", () => {
+  assert.deepEqual(windowArguments({ apiBase: "http://127.0.0.1:1" }, null, null), [
+    "--ani-gui-api-base=http://127.0.0.1:1",
+  ]);
+});

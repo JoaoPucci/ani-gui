@@ -47,9 +47,20 @@ const {
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
-const { resolveLocale } = require("./lib/main-messages.cjs");
+const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
+const { stallTexts } = require("./lib/splash-progress.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
+const { appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
+const {
+  grantedSizeRecorder,
+  initialSize,
+  readGeometry,
+  remember,
+  writeGeometry,
+} = require("./lib/window-geometry.cjs");
+const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
 const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const {
   bootApp,
@@ -358,50 +369,77 @@ function signalBackendGroup(pid) {
   }
 }
 
-async function createWindow(backend) {
-  // Pre-compute the work area so the window opens at the maximized
-  // size in one shot. Setting the constructor width/height to the
-  // work-area size avoids the "open at 1280×800, then animate to
-  // maximized" flash some WMs (mutter, kwin) animate when you call
-  // `win.maximize()` against a smaller initial size. After the
-  // window is up we still call `maximize()` so the WM tracks the
-  // maximized state — that lets the user un-maximize back to a
-  // sensible default and lets a snap shortcut work.
-  const { width: workW, height: workH } = screen.getPrimaryDisplay().workAreaSize;
-  const win = new BrowserWindow({
-    width: workW,
-    height: workH,
-    minWidth: 960,
-    minHeight: 600,
-    show: false,
-    // Window icon for the dev session — packaged builds get it
-    // from the .desktop file electron-builder generates from
-    // build-resources/icon.png. Without this, GNOME's window list
-    // shows the generic Electron logo while running unpackaged.
-    icon: path.join(__dirname, "build-resources", "icon.png"),
-    // Frameless: we draw our own titlebar + window controls in the
-    // renderer. Under native Wayland/Ozone (the relaunch above), GNOME
-    // gives Chromium no server-side decorations, so Chromium drew its
-    // own CSD with the window buttons on the LEFT, ignoring GNOME's
-    // button-layout (electron/electron#48422). Owning the chrome puts
-    // minimize/maximize/close back where Linux users expect them and
-    // keeps them consistent across platforms. `resizable` stays true so
-    // the OS resize edges still work on a frameless window.
-    frame: false,
-    webPreferences: {
+/** The splash, while the backend starts and the launch's flags are
+ *  decided (lib/splash.cjs). */
+const splash = splashController({
+  createWindow: (options) => new BrowserWindow(options),
+  logError: console.error,
+  // The user closed the splash (from the taskbar, say) before the
+  // app's window was revealed: they cancelled the launch. While that
+  // window loads hidden it is still open, so no window-all-closed
+  // would quit of itself.
+  onDismissed: () => app.quit(),
+  log: console.log,
+  // The line under the splash's rail when a step of the boot stalls,
+  // in the language the app's dialogs speak (read once the app is
+  // ready, when the splash opens).
+  stallTexts: () => stallTexts(messagesFor(mainLocale())),
+  stallGeneric: () => messagesFor(mainLocale()).splashStartingUp,
+  // Above the splash's title. A dev run is the one that loads the Vite
+  // dev server (IS_DEV), whose frontend labels the rail's version
+  // `-dev` (import.meta.env.DEV); the splash marks it the same.
+  version: splashVersionLabel(app.getVersion(), IS_DEV),
+});
+
+/** Where the window's remembered maximized size lives: beside the
+ *  app's other per-user state, under this profile's userData. */
+const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
+
+async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
+  // Pre-compute the maximized size so the window opens at it in one
+  // shot. Setting the constructor width/height to it avoids the "open
+  // at 1280×800, then animate to maximized" flash some WMs (mutter,
+  // kwin) animate when you call `win.maximize()` against a smaller
+  // initial size. The size is the one the desktop granted the last
+  // time this display maximized the window, else the work area
+  // (lib/window-geometry.cjs): native Wayland reports no work area, so
+  // there only the remembered size matches the maximized one, and the
+  // hidden page is painted at the size it will be revealed at. We
+  // still call `maximize()` so the WM tracks the maximized state —
+  // that lets the user un-maximize back to a sensible default and lets
+  // a snap shortcut work.
+  const display = screen.getPrimaryDisplay();
+  const { width: workW, height: workH } = initialSize(readGeometry(geometryFile(), fs), display);
+  // Made hidden on the app's own dark background (lib/app-window.cjs),
+  // so nothing white shows before the page paints. Frameless: the
+  // renderer draws its own titlebar and window controls, which keeps
+  // them where Linux users expect them under native Wayland, where
+  // GNOME gives Chromium no server-side decorations
+  // (electron/electron#48422). The icon is for the dev session;
+  // packaged builds get theirs from the .desktop file. The backend's
+  // handshake, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs).
+  const win = new BrowserWindow(
+    appWindowOptions({
+      width: workW,
+      height: workH,
+      icon: path.join(__dirname, "build-resources", "icon.png"),
       preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Pass the backend's handshake + the user's configured locale
-      // into the preload via additional arguments. The preload reads
-      // them off process.argv. The locale flag is omitted entirely
-      // when config.toml is missing or has no locale key, so the
-      // preload falls through to Paraglide's preferredLanguage /
-      // baseLocale strategies instead of seeding garbage.
-      // The backend's lanes go the same way (lib/window-args.cjs).
-      additionalArguments: windowArguments(backend, readConfigLocale()),
-    },
+      additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
+    }),
+  );
+  // Started now, so the renderer's word is not missed however early it
+  // comes; the reveal waits for it (bounded) as well as for the splash.
+  const appReady = appReadyWaiter(win.webContents, ipcMain, {
+    isShown: () => !win.isDestroyed() && win.isVisible(),
   });
+  appReady.ready.then((rendered) =>
+    console.log(
+      rendered
+        ? "[main] app's first page rendered"
+        : "[main] app's first page did not say it rendered in time; revealing it anyway",
+    ),
+  );
 
   // New-window requests come from three places:
   //   1. `window.open(...)` or `<a target="_blank">` to an external
@@ -461,6 +499,10 @@ async function createWindow(backend) {
   // hidden, so the underlying surface is created with the maximize
   // hint already set. Most launches end here — the WM honors the
   // hint at map time and the window appears maximized in one shot.
+  // That call is what maps the window, so it is made only when the
+  // window is revealed (revealMaximized, lib/splash.cjs): once its page
+  // has painted hidden and the splash has painted, so the splash is on
+  // screen first and alone.
   //
   // Step 2 — post-show fallback: ~1 launch in 5 mutter drops the
   // pre-show hint under load and the window comes up at workArea
@@ -476,18 +518,18 @@ async function createWindow(backend) {
   // on the bad path. We attempted to hide it behind setOpacity(0)
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
-  win.maximize();
-  // That call also puts the window on screen — maximizing a hidden
-  // window shows it — and emits a first `show` before the listener
-  // below exists. The `show` Step 2 waits for is the next one: the
-  // show() openFirstPage makes at ready-to-show, further down, where
-  // the first load and the first-show guard are held too. Until the
-  // renderer paints, what is on screen is blank and frameless: the
-  // titlebar and its close button are the renderer's to draw.
-  win.once("show", () => {
-    if (!win.isMaximized()) win.maximize();
-  });
-  win.once("show", () => keeper.shown(win));
+  //
+  // The maximize puts the window on screen — maximizing a hidden
+  // window shows it — and emits a first `show` before the listeners
+  // below exist. The `show` Step 2 waits for is the next one: the
+  // show() revealMaximized makes right after attaching them, in the
+  // reveal openFirstPage holds behind the first load's failure guard.
+  const mapped = () => {
+    win.once("show", () => {
+      if (!win.isMaximized()) win.maximize();
+    });
+    win.once("show", () => keeper.shown(win));
+  };
   win.on("closed", () => keeper.closed(win));
 
   // Catch the X-button / window-close path. The before-quit hook
@@ -505,6 +547,26 @@ async function createWindow(backend) {
     }
   };
   win.on("maximize", sendMaxState);
+  // Remember the size the desktop granted the maximized window, for
+  // the next launch's hidden window. Read on resize too: on Wayland
+  // the compositor's configure can land after the maximize event.
+  // Kept under the display the window was made for, and only for the
+  // size granted as the reveal maximizes it (lib/window-geometry.cjs):
+  // Wayland exposes no real window position, so a later maximize, or a
+  // maximized window moved by keyboard, could be on any monitor.
+  const granted = grantedSizeRecorder({
+    save: (size) => {
+      const stored = readGeometry(geometryFile(), fs);
+      const next = remember(stored, display, size);
+      if (next !== stored) writeGeometry(geometryFile(), next, fs);
+    },
+  });
+  const rememberMaximized = () => {
+    if (win.isDestroyed() || !win.isMaximized() || win.isFullScreen()) return;
+    granted.maximized(win.getBounds());
+  };
+  win.on("maximize", rememberMaximized);
+  win.on("resize", rememberMaximized);
   win.on("unmaximize", sendMaxState);
 
   // A window that never gets its first page — a load that fails, an
@@ -513,6 +575,36 @@ async function createWindow(backend) {
   const firstPage = {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
+    // The window loads hidden; at ready-to-show it waits for two
+    // things: the splash — up to a second for it to have rendered a
+    // frame, then what is left of its minimum time on screen — and its
+    // own renderer's word that the first page has rendered (at most four
+    // seconds from the window's creation, lib/app-window.cjs). Only then
+    // is it mapped (maximized) and shown, and the splash put away. The
+    // two are never on screen competing, on any platform. A later window
+    // finds no splash, and waits only for its renderer.
+    // The page's render is the last step of the boot the splash's rail
+    // shows (lib/splash-progress.cjs). The rail hears it, and its page
+    // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
+    // before the window replaces the splash; and when it lands too late
+    // for the minimum to show it, the splash holds until
+    // SPLASH_COMPLETE_HOLD_MS after it landed. A wait that gave up on the
+    // render completes the rail the same way before the window is
+    // revealed anyway, so the rail is always seen complete.
+    beforeShow: () => revealGate(splash, appReady),
+    // Map maximized, show, and put the splash away at that moment —
+    // not when the page later finishes loading. Never for a window
+    // whose first page failed (lib/startup.cjs).
+    // A launch the user cancelled by closing the splash is quitting,
+    // and reveals nothing.
+    reveal: () => {
+      granted.revealing();
+      revealMaximized(win, {
+        cancelled: () => splash.dismissed(),
+        onMapped: mapped,
+        afterShow: () => splash.close(),
+      });
+    },
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
@@ -939,9 +1031,11 @@ function reportBootFailure(err) {
   // A failed boot has no window worth bringing forward: a later launch
   // that arrives while this one says why must not re-show it.
   keeper.failed();
-  // What is on screen, if anything, is the window that failed: blank
-  // and frameless. Hidden, not closed — closing the last window would
-  // start a quit of its own, and that one exits with code 0.
+  // A failed boot's window is normally never revealed; what is on
+  // screen is the splash (put away by the boot) and, rarely, a window
+  // that failed after it was revealed. Hidden, not closed — closing the
+  // last window would start a quit of its own, and that one exits with
+  // code 0.
   for (const win of BrowserWindow.getAllWindows()) win.hide();
   return showBounded(
     bootFailureDialog({
@@ -977,12 +1071,32 @@ app.whenReady().then(() => {
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    createWindow: async (backend) => {
+    // The splash opens at once, before the desktop's reduced-motion
+    // setting is read; it holds its first frame until the read settles
+    // and is then told to move or to rest on its still frame
+    // (lib/splash.cjs), so a reduced-motion user never sees motion.
+    showSplash: () => {
+      splash.show();
+      reducedMotion.then((reduced) => splash.motionPreference(reduced === true));
+    },
+    suppressSplash: () => splash.suppress(),
+    // The launch's remote flags, decided by the backend within its
+    // two-second cap; the window opens with them, so the renderer has
+    // them before its first page (lib/launch-flags.cjs).
+    fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
+    // The backend's handshake and the flags' decision, each lighting a
+    // stretch of the splash's rail as it lands.
+    stepDone: (step) => {
+      splash.progress(step);
+    },
+    closeSplash: () => splash.close(),
+    createWindow: async (backend, launchFlags) => {
       await reducedMotion;
-      await createWindow(backend);
+      await createWindow(backend, launchFlags);
       // The boot's window is open: what it was opened against is what
-      // a later window needs (see windowKeeper) — its lanes included.
-      keeper.booted(backend);
+      // a later window needs (see windowKeeper) — its lanes included,
+      // and the launch's flags, which stay the session's.
+      keeper.booted(bootedWith(backend, launchFlags));
     },
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,

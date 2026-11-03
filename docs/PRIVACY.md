@@ -172,22 +172,31 @@ ani-gui keeps the following on your computer only:
   example the database is momentarily unavailable), the rows are left
   on disk. Reconnecting the **same** account and re-syncing replaces
   them; otherwise they remain until you delete the local database.
+- **Window size** — the size your desktop gave the app's window when
+  the app opened it maximized, per display (the display's identifier, resolution and
+  scale identify it), in `window-geometry.json` in the app's folder under
+  your OS user-data directory, so the next launch opens at that size.
+- **Remote flags cache** — the last copy of the project's remote flags
+  file the app fetched (see below), and when it was fetched, in
+  `remote-flags.json` under your OS's cache directory. It holds only
+  the maintainer's switches, nothing about you.
 
 ## What ani-gui transmits to public services
 
 Most requests follow what you open: a page fetches what it shows, and
 pages resolve episodes ahead of a play (below). At launch the app
-checks for updates (below) and, with an account connected, refreshes
-its sign-in if it has expired; both happen again when changing the
-language reloads the window. The app always opens on the home page,
-which as it loads fetches its catalogue rows and their images,
+checks for updates and fetches the remote flags file (both below) and,
+with an account connected, refreshes its sign-in if it has expired;
+the update check and the sign-in refresh happen again when changing
+the language reloads the window. The app always opens on the home
+page, which as it loads fetches its catalogue rows and their images,
 resolves your Continue Watching rows and checks that they are still
 available, checks the availability of the shows on the page — asking
 the streaming site about those it has no recent answer for — and, with
 an account connected, loads the Watch Later rail from your saved
 tracker list, asking the tracker to confirm who you are and fetching
-the list again when the saved copy is six hours old or more. For
-each kind of request:
+the list again when the saved copy is six hours old or more. For each
+kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, and the streaming
   catalogue playback resolves against: hianime (reached at hianime.at). anidb.app was asked first
@@ -328,6 +337,20 @@ each kind of request:
   bundled copy of the `ani-cli` script fetched its own latest version
   from upstream at every launch. The app no longer carries or runs
   that script, so that request is gone.
+- **Remote flags (automatic, on launch)** — once per launch, ani-gui
+  downloads a small file of switches from the project's GitHub
+  repository, through GitHub's content server
+  (`raw.githubusercontent.com`). If that download fails, it is tried
+  again later in the same session (after a few minutes, then at most
+  hourly) until it succeeds. The maintainer uses it to switch off a
+  feature that turned out to be broken, without waiting for a release.
+  Like the update check, each request tells GitHub your IP address,
+  when it was made, and that it comes from ani-gui.
+  Nothing else is sent: no account
+  information, nothing about what you watch, and no identifier of your
+  install. The file holds only the switches; GitHub's own privacy
+  statement governs the request:
+  <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
 - **Aniskip OP/ED timing (automatic, when an episode plays in the
   app)** — once an episode playing in the app's own player has a
   known length, ani-gui asks the Aniskip community service
@@ -343,8 +366,8 @@ each kind of request:
   does.
 
 There is no analytics or telemetry: no request reports how you use
-the app, and the update check is the only request that goes to the
-project's own repository.
+the app, and the update check and the remote flags file are the only
+requests that go to the project's own repository.
 
 ## Connecting and disconnecting an account
 

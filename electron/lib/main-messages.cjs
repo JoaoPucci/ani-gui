@@ -13,9 +13,11 @@
 // (frontend/project.inlang/settings.json), so adding a locale there
 // turns this red until it is added here.
 //
-// The table is those two dialogs and no more. The pages the OAuth
-// callback server answers the browser with (oauth-server.js) are the
-// main process's text too, and are still English.
+// The table is those two dialogs and the line the launch splash shows
+// when a step of the boot stalls (lib/splash-progress.cjs), and no
+// more. The pages the OAuth callback server answers the browser with
+// (oauth-server.js) are the main process's text too, and are still
+// English.
 
 const BASE_LOCALE = "en";
 
@@ -35,6 +37,13 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "They will be cancelled if you quit. Continue?",
     cancel: "Cancel",
     quitAnyway: "Quit anyway",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Starting up…",
+    // While the flags step stalls the app waits on the network, for at
+    // most the fetch's two-second cap. What it starts with is not
+    // decided yet (the file if it lands in time, else the saved copy or
+    // the defaults), so the line says only that the start goes ahead.
+    splashNetworkSlow: "Network is slow — starting in a moment…",
   },
   "pt-BR": {
     bootFailed: "Não foi possível iniciar o ani-gui",
@@ -47,6 +56,9 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "Eles serão cancelados se você sair. Continuar?",
     cancel: "Cancelar",
     quitAnyway: "Sair mesmo assim",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Iniciando…",
+    splashNetworkSlow: "A conexão está lenta — iniciando em instantes…",
   },
   "es-419": {
     bootFailed: "No se pudo iniciar ani-gui",
@@ -59,6 +71,9 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "Se cancelarán si sales. ¿Continuar?",
     cancel: "Cancelar",
     quitAnyway: "Salir de todos modos",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Iniciando…",
+    splashNetworkSlow: "La conexión está lenta — iniciando en un momento…",
   },
   ru: {
     bootFailed: "Не удалось запустить ani-gui",
@@ -72,6 +87,9 @@ const TRANSLATIONS = {
     downloadsQuitDetail: "При выходе они будут отменены. Продолжить?",
     cancel: "Отмена",
     quitAnyway: "Всё равно выйти",
+    // The splash's line under its progress rail, while a step stalls.
+    splashStartingUp: "Запуск…",
+    splashNetworkSlow: "Сеть работает медленно — запуск через мгновение…",
   },
 };
 

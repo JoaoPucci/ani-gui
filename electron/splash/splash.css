@@ -1,0 +1,184 @@
+/* The launch splash ("pull-down"). Base styles are the finished, threaded frame;
+   animations only describe how it is reached and the transport beat.
+   Everything is paused until the main process adds `shown` to <body>
+   (lib/splash.cjs), or rests the page on its still frame with
+   `reduced`, which splash.js also does if no word comes. The
+   opening is done by 500 ms after that: lamp lit at 320, first frame
+   landed at 499. */
+
+:root {
+  --ink-000: #0c0a09; --ink-050: #14110f; --ink-100: #1c1815; --ink-200: #2a2521;
+  --bone-100: #f4ece1; --bone-300: #b6ad9f;
+  --brand: #d77a3b;
+  --font-display: 'Fraunces', 'Libre Baskerville', 'Cormorant Garamond', 'Iowan Old Style', 'Hoefler Text',
+    Charter, Cambria, 'Noto Serif', Georgia, ui-serif, serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', 'Cascadia Mono', Menlo, Monaco, Consolas,
+    ui-monospace, 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Transport geometry: one frame is 88px of picture + an 8px frame line. */
+  --pitch: 96px;
+  --frame-w: 124px;
+  --perf: 22px;
+  /* Transport timing: the claw pulls for 180ms, the frame holds for 460ms. */
+  --beat: 640ms;
+  --lamp-at: 80ms;
+  --thread-at: 320ms; /* first pull starts */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink-000); color: var(--bone-100); }
+/* The splash sits above other apps while the backend starts: dragging
+   anywhere on it moves it. */
+body { -webkit-font-smoothing: antialiased; user-select: none; cursor: default; -webkit-app-region: drag; }
+body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
+  animation-play-state: paused !important;
+}
+
+.stage {
+  position: relative; inline-size: 480px; block-size: 300px;
+  display: grid; grid-template-columns: auto 1fr; align-items: center;
+  column-gap: 40px; padding-inline: 52px 40px;
+}
+
+/* — The projector column: strip, falloff shade, lamp, aperture plate. — */
+.projector {
+  position: relative; block-size: 300px;
+  inline-size: calc(var(--frame-w) + 2 * var(--perf));
+}
+
+.track {
+  position: absolute; inset-inline: 0;
+  /* Frame index 2 sits centred in the gate at rest. */
+  inset-block-start: calc(150px - 2.5 * var(--pitch));
+  background:
+    url(sprocket.svg) left top / var(--perf) calc(var(--pitch) / 4) repeat-y,
+    url(sprocket.svg) right top / var(--perf) calc(var(--pitch) / 4) repeat-y,
+    #231e1a;
+  padding-inline: var(--perf);
+  animation: pull var(--beat) linear var(--thread-at) infinite;
+}
+/* Intermittent motion: travel one pitch quickly, then hold still. */
+@keyframes pull {
+  0%   { transform: translateY(0); animation-timing-function: var(--ease-in-out); }
+  28%  { transform: translateY(calc(-1 * var(--pitch))); }
+  100% { transform: translateY(calc(-1 * var(--pitch))); }
+}
+
+.frame {
+  block-size: var(--pitch); padding-block: 4px;
+}
+.frame img {
+  display: block; inline-size: var(--frame-w); block-size: calc(var(--pitch) - 8px);
+  padding: 14px 18px; object-fit: contain;
+  background: radial-gradient(90% 90% at 50% 50%,
+    color-mix(in oklab, var(--brand) 16%, var(--ink-100)), var(--ink-050));
+}
+
+/* Light falloff: only the frame in the gate is lit by the lamp; the film
+   above and below is in the dark of the projector body. Static. */
+.shade {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg,
+    var(--ink-000) 0%,
+    color-mix(in oklab, var(--ink-000) 85%, transparent) 26%,
+    color-mix(in oklab, var(--ink-000) 85%, transparent) calc(50% - 46px),
+    transparent calc(50% - 44px),
+    transparent calc(50% + 44px),
+    color-mix(in oklab, var(--ink-000) 85%, transparent) calc(50% + 46px),
+    color-mix(in oklab, var(--ink-000) 85%, transparent) 74%,
+    var(--ink-000) 100%);
+}
+
+/* Lamp off: the gate itself is dark until the lamp strikes. */
+.lamp-off {
+  position: absolute; inset-inline: 0; inset-block: calc(50% - 46px); pointer-events: none;
+  background: var(--ink-000); opacity: 0;
+  animation: lamp 240ms var(--ease-out-soft) var(--lamp-at) backwards;
+}
+@keyframes lamp { from { opacity: 0.86; } }
+
+/* The aperture plate: two sienna hairlines marking the gate edges,
+   extending past the film like the plate's runners. */
+.plate {
+  position: absolute; inset-inline: -10px; inset-block: calc(50% - 46px); pointer-events: none;
+  border-block: 1px solid color-mix(in oklab, var(--brand) 70%, transparent);
+  animation: plate 300ms var(--ease-out-soft) backwards;
+}
+@keyframes plate { from { opacity: 0; inset-inline: 30px; } }
+
+/* — Title column. — */
+/* The column gives back the line the rail takes (the rail and the row
+   gap above it), so the stage centres the title and its rule on the
+   gate as it did with no rail, and the rail hangs below. */
+.title {
+  display: grid; row-gap: 10px; margin-block-end: -15px;
+  animation: title 340ms var(--ease-out-soft) 120ms backwards;
+}
+@keyframes title { from { opacity: 0; transform: translateX(-6px); } }
+
+.eyebrow, .readout {
+  margin: 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--bone-300); font-variant-numeric: tabular-nums;
+}
+/* The app's version above the title (version.js), as written: the
+   eyebrow's capitals would make "v0.18.0-dev" read "V0.18.0-DEV".
+   Its leading "v" takes the app's accent.
+   Hidden while empty, as in a page opened without one. */
+.version { text-transform: none; }
+.version .v { color: var(--brand); }
+.eyebrow:empty { display: none; }
+.wordmark {
+  margin: 0; font-family: var(--font-display); font-weight: 400; font-style: italic; font-size: 46px; line-height: 1;
+  letter-spacing: -0.02em; color: var(--bone-100);
+  padding-block-end: 12px; border-block-end: 1px solid var(--ink-200);
+}
+/* The readout under the title: the progress rail (progress.js), a
+   strip of film edge — perforations — in three stretches, one per step
+   of the boot, each lit in the brand colour as its step lands. Under
+   it, out of the flow so its appearing moves nothing, the line that
+   appears only when a step stalls and then stays, changing only its
+   words. A stretch wipes in and the line fades in only once the splash
+   is told to move; a step that lands before that, or under reduced
+   motion, just shows. */
+.readout { position: relative; }
+.rail {
+  display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 6px;
+  block-size: 5px;
+}
+.rail i {
+  position: relative; display: block; border-radius: 1px;
+  background: repeating-linear-gradient(90deg, var(--ink-200) 0 6px, transparent 6px 10px);
+}
+.rail i::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg, var(--brand) 0 6px, transparent 6px 10px);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--brand) 45%, transparent);
+  clip-path: inset(0 100% 0 0);
+}
+.rail i.lit::after { clip-path: inset(0 0 0 0); }
+.status {
+  position: absolute; inset-inline-start: 0; inset-block-start: calc(100% + 10px);
+  /* Wraps inside the title column, which a long line in any language
+     needs; the window has room below for three lines and more. */
+  max-inline-size: 100%; line-height: 1.45;
+  font-size: 11px; letter-spacing: 0.06em; text-transform: none; color: var(--bone-300);
+  opacity: 0;
+}
+.status.on { opacity: 1; }
+body.shown .rail i::after { transition: clip-path 300ms var(--ease-out-soft); }
+body.shown .status { transition: opacity 220ms var(--ease-out-soft); }
+
+/* — Reduced motion: no transport. The film rests threaded, the lit frame
+   squarely in the gate. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+/* The same still frame when the main process says the desktop asks for
+   reduced motion (GNOME's setting reaches Chromium only through a
+   switch added after this window opened), or when the fallback rests
+   the page. */
+body.reduced *, body.reduced *::before, body.reduced *::after {
+  animation: none !important; transition: none !important;
+}

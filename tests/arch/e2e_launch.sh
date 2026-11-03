@@ -1,6 +1,7 @@
 #!/bin/sh
 # Architectural invariant: every e2e launch of Electron goes through
-# the one shared launch helper, electron/e2e/launch.ts.
+# the one shared launch helper, electron/e2e/launch.ts, and no spec
+# takes Playwright's first window, which is the splash.
 #
 # That helper passes `--mute-audio`, and refuses a display someone may
 # be looking at (electron/lib/e2e-display.cjs). A headless test launch still
@@ -24,7 +25,10 @@
 # the driver — `child_process.spawn` on the packaged path, say — the
 # driver reached under a name that never spells `_electron`, or a
 # Playwright suite outside electron/, which is the only tree scanned.
-# None exists; this check would not notice one.
+# None exists; this check would not notice one. The firstWindow rule
+# likewise misses a spec that takes the splash some other way —
+# `app.windows()[0]`, `app.waitForEvent("window")`, a computed name —
+# and any spec outside electron/.
 
 set -eu
 
@@ -46,6 +50,21 @@ others=$(grep -rlF \
 if [ -n "$others" ]; then
     printf 'arch/e2e_launch FAIL: Playwright'\''s Electron driver is named outside %s;\n' "$HELPER" >&2
     printf 'launch through the helper, which mutes audio and refuses a visible display:\n%s\n' "$others" >&2
+    failed=1
+fi
+
+# The app opens behind a splash, which is its first window: a spec that
+# takes Playwright's first window gets the splash, and fails when the
+# splash closes. Specs find the app's window through the helper's
+# appWindow. The token is absent from electron/ outright, comments
+# included, as `_electron` is from everywhere but the helper.
+first=$(grep -rlF \
+    --exclude-dir=node_modules --exclude-dir=dist \
+    --exclude-dir=playwright-report --exclude-dir=test-results \
+    'firstWindow' electron || true)
+if [ -n "$first" ]; then
+    printf 'arch/e2e_launch FAIL: firstWindow names the splash, not the app'\''s window;\n' >&2
+    printf 'use appWindow from %s:\n%s\n' "$HELPER" "$first" >&2
     failed=1
 fi
 

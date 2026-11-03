@@ -20,7 +20,13 @@ import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { launchPackagedApp, packagedBinary } from "./launch";
+import {
+  appWindow,
+  launchPackagedApp,
+  packagedBinary,
+  routeContext,
+  splashState,
+} from "./launch";
 import { expectedPlatform } from "../lib/e2e-display.cjs";
 
 test.beforeAll(() => {
@@ -36,7 +42,7 @@ test.beforeAll(() => {
  * launched Electron app, BEFORE its first window starts loading —
  * critical because the renderer fires its initial `fetch()` calls
  * (history, trending, top-rated) immediately on mount. Routes set
- * via `page.route()` after `firstWindow()` resolves race those
+ * via `page.route()` after `appWindow()` resolves race those
  * requests and miss the first batch, leaving real-network responses
  * visible to the page. Setting them on `context.route()` (visible to
  * any page in the context) avoids the race.
@@ -72,28 +78,28 @@ async function launchAppWithStubsOnce(
   onLaunch(app);
 
   const context = app.context();
-  await context.route("**/api/app-info", (r) =>
+  await routeContext(context, "**/api/app-info", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(appInfo),
     }),
   );
-  await context.route("**/api/history", (r) =>
+  await routeContext(context, "**/api/history", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptyHistory),
     }),
   );
-  await context.route("**/api/kitsu/trending", (r) =>
+  await routeContext(context, "**/api/kitsu/trending", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(trending),
     }),
   );
-  await context.route("**/api/kitsu/top-rated", (r) =>
+  await routeContext(context, "**/api/kitsu/top-rated", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
@@ -101,9 +107,9 @@ async function launchAppWithStubsOnce(
     }),
   );
   // Block image fetches; the renderer's placeholder takes over.
-  await context.route("**/api/image*", (r) => r.fulfill({ status: 503 }));
+  await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
 
-  const page = await app.firstWindow();
+  const page = await appWindow(app);
   return { app, page, context };
 }
 
@@ -192,6 +198,272 @@ test("a test launch is muted", async () => {
       electronApp.commandLine.hasSwitch("mute-audio"),
     );
     expect(muted).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch takes its flags from the test, not from GitHub", async () => {
+  // The launch helper makes every launch a test run, and a test run's
+  // backend never fetches the live flags file (backend/src/flags/
+  // launch.rs, and backend/tests/flags_launch.rs, which watches the
+  // network to prove it). The window was opened with the flags the
+  // backend decided, before its first page rendered.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const seen = await page.evaluate(() => ({
+      origin: window.aniGui?.flagsOrigin,
+      flags: window.aniGui?.flags,
+    }));
+    expect(seen).toEqual({ origin: "test", flags: {} });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash shows while the app starts, and is gone once the app's window has shown", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    // It was on screen — opened and shown, not merely created — and
+    // closed once the app's window had shown, not suppressed by a
+    // failure.
+    // It was opened with the app's own version for the line above the
+    // title.
+    const version = await app.evaluate(({ app: a }) => a.getVersion());
+    expect(await splashState(app)).toEqual({
+      opened: true,
+      shown: true,
+      closed: true,
+      suppressed: false,
+      version,
+      // Every boot step reached the splash, and its page lit a stretch
+      // of the rail for each.
+      steps: 3,
+      railLit: 3,
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash page, opened as the launch opens it, shows the app's version above its title", async () => {
+  // The launch's own splash comes and goes before a spec can look at
+  // it, so the page is opened again here as the main process opens it
+  // (lib/splash.cjs): same window options, same query. This checks what
+  // Chromium renders — the page's CSP, the file:// query, the line the
+  // script writes into — rather than the main process's record.
+  const { app } = await launchAppWithStubs();
+  try {
+    const [version, shown, colours] = await app.evaluate(async ({ app: a, BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const w = new BrowserWindow(splashWindowOptions());
+      try {
+        await w.loadFile(SPLASH_PAGE, { query: { v: a.getVersion() } });
+        const text = await w.webContents.executeJavaScript(
+          "document.querySelector('.title').innerText",
+        );
+        // The leading "v" in the app's accent, the rest as the line is.
+        const c = await w.webContents.executeJavaScript(
+          "(() => { const line = document.querySelector('.version');" +
+            " const v = line.querySelector('.v');" +
+            " return { v: v && v.textContent, mark: v && getComputedStyle(v).color," +
+            " line: getComputedStyle(line).color," +
+            " brand: getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() }; })()",
+        );
+        return [a.getVersion(), text as string, c as Record<string, string | null>];
+      } finally {
+        w.destroy();
+      }
+    });
+    expect(shown.split(/\s+/).filter(Boolean)).toEqual([`v${version}`, "ani-gui"]);
+    expect(colours.v).toBe("v");
+    expect(colours.brand).toBe("#d77a3b");
+    expect(colours.mark).toBe("rgb(215, 122, 59)");
+    expect(colours.line).not.toBe(colours.mark);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash's rail fills as steps land, and its stall line comes after 700 ms without moving the title", async () => {
+  // Opened as the launch opens it (lib/splash.cjs), with the stall line
+  // the main process would give it, then driven by hand: a test
+  // launch's own boot is over before a spec can watch it.
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { messagesFor } = main.require("./lib/main-messages.cjs");
+      // Never shown, so its timers are kept from being throttled the
+      // way a hidden page's are; the real splash is on screen.
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
+      const run = (code: string) => w.webContents.executeJavaScript(code);
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      try {
+        const en = messagesFor("en");
+        const texts = stallTexts(en);
+        await w.loadFile(SPLASH_PAGE, {
+          query: splashPageQuery({ version: "0.0.0", stallTexts: texts, generic: en.splashStartingUp }),
+        });
+        const look = () =>
+          run(
+            "({ lit: document.querySelectorAll('.rail i.lit').length," +
+              " status: document.querySelector('.status').classList.contains('on') ?" +
+              " document.querySelector('.status').textContent : null," +
+              " title: document.querySelector('.wordmark').getBoundingClientRect().top })",
+          );
+        const start = await look();
+        const lit1 = await run("window.splashProgress.set(1)");
+        const early = await look();
+        await wait(1000);
+        const stalled = await look();
+        const lit3 = await run("window.splashProgress.set(3)");
+        const done = await look();
+        return { expected: texts[1], generic: en.splashStartingUp, start, lit1, early, stalled, lit3, done };
+      } finally {
+        w.destroy();
+      }
+    });
+    expect(seen.start.lit).toBe(0);
+    expect(seen.lit1).toBe(1);
+    expect(seen.early).toMatchObject({ lit: 1, status: null });
+    expect(seen.stalled).toMatchObject({ lit: 1, status: seen.expected });
+    expect(seen.stalled.title).toBe(seen.early.title);
+    expect(seen.lit3).toBe(3);
+    // Up until the splash closes, back to the generic words once the
+    // network is no longer the reason.
+    expect(seen.done).toMatchObject({ lit: 3, status: seen.generic });
+  } finally {
+    await app.close();
+  }
+});
+
+test("every language's stall lines fit the splash, whole, without moving its title", async () => {
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { LOCALES, messagesFor } = main.require("./lib/main-messages.cjs");
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
+      const out: Record<string, unknown>[] = [];
+      try {
+        for (const locale of LOCALES as string[]) {
+          for (const text of new Set(stallTexts(messagesFor(locale)) as string[])) {
+            await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.18.0", stallTexts: [] }) });
+            out.push(
+              await w.webContents.executeJavaScript(
+                `(() => {
+                  const title = () => document.querySelector('.wordmark').getBoundingClientRect().top;
+                  const before = title();
+                  const s = document.querySelector('.status');
+                  s.textContent = ${JSON.stringify(text)};
+                  s.classList.add('on');
+                  const r = s.getBoundingClientRect();
+                  const lineHeight = parseFloat(getComputedStyle(s).lineHeight);
+                  return { locale: ${JSON.stringify(locale)}, text: s.textContent,
+                    fits: r.right <= innerWidth && r.bottom <= innerHeight && s.scrollWidth <= s.clientWidth,
+                    lines: Math.round(r.height / lineHeight),
+                    still: title() === before };
+                })()`,
+              ),
+            );
+          }
+        }
+      } finally {
+        w.destroy();
+      }
+      return out;
+    });
+    // Two lines per language, each a real line of text.
+    expect(seen.length).toBe(8);
+    for (const line of seen) {
+      expect(line).toMatchObject({ fits: true, still: true });
+      expect(String(line.text).length).toBeGreaterThan(0);
+      expect(line.lines).toBeLessThanOrEqual(3);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's window paints the app's dark background and is revealed once its page has rendered", async () => {
+  // A slow first render (a cold Vite compile, a cold disk) used to show
+  // a white frame between the splash and Home.
+  const { app } = await launchAppWithStubs();
+  try {
+    const readyRecord = () =>
+      app.evaluate(() => {
+        const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+        return main.require("./lib/app-window.cjs").lastAppReady();
+      });
+    // Wait out the reveal: the splash gone, and the wait for the
+    // renderer settled either way.
+    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    await expect
+      .poll(async () => {
+        const r = await readyRecord();
+        return r.rendered || r.gaveUp;
+      }, { timeout: 5_000 })
+      .toBe(true);
+    const backgrounds = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .filter((w) => !w.isDestroyed() && (w as unknown as Record<string, unknown>).aniGuiSplash !== true)
+        .map((w) => w.getBackgroundColor().toLowerCase()),
+    );
+    expect(backgrounds).toEqual(["#0c0a09"]);
+    // The renderer said its first page had rendered while the window
+    // was still hidden. That the reveal waits for this word is the
+    // reveal gate's own unit test (lib/app-window.test.cjs).
+    expect(await readyRecord()).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the renderer cannot change the launch's flags", async () => {
+  // The flags are the session's. The bridge hands the page frozen
+  // copies of what the preload exposes, so neither the flags nor
+  // window.aniGui can be written from the page (the preload freezes its
+  // own copy too; preload.test.cjs checks that half).
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const seen = await page.evaluate(() => {
+      const bridge = window.aniGui as unknown as Record<string, unknown>;
+      const flags = bridge.flags as Record<string, unknown>;
+      try {
+        flags.injected = true;
+      } catch {
+        // Strict code throws; sloppy code is ignored. Either way it fails.
+      }
+      try {
+        bridge.flags = { injected: true };
+      } catch {
+        // As above.
+      }
+      return {
+        flagsFrozen: Object.isFrozen(flags),
+        bridgeFrozen: Object.isFrozen(bridge),
+        flags: window.aniGui?.flags,
+      };
+    });
+    expect(seen).toEqual({ flagsFrozen: true, bridgeFrozen: true, flags: {} });
   } finally {
     await app.close();
   }

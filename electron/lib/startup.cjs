@@ -10,10 +10,12 @@
  * with ERR_ABORTED whenever another main-frame navigation starts
  * before the first page finishes loading, and the window that
  * navigation lands in still works, so that rejection is logged and
- * dropped. Every other rejection — a refused connection, a renderer
- * that crashed mid-load (ERR_FAILED) — leaves a blank window with
- * nothing on it, a close button included (see awaitFirstShow), so it
- * propagates and fails the boot.
+ * dropped — unless the commit had already answered an error status
+ * (below), which decides the load failed whatever replaces it.
+ * Every other rejection — a refused connection, a renderer that
+ * crashed mid-load (ERR_FAILED) — leaves a window with nothing on it,
+ * a close button included (see awaitFirstShow), so it propagates and
+ * fails the boot.
  *
  * So does a page that arrives as an error page. `loadURL` resolves
  * for anything that arrives, and the app serves its own error pages:
@@ -26,19 +28,30 @@
  * `-1` Electron documents for navigations outside HTTP. A `-1`, or no
  * status at all, is nothing to judge.
  */
-async function loadFirstPage(win, url, logError) {
+async function loadFirstPage(win, url, logError, onFailed = () => {}) {
   // Taken once: a window closed mid-load is destroyed, and reading
   // `webContents` off a destroyed window throws.
   const contents = win.webContents;
   let status = null;
+  // An error status is known at the commit, before the load ends and
+  // perhaps before the page's first paint: `onFailed` hears it then.
   const onNavigate = (_event, _url, httpResponseCode) => {
     status = httpResponseCode;
+    if (typeof status === "number" && status >= 400) onFailed();
   };
   contents.once("did-navigate", onNavigate);
   try {
     await win.loadURL(url);
   } catch (err) {
-    if (!err || err.code !== "ERR_ABORTED") throw err;
+    if (!err || err.code !== "ERR_ABORTED") {
+      onFailed();
+      throw err;
+    }
+    // An error status already decided this open failed; a navigation
+    // taking over does not undo that.
+    if (typeof status === "number" && status >= 400) {
+      throw new Error(`first page answered ${status} (${url})`);
+    }
     logError("[main] first page superseded before it finished loading:", err);
     return;
   } finally {
@@ -87,13 +100,13 @@ function firstShowTimeoutMs({ isDev }) {
  * has not got there within `timeoutMs` — unless that is `null` or
  * left out, which sets no deadline (see firstShowTimeoutMs).
  *
- * The window is on screen well before `ready-to-show`: it is created
- * with `show: false`, but main.js maximizes it straight away, and
- * maximizing a hidden window shows it. It is also frameless — the
- * titlebar and its buttons are the renderer's to draw. So a window
- * that never gets its first paint is a blank rectangle with nothing
- * on it to click, the close button included, and the app would
- * otherwise sit there with its backend running behind it.
+ * The window stays hidden until it is revealed after `ready-to-show`
+ * (main.js maximizes it, which maps it, only then), so the splash is
+ * all that is on screen while it waits. A window that never gets its
+ * first paint would leave the splash standing, with nothing to click
+ * — the app's window is frameless, its close button the renderer's to
+ * draw — and the app would otherwise sit there with its backend
+ * running behind it.
  *
  * After the first show the guard lets go: a later renderer crash is
  * not a boot failure.
@@ -139,31 +152,67 @@ function awaitFirstShow(win, { timeoutMs }) {
 }
 
 /**
- * Load the window's first page, and show the window once it is ready
- * to be shown — the one place it is shown. Rejects when either the
- * load (loadFirstPage) or the guard (awaitFirstShow) fails.
- *
- * The show follows ready-to-show and does not wait for the load. The
- * two finish in either order — an error page paints like any other —
- * so once the open has failed, the show is off: the boot's report
- * hides the failed window, and a first paint arriving afterwards must
- * not put it back on screen.
- *
- * A window that is gone is not a failure. The window is on screen
- * while it loads, and something that closes it then — the user,
- * through the window manager, on a boot taking its time — makes the
- * load reject like a crashed renderer's (ERR_FAILED) while the app is
- * already quitting over its last window. That is a quit, and the open
- * resolves with nothing to report.
+ * Wait for `beforeShow`, keeping the first-show guard's watch on the
+ * renderer meanwhile: one that dies during the wait fails the boot, as
+ * it would before ready-to-show. A wait that fails is logged and ends.
  */
-async function openFirstPage(win, url, { timeoutMs, logError }) {
+async function waitBeforeShow(contents, beforeShow, logError) {
+  let gone = null;
+  const onGone = (_event, details) => {
+    gone = details || {};
+  };
+  contents.on("render-process-gone", onGone);
+  try {
+    await Promise.resolve()
+      .then(beforeShow)
+      .catch((err) => logError("[main] waiting to show the window:", err));
+  } finally {
+    contents.removeListener("render-process-gone", onGone);
+  }
+  if (gone) throw new Error(`renderer gone before the first show (${gone.reason})`);
+}
+
+/**
+ * Load the window's first page, and reveal the window (`reveal`, a
+ * plain show unless main.js passes its own) once it is ready to be
+ * shown and `beforeShow` has settled — the one place it is put on
+ * screen. Rejects when either the load (loadFirstPage) or the guard
+ * (awaitFirstShow) fails.
+ *
+ * The reveal follows ready-to-show and does not wait for the load. The
+ * two finish in either order — an error page paints like any other —
+ * so once the open has failed (an error status at the commit, or a
+ * rejected load), the reveal is off: a first paint arriving afterwards
+ * must not put a failed window on screen.
+ *
+ * A window that is gone is not a failure. A quit while it loads — the
+ * user closing the splash, on a boot taking its time — destroys it,
+ * and the load rejects like a crashed renderer's (ERR_FAILED) while
+ * the app is already quitting. That is a quit, and the open resolves
+ * with nothing to report.
+ */
+async function openFirstPage(
+  win,
+  url,
+  { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show() },
+) {
   const contents = win.webContents;
   let failed = false;
-  const shown = awaitFirstShow(win, { timeoutMs }).then(() => {
-    if (!failed) win.show();
-  });
+  // `beforeShow` is whatever must happen first — the splash on screen,
+  // the page's first render (main.js).
+  const shown = awaitFirstShow(win, { timeoutMs })
+    .then(() => waitBeforeShow(contents, beforeShow, logError))
+    .then(() => {
+      // `reveal` is what puts the window on screen — a plain show, or
+      // main.js's map-maximized, show and close the splash — so a
+      // window whose first page failed never reaches it.
+      if (!failed) reveal();
+    });
   try {
-    await Promise.all([loadFirstPage(win, url, logError), shown]);
+    const markFailed = () => {
+      failed = true;
+    };
+    await Promise.all([loadFirstPage(win, url, logError, markFailed), shown]);
   } catch (err) {
     failed = true;
     // Either part may go first: close() destroys the contents and
@@ -174,9 +223,17 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
 }
 
 /**
- * Spawn the backend, then open the window against it. A failure ends
- * the process with code 1, in this order:
+ * Ask for the splash, spawn the backend, wait for the launch's flags
+ * (lib/launch-flags.cjs, bounded), then open the window against the
+ * backend with those flags; the window's reveal takes the splash down
+ * as it shows (main.js), and the boot closes it again here in case
+ * nothing did. A splash that cannot be shown is logged and the boot
+ * goes on without it. A failure ends the
+ * process with code 1, in this order:
  *
+ *   0. The splash is put away for good (`suppressSplash`): hidden, not
+ *      closed, so it neither covers the report nor starts a quit as
+ *      the last window closing.
  *   1. The backend tree is stopped. `app.exit` skips `before-quit`,
  *      which is where a normal quit stops it, and the backend's own
  *      watch only acts once this process is gone — which, with a
@@ -200,8 +257,16 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
  * quit's own exit code.
  */
 async function bootApp({
+  showSplash = () => {},
+  suppressSplash = () => {},
   spawnBackend,
+  fetchFlags = async () => null,
+  // Each step of the boot as it lands, for the splash's rail
+  // (lib/splash-progress.cjs): "backend", then "flags". The last,
+  // "page", is the app's window's own (main.js).
+  stepDone = () => {},
   createWindow,
+  closeSplash = () => {},
   stopBackend,
   reportFailure = async () => {},
   onQuitAsked = () => {},
@@ -210,11 +275,32 @@ async function bootApp({
   logError,
 }) {
   try {
+    showSplash();
+  } catch (err) {
+    logError("[main] could not show the splash:", err);
+  }
+  // The splash's rail is the user's view of the boot, not part of it.
+  const reportStep = (step) => {
+    try {
+      stepDone(step);
+    } catch (err) {
+      logError("[main] could not tell the splash a step landed:", err);
+    }
+  };
+  try {
     const backend = await spawnBackend();
-    await createWindow(backend);
+    reportStep("backend");
+    const flags = await fetchFlags(backend);
+    reportStep("flags");
+    // A quit asked for meanwhile — the splash closed from the taskbar,
+    // say — takes its own course; no window is opened into it.
+    if (quitting()) return;
+    await createWindow(backend, flags);
+    closeSplash();
   } catch (err) {
     if (quitting()) return;
     logError("[main] startup failed:", err);
+    suppressSplash();
     stopBackend();
     const quitAsked = new Promise((resolve) => onQuitAsked(resolve));
     const reported = (async () => {

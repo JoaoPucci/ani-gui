@@ -45,7 +45,7 @@
 use std::sync::Arc;
 
 use ani_gui::lanes::{Lane, Lanes};
-use ani_gui::{api, app, lanes, parent_watch, proxy, shutdown, AniError};
+use ani_gui::{api, app, flags, lanes, parent_watch, proxy, shutdown, AniError};
 
 /// Print the handshake and flush it — Electron reads it line by line,
 /// so a line left in a buffer would hang the spawn.
@@ -125,6 +125,17 @@ fn main() -> std::process::ExitCode {
             origin.clone(),
             resource_dir,
         )?);
+
+        // The launch's flags are decided in a task of their own, within
+        // two seconds (see flags::refresh): nothing below waits on
+        // GitHub. The renderer's first page waits for the decision
+        // through /api/flags. A test run (ANI_GUI_UNATTENDED=1) makes
+        // no request and reads the test's own file instead.
+        flags::launch::start(
+            state.flags.clone(),
+            flags::remote::client(),
+            flags::launch::plan_from_env(ani_gui::config::paths::flags_cache()),
+        );
 
         let proxy_router = proxy::build_router(state.proxy_state());
         let api_router = api::build_api_router(state.clone());

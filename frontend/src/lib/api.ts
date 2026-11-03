@@ -64,6 +64,18 @@ declare global {
 			 *  per OS (e.g. the FfmpegMissing modal). Absent in browser-
 			 *  only dev. */
 			platform?: string;
+			/** The launch's remote flags, decided by the backend before
+			 *  the window opened and fixed for the session
+			 *  (`$lib/flags`). Absent in browser-only dev. */
+			flags?: Readonly<Record<string, boolean | string>>;
+			/** Where those flags came from: `file`, `cache`,
+			 *  `defaults` or `test`; null when the window opened
+			 *  without them. */
+			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has rendered,
+			 *  which the window's reveal waits for (`$lib/app-ready`).
+			 *  Absent in browser-only dev. */
+			appReady?: () => void;
 			/** Open a native folder picker dialog. Returns the chosen
 			 *  absolute path or null on cancel. */
 			pickDirectory?: (options?: {

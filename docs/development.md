@@ -273,7 +273,8 @@ curl -sI http://127.0.0.1:42337/healthz
 | `RUST_LOG` | tracing filter |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
-| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e suites do): a packaged build whose startup fails then exits at once instead of showing its error dialog |
+| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
+| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
@@ -292,6 +293,113 @@ puts its own profile (and with it that lock) under `ani-gui-dev` when the
 dev launcher's `ELECTRON_DEV=1` or `ANI_GUI_DEV` is set, so `pnpm dev`
 runs beside an installed copy. A bare `electron .` with neither set uses
 the installed app's shell profile, and hands over to it if it is running.
+
+## Remote flags
+
+The maintainer can switch a declared flag without a release by editing
+one file on the repository's `flags` branch. What a flag may do, and
+why the file is not signed, is in
+[`architecture.md`](./architecture.md#remote-flags). Only a flag
+declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
+build ignores names it does not declare and values its declaration
+does not list.
+
+**Creating the branch (once).** The branch holds `flags.json` and
+nothing else. It is not the default branch, so the `master` ruleset
+does not cover it. These commands create it in a separate worktree
+next to the checkout. Run them in bash from the repository root:
+
+```sh
+git worktree add --detach ../ani-gui-flags
+cd ../ani-gui-flags
+git switch --orphan flags
+printf '{ "flags": {} }\n' > flags.json
+git add flags.json
+git commit -m "chore: start the remote flags file"
+git push -u origin flags
+```
+
+Until the branch exists, every launch gets a 404 and uses the
+defaults, which is also what an empty `flags` object does, and each
+session retries the file after 3, 10 and 30 minutes and then hourly.
+Create the branch before the first release that carries this.
+
+**The format.** One JSON object with a `flags` object inside. A kill
+switch takes `false`; a fallback takes the name of one of the earlier
+behaviours its declaration lists:
+
+```json
+{
+  "flags": {
+    "some_kill_switch": false,
+    "some_fallback": "previous"
+  }
+}
+```
+
+**Flipping a flag.** Edit `flags.json` on the `flags` branch, either in
+the worktree above or in GitHub's web editor, and commit. From the
+worktree, in bash:
+
+```sh
+cd ../ani-gui-flags
+git pull
+python3 -m json.tool flags.json
+git commit -am "chore: switch some_kill_switch off"
+git push
+```
+
+`python3 -m json.tool` checks only that the file is JSON. Two other
+mistakes get past it and fail differently:
+
+- **The wrong shape** (no `flags` object at the top, for example) is
+  treated like malformed JSON. Each launch counts it as a failed fetch
+  and keeps the copy it cached, so the change does not apply, and an
+  earlier retreat stays in force for up to seven days.
+- **A wrong name or value** (a misspelt flag, `"false"` as a string, a
+  behaviour the declaration does not list) puts that flag back at its
+  default. That lifts any retreat already in force for it.
+
+So after pushing, wait out the five-minute CDN cache, launch the app,
+and confirm the values with `GET /api/flags` (below).
+
+**Lifting a retreat.** Set the flag back to its default (`true`, or
+the current behaviour's name), or remove its entry, and push. Removing
+the whole file, or the branch, also works in the end. But installs then
+get a 404, which counts as a failed fetch, so each one keeps the copy it
+cached for up to seven days.
+
+**How long until installs see it.** `raw.githubusercontent.com` serves
+the file with `Cache-Control: max-age=300`, so the CDN can return the
+old copy for up to five minutes after a push. After that, each install
+picks up the change the next time it launches, when the file arrives
+within that launch's two-second cap. A launch on a slow connection that
+misses the cap keeps fetching in the background and caches the file,
+so it applies from the launch after. Worst case: one launch delay;
+never stuck unless the file can't be downloaded at all during an entire
+session. An app already running keeps the flags it decided at launch
+until it is restarted. An install that cannot reach GitHub at all keeps
+its cached copy for up to seven days, then uses the defaults.
+
+To see what a running backend decided, read
+`GET <api base>/api/flags`. It returns every declared flag's value and
+where they came from (`origin`: `file`, `cache` or `defaults`, or
+`test` in a test run). The
+backend logs the decision at `info` as `remote flags settled`, with the
+same origin. The app's window gets the same values from the preload, as
+`window.aniGui.flags`.
+
+**Development and test runs.** `pnpm dev` is a normal launch: it reads
+the live file, so a flag flipped on the branch reaches a dev run too.
+Test runs never do. The end-to-end launch helper and the backend's
+integration tests set `ANI_GUI_UNATTENDED=1`, and their flags come from
+`ANI_GUI_TEST_FLAGS_FILE` or the defaults (see the table of
+environment variables above).
+
+**Declaring a flag** (for the change that adds one). Declare it as a
+`pub const FlagDecl`, list it in `DECLARED`, read it through that
+constant, and register a test case for its default and for each retreat
+in `flags::matrix::CASES`. A test fails until every value has one.
 
 ## Code style
 

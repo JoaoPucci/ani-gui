@@ -89,6 +89,13 @@ pub fn image_cache_dir() -> Option<PathBuf> {
     cache_dir().map(|d| d.join("images"))
 }
 
+/// `$XDG_CACHE_HOME/ani-gui/remote-flags.json` — the last good remote
+/// flags file and when it was fetched (see `crate::flags::cache`).
+#[must_use]
+pub fn flags_cache() -> Option<PathBuf> {
+    cache_dir().map(|d| d.join("remote-flags.json"))
+}
+
 /// `$XDG_CACHE_HOME/ani-gui/metadata.sqlite` — SQLite metadata cache.
 #[must_use]
 pub fn metadata_db() -> Option<PathBuf> {
@@ -177,6 +184,13 @@ mod tests {
     use super::*;
 
     use super::TEST_ENV_LOCK as ENV_LOCK;
+
+    #[test]
+    fn the_flags_cache_sits_in_the_cache_root() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = cache_dir().expect("cache dir");
+        assert_eq!(flags_cache(), Some(root.join("remote-flags.json")));
+    }
 
     /// The dev-profile policy, tested as a pure function so it's
     /// independent of *this* test binary's own (always-debug) build

@@ -214,6 +214,7 @@ AniList refusing this client, or being down, is no answer: what it would have sa
 | AniList banner per Kitsu id (from the trending feed) | SQLite `meta_cache` | 30 days; rewritten or dropped by each trending answer that lists the show, and dropped by a detail read once the image proxy has found the URL gone |
 | Image URL the upstream answered 404 or 410 for | SQLite `meta_cache` | 30 days, or until a fetch of it succeeds |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
+| The last good remote flags file ([Remote flags](#remote-flags)) | Filesystem `remote-flags.json` in the cache root | Replaced by every successful fetch, in the launch or later in its session; decides the next launch's flags when the file misses the cap, for 7 days |
 
 Only the probe passes the show's status when it writes an availability row, so a negative row's lifetime, like a positive one's, depends on what wrote it last. A play, a download, a hand-off or a page's warm whose walk ended in a clean miss stamps that miss through the resolve path, which writes without a status, so the negative row it writes — over a probe's row, or where none stood — gets the window of an ongoing show whatever the show's status: 24 hours at most, dated from that operation, a finished show's seven days and an unreleased show's premiere-sized window included. The row is served as any negative row is, under the read rule above, for as long as it lasts, and the status-sized window comes back only when a probe runs and writes the row again.
 
@@ -243,6 +244,242 @@ rather than the file vanishing silently. The sweep takes a regular
 file at exactly that path — a directory wearing the name is left
 alone, and the neighbouring image cache and database are never
 candidates.
+
+## Remote flags
+
+A release that breaks something can usually be fixed by the next one.
+The update notifier is the exception: an install whose notifier stops
+announcing releases never hears of the release that fixes it. Remote
+flags cover that gap, and give risky features a kill switch. A flag is
+read at launch from a file on GitHub, so the maintainer can flip it
+without shipping a release. The code is in `backend/src/flags/`. How to
+flip a flag is in [`development.md`](./development.md#remote-flags).
+
+**One file, read by the backend.** The file is `flags.json` on the
+repository's `flags` branch:
+
+```json
+{ "flags": { "some_feature": false } }
+```
+
+The backend reads it from
+`https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json`.
+The renderer never fetches it. `GET /api/flags` answers, once the
+launch's flags are decided, with their values and where they came from
+(`origin`: `file`, `cache`, `defaults`, or `test` in a test run).
+
+**Every flag is declared in code**, in `flags::DECLARED`, with a name, a
+kind and a stated reason. The kind fixes the built-in default and the
+only values the file may select:
+
+| Kind | Default | The file may select |
+|---|---|---|
+| Kill switch | `true` (the feature runs) | `false` (the feature is off) |
+| Fallback | the behaviour this build ships | a behaviour an earlier release had, from the list the declaration names |
+
+A flag takes its built-in default when the file sends anything else for
+it: a value the declaration does not list, the wrong JSON type, or no
+entry at all. Flags the build does not declare are ignored. The value
+resolution returns is the declaration's own string, never one copied
+from the file.
+
+**Only safe directions.** A flag may only move the app toward the safer
+or older side: switching a feature off, or going back to an earlier
+behaviour. It may never switch off something protective or silence a
+notice. The kinds guarantee half of that: the default is the build's own
+behaviour, and the file can only pick a value the declaration lists. They
+cannot check whether the listed values really are the safer side. For a
+fallback, that depends on which earlier behaviours the declaration names.
+For a kill switch, it depends on which feature the switch gates, and on
+the code that reads it treating `false` as "off". Review carries that
+part, so each declaration states its case in `safe_because`, and a test
+refuses a declaration that leaves it empty. A kill switch on the update
+notifier itself, or on any check or warning, is not a valid flag.
+Consumers read a flag through its declaration (`Resolved::enabled`,
+`Resolved::choice`), never through a name typed out again. A misspelt
+or undeclared flag then reads as its declaration's default.
+
+**Every value is tested.** A flag sits at its default until something
+breaks, so the value it is flipped to is the one least likely to have
+run. Each consumer registers a test case for its flag's default and for
+every retreat in `flags::matrix::CASES`, a check that receives the
+flags with that value in force. A test over `DECLARED` fails while any
+value of a declared flag has no case, or a case names a flag or value
+no longer declared.
+
+**Why the file is not signed.** With every declaration held to that
+rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
+write access to the branch, could only switch features off or bring
+back older behaviour. A future flag that needs a riskier value, such as
+turning something on or relaxing a check, must not be declared until
+the file is verified. The verifier to adopt then is the minisign
+signature check proposed for the in-app updater (#342) and the
+notification center (#351).
+
+**Decided once per launch, behind the splash.** The flags are decided
+once, within two seconds of the backend starting its refresh (just
+after its state is built), and do not change for the rest of the
+session. A cache read slower than that decides when it ends, up to the
+three-second limit below.
+
+1. The Electron main process puts up a splash at once, as the backend
+   starts. It opens before the desktop's reduced-motion setting has
+   been read (within half a second; about 20 ms on GNOME, at once
+   elsewhere), so it holds its first frame until that read settles,
+   and is then told either to start its motion or to rest on its
+   finished still frame: a reduced-motion user never sees it move.
+2. The backend starts the fetch in a task of its own as soon as its
+   state is built, and reads the cached copy beside it. If the file
+   arrives within two seconds of that start (the cap), it decides the
+   flags. Otherwise the cached copy decides them (below), or the
+   defaults when there is none. While a slow cache read is still
+   running, a file that arrives first decides, even past the cap.
+3. Once the backend has announced itself, the main process asks
+   `GET /api/flags`, which answers when the flags are decided. It opens
+   the app's window with them, so the preload puts them on
+   `window.aniGui.flags` before the first page renders. The main process
+   waits at most four seconds for that answer, and opens the window
+   without flags if none comes. The renderer then runs on every flag's
+   default while the backend may have decided otherwise, for the whole
+   session. The preload marks that case with `window.aniGui.flagsOrigin`
+   set to null, so a renderer consumer that must agree with the backend
+   can ask `GET /api/flags` itself.
+4. The splash is on screen first and alone. The app's window, like the
+   splash, is made on the app's own dark background (`--ink-000`), so
+   nothing white shows before a stylesheet loads. It loads and paints
+   its first page hidden, and its renderer says when that page has
+   rendered (two animation frames after the root layout mounts); the
+   reveal waits for that word, at most four seconds from the window's
+   creation, past which the window is revealed anyway, on the dark
+   background. Once it is ready to show, it also waits up
+   to a second for the splash to answer that it has rendered a frame,
+   then until the splash has been on screen for 500 ms since that paint
+   (300 ms when it rests on its still frame) — long enough for the
+   opening to read — and only then is it mapped, already maximized and
+   painted, and the splash closes. A launch whose window is ready later
+   than that pays nothing for the minimum; a warm one, whose window is
+   ready as soon as the splash has painted, pays up to that half second
+   for it. The rail's completion hold can add to either: a page that
+   renders less than 250 ms before the minimum runs out (150 ms on the
+   still frame), or after it, or after a splash that painted too late
+   for the minimum, holds the reveal until 250 ms (150 ms) after it
+   rendered, so the rail's last stretch is seen lit.
+   The two are never on screen competing, so it does not matter that
+   native Wayland ignores always-on-top. A splash that never paints, or
+   is minimized, holds the window no longer than that first second. The
+   hidden window is made at the size the desktop granted the window when
+   a launch last revealed it maximized on the same display (by id, size
+   and scale), kept in `window-geometry.json` under the app's user data,
+   else at the work area. On Wayland, which reports no work area until a
+   window is on screen, that remembered size is what lets the window
+   appear at its final size. The first launch on a display, or one after
+   the display's size or scale changes, paints at the full screen; one
+   after its top bar changes paints at the old remembered size. Either
+   takes a one-time correction from the compositor as it appears.
+   Closing the splash before the app's window appears cancels the
+   launch. Measured on GNOME under Wayland and on Xvfb; X11 with a real
+   window manager and Windows were not measured.
+
+The splash is a 35mm strip of the app's mark pulled through a lit gate a
+frame at a time, beside the app's name with its version above it
+(`electron/splash/`). The version is the app's own, labelled as the rail
+and About label it (`-dev` in a dev run), and the main process opens the
+page with it. Nothing else on the splash is a number, since any number
+on a screen this brief reads as a count. Under the name, a wordless rail
+of film edge lights one of its three stretches as each step of the boot
+lands: the backend's handshake, the launch's flags decided, the app's
+first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
+wait for that render gave up lights the last stretch as its window is
+about to be revealed anyway, held the same way, so the rail is always
+seen complete. The splash waits at most 150 ms, about a millisecond in
+practice, for its page to take the last step. A last step landing so
+late that the splash's minimum time on screen would not show it then
+holds the splash until 250 ms (150 ms on the still frame) after that
+step landed, so the rail is seen complete before the app's window
+replaces it. A line under the rail, in the app's language, appears only
+once the pending step has taken longer than 700 ms, and then stays until
+the splash closes; only its words change, when the reason does. While
+the flags step stalls it says "Network is slow — starting in a moment…":
+the app is waiting on the flags fetch, for at most its two-second cap,
+and what it starts with (the file if it lands in time, else the saved
+copy or the defaults) is not decided yet. A slow read of the saved copy
+can hold that step too, rarely. Any other stalled step says "Starting
+up…", and once the flags land the network line gives way to it at once.
+The splash's motion starts only when the main process tells it to, once
+the window is on screen and the reduced-motion setting is known; under
+reduced motion it rests on a still frame and its rail lights without a
+wipe, and the page's own fallback timer, for a signal that never comes,
+rests it too rather than starting the motion. The mark is `mark.svg`
+alone, and the layout holds for a mark of another shape, so a new mark
+replaces one file.
+
+The store accepts one decision and refuses every later one. A backend
+consumer reads the flags with `FlagStore::settled()`, which waits for
+that decision. Past three seconds it decides the defaults itself, so no
+reader ever sees a value that changes afterwards. `FlagStore::current()`
+does not wait and is for diagnostics only.
+
+**The cap bounds the wait, not the fetch.** After the cap, the fetch
+goes on in the background. Its whole request, connect to body, has 45
+seconds, 30 of which may go on connecting (DNS, TCP and TLS): the file
+is tiny, so the time goes on the connection and round trips. The flags
+use a client of their own for that, where the metadata client allows
+10 seconds. The connector splits the connect timeout across the
+addresses DNS returns, so with the CDN's four addresses each TCP
+attempt gets about 7.5 seconds before the next address is tried. When
+the file arrives it is cached for the next launch. When that attempt
+fails, the file is fetched again later in the session, after 3, 10 and
+30 minutes and then hourly, until one attempt succeeds and is cached.
+The retries exist to fill the cache, so a launch with no cache
+directory makes the one attempt only. A 404 counts as a failed attempt,
+so until the `flags` branch exists every session retries on that
+schedule. None of this changes the running session's flags. Worst
+case: one launch delay; never stuck unless the file can't be downloaded
+at all during an entire session. A connection
+that always misses the cap still gets a switch-off on its next launch,
+as long as the file arrives at any point during the previous session.
+
+Only a 200 whose body is at most 64 KiB and is a `{"flags": {...}}`
+object counts as the file. Anything else counts as a failed fetch: a
+transport error, the timeout, any other status (404 included), a larger
+body, or malformed JSON.
+
+**The last good copy.** Each successful fetch is cached as
+`remote-flags.json` in the cache root, together with the time it was
+fetched. When the file does not arrive within the cap, the cached copy
+decides the flags if it is at most seven days old, and the defaults
+decide them otherwise. A copy dated in the
+future (a clock set back) counts as too old. The cached copy goes
+through the same resolution as a fetched file, so a cache written by
+another build, or edited by hand, still resolves only to values this
+build declares. Why seven days: every value a document can produce is a
+default or a declared retreat, so a cached copy is never less safe than
+the defaults it stands in for. Its age only limits how long a retreat
+the maintainer has since lifted stays in force on a machine that cannot
+reach GitHub. A week covers a stretch of launches without the network,
+such as a trip, a captive portal or a blocked CDN, so a feature switched
+off for a bad release stays off through it. And even on a machine that
+never reaches the file again, a lifted retreat clears within the week.
+
+**Test runs bring their own flags.** A test run is a launch with
+`ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the
+backend's integration tests always set. A test run's backend never
+fetches the live file, so a flipped flag or a slow or rate-limited CDN
+cannot change a test's result. It takes its flags from the file
+`ANI_GUI_TEST_FLAGS_FILE` names, resolved like the live one, or the
+defaults when that names none. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
+it by watching the network: a test run never asks for
+raw.githubusercontent.com, and a normal launch does. Development runs
+(`pnpm dev`) are normal launches and read the live file.
+
+**Rate limits.** `raw.githubusercontent.com` is GitHub's content CDN,
+not the REST API. The request does not count against the 60 requests
+an hour that GitHub allows unauthenticated REST callers, which the
+update check uses. GitHub publishes no figure for the CDN's own limit.
+One request per launch, and at most one an hour after the first few
+retries of a session whose fetch keeps failing, is far below any
+plausible one. A rate-limited answer is a failed fetch like any other.
 
 ## Embedded playback
 
