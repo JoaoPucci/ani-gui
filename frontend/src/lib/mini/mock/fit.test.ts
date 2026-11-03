@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { MINI_COMPACT_BELOW, cueLifts, miniControlSet } from './fit';
+import { MINI_COMPACT_BELOW, cueLifts, cueSizePx, miniControlSet } from './fit';
 
 describe('the controls at a width', () => {
 	it('draws every control at the default size in the bar layout', () => {
@@ -10,7 +10,7 @@ describe('the controls at a width', () => {
 			clusterFlanks: null,
 			time: 'both',
 			mute: true,
-			cueLift: 48
+			cueLift: 56
 		});
 	});
 
@@ -21,7 +21,7 @@ describe('the controls at a width', () => {
 			clusterFlanks: null,
 			time: 'current',
 			mute: false,
-			cueLift: 24
+			cueLift: 36
 		});
 	});
 
@@ -32,14 +32,14 @@ describe('the controls at a width', () => {
 			clusterFlanks: 'skip',
 			time: 'both',
 			mute: true,
-			cueLift: 28
+			cueLift: 32
 		});
 		expect(miniControlSet(320, 'centre')).toMatchObject({
 			compact: true,
 			episodeSteps: 'hidden',
 			clusterFlanks: 'skip',
 			time: 'current',
-			cueLift: 20
+			cueLift: 24
 		});
 	});
 
@@ -87,6 +87,30 @@ describe('which cues rise with the chrome', () => {
 			fc.property(fc.integer({ min: -20, max: 20 }), (line) => {
 				expect(cueLifts(line, true)).toBe(line < 0);
 			})
+		);
+	});
+});
+
+describe('the subtitle size floor', () => {
+	it('keeps cues readable at the minimum size, and follows the picture above it', () => {
+		expect(cueSizePx(180)).toBe(14);
+		expect(cueSizePx(270)).toBe(15);
+		expect(cueSizePx(400)).toBe(22);
+		expect(cueSizePx(2000)).toBe(30);
+	});
+
+	it('stays between 14 and 30 px and never shrinks as the window grows', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 1, max: 4000 }),
+				fc.integer({ min: 0, max: 500 }),
+				(h, more) => {
+					const size = cueSizePx(h);
+					expect(size).toBeGreaterThanOrEqual(14);
+					expect(size).toBeLessThanOrEqual(30);
+					expect(cueSizePx(h + more)).toBeGreaterThanOrEqual(size);
+				}
+			)
 		);
 	});
 });

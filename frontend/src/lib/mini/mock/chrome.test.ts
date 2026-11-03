@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { MINI_FADE_MS, MINI_IDLE_HIDE_MS, miniChromeShown, miniFadeMs } from './chrome';
+import {
+	MINI_FADE_MS,
+	MINI_IDLE_HIDE_MS,
+	miniChromeShown,
+	miniFadeMs,
+	miniGripShown,
+	miniStripShown
+} from './chrome';
 
 const rest = {
 	pointerActive: false,
@@ -48,5 +55,34 @@ describe('the mini window chrome', () => {
 
 	it('appears and disappears at once under reduced motion', () => {
 		expect(miniFadeMs(true)).toBe(0);
+	});
+});
+
+describe('the strip through a stall', () => {
+	it('stays up while the stream stalls, and follows the chrome otherwise', () => {
+		expect(miniStripShown(false, true)).toBe(true);
+		expect(miniStripShown(false, false)).toBe(false);
+		expect(miniStripShown(true, false)).toBe(true);
+	});
+});
+
+describe('the resize grip', () => {
+	it('draws only on Wayland, with the chrome or always', () => {
+		expect(miniGripShown({ platform: 'wayland', grip: 'chrome', chromeShown: true })).toBe(true);
+		expect(miniGripShown({ platform: 'wayland', grip: 'chrome', chromeShown: false })).toBe(false);
+		expect(miniGripShown({ platform: 'wayland', grip: 'always', chromeShown: false })).toBe(true);
+	});
+
+	it('never draws where the platform has resize edges', () => {
+		fc.assert(
+			fc.property(
+				fc.constantFrom('windows' as const, 'x11' as const),
+				fc.constantFrom('chrome' as const, 'always' as const),
+				fc.boolean(),
+				(platform, grip, chromeShown) => {
+					expect(miniGripShown({ platform, grip, chromeShown })).toBe(false);
+				}
+			)
+		);
 	});
 });

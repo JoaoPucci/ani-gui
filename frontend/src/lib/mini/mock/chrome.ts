@@ -36,3 +36,28 @@ export function miniChromeShown(state: MiniChromeState): boolean {
 export function miniFadeMs(reduced: boolean): number {
 	return reduced ? 0 : MINI_FADE_MS;
 }
+
+/**
+ * The strip, alone, stays up through a stall: it carries the
+ * "Reconnecting" status where the title was, and the way back or out.
+ * The rest of the chrome follows the usual rule.
+ */
+export function miniStripShown(chromeShown: boolean, stalled: boolean): boolean {
+	void chromeShown;
+	void stalled;
+	return false;
+}
+
+/**
+ * The corner resize grip, drawn only where the platform gives a
+ * frameless window no resize edges of its own: Wayland, before
+ * Electron 41. There it shows with the chrome, or always.
+ */
+export function miniGripShown(input: {
+	platform: 'wayland' | 'windows' | 'x11';
+	grip: 'chrome' | 'always';
+	chromeShown: boolean;
+}): boolean {
+	void input;
+	return false;
+}

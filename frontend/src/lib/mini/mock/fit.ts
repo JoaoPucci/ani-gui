@@ -56,3 +56,14 @@ export function cueLifts(line: number | 'auto', snapToLines: boolean): boolean {
 	if (line === 'auto') return true;
 	return snapToLines ? line < 0 : line >= 50;
 }
+
+/**
+ * The subtitle size floor for the mini window: about Chromium's own
+ * 5 % of the picture's height, but never under 14 px, where cues stop
+ * being readable (Chromium's would be 9 px at 180 tall), and never
+ * over 30.
+ */
+export function cueSizePx(height: number): number {
+	void height;
+	return 0;
+}
