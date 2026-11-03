@@ -531,4 +531,34 @@ describe('the captions menu with many languages', () => {
 			expect(video.currentTime).toBe(100);
 		}
 	});
+
+	it('closes on Tab and Shift+Tab, and keeps typed keys from the player', async () => {
+		handlers();
+		const video = await mountAt('many-1', '1', MANY.length);
+		video.muted = false;
+		await openMenu();
+		const before = document.activeElement;
+		const taken = (key: string, mods: KeyboardEventInit = {}) =>
+			!document.activeElement?.dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods })
+			);
+		// The menu is named by its heading.
+		const menuEl = document.querySelector('#pc-cc-menu')!;
+		const heading = document.getElementById(menuEl.getAttribute('aria-labelledby') ?? '');
+		expect(heading?.textContent).toBe(m.play_controls_cc_menu_heading());
+		expect(menuEl.contains(heading)).toBe(true);
+		// m is the player's mute key.
+		expect(taken('m')).toBe(true);
+		expect(video.muted).toBe(false);
+		expect(document.activeElement).toBe(before);
+
+		expect(taken('Tab', { shiftKey: true })).toBe(true);
+		await until(() => document.querySelector('#pc-cc-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(ccButton());
+
+		await openMenu();
+		expect(taken('Tab')).toBe(false);
+		await until(() => document.querySelector('#pc-cc-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(ccButton());
+	});
 });

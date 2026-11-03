@@ -555,6 +555,37 @@ describe('play route — the quality the setting names, and the menu that change
 		await until(() => qualityRow() !== undefined, 'the quality row');
 		expect(qualityRow()?.textContent).toContain(label(1080));
 	});
+
+	it("closes the player's menu on Tab and Shift+Tab, and keeps typed keys from the player", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		const video = playerVideo();
+		video.muted = false;
+		menuButton().click();
+		await until(() => document.activeElement === menuItems()[0], 'focus on the first item');
+		// m is the player's mute key.
+		expect(pressWith('m', {})).toBe(true);
+		expect(video.muted).toBe(false);
+		expect(document.activeElement).toBe(menuItems()[0]);
+		// The menu is named as its button is.
+		expect(target.querySelector('#pc-overflow-menu')?.getAttribute('aria-label')).toBe(
+			m.play_controls_menu_aria_label()
+		);
+
+		// Shift+Tab heads back to the button, and the menu closes.
+		expect(pressWith('Tab', { shiftKey: true })).toBe(true);
+		await until(() => menuItems().length === 0, 'the menu to close');
+		expect(document.activeElement).toBe(menuButton());
+
+		// Tab closes it too, and is left to the browser to move on from
+		// the button.
+		menuButton().click();
+		await until(() => document.activeElement === menuItems()[0], 'focus on the first item');
+		expect(pressWith('Tab', {})).toBe(false);
+		await until(() => menuItems().length === 0, 'the menu to close');
+		expect(document.activeElement).toBe(menuButton());
+	});
 });
 
 function moreButton(): HTMLButtonElement {
@@ -835,5 +866,31 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		moreButton().click();
 		await until(() => moreItems().length > 0, 'the more menu');
 		expect(moreQualityRow()).toBeUndefined();
+	});
+
+	it('closes on Tab and Shift+Tab, and keeps typed keys from the player', async () => {
+		await nativeMaster();
+		const video = playerVideo();
+		video.muted = false;
+		moreButton().click();
+		await until(() => moreItems().length > 0, 'the more menu');
+		const first = moreItems().find((el) => !(el as HTMLButtonElement).disabled);
+		await until(() => document.activeElement === first, 'focus on the first enabled item');
+		expect(pressWith('m', {})).toBe(true);
+		expect(video.muted).toBe(false);
+
+		expect(pressWith('Tab', { shiftKey: true })).toBe(true);
+		await until(() => target.querySelector('#np-more-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(moreButton());
+
+		moreButton().click();
+		await until(() => document.activeElement === first || moreItems().length > 0, 'the menu');
+		await until(
+			() => moreItems().includes(document.activeElement as HTMLElement),
+			'focus in the menu'
+		);
+		expect(pressWith('Tab', {})).toBe(false);
+		await until(() => target.querySelector('#np-more-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(moreButton());
 	});
 });

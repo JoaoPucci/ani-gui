@@ -28,7 +28,7 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -136,6 +136,7 @@
 		type DrillMenu
 	} from '$lib/play/drill-menu';
 	import { plainKey } from '$lib/play/menu-arrow';
+	import { onMenuTabOrType, stepMenuFocus } from '$lib/menu/menu-dom';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -585,6 +586,10 @@
 	 *  arrows do not see them. */
 	function onCcMenuKey(e: KeyboardEvent) {
 		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		const close = () => flushSync(() => (ccMenuOpen = false));
+		if (onMenuTabOrType(e, { anchor: ccMenuAnchor, close })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
 		const at = items.indexOf(document.activeElement as HTMLElement);
@@ -2697,6 +2702,9 @@
 	function onMoreMenuKey(e: KeyboardEvent) {
 		// A modified key (Alt+ArrowLeft for history back) is not the menu's.
 		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		if (onMenuTabOrType(e, { anchor: moreAnchor, close: () => flushSync(closeMore) })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const step = drillArrow(moreMenu, e.key, {
 			rtl: getComputedStyle(menu).direction === 'rtl',
@@ -2723,6 +2731,7 @@
 	// stay in the menu rather than seek.
 	function onPcMenuKey(e: KeyboardEvent) {
 		if (plainKey(e) === null) return;
+		if (onMenuTabOrType(e, { anchor: pcMenuAnchor, close: () => flushSync(closePcMenu) })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const opener = focusedOpener<PcList>(['speed', 'quality']);
 		const step = drillArrow(pcMenu, e.key, {
@@ -2739,20 +2748,6 @@
 		e.stopPropagation();
 		pcMenu = step.menu;
 		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
-	}
-	/** ArrowDown, ArrowUp, Home and End move focus between the menu's
-	 *  enabled items, wrapping at the ends, and go no further. */
-	function stepMenuFocus(e: KeyboardEvent) {
-		const menu = e.currentTarget as HTMLElement;
-		const items = Array.from(
-			menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')
-		);
-		const at = items.indexOf(document.activeElement as HTMLButtonElement);
-		const next = menuKeyStep(e.key, at, items.length);
-		if (next === null) return;
-		e.preventDefault();
-		e.stopPropagation();
-		items[next].focus();
 	}
 	$effect(() => {
 		if (!moreOpen) return;
@@ -3289,11 +3284,14 @@
 										id="pc-cc-menu"
 										class="pc-cc-menu"
 										role="menu"
+										aria-labelledby="pc-cc-menu-heading"
 										tabindex="-1"
 										use:fitCcMenu
 										onkeydown={onCcMenuKey}
 									>
-										<p class="pc-cc-menu-heading">{m.play_controls_cc_menu_heading()}</p>
+										<p id="pc-cc-menu-heading" class="pc-cc-menu-heading">
+											{m.play_controls_cc_menu_heading()}
+										</p>
 										<button
 											type="button"
 											class="pc-menu-item pc-cc-item"
@@ -3380,6 +3378,7 @@
 									id="pc-overflow-menu"
 									class="pc-menu"
 									role="menu"
+									aria-label={m.play_controls_menu_aria_label()}
 									tabindex="-1"
 									onkeydown={onPcMenuKey}
 								>

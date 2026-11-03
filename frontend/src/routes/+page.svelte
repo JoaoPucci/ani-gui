@@ -9,7 +9,8 @@
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { flushSync, onDestroy, onMount } from 'svelte';
+	import { focusFirstItem, onMenuKey } from '$lib/menu/menu-dom';
 	import { fade, reducible } from '$lib/motion/transitions';
 	import { cardScale, cardShift, STILL } from '$lib/motion/card-motion';
 	import { heroParallaxTransform } from '$lib/motion/parallax';
@@ -350,6 +351,19 @@
 	let deleteBusy = $state(false);
 	// Kebab menu open state for the rail header.
 	let clearMenuOpen = $state(false);
+	let clearMenuButton = $state<HTMLButtonElement | null>(null);
+	// Opened: focus goes to its item, as the play page's menus do.
+	$effect(() => {
+		if (clearMenuOpen) focusFirstItem(document.getElementById('continue-menu'));
+	});
+	// The menu's keys ($lib/menu/menu-keys): arrows, Home and End stay on
+	// its item; Escape, Tab and Shift+Tab close it.
+	function onClearMenuKey(e: KeyboardEvent) {
+		onMenuKey(e, {
+			anchor: clearMenuButton,
+			close: () => flushSync(() => (clearMenuOpen = false))
+		});
+	}
 	// Clear-all confirmation modal open state.
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
@@ -1157,11 +1171,14 @@
 {#snippet continueHeaderTrailing()}
 	<div class="continue-menu-wrap">
 		<button
+			bind:this={clearMenuButton}
+			id="continue-menu-btn"
 			type="button"
 			class="continue-menu-btn"
 			aria-label={m.home_clear_menu_button_aria()}
-			aria-haspopup="true"
+			aria-haspopup="menu"
 			aria-expanded={clearMenuOpen}
+			aria-controls="continue-menu"
 			onclick={(e) => {
 				e.stopPropagation();
 				clearMenuOpen = !clearMenuOpen;
@@ -1177,7 +1194,14 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="continue-menu-backdrop" onclick={() => (clearMenuOpen = false)}></div>
-			<menu class="continue-menu" role="menu">
+			<menu
+				id="continue-menu"
+				class="continue-menu"
+				role="menu"
+				aria-labelledby="continue-menu-btn"
+				tabindex="-1"
+				onkeydown={onClearMenuKey}
+			>
 				<li role="presentation">
 					<button
 						type="button"

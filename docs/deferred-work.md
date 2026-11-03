@@ -570,16 +570,6 @@ starting it, and delete it when you find it done.
   path still offers that the custom one does not — the setting's own
   hint names picture-in-picture and the native captions menu — and
   decide from that.
-- **Arrow keys in the app's other menus.** The play page's three
-  menus (the ⋯ menu, the in-player menu and the captions menu) move
-  focus between their items with the arrow keys, Home and End. The
-  other `role="menu"` popovers do not: the account chip's, the
-  download dock's, and the Continue card's on Home. A screen reader
-  announces each one as a menu, which promises those keys. The
-  download dock can be open over the play page, where the arrows reach
-  the player's volume and seek keys instead. `menuKeyStep`
-  (`$lib/play/caption-menu-fit`) is the step the play page's menus
-  use.
 - **The starting captions on a playlist-only stream.** The app
   applies a session's starting captions — the language last picked on
   the show (Off included), else the app's language — only where the
