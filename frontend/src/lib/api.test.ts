@@ -639,6 +639,28 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it("names the guessed card's row on the SSE query when given, and only then", async () => {
+		// The session then says whether the play landed on that row's own
+		// listing, which is what lets the guess be recorded on it.
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('guess_row')).toBe('hianime:x-1');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+		const plain = playStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es2 = FakeEventSource.instances[1];
+		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
+		es2.dispatch('done', JSON.stringify(donePayload()));
+		await plain;
+	});
+
 	it('appends kitsu_id to the SSE query when provided', async () => {
 		// The backend persists the native resolver's exact episode cap
 		// (and the show_id reverse mapping) only when the play carries

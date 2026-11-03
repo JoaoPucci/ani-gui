@@ -28,6 +28,7 @@ import {
 	type PlayArgs,
 	type VersionKind
 } from '$lib/api';
+import { guessBinds, recordableId } from './play-origin';
 
 /** A play's claim on the show and the route visit it was started for. */
 export interface PlayOwner {
@@ -93,6 +94,9 @@ export function playArgsFor(input: {
 	/** The version remembered for the show (`storedChoice` in
 	 *  `$lib/versions/version-choice.ts`); left off when none is. */
 	version?: VersionKind;
+	/** The history row a guessed Continue card opened the session from
+	 *  (`guessRow` in `./play-origin`). */
+	guessRow?: string;
 	/** The captions choice remembered for the show (`storedCaption` in
 	 *  `$lib/play/caption-choice.ts`); left off when none is. */
 	caption?: string;
@@ -110,8 +114,25 @@ export function playArgsFor(input: {
 	if (input.kitsuId !== undefined) args.kitsu_id = input.kitsuId;
 	if (input.prefetch) args.prefetch = true;
 	if (input.version) args.version = input.version;
+	if (input.guessRow) args.guess_row = input.guessRow;
 	if (input.caption) args.caption = input.caption;
 	return args;
+}
+
+/** What a session's play records: `args` carrying the show's Kitsu id
+ *  when the play may record it — a session no guess opened, or a
+ *  guessed one whose play landed on the card's own listing
+ *  (`guessBinds` in `./play-origin`) — and whether it is mirrored to
+ *  the trackers, which is the same answer. */
+export function playedRecord(
+	args: PlayArgs,
+	showId: string,
+	guess: boolean,
+	session: { own_listing?: boolean }
+): { args: PlayArgs; mirror: boolean } {
+	const binds = guessBinds(guess, session);
+	const kitsuId = recordableId(showId, !binds);
+	return { args: kitsuId ? { ...args, kitsu_id: kitsuId } : args, mirror: binds };
 }
 
 /** The audio a play asks for: anything but "dub" reads as sub. */
@@ -127,7 +148,8 @@ export function playQuality(config: { quality: string } | null | undefined): str
 /** Record a played episode for the clicked show: stamp Continue
  *  Watching (the click may have reused a prefetch, which stamps
  *  nothing; the backend op is idempotent), and mirror the progress to
- *  the connected trackers unless the match was a guess (`mirror`) or
+ *  the connected trackers unless the match was a guess whose play did
+ *  not land on the card's own listing (`mirror`, from `playedRecord`) or
  *  the episode is one the session could not verify (`unverified`): a
  *  row past Kitsu's count that may be an extra the provider appended.
  *  Completion is decided against the show's full finite total, and only

@@ -391,6 +391,10 @@ export interface CreateSessionResponse {
 	versions?: VersionInfo[];
 	/** The version that played, when there are several. */
 	version?: VersionKind;
+	/** Whether a play that named a guessed card's row (`guess_row`)
+	 *  landed on that row's own listing. Absent (false) otherwise and
+	 *  from older backends. */
+	own_listing?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -710,6 +714,10 @@ export interface PlayArgs {
 	 *  resolution cache on it, so a stamp or an eviction names the
 	 *  version its play named. */
 	version?: VersionKind;
+	/** The history row a Continue card whose show was only a guess
+	 *  opened the play from. The session answers whether the play
+	 *  landed on that row's own listing (`own_listing`). */
+	guess_row?: string;
 	/** The captions choice remembered for the show
 	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
 	 *  backend orders the subtitle tracks it hands an external player,
@@ -821,6 +829,7 @@ export function playStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
+	if (args.guess_row) params.set('guess_row', args.guess_row);
 	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
