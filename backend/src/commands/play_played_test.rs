@@ -623,7 +623,13 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
     )
     .await
     .expect("resolves the recap");
-    crate::commands::play_native_record::record_fresh_watch(&state, &recap, "0.5", begun_before);
+    crate::commands::play_native_record::record_fresh_watch(
+        &state,
+        &recap,
+        "0.5",
+        begun_before,
+        None,
+    );
     assert_eq!(cumulative_listed(&state), "1");
 }
 
