@@ -85,9 +85,15 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
+	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
+	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
+	import { captionEntries } from '$lib/play/caption-label';
+	import { captionOrder } from '$lib/play/caption-order';
+	import { menuHeight, menuKeyStep, revealScroll } from '$lib/play/caption-menu-fit';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -131,6 +137,8 @@
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
+	import { refillEpisodes } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import { formatTime, progressLabel, skipLabel } from '$lib/play/format';
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
@@ -159,6 +167,7 @@
 	import {
 		claimPlay,
 		playArgsFor,
+		playedRecord,
 		playMode,
 		playQuality,
 		recordPlayed,
@@ -179,7 +188,7 @@
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -188,6 +197,8 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
+		guessedId,
+		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
@@ -211,10 +222,11 @@
 	const mockUpNext = $derived(
 		mockRun ? mockUpNextFor(mockRun, id, mockPrefs.order, mockToday) : null
 	);
-	// A session opened from a guessed Continue match records the guess
-	// nowhere — not on the history row, not on tracker accounts
-	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
-	// this page builds for itself carries it on.
+	// A session opened from a guessed Continue match records the guess —
+	// on the history row, on tracker accounts — only for a play that
+	// landed on the card's own listing ($lib/play/play-origin.ts). The
+	// flag is in the URL, and every URL this page builds for itself
+	// carries it on.
 	const fromGuess = $derived(openedFromGuess(page.url.searchParams));
 	// A session a Continue card opened writes its positions for the
 	// card's history row, so removing the card forgets them whatever
@@ -325,8 +337,8 @@
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
 	// TextTrackList off the page's video so the menu reflects
-	// whatever the current session has attached (today: 0 or 1
-	// track; multi-language sessions land later). `textTracksTick`
+	// whatever the current session has attached — none, one, or one
+	// per language the provider lists. `textTracksTick`
 	// is the reactivity dependency — every addtrack / removetrack /
 	// individual `change` event bumps it so `availableTracks` and
 	// `captionsOn` re-derive.
@@ -336,20 +348,31 @@
 	const availableTracks = $derived.by(() => {
 		void textTracksTick; // reactivity dep — re-derive on each tick
 		if (!videoEl) return [];
-		const out: Array<{ index: number; label: string; showing: boolean }> = [];
+		const out: Array<{ index: number; lang: string; label: string; showing: boolean }> = [];
 		for (let i = 0; i < videoEl.textTracks.length; i++) {
 			const t = videoEl.textTracks[i];
 			if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
-			out.push({
-				index: i,
-				label: t.label || t.language || m.play_track_fallback_label({ number: String(i + 1) }),
-				showing: t.mode === 'showing'
-			});
+			out.push({ index: i, lang: t.language, label: t.label, showing: t.mode === 'showing' });
 		}
 		return out;
 	});
 	const captionsOn = $derived(availableTracks.some((t) => t.showing));
 	const showCcButton = $derived(availableTracks.length > 0);
+	// The show's remembered captions choice as the menu opened, so the
+	// order it lists the viewer's languages in holds while it is open.
+	let ccRemembered = $state<string | undefined>(undefined);
+	// The menu's entries: named from each track's language tag in the
+	// app's language, the viewer's languages first, then the rest by
+	// name ($lib/play/caption-label, $lib/play/caption-order).
+	const ccMenu = $derived.by(() => {
+		const locale = uiLocale();
+		const entries = captionEntries(availableTracks, locale, {
+			qualified: (name, detail) => m.play_controls_cc_qualified({ name, detail }),
+			numbered: (name, n) => m.play_controls_cc_numbered({ name, number: String(n) }),
+			untitled: (position) => m.play_track_fallback_label({ number: String(position) })
+		});
+		return captionOrder(entries, { locale, remembered: ccRemembered });
+	});
 	let scrubberHover = $state(false);
 	// Furthest end of the contiguous buffered range that contains
 	// currentTime — feeds the dimmer "preloaded" segment of the
@@ -531,18 +554,98 @@
 	}
 
 	function toggleCcMenu() {
+		if (!ccMenuOpen) ccRemembered = storedCaption(id);
 		ccMenuOpen = !ccMenuOpen;
 	}
 
+	/** Scroll the captions menu just far enough to show `item`, and
+	 *  focus it ($lib/play/caption-menu-fit). */
+	function revealCcItem(menu: HTMLElement, item: HTMLElement) {
+		menu.scrollTop = revealScroll({
+			scrollTop: menu.scrollTop,
+			viewHeight: menu.clientHeight,
+			itemTop: item.offsetTop,
+			itemHeight: item.offsetHeight
+		});
+		item.focus({ preventScroll: true });
+	}
+
+	/** The captions menu, as it mounts: capped at the room above the
+	 *  captions button inside the player and below the app's top bar —
+	 *  again on every resize while it is open — and opened on the
+	 *  selected entry. */
+	function fitCcMenu(menu: HTMLElement) {
+		const fit = () => {
+			const frame = ccMenuAnchor?.closest('.player-frame');
+			if (!ccMenuAnchor || !frame) return;
+			// In fullscreen the player covers the top bar.
+			const topbar = document.fullscreenElement ? null : document.querySelector('.topbar');
+			const height = menuHeight({
+				frameTop: frame.getBoundingClientRect().top,
+				ceiling: topbar?.getBoundingClientRect().bottom,
+				anchorTop: ccMenuAnchor.getBoundingClientRect().top,
+				gap: 8, // the menu's 0.5rem offset above the button
+				margin: 8,
+				floor: 96 // about two entries and the heading
+			});
+			menu.style.setProperty('max-block-size', `${height}px`);
+		};
+		fit();
+		const checked = menu.querySelector<HTMLElement>('[aria-checked="true"]');
+		if (checked) revealCcItem(menu, checked);
+		window.addEventListener('resize', fit);
+		return { destroy: () => window.removeEventListener('resize', fit) };
+	}
+
+	/** ArrowUp, ArrowDown, Home and End move through the menu's
+	 *  entries, and the player's volume shortcuts on the up and down
+	 *  arrows do not see them. */
+	function onCcMenuKey(e: KeyboardEvent) {
+		const menu = e.currentTarget as HTMLElement;
+		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
+		const at = items.indexOf(document.activeElement as HTMLElement);
+		const next = menuKeyStep(e.key, at, items.length);
+		if (next === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		revealCcItem(menu, items[next]);
+	}
+
+	/** A captions pick the browser's own menu made — with the custom
+	 *  controls off — remembered for the show as the app's own menu's
+	 *  are ($lib/play/caption-watch). */
+	function rememberViewerPick(video: HTMLVideoElement) {
+		// With the app's own controls on there is no browser menu: a
+		// change the app did not make is hls.js's, not the viewer's.
+		if (USE_CUSTOM_PLAYER_CONTROLS) return;
+		const pick = noteCaptionChange(video, video.textTracks);
+		if (pick === null) return;
+		const choice = captionChoiceOf(video.textTracks, pick);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+	}
+
+	/** The UI locale, which the subtitle track a session starts on
+	 *  follows; empty when Paraglide has none resolved. */
+	function uiLocale(): string {
+		try {
+			return getLocale();
+		} catch {
+			return '';
+		}
+	}
+
 	/** Pick a subtitle track by its index in the TextTrackList, or
-	 *  'off' to hide every track. The chosen one becomes `showing`,
-	 *  everything else `hidden`. */
-	function pickCcTrack(target: number | 'off') {
+	 *  'off' for none. Only the track shown is loaded; the rule is
+	 *  $lib/play/caption-pick's. */
+	function pickCcTrack(target: CaptionTarget) {
 		ccMenuOpen = false;
 		if (!videoEl) return;
-		for (let i = 0; i < videoEl.textTracks.length; i++) {
-			videoEl.textTracks[i].mode = target === i ? 'showing' : 'hidden';
-		}
+		applyCaptionPick(videoEl.textTracks, target);
+		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
+		// Under the show's id, unless the session was opened from a
+		// guessed match, which records nothing under the guess.
+		const choice = captionChoiceOf(videoEl.textTracks, target);
+		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
 	}
 
 	function setVolume(v: number) {
@@ -1451,11 +1554,24 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone — the page closed, or
+	// moved to another show: a refill landing after it is not fetched
+	// ($lib/refill/refill). Renewed per show below.
+	let refills = new AbortController();
+	onDestroy(() => refills.abort());
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refills.signal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -1661,6 +1777,7 @@
 		// thrash availableTracks' derivation chain.
 		const onTextTracksMutate = () => {
 			textTracksTick++;
+			rememberViewerPick(v);
 		};
 		v.textTracks.addEventListener('addtrack', onTextTracksMutate);
 		v.textTracks.addEventListener('removetrack', onTextTracksMutate);
@@ -1728,7 +1845,10 @@
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
 		// Armed AFTER the flush, which retires the previous source's.
-		armSourceScopedListeners({
+		// It also says where the stream starts: an hls engine begins
+		// loading at a resume point's fragment, below, so nothing
+		// before that fragment is fetched or shown.
+		const { startAt } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1736,7 +1856,9 @@
 			row: fromRow,
 			onResumeHold: (holding) => {
 				resumeHolding = holding;
-			}
+			},
+			// Only hls.js is handed the start, below.
+			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
 		playerError = null;
 		failedStreamError = null;
@@ -1832,6 +1954,7 @@
 				video: videoEl,
 				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
 				holdsStart: true,
+				startAt,
 				onView: (view) => {
 					qualityView = view;
 					// A stream retiring takes its levels with it; the next
@@ -1944,7 +2067,9 @@
 		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId));
+			sourceScope.add(
+				armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale(), storedCaption(id))
+			);
 		}
 	});
 
@@ -1987,6 +2112,8 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		id;
 		resetEpisodePageCache(kitsuPageCache);
+		refills.abort();
+		refills = new AbortController();
 	});
 
 	onMount(() => {
@@ -2034,10 +2161,11 @@
 	// Breadcrumb: Home › <title> › EP <n>. Re-runs when the episode
 	// number flips (next/prev buttons replaceState the URL) or when
 	// the title finally lands. The leaf is plain text — current page
-	// gets no href in the trail.
+	// gets no href in the trail. Named through the keeper, so the
+	// layout's reset for the navigation keeps it whichever runs first.
 	$effect(() => {
 		const title = detail?.canonical_title ?? null;
-		breadcrumb.set([
+		pageTrail.name(page.url.pathname, [
 			{ label: m.breadcrumb_home(), href: '/' },
 			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
@@ -2099,10 +2227,15 @@
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
-				version
+				version,
+				// The click may take this warm's session: it answers for the
+				// guessed card's row as the click would.
+				guessRow: guessRow(fromGuess, fromRow),
+				guessId: guessedId(fromGuess, id)
 			});
-			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
-				playStream(args, emit, signal)
+			void getOrFire(
+				makeKey(id, targetEp, mode, quality, version, args.guess_row),
+				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
 				 *  rejects with "aborted" which we swallow */
@@ -2158,7 +2291,12 @@
 			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
-			version
+			version,
+			caption: storedCaption(owner.showId),
+			guessRow: guessRow(guess, row),
+			// The guess, apart from the page's id: the resolve records it on
+			// the card's row when the switch lands on that row's listing.
+			guessId: guessedId(guess, owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2180,7 +2318,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality, version),
+						makeKey(owner.showId, targetEp, mode, quality, version, playArgs.guess_row),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2224,17 +2362,26 @@
 			// is the clicked show's even when the viewer has moved on.
 			// The tracker mirror is renderer-driven — the backend is
 			// stateless — and a guessed match writes nothing to the
-			// user's trackers.
+			// user's trackers unless its play landed on the card's own
+			// listing.
 			// The episode the session plays: the request may have named it
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, targetEp);
+			// A guess whose play landed on the card's own listing is recorded
+			// and mirrored as a play from the show's page is.
+			const record = playedRecord(
+				{ ...playArgs, episode: String(played) },
+				owner.showId,
+				guess,
+				outcome.session
+			);
 			recordPlayed(
 				{
-					args: { ...playArgs, episode: String(played) },
+					args: record.args,
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: !guess,
+					mirror: record.mirror,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
@@ -2534,7 +2681,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				// Body text is shaped by describeExternalLaunchFailure so
@@ -2602,7 +2750,8 @@
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))
@@ -3006,11 +3155,18 @@
 									<span class="pc-cc-rule" aria-hidden="true"></span>
 								</button>
 								{#if ccMenuOpen}
-									<div id="pc-cc-menu" class="pc-cc-menu" role="menu" tabindex="-1">
+									<div
+										id="pc-cc-menu"
+										class="pc-cc-menu"
+										role="menu"
+										tabindex="-1"
+										use:fitCcMenu
+										onkeydown={onCcMenuKey}
+									>
 										<p class="pc-cc-menu-heading">{m.play_controls_cc_menu_heading()}</p>
 										<button
 											type="button"
-											class="pc-menu-item"
+											class="pc-menu-item pc-cc-item"
 											class:pc-menu-active={!captionsOn}
 											role="menuitemradio"
 											aria-checked={!captionsOn}
@@ -3021,20 +3177,35 @@
 											</span>
 											<span>{m.play_controls_cc_off()}</span>
 										</button>
-										{#each availableTracks as t (t.index)}
+										{#snippet ccItem(t: (typeof ccMenu.rest)[number])}
 											<button
 												type="button"
-												class="pc-menu-item"
+												class="pc-menu-item pc-cc-item"
 												class:pc-menu-active={t.showing}
 												role="menuitemradio"
 												aria-checked={t.showing}
+												title={t.name}
 												onclick={() => pickCcTrack(t.index)}
 											>
 												<span class="pc-menu-check" aria-hidden="true">
 													{#if t.showing}✓{/if}
 												</span>
-												<span>{t.label}</span>
+												<span class="pc-cc-name">{t.name}</span>
+												{#if t.sdh}
+													<abbr class="pc-cc-sdh" title={m.play_controls_cc_sdh_title()}>
+														{m.play_controls_cc_sdh()}
+													</abbr>
+												{/if}
 											</button>
+										{/snippet}
+										{#each ccMenu.yours as t (t.index)}
+											{@render ccItem(t)}
+										{/each}
+										{#if ccMenu.yours.length > 0 && ccMenu.rest.length > 0}
+											<div class="pc-cc-divider" role="separator"></div>
+										{/if}
+										{#each ccMenu.rest as t (t.index)}
+											{@render ccItem(t)}
 										{/each}
 									</div>
 								{/if}
@@ -3887,7 +4058,7 @@
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
-											<img src={epThumb} alt="" loading="lazy" />
+											<img class="img-fade" use:fadeOnLoad src={epThumb} alt="" loading="lazy" />
 										{:else if air.unaired}
 											<span class="ep-card-thumb-placeholder ep-card-airs" aria-hidden="true">
 												{unairedLabel(air.airsAt)}
@@ -4591,6 +4762,15 @@
 		inset-inline-end: 0;
 		inset-block-end: calc(100% + 0.5rem);
 		min-inline-size: 14rem;
+		/* With a provider listing thirty-odd languages the menu is
+		   taller than the player: its height is capped at the room
+		   above the button (set as it opens, and on resize) and it
+		   scrolls inside that. */
+		max-inline-size: min(22rem, calc(100vw - 2rem));
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 		padding: 0.45rem;
 		background: rgba(28, 28, 32, 0.96);
 		border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4603,6 +4783,38 @@
 		   popover always wins. The kebab menu uses 5; the player-skip
 		   button is z-10 — we stay above both. */
 		z-index: 50;
+	}
+	/* Each entry stays on one line, its name ellipsised only past the
+	   menu's widest. */
+	.pc-cc-menu > * {
+		flex-shrink: 0;
+	}
+	.pc-cc-item {
+		white-space: nowrap;
+	}
+	.pc-cc-name {
+		flex: 1 1 auto;
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* The mark for a track for the deaf and hard of hearing: a small
+	   outlined tag after the name, so "Thai" and its SDH twin read as
+	   one language in two forms. */
+	.pc-cc-sdh {
+		flex-shrink: 0;
+		padding: 0.05rem 0.35rem;
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 4px;
+		font: 600 0.65rem/1.3 var(--font-mono);
+		letter-spacing: 0.06em;
+		color: rgba(255, 255, 255, 0.72);
+		text-decoration: none;
+	}
+	.pc-cc-divider {
+		block-size: 1px;
+		margin: 0.3rem 0.6rem;
+		background: rgba(255, 255, 255, 0.12);
 	}
 	.pc-cc-menu-heading {
 		margin: 0.15rem 0.6rem 0.4rem;
@@ -5456,9 +5668,11 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.92);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
 		transition:
 			transform var(--dur-med) var(--ease-out-soft),
-			filter var(--dur-med) var(--ease-out-soft);
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-card:hover:not(:disabled) .ep-card-thumb img {
 		transform: scale(1.04);

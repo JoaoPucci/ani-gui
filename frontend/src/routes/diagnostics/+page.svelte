@@ -15,6 +15,8 @@
 		type HistoryEntry
 	} from '$lib/api';
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
+	import { retiredSweepView } from '$lib/diagnostics/retired-sweep';
+	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
 	import { loadMockPrefs, saveMockPrefs } from '$lib/watch-order/mock/prefs';
 	import { m } from '$lib/paraglide/messages';
@@ -32,6 +34,12 @@
 	// on the launch that upgraded from a version which kept its own
 	// copy of the shell script — see $lib/diagnostics/legacy-sweep.
 	const legacySweep = $derived(legacySweepView(info?.removed_legacy_paths));
+	// What the sweep over a retired streaming provider's rows changed,
+	// if anything — see $lib/diagnostics/retired-sweep.
+	const retiredSweep = $derived(retiredSweepView(info?.retired_provider_sweep));
+	// What the launch's cache reclaim deleted, if anything — see
+	// $lib/diagnostics/cache-reclaim.
+	const cacheReclaim = $derived(cacheReclaimView(info?.cache_reclaim));
 
 	// Whether the home and detail pages show their banner framing
 	// switch. Kept with the framing preferences themselves, so turning
@@ -116,6 +124,46 @@
 			<p>{m.diagnostics_app_info_loading()}</p>
 		{/if}
 	</section>
+
+	{#if cacheReclaim.visible}
+		<section>
+			<h2>{m.diagnostics_section_cache_reclaim()}</h2>
+			<p>{m.diagnostics_cache_reclaim_description()}</p>
+			<ul>
+				{#if cacheReclaim.oldRows > 0}
+					<li>{m.diagnostics_cache_reclaim_old({ count: cacheReclaim.oldRows })}</li>
+				{/if}
+				{#if cacheReclaim.expiredRows > 0}
+					<li>{m.diagnostics_cache_reclaim_expired({ count: cacheReclaim.expiredRows })}</li>
+				{/if}
+			</ul>
+		</section>
+	{/if}
+
+	{#if retiredSweep.visible}
+		<section>
+			<h2>{m.diagnostics_section_retired_sweep()}</h2>
+			{#if retiredSweep.superseded.length > 0}
+				<p>{m.diagnostics_retired_sweep_superseded()}</p>
+				<ul>
+					{#each retiredSweep.superseded as title, i (i)}
+						<li>{title}</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if retiredSweep.renumbered.length > 0}
+				<p>{m.diagnostics_retired_sweep_renumbered()}</p>
+				<ul>
+					{#each retiredSweep.renumbered as title, i (i)}
+						<li>{title}</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if retiredSweep.storedEntries > 0}
+				<p>{m.diagnostics_retired_sweep_stored({ count: retiredSweep.storedEntries })}</p>
+			{/if}
+		</section>
+	{/if}
 
 	{#if legacySweep.visible}
 		<section>
