@@ -44,7 +44,8 @@
 //! A play's resolve is not a watch, even when it puts down the page's
 //! Kitsu id the cache already accepts ([`Held::upsert_resolved`]): it
 //! leaves the moment where it is, so a watch asked for before it still
-//! records, and a watch's deferred verdict settles the id it finds.
+//! records, and a watch's deferred verdict still lands over the id
+//! the resolve put down.
 //!
 //! A show is removed under its row's key, and not everything that
 //! would write of it has that key: skip times are cached under the
