@@ -3,10 +3,12 @@ import {
 	guessBinds,
 	guessedId,
 	guessRow,
+	landedElsewhere,
 	openedFromGuess,
 	openedFromRow,
 	recordableId,
 	withGuess,
+	withLanding,
 	withRow
 } from './play-origin';
 
@@ -68,5 +70,20 @@ describe('a play session opened from a Continue card', () => {
 		expect(openedFromRow(new URLSearchParams('session=s&episode=3'))).toBeNull();
 		expect(openedFromRow(new URLSearchParams('row='))).toBeNull();
 		expect(withRow('?session=s', null)).toBe('?session=s');
+	});
+});
+
+describe("where a guessed session's play landed", () => {
+	it("is carried in the URL only when a guess landed on another listing than the card's", () => {
+		expect(withLanding('?session=s', true, { own_listing: false })).toBe('?session=s&landed=other');
+		expect(withLanding('?session=s', true, {})).toBe('?session=s&landed=other');
+		expect(withLanding('?session=s', true, { own_listing: true })).toBe('?session=s');
+		// A session no guess opened lands nowhere in particular.
+		expect(withLanding('?session=s', false, { own_listing: false })).toBe('?session=s');
+	});
+
+	it('is read back from the URL', () => {
+		expect(landedElsewhere(new URLSearchParams('session=s&guess=1&landed=other'))).toBe(true);
+		expect(landedElsewhere(new URLSearchParams('session=s&guess=1'))).toBe(false);
 	});
 });

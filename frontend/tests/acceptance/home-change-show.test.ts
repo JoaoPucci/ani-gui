@@ -412,3 +412,32 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 		expect(backend.linkCalls[0].rows).toEqual([JOJO_CARD]);
 	});
 });
+
+describe("a guessed card's player is told where its play landed", () => {
+	async function resumeJojo(ownListing: boolean) {
+		await openHome();
+		cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances.at(-1)!.dispatch(
+			'done',
+			JSON.stringify({
+				session_id: 'session-1',
+				master_url: '/s/t/master.m3u8',
+				media_kind: 'hls',
+				own_listing: ownListing
+			})
+		);
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the player');
+		return String(vi.mocked(goto).mock.calls.at(-1)?.[0]);
+	}
+
+	it("as another listing than the card's", async () => {
+		const href = await resumeJojo(false);
+		expect(new URL(href, 'http://x').searchParams.get('landed')).toBe('other');
+	});
+
+	it("as the card's own listing", async () => {
+		const href = await resumeJojo(true);
+		expect(new URL(href, 'http://x').searchParams.get('landed')).toBeNull();
+	});
+});

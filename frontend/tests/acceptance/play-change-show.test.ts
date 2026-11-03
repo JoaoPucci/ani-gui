@@ -216,6 +216,15 @@ describe('the slip of a guessed session', () => {
 		expect(dialog()).toBeNull();
 	});
 
+	it('offers no "That\'s right" when the play landed on another listing than the card\'s', async () => {
+		// The JoJo card's play landed on the 2012 listing: "That's right"
+		// would record the 2012 series on the 2000 line.
+		await openPlayer({ guess: '1', row: CARD, landed: 'other' });
+		await until(() => slipText().includes(guessNote()), 'the slip');
+		expect(button(m.play_link_guess_right(), slip()!)).toBeNull();
+		expect(button(m.detail_link_change(), slip()!)).not.toBeNull();
+	});
+
 	it('is not there for a session no guess opened', async () => {
 		await openPlayer({ row: CARD });
 		await settle();
