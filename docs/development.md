@@ -304,8 +304,10 @@ declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
 build ignores names it does not declare and values its declaration
 does not list.
 
-**Creating the branch (once).** The branch holds `flags.json` and
-nothing else. It is not the default branch, so the `master` ruleset
+**Creating the branch (once).** The branch holds `flags.json` and,
+once the file is signed, its signature `flags.json.minisig` and a
+`.gitattributes` that keeps both byte for byte (see "Signing the flags
+file" below). It is not the default branch, so the `master` ruleset
 does not cover it. These commands create it in a separate worktree
 next to the checkout. Run them in bash from the repository root:
 
@@ -337,17 +339,17 @@ behaviours its declaration lists:
 }
 ```
 
-**Flipping a flag.** Edit `flags.json` on the `flags` branch, either in
-the worktree above or in GitHub's web editor, and commit. From the
-worktree, in bash:
-
-```sh
-cd ../ani-gui-flags
-git pull
-python3 -m json.tool flags.json
-git commit -am "chore: switch some_kill_switch off"
-git push
-```
+**Flipping a flag.** Edit `flags.json` in the worktree above, then
+check, sign, commit and push it with step 3 of
+[Signing the flags file](#signing-the-flags-file), giving the commit a
+message such as `chore: switch some_kill_switch off`. Sign every edit,
+a flag change included: the signature covers the whole file, so an edit
+pushed without a fresh one leaves every install keeping the flags and
+dropping every notice the file carries, until a matching signature is
+pushed. GitHub's web editor cannot sign, so an edit made there does the
+same; make edits in the worktree. Before any build trusts a key there
+is nothing to drop, and step 3 without its two `minisign` lines is
+enough.
 
 `python3 -m json.tool` checks only that the file is JSON. Two other
 mistakes get past it and fail differently:
@@ -364,7 +366,8 @@ So after pushing, wait out the five-minute CDN cache, launch the app,
 and confirm the values with `GET /api/flags` (below).
 
 **Lifting a retreat.** Set the flag back to its default (`true`, or
-the current behaviour's name), or remove its entry, and push. Removing
+the current behaviour's name), or remove its entry, and publish the
+file as above, signed. Removing
 the whole file, or the branch, also works in the end. But installs then
 get a 404, which counts as a failed fetch, so each one keeps the copy it
 cached for up to seven days.
@@ -472,33 +475,44 @@ signed content; that is the safe direction.
 exact bytes you push, then commit the file and its signature together:
 
 ```sh
-cd ../ani-gui-flags
-git pull
-python3 -m json.tool flags.json
-minisign -S -s ~/.minisign/ani-gui-flags.key -m flags.json \
-  -t "flags.json $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-minisign -V -p ~/.minisign/ani-gui-flags.pub -m flags.json
-git add flags.json flags.json.minisig
-git commit -m "chore: publish a notice"
-git push
+cd ../ani-gui-flags &&
+  git pull &&
+  python3 -m json.tool flags.json &&
+  minisign -S -s ~/.minisign/ani-gui-flags.key -m flags.json \
+    -t "flags.json $(date -u +%Y-%m-%dT%H:%M:%SZ)" &&
+  minisign -V -p ~/.minisign/ani-gui-flags.pub -m flags.json &&
+  git add flags.json flags.json.minisig &&
+  git commit -m "chore: publish a notice" &&
+  git push
 ```
 
 `-S` writes `flags.json.minisig` beside the file with minisign's default
 prehashed signature, the only kind the app accepts; `-V` checks it
-before it is pushed. In PowerShell (Windows' `python3` may be the
+before it is pushed. Each command runs only if the one before it
+succeeded, so a file that is not JSON, or a signature that does not
+verify, is never committed or pushed. In PowerShell (Windows' `python3` may be the
 Store's placeholder, so the check uses `py -3`; PowerShell's own
 `ConvertFrom-Json` accepts comments the app does not, so it is no
 substitute):
 
 ```powershell
-Set-Location ..\ani-gui-flags
-git pull
-py -3 -m json.tool flags.json
-minisign -S -s "$HOME\.minisign\ani-gui-flags.key" -m flags.json -t "flags.json $(Get-Date -AsUTC -UFormat '%Y-%m-%dT%H:%M:%SZ')"
-minisign -V -p "$HOME\.minisign\ani-gui-flags.pub" -m flags.json
-git add flags.json flags.json.minisig
-git commit -m "chore: publish a notice"
-git push
+& {
+  Set-Location -ErrorAction Stop ..\ani-gui-flags
+  git pull
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
+  py -3 -m json.tool flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
+  minisign -S -s "$HOME\.minisign\ani-gui-flags.key" -m flags.json -t "flags.json $(Get-Date -AsUTC -UFormat '%Y-%m-%dT%H:%M:%SZ')"
+  if ($LASTEXITCODE -ne 0) { throw 'signing failed' }
+  minisign -V -p "$HOME\.minisign\ani-gui-flags.pub" -m flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'the signature does not verify' }
+  git add flags.json flags.json.minisig
+  if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
+  git commit -m "chore: publish a notice"
+  if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+  git push
+  if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+}
 ```
 
 After pushing, wait out the CDN's five-minute cache: until both files
