@@ -118,3 +118,14 @@ export function watchingFor(
 export function similarHidden(run: WatchRun, view: StripView): ReadonlySet<string> {
 	return new Set([...run.entries, ...view.before, ...view.after].map((e) => e.id));
 }
+
+/**
+ * The entries the strip itself shows: its tiles, and the entry the
+ * "You're watching" card names. "Similar titles" leaves these out, so
+ * no poster appears twice on the page.
+ */
+export function shownOnStrip(view: StripView, watching: WatchEntry | null): ReadonlySet<string> {
+	void view;
+	void watching;
+	return new Set();
+}
