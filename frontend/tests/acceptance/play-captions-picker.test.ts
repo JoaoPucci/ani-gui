@@ -468,6 +468,27 @@ describe('the captions menu with many languages', () => {
 		expect(video.volume).toBe(0.5);
 	});
 
+	it('reads Shift+arrows as arrows: they step through the menu, not the volume', async () => {
+		handlers();
+		const video = await mountAt('many-1', '1', MANY.length);
+		video.volume = 0.5;
+		await openMenu();
+		const focused = () =>
+			(document.activeElement?.textContent ?? '').replace('✓', '').replace(/\s+/g, ' ').trim();
+		expect(focused()).toBe('English');
+		const taken = !document.activeElement?.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowDown',
+				bubbles: true,
+				cancelable: true,
+				shiftKey: true
+			})
+		);
+		expect(taken).toBe(true);
+		expect(focused()).toBe('Arabic');
+		expect(video.volume).toBe(0.5);
+	});
+
 	it('leaves modified arrows to the browser', async () => {
 		handlers();
 		await mountAt('many-1', '1', MANY.length);
