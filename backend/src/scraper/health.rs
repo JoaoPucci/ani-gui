@@ -83,14 +83,45 @@ impl HealthRun {
     /// The run after `obs`, observed at `now_ms`.
     #[must_use]
     pub fn observe(self, obs: Observation, now_ms: u64) -> Self {
-        let _ = (obs, now_ms);
-        self
+        match obs {
+            Observation::RateLimited => self,
+            Observation::Success => {
+                let recovered = match self.health() {
+                    Health::NotAnswering { since_ms, .. } => Some((since_ms, now_ms.max(since_ms))),
+                    _ => self.recovered,
+                };
+                Self {
+                    recovered,
+                    ..Self::default()
+                }
+            }
+            Observation::Failure { interactive } => Self {
+                failures: self.failures.saturating_add(1),
+                user_failed: self.user_failed || interactive,
+                since_ms: Some(self.since_ms.unwrap_or(now_ms)),
+                last_failure_ms: now_ms,
+                recovered: None,
+            },
+        }
     }
 
     /// What the run says.
     #[must_use]
     pub fn health(&self) -> Health {
-        Health::Answering
+        match (self.since_ms, self.recovered) {
+            (Some(since_ms), _) if self.failures >= OUTAGE_FAILURES && self.user_failed => {
+                Health::NotAnswering {
+                    since_ms,
+                    failures: self.failures,
+                    last_failure_ms: self.last_failure_ms,
+                }
+            }
+            (_, Some((since_ms, recovered_ms))) => Health::AnsweringAgain {
+                since_ms,
+                recovered_ms,
+            },
+            _ => Health::Answering,
+        }
     }
 }
 
