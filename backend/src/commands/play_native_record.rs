@@ -60,8 +60,8 @@ fn put_numbering(state: &AppState, native: &NativeResolved) {
 /// first, whatever happens. A play overtaken by a later watch records
 /// no row.
 ///
-/// `kitsu_id` is the Kitsu id the play may record
-/// ([`crate::commands::play::PlayArgs::recordable_kitsu_id`]): the row
+/// `kitsu_id` is the Kitsu id the play's resolve may record
+/// ([`crate::commands::play::PlayArgs::resolve_kitsu_id`]): the row
 /// carries it from this write when the cache alone accepts it
 /// ([`resolved_id`]).
 pub(crate) fn record_fresh_watch(

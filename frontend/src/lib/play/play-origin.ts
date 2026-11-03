@@ -5,8 +5,9 @@
  * guess — a remembered title match, a search pick, a guessed mapping —
  * records that guess, on the history row and on the user's tracker
  * accounts, only when the play landed on the card's own listing
- * (`guessBinds`); any other play of it would match the row by a guess
- * for good. The flag and the card's row travel with the session's URL (every
+ * (`guessBinds`; for the row a play's resolve writes, the backend's own
+ * listing check on `guess_id`, see `guessedId`); any other play of it
+ * would match the row by a guess for good. The flag and the card's row travel with the session's URL (every
  * URL the play page builds for itself — each episode switch — carries
  * it), so the session keeps its verdict for its whole life whatever
  * the home page does meanwhile. A session opened from the
@@ -21,8 +22,9 @@ export function openedFromGuess(search: URLSearchParams): boolean {
 	return search.get(GUESS_PARAM) === '1';
 }
 
-/** The Kitsu id a request from the session may record, or undefined
- *  for a session opened from a guess. */
+/** The page's Kitsu id a request from the session names (`kitsu_id`),
+ *  or undefined for a session opened from a guess, whose guess travels
+ *  apart (`guessedId`). */
 export function recordableId(id: string, fromGuess: boolean): string | undefined {
 	return fromGuess || !id ? undefined : id;
 }

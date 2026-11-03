@@ -262,8 +262,9 @@ fn write_history_on_cache_hit(
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
         watched_at: None,
-        // The page's id, when the cache alone accepts it — as a fresh
-        // resolve records it.
+        // The id the resolve may record (`resolve_kitsu_id`): the
+        // page's, or a guessed card's guess on its own listing, when the
+        // cache alone accepts it — as a fresh resolve records it.
         kitsu_id: crate::commands::play_native_record::resolved_id(
             state,
             &cached.show_title,
