@@ -198,8 +198,8 @@ async function openFirstPage(
 ) {
   const contents = win.webContents;
   let failed = false;
-  // `beforeShow` is what must be on screen first — the splash, which a
-  // fast start would otherwise close before it had painted.
+  // `beforeShow` is whatever must happen first — the splash on screen,
+  // the page's first render (main.js).
   const shown = awaitFirstShow(win, { timeoutMs })
     .then(() => waitBeforeShow(contents, beforeShow, logError))
     .then(() => {

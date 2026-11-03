@@ -420,7 +420,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   );
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
-  const appReady = appReadyWaiter(win.webContents, ipcMain);
+  const appReady = appReadyWaiter(win.webContents, ipcMain, {
+    isShown: () => !win.isDestroyed() && win.isVisible(),
+  });
   appReady.ready.then((rendered) =>
     console.log(
       rendered
@@ -563,12 +565,14 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   const firstPage = {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
-    // The window loads hidden; at ready-to-show it waits, up to a
-    // second, for the splash to have rendered a frame, then for what is
-    // left of the splash's minimum time on screen after that paint, and
-    // only then is mapped (maximized) and shown, and the splash put
-    // away. The two are never on screen competing, on any platform. A
-    // later window finds no splash and waits for nothing.
+    // The window loads hidden; at ready-to-show it waits for two
+    // things: the splash — up to a second for it to have rendered a
+    // frame, then what is left of its minimum time on screen — and its
+    // own renderer's word that the first page has rendered (at most four
+    // seconds from the window's creation, lib/app-window.cjs). Only then
+    // is it mapped (maximized) and shown, and the splash put away. The
+    // two are never on screen competing, on any platform. A later window
+    // finds no splash, and waits only for its renderer.
     beforeShow: () => Promise.all([splash.whenShown(), appReady.ready]),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window

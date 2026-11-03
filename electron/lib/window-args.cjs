@@ -15,7 +15,9 @@ const ORIGIN = /^\S+$/;
  * `backend` is what the handshake resolved with (`apiBase`,
  * `internalSecret`, `lanes`); `locale` is the one config.toml names,
  * or null. A missing locale or secret is left out rather than sent
- * empty, so the preload falls through to its own default.
+ * empty, so the preload falls through to its own default — for the
+ * locale, Paraglide's preferred language and base locale, rather than a
+ * value that would seed garbage.
  *
  * `launchFlags` is the backend's flags answer (lib/launch-flags.cjs),
  * or null. The flags go URI-encoded JSON in one argument, so no

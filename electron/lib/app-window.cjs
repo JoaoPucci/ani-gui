@@ -32,21 +32,29 @@ function appWindowOptions({ width, height, icon, preload, additionalArguments })
     show: false,
     backgroundColor: APP_BACKGROUND,
     icon,
+    // Frameless: the renderer draws its titlebar and controls. Resizable
+    // stays at its default (true), so the OS resize edges still work.
     frame: false,
     webPreferences: { preload, contextIsolation: true, nodeIntegration: false, additionalArguments },
   };
 }
 
-let current = { rendered: false, gaveUp: false };
+let current = { rendered: false, gaveUp: false, beforeReveal: false };
 
 /**
  * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`,
  * that its first page has rendered. `ready` settles true when it does,
  * false after `timeoutMs`; either way the listener goes. Start it when
- * the window is made, so a word that comes early is not missed.
+ * the window is made, so a word that comes early is not missed. The
+ * record notes whether the window was still hidden (`isShown`) when
+ * the word came: the reveal waited for it.
+ *
+ * The renderer sends the word after two animation frames, which run in
+ * a hidden window only because `paintWhenInitiallyHidden` is left at its
+ * default (true); turned off, every launch would wait out the bound.
  */
-function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS } = {}) {
-  const state = { rendered: false, gaveUp: false };
+function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown = () => false } = {}) {
+  const state = { rendered: false, gaveUp: false, beforeReveal: false };
   current = state;
   let settle;
   const ready = new Promise((resolve) => (settle = resolve));
@@ -58,8 +66,12 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS } = {}) {
     state.gaveUp = !rendered;
     settle(rendered);
   };
+  // Matched by the sending window's id: Electron may hand over another
+  // wrapper of the same contents.
   function onReady(event) {
-    if (event && event.sender === contents) done(true);
+    if (!event || !event.sender || event.sender.id !== contents.id) return;
+    state.beforeReveal = !isShown();
+    done(true);
   }
   ipc.on(APP_READY_CHANNEL, onReady);
   timer = setTimeout(() => done(false), timeoutMs);

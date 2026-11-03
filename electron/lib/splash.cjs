@@ -11,6 +11,8 @@
 
 const path = require("node:path");
 
+const { APP_BACKGROUND } = require("./app-window.cjs");
+
 /** Set on the splash's BrowserWindow, so a harness can tell it from
  *  the app's window (electron/e2e/launch.ts). */
 const SPLASH_MARK = "aniGuiSplash";
@@ -59,7 +61,7 @@ function splashWindowOptions() {
     skipTaskbar: false,
     center: true,
     // The ink the page paints, so nothing flashes before it does.
-    backgroundColor: require("./app-window.cjs").APP_BACKGROUND,
+    backgroundColor: APP_BACKGROUND,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
