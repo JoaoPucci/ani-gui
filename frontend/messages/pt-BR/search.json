@@ -1,7 +1,7 @@
 {
 	"title": "Busca",
 	"subtitle_empty": "Refine sua busca acima. Os resultados são agrupados por fonte.",
-	"eyebrow_key": "Consulta",
+	"eyebrow_key": "Busca",
 	"status_searching": "buscando…",
 	"count_word": [
 		{
@@ -24,14 +24,14 @@
 	"chips_type_aria_label": "Filtrar por subtipo",
 	"chips_clear_button_aria_label": "Limpar",
 	"skeleton_aria_label": "Carregando resultados",
-	"empty_headline_prefix": "Nada combinou com “",
+	"empty_headline_prefix": "Nada encontrado para “",
 	"empty_headline_suffix": "”.",
-	"empty_detail": "O catálogo do Kitsu pode ser escasso para títulos sazonais ou com aliases. Tente a forma em romaji ou um prefixo mais curto.",
+	"empty_detail": "O Kitsu às vezes não encontra temporadas específicas nem nomes alternativos. Tente o nome em romaji ou só o começo do título.",
 	"discovery_trending_eyebrow": "Em alta agora",
 	"discovery_trending_caption": "em exibição · top 20",
 	"discovery_top_rated_eyebrow": "Mais bem avaliados",
 	"discovery_top_rated_caption": "de todos os tempos · via Kitsu",
-	"filtered_empty_headline": "Nenhum resultado no filtro atual.",
+	"filtered_empty_headline": "Nenhum resultado com este filtro.",
 	"filtered_empty_detail": "Limpe ou altere o filtro de tipo acima para ver mais resultados.",
 	"card_eps_suffix": [
 		{
@@ -52,7 +52,7 @@
 	"paging_end": "Fim dos resultados para “{query}”.",
 	"paging_failed": "Não foi possível carregar mais resultados.",
 	"paging_retry": "Tentar de novo",
-	"paging_held": "As últimas páginas não tinham nada que você possa assistir.",
+	"paging_held": "As últimas páginas não tinham nada que desse para assistir.",
 	"paging_keep_looking": "Continuar procurando",
 	"paging_load_more": "Carregar mais resultados",
 	"count_more": "{count}+",
