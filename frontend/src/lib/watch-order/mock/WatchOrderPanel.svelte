@@ -20,12 +20,12 @@
 	import RunCard from './RunCard.svelte';
 	import StripTrio from './StripTrio.svelte';
 	import StripWatching from './StripWatching.svelte';
-	import { numeral, railKeyText } from './meta';
-	import { loopSize, railItems } from './order';
+	import { numeral, railKeyText } from '../meta';
+	import { loopSize, railItems } from '../order';
 	import type { WatchOrderMockPrefs } from './prefs';
-	import { shortTitle } from './short-title';
+	import { shortTitle } from '../short-title';
 	import type { MockEntry, MockRun } from './types';
-	import { stripView } from './strip-view';
+	import { stripView } from '../strip-view';
 	import { currentIn, scrollLeftFor } from './view';
 
 	let {
@@ -46,7 +46,7 @@
 	const items = $derived(railItems(run, prefs.order));
 	const loop = $derived(loopSize(run, id, prefs.order));
 	const titles = $derived(run.entries.map((e) => e.title));
-	const onNow = $derived(currentIn(run, prefs.order));
+	const onNow = $derived(currentIn(run, run.progress, prefs.order));
 	const caption = $derived.by(() => {
 		if (here.position !== null && here.total !== null)
 			return m.watchorder_strip_position({

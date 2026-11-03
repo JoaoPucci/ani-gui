@@ -1,23 +1,23 @@
 /**
  * One entry's place in its run: its number, the run's length where the
  * order is one line, and the entries just before and after it.
- * Part of the mockups' ordering; `./order` gathers the pieces.
+ * Part of the run's ordering; `./order` gathers the pieces.
  */
 import { byStart, type WatchOrder } from './by-start';
 import { linkGraph, type RunGraph } from './graph';
-import type { MockEntry, MockRun } from './types';
+import type { WatchEntry, WatchRun } from './types';
 
 export interface Placement {
 	/** Place counted from the run's first entry, or null where unnumbered. */
 	readonly position: number | null;
 	/** Run length, only where the order is one line. */
 	readonly total: number | null;
-	readonly before: readonly MockEntry[];
-	readonly after: readonly MockEntry[];
+	readonly before: readonly WatchEntry[];
+	readonly after: readonly WatchEntry[];
 	readonly inCycle: boolean;
 }
 
-export function releasedLine(run: MockRun): MockEntry[] {
+export function releasedLine(run: WatchRun): WatchEntry[] {
 	return [...run.entries].sort(byStart);
 }
 
@@ -49,7 +49,7 @@ function isLine(graph: RunGraph): boolean {
 	return true;
 }
 
-export function placement(run: MockRun, id: string, order: WatchOrder): Placement {
+export function placement(run: WatchRun, id: string, order: WatchOrder): Placement {
 	if (order === 'released') {
 		const line = releasedLine(run);
 		const at = line.findIndex((e) => e.id === id);

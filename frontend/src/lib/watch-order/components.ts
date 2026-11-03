@@ -1,7 +1,7 @@
 /**
  * Strongly connected components of a run's links (Tarjan): members of a
  * component larger than one lead round to one another, a cycle.
- * Part of the mockups' ordering; `./order` gathers the pieces.
+ * Part of the run's ordering; `./order` gathers the pieces.
  */
 
 /** Tarjan's components; members of a component larger than one form a cycle. */

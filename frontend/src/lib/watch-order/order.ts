@@ -1,6 +1,5 @@
 /**
- * Order within a run, as the proposal's section 4 defines it, for the
- * mockups. Link order follows the prequel/sequel links with shortcut
+ * Order within a run, as the proposal's section 4 defines it. Link order follows the prequel/sequel links with shortcut
  * links ignored and cycles taken as one block; release order sorts by
  * start date with unknown dates last.
  */

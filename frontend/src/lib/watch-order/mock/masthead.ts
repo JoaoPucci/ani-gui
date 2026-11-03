@@ -2,7 +2,7 @@
  * The franchise page's masthead (mockup): the entry whose artwork it
  * shows. Part of the mockups' views.
  */
-import type { WatchOrder } from './by-start';
+import type { WatchOrder } from '../by-start';
 import type { MockEntry, MockRun } from './types';
 
 /**

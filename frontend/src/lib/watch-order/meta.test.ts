@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { MOCK_RUNS } from './fixtures';
+import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import { metaLine, numeral, railKeyText, splitMeta } from './meta';
-import type { MockRun } from './types';
-import { entryIn } from './view';
+import type { WatchEntry, WatchRun } from './types';
 
 const TODAY = '2026-11-02';
-const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
+function entryIn(r: WatchRun, id: string): WatchEntry | undefined {
+	return [...r.entries, ...r.versions, ...r.films, ...r.sides, ...r.recaps].find(
+		(e) => e.id === id
+	);
+}
+const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
 const line = (key: string, id: string, today = TODAY) =>
-	metaLine(run(key), entryIn(run(key), id)!, today).map((s) => `${s.kind}:${s.text}`);
+	metaLine(entryIn(run(key), id)!, run(key).progress[id], today).map((s) => `${s.kind}:${s.text}`);
 
-describe('mockup meta line', () => {
+describe('meta line', () => {
 	it('shows format, year and episode count for an unstarted entry', () => {
 		expect(line('bleach', '48015')).toEqual(['word:TV', 'num:2024', 'num:14', 'unit:ep']);
 	});
@@ -31,7 +35,7 @@ describe('mockup meta line', () => {
 	it('reads progress without a total as the episode alone', () => {
 		const r = { ...run('jojo'), progress: { '49847': 3 } };
 		const e = { ...entryIn(r, '49847')!, episodes: null };
-		expect(metaLine(r, e, TODAY).at(-1)).toEqual({ kind: 'num', text: 'EP 3' });
+		expect(metaLine(e, r.progress['49847'], TODAY).at(-1)).toEqual({ kind: 'num', text: 'EP 3' });
 	});
 
 	it('pads positions to two digits', () => {
@@ -63,7 +67,9 @@ describe('rail key text', () => {
 
 describe('splitMeta', () => {
 	const parts = (key: string, id: string, today = TODAY) =>
-		splitMeta(metaLine(run(key), entryIn(run(key), id)!, today)).map((p) => p.map((s) => s.text));
+		splitMeta(metaLine(entryIn(run(key), id)!, run(key).progress[id], today)).map((p) =>
+			p.map((s) => s.text)
+		);
 
 	it('puts the format and year first, and the rest on its own line', () => {
 		expect(parts('jojo', '46598')).toEqual([['TV', '2022'], ['EP 13 of 14']]);

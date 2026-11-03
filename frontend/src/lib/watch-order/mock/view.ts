@@ -5,7 +5,8 @@
  * live beside it and are re-exported here.
  */
 import { MOCK_RUNS } from './fixtures';
-import { placement, type WatchOrder } from './order';
+import { isUnaired } from '../entry';
+import { placement, type WatchOrder } from '../order';
 import type { MockEntry, MockRun } from './types';
 
 export function runFor(id: string, runs: readonly MockRun[] = MOCK_RUNS): MockRun | null {
@@ -15,30 +16,6 @@ export function runFor(id: string, runs: readonly MockRun[] = MOCK_RUNS): MockRu
 export function entryIn(run: MockRun, id: string): MockEntry | null {
 	const all = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps];
 	return all.find((e) => e.id === id) ?? null;
-}
-
-export type ProgressView =
-	| { kind: 'none' }
-	| { kind: 'watched' }
-	| { kind: 'partway'; episode: number; total: number | null };
-
-export function progressOf(run: MockRun, entry: MockEntry): ProgressView {
-	const p = run.progress[entry.id];
-	if (p === undefined) return { kind: 'none' };
-	if (p === 'watched') return { kind: 'watched' };
-	return { kind: 'partway', episode: p, total: entry.episodes };
-}
-
-/** Share of the entry watched, 0–1, for a progress bar. */
-export function progressShare(view: ProgressView): number {
-	if (view.kind === 'watched') return 1;
-	if (view.kind === 'partway' && view.total) return Math.min(1, view.episode / view.total);
-	return 0;
-}
-
-/** Not aired yet: a future start, or no start at all. */
-export function isUnaired(entry: MockEntry, today: string): boolean {
-	return entry.start === null || entry.start > today;
 }
 
 export type UpNext =
@@ -56,10 +33,7 @@ export function upNextFor(run: MockRun, id: string, order: WatchOrder, today: st
 	return isUnaired(entry, today) ? { kind: 'unaired', entry } : { kind: 'one', entry };
 }
 
-/** "2023" from a start date, or null. */
-export function yearOf(entry: MockEntry): string | null {
-	return entry.start?.slice(0, 4) ?? null;
-}
-
-export { currentIn, handoffs, type Handoff } from './handoff';
+export { handoffs, type Handoff } from './handoff';
+export { currentIn } from '../strip-view';
+export { isUnaired, progressOf, progressShare, yearOf, type ProgressView } from '../entry';
 export { asRef, franchiseName, scrollLeftFor } from './adapters';

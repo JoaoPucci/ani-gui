@@ -8,7 +8,7 @@
   the next (splitMeta), for tiles too narrow to keep one line.
 -->
 <script lang="ts">
-	import { splitMeta, type MetaSegment } from './meta';
+	import { splitMeta, type MetaSegment } from '../meta';
 
 	let { segments, stacked = false }: { segments: readonly MetaSegment[]; stacked?: boolean } =
 		$props();

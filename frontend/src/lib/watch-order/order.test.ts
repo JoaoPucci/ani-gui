@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { MOCK_RUNS } from './fixtures';
+import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import {
 	byStart,
 	linkGraph,
@@ -12,12 +12,12 @@ import {
 	sequence,
 	type Segment
 } from './order';
-import type { MockEntry, MockRun } from './types';
+import type { WatchEntry, WatchRun } from './types';
 
-const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
-const ids = (list: readonly MockEntry[]) => list.map((e) => e.id);
+const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
+const ids = (list: readonly WatchEntry[]) => list.map((e) => e.id);
 
-function entry(id: string, start: string | null): MockEntry {
+function entry(id: string, start: string | null): WatchEntry {
 	return {
 		id,
 		title: id,
@@ -104,7 +104,7 @@ describe('every fixture run', () => {
 	it('lists every member once in either order', () => {
 		fc.assert(
 			fc.property(
-				fc.constantFrom(...MOCK_RUNS),
+				fc.constantFrom(...FIXTURE_RUNS),
 				fc.constantFrom('linked' as const, 'released' as const),
 				(r, order) => {
 					const seq = ids(sequence(r, order));
@@ -179,7 +179,7 @@ describe('a cycle in link order', () => {
 
 	it('carries on from the earliest unlisted member when the links run out', () => {
 		const e = (id: string, start: string) => ({ ...entryOf(id), start });
-		const r: MockRun = {
+		const r: WatchRun = {
 			...run('bleach'),
 			nameId: 'a',
 			entries: [e('a', '2001'), e('b', '2002'), e('c', '2003'), e('d', '2004')],
@@ -188,14 +188,13 @@ describe('a cycle in link order', () => {
 				['c', 'b'],
 				['b', 'd'],
 				['d', 'b']
-			],
-			progress: {}
+			]
 		};
 		expect(ids(sequence(r, 'linked'))).toEqual(['a', 'b', 'c', 'd']);
 	});
 });
 
-function entryOf(id: string): MockEntry {
+function entryOf(id: string): WatchEntry {
 	return {
 		id,
 		title: id,

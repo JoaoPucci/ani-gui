@@ -1,33 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { MOCK_RUNS } from './fixtures';
+import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import { placement } from './order';
 import {
+	currentIn,
 	emptyColumn,
 	franchiseSummary,
 	similarHidden,
-	stripRunFor,
 	stripView,
 	watchingFor
 } from './strip-view';
-import type { MockEntry, MockRun } from './types';
+import type { WatchEntry, WatchRun } from './types';
 
-const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
-const ids = (list: readonly MockEntry[]) => list.map((e) => e.id);
-
-describe('stripRunFor', () => {
-	it("finds a member's run, and a side story's through its parents", () => {
-		expect(stripRunFor('46598')?.key).toBe('jojo');
-		expect(stripRunFor('6928')?.key).toBe('fate');
-		expect(stripRunFor('11759')?.key).toBe('gintama');
-		expect(stripRunFor('12064')?.key).toBe('jojo');
-	});
-
-	it('finds nothing for an entry with no strip', () => {
-		// A Bleach film: around the run, but no parent story recorded.
-		expect(stripRunFor('1515')).toBeNull();
-		expect(stripRunFor('999999')).toBeNull();
-	});
-});
+const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
+const ids = (list: readonly WatchEntry[]) => list.map((e) => e.id);
 
 describe('stripView', () => {
 	it("is a member's placement in its run", () => {
@@ -83,13 +68,13 @@ describe('franchiseSummary', () => {
 
 	it('fans only entries that have a poster, and none when no entry has one', () => {
 		const fate = run('fate');
-		const blank = (e: MockEntry): MockEntry => ({ ...e, poster: null });
-		const noFirst: MockRun = {
+		const blank = (e: WatchEntry): WatchEntry => ({ ...e, poster: null });
+		const noFirst: WatchRun = {
 			...fate,
 			entries: fate.entries.map((e) => (e.id === fate.nameId ? blank(e) : e))
 		};
 		expect(ids(franchiseSummary(noFirst).posters)).toEqual(['4788', '6928', '7658']);
-		const none: MockRun = {
+		const none: WatchRun = {
 			...fate,
 			entries: fate.entries.map(blank),
 			versions: fate.versions.map(blank),
@@ -125,10 +110,21 @@ describe('stripView in release order', () => {
 	});
 });
 
+describe('currentIn', () => {
+	it('names the entry the viewer is on', () => {
+		const jojo = run('jojo');
+		expect(currentIn(jojo, jojo.progress, 'linked')).toMatchObject({
+			entry: { id: '49847' },
+			episode: 1
+		});
+		expect(currentIn(run('bleach'), run('bleach').progress, 'linked')).toBeNull();
+	});
+});
+
 describe('watchingFor', () => {
 	const watching = (key: string, id: string, order: 'linked' | 'released' = 'linked') => {
 		const r = run(key);
-		const w = watchingFor(r, id, stripView(r, id, order), order);
+		const w = watchingFor(r, r.progress, id, stripView(r, id, order), order);
 		return w && [w.entry.id, w.episode];
 	};
 

@@ -12,7 +12,7 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import { shortTitle } from './short-title';
+	import { shortTitle } from '../short-title';
 	import type { Handoff } from './view';
 
 	let { handoff, variant }: { handoff: Handoff; variant: 'next' | 'episode' } = $props();

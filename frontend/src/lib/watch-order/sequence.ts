@@ -1,12 +1,12 @@
 /**
  * The run as one list: release order, or the links' order with each
  * cycle walked along its links.
- * Part of the mockups' ordering; `./order` gathers the pieces.
+ * Part of the run's ordering; `./order` gathers the pieces.
  */
 import { byStart, type WatchOrder } from './by-start';
 import { linkGraph, type RunGraph } from './graph';
 import { releasedLine } from './place';
-import type { MockEntry, MockRun } from './types';
+import type { WatchEntry, WatchRun } from './types';
 
 /**
  * A cycle's members in the order its links give: from the earliest
@@ -14,13 +14,13 @@ import type { MockEntry, MockRun } from './types';
  * sequel inside the cycle; where that runs out, carry on from the
  * earliest member not yet listed.
  */
-function cycleWalk(graph: RunGraph, byDate: readonly MockEntry[]): MockEntry[] {
+function cycleWalk(graph: RunGraph, byDate: readonly WatchEntry[]): WatchEntry[] {
 	const comp = graph.component.get(byDate[0].id);
-	const inside = (e: MockEntry) => graph.component.get(e.id) === comp;
+	const inside = (e: WatchEntry) => graph.component.get(e.id) === comp;
 	const entered = byDate.filter((e) => graph.prev.get(e.id)!.some((p) => !inside(p)));
-	const out: MockEntry[] = [];
+	const out: WatchEntry[] = [];
 	const seen = new Set<string>();
-	let cur: MockEntry | undefined = entered[0] ?? byDate[0];
+	let cur: WatchEntry | undefined = entered[0] ?? byDate[0];
 	while (out.length < byDate.length) {
 		cur ??= byDate.find((e) => !seen.has(e.id))!;
 		out.push(cur);
@@ -35,11 +35,11 @@ function cycleWalk(graph: RunGraph, byDate: readonly MockEntry[]): MockEntry[] {
  * or the links' order — components in topological order, the earliest
  * start first among those ready, a cycle's members along its links.
  */
-export function sequence(run: MockRun, order: WatchOrder): MockEntry[] {
+export function sequence(run: WatchRun, order: WatchOrder): WatchEntry[] {
 	const line = releasedLine(run);
 	if (order === 'released') return line;
 	const graph = linkGraph(run);
-	const members = new Map<number, MockEntry[]>();
+	const members = new Map<number, WatchEntry[]>();
 	for (const e of line) {
 		const c = graph.component.get(e.id)!;
 		members.set(c, [...(members.get(c) ?? []), e]);
@@ -58,7 +58,7 @@ export function sequence(run: MockRun, order: WatchOrder): MockEntry[] {
 	}
 	const first = (c: number) => members.get(c)![0];
 	const ready = [...members.keys()].filter((c) => indegree.get(c) === 0);
-	const result: MockEntry[] = [];
+	const result: WatchEntry[] = [];
 	while (ready.length > 0) {
 		ready.sort((a, b) => byStart(first(a), first(b)));
 		const c = ready.shift()!;

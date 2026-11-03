@@ -16,11 +16,11 @@
 	import MetaLine from './MetaLine.svelte';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
-	import { metaLine, numeral, railKeyText } from './meta';
-	import { pathNote, placement, railItems, segments } from './order';
+	import { metaLine, numeral, railKeyText } from '../meta';
+	import { pathNote, placement, railItems, segments } from '../order';
 	import type { WatchOrderMockPrefs } from './prefs';
-	import { shortTitle } from './short-title';
-	import { franchiseSummary } from './strip-view';
+	import { shortTitle } from '../short-title';
+	import { franchiseSummary } from '../strip-view';
 	import type { MockEntry, MockRun } from './types';
 	import { asRef, currentIn, franchiseName, progressOf, progressShare } from './view';
 
@@ -41,7 +41,7 @@
 	const segs = $derived(segments(run, prefs.order));
 	const items = $derived(railItems(run, prefs.order));
 	const first = $derived(run.entries.find((e) => e.id === run.nameId)!);
-	const onNow = $derived(currentIn(run, prefs.order));
+	const onNow = $derived(currentIn(run, run.progress, prefs.order));
 	// The artwork is the named entry's; Resume goes to the entry being watched.
 	const heroEntry = $derived(mastheadArt(run, prefs.order));
 	const accent = $derived(accentFor(heroEntry.id));
@@ -124,7 +124,7 @@
 
 		{#snippet row(e: MockEntry, numbered: boolean)}
 			{@const pos = numbered ? posOf(e) : null}
-			{@const share = progressShare(progressOf(run, e))}
+			{@const share = progressShare(progressOf(e, run.progress[e.id]))}
 			{@const note = pathNote(run, e.id, prefs.order)}
 			<li class:here={e.id === id} style:--row-accent={accentFor(e.id)}>
 				<a
@@ -149,7 +149,7 @@
 						{#if e.id === id}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
 						<span class="row-title">{label(e)}</span>
 						{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
-						<MetaLine segments={metaLine(run, e, today)} />
+						<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
 						{#if note?.kind === 'leads-into'}
 							<span class="row-note"
 								>{m.watchorder_strip_leads_into({ title: label(note.entry) })}</span

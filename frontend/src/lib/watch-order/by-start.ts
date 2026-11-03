@@ -1,13 +1,13 @@
 /**
  * Start-date order for run members, and the order setting's two values.
- * Part of the mockups' ordering; `./order` gathers the pieces.
+ * Part of the run's ordering; `./order` gathers the pieces.
  */
-import type { MockEntry } from './types';
+import type { WatchEntry } from './types';
 
 export type WatchOrder = 'linked' | 'released';
 
 /** Start date ascending, unknown last, then Kitsu id. */
-export function byStart(a: MockEntry, b: MockEntry): number {
+export function byStart(a: WatchEntry, b: WatchEntry): number {
 	if (a.start !== b.start) {
 		if (a.start === null) return 1;
 		if (b.start === null) return -1;

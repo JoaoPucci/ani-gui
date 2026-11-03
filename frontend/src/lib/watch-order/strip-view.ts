@@ -1,37 +1,27 @@
 /**
  * What the show page's watch-order strip shows for one entry: its
  * place in its run, or, for a side story, the stories Kitsu names as
- * its parents. Part of the mockups' views.
+ * its parents.
  */
-import { MOCK_RUNS } from './fixtures';
 import type { WatchOrder } from './by-start';
-import { currentIn } from './handoff';
 import { placement } from './place';
-import type { MockEntry, MockRun } from './types';
+import { sequence } from './sequence';
+import type { Progress, WatchEntry, WatchRun } from './types';
 
 export interface StripView {
 	/** `run`: a member of the run; `side`: a side story beside it. */
 	readonly kind: 'run' | 'side';
 	readonly position: number | null;
 	readonly total: number | null;
-	readonly before: readonly MockEntry[];
-	readonly after: readonly MockEntry[];
+	readonly before: readonly WatchEntry[];
+	readonly after: readonly WatchEntry[];
 	readonly inCycle: boolean;
 }
 
 /** What an empty column says. */
 export type EmptyColumn = 'first' | 'last' | 'side_end';
 
-/** The run whose strip an entry shows: the one it belongs to, or the one its parent stories belong to. */
-export function stripRunFor(id: string, runs: readonly MockRun[] = MOCK_RUNS): MockRun | null {
-	return (
-		runs.find((r) => r.entries.some((e) => e.id === id)) ??
-		runs.find((r) => r.parents[id] !== undefined) ??
-		null
-	);
-}
-
-export function stripView(run: MockRun, id: string, order: WatchOrder): StripView {
+export function stripView(run: WatchRun, id: string, order: WatchOrder): StripView {
 	const parents = run.parents[id];
 	if (parents === undefined) return { kind: 'run', ...placement(run, id, order) };
 	const all = [...run.entries, ...run.versions, ...run.films, ...run.sides];
@@ -61,10 +51,10 @@ export interface FranchiseSummary {
 	readonly sides: number;
 	readonly recaps: number;
 	/** Up to three entries with a poster to fan out, from different parts of the franchise. */
-	readonly posters: readonly MockEntry[];
+	readonly posters: readonly WatchEntry[];
 }
 
-export function franchiseSummary(run: MockRun): FranchiseSummary {
+export function franchiseSummary(run: WatchRun): FranchiseSummary {
 	const first = run.entries.find((e) => e.id === run.nameId);
 	const candidates = [
 		first,
@@ -72,7 +62,7 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 		run.sides[0],
 		...run.entries.filter((e) => e !== first)
 	];
-	const posters: MockEntry[] = [];
+	const posters: WatchEntry[] = [];
 	for (const c of candidates) {
 		if (c && c.poster !== null && !posters.includes(c) && posters.length < 3) posters.push(c);
 	}
@@ -91,18 +81,30 @@ export function franchiseSummary(run: MockRun): FranchiseSummary {
 	};
 }
 
+/** The entry the viewer is on: the latest started, not finished, in order. */
+export function currentIn(
+	run: WatchRun,
+	progress: Progress,
+	order: WatchOrder
+): { entry: WatchEntry; episode: number } | null {
+	const partway = sequence(run, order).filter((e) => typeof progress[e.id] === 'number');
+	const last = partway.at(-1);
+	return last ? { entry: last, episode: progress[last.id] as number } : null;
+}
+
 /**
  * The entry the viewer is part-way through, for the strip's "You're
  * watching" line: null when it is the entry being viewed or already
  * one of the strip's tiles, which shows its progress itself.
  */
 export function watchingFor(
-	run: MockRun,
+	run: WatchRun,
+	progress: Progress,
 	id: string,
 	view: StripView,
 	order: WatchOrder
-): { entry: MockEntry; episode: number } | null {
-	const now = currentIn(run, order);
+): { entry: WatchEntry; episode: number } | null {
+	const now = currentIn(run, progress, order);
 	if (!now || now.entry.id === id) return null;
 	const shown = [...view.before, ...view.after].some((e) => e.id === now.entry.id);
 	return shown ? null : now;
@@ -113,6 +115,6 @@ export function watchingFor(
  * run's own entries, which the strip and its franchise link stand for,
  * and the strip's tiles (a side story's parents).
  */
-export function similarHidden(run: MockRun, view: StripView): ReadonlySet<string> {
+export function similarHidden(run: WatchRun, view: StripView): ReadonlySet<string> {
 	return new Set([...run.entries, ...view.before, ...view.after].map((e) => e.id));
 }

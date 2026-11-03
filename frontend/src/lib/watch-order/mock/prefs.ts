@@ -5,7 +5,7 @@
  * rest. `order` stands in for the app setting the feature will add.
  */
 import type { StorageLike } from '$lib/hero/prefs';
-import { STRIP_WORDINGS } from './strip-wording';
+import { STRIP_WORDINGS } from '../strip-wording';
 
 export const MOCK_OPTIONS = {
 	order: ['linked', 'released'],

@@ -1,5 +1,5 @@
 /**
- * The meta line under a mockup card, in PosterCard's voice: format,
+ * The meta line under a watch-order card, in PosterCard's voice: format,
  * year, then progress or the episode count. An unaired entry shows its
  * date (or that none is announced) in place of the year and count.
  */
@@ -7,8 +7,8 @@ import { m } from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import { subtypeLabel } from '$lib/search/subtype-label';
 import type { RailKey } from './order';
-import type { MockEntry, MockRun } from './types';
-import { isUnaired, progressOf, yearOf } from './view';
+import { isUnaired, progressOf, yearOf } from './entry';
+import type { EntryProgress, WatchEntry } from './types';
 
 export interface MetaSegment {
 	readonly text: string;
@@ -27,12 +27,16 @@ function comingText(start: string | null): string {
 	return m.watchorder_meta_coming({ date });
 }
 
-export function metaLine(run: MockRun, entry: MockEntry, today: string): MetaSegment[] {
+export function metaLine(
+	entry: WatchEntry,
+	progress: EntryProgress | undefined,
+	today: string
+): MetaSegment[] {
 	const out: MetaSegment[] = [{ text: subtypeLabel(entry.subtype), kind: 'word' }];
 	if (isUnaired(entry, today)) return [...out, { text: comingText(entry.start), kind: 'word' }];
 	const year = yearOf(entry);
 	if (year) out.push({ text: year, kind: 'num' });
-	const p = progressOf(run, entry);
+	const p = progressOf(entry, progress);
 	if (p.kind === 'watched') out.push({ text: m.watchorder_meta_watched(), kind: 'watched' });
 	else if (p.kind === 'partway')
 		out.push({
@@ -75,7 +79,7 @@ export function numeral(position: number): string {
 export function railKeyText(
 	key: RailKey,
 	here: boolean,
-	label: (e: MockEntry) => string
+	label: (e: WatchEntry) => string
 ): string | null {
 	if (here) return m.watchorder_franchise_here();
 	if (key === null) return null;

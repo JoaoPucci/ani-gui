@@ -22,11 +22,11 @@
 	import MetaLine from './MetaLine.svelte';
 	import StripFranchiseLink from './StripFranchiseLink.svelte';
 	import StripWatching from './StripWatching.svelte';
-	import { metaLine, numeral } from './meta';
+	import { metaLine, numeral } from '../meta';
 	import type { WatchOrderMockPrefs } from './prefs';
-	import { columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
-	import { emptyColumn, watchingFor, type StripView } from './strip-view';
-	import { columnKey } from './strip-wording';
+	import { columnCountText, columnKeyText, emptyColumnText } from '../strip-copy';
+	import { emptyColumn, watchingFor, type StripView } from '../strip-view';
+	import { columnKey } from '../strip-wording';
 	import type { MockEntry, MockRun } from './types';
 
 	let {
@@ -47,7 +47,7 @@
 		label: (e: MockEntry) => string;
 	} = $props();
 
-	const watching = $derived(watchingFor(run, id, view, prefs.order));
+	const watching = $derived(watchingFor(run, run.progress, id, view, prefs.order));
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
 		const list = side === 'before' ? view.before : view.after;
@@ -71,7 +71,9 @@
 		<span class="tile-text">
 			<span class="tile-title">{label(e)}</span>
 			{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
-			<span class="tile-meta"><MetaLine segments={metaLine(run, e, today)} stacked /></span>
+			<span class="tile-meta"
+				><MetaLine segments={metaLine(e, run.progress[e.id], today)} stacked /></span
+			>
 		</span>
 	</a>
 {/snippet}

@@ -2,16 +2,16 @@
  * The run's link graph: prequel/sequel links between members, with
  * shortcut links (ones a longer path already covers) dropped, and the
  * members that form a cycle.
- * Part of the mockups' ordering; `./order` gathers the pieces.
+ * Part of the run's ordering; `./order` gathers the pieces.
  */
 import { byStart } from './by-start';
 import { components } from './components';
-import type { MockEntry, MockRun } from './types';
+import type { WatchEntry, WatchRun } from './types';
 
 export interface RunGraph {
 	/** Kept links, each list in start order. */
-	readonly prev: ReadonlyMap<string, readonly MockEntry[]>;
-	readonly next: ReadonlyMap<string, readonly MockEntry[]>;
+	readonly prev: ReadonlyMap<string, readonly WatchEntry[]>;
+	readonly next: ReadonlyMap<string, readonly WatchEntry[]>;
 	/** Members that lead round to themselves. */
 	readonly cycle: ReadonlySet<string>;
 	/** Strongly connected component per member. */
@@ -38,7 +38,7 @@ function reachableAround(compOut: Map<number, Set<number>>, from: number, to: nu
 	return false;
 }
 
-export function linkGraph(run: MockRun): RunGraph {
+export function linkGraph(run: WatchRun): RunGraph {
 	const ids = run.entries.map((e) => e.id);
 	const byId = new Map(run.entries.map((e) => [e.id, e]));
 	const comp = components(ids, adjacency(ids, run.links));
@@ -55,8 +55,8 @@ export function linkGraph(run: MockRun): RunGraph {
 		const cb = comp.get(b)!;
 		return ca === cb || !reachableAround(compOut, ca, cb);
 	});
-	const prev = new Map<string, MockEntry[]>(ids.map((i) => [i, []]));
-	const next = new Map<string, MockEntry[]>(ids.map((i) => [i, []]));
+	const prev = new Map<string, WatchEntry[]>(ids.map((i) => [i, []]));
+	const next = new Map<string, WatchEntry[]>(ids.map((i) => [i, []]));
 	for (const [a, b] of kept) {
 		next.get(a)!.push(byId.get(b)!);
 		prev.get(b)!.push(byId.get(a)!);

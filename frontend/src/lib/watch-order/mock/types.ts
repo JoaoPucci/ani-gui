@@ -1,41 +1,11 @@
 /**
- * Shapes of the watch-order mockups' fixture data. A run is the
- * entries one franchise's prequel/sequel links join (the proposal's
- * `chain`); the other lists are the entries around it (`around`).
+ * The watch-order mockups' shapes: the real feature's entry and run,
+ * with the fixtures' made-up progress carried on the run (the real
+ * feature derives progress from the watch history, apart from the run).
  */
+import type { FixtureRun } from '../fixtures/runs';
+import type { EntryProgress, WatchEntry } from '../types';
 
-export interface MockEntry {
-	readonly id: string;
-	readonly title: string;
-	/** Kitsu's subtype as served: `TV`, `movie`, `special`, `OVA`, `ONA`. */
-	readonly subtype: string;
-	/** `YYYY-MM-DD`, or null when Kitsu has no date. */
-	readonly start: string | null;
-	readonly episodes: number | null;
-	/** Kitsu's status: `finished`, `current`, `upcoming`, `tba`. */
-	readonly status: string;
-	readonly poster: string | null;
-	readonly cover: string | null;
-}
-
-/** `watched`, or the last episode played. */
-export type MockProgress = 'watched' | number;
-
-export interface MockRun {
-	readonly key: string;
-	/** The entry the franchise is named after: the run's first. */
-	readonly nameId: string;
-	readonly entries: readonly MockEntry[];
-	readonly versions: readonly MockEntry[];
-	readonly films: readonly MockEntry[];
-	readonly sides: readonly MockEntry[];
-	readonly recaps: readonly MockEntry[];
-	/** Prequel → sequel pairs between members, from either listing. */
-	readonly links: readonly (readonly [string, string])[];
-	/**
-	 * Side story → the entries Kitsu names as its `parent_story`, for
-	 * the side stories whose show page carries a strip.
-	 */
-	readonly parents: Readonly<Record<string, readonly string[]>>;
-	readonly progress: Readonly<Record<string, MockProgress>>;
-}
+export type MockEntry = WatchEntry;
+export type MockProgress = EntryProgress;
+export type MockRun = FixtureRun;

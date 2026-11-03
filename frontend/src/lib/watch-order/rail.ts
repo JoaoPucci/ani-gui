@@ -1,22 +1,22 @@
 /**
  * The run as rail cards, and the keys that say why an entry has no
  * number: a branch, a loop, or an entry that only leads into a join.
- * Part of the mockups' ordering; `./order` gathers the pieces.
+ * Part of the run's ordering; `./order` gathers the pieces.
  */
 import type { WatchOrder } from './by-start';
 import { linkGraph } from './graph';
 import { linkedPosition, placement } from './place';
 import { segments } from './segments';
-import type { MockEntry, MockRun } from './types';
+import type { WatchEntry, WatchRun } from './types';
 
 export type PathNote =
 	| { readonly kind: 'cycle' }
 	| { readonly kind: 'branch' }
-	| { readonly kind: 'leads-into'; readonly entry: MockEntry }
+	| { readonly kind: 'leads-into'; readonly entry: WatchEntry }
 	| null;
 
 /** Why an unnumbered entry has no number, for the line under its card. */
-export function pathNote(run: MockRun, id: string, order: WatchOrder): PathNote {
+export function pathNote(run: WatchRun, id: string, order: WatchOrder): PathNote {
 	if (order === 'released') return null;
 	const graph = linkGraph(run);
 	if (graph.cycle.has(id)) return { kind: 'cycle' };
@@ -31,11 +31,11 @@ export function pathNote(run: MockRun, id: string, order: WatchOrder): PathNote 
 export type RailKey =
 	| { readonly kind: 'way'; readonly n: number; readonly count: number }
 	| { readonly kind: 'loop'; readonly count: number }
-	| { readonly kind: 'leads-into'; readonly entry: MockEntry; readonly position: number | null }
+	| { readonly kind: 'leads-into'; readonly entry: WatchEntry; readonly position: number | null }
 	| null;
 
 export interface RailItem {
-	readonly entry: MockEntry;
+	readonly entry: WatchEntry;
 	readonly position: number | null;
 	/** What the card's key line says about its place, when it is not a plain step. */
 	readonly key: RailKey;
@@ -50,9 +50,9 @@ export interface RailItem {
  * each branch after a fork opens with "Way n of N", a loop opens with
  * its size, and an entry that only leads into a join says so.
  */
-export function railItems(run: MockRun, order: WatchOrder): RailItem[] {
+export function railItems(run: WatchRun, order: WatchOrder): RailItem[] {
 	const out: RailItem[] = [];
-	const pos = (e: MockEntry) => placement(run, e.id, order).position;
+	const pos = (e: WatchEntry) => placement(run, e.id, order).position;
 	for (const seg of segments(run, order)) {
 		if (seg.kind === 'fork') {
 			seg.branches.forEach((branch, b) =>

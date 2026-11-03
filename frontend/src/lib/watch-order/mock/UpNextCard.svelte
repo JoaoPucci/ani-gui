@@ -17,7 +17,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { settle } from '$lib/motion/settle';
 	import MetaLine from './MetaLine.svelte';
-	import { metaLine } from './meta';
+	import { metaLine } from '../meta';
 	import type { MockEntry, MockRun } from './types';
 	import type { UpNext } from './view';
 
@@ -69,7 +69,7 @@
 	<span class="text">
 		{#if !compact}<span class="key">{key}</span>{/if}
 		<span class="title">{e.title}</span>
-		<MetaLine segments={metaLine(run, e, today)} />
+		<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
 	</span>
 {/snippet}
 

@@ -12,7 +12,7 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import MetaLine from './MetaLine.svelte';
-	import { metaLine, numeral } from './meta';
+	import { metaLine, numeral } from '../meta';
 	import type { MockEntry, MockRun } from './types';
 
 	let {
@@ -41,7 +41,7 @@
 	const poster = $derived(imageProxyUrl(entry.poster));
 	// Format and year on one line, progress or count on the next: at
 	// this width a single line wraps between its segments.
-	const meta = $derived(metaLine(run, entry, today));
+	const meta = $derived(metaLine(entry, run.progress[entry.id], today));
 	const head = $derived(meta.slice(0, 2));
 	const tail = $derived(meta.slice(2));
 </script>

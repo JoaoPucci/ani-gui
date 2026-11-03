@@ -24,12 +24,12 @@
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import WatchOrderPanel from '$lib/watch-order/mock/WatchOrderPanel.svelte';
-	import { numeral as mockNumeral } from '$lib/watch-order/mock/meta';
+	import { numeral as mockNumeral } from '$lib/watch-order/meta';
 	import {
 		similarHidden as mockSimilarHidden,
-		stripRunFor as mockRunFor,
 		stripView as mockStripView
-	} from '$lib/watch-order/mock/strip-view';
+	} from '$lib/watch-order/strip-view';
+	import { stripRunFor as mockRunFor } from '$lib/watch-order/mock/strip-run';
 	import {
 		loadMockPrefs,
 		saveMockPrefs,
