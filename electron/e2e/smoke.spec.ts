@@ -240,6 +240,10 @@ test("the splash shows while the app starts, and is gone once the app's window h
       closed: true,
       suppressed: false,
       version,
+      // Every boot step reached the splash, and its page lit a stretch
+      // of the rail for each.
+      steps: 3,
+      railLit: 3,
     });
   } finally {
     await app.close();
@@ -281,6 +285,54 @@ test("the splash page, opened as the launch opens it, shows the app's version ab
     expect(colours.brand).toBe("#d77a3b");
     expect(colours.mark).toBe("rgb(215, 122, 59)");
     expect(colours.line).not.toBe(colours.mark);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash's rail fills as steps land, and its stall line comes after 700 ms without moving the title", async () => {
+  // Opened as the launch opens it (lib/splash.cjs), with the stall line
+  // the main process would give it, then driven by hand: a test
+  // launch's own boot is over before a spec can watch it.
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { messagesFor } = main.require("./lib/main-messages.cjs");
+      const w = new BrowserWindow(splashWindowOptions());
+      const run = (code: string) => w.webContents.executeJavaScript(code);
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      try {
+        const texts = stallTexts(messagesFor("en"));
+        await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.0.0", stallTexts: texts }) });
+        const look = () =>
+          run(
+            "({ lit: document.querySelectorAll('.rail i.lit').length," +
+              " status: document.querySelector('.status').classList.contains('on') ?" +
+              " document.querySelector('.status').textContent : null," +
+              " title: document.querySelector('.wordmark').getBoundingClientRect().top })",
+          );
+        const start = await look();
+        const lit1 = await run("window.splashProgress.set(1)");
+        const early = await look();
+        await wait(1000);
+        const stalled = await look();
+        const lit3 = await run("window.splashProgress.set(3)");
+        const done = await look();
+        return { expected: texts[1], start, lit1, early, stalled, lit3, done };
+      } finally {
+        w.destroy();
+      }
+    });
+    expect(seen.start.lit).toBe(0);
+    expect(seen.lit1).toBe(1);
+    expect(seen.early).toMatchObject({ lit: 1, status: null });
+    expect(seen.stalled).toMatchObject({ lit: 1, status: seen.expected });
+    expect(seen.stalled.title).toBe(seen.early.title);
+    expect(seen.lit3).toBe(3);
+    expect(seen.done).toMatchObject({ lit: 3, status: null });
   } finally {
     await app.close();
   }

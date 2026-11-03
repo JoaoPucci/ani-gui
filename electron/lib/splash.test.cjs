@@ -15,9 +15,12 @@ const {
   lastSplashState,
   revealMaximized,
   splashController,
+  splashPageQuery,
   splashVersionLabel,
   splashWindowOptions,
 } = require("./splash.cjs");
+const { STALL_MS, STEPS, stallTexts } = require("./splash-progress.cjs");
+const { LOCALES, messagesFor } = require("./main-messages.cjs");
 
 test("the splash is a small frameless window above everything, shown once painted", () => {
   const o = splashWindowOptions();
@@ -76,11 +79,11 @@ function fakeSplash() {
     win.calls.push(`load:${path.basename(file)}`);
     win.loadOptions = options;
   };
-  win.webContents = {
+  win.webContents = Object.assign(new EventEmitter(), {
     executeJavaScript: async (code) => {
       win.calls.push(`js:${code}`);
     },
-  };
+  });
   return win;
 }
 
@@ -160,33 +163,255 @@ test("the splash is the pull-down: a film strip of the mark beside the title", (
   const html = read("index.html");
   assert.match(html, /class="track"/);
   assert.match(html, /class="wordmark"/);
-  for (const file of ["splash.css", "splash.js", "version.js", "mark.svg", "sprocket.svg"]) {
+  for (const file of ["splash.css", "splash.js", "version.js", "progress.js", "mark.svg", "sprocket.svg"]) {
     assert.ok(fs.existsSync(path.join(splashDir, file)), file);
   }
 });
 
-test("nothing on the splash counts: its readout slot is empty, moving or still", () => {
-  // A ticking counter reads as a progress indicator, and the splash
-  // measures nothing. The slot under the title stays in the page, empty,
-  // for whatever comes to fill it; the still frame shows the same.
+test("nothing on the splash counts: the slot under the title is a wordless rail", () => {
+  // A ticking counter reads as a progress indicator, and so does any
+  // number on a screen this brief. The slot under the title holds the
+  // film-edge rail, three stretches and no words; the line under it is
+  // empty until a step stalls (progress.js). This test pinned the slot
+  // empty until the maintainer approved the rail for it.
   const html = read("index.html");
-  assert.match(html, /<p class="readout" aria-hidden="true"><\/p>/);
+  assert.match(
+    html,
+    /<p class="readout" aria-hidden="true"><span class="rail"><i><\/i><i><\/i><i><\/i><\/span><span class="status"><\/span><\/p>\s*<script src="progress\.js"><\/script>/,
+  );
+  assert.doesNotMatch(html, /progress\.js"[^>]*\b(defer|async)\b/);
   assert.doesNotMatch(html, /class="(counter|still|unit)"/);
   const css = read("splash.css");
   assert.doesNotMatch(css, /counter\(|counter-reset|@counter-style|--pulled/);
   assert.doesNotMatch(css, /\.(counter|still|unit)\b/);
-  // Nor anywhere else: the page's own words are its title alone — no
-  // reel number, since any number on a screen this brief reads as a
-  // count — no style writes text into it, and the only script that
-  // writes any writes the app's version (below).
+  // Nor anywhere else: the page's own words are its title alone, no
+  // style writes text (the rail draws with an empty `content`), and the
+  // scripts that write any write the app's version and the stall line.
   const body = /<body>([\s\S]*)<\/body>/.exec(html)[1];
   const words = body.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean);
   assert.deepEqual(words, ["ani-gui"]);
-  assert.doesNotMatch(css, /\bcontent:|@property/);
+  assert.doesNotMatch(css, /\bcontent:(?!\s*""\s*;)|@property/);
   assert.doesNotMatch(read("splash.js"), /textContent|innerText|innerHTML|createTextNode|insertAdjacent/);
-  // An empty slot is hidden, so the title column centres on the gate
-  // without the row gap a hidden-in-place slot would still take.
-  assert.match(css, /\.readout:empty \{ display: none; \}/);
+  assert.doesNotMatch(read("progress.js"), /innerHTML|insertAdjacent/);
+});
+
+test("the stall line sits outside the flow, so its coming and going moves nothing", () => {
+  const css = read("splash.css");
+  assert.match(css, /\.readout \{[^}]*position: relative;/);
+  assert.match(css, /\.status \{[^}]*position: absolute;/);
+});
+
+test("the rail and the stall line move only once the splash is told to move", () => {
+  // Before the motion preference is known nothing may move: a step that
+  // lands then shows lit at once. Under reduced motion, nothing moves
+  // at all (the global still-frame rules, above).
+  const css = read("splash.css");
+  assert.doesNotMatch(css, /(^|\})\s*\.rail i::after \{[^}]*transition/);
+  assert.doesNotMatch(css, /(^|\})\s*\.status \{[^}]*transition/);
+  assert.match(css, /body\.shown \.rail i::after \{[^}]*transition: clip-path/);
+  assert.match(css, /body\.shown \.status \{[^}]*transition: opacity/);
+});
+
+/** Run the splash's progress.js against a page loaded with `search`,
+ *  on a fake clock. */
+function progressPage(search) {
+  const segments = [0, 1, 2].map(() => ({ classList: classes() }));
+  const status = { textContent: "", classList: classes() };
+  let now = 0;
+  let timers = [];
+  const context = {
+    location: { search },
+    URLSearchParams,
+    Number,
+    Math,
+    setTimeout: (fn, ms) => {
+      const t = { at: now + ms, fn };
+      timers.push(t);
+      return t;
+    },
+    clearTimeout: (t) => (timers = timers.filter((x) => x !== t)),
+    document: {
+      querySelectorAll: (sel) => (sel === ".rail i" ? segments : []),
+      querySelector: (sel) => (sel === ".status" ? status : null),
+    },
+  };
+  context.window = context;
+  vm.runInNewContext(read("progress.js"), context);
+  return {
+    set: (n) => context.splashProgress.set(n),
+    lit: () => segments.map((s) => s.classList.contains("lit")),
+    status: () => (status.classList.contains("on") ? status.textContent : null),
+    tick(ms) {
+      const until = now + ms;
+      for (;;) {
+        const due = timers.filter((t) => t.at <= until).sort((a, b) => a.at - b.at)[0];
+        if (!due) break;
+        timers = timers.filter((t) => t !== due);
+        now = due.at;
+        due.fn();
+      }
+      now = until;
+    },
+  };
+}
+function classes() {
+  const set = new Set();
+  return { add: (c) => set.add(c), remove: (c) => set.delete(c), contains: (c) => set.has(c) };
+}
+const texts = "?st=700&t1=Backend%E2%80%A6&t2=Flags%E2%80%A6&t3=Page%E2%80%A6";
+
+test("the rail lights a stretch per step landed, in order, and never goes back", () => {
+  const page = progressPage(texts);
+  assert.deepEqual(page.lit(), [false, false, false]);
+  assert.equal(page.set(1), 1);
+  assert.deepEqual(page.lit(), [true, false, false]);
+  // Steps reported together light every stretch up to the last.
+  assert.equal(page.set(3), 3);
+  assert.deepEqual(page.lit(), [true, true, true]);
+  assert.equal(page.set(2), 3);
+  assert.deepEqual(page.lit(), [true, true, true]);
+  assert.equal(page.set(9), 3);
+});
+
+test("the stall line comes only once a step has been pending 700 ms, and goes when it lands", () => {
+  const page = progressPage(texts);
+  page.tick(699);
+  assert.equal(page.status(), null, "not before 700 ms");
+  page.tick(1);
+  assert.equal(page.status(), "Backend…");
+  page.set(1);
+  assert.equal(page.status(), null, "gone once the step lands");
+  // The next step gets its own 700 ms, counted from the last landing.
+  page.tick(699);
+  assert.equal(page.status(), null);
+  page.tick(1);
+  assert.equal(page.status(), "Flags…");
+  page.set(2);
+  page.tick(300);
+  page.set(3);
+  page.tick(5000);
+  assert.equal(page.status(), null, "nothing pending, nothing said");
+});
+
+test("a page told nothing to say never shows a stall line", () => {
+  const page = progressPage("");
+  page.tick(5000);
+  assert.equal(page.status(), null);
+  assert.equal(page.set(1), 1);
+});
+
+test("the stall line says the same thing at every step for now, in every language the app ships", () => {
+  // The backend step is where a named job would go — a migration, a
+  // cache reclaim — once the backend reports one; until then every
+  // step says the generic line.
+  assert.deepEqual(STEPS, ["backend", "flags", "page"]);
+  assert.equal(STALL_MS, 700);
+  for (const locale of LOCALES) {
+    const m = messagesFor(locale);
+    assert.equal(typeof m.splashStartingUp, "string");
+    assert.ok(m.splashStartingUp.length > 0, locale);
+    assert.deepEqual(stallTexts(m), [m.splashStartingUp, m.splashStartingUp, m.splashStartingUp], locale);
+  }
+  assert.notEqual(messagesFor("ru").splashStartingUp, messagesFor("en").splashStartingUp);
+});
+
+test("the splash page is opened with its version, its stall timing and its stall lines", () => {
+  assert.deepEqual(splashPageQuery({ version: "0.18.0", stallTexts: ["a", "b", "c"] }), {
+    v: "0.18.0",
+    st: "700",
+    t1: "a",
+    t2: "b",
+    t3: "c",
+  });
+  const win = fakeSplash();
+  const splash = splashController({
+    createWindow: () => win,
+    logError: () => {},
+    version: "0.18.0",
+    stallTexts: () => ["a", "b", "c"],
+  });
+  splash.show();
+  assert.deepEqual(win.loadOptions.query, { v: "0.18.0", st: "700", t1: "a", t2: "b", t3: "c" });
+  splash.close();
+});
+
+/** A fake splash whose page answers each step with how many stretches
+ *  it has lit. */
+function railSplash() {
+  const win = fakeSplash();
+  let lit = 0;
+  win.webContents.executeJavaScript = async (code) => {
+    win.calls.push(`js:${code}`);
+    const m = /splashProgress\.set\((\d+)\)/.exec(code);
+    if (m) lit = Math.max(lit, Number(m[1]));
+    return m ? lit : undefined;
+  };
+  return win;
+}
+const stepCalls = (win) => win.calls.filter((c) => c.includes("splashProgress"));
+
+test("each boot step reaches the page as the count of steps landed, and the record keeps both", async () => {
+  const win = railSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  await splash.progress("backend");
+  await splash.progress("flags");
+  // A step already passed, or one the splash does not know, changes nothing.
+  await splash.progress("backend");
+  await splash.progress("nonsense");
+  await splash.progress("page");
+  assert.deepEqual(stepCalls(win), [
+    "js:window.splashProgress && window.splashProgress.set(1)",
+    "js:window.splashProgress && window.splashProgress.set(2)",
+    "js:window.splashProgress && window.splashProgress.set(3)",
+  ]);
+  assert.equal(lastSplashState().steps, 3);
+  assert.equal(lastSplashState().railLit, 3);
+  splash.close();
+});
+
+test("steps that landed before the page loaded reach it once it has", async () => {
+  const win = railSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  await splash.progress("backend");
+  await splash.progress("flags");
+  win.webContents.emit("did-finish-load");
+  await tick();
+  assert.equal(stepCalls(win).at(-1), "js:window.splashProgress && window.splashProgress.set(2)");
+  splash.close();
+});
+
+test("a page that never answers a step holds nothing up for long", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeSplash();
+  win.webContents.executeJavaScript = () => new Promise(() => {});
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  let done = false;
+  splash.progress("page").then(() => (done = true));
+  await Promise.resolve();
+  t.mock.timers.tick(149);
+  await Promise.resolve();
+  assert.equal(done, false);
+  t.mock.timers.tick(1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(done, true);
+  assert.equal(lastSplashState().steps, 3);
+  assert.equal(lastSplashState().railLit, 0);
+  splash.close();
+});
+
+test("a step with no splash to reach, or after it closed, is a no-op", async () => {
+  const none = splashController({ createWindow: () => null, logError: () => {} });
+  none.show();
+  await none.progress("backend");
+  const win = railSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  splash.close();
+  await splash.progress("backend");
+  assert.deepEqual(stepCalls(win), []);
 });
 
 const vm = require("node:vm");
@@ -257,7 +482,7 @@ test("the splash is opened with the version it shows, and its record keeps it", 
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {}, version: "0.18.0" });
   splash.show();
-  assert.deepEqual(win.loadOptions, { query: { v: "0.18.0" } });
+  assert.equal(win.loadOptions.query.v, "0.18.0");
   assert.equal(lastSplashState().version, "0.18.0");
   splash.close();
 });
@@ -446,18 +671,18 @@ test("what happened to the launch's splash can be read back afterwards", async (
   // reads this instead.
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });
-  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "" });
+  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 });
   splash.show();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "" });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 });
   win.emit("ready-to-show");
   splash.motionPreference(false);
   await tick();
   splash.close();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "" });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "", steps: 0, railLit: 0 });
   const failed = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
   failed.show();
   failed.suppress();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "" });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "", steps: 0, railLit: 0 });
 });
 
 test("the app's window can wait for the splash to be on screen, for a bounded time", async (t) => {

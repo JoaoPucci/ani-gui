@@ -74,7 +74,7 @@ export function launchPackagedApp(
  *  starts fast enough that the splash has come and gone before a spec
  *  can look at the app's windows, so the main process's own record is
  *  read instead. */
-export function splashState(app: ElectronApplication): Promise<Record<string, boolean | string>> {
+export function splashState(app: ElectronApplication): Promise<Record<string, boolean | string | number>> {
 	return app.evaluate(() => {
 		const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
 		return main.require('./lib/splash.cjs').lastSplashState();

@@ -536,6 +536,43 @@ test("the splash is up before the backend starts, and closes once the window is 
   assert.deepEqual(events, ["splash", "spawn", "flags", "window", "close-splash"]);
 });
 
+test("the splash's rail hears each boot step as it lands: the backend, then the flags, before the window", async () => {
+  const events = [];
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => {
+      events.push("spawn");
+      return { apiBase: "http://127.0.0.1:1" };
+    },
+    fetchFlags: async () => {
+      events.push("flags");
+      return null;
+    },
+    stepDone: (step) => events.push(`step:${step}`),
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash", "spawn", "step:backend", "flags", "step:flags", "window", "close-splash"]);
+});
+
+test("a step that did not land is never reported", async () => {
+  const events = [];
+  await bootApp({
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake");
+    },
+    stepDone: (step) => events.push(`step:${step}`),
+    createWindow: async () => events.push("window"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["stop", "exit:1"]);
+});
+
 test("a failed boot puts the splash away before it reports, and never closes it", async () => {
   const events = [];
   await bootApp({
@@ -766,9 +803,9 @@ test("the app's window is not revealed until the splash has painted, even where 
   splashWin.show = () => splashWin.emit("show");
   splashWin.loadFile = async () => {};
   let painted;
-  splashWin.webContents = {
+  splashWin.webContents = Object.assign(new EventEmitter(), {
     executeJavaScript: () => new Promise((resolve) => (painted = resolve)),
-  };
+  });
   const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
   splash.show();
   splashWin.emit("ready-to-show");
