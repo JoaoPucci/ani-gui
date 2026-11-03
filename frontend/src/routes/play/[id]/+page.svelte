@@ -197,6 +197,12 @@
 		withRow
 	} from '$lib/play/play-origin';
 	import { guessedQuery } from '$lib/history/guessed-context';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { appLinkDeps } from '$lib/history/link-deps';
+	import { holdPlayback } from '$lib/play/hold-playback';
+	import GuessSlip from '$lib/components/GuessSlip.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess —
@@ -213,6 +219,18 @@
 	// history title the card was matched from ($lib/history/guessed-context).
 	const showHref = $derived(resolve('/anime/[id]', { id }) + guessedQuery(fromGuess, fromRow));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
+	// A guessed session's slip, its ⋯ entry and the picker they open
+	// ($lib/history/in-place-link.svelte.ts). The player stays where it
+	// is through a link and its undo; the picker holds playback while
+	// it is open ($lib/play/hold-playback).
+	const playLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined })
+	});
+	$effect(() => void playLink.arrive(fromGuess ? fromRow : null, id));
+	$effect(() => {
+		if (playLink.open) return holdPlayback(untrack(() => videoEl));
+	});
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
@@ -3544,6 +3562,20 @@
 	</section>
 
 	<div class="watch-column">
+		{#if playLink.slip !== 'none'}
+			<GuessSlip
+				view={playLink.slip}
+				title={playLink.offer?.entry.title ?? null}
+				linkedTitle={playLink.linked?.title ?? null}
+				busy={playLink.busy}
+				onchange={() => void playLink.start(episodeNum)}
+				onright={() => void playLink.confirmCurrent()}
+				onopen={() => {
+					if (playLink.linked) void goto(resolve('/anime/[id]', { id: playLink.linked.id }));
+				}}
+				onhide={() => playLink.hide()}
+			/>
+		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode
@@ -3727,6 +3759,20 @@
 							aria-label={m.play_more_aria_label()}
 							transition:settle={{ duration: 120 }}
 						>
+							{#if playLink.offer}
+								<button
+									type="button"
+									class="more-item"
+									role="menuitem"
+									onclick={() => {
+										closeMore();
+										void playLink.start(episodeNum);
+									}}
+								>
+									<GuessMark class="more-icon" />
+									<span>{m.play_link_menu_item()}</span>
+								</button>
+							{/if}
 							<button
 								type="button"
 								class="more-item"
@@ -4096,6 +4142,25 @@
 			</div>
 		{/if}
 	</div>
+	{#if playLink.offer}
+		<LinkShowDialog
+			open={playLink.open}
+			savedTitle={playLink.offer.entry.title}
+			episode={playLink.episode}
+			currentLabel={m.play_link_playing_now()}
+			candidates={playLink.candidates}
+			failed={playLink.failed}
+			chosen={playLink.chosen}
+			warnings={playLink.warnings}
+			rowCount={playLink.group?.length ?? null}
+			busy={playLink.busy}
+			error={playLink.error}
+			onSearch={(q) => void playLink.search(q)}
+			onChoose={(c) => playLink.choose(c)}
+			onConfirm={() => void playLink.confirm()}
+			onCancel={() => playLink.cancel()}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay visible={switchBusy} progress={switchProgress} />

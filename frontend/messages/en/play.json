@@ -142,5 +142,14 @@
 	"test_error_play_failed": "Play failed: {detail}",
 	"test_error_setup_failed": "Setup failed: {detail}",
 	"error_load_failed": "Couldn't load this title. {reason}",
-	"play_failure_source_error": "The streaming source answered with an error. Try again later."
+	"play_failure_source_error": "The streaming source answered with an error. Try again later.",
+	"link_guess_note": "This show was guessed from “{title}” in your history.",
+	"link_guess_right": "That’s right",
+	"link_linked_note": "Linked to {title}. What’s playing is still the guessed show.",
+	"link_open_linked": "Go to the linked show",
+	"link_kept_toast": "Kept {title}.",
+	"link_hide_aria": "Hide this notice",
+	"link_slip_aria": "Guessed show",
+	"link_menu_item": "Not this show…",
+	"link_playing_now": "Playing now"
 }

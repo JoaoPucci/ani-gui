@@ -143,5 +143,14 @@
 	"test_error_play_failed": "Falha ao reproduzir: {detail}",
 	"test_error_setup_failed": "Falha na configuração: {detail}",
 	"error_load_failed": "Não foi possível carregar este título. {reason}",
-	"play_failure_source_error": "A fonte de streaming respondeu com um erro. Tente novamente mais tarde."
+	"play_failure_source_error": "A fonte de streaming respondeu com um erro. Tente novamente mais tarde.",
+	"link_guess_note": "Este anime foi deduzido de “{title}” no seu histórico.",
+	"link_guess_right": "Está certo",
+	"link_linked_note": "Vinculado a {title}. O que está passando ainda é o anime deduzido.",
+	"link_open_linked": "Ir para o anime vinculado",
+	"link_kept_toast": "{title} mantido.",
+	"link_hide_aria": "Ocultar este aviso",
+	"link_slip_aria": "Anime deduzido",
+	"link_menu_item": "Não é este anime…",
+	"link_playing_now": "Passando agora"
 }
