@@ -541,9 +541,9 @@
 	}
 
 	/** The captions menu, as it mounts: capped at the room above the
-	 *  captions button inside the player and below the app's top bar —
-	 *  again on every resize while it is open — and opened on the
-	 *  selected entry. */
+	 *  captions button inside the player and below the app's top bar,
+	 *  and at half the player's height — again on every resize while it
+	 *  is open — and opened on the selected entry. */
 	function fitCcMenu(menu: HTMLElement) {
 		const fit = () => {
 			const frame = ccMenuAnchor?.closest('.player-frame');
@@ -596,8 +596,9 @@
 		if (choice !== undefined) rememberPick(choice);
 	}
 
-	/** Captions picks the show has remembered on this page. The page's
-	 *  warms read the choice, so each pick runs them again. */
+	/** Captions picks on this page that moved the show's remembered
+	 *  choice. The page's warms read the choice, so each such pick runs
+	 *  them again. */
 	let captionPicks = $state(0);
 
 	/** Remember a captions pick for the show — under its id, unless the
