@@ -99,6 +99,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
     episode: &str,
     mode: &str,
     quality: &str,
+    locale: &str,
 ) -> std::result::Result<ResolvedEpisode, NativeError> {
     let dead_end = |error: AniError| NativeError {
         error: match error {
@@ -167,7 +168,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         // the play resolve and the range download — so the cache
         // row, the session, the handoffs' argv and both downloads
         // share the one bound.
-        subtitles: super::play_native_resolve::tracks_within_cap(stream.subtitles),
+        subtitles: super::play_native_resolve::tracks_within_cap(stream.subtitles, locale),
         slot: ep.number,
         tag: ep.number2.clone(),
     })

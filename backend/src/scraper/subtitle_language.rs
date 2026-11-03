@@ -260,7 +260,7 @@ const REGIONS: &[(&str, &str)] = &[
 ];
 
 /// The language tag a file name's three-letter code names.
-fn language_of_code(code: &str) -> Option<&'static str> {
+pub(crate) fn language_of_code(code: &str) -> Option<&'static str> {
     LANGUAGES
         .iter()
         .find(|l| l.tag == code || l.codes.contains(&code))

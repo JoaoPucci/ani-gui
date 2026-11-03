@@ -204,7 +204,17 @@ use crate::proxy::MediaKind;
 // the player as the track's srclang and a download names its sidecar
 // by, and every v26 megaplay row holds the old codes; bumping
 // re-resolves.
-pub(crate) const SCHEMA: &str = "v27";
+// v28: the accept cap rose from 16 tracks to 64, and a cut keeps the
+// user's most wanted rather than the listing's first. A v27 row holds
+// the first sixteen of a listing the provider orders alphabetically —
+// Steel Ball Run's first episode cached without Portuguese, Spanish,
+// Russian or Japanese — and a replay would keep offering that cut for
+// the row's whole life; bumping re-resolves. A row now holds each file
+// once. Past sixty-four tracks the cut follows the locale of the play
+// that wrote the row, which the key does not name: a row written
+// before a locale change keeps the earlier locale's cut until it
+// expires — no listing seen comes near the cap.
+pub(crate) const SCHEMA: &str = "v28";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

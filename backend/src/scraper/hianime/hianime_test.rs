@@ -1021,10 +1021,11 @@ async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
         versions: Vec::new(),
         unread_past: None,
     };
-    let resolved =
-        crate::commands::play_native_episode::resolve_episode(&c, &picked, "7.5", "sub", "720")
-            .await
-            .expect("the recap resolves");
+    let resolved = crate::commands::play_native_episode::resolve_episode(
+        &c, &picked, "7.5", "sub", "720", "en",
+    )
+    .await
+    .expect("the recap resolves");
     assert_eq!(resolved.master_url, "https://hls.example/v/720/index.m3u8");
     assert_eq!(resolved.slot, 8);
     assert_eq!(resolved.tag.as_deref(), Some("7.5"));

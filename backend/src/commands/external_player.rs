@@ -58,10 +58,12 @@ pub struct LaunchArgs {
     /// `--referrer=` with nothing after the equals).
     #[serde(default)]
     pub custom_args_template: Option<String>,
-    /// Sidecar subtitle tracks' upstream URLs, the provider's default
-    /// first and the provider's order after it — a player that takes
-    /// one file takes the first. The player fetches them itself; the
-    /// referer flag it already gets covers those fetches.
+    /// Sidecar subtitle tracks' upstream URLs, most wanted first
+    /// ([`crate::commands::play_handoff::subtitle_urls_preferred`]) — a
+    /// player that takes one file takes the first, and a command line
+    /// that cannot carry them all keeps the first ones
+    /// ([`crate::commands::command_line`]). The player fetches them
+    /// itself; the referer flag it already gets covers those fetches.
     #[serde(default)]
     pub subtitle_urls: Vec<String>,
 }
@@ -79,8 +81,8 @@ pub fn build_argv(args: &LaunchArgs) -> Vec<String> {
             "--referrer=",
             SubFlag::Each("--sub-file="),
         ),
-        // VLC takes one --sub-file; the first track is the provider's
-        // default.
+        // VLC takes one --sub-file: the first track, the most wanted —
+        // the provider's default when it flags one.
         ExternalPlayerKind::Vlc => build_argv_with_template(
             args,
             "--meta-title=",
