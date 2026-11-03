@@ -871,6 +871,10 @@ mod flags_tests;
 mod source_health_tests;
 
 #[cfg(test)]
+#[path = "notices_test.rs"]
+mod notices_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;

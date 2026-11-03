@@ -24,8 +24,19 @@ pub(crate) struct FlagCase {
     pub(crate) check: fn(&Resolved),
 }
 
-/// Every consumer's cases. Empty until the first flag is declared.
-pub(crate) const CASES: &[FlagCase] = &[];
+/// Every consumer's cases.
+pub(crate) const CASES: &[FlagCase] = &[
+    FlagCase {
+        flag: crate::notices::NOTIFICATION_CENTER,
+        value: FlagValue::Bool(false),
+        check: crate::notices::serve_tests::checks::off,
+    },
+    FlagCase {
+        flag: crate::notices::NOTIFICATION_CENTER,
+        value: FlagValue::Bool(true),
+        check: crate::notices::serve_tests::checks::on,
+    },
+];
 
 /// What a set of cases leaves untested.
 #[derive(Debug, Default, PartialEq, Eq)]

@@ -18,4 +18,8 @@ mod fields;
 pub mod remote;
 mod text_fields;
 
+#[cfg(test)]
+#[path = "serve_test.rs"]
+pub(crate) mod serve_tests;
+
 pub use remote::{parse, Parsed, Priority, RemoteNotice, RemoteNotices, NOTICES_KEY};
