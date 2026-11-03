@@ -132,6 +132,15 @@ impl FlagStore {
         self.current()
     }
 
+    /// The notices block of the document that decided the launch's
+    /// flags (see [`crate::notices`]), when it had one. Decided with the
+    /// flags, so like them it never changes in a session; `None` before
+    /// the store settles.
+    #[must_use]
+    pub fn notices(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// Wait, without a limit, until the flags are decided.
     #[cfg(test)]
     pub(crate) async fn decided(&self) {
@@ -156,3 +165,7 @@ impl FlagStore {
 #[cfg(test)]
 #[path = "store_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "store_notices_test.rs"]
+mod notices_tests;
