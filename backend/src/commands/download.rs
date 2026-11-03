@@ -90,6 +90,16 @@ pub struct DownloadArgs {
 }
 
 impl DownloadArgs {
+    /// The locale the download orders subtitle tracks by: the one in
+    /// the `config.toml` at `config_path`. A single episode and a range
+    /// both read it here.
+    #[must_use]
+    pub fn ordering_locale(&self, config_path: &std::path::Path) -> String {
+        crate::config::read_config(config_path)
+            .unwrap_or_default()
+            .locale
+    }
+
     /// The native resolve this download asks for, at `quality`.
     #[must_use]
     pub fn native_request<'a>(
@@ -238,9 +248,7 @@ where
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let locale = crate::config::read_config(&state.config_path)
-        .unwrap_or_default()
-        .locale;
+    let locale = args.ordering_locale(&state.config_path);
     // Every listing the resolve picks is recorded, served or not.
     let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(

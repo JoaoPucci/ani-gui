@@ -150,12 +150,26 @@ impl PlayArgs {
         self.kitsu_id.as_deref()
     }
 
-    /// What the viewer wants of a listing, with `locale` the UI's.
+    /// What the viewer wants of a listing, with `configured` the UI's
+    /// locale (`config.toml`'s).
     #[must_use]
-    pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
+    pub fn wanted<'a>(
+        &'a self,
+        configured: &'a str,
+    ) -> crate::scraper::track_preference::Wanted<'a> {
         crate::scraper::track_preference::Wanted {
             remembered: self.caption.as_deref().filter(|c| *c != "off"),
-            locale,
+            locale: configured,
+        }
+    }
+
+    /// Whom a cached row's check reads tracks for
+    /// ([`crate::commands::play_cache::Viewer`]).
+    #[must_use]
+    pub(crate) fn viewer(&self) -> crate::commands::play_cache::Viewer<'_> {
+        crate::commands::play_cache::Viewer {
+            remembered: self.caption.as_deref(),
+            locale: None,
         }
     }
 
@@ -370,8 +384,7 @@ where
     let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-            if let Some(mut resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await
-            {
+            if let Some(mut resp) = try_serve_cached(state, &cached, args.viewer()).await {
                 resp.own_listing = args.lands_on_guess_row(&cached.show_id);
                 tracing::info!(
                     title = %args.title,
@@ -1238,7 +1251,9 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached, None).await.is_none());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -1258,7 +1273,9 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        let resp = try_serve_cached(&state, &cached, None).await.expect("hit");
+        let resp = try_serve_cached(&state, &cached, Default::default())
+            .await
+            .expect("hit");
         // Session is freshly created, but the upstream + kind match.
         assert!(resp.media_url.contains("/file.mp4"));
         assert_eq!(resp.media_kind, MediaKind::Mp4);
@@ -1287,7 +1304,9 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached, None).await.is_none());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -1308,7 +1327,9 @@ pub(crate) mod tests {
             "https://allmanga.to".into(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached, None).await.is_some());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_some());
     }
 
     /// A sidecar track is signed like the stream and expires on its
@@ -1338,7 +1359,9 @@ pub(crate) mod tests {
         );
         cached.subtitles = vec![track("en", true, &format!("{}/subs/en.vtt", server.uri()))];
         assert!(
-            try_serve_cached(&state, &cached, None).await.is_none(),
+            try_serve_cached(&state, &cached, Default::default())
+                .await
+                .is_none(),
             "a dead track is a dead row"
         );
     }
@@ -1403,7 +1426,7 @@ pub(crate) mod tests {
                 &state,
                 &row(&stalling),
                 deadline,
-                None,
+                Default::default(),
             ),
         )
         .await
@@ -1436,7 +1459,10 @@ pub(crate) mod tests {
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 crate::commands::play_cache::cached_row_is_live_within(
-                    &state, &again, deadline, None,
+                    &state,
+                    &again,
+                    deadline,
+                    Default::default(),
                 ),
             ),
             stalled_again.asked(),
@@ -1483,7 +1509,9 @@ pub(crate) mod tests {
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
             track("es", false, &format!("{}/subs/es.vtt", server.uri())),
         ];
-        assert!(try_serve_cached(&state, &cached, None).await.is_some());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_some());
         let asked: Vec<String> = server
             .received_requests()
             .await
