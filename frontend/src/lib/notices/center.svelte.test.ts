@@ -179,3 +179,24 @@ describe('the notification center', () => {
 		expect(spy).not.toHaveBeenCalled();
 	});
 });
+
+describe('watching the list change', () => {
+	it('tells its observer the rows before and after each change, reads and dismissals included', () => {
+		const seen: Array<[string[], string[]]> = [];
+		const keys = (l: readonly Notice[]) => l.map((n) => `${n.key}:${n.read ? 'r' : 'u'}`);
+		const c = new NoticeCenter({
+			storage: null,
+			now: () => NOW,
+			toast: () => {},
+			observe: (before, after) => seen.push([keys(before), keys(after)])
+		});
+		c.raise({ key: 'remote:a', kind: 'remote', data: { title: 'A' } });
+		c.markRead('remote:a');
+		c.dismiss('remote:a');
+		expect(seen).toEqual([
+			[[], ['remote:a:u']],
+			[['remote:a:u'], ['remote:a:r']],
+			[['remote:a:r'], []]
+		]);
+	});
+});

@@ -1,15 +1,20 @@
 //! Flag declarations: the name, the built-in default and the values
 //! the remote file may select.
 //!
-//! The kinds are the safety rule written as a type. Neither kind can
-//! name a value riskier than the build's own default:
+//! The kinds are the safety rule written as a type. A kill switch and a
+//! fallback cannot name a value riskier than the build's own default:
 //!
 //! - a [`FlagKind::KillSwitch`] gates a feature that ships on. Its
 //!   default is `true`; the only other value the file may send is
 //!   `false`, which switches the feature off;
 //! - a [`FlagKind::Fallback`] chooses between the behaviour this
 //!   build ships (`current`, the default) and behaviours earlier
-//!   releases had (`earlier`). The file may select only those.
+//!   releases had (`earlier`). The file may select only those;
+//! - a [`FlagKind::Rollout`] gates a feature that ships off. Its
+//!   default is `false`; `true` turns the feature on, which is riskier
+//!   than the default, so only a file whose signature verifies may
+//!   select it ([`FlagDecl::signed_only`]; the signature's
+//!   [`super::signature::admit`] drops it from any other file).
 //!
 //! What the type cannot see is whether "off" or "earlier" really is
 //! the safer side for a given feature — a kill switch on something
@@ -47,6 +52,9 @@ pub enum FlagKind {
         /// select instead.
         earlier: &'static [&'static str],
     },
+    /// Gates a feature that ships off. Default `false`; any file may
+    /// send `false`, and only a verified file `true`.
+    Rollout,
 }
 
 /// One declared flag.
@@ -58,7 +66,9 @@ pub struct FlagDecl {
     /// Which way the flag may move.
     pub kind: FlagKind,
     /// Why the non-default values are the safer side: what still works,
-    /// or what the user still gets, once the flag is flipped.
+    /// or what the user still gets, once the flag is flipped. For a
+    /// rollout, why the feature may be turned on from a signed file:
+    /// what it does once on, and that its off state is the build's own.
     pub safe_because: &'static str,
 }
 
@@ -70,6 +80,7 @@ impl FlagDecl {
         match self.kind {
             FlagKind::KillSwitch => FlagValue::Bool(true),
             FlagKind::Fallback { current, .. } => FlagValue::Choice(current),
+            FlagKind::Rollout => FlagValue::Bool(false),
         }
     }
 
@@ -78,6 +89,7 @@ impl FlagDecl {
     pub fn allowed(&self) -> Vec<FlagValue> {
         match self.kind {
             FlagKind::KillSwitch => vec![FlagValue::Bool(true), FlagValue::Bool(false)],
+            FlagKind::Rollout => vec![FlagValue::Bool(false), FlagValue::Bool(true)],
             FlagKind::Fallback { current, earlier } => std::iter::once(current)
                 .chain(earlier.iter().copied())
                 .map(FlagValue::Choice)
@@ -93,6 +105,14 @@ impl FlagDecl {
     pub fn accept(&self, raw: &serde_json::Value) -> Option<FlagValue> {
         self.allowed().into_iter().find(|v| matches(*v, raw))
     }
+
+    /// Whether `v` may come only from a file whose signature verifies:
+    /// a rollout's `true`, which turns its feature on. Every other
+    /// allowed value is the default or a move toward the safer side.
+    #[must_use]
+    pub fn signed_only(&self, v: FlagValue) -> bool {
+        self.kind == FlagKind::Rollout && v == FlagValue::Bool(true)
+    }
 }
 
 /// Whether `raw` spells the declared value `v`, type included.
@@ -105,7 +125,8 @@ fn matches(v: FlagValue, raw: &serde_json::Value) -> bool {
 
 /// Check a declaration list: names well-formed and unique, every
 /// fallback naming at least one earlier behaviour distinct from its
-/// current one, and every declaration stating why its retreat is safe.
+/// current one, and every declaration stating why its other values are
+/// safe (for a rollout, why a signed file may turn it on).
 ///
 /// # Errors
 /// A description of the first problem found.
@@ -130,7 +151,7 @@ fn check_one(decl: &FlagDecl) -> Result<(), String> {
         return Err(format!("{name:?} is not a lower-case snake_case name"));
     }
     if decl.safe_because.trim().is_empty() {
-        return Err(format!("{name} does not say why its retreat is safe"));
+        return Err(format!("{name} does not say why its other values are safe"));
     }
     if let FlagKind::Fallback { current, earlier } = decl.kind {
         check_fallback(name, current, earlier)?;

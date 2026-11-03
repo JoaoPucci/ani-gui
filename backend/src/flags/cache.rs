@@ -4,28 +4,32 @@
 //! It stands in for the remote file when a launch cannot read it —
 //! offline, a timeout, an error status, a malformed body — for as long
 //! as it is fresh ([`FRESH_FOR`]). Past that, the built-in defaults
-//! apply. The entry holds the document rather than resolved values,
-//! so it goes through the same resolution as a fetched file: a cache
+//! apply. The entry holds the document rather than resolved values, so
+//! it goes through the same resolution as a fetched file: a cache
 //! written by another build, or edited by hand, still resolves only to
 //! values this build declares. The notices block it may hold is kept
 //! only if it verified when fetched (see [`super::signature`]); it is
 //! not checked again on reading, so a hand edit of the user's own cache
-//! reaches only that user's notices. An entry without the mark this
-//! build writes (the `admitted` field) predates the signature check
-//! and held the file as fetched: it is read as an unsigned file, its
-//! notices dropped.
+//! reaches only that user's own install (its notices and rollouts). An
+//! entry not marked as coming from a verified file (the `verified`
+//! field) is admitted again on reading, as an unsigned file under the
+//! reading build's declarations: that covers an entry written before
+//! the signature check, which held the file as fetched, and one written
+//! by a build that did not yet declare a rollout the reader does.
 //!
-//! **Why seven days.** Every value a document can resolve to is a
-//! flag's default or a declared retreat from it, so a cached document
-//! is never less safe than the defaults it stands in for; what its age
-//! bounds is how long a retreat the maintainer has since lifted
-//! lingers on a machine that cannot reach GitHub. A week rides out a
-//! run of launches without the network — a trip, a captive portal, a
-//! blocked CDN — so a feature switched off for a bad release stays off
-//! through them, while a lifted retreat clears within a week even on a
-//! machine that never reaches the file again. An entry dated in the
-//! future (a clock set back) is not fresh: it could otherwise outlive
-//! the window by however far the clock moved.
+//! **Why seven days.** Every value an unverified document can resolve
+//! to is a flag's default or a declared retreat from it, so such a
+//! cached document is never less safe than the defaults it stands in
+//! for; a verified one may also turn a rollout on and carry notices,
+//! which the maintainer signed. What its age bounds is how long a
+//! change the maintainer has since made (a lifted retreat, a rollout
+//! turned off again) waits on a machine that cannot reach GitHub. A
+//! week rides out a run of launches without the network — a trip, a
+//! captive portal, a blocked CDN — so a feature switched off for a bad
+//! release stays off through them, while a lifted retreat clears within
+//! a week even on a machine that never reaches the file again. An entry
+//! dated in the future (a clock set back) is not fresh: it could
+//! otherwise outlive the window by however far the clock moved.
 
 use std::path::Path;
 use std::time::Duration;
@@ -33,7 +37,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::resolve::{Document, MAX_BYTES};
-use super::signature::{admit, Verdict};
+use super::signature::{admit, holds_signed_content, Verdict};
 
 /// How long a cached document stands in for an unreachable file.
 pub const FRESH_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -45,23 +49,27 @@ pub struct CacheEntry {
     pub fetched_at: u64,
     /// The `flags` object as admitted (see [`super::signature::admit`]).
     pub flags: Document,
-    /// Whether `flags` was admitted before it was written: true for
-    /// every entry this build writes. Builds before the signature check
-    /// wrote the file as fetched and no mark, which reads as `false`;
-    /// [`read`] admits such an entry as unsigned.
+    /// Whether `flags` is known to come from a verified file: it holds
+    /// something only a verified file keeps through admission (a
+    /// notices block, a rollout turned on). [`read`] admits any other
+    /// entry again, as unsigned, under the reading build's declarations,
+    /// so a rollout a later build declares cannot be turned on by an
+    /// unsigned file an earlier build cached. An entry without the field
+    /// (written before the signature check) reads as `false`.
     #[serde(default)]
-    pub admitted: bool,
+    pub verified: bool,
 }
 
 impl CacheEntry {
     /// An entry for a document that went through
-    /// [`super::signature::admit`].
+    /// [`super::signature::admit`]. Its mark is set by [`write`], from
+    /// the document, as it is written.
     #[must_use]
     pub fn admitted(fetched_at: u64, flags: Document) -> Self {
         Self {
             fetched_at,
             flags,
-            admitted: true,
+            verified: false,
         }
     }
 }
@@ -99,15 +107,19 @@ pub async fn read(path: &Path) -> Option<CacheEntry> {
         return None;
     }
     let entry: CacheEntry = serde_json::from_slice(&bytes).ok()?;
-    Some(if entry.admitted {
+    Some(if entry.verified {
         entry
     } else {
-        CacheEntry::admitted(entry.fetched_at, admit(entry.flags, Verdict::Unsigned))
+        CacheEntry {
+            flags: admit(entry.flags, Verdict::Unsigned),
+            ..entry
+        }
     })
 }
 
-/// Replace the cache file with `entry`, through a temporary file so a
-/// launch ended mid-write never leaves a torn one. A failure is
+/// Replace the cache file with `entry`, marked verified when its
+/// document holds what only a verified file keeps, through a temporary
+/// file so a launch ended mid-write never leaves a torn one. A failure is
 /// logged and otherwise ignored: the cache is a convenience.
 pub async fn write(path: &Path, entry: &CacheEntry) {
     if let Err(error) = try_write(path, entry).await {
@@ -119,7 +131,12 @@ async fn try_write(path: &Path, entry: &CacheEntry) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let bytes = serde_json::to_vec(entry)?;
+    // The mark is the document's own evidence, taken as it is written.
+    let marked = CacheEntry {
+        verified: holds_signed_content(&entry.flags, super::DECLARED),
+        ..entry.clone()
+    };
+    let bytes = serde_json::to_vec(&marked)?;
     let tmp = path.with_extension("json.tmp");
     tokio::fs::write(&tmp, &bytes).await?;
     tokio::fs::rename(&tmp, path).await

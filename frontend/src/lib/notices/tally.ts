@@ -2,20 +2,31 @@
  *  bell's count and colour. */
 import type { Notice, Tone } from './kinds';
 
+/** A published notice's tone, from its priority. */
+const PUBLISHED_TONE: Readonly<Record<string, Tone>> = {
+	critical: 'failure',
+	warning: 'live'
+};
+
 export function toneOf(n: Notice): Tone {
+	if (n.kind === 'remote') {
+		const p = n.data.priority;
+		return (
+			(typeof p === 'string' && Object.hasOwn(PUBLISHED_TONE, p) && PUBLISHED_TONE[p]) || 'info'
+		);
+	}
 	if (n.kind === 'download-failed') return 'failure';
 	if (n.resolvedAt !== null) return 'good';
 	if (n.kind === 'outage') return 'live';
 	return 'info';
 }
 
-/** Display order: live conditions first, then newest first. */
+/** Display order: live conditions first, a critical published notice
+ *  among them, then newest first. */
 export function ordered(list: readonly Notice[]): Notice[] {
-	return list.slice().sort((a, b) => {
-		const la = toneOf(a) === 'live' ? 0 : 1;
-		const lb = toneOf(b) === 'live' ? 0 : 1;
-		return la - lb || b.at - a.at;
-	});
+	const rank = (n: Notice) =>
+		toneOf(n) === 'live' || (n.kind === 'remote' && toneOf(n) === 'failure') ? 0 : 1;
+	return list.slice().sort((a, b) => rank(a) - rank(b) || b.at - a.at);
 }
 
 export interface CountOptions {

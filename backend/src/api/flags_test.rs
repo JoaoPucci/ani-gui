@@ -86,10 +86,15 @@ async fn the_route_never_waits_past_the_stores_limit() {
     assert!(started.elapsed() <= SETTLE_LIMIT + std::time::Duration::from_millis(100));
 }
 
+/// The shipped build declares the notification center, a rollout,
+/// which the window reads as off until a signed file turns it on.
 #[tokio::test]
-async fn the_shipped_build_declares_no_flags_yet() {
+async fn the_shipped_build_hands_the_window_the_center_off() {
     let td = TempDir::new().expect("tempdir");
     let (status, body) = get_flags(test_app_state(&td)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["flags"], serde_json::json!({}));
+    assert_eq!(
+        body["flags"],
+        serde_json::json!({ "notification_center": false })
+    );
 }

@@ -38,9 +38,9 @@
 //! its limit or carrying control or direction-override characters, a
 //! priority this build does not know — is dropped, with its reason in
 //! [`Parsed::dropped`]; it is never shown in part. Pure: no I/O, no
-//! clock. Not called yet: the block is kept unparsed with the launch's
-//! flags (`FlagStore::notices`) until showing remote content is
-//! settled.
+//! clock. The block is kept unparsed with the launch's flags
+//! (`FlagStore::notices`), only from a verified file, and parsed when
+//! the window asks for it (see [`super::serve`]).
 
 use serde::Serialize;
 use serde_json::{Map, Value};

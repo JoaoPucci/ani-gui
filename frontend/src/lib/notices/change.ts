@@ -2,24 +2,26 @@
  *  withdraw. */
 import { lifetimeOf, type Change, type Notice, type NoticeData, type RaiseInput } from './kinds';
 
-/** Raise `input` at `now`. A new key adds a row. An existing row is
+/** Raise `input` at `now`. A new key adds a row, news unless it is
+ *  raised already read. An existing row is
  *  updated in place, and is news again when it had resolved, or when
  *  it is an event the user had already read (a new batch). */
 export function raise(list: readonly Notice[], input: RaiseInput, now: number): Change {
 	const add = input.count ?? 1;
 	const i = list.findIndex((n) => n.key === input.key);
 	if (i === -1) {
+		const read = input.read === true;
 		const notice: Notice = {
 			key: input.key,
 			kind: input.kind,
 			firstAt: now,
 			at: now,
 			count: add,
-			read: false,
+			read,
 			resolvedAt: null,
 			data: { ...input.data }
 		};
-		return { list: [...list, notice], notice, fresh: true, changed: true };
+		return { list: [...list, notice], notice, fresh: !read, changed: true };
 	}
 	const prev = list[i];
 	const fresh = prev.resolvedAt !== null || (lifetimeOf(input.kind) === 'event' && prev.read);

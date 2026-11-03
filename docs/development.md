@@ -298,7 +298,7 @@ the installed app's shell profile, and hands over to it if it is running.
 
 The maintainer can switch a declared flag without a release by editing
 one file on the repository's `flags` branch. What a flag may do, and
-why its flags need no signature, is in
+which values need the file signed, is in
 [`architecture.md`](./architecture.md#remote-flags). Only a flag
 declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
 build ignores names it does not declare and values its declaration
@@ -337,24 +337,31 @@ Create the branch before the first release that carries this.
 
 **The format.** One JSON object with a `flags` object inside. A kill
 switch takes `false`; a fallback takes the name of one of the earlier
-behaviours its declaration lists:
+behaviours its declaration lists; a rollout takes `true` to turn its
+feature on, which counts only in a signed file (see
+[Signing the flags file](#signing-the-flags-file)), or `false`:
 
 ```json
 {
   "flags": {
     "some_kill_switch": false,
-    "some_fallback": "previous"
+    "some_fallback": "previous",
+    "notification_center": true
   }
 }
 ```
+
+An unsigned or stale-signed file keeps every other value and loses a
+rollout's `true`, so the feature stays off on every install.
 
 **Flipping a flag.** Edit `flags.json` in the worktree above, not in
 GitHub's web editor, and publish it. Once `flags.json.minisig` is on the
 branch, publish every edit, a flag change included, with step 3 of
 [Signing the flags file](#signing-the-flags-file): the signature covers
 the whole file, and an edit pushed without a fresh one drops every
-notice the file carries (step 3 says how). Until then there is nothing
-to drop, and the file is published unsigned. In bash:
+notice the file carries and every rollout it turns on (step 3 says
+how). Until then there is nothing to drop, and the file is published
+unsigned; a rollout set to `true` in it changes nothing. In bash:
 
 ```sh
 cd ../ani-gui-flags &&
@@ -433,22 +440,26 @@ environment variables above).
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl`, list it in `DECLARED`, read it through that
-constant, and register a test case for its default and for each retreat
-in `flags::matrix::CASES`. A test fails until every value has one.
+constant, and register a test case for its default and for every other
+value in `flags::matrix::CASES`. A test fails until every value has
+one. A new feature is declared as a rollout (`FlagKind::Rollout`), off
+until a signed file turns it on; `notices::NOTIFICATION_CENTER` is the
+first.
 
 ## Signing the flags file
 
-The flags themselves need no signature (see
-[`architecture.md`](./architecture.md#remote-flags)). The notices the
-file may carry for the notification center, and its donation-ask
-number, are used only when `flags.json` is signed with minisign and the
-signature verifies against a public key the build trusts
-(`backend/src/flags/signature.rs`, `TRUSTED_KEYS`). Each launch fetches
-`flags.json.minisig` from beside `flags.json` on the `flags` branch. An
-unsigned file, a signature that does not verify, or a build that trusts
-no key keeps the file's flags and drops its notices. The shipped build
-trusts no key yet: the first one goes in with the release that starts
-showing remote notices.
+Most flags need no signature (see
+[`architecture.md`](./architecture.md#remote-flags)). Turning a
+rollout on, and the notices the file may carry for the notification
+center with its donation-ask number, are used only when `flags.json`
+is signed with minisign and the signature verifies against a public
+key the build trusts (`backend/src/flags/signature.rs`,
+`TRUSTED_KEYS`). Each launch fetches `flags.json.minisig` from beside
+`flags.json` on the `flags` branch. An unsigned file, a signature that
+does not verify, or a build that trusts no key keeps the file's other
+flags and drops its notices and any rollout it turns on. The shipped
+build trusts no key yet: the first one goes in with the release that
+turns the notification center on remotely.
 
 The private key never goes into this repository, a pull request, an
 issue, CI or any shared drive. Keep it, and its password, offline with
@@ -500,8 +511,10 @@ holds two lines; the second is the public key, a base64 string starting
 tests that pin the shipped build as trusting no key
 (`the_shipped_build_trusts_no_key_until_the_maintainer_adds_one` in
 `signature_test.rs` and `the_shipped_build_trusts_no_signature_yet` in
-`remote_signed_test.rs`), and ship the release. Installs on older releases ignore
-signed content; that is the safe direction.
+`remote_signed_test.rs`), and the sentence in `docs/PRIVACY.md`
+saying this version trusts no signing key, and ship the release.
+Installs on older releases ignore signed content; that is the safe
+direction.
 
 **3. Sign and publish.** After every edit of `flags.json`, sign the
 exact bytes you push, then commit the file and its signature together:
@@ -550,10 +563,11 @@ substitute):
 
 After pushing, wait out the CDN's five-minute cache: until both files
 are fresh it can serve the new file with the old signature, and a
-launch in that window keeps the flags and drops the notices. An edit
-pushed without a fresh signature leaves the old signature beside new
-bytes: installs keep the flags and drop the notices until a matching
-signature is pushed. GitHub's web editor cannot sign, so make every
+launch in that window keeps the flags and drops the notices and any
+rollout turned on. An edit pushed without a fresh signature leaves the
+old signature beside new bytes: installs keep the flags and drop the
+notices and any rollout turned on until a matching signature is
+pushed. GitHub's web editor cannot sign, so make every
 edit in the worktree; an edit already made there needs this step at
 once.
 
@@ -562,12 +576,12 @@ to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is
 out, sign with the new key only. A release later, remove the old key
 from the list. If a secret key is lost or leaked, delete
 `flags.json.minisig` from the branch at once, and ship a release that
-removes that key. An install drops the notices once a launch has
-downloaded the unsigned file: on that launch if the file arrives within
-its two-second wait, otherwise on the next (a deleted signature answers
-404 at once, so it adds no wait). One that cannot reach the
-file keeps its cached copy, and the notices in it, for up to seven
-days.
+removes that key. An install drops the notices, and turns off any
+rollout the file turned on, once a launch has downloaded the unsigned
+file: on that launch if the file arrives within its two-second wait,
+otherwise on the next (a deleted signature answers 404 at once, so it
+adds no wait). One that cannot reach the file keeps its cached copy,
+and what it turned on, for up to seven days.
 
 ## Code style
 

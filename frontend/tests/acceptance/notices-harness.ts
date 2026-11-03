@@ -37,7 +37,8 @@ export const QUIET = [
 	http.get(`${API_BASE}/api/source-health`, () => {
 		health.reads += 1;
 		return HttpResponse.json({ providers: health.answer });
-	})
+	}),
+	http.get(`${API_BASE}/api/notices`, () => HttpResponse.json({ donation_ask: null, items: [] }))
 ];
 
 export function installWindow(flags: Record<string, boolean | string> | undefined) {

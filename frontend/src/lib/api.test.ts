@@ -10,6 +10,7 @@ import {
 	aniskipGet,
 	appInfo,
 	sourceHealth,
+	publishedNotices,
 	availabilityBatch,
 	availabilityWarm,
 	checkAvailability,
@@ -125,6 +126,16 @@ describe('sourceHealth', () => {
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await sourceHealth()).toEqual(body);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/source-health`);
+	});
+});
+
+describe('publishedNotices', () => {
+	it('GETs /api/notices and hands back the body as it came', async () => {
+		const body = { donation_ask: 2, items: [] };
+		const fetchMock = mockFetchOnce(body);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(await publishedNotices()).toEqual(body);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/notices`);
 	});
 });
 

@@ -618,6 +618,13 @@ export function sourceHealth(): Promise<unknown> {
 	return getJson<unknown>('/api/source-health');
 }
 
+/** `GET /api/notices`: what a verified flags file publishes for the
+ *  notification center, served only while it is on. The body is read by
+ *  `$lib/notices/published`' `parsePublished`. */
+export function publishedNotices(): Promise<unknown> {
+	return getJson<unknown>('/api/notices');
+}
+
 export function appInfo(): Promise<AppInfo> {
 	return getJson<AppInfo>('/api/app-info');
 }

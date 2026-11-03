@@ -33,10 +33,11 @@ export function markAllRead(list: readonly Notice[]): Notice[] {
 	return list.map((n) => (n.read ? n : { ...n, read: true }));
 }
 
-/** The user may remove events, and conditions once they resolved; a
- *  live condition goes when it resolves. */
+/** The user may remove events, conditions once they resolved, and a
+ *  published notice (./published remembers it); a live condition of
+ *  the app's own goes when it resolves. */
 export function canDismiss(n: Notice): boolean {
-	return lifetimeOf(n.kind) === 'event' || n.resolvedAt !== null;
+	return lifetimeOf(n.kind) === 'event' || n.resolvedAt !== null || n.kind === 'remote';
 }
 
 export function dismiss(list: readonly Notice[], key: string): Notice[] {
