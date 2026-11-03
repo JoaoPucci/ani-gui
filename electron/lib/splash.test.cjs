@@ -177,7 +177,7 @@ test("nothing on the splash counts: the slot under the title is a wordless rail"
   const html = read("index.html");
   assert.match(
     html,
-    /<p class="readout" aria-hidden="true"><span class="rail"><i><\/i><i><\/i><i><\/i><\/span><span class="status"><\/span><\/p>\s*<script src="progress\.js"><\/script>/,
+    /<p class="readout"><span class="rail" aria-hidden="true"><i><\/i><i><\/i><i><\/i><\/span><span class="status" role="status"><\/span><\/p>\s*<script src="progress\.js"><\/script>/,
   );
   assert.doesNotMatch(html, /progress\.js"[^>]*\b(defer|async)\b/);
   assert.doesNotMatch(html, /class="(counter|still|unit)"/);
@@ -199,6 +199,21 @@ test("the stall line sits outside the flow, so its coming and going moves nothin
   const css = read("splash.css");
   assert.match(css, /\.readout \{[^}]*position: relative;/);
   assert.match(css, /\.status \{[^}]*position: absolute;/);
+  // A longer line, in any language, ends in an ellipsis inside the
+  // title column rather than running off the window.
+  assert.match(css, /\.status \{[^}]*max-inline-size: 100%;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+});
+
+test("the rail hangs under the title without pushing it off the gate's centre", () => {
+  // The title and its rule centre on the gate, as they did with no rail:
+  // the title column gives back the line the rail takes (the rail and
+  // the row gap above it), so the stage centres the rest. A grid track
+  // never goes below zero, so this cannot be the readout's own margin.
+  const css = read("splash.css");
+  const rail = /\.rail \{[^}]*block-size: (\d+)px;/.exec(css);
+  const gap = /\.title \{[^}]*row-gap: (\d+)px;/.exec(css);
+  assert.ok(rail && gap);
+  assert.match(css, new RegExp(`\\.title \\{[^}]*margin-block-end: -${Number(rail[1]) + Number(gap[1])}px;`));
 });
 
 test("the rail and the stall line move only once the splash is told to move", () => {
@@ -293,6 +308,18 @@ test("the stall line comes only once a step has been pending 700 ms, and goes wh
   assert.equal(page.status(), null, "nothing pending, nothing said");
 });
 
+test("a stall line that would say the same at the next step stays up instead of blinking", () => {
+  const page = progressPage("?st=700&t1=Same&t2=Same&t3=Same");
+  page.tick(700);
+  assert.equal(page.status(), "Same");
+  page.set(1);
+  assert.equal(page.status(), "Same", "still pending, still the same words");
+  page.tick(5000);
+  assert.equal(page.status(), "Same");
+  page.set(3);
+  assert.equal(page.status(), null);
+});
+
 test("a page told nothing to say never shows a stall line", () => {
   const page = progressPage("");
   page.tick(5000);
@@ -376,8 +403,10 @@ test("steps that landed before the page loaded reach it once it has", async () =
   splash.show();
   await splash.progress("backend");
   await splash.progress("flags");
+  const before = stepCalls(win).length;
   win.webContents.emit("did-finish-load");
   await tick();
+  assert.equal(stepCalls(win).length, before + 1, "sent again on load");
   assert.equal(stepCalls(win).at(-1), "js:window.splashProgress && window.splashProgress.set(2)");
   splash.close();
 });

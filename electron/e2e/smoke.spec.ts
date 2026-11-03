@@ -301,7 +301,13 @@ test("the splash's rail fills as steps land, and its stall line comes after 700 
       const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
       const { stallTexts } = main.require("./lib/splash-progress.cjs");
       const { messagesFor } = main.require("./lib/main-messages.cjs");
-      const w = new BrowserWindow(splashWindowOptions());
+      // Never shown, so its timers are kept from being throttled the
+      // way a hidden page's are; the real splash is on screen.
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
       const run = (code: string) => w.webContents.executeJavaScript(code);
       const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {

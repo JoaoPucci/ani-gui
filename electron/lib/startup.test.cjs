@@ -558,6 +558,27 @@ test("the splash's rail hears each boot step as it lands: the backend, then the 
   assert.deepEqual(events, ["splash", "spawn", "step:backend", "flags", "step:flags", "window", "close-splash"]);
 });
 
+test("a step the splash cannot take does not stop the boot", async () => {
+  const events = [];
+  await bootApp({
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    stepDone: () => {
+      throw new Error("splash gone sideways");
+    },
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: (msg) => events.push(`log:${msg}`),
+  });
+  assert.deepEqual(events, [
+    "log:[main] could not tell the splash a step landed:",
+    "log:[main] could not tell the splash a step landed:",
+    "window",
+    "close-splash",
+  ]);
+});
+
 test("a step that did not land is never reported", async () => {
   const events = [];
   await bootApp({
