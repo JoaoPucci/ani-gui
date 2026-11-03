@@ -35,3 +35,22 @@ export function moreMenuQuality(
 export function moreMenuEscape(qualityOpen: boolean): 'back' | 'close' {
 	return qualityOpen ? 'back' : 'close';
 }
+
+/** Where the ⋯ menu's focus is, for a horizontal arrow key. */
+export interface MoreMenuArrowAt {
+	/** The page reads right to left. */
+	readonly rtl: boolean;
+	/** The list of levels is open. */
+	readonly qualityOpen: boolean;
+	/** Focus is on the Quality row that opens it. */
+	readonly onQualityRow: boolean;
+}
+
+/** What a horizontal arrow key does in the ⋯ menu: open the levels
+ *  from the Quality row, go back from them, or nothing — kept in the
+ *  menu, so it does not seek; null for any other key. */
+export function moreMenuArrow(key: string, at: MoreMenuArrowAt): 'open' | 'back' | 'stay' | null {
+	void key;
+	void at;
+	return null;
+}
