@@ -315,7 +315,10 @@ verifies the file's exact bytes with minisign (Ed25519 over BLAKE2b-512,
 the prehashed form only) against the public keys compiled into the
 build (`flags::signature::TRUSTED_KEYS`). A verified file keeps its
 notices block; any other file keeps its flags and loses the block, and
-what is cached is that admitted document. The shipped build trusts no
+what is cached is that admitted document, marked as such. A cache
+without the mark was written by a build before the signature check,
+which kept the file as fetched; it is read as an unsigned file, so its
+notices are dropped and its flags kept. The shipped build trusts no
 key yet, so no notice is used. Signing, trusting and rotating a key are
 in [`development.md`](./development.md#signing-the-flags-file).
 
