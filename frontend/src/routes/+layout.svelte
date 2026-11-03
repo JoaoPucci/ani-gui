@@ -26,7 +26,8 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
-	import { breadcrumb, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
+	import { breadcrumb, withSearchOrigin } from '$lib/breadcrumb';
+	import { searchOrigin } from '$lib/search-origin';
 	import { pageTrail } from '$lib/page-trail';
 	import {
 		imageProxyUrl,
