@@ -403,9 +403,10 @@ async fn a_guessed_resolve_that_lands_elsewhere_records_no_guess() {
     let td = tempfile::tempdir().expect("td");
     let state = state(&td);
     let other = key("another-show-4");
-    play_with_progress(&state, &guessed(Some("45412"), Some(&other)), |_| {})
+    let resp = play_with_progress(&state, &guessed(Some("45412"), Some(&other)), |_| {})
         .await
         .expect("plays");
+    assert!(!resp.own_listing);
     assert_eq!(row(&state, &key(STITCHED_SLUG)).kitsu_id, None);
 }
 
