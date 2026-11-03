@@ -59,7 +59,7 @@ function splashWindowOptions() {
     skipTaskbar: false,
     center: true,
     // The ink the page paints, so nothing flashes before it does.
-    backgroundColor: "#0c0a09",
+    backgroundColor: require("./app-window.cjs").APP_BACKGROUND,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

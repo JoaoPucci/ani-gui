@@ -18,6 +18,7 @@
 <script lang="ts">
 	import '$lib/design/tokens.css';
 	import { onDestroy, onMount } from 'svelte';
+	import { signalAppReady } from '$lib/app-ready';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
@@ -218,6 +219,9 @@
 	let blurDismiss: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
+		// The layout and its first route have mounted: the window may be
+		// revealed once this frame is drawn (electron/lib/app-window.cjs).
+		signalAppReady();
 		try {
 			recentSearches = parseStoredRecents(window.localStorage.getItem(RECENT_STORAGE_KEY));
 		} catch {

@@ -51,6 +51,7 @@ const { resolveLocale } = require("./lib/main-messages.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController } = require("./lib/splash.cjs");
+const { appReadyWaiter, appWindowOptions } = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
   initialSize,
@@ -399,40 +400,34 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // a snap shortcut work.
   const display = screen.getPrimaryDisplay();
   const { width: workW, height: workH } = initialSize(readGeometry(geometryFile(), fs), display);
-  const win = new BrowserWindow({
-    width: workW,
-    height: workH,
-    minWidth: 960,
-    minHeight: 600,
-    show: false,
-    // Window icon for the dev session — packaged builds get it
-    // from the .desktop file electron-builder generates from
-    // build-resources/icon.png. Without this, GNOME's window list
-    // shows the generic Electron logo while running unpackaged.
-    icon: path.join(__dirname, "build-resources", "icon.png"),
-    // Frameless: we draw our own titlebar + window controls in the
-    // renderer. Under native Wayland/Ozone (the relaunch above), GNOME
-    // gives Chromium no server-side decorations, so Chromium drew its
-    // own CSD with the window buttons on the LEFT, ignoring GNOME's
-    // button-layout (electron/electron#48422). Owning the chrome puts
-    // minimize/maximize/close back where Linux users expect them and
-    // keeps them consistent across platforms. `resizable` stays true so
-    // the OS resize edges still work on a frameless window.
-    frame: false,
-    webPreferences: {
+  // Made hidden on the app's own dark background (lib/app-window.cjs),
+  // so nothing white shows before the page paints. Frameless: the
+  // renderer draws its own titlebar and window controls, which keeps
+  // them where Linux users expect them under native Wayland, where
+  // GNOME gives Chromium no server-side decorations
+  // (electron/electron#48422). The icon is for the dev session;
+  // packaged builds get theirs from the .desktop file. The backend's
+  // handshake, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs).
+  const win = new BrowserWindow(
+    appWindowOptions({
+      width: workW,
+      height: workH,
+      icon: path.join(__dirname, "build-resources", "icon.png"),
       preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Pass the backend's handshake + the user's configured locale
-      // into the preload via additional arguments. The preload reads
-      // them off process.argv. The locale flag is omitted entirely
-      // when config.toml is missing or has no locale key, so the
-      // preload falls through to Paraglide's preferredLanguage /
-      // baseLocale strategies instead of seeding garbage.
-      // The backend's lanes go the same way (lib/window-args.cjs).
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
-    },
-  });
+    }),
+  );
+  // Started now, so the renderer's word is not missed however early it
+  // comes; the reveal waits for it (bounded) as well as for the splash.
+  const appReady = appReadyWaiter(win.webContents, ipcMain);
+  appReady.ready.then((rendered) =>
+    console.log(
+      rendered
+        ? "[main] app's first page rendered"
+        : "[main] app's first page did not say it rendered in time; revealing it anyway",
+    ),
+  );
 
   // New-window requests come from three places:
   //   1. `window.open(...)` or `<a target="_blank">` to an external
@@ -574,7 +569,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // only then is mapped (maximized) and shown, and the splash put
     // away. The two are never on screen competing, on any platform. A
     // later window finds no splash and waits for nothing.
-    beforeShow: () => splash.whenShown(),
+    beforeShow: () => Promise.all([splash.whenShown(), appReady.ready]),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).

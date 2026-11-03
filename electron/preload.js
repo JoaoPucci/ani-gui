@@ -85,7 +85,16 @@ const flagsOrigin = flagsOriginArg
 	? decodeURIComponent(flagsOriginArg.slice(flagsOriginFlag.length))
 	: null;
 
+// The renderer's word that its first page has rendered, which the
+// window's reveal waits for (lib/app-window.cjs). Sent once.
+let appReadySent = false;
+
 contextBridge.exposeInMainWorld('aniGui', {
+	appReady() {
+		if (appReadySent) return;
+		appReadySent = true;
+		ipcRenderer.send('ani-gui:app-ready');
+	},
 	apiBase,
 	internalSecret,
 	lanes,
