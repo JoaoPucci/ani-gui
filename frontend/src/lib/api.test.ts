@@ -26,6 +26,7 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
+	kitsuFranchise,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuSearchPage,
@@ -1828,6 +1829,27 @@ describe('airingGet', () => {
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/kitsu/airing/kid%2050551`);
 		expect(got).toEqual(status);
+	});
+});
+
+describe('kitsuFranchise', () => {
+	it('GETs /api/kitsu/franchise/<kitsuId> and returns the franchise', async () => {
+		const franchise = {
+			anchor: '7730',
+			entries: [],
+			links: [['7158', '7730']],
+			versions: [],
+			films: [],
+			sides: [],
+			recaps: [],
+			parents: {},
+			complete: true
+		};
+		const fetchMock = mockFetchOnce(franchise);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await kitsuFranchise('kid 7730');
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730`);
+		expect(got).toEqual(franchise);
 	});
 });
 
