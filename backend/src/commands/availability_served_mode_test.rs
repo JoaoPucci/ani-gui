@@ -77,7 +77,7 @@ fn a_row_a_cut_shortened_since_the_read_still_takes_the_merge() {
     // before the merge's write. The write misses, and the merge lands
     // on the row as the cut left it, its shorter window kept.
     let state = crate::commands::play::tests::state_with_proxy_origin();
-    let key = "availability:test:merge";
+    let key = &crate::commands::availability::cache_key("1", "sub");
     let body = row(true, vec![served()]);
     crate::cache::meta_cache_put(&state.cache_pool, key, &body, 86_400).expect("seed");
     let read = crate::cache::meta_cache_row(&state.cache_pool, key)

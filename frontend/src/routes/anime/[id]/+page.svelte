@@ -20,6 +20,8 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -113,6 +115,7 @@
 		versionsToOffer,
 		versionsInMode
 	} from '$lib/versions/version-choice';
+	import { storedCaption } from '$lib/play/caption-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -680,11 +683,22 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone: a refill landing
+	// after it is not fetched ($lib/refill/refill).
+	let refillSignal: AbortSignal | undefined;
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refillSignal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -930,7 +944,8 @@
 			quality,
 			show: d,
 			kitsuId: d.id,
-			version
+			version,
+			caption: storedCaption(d.id)
 		});
 		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
 	}
@@ -1138,7 +1153,17 @@
 		resumeEntry = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const detailServed = kitsuAnimeDetail(currentId);
+		const refills = new AbortController();
+		refillSignal = refills.signal;
+		const detailServed = kitsuAnimeDetail(currentId, {
+			signal: refills.signal,
+			// A banner AniList's pacing held back, put on the hero once
+			// it lands.
+			onRefill: (fresh) => {
+				const images = refilledImages(detail, fresh);
+				if (images && detail && id === currentId) Object.assign(detail, images);
+			}
+		});
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
@@ -1202,6 +1227,7 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
+			refills.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
@@ -1283,7 +1309,8 @@
 				show: detail,
 				kitsuId: id,
 				prefetch: true,
-				version
+				version,
+				caption: storedCaption(id)
 			});
 			const warmedVisit = visit;
 			const warm = getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
@@ -1529,7 +1556,8 @@
 			quality,
 			show,
 			kitsuId: owner.showId,
-			version
+			version,
+			caption: storedCaption(owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
@@ -2221,7 +2249,14 @@
 										>
 											<span class="ep-thumb">
 												{#if thumb}
-													<img src={thumb} alt="" loading="lazy" decoding="async" />
+													<img
+														class="img-fade"
+														use:fadeOnLoad
+														src={thumb}
+														alt=""
+														loading="lazy"
+														decoding="async"
+													/>
 												{:else if air.unaired}
 													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
 														{unairedLabel(air.airsAt)}
@@ -3230,7 +3265,10 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-thumb-placeholder {
 		display: grid;

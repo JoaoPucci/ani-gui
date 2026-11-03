@@ -113,9 +113,58 @@ pub struct PlayArgs {
     /// not carry, plays the pick's default.
     #[serde(default)]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The history row a Continue card whose show was only a guess
+    /// opened this play from — its show key. The session says whether
+    /// the play landed on that row's own listing
+    /// ([`CreateSessionResponse::own_listing`]), which is what lets the
+    /// guess become the row's Kitsu id. `None` for every other play.
+    #[serde(default)]
+    pub guess_row: Option<String>,
+    /// The captions choice remembered for the show
+    /// (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. `None`
+    /// when none is.
+    #[serde(default)]
+    pub caption: Option<String>,
 }
 
 impl PlayArgs {
+    /// Whether this play, asked from a guessed Continue card, landed
+    /// on the card's own listing — the show key `played`
+    /// ([`crate::scraper::provider::same_listing`]). False for a play
+    /// no guessed card asked for.
+    #[must_use]
+    pub fn lands_on_guess_row(&self, played: &str) -> bool {
+        self.guess_row
+            .as_deref()
+            .is_some_and(|row| crate::scraper::provider::same_listing(row, played))
+    }
+
+    /// The Kitsu id a watch of `played` may record: the request's, unless
+    /// a guessed Continue card asked for it and `played` is not that
+    /// card's own listing ([`Self::lands_on_guess_row`]).
+    #[must_use]
+    pub fn recordable_kitsu_id(&self, played: &str) -> Option<&str> {
+        if self.guess_row.is_some() && !self.lands_on_guess_row(played) {
+            return None;
+        }
+        self.kitsu_id.as_deref()
+    }
+
+    /// What the viewer wants of a listing, with `locale` the UI's.
+    #[must_use]
+    pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
+        crate::scraper::track_preference::Wanted {
+            remembered: self.caption.as_deref().filter(|c| *c != "off"),
+            locale,
+        }
+    }
+
+    /// Whether the show's remembered captions choice is Off.
+    #[must_use]
+    pub fn captions_off(&self) -> bool {
+        self.caption.as_deref() == Some("off")
+    }
+
     /// The resolution-cache key this play reads and writes: the
     /// request's own axes, its version among them.
     #[must_use]
@@ -137,6 +186,7 @@ impl PlayArgs {
     pub fn native_request<'a>(
         &'a self,
         quality: &'a str,
+        locale: &'a str,
         stamps_beside: Option<&'a std::path::Path>,
         tail: Option<&'a dyn super::play_native_appended::TailSource>,
     ) -> NativeResolveRequest<'a> {
@@ -146,6 +196,7 @@ impl PlayArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
+            wanted: self.wanted(locale),
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
@@ -303,9 +354,8 @@ where
     // settings flip applies without a restart. Off means rows are
     // neither read nor written; existing rows are left to age out so
     // opting back in loses nothing still inside the TTL.
-    let cache_resolutions = crate::config::read_config(&state.config_path)
-        .unwrap_or_default()
-        .cache_resolutions;
+    let cfg = crate::config::read_config(&state.config_path).unwrap_or_default();
+    let cache_resolutions = cfg.cache_resolutions;
 
     // Long-term cache check. A successful prior resolution under the
     // same (title, mode, quality, episode) tuple is replayable for up
@@ -320,7 +370,9 @@ where
     let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-            if let Some(resp) = try_serve_cached(state, &cached).await {
+            if let Some(mut resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await
+            {
+                resp.own_listing = args.lands_on_guess_row(&cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -363,6 +415,7 @@ where
     let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(
         quality,
+        &cfg.locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -528,6 +581,7 @@ where
         episode: Some(episode),
         former_episode,
         episode_unverified: cached_resolution.episode_unverified,
+        own_listing: args.lands_on_guess_row(&cached_resolution.show_id),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);
@@ -616,6 +670,8 @@ pub(crate) mod tests {
                 prefetch,
                 kitsu_id,
                 version: None,
+                guess_row: None,
+                caption: None,
             };
             let got = scrape_priority(&args);
             let want = if prefetch {
@@ -682,6 +738,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -752,6 +810,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -811,6 +871,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         };
         for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
             let r = play_with_progress(&state, &mk(&format!("absent show {i}")), |_| {}).await;
@@ -869,6 +931,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         }
     }
 
@@ -1147,6 +1211,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         };
         write_history_on_cache_hit(
             &state,
@@ -1172,7 +1238,7 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached).await.is_none());
+        assert!(try_serve_cached(&state, &cached, None).await.is_none());
     }
 
     #[tokio::test]
@@ -1192,7 +1258,7 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        let resp = try_serve_cached(&state, &cached).await.expect("hit");
+        let resp = try_serve_cached(&state, &cached, None).await.expect("hit");
         // Session is freshly created, but the upstream + kind match.
         assert!(resp.media_url.contains("/file.mp4"));
         assert_eq!(resp.media_kind, MediaKind::Mp4);
@@ -1221,7 +1287,7 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached).await.is_none());
+        assert!(try_serve_cached(&state, &cached, None).await.is_none());
     }
 
     #[tokio::test]
@@ -1242,7 +1308,7 @@ pub(crate) mod tests {
             "https://allmanga.to".into(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached).await.is_some());
+        assert!(try_serve_cached(&state, &cached, None).await.is_some());
     }
 
     /// A sidecar track is signed like the stream and expires on its
@@ -1272,7 +1338,7 @@ pub(crate) mod tests {
         );
         cached.subtitles = vec![track("en", true, &format!("{}/subs/en.vtt", server.uri()))];
         assert!(
-            try_serve_cached(&state, &cached).await.is_none(),
+            try_serve_cached(&state, &cached, None).await.is_none(),
             "a dead track is a dead row"
         );
     }
@@ -1337,6 +1403,7 @@ pub(crate) mod tests {
                 &state,
                 &row(&stalling),
                 deadline,
+                None,
             ),
         )
         .await
@@ -1368,7 +1435,9 @@ pub(crate) mod tests {
         let _ = crate::held::frozen_until(
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                crate::commands::play_cache::cached_row_is_live_within(&state, &again, deadline),
+                crate::commands::play_cache::cached_row_is_live_within(
+                    &state, &again, deadline, None,
+                ),
             ),
             stalled_again.asked(),
         )
@@ -1414,7 +1483,7 @@ pub(crate) mod tests {
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
             track("es", false, &format!("{}/subs/es.vtt", server.uri())),
         ];
-        assert!(try_serve_cached(&state, &cached).await.is_some());
+        assert!(try_serve_cached(&state, &cached, None).await.is_some());
         let asked: Vec<String> = server
             .received_requests()
             .await
@@ -1442,6 +1511,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         }
     }
 
@@ -1594,6 +1665,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -1639,6 +1712,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -2092,6 +2167,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
             version: None,
+            guess_row: None,
+            caption: None,
         };
         assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
     }
@@ -2243,6 +2320,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("race-1".into()),
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
         let at_start =
@@ -2307,6 +2386,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("cap-1".into()),
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub").await;
@@ -2358,6 +2439,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-2".into()),
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub").await;
@@ -2414,6 +2497,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-1".into()),
             version: None,
+            guess_row: None,
+            caption: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub").await;
@@ -2451,6 +2536,9 @@ mod affinity_tests;
 #[cfg(test)]
 #[path = "play_after_removal_test.rs"]
 mod after_removal_tests;
+#[cfg(test)]
+#[path = "play_guess_row_test.rs"]
+mod guess_row_tests;
 #[cfg(test)]
 #[path = "play_played_test.rs"]
 mod played_tests;

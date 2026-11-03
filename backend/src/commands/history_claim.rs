@@ -59,7 +59,7 @@ pub(crate) fn row_names(state: &AppState, entry: &HistoryEntry, kitsu_id: &str) 
         None => None,
     };
     let title_matched = if recorded.is_some() {
-        super::history_forget_titles::title_match_ids(state, &entry.id, &entry.title)?
+        super::history_forget_titles::current_title_match_ids(state, &entry.id, &entry.title)?
     } else {
         Vec::new()
     };

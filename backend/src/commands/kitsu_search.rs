@@ -74,9 +74,14 @@ pub async fn kitsu_search_page_ordered(
     // Kitsu's ranking keeps the key it always had; a sorted search is
     // its own search, so its pages are kept apart.
     let key = match order {
-        SearchOrder::Relevance => format!("kitsu:v4:search:{offset}:{}", normalize_query(query)),
+        SearchOrder::Relevance => format!(
+            "{}{offset}:{}",
+            crate::cache::families::KITSU_SEARCH,
+            normalize_query(query)
+        ),
         _ => format!(
-            "kitsu:v4:search:{}:{offset}:{}",
+            "{}{}:{offset}:{}",
+            crate::cache::families::KITSU_SEARCH,
             order.as_str(),
             normalize_query(query)
         ),

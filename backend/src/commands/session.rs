@@ -82,6 +82,14 @@ pub struct CreateSessionResponse {
     /// unknown which. The renderer writes no tracker progress for it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub episode_unverified: bool,
+    /// Whether a play asked from a guessed Continue card
+    /// ([`crate::commands::play::PlayArgs::guess_row`]) landed on that
+    /// card's own listing ([`crate::scraper::provider::same_listing`]).
+    /// The renderer then records the watch under the guessed Kitsu id
+    /// and writes it to the trackers, as a play from the show's page
+    /// would. False for every other play.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub own_listing: bool,
 }
 
 /// Validate the inputs and register a new [`StreamSession`] in
@@ -161,6 +169,7 @@ fn create_session_inner(
         episode: None,
         former_episode: None,
         episode_unverified: false,
+        own_listing: false,
     })
 }
 
@@ -322,6 +331,7 @@ mod tests {
             episode: None,
             former_episode: None,
             episode_unverified: false,
+            own_listing: false,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));
