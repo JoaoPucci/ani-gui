@@ -28,3 +28,7 @@ async fn get_franchise(
         crate::commands::franchise::franchise(&state, kitsu_id).await?,
     ))
 }
+
+#[cfg(test)]
+#[path = "franchise_test.rs"]
+mod tests;

@@ -174,6 +174,7 @@ async fn the_id_routes_refuse_a_value_that_is_not_an_id() {
         )
         .await;
         assert_refused(kitsu, "GET", &format!("/api/kitsu/airing/{id}"), "").await;
+        assert_refused(kitsu, "GET", &format!("/api/kitsu/franchise/{id}"), "").await;
         assert_refused(
             kitsu,
             "GET",

@@ -51,3 +51,7 @@ pub async fn franchise(state: &AppState, anchor: &str) -> Result<Franchise> {
     let _ = (state, anchor);
     Err(AniError::Network)
 }
+
+#[cfg(test)]
+#[path = "franchise_test.rs"]
+mod tests;
