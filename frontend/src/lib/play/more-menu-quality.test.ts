@@ -1,7 +1,7 @@
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { QualityMenu, QualityMenuItem } from './quality-menu';
-import { moreMenuEscape, moreMenuQuality } from './more-menu-quality';
+import { moreMenuQuality } from './more-menu-quality';
 
 const LEVELS: QualityMenu = {
 	items: [
@@ -60,15 +60,5 @@ describe('moreMenuQuality', () => {
 				expect(moreMenuQuality(m, true)).toBeNull();
 			})
 		);
-	});
-});
-
-describe('moreMenuEscape', () => {
-	it('leaves the list of levels for the main list', () => {
-		expect(moreMenuEscape(true)).toBe('back');
-	});
-
-	it('closes the menu from its main list', () => {
-		expect(moreMenuEscape(false)).toBe('close');
 	});
 });

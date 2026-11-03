@@ -29,9 +29,3 @@ export function moreMenuQuality(
 	if (customControls || !menu) return null;
 	return { menu, choosable: menu.items.length > 1 };
 }
-
-/** What Escape does in the ⋯ menu: leave the list of levels for the
- *  menu's main list, or close the menu. */
-export function moreMenuEscape(qualityOpen: boolean): 'back' | 'close' {
-	return qualityOpen ? 'back' : 'close';
-}

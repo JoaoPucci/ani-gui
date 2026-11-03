@@ -126,8 +126,15 @@
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
-	import { moreMenuEscape, moreMenuQuality } from '$lib/play/more-menu-quality';
-	import { menuArrow } from '$lib/play/menu-arrow';
+	import { moreMenuQuality } from '$lib/play/more-menu-quality';
+	import {
+		closedDrill,
+		drillArrow,
+		drillStep,
+		type DrillEvent,
+		type DrillFocus,
+		type DrillMenu
+	} from '$lib/play/drill-menu';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -669,58 +676,67 @@
 	// bar. Mirrors Chromium's native pattern: Download, Playback
 	// speed, Picture in picture. Open state is component-local;
 	// closes on outside click or Escape.
-	let pcMenuOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	type PcList = 'speed' | 'quality';
+	let pcMenu = $state.raw<DrillMenu<PcList>>(closedDrill());
+	const pcMenuOpen = $derived(pcMenu.open);
+	const pcSpeedExpanded = $derived(pcMenu.list === 'speed');
+	const pcQualityExpanded = $derived(pcMenu.list === 'quality');
 	let pcMenuAnchor = $state<HTMLButtonElement | null>(null);
-	let pcSpeedExpanded = $state(false);
-	let pcQualityExpanded = $state(false);
 	let playbackRate = $state(1);
 	const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+	function pcDo(event: DrillEvent<PcList>) {
+		const step = drillStep(pcMenu, event);
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
+	}
 	function togglePcMenu() {
-		pcMenuOpen = !pcMenuOpen;
-		if (!pcMenuOpen) {
-			pcSpeedExpanded = false;
-			pcQualityExpanded = false;
-			return;
-		}
-		// Focus goes into the menu as it opens, where the arrow keys
-		// move it rather than reaching the player.
-		void tick().then(() => focusFirstPcItem());
+		pcDo({ type: 'toggle' });
 	}
-	function focusFirstPcItem() {
-		document
-			.querySelector<HTMLElement>('#pc-overflow-menu [role^="menuitem"]:not(:disabled)')
-			?.focus();
+	function openPcList(list: PcList) {
+		pcDo({ type: 'openList', list, choosable: pcListChoosable(list), width: null });
 	}
-	// Opening Speed or Quality swaps the menu's contents: focus moves
-	// to the list's back row, and back to the row that opened it on
-	// the way out, rather than being lost with the row it was on.
-	async function openPcList(list: 'speed' | 'quality') {
-		if (list === 'speed') pcSpeedExpanded = true;
-		else pcQualityExpanded = true;
-		await tick();
-		focusFirstPcItem();
+	function closePcList() {
+		pcDo({ type: 'back' });
 	}
-	async function closePcList() {
-		const list = pcSpeedExpanded ? 'speed' : 'quality';
-		pcSpeedExpanded = false;
-		pcQualityExpanded = false;
-		await tick();
-		document.querySelector<HTMLElement>(`#pc-overflow-menu [data-opens="${list}"]`)?.focus();
+	function closePcMenu() {
+		pcDo({ type: 'close' });
+	}
+	/** Whether the in-player menu's list has something to choose: the
+	 *  speeds always, the levels while their model shows any. */
+	function pcListChoosable(list: PcList): boolean {
+		return list === 'speed' || qualityMenuModel !== null;
 	}
 	// The Quality list closes once its model has nothing to show — the
 	// stream retired, or a lone level nothing names or the engine could
-	// not load — and focus moves to the menu's first enabled item, since
-	// the row that had it goes with the list.
+	// not load.
 	$effect(() => {
-		if (!pcQualityExpanded || qualityMenuModel) return;
-		pcQualityExpanded = false;
-		void tick().then(() => focusFirstPcItem());
+		pcDo({ type: 'models', choosable: pcListChoosable });
 	});
-	function closePcMenu() {
-		pcMenuOpen = false;
-		pcSpeedExpanded = false;
-		pcQualityExpanded = false;
+	/** Applies a drill-down menu's focus target ($lib/play/drill-menu)
+	 *  once the menu has redrawn; the menu's own button at once. */
+	function applyDrillFocus<L extends string>(
+		focus: DrillFocus<L> | null,
+		menuId: string,
+		anchor: HTMLElement | null
+	) {
+		if (!focus) return;
+		if (focus.kind === 'anchor') {
+			anchor?.focus();
+			return;
+		}
+		void tick().then(() => {
+			const menu = document.getElementById(menuId);
+			if (focus.kind === 'opener') {
+				menu?.querySelector<HTMLElement>(`[data-opens="${focus.list}"]`)?.focus();
+				return;
+			}
+			const first = menu?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)');
+			if (first) first.focus();
+			else if (focus.kind === 'first-or-anchor') anchor?.focus();
+		});
 	}
 	// The stream's levels and the choice in force, as the attached
 	// stream's quality control publishes them ($lib/play/arm-quality);
@@ -751,10 +767,7 @@
 			closePcMenu();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closePcMenu();
-				pcMenuAnchor?.focus();
-			}
+			if (e.key === 'Escape') pcDo({ type: 'dismiss' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -2622,70 +2635,52 @@
 	// Open in external + Download. They were demoted from the np-actions
 	// row to declutter — the primary controls are now ep-nav +
 	// auto-play, with everything else one click deeper.
-	let moreOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	let moreMenu = $state.raw<DrillMenu<'quality'>>(closedDrill());
+	const moreOpen = $derived(moreMenu.open);
+	const moreQualityOpen = $derived(moreMenu.list === 'quality');
 	let moreAnchor = $state<HTMLButtonElement | null>(null);
+	function moreDo(event: DrillEvent<'quality'>) {
+		const step = drillStep(moreMenu, event);
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
 	function toggleMore() {
-		moreOpen = !moreOpen;
-		moreQualityOpen = false;
-		moreMenuWidth = null;
-		// Focus goes into the menu as it opens, where the arrow keys
-		// move it rather than reaching the player.
-		if (moreOpen) void tick().then(focusFirstMoreItem);
+		moreDo({ type: 'toggle' });
 	}
 	function closeMore() {
-		moreOpen = false;
-		moreQualityOpen = false;
-		moreMenuWidth = null;
-	}
-	/** Focus the ⋯ menu's first enabled item; false when it has none. */
-	function focusFirstMoreItem(): boolean {
-		const first = document.querySelector<HTMLElement>(
-			'#np-more-menu [role^="menuitem"]:not(:disabled)'
-		);
-		first?.focus();
-		return first !== null;
+		moreDo({ type: 'close' });
 	}
 	// The quality picker rides the ⋯ menu while the custom controls are
 	// off: the native controls have none, and the in-player menu goes
 	// with the custom bar. Same model, same pick ($lib/play/more-menu-quality).
 	const moreQuality = $derived(moreMenuQuality(qualityMenuModel, USE_CUSTOM_PLAYER_CONTROLS));
-	let moreQualityOpen = $state(false);
-	let moreQualityRow = $state<HTMLButtonElement | null>(null);
-	let moreQualityBack = $state<HTMLButtonElement | null>(null);
-	// The menu's width while the levels show: the main list's, so the
-	// right-anchored menu does not jump narrower as its contents swap.
-	let moreMenuWidth = $state<number | null>(null);
-	// Each swap of the menu's contents moves focus to the row that
-	// names where it now is, so it is never lost with the row clicked.
-	async function openMoreQuality() {
-		if (!moreQuality?.choosable) return;
-		moreMenuWidth = document.getElementById('np-more-menu')?.offsetWidth ?? null;
-		moreQualityOpen = true;
-		await tick();
-		moreQualityBack?.focus();
+	/** The ⋯ menu's width as it stands, which it keeps while the levels
+	 *  show, so the right-anchored menu does not jump narrower. */
+	function moreMenuWidthNow(): number | null {
+		return document.getElementById('np-more-menu')?.offsetWidth ?? null;
 	}
-	async function closeMoreQuality() {
-		moreQualityOpen = false;
-		moreMenuWidth = null;
-		await tick();
-		moreQualityRow?.focus();
+	function openMoreQuality() {
+		moreDo({
+			type: 'openList',
+			list: 'quality',
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+	}
+	function closeMoreQuality() {
+		moreDo({ type: 'back' });
 	}
 	function pickMoreQuality(choice: 'auto' | number) {
 		pickQuality(choice);
-		closeMore();
-		moreAnchor?.focus();
+		moreDo({ type: 'dismiss' });
 	}
 	// A stream retiring takes the levels with it, and one of a single
 	// level leaves nothing to choose: the menu falls back to its main
-	// list, focus to its first item the switch has not disabled (the
-	// menu's button when none is left).
+	// list.
 	$effect(() => {
-		if (!moreQualityOpen || moreQuality?.choosable) return;
-		moreQualityOpen = false;
-		moreMenuWidth = null;
-		void tick().then(() => {
-			if (!focusFirstMoreItem()) moreAnchor?.focus();
-		});
+		moreDo({ type: 'models', choosable: () => moreQuality?.choosable === true });
 	});
 	// The arrow keys move between the menu's items, as a menu's should,
 	// rather than reaching the player's volume and seek keys.
@@ -2693,40 +2688,46 @@
 	// from them, and otherwise stay in the menu rather than seek.
 	function onMoreMenuKey(e: KeyboardEvent) {
 		const menu = e.currentTarget as HTMLElement;
-		const arrow = menuArrow(e.key, {
+		const step = drillArrow(moreMenu, e.key, {
 			rtl: getComputedStyle(menu).direction === 'rtl',
-			listOpen: moreQualityOpen,
-			onOpener: moreQualityRow !== null && document.activeElement === moreQualityRow
+			opener: focusedOpener(['quality']),
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
 		});
-		if (arrow !== null) {
-			e.preventDefault();
-			e.stopPropagation();
-			if (arrow === 'open') void openMoreQuality();
-			if (arrow === 'back') void closeMoreQuality();
+		if (step === null) {
+			stepMenuFocus(e);
 			return;
 		}
-		stepMenuFocus(e);
+		e.preventDefault();
+		e.stopPropagation();
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
+	/** The list the focused row opens (its `data-opens`), among `lists`. */
+	function focusedOpener<L extends string>(lists: readonly L[]): L | null {
+		const opens = (document.activeElement as HTMLElement | null)?.dataset.opens;
+		return lists.find((l) => l === opens) ?? null;
 	}
 	// The in-player menu steps the same way: Left and Right open Speed
 	// or Quality from its row and go back from the list, and otherwise
 	// stay in the menu rather than seek.
 	function onPcMenuKey(e: KeyboardEvent) {
 		const menu = e.currentTarget as HTMLElement;
-		const focused = document.activeElement as HTMLElement | null;
-		const opens = focused?.dataset.opens;
-		const arrow = menuArrow(e.key, {
+		const opener = focusedOpener<PcList>(['speed', 'quality']);
+		const step = drillArrow(pcMenu, e.key, {
 			rtl: getComputedStyle(menu).direction === 'rtl',
-			listOpen: pcSpeedExpanded || pcQualityExpanded,
-			onOpener: opens === 'speed' || opens === 'quality'
+			opener,
+			choosable: opener !== null && pcListChoosable(opener),
+			width: null
 		});
-		if (arrow !== null) {
-			e.preventDefault();
-			e.stopPropagation();
-			if (arrow === 'open') void openPcList(opens === 'speed' ? 'speed' : 'quality');
-			if (arrow === 'back') void closePcList();
+		if (step === null) {
+			stepMenuFocus(e);
 			return;
 		}
-		stepMenuFocus(e);
+		e.preventDefault();
+		e.stopPropagation();
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
 	}
 	/** ArrowDown, ArrowUp, Home and End move focus between the menu's
 	 *  enabled items, wrapping at the ends, and go no further. */
@@ -2756,13 +2757,7 @@
 			closeMore();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== 'Escape') return;
-			if (moreMenuEscape(moreQualityOpen) === 'back') {
-				void closeMoreQuality();
-				return;
-			}
-			closeMore();
-			moreAnchor?.focus();
+			if (e.key === 'Escape') moreDo({ type: 'escape' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -3382,7 +3377,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => void closePcList()}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3420,7 +3415,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => void closePcList()}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3477,7 +3472,7 @@
 											role="menuitem"
 											aria-haspopup="menu"
 											data-opens="speed"
-											onclick={() => void openPcList('speed')}
+											onclick={() => openPcList('speed')}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<circle
@@ -3526,7 +3521,7 @@
 												role="menuitem"
 												aria-haspopup="menu"
 												data-opens="quality"
-												onclick={() => void openPcList('quality')}
+												onclick={() => openPcList('quality')}
 											>
 												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 													<path
@@ -3881,7 +3876,7 @@
 							aria-label={m.play_more_aria_label()}
 							tabindex="-1"
 							onkeydown={onMoreMenuKey}
-							style:min-inline-size={moreMenuWidth === null ? undefined : `${moreMenuWidth}px`}
+							style:min-inline-size={moreMenu.width === null ? undefined : `${moreMenu.width}px`}
 							transition:settle={{ duration: 120 }}
 						>
 							{#if moreQualityOpen && moreQuality}
@@ -3892,8 +3887,7 @@
 										type="button"
 										class="more-item more-back"
 										role="menuitem"
-										bind:this={moreQualityBack}
-										onclick={() => void closeMoreQuality()}
+										onclick={closeMoreQuality}
 									>
 										<svg
 											class="more-icon more-flip"
@@ -4070,8 +4064,8 @@
 											role="menuitem"
 											aria-haspopup={moreQuality.choosable ? 'menu' : undefined}
 											aria-disabled={moreQuality.choosable ? undefined : 'true'}
-											bind:this={moreQualityRow}
-											onclick={() => void openMoreQuality()}
+											data-opens="quality"
+											onclick={openMoreQuality}
 										>
 											<svg
 												class="more-icon"
