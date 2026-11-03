@@ -208,15 +208,16 @@
 										? m.download_dock_ep_label_range_static({ episode: item.episode })
 										: m.download_dock_ep_label_single({ episode: item.episode })}
 							<!-- Each action is described by its row: the title and
-							     episode, then where a download under way stands
-							     ($lib/download/row-state), or the report a finished
-							     row carries. Read when the item is reached: nothing
-							     here is a live region, so the speed ticking over
-							     announces nothing. -->
+							     episode, where the download stands
+							     ($lib/download/row-state), then the report a
+							     finished row carries. Read when the item is
+							     reached. Nothing here is a live region, though a
+							     screen reader may speak a large change to the item
+							     that has focus. -->
 							{@const standing = rowState(item)}
 							{@const described = [
 								`${item.id}-text`,
-								standing.state !== null ? `${item.id}-state` : null,
+								`${item.id}-state`,
 								standing.note !== null ? `${item.id}-note` : null,
 								(item.status === 'done' || item.status === 'error') && terminalReportText(item)
 									? `${item.id}-report`
@@ -230,9 +231,7 @@
 									<span class="dl-row-sep" aria-hidden="true">·</span>
 									<span class="dl-row-ep">{epLabel}</span>
 								</span>
-								{#if standing.state !== null}
-									<span class="dl-sr" id="{item.id}-state">{standing.state}</span>
-								{/if}
+								<span class="dl-sr" id="{item.id}-state">{standing.state}</span>
 								{#if standing.note !== null}
 									<span class="dl-sr" id="{item.id}-note">{standing.note}</span>
 								{/if}
@@ -244,7 +243,7 @@
 									{#if item.status === 'queued'}
 										<!-- Waiting for one of the downloads running at once
 										     to end ($lib/download/queue). -->
-										<span class="dl-row-queued">{m.download_dock_queued()}</span>
+										<span class="dl-row-queued" aria-hidden="true">{m.download_dock_queued()}</span>
 									{:else}
 										<span
 											class="dl-row-bar dl-row-bar-indet"
@@ -314,7 +313,10 @@
 										</svg>
 									</button>
 								{:else}
-									<span class="dl-row-error" title={item.error ?? m.errors_failed_default()}>!</span
+									<span
+										class="dl-row-error"
+										aria-hidden="true"
+										title={item.error ?? m.errors_failed_default()}>!</span
 									>
 									<button
 										type="button"
@@ -533,8 +535,8 @@
 		white-space: nowrap;
 		flex-shrink: 0;
 	}
-	/* Read by assistive technology, not shown: the row's bar says the
-	   same to the eye. */
+	/* Read by assistive technology, not shown: the row's bar, its Queued
+	   label and its failure mark say the same to the eye. */
 	.dl-sr {
 		position: absolute;
 		inline-size: 1px;

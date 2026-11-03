@@ -2,11 +2,13 @@
  * Where a download in the dock stands, in words, for the menu items
  * that act on it. The row's bar is an indeterminate animation hidden
  * from assistive technology, and the store parses no percentage, so
- * this is what there is to say: queued, starting, or downloading (at
- * the speed the backend last reported), with the translated report a
- * running download carries. The dock puts it in the items'
- * description, read when an item is reached rather than announced as
- * it changes.
+ * this is what there is to say: queued, starting, downloading (at the
+ * speed the backend last reported) with the translated report a running
+ * download carries, downloaded, or failed with its reason. The dock
+ * puts it in the items' description, which a screen reader reads when
+ * an item is reached. It is no live region: a change is not announced
+ * as one would announce it, though a screen reader may speak a large
+ * change to the item that has focus.
  */
 
 import { m } from '$lib/paraglide/messages';
@@ -15,11 +17,11 @@ import { formatSpeed } from './speed';
 import type { DownloadItem } from './store.svelte';
 
 export interface RowState {
-	/** The download's state; null for a finished or failed row, whose
-	 *  own report says what there is to say. */
-	readonly state: string | null;
-	/** The report a running download carries; never the raw tool line,
-	 *  which is not the user's language. */
+	/** The download's state. */
+	readonly state: string;
+	/** The report a running download carries, or why a failed one
+	 *  failed; never the raw tool line, which is not the user's
+	 *  language. */
 	readonly note: string | null;
 }
 
@@ -37,7 +39,9 @@ export function rowState(item: DownloadItem): RowState {
 						: m.download_dock_state_downloading_speed({ speed: formatSpeed(item.speed) }),
 				note: item.progressStatus ? reportText(item.progressStatus) : null
 			};
-		default:
-			return { state: null, note: null };
+		case 'done':
+			return { state: m.download_dock_state_done(), note: null };
+		case 'error':
+			return { state: m.download_dock_state_failed(), note: item.error };
 	}
 }
