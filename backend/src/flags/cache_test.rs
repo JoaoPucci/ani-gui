@@ -127,3 +127,40 @@ async fn a_symlink_at_the_cache_path_reads_as_nothing() {
     std::os::unix::fs::symlink(&real, &link).expect("symlink");
     assert_eq!(read(&link).await, None);
 }
+
+/// A notices block with one notice, as the file would carry it.
+fn notices_block() -> serde_json::Value {
+    serde_json::json!({ "format": 1, "donation_ask": 3, "items": [{ "id": "a", "title": "A" }] })
+}
+
+/// Builds without the signature check (the remote flags' first
+/// release) cached the file as fetched, notices and all, with nothing
+/// checked. Read by this build, such an entry keeps its flags and loses
+/// its notices: they never verified.
+#[tokio::test]
+async fn a_cache_written_before_the_signature_check_loses_its_notices() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let older = serde_json::json!({
+        "fetched_at": 42,
+        "flags": { "test_kill": false, "notices": notices_block() }
+    });
+    std::fs::write(&path, older.to_string()).expect("write");
+    let got = read(&path).await.expect("an entry");
+    assert_eq!(got.fetched_at, 42);
+    assert_eq!(got.flags.get("test_kill"), Some(&serde_json::json!(false)));
+    assert_eq!(got.flags.get("notices"), None);
+}
+
+/// What this build caches it admitted first, so its notices verified
+/// when fetched: they read back.
+#[tokio::test]
+async fn a_cache_this_build_wrote_keeps_its_notices() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let mut written = entry(42);
+    written.flags.insert("notices".into(), notices_block());
+    write(&path, &written).await;
+    let got = read(&path).await.expect("an entry");
+    assert_eq!(got.flags.get("notices"), Some(&notices_block()));
+}

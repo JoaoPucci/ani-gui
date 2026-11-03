@@ -490,3 +490,27 @@ async fn a_file_that_beats_a_slow_cache_read_decides_even_past_the_cap() {
     assert_eq!(store.origin(), Origin::File);
     task.abort();
 }
+
+/// A cache left by a build without the signature check holds whatever
+/// notices the file carried, unverified. A launch that falls back on it
+/// takes its flags and none of its notices.
+#[tokio::test(start_paused = true)]
+async fn a_cache_from_a_build_before_the_signature_check_decides_without_its_notices() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = cache_in(td.path());
+    let older = serde_json::json!({
+        "fetched_at": NOW - DAY,
+        "flags": {
+            "test_fallback": "old",
+            "notices": { "format": 1, "donation_ask": 3 }
+        }
+    });
+    std::fs::write(&path, older.to_string()).expect("write");
+    let script = Script::new(vec![]);
+    let (store, task) = launch(Some(path), &script);
+    store.decided().await;
+    assert_eq!(store.origin(), Origin::Cache);
+    assert_eq!(pair(&store), FROM_CACHE);
+    assert_eq!(store.notices(), None);
+    task.abort();
+}
