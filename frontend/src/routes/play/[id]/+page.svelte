@@ -76,7 +76,8 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
+	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
+	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
@@ -600,18 +601,11 @@
 	let captionPicks = $state(0);
 
 	/** Remember a captions pick for the show — under its id, unless the
-	 *  session was opened from a guessed match, which records nothing
-	 *  under the guess — and warm again for it. The backend keeps the
-	 *  tracks a listing past its cap has room for by the choice, so the
-	 *  warms standing, asked for the choice before, may lack the
-	 *  language picked; the play cache keys on the choice, so they
-	 *  answer no switch now, and the ones still running are dropped. */
+	 *  session was opened from a guessed match — and, when it moved the
+	 *  choice, drop the show's running warms and warm again
+	 *  ($lib/play/caption-repick). */
 	function rememberPick(choice: string) {
-		const showId = recordableId(id, fromGuess) ?? '';
-		const before = storedCaption(showId);
-		if (!rememberCaption(showId, choice)) return;
-		// The choice standing again: nothing a warm was asked for moved.
-		if (before === choice) return;
+		if (!rememberPickMoved(recordableId(id, fromGuess) ?? '', choice)) return;
 		clearBackgroundForShow(id);
 		captionPicks += 1;
 	}
