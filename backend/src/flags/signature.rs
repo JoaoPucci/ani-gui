@@ -78,6 +78,21 @@ pub fn verify(body: &[u8], signature: Option<&str>, keys: &[&str]) -> Verdict {
     }
 }
 
+/// Whether `doc`, once admitted, holds what only a verified file keeps
+/// through [`admit_under`]: a notices block, or a value of `decls` only
+/// a signature may select. Such a document is known to have verified.
+#[must_use]
+pub fn holds_signed_content(doc: &Document, decls: &[FlagDecl]) -> bool {
+    doc.contains_key(NOTICES_KEY) || decls.iter().any(|decl| selects_signed_only(doc, decl))
+}
+
+/// Whether `doc` gives `decl` a value only a signature may select.
+fn selects_signed_only(doc: &Document, decl: &FlagDecl) -> bool {
+    doc.get(decl.name)
+        .and_then(|raw| decl.accept(raw))
+        .is_some_and(|v| decl.signed_only(v))
+}
+
 /// The document as this launch may use it, under the build's own
 /// declarations ([`super::DECLARED`]); see [`admit_under`].
 #[must_use]
@@ -97,11 +112,7 @@ pub fn admit_under(mut doc: Document, verdict: Verdict, decls: &[FlagDecl]) -> D
     }
     doc.remove(NOTICES_KEY);
     for decl in decls {
-        let signed_only = doc
-            .get(decl.name)
-            .and_then(|raw| decl.accept(raw))
-            .is_some_and(|v| decl.signed_only(v));
-        if signed_only {
+        if selects_signed_only(&doc, decl) {
             doc.remove(decl.name);
         }
     }
