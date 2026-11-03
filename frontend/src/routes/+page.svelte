@@ -118,7 +118,7 @@
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
-	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -135,6 +135,7 @@
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
 	import { storedChoice } from '$lib/versions/version-choice';
+	import { storedCaption } from '$lib/play/caption-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -156,6 +157,20 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { refreshedRows } from '$lib/history/row-number';
 	import { latestReads } from '$lib/history/latest-call';
+	import {
+		EPISODE_WAIT_CAP_MS,
+		cardText,
+		offeredEpisode,
+		visibleImage
+	} from '$lib/history/card-look';
+	import {
+		createLookBook,
+		lookKey,
+		sessionLooks,
+		type CardLookState
+	} from '$lib/history/look-book';
+	import { createCapTimers } from '$lib/history/cap-timers';
+	import { revealWhenDecoded } from '$lib/history/reveal-image';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -213,6 +228,9 @@
 	// can show the actual episode thumbnail + canonical title rather than
 	// generic anime-poster + anime-title.
 	let historyEpisodes = $state<Record<string, KitsuEpisode | null>>({});
+	// The episode each entry's details above were fetched for, so a card
+	// whose offered episode has moved on does not read the last one's.
+	let historyEpisodeFor = $state<Record<string, number>>({});
 	// Per-history-entry the provider playable episode count, keyed by entry.id.
 	// Read from the shared availability cache via a single batch lookup
 	// after all matches resolve. Lets the Continue card derive the same
@@ -226,6 +244,27 @@
 	// revalidates it instead of treating it as confirmed — provenance
 	// decides, not the episode's position.
 	let historyApproximateCaps = $state<Record<string, boolean>>({});
+
+	// Which look each Continue card is in — skeleton until its final
+	// artwork is known, then that artwork for good. The decision is
+	// $lib/history/card-look, kept per card by look-book; the page holds
+	// the two inputs only it can observe: a card's episode wait running
+	// out, and an image failing.
+	const lookBook = createLookBook(imageProxyUrl, sessionLooks);
+	let capReached = $state<Record<string, true>>({});
+	let failedImages = $state<Record<string, true>>({});
+	const capTimers = createCapTimers({
+		capMs: EPISODE_WAIT_CAP_MS,
+		schedule: (fn, ms) => setTimeout(fn, ms),
+		cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+		onElapsed: (key) => {
+			capReached = { ...capReached, [key]: true };
+		}
+	});
+	onDestroy(() => capTimers.dispose());
+	const markImageFailed = (src: string) => {
+		failedImages = { ...failedImages, [src]: true };
+	};
 
 	// One stable Map instance — refilled on each history load — so the
 	// component-scope rowReady handler (shared by the loader AND the
@@ -241,17 +280,29 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
+	// Aborted when Home is left: a Continue card's refill landing after
+	// is not fetched ($lib/refill/refill).
+	const refills = new AbortController();
+	onDestroy(() => refills.abort());
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
+		signal: refills.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
 		setPlayableCount: (id, c) => {
 			historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
 		},
-		setEpisode: (id, ep) => {
+		setEpisode: (id, ep, forEpisode) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
+			historyEpisodeFor = { ...historyEpisodeFor, [id]: forEpisode };
+		},
+		// A held-back still landing: onto the card's own episode, in
+		// place, so the card keeps everything but its image.
+		fillThumbnail: (id, episodeId, thumbnail) => {
+			const ep = historyEpisodes[id];
+			if (ep && ep.id === episodeId && !ep.thumbnail?.original) ep.thumbnail = { ...thumbnail };
 		},
 		leftPartWay
 	});
@@ -807,8 +858,8 @@
 	// cap also refreshes the badge's episode metadata (latest-wins
 	// token in row-ready.ts drops the stale fetch).
 	// Per row, whether its Continue match is only a guess: the card
-	// then opens its play as one, which records the guess nowhere
-	// ($lib/play/play-origin.ts).
+	// then opens its play as one, which records the guess only when the
+	// play lands on the card's own listing ($lib/play/play-origin.ts).
 	const rowTrust = createRowTrust((entry) =>
 		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
 	);
@@ -821,8 +872,15 @@
 			show: a.match,
 			kitsuId: recordableId(a.match.id, a.guess === true),
 			// The version remembered for the show, as its detail page
-			// would play it.
-			version: storedChoice(a.match.id)
+			// would play it, and the captions choice it starts on.
+			version: storedChoice(a.match.id),
+			caption: storedCaption(a.match.id),
+			// A guess names its card's row, and the session answers whether
+			// the play landed on that row's own listing.
+			guessRow: a.row,
+			// …and its guess, apart from the page's id, which the resolve
+			// records on that row when it lands there.
+			guessId: guessedId(a.guess === true, a.match.id)
 		});
 	// A Continue click awaits its session before it opens the player;
 	// one that answers after the viewer left home, or started a
@@ -886,7 +944,7 @@
 			})),
 		resolvePlay: (a, onProgress) =>
 			getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id)),
+				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id), a.row),
 				(emit, signal) => playStream(playArgsFor(a), emit, signal),
 				(p) => onProgress(progressLabel(p))
 			),
@@ -1083,6 +1141,90 @@
 	{/if}
 </section>
 
+<!-- A Continue card's artwork. A skeleton until the card's look is
+     settled; then the image, kept hidden over the skeleton (or over the
+     initials a landing still replaces) until it has decoded and faded in
+     whole, or the two-letter placeholder. The EP
+     tag is null for single-video shows (movies, finished one-episode
+     OVAs and specials): the poster IS the video, there is no episode
+     number to surface. -->
+{#snippet cardFace(card: CardLookState, initials: string)}
+	{@const src = card.look ? visibleImage(card.look.image, failedImages) : null}
+	<!-- A still that landed where the card showed its initials (the
+	     placeholder, or a poster that failed to load) keeps them under it,
+	     not the skeleton, until it is shown. -->
+	{@const overInitials =
+		src !== null &&
+		card.landedOver !== null &&
+		visibleImage(card.landedOver.image, failedImages) === null}
+	<!-- After a landing the card has been on show all along: falling back
+	     to its initials draws them as they were, without the first fades. -->
+	<span
+		class="resume-poster"
+		class:look-instant={card.instant || card.landedOver !== null}
+		data-look={card.look === null ? 'pending' : src ? 'image' : 'placeholder'}
+		data-under={overInitials ? 'placeholder' : undefined}
+	>
+		{#if overInitials}
+			<span class="resume-poster-placeholder" aria-hidden="true">{initials}</span>
+		{:else if card.look === null || src}
+			<span class="look-skeleton" aria-hidden="true"></span>
+		{/if}
+		{#if src}
+			<!-- One element across sources (a still that landed, a fallback):
+			     an image on show stays up until the browser has the next one,
+			     and the card never drops back to a skeleton in between. -->
+			<img
+				{src}
+				alt=""
+				loading="lazy"
+				decoding="async"
+				use:revealWhenDecoded={{ onError: () => markImageFailed(src) }}
+			/>
+		{:else if card.look}
+			<span class="resume-poster-placeholder" aria-hidden="true">{initials}</span>
+		{/if}
+		{#if card.look && card.text?.tag != null}
+			<span class="resume-ep-tag" aria-hidden="true">
+				<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
+				<span class="resume-ep-num">{card.text.tag}</span>
+			</span>
+		{/if}
+	</span>
+{/snippet}
+
+<!-- A Continue card's text. It lands with the artwork: the show's name
+     is the one the card settles on (the history row's own title can
+     differ from the show's), so while the card is a skeleton both lines
+     are bars of the tile's surface. Every state keeps the same two rows
+     — the name, then two lines for the episode title, the faint
+     "Episode N", or an empty reservation — so the card's box is the
+     same before and after it settles and the rail never reflows as
+     cards land. -->
+{#snippet cardBody(card: CardLookState, knownTitle: string)}
+	{#if card.look === null || card.text === null}
+		<!-- Still named for assistive tech, by the title known so far. -->
+		<span class="resume-sr-name">{knownTitle}</span>
+		<span class="resume-body" aria-hidden="true">
+			<span class="resume-show resume-line-skeleton"></span>
+			<span class="resume-title resume-title-reserved resume-line-skeleton"></span>
+		</span>
+	{:else}
+		<span class="resume-body" class:look-landed={!card.instant}>
+			<span class="resume-show">{card.text.show}</span>
+			{#if card.text.title}
+				<span class="resume-title">{card.text.title}</span>
+			{:else if card.text.episodeLabel !== null}
+				<span class="resume-title resume-title-faint"
+					>{m.home_resume_episode_label({ episode: card.text.episodeLabel })}</span
+				>
+			{:else}
+				<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
+			{/if}
+		</span>
+	{/if}
+{/snippet}
+
 {#snippet continueActions()}
 	<RowAction
 		label={m.home_clear_history_action()}
@@ -1117,15 +1259,6 @@
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
 			{@const accent = accentFor(match?.id ?? entry.id)}
-			{@const epThumb = imageProxyUrl(ep?.thumbnail?.original ?? null)}
-			{@const animePoster = imageProxyUrl(
-				match?.poster_image?.medium ??
-					match?.poster_image?.large ??
-					match?.poster_image?.small ??
-					match?.poster_image?.original ??
-					null
-			)}
-			{@const image = epThumb ?? animePoster}
 			{@const resumable = match && target.kitsuEpisode !== null}
 			{@const isResuming = resumeBusy === match?.id}
 			{@const singleVideo = isSingleVideo(
@@ -1140,6 +1273,27 @@
 				playableCount ?? match?.episode_count ?? null,
 				match ? leftPartWay : undefined
 			)}
+			{@const offered = match ? nextEpisode : null}
+			<!-- The episode wait is per offered episode, armed as the card
+			     first offers it. -->
+			{@const capKey = `${entry.id}|${offered}`}
+			{@const card = lookBook.look(entry.id, lookKey(entry), {
+				match,
+				episode: ep,
+				episodeFor: historyEpisodeFor[entry.id],
+				offered,
+				capReached: offered !== null && capTimers.arm(capKey) && capReached[capKey] === true,
+				text:
+					match === undefined
+						? null
+						: cardText(
+								offeredEpisode(ep, offered, historyEpisodeFor[entry.id]),
+								singleVideo,
+								resumable ? nextEpisode : target.displayEpisode,
+								target.displayTitle
+							)
+			})}
+			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,
 		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
@@ -1171,7 +1325,11 @@
 			       div so a click during the probe window doesn't
 			       mis-route the user to /search.
 			     - match === null : resolution definitively failed;
-			       the row falls through to a search for its title. -->
+			       the row falls through to a search for its title.
+			     The artwork and episode line are a separate question
+			     — `card`, from $lib/history/card-look — so a matched
+			     card is clickable while its artwork is still a
+			     skeleton. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				{#if resumable && match}
 					<button
@@ -1179,74 +1337,18 @@
 						class="resume-card"
 						class:resume-card-busy={isResuming}
 						style="--accent: {accent};"
+						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
 							startResume(entry, match, match?.episode_count ?? null, match?.status === 'finished')}
 					>
-						<span class="resume-poster">
-							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
-							{:else}
-								<span class="resume-poster-placeholder" aria-hidden="true">
-									{target.displayTitle.slice(0, 2).toUpperCase()}
-								</span>
-							{/if}
-							{#if !singleVideo}
-								<!-- Suppress the "EP N" overlay for single-video
-							     shows (movies + finished 1-ep OVAs/specials);
-							     the poster IS the video, no episode number
-							     to surface. The number shown matches what
-							     Continue would play — i.e. the episode about
-							     to start, not the one just watched. -->
-								<span class="resume-ep-tag" aria-hidden="true">
-									<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-									<span class="resume-ep-num">{nextEpisode}</span>
-								</span>
-							{/if}
-						</span>
-						<span class="resume-body">
-							<span class="resume-show">{target.displayTitle}</span>
-							{#if ep?.canonical_title}
-								<span class="resume-title">{ep.canonical_title}</span>
-							{:else if !singleVideo}
-								<!-- Single-video shows don't need an "Episode N"
-							     fallback subtitle — the show title above is
-							     enough, and the card is unambiguously a
-							     "continue this movie" affordance. -->
-								<span class="resume-title resume-title-faint"
-									>{m.home_resume_episode_label({ episode: nextEpisode })}</span
-								>
-							{:else}
-								<!-- Nothing to say here, but the row still has to
-							     exist: a movie card that simply dropped the
-							     episode line would be a line shorter than every
-							     other card in the rail, and a line shorter than
-							     the placeholder it replaced. -->
-								<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-							{/if}
-						</span>
+						{@render cardFace(card, initials)}
+						{@render cardBody(card, target.displayTitle)}
 					</button>
 				{:else if match === undefined}
 					<div class="resume-card resume-card-loading" style="--accent: {accent};" aria-busy="true">
-						<span class="resume-poster">
-							<span class="resume-poster-placeholder" aria-hidden="true">
-								{target.displayTitle.slice(0, 2).toUpperCase()}
-							</span>
-						</span>
-						<span class="resume-body">
-							<span class="resume-show">{target.displayTitle}</span>
-							<!-- The row the episode line will occupy, held open
-						     rather than grown into. Both terminal branches
-						     carry a second body row — the resolved card its
-						     episode title, the search fallback its faint
-						     fallback label — so reserving one here means the
-						     card's box is the same before and after, and the
-						     rail stops settling card by card as its probes
-						     land. Empty and hidden: it is space, not
-						     content, and a screen reader announcing a blank
-						     line would be worse than the reflow. -->
-							<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-						</span>
+						{@render cardFace(card, initials)}
+						{@render cardBody(card, target.displayTitle)}
 					</div>
 				{:else}
 					<a
@@ -1254,43 +1356,8 @@
 						style="--accent: {accent};"
 						href={`${resolve('/search')}?q=${encodeURIComponent(target.displayTitle)}`}
 					>
-						<span class="resume-poster">
-							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
-							{:else}
-								<span class="resume-poster-placeholder" aria-hidden="true">
-									{target.displayTitle.slice(0, 2).toUpperCase()}
-								</span>
-							{/if}
-							{#if !singleVideo}
-								<!-- Suppress the "EP N" overlay for single-video
-							     shows (movies + finished 1-ep OVAs/specials);
-							     the poster IS the video, no episode number
-							     to surface. -->
-								<span class="resume-ep-tag" aria-hidden="true">
-									<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-									<span class="resume-ep-num">{target.displayEpisode}</span>
-								</span>
-							{/if}
-						</span>
-						<span class="resume-body">
-							<span class="resume-show">{target.displayTitle}</span>
-							{#if ep?.canonical_title}
-								<span class="resume-title">{ep.canonical_title}</span>
-							{:else if !singleVideo}
-								<!-- Single-video shows don't need an "Episode N"
-							     fallback subtitle — the show title above is
-							     enough, and the card is unambiguously a
-							     "continue this movie" affordance. -->
-								<span class="resume-title resume-title-faint"
-									>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
-								>
-							{:else}
-								<!-- Same reservation as the resumable branch: the
-							     row is empty but still has to be there. -->
-								<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-							{/if}
-						</span>
+						{@render cardFace(card, initials)}
+						{@render cardBody(card, target.displayTitle)}
 					</a>
 				{/if}
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
@@ -2052,11 +2119,27 @@
 		opacity: 1;
 	}
 	.resume-poster img {
+		/* Over the skeleton, which it covers edge to edge once shown. */
+		position: absolute;
+		inset: 0;
 		inline-size: 100%;
 		block-size: 100%;
 		object-fit: cover;
 		object-position: center 30%;
 		filter: brightness(0.85);
+		/* Hidden until it has decoded (reveal-image.ts sets
+		   data-revealed), so it lands whole instead of painting in
+		   band by band. */
+		opacity: 0;
+		transition:
+			opacity var(--dur-slow) var(--ease-out-soft),
+			filter var(--dur-med) var(--ease-out-soft);
+	}
+	.resume-poster :global(img[data-revealed]) {
+		opacity: 1;
+	}
+	/* Already in memory when the card drew: it was never not there. */
+	.resume-poster :global(img[data-revealed='instant']) {
 		transition: filter var(--dur-med) var(--ease-out-soft);
 	}
 	.resume-card:hover .resume-poster img {
@@ -2093,7 +2176,8 @@
 		filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.65));
 		transition:
 			transform var(--dur-med) var(--ease-out-elastic),
-			filter var(--dur-fast) var(--ease-out-soft);
+			filter var(--dur-fast) var(--ease-out-soft),
+			opacity var(--dur-slow) var(--ease-out-soft);
 		z-index: 2;
 	}
 	.resume-ep-key {
@@ -2177,7 +2261,104 @@
 		block-size: 2lh;
 	}
 
-	.resume-card-loading .resume-poster-placeholder {
-		animation: pulse 1.6s var(--ease-in-out) infinite;
+	/* — Continue card skeleton: the tile's own surface with one soft
+	     band of light crossing it. The band waits a beat before its
+	     first pass, so a card whose artwork is a moment away just reads
+	     as an empty tile and never flickers into motion. The one sweep
+	     on the page, kept to this strip, whose cards wait on two answers
+	     and can sit a moment longer; the poster rows and the search page
+	     keep the opacity pulse. */
+	.look-skeleton {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		background: var(--ink-100);
+	}
+	.look-skeleton::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			100deg,
+			transparent 20%,
+			color-mix(in oklab, var(--bone-100) 5%, transparent) 50%,
+			transparent 80%
+		);
+		transform: translateX(-100%);
+		animation: look-sheen 1.8s var(--ease-in-out) 220ms infinite;
+	}
+	/* The sweep follows reading direction: mirrors the band and its travel. */
+	.look-skeleton:dir(rtl)::before {
+		scale: -1 1;
+	}
+	@keyframes look-sheen {
+		to {
+			transform: translateX(100%);
+		}
+	}
+	/* Nothing to scrim and nothing to number while the tile is empty. */
+	.resume-poster[data-look='pending']::after {
+		opacity: 0;
+	}
+	/* The scrim and the EP number arrive with the artwork they sit on;
+	   over the initials a landing still finds them there already. */
+	.resume-poster[data-look='image']:not([data-under]):not(:has(:global(img[data-revealed])))::after,
+	.resume-poster[data-look='image']:not([data-under]):not(:has(:global(img[data-revealed])))
+		.resume-ep-tag {
+		opacity: 0;
+	}
+	/* The scrim lands at the artwork's pace, not the hover's. */
+	.resume-poster:not([data-under]):has(:global(img[data-revealed='fade']))::after,
+	.resume-poster[data-look='placeholder']:not(.look-instant)::after {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
+	}
+	.resume-poster:has(:global(img[data-revealed])) .look-skeleton {
+		display: none;
+	}
+	.resume-poster[data-look='placeholder'] .resume-poster-placeholder,
+	.resume-poster[data-look='placeholder'] .resume-ep-tag {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
+	}
+	.resume-poster.look-instant .resume-poster-placeholder,
+	.resume-poster.look-instant .resume-ep-tag {
+		animation: none;
+	}
+	@keyframes look-in {
+		from {
+			opacity: 0;
+		}
+	}
+	/* The text's stand-ins: a short bar on each line, the name's
+	   narrower than the episode title's, each in the box its line keeps
+	   once it lands. */
+	.resume-line-skeleton::before {
+		content: '';
+		display: block;
+		inline-size: 62%;
+		block-size: 0.75rem;
+		margin-block-start: calc((1lh - 0.75rem) / 2);
+		border-radius: 2px;
+		background: var(--ink-100);
+	}
+	/* Holds the one line the name will take. */
+	.resume-show.resume-line-skeleton {
+		block-size: 1lh;
+	}
+	.resume-show.resume-line-skeleton::before {
+		inline-size: 44%;
+		block-size: 0.5rem;
+		margin-block-start: calc((1lh - 0.5rem) / 2);
+	}
+	.resume-sr-name {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	/* Lands with the artwork. */
+	.resume-body.look-landed {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
 	}
 </style>

@@ -193,7 +193,7 @@ async fn a_replay_of_an_unverified_row_says_it_is_unverified() {
             crate::proxy::token::MediaKind::Mp4,
         )
     };
-    let resp = crate::commands::play_cache::try_serve_cached(&state, &cached)
+    let resp = crate::commands::play_cache::try_serve_cached(&state, &cached, None)
         .await
         .expect("hit");
     assert!(resp.episode_unverified);
