@@ -148,6 +148,22 @@ describe('the notification center', () => {
 		expect(c.rows[0].resolvedAt).toBe(NOW + 50);
 	});
 
+	it('reads what the window is doing at each arrival when it can', () => {
+		const toasts: Notice[] = [];
+		let playing = true;
+		const c = new NoticeCenter({
+			storage: null,
+			now: () => NOW,
+			toast: (n) => toasts.push(n),
+			moment: () => ({ playing, fullscreen: false })
+		});
+		c.raise(outage);
+		expect(toasts).toEqual([]);
+		playing = false;
+		c.raise({ ...failed, kind: 'download-done' });
+		expect(toasts.map((n) => n.key)).toEqual(['f1']);
+	});
+
 	it('does nothing for a resolve of a row it does not have', () => {
 		const { c, toasts } = center();
 		c.resolve('outage:x', NOW);
