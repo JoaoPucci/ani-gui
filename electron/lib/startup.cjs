@@ -177,8 +177,11 @@ async function waitBeforeShow(contents, beforeShow, logError) {
   if (gone) throw new Error(`renderer gone before the first show (${gone.reason})`);
 }
 
-async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async () => {}, reveal }) {
-  void reveal;
+async function openFirstPage(
+  win,
+  url,
+  { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show() },
+) {
   const contents = win.webContents;
   let failed = false;
   // `beforeShow` is what must be on screen first — the splash, which a
@@ -186,7 +189,10 @@ async function openFirstPage(win, url, { timeoutMs, logError, beforeShow = async
   const shown = awaitFirstShow(win, { timeoutMs })
     .then(() => waitBeforeShow(contents, beforeShow, logError))
     .then(() => {
-      if (!failed) win.show();
+      // `reveal` is what puts the window on screen — a plain show, or
+      // main.js's map-maximized, show and close the splash — so a
+      // window whose first page failed never reaches it.
+      if (!failed) reveal();
     });
   try {
     await Promise.all([loadFirstPage(win, url, logError), shown]);

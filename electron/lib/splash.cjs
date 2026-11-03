@@ -166,11 +166,19 @@ function lastSplashState() {
  *  bound is for one that never does. */
 const SPLASH_SHOW_WAIT_MS = 1000;
 
-/** Reveal the app's window. Stub. */
+/**
+ * Reveal the app's window: `maximize()` the hidden window, which maps
+ * it already maximized (the open-maximized pattern main.js describes),
+ * attach what must act from the map on (`onMapped`), show it, and then
+ * `afterShow` — the splash's close, at the moment the window is up. A
+ * window gone meanwhile is left alone.
+ */
 function revealMaximized(win, { onMapped, afterShow }) {
-  void onMapped;
-  void afterShow;
+  if (win.isDestroyed()) return;
+  win.maximize();
+  onMapped();
   win.show();
+  afterShow();
 }
 
 module.exports = {
