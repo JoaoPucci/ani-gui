@@ -546,6 +546,7 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		moreButton().click();
 		await until(() => moreQualityRow() !== undefined, 'the quality row');
 		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
 		await until(() => document.activeElement === moreItems()[0], 'focus on the list');
 
 		const press = (key: string) =>
