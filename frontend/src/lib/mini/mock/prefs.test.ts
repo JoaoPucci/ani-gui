@@ -21,9 +21,22 @@ function memory(initial: Record<string, string> = {}) {
 
 describe('mini-player mockup prefs', () => {
 	it('starts off, with the recommended options', () => {
-		expect(parseMiniMockPrefs(null)).toEqual(MINI_MOCK_PREFS_DEFAULT);
-		expect(MINI_MOCK_PREFS_DEFAULT.enabled).toBe(false);
-		expect(MINI_MOCK_PREFS_DEFAULT.switcher).toBe(false);
+		expect(parseMiniMockPrefs(null)).toEqual({
+			enabled: false,
+			switcher: false,
+			hintSeen: false,
+			layout: 'bar',
+			main: 'placeholder',
+			onTop: 'both',
+			platform: 'wayland',
+			gap: '1500',
+			cues: 'floor',
+			lift: 'lift',
+			grip: 'chrome',
+			failure: 'inline',
+			shortcut: 'i',
+			copy: 'general'
+		});
 	});
 
 	it('reads back what was saved', () => {
