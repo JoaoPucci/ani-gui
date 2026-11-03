@@ -189,6 +189,40 @@ Project-local writes inside the repo are always fine (the test toolchain install
 
 When pausing for approval, explain what the action does, why it's needed, and what the alternative is if the user declines. Examples of safe alternatives: ship a Docker dev image rather than asking the user to install system packages; vendor a tool into the repo rather than `cargo install -g`; document the requirement in `docs/development.md` so the user installs it themselves.
 
+### A safety check is not an obstacle
+
+Some checks exist to stop harm rather than to judge code: the e2e
+launch guard (`electron/lib/e2e-display.cjs`), which keeps test
+windows off the screen of whoever runs the suite; the git hooks; the
+architectural checks; the coverage and CRAP gates. Never get past one
+by making it believe something untrue — setting `GITHUB_ACTIONS=true`
+outside CI, unsetting the variables it reads so it cannot see what it
+guards, pointing it at a stand-in — or by any route it was not
+written to allow. That holds even when the run would have been
+harmless: a check worked around once stops being a check, and nobody
+reviewing the result can tell.
+
+A check that blocks legitimate work is a finding. Stop, say what it
+blocked and why the work needs it, and then either add an explicit,
+documented mode to the check in its own reviewed change, or ask.
+
+What a check allows is not getting past it. The launch guard has two
+modes: locally, the suite runs through `tools/headless-wayland.sh`;
+on GitHub's runners, under Xvfb. A local headless X11 run is neither:
+it needs its own mode, added to the guard as above, before anything
+uses it.
+
+Skipping a check outright happens in these cases, and only these.
+Each is either a rule written here or a skip someone with the
+authority directed, never a route an agent picks for itself:
+
+- A frontend `test(red):` commit excludes the hook checks §12 names
+  (`frontend-test`, and `frontend-check` when the red names a module
+  its green adds), and its body says so.
+- Any other hook skip (`--no-verify`, `LEFTHOOK=0`,
+  `LEFTHOOK_EXCLUDE`) needs the user's explicit direction, as §12
+  says.
+
 ## 12. Git hygiene
 
 - **Stage files individually, by full path.** Never use `git add .`, `git add -A`, `git add -u`, or directory-level adds like `git add docs/`. Each file goes into the index by name. This forces an intentional review of every file in every commit and prevents accidental inclusion of secrets, scratch files, or unrelated edits.
