@@ -39,7 +39,7 @@
 		}
 	],
 	"outage_body": "A fonte não responde desde {time}. Ainda não sabemos por quê: ela pode estar fora do ar, ou algo entre você e ela pode estar bloqueando. Daqui, os dois casos são iguais.",
-	"outage_body_still": "Navegar, buscar e suas listas continuam funcionando. Só reproduzir e baixar dependem da fonte.",
+	"outage_body_still": "A navegação, a busca e suas listas continuam funcionando. Só a reprodução e os downloads dependem da fonte.",
 	"outage_evidence_label": "O que o ani-gui observou",
 	"outage_evidence": [
 		{

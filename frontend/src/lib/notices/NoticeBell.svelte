@@ -117,10 +117,17 @@
 	// shortcuts listen on the document and the window. Elsewhere they
 	// go on to the app's own shortcuts (`/` and Ctrl+K for search).
 	function onPanelKey(e: KeyboardEvent) {
-		if (onPlayer) e.stopPropagation();
+		// Escape is the panel's alone, so no other popover closes with it.
+		if (onPlayer || e.key === 'Escape') e.stopPropagation();
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			close(true);
+			return;
+		}
+		// The search shortcut takes over from the panel.
+		const searchKey = e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k');
+		if (!onPlayer && searchKey) {
+			close(false);
 			return;
 		}
 		if (!panel) return;
