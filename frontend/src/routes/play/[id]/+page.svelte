@@ -2421,7 +2421,9 @@
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
-			// names the one the failing session was resolved for.
+			// names the one the failing session was resolved for. It
+			// describes the play as every other request does, the captions
+			// choice included, though the cache key does not read it.
 			await evictPlayCache(
 				playArgsFor({
 					title,
@@ -2430,7 +2432,8 @@
 					quality,
 					show: detail,
 					kitsuId: undefined,
-					version: storedChoice(id)
+					version: storedChoice(id),
+					caption: storedCaption(id)
 				})
 			);
 		} catch {
