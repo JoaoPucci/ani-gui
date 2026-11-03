@@ -171,6 +171,15 @@ function splashController({
       if (over) return;
       askedAt = clock();
       log(`[main] splash asked for (${since()})`);
+      // The page's query is settled before any window exists, so
+      // nothing past this point is left half made.
+      let texts = [];
+      try {
+        texts = stallTexts();
+      } catch (err) {
+        logError("[main] the splash's stall line could not be read:", err);
+      }
+      const query = splashPageQuery({ version, stallTexts: texts });
       let splash;
       try {
         splash = createWindow(splashWindowOptions());
@@ -219,7 +228,6 @@ function splashController({
       splash.webContents.on("did-finish-load", () => {
         if (steps > 0) sendSteps();
       });
-      const query = splashPageQuery({ version, stallTexts: stallTexts() });
       Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) =>
         logError("[main] the splash failed to load:", err),
       );

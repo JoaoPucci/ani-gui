@@ -109,7 +109,13 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 @keyframes plate { from { opacity: 0; inset-inline: 30px; } }
 
 /* — Title column. — */
-.title { display: grid; row-gap: 10px; animation: title 340ms var(--ease-out-soft) 120ms backwards; }
+/* The column gives back the line the rail takes (the rail and the row
+   gap above it), so the stage centres the title and its rule on the
+   gate as it did with no rail, and the rail hangs below. */
+.title {
+  display: grid; row-gap: 10px; margin-block-end: -15px;
+  animation: title 340ms var(--ease-out-soft) 120ms backwards;
+}
 @keyframes title { from { opacity: 0; transform: translateX(-6px); } }
 
 .eyebrow, .readout {
@@ -153,7 +159,7 @@ body:not(.shown) *, body:not(.shown) *::before, body:not(.shown) *::after {
 .rail i.lit::after { clip-path: inset(0 0 0 0); }
 .status {
   position: absolute; inset-inline-start: 0; inset-block-start: calc(100% + 10px);
-  white-space: nowrap;
+  max-inline-size: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-size: 11px; letter-spacing: 0.06em; text-transform: none; color: var(--bone-300);
   opacity: 0;
 }

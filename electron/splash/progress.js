@@ -5,8 +5,10 @@
 // lit as the main process says its step has landed
 // (`window.splashProgress.set(n)`, n the count of steps landed;
 // lib/splash.cjs). The line stays empty until a step has been pending
-// `st` ms (`?st=`), then says what the main process gave for that step
-// (`?t1=`..`?t3=`, in the app's language), and goes when it lands.
+// `st` ms (`?st=`), counted from the page's load or the last step to
+// land, then says what the main process gave for that step (`?t1=`..
+// `?t3=`, in the app's language), and goes when it lands, unless the
+// next step's line is the same words.
 // A page opened without them (a browser preview) never shows the line.
 // How each change moves, or does not under reduced motion, is
 // splash.css's.
@@ -21,9 +23,13 @@
   const watch = () => {
     clearTimeout(timer);
     if (!status) return;
-    status.classList.remove('on');
     const pending = done;
-    if (pending >= segments.length || !texts[pending]) return;
+    const text = pending < segments.length ? texts[pending] : null;
+    // A line already up that would say the same for the step now
+    // pending stays up, rather than fading out and back in.
+    if (text && status.classList.contains('on') && status.textContent === text) return;
+    status.classList.remove('on');
+    if (!text) return;
     timer = setTimeout(() => {
       status.textContent = texts[pending];
       status.classList.add('on');

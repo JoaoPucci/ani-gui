@@ -5,8 +5,9 @@
 //
 // The rail has three stretches, one per step of the boot, lit as each
 // step really lands: the backend's handshake, the launch's flags
-// decided, and the app's first page rendered. It carries no words and
-// no numbers. The line under it appears only when the pending step has
+// decided, and the app's first page rendered. A launch whose wait for
+// that render gave up (lib/app-window.cjs) reveals its window with the
+// last stretch unlit. The rail carries no words and no numbers. The line under it appears only when the pending step has
 // taken longer than STALL_MS, and goes when the step lands.
 
 /** The boot's steps, in the order they land. */

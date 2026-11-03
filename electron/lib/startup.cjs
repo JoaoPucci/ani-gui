@@ -279,11 +279,19 @@ async function bootApp({
   } catch (err) {
     logError("[main] could not show the splash:", err);
   }
+  // The splash's rail is the user's view of the boot, not part of it.
+  const reportStep = (step) => {
+    try {
+      stepDone(step);
+    } catch (err) {
+      logError("[main] could not tell the splash a step landed:", err);
+    }
+  };
   try {
     const backend = await spawnBackend();
-    stepDone("backend");
+    reportStep("backend");
     const flags = await fetchFlags(backend);
-    stepDone("flags");
+    reportStep("flags");
     // A quit asked for meanwhile — the splash closed from the taskbar,
     // say — takes its own course; no window is opened into it.
     if (quitting()) return;
