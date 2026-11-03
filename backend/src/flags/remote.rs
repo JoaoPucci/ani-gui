@@ -61,30 +61,34 @@ pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Op
     fetch_trusting(client, url, timeout, TRUSTED_KEYS).await
 }
 
-/// [`fetch`], trusting the signature keys `keys`: the file, then its
-/// detached signature from the same address with
-/// [`SIGNATURE_SUFFIX`] appended, both within `timeout`. The flags are
+/// [`fetch`], trusting the signature keys `keys`: the file and its
+/// detached signature, from the same address with [`SIGNATURE_SUFFIX`]
+/// appended, asked for at once, each within `timeout`. The flags are
 /// returned whatever the signature says; the notices block only when
 /// the file verifies under one of `keys` (see [`super::signature`]). A
-/// signature that cannot be fetched is no signature.
+/// signature that fails or does not arrive in time is no signature: it
+/// costs the notices, never the flags.
 pub async fn fetch_trusting(
     client: &reqwest::Client,
     url: &str,
     timeout: Duration,
     keys: &[&str],
 ) -> Option<Document> {
-    let both = async {
-        let body = fetch_body(client, url, timeout).await?;
-        let doc = parse_document(&body)?;
-        let signature = fetch_body(client, &format!("{url}{SIGNATURE_SUFFIX}"), timeout)
-            .await
-            .filter(|s| s.len() <= MAX_SIGNATURE_BYTES)
-            .and_then(|s| String::from_utf8(s).ok());
-        let verdict = verify(&body, signature.as_deref(), keys);
-        tracing::info!(?verdict, "flags file signature checked");
-        Some(admit(doc, verdict))
-    };
-    tokio::time::timeout(timeout, both).await.ok()?
+    let sig_url = format!("{url}{SIGNATURE_SUFFIX}");
+    let (body, signature) = tokio::join!(
+        tokio::time::timeout(timeout, fetch_body(client, url, timeout)),
+        tokio::time::timeout(timeout, fetch_body(client, &sig_url, timeout)),
+    );
+    let body = body.ok()??;
+    let doc = parse_document(&body)?;
+    let signature = signature
+        .ok()
+        .flatten()
+        .filter(|s| s.len() <= MAX_SIGNATURE_BYTES)
+        .and_then(|s| String::from_utf8(s).ok());
+    let verdict = verify(&body, signature.as_deref(), keys);
+    tracing::info!(?verdict, "flags file signature checked");
+    Some(admit(doc, verdict))
 }
 
 /// The body of a 200 response, read no further than one byte past the
