@@ -7,8 +7,10 @@
 //! The resolve is not the watch: it records no watch moment, and a
 //! watch waiting to be recorded still records after it. Where only a
 //! Kitsu read could judge the pairing, or the cache refuses it, the
-//! id waits for the watch as before; a guessed Continue session
-//! records its id only on its card's own listing.
+//! id waits for the watch as before. The renderer sends a guessed
+//! Continue session's id only with its mark-watched; the guessed cases
+//! here hold the backend to the same rule as a second line: a guessed
+//! resolve records its id only on its card's own listing.
 
 use super::*;
 use crate::commands::play_native_test_provider::{
@@ -253,4 +255,72 @@ async fn a_play_that_records_its_id_does_not_drop_a_watch_waiting_on_it() {
     assert_eq!(row.ep_no, "4");
     assert!(row.watched_at.is_some(), "the watch is recorded");
     assert_eq!(row.kitsu_id.as_deref(), Some("45412"));
+}
+
+#[tokio::test]
+async fn a_row_keeps_its_id_when_the_resolve_cannot_judge_the_page() {
+    // The row's earlier watch recorded 76; this play's page 77 waits
+    // for its own watch, and the resolve leaves 76 where it is.
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap_season()));
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: key(CUMULATIVE_S2_SLUG),
+            title: CUMULATIVE_S2.into(),
+            watched_at: Some(1),
+            kitsu_id: Some("76".into()),
+            own_number: true,
+        },
+    )
+    .expect("seed row");
+    play_with_progress(&state, &season_two(), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(
+        row(&state, &key(CUMULATIVE_S2_SLUG)).kitsu_id.as_deref(),
+        Some("76")
+    );
+}
+
+#[tokio::test]
+async fn a_replay_whose_page_the_cache_refuses_records_no_id() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    cache_detail(&state, "77", "cumulative-show");
+    let asked = season_two();
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &asked.resolution_key(),
+        &CachedResolution {
+            upstream_url: format!("{}/x/master.m3u8", upstream.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: key(CUMULATIVE_S2_SLUG),
+            show_title: CUMULATIVE_S2.into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("1".into()),
+            former_episode: None,
+            versions: Vec::new(),
+            version: None,
+            episode_unverified: false,
+        },
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(row(&state, &key(CUMULATIVE_S2_SLUG)).kitsu_id, None);
 }
