@@ -61,6 +61,9 @@ function deps(over: Partial<LinkDeps> = {}): LinkDeps {
 			linked: rows.map((row) => ({ row, previous: null, ep_no: '1', watched_at: null }))
 		}),
 		unlink: async (_k, rows) => ({ restored: rows.map((r) => r.row), kept: [] }),
+		// Every row asked shares the card's listing unless a test says
+		// otherwise: the backend's rule (history_link_plan.rs).
+		group: async (_card, rows) => rows,
 		...over
 	};
 }
@@ -205,6 +208,44 @@ describe('guessedGroup, over a long history', () => {
 		const offer = { entry: CARD, current: ref(GUESS) };
 		expect(await guessedGroup(slow, offer)).toEqual([CARD.id, ...many.map((r) => r.id)]);
 		expect(most).toBeGreaterThan(1);
+	});
+});
+
+describe("a row of another listing the card's guess matches", () => {
+	// The JoJo card's own row is the 2000 OVA's listing, guessed as the
+	// 2012 series; its guessed play wrote the 2012 listing's row, which
+	// the same guess matches. The backend says it is not the card's
+	// listing, so the link leaves it as the 2012 series' history.
+	const JOJO_2000: HistoryEntry = {
+		id: 'hianime:jojos-bizarre-adventure-2000-5182',
+		title: "JoJo's Bizarre Adventure",
+		ep_no: '1'
+	};
+	const JOJO_2012: HistoryEntry = {
+		id: 'hianime:jojos-bizarre-adventure-2012-708',
+		title: "JoJo's Bizarre Adventure",
+		ep_no: '2'
+	};
+	const jojo = (over: Partial<LinkDeps> = {}) =>
+		deps({
+			history: async () => [JOJO_2012, JOJO_2000],
+			resolve: async () => ({ match: ref('7158'), trusted: false }),
+			group: async (card, rows) => rows.filter((r) => r === card),
+			...over
+		});
+
+	it('asks the backend which rows share the card listing, the card first', async () => {
+		const group = vi.fn(jojo().group);
+		const offer = (await linkOffer(jojo(), JOJO_2000.id, '7158'))!;
+		expect(await guessedGroup(jojo({ group }), offer)).toEqual([JOJO_2000.id]);
+		expect(group).toHaveBeenCalledWith(JOJO_2000.id, [JOJO_2000.id, JOJO_2012.id]);
+	});
+
+	it('is not linked with the card', async () => {
+		const link = vi.fn(jojo().link);
+		const offer = (await linkOffer(jojo(), JOJO_2000.id, '7158'))!;
+		await confirmLink(jojo({ link }), offer, '4013');
+		expect(link).toHaveBeenCalledWith([JOJO_2000.id], '4013');
 	});
 });
 

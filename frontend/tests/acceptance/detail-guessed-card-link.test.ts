@@ -182,6 +182,12 @@ function serveBackend() {
 				rows = rows.map((r) => (body.rows.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id } : r));
 				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked });
 			}),
+			// Both rows are Black Clover's one listing: the card's own and
+			// a retired provider's bare row with the same words.
+			http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
+				const body = (await request.json()) as { card: string; rows: string[] };
+				return HttpResponse.json(body.rows.filter((r) => rows.some((h) => h.id === r)));
+			}),
 			http.post(`${API_BASE}/api/history/unlink`, async ({ request }) => {
 				const body = (await request.json()) as {
 					kitsu_id: string;

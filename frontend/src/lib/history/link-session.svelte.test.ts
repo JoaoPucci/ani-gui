@@ -61,6 +61,7 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 				linked: rows.map((row) => ({ row, previous: null, ep_no: '3', watched_at: null }))
 			};
 		},
+		group: async (_card, rows) => rows,
 		unlink: async (_k, rows) => {
 			f.rows = f.rows.map((r) =>
 				rows.some((l) => l.row === r.id) ? { ...r, kitsu_id: undefined } : r
