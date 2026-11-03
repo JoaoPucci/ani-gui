@@ -143,7 +143,7 @@
 	import type { DownloadArgs } from '$lib/api';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -1175,7 +1175,10 @@
 			});
 		void detailServed
 			.then((d) => {
-				if (id !== currentId) return; // navigation raced ahead
+				// Navigation raced ahead: another show, or another page
+				// altogether (the player keeps the same id), whose trail
+				// this show must not name.
+				if (id !== currentId || refills.signal.aborted) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -1187,8 +1190,9 @@
 				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
-				// instead of "Anime".
-				breadcrumb.set([
+				// instead of "Anime" — whether the layout's reset for
+				// this navigation has run yet or not.
+				pageTrail.name(page.url.pathname, [
 					{ label: m.breadcrumb_home(), href: '/' },
 					{ label: d.canonical_title ?? m.breadcrumb_anime() }
 				]);
@@ -1723,9 +1727,11 @@
 		</div>
 	{:else if detail === null}
 		<!-- Skeleton -->
-		<section class="hero hero-skeleton" aria-busy="true">
-			<div class="hero-img hero-skeleton-img"></div>
-		</section>
+		<div class="hero-frame">
+			<section class="hero hero-skeleton" aria-busy="true">
+				<div class="hero-img hero-skeleton-img"></div>
+			</section>
+		</div>
 		<div class="content">
 			<section class="masthead">
 				<div class="poster-frame poster-skeleton"></div>
@@ -1745,40 +1751,42 @@
 		{@const rating = ratingDisplay(detail.average_rating)}
 		{@const year = yearOf(detail)}
 
-		<section
-			class="hero"
-			class:hero-fallback={!hero.isCover}
-			class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
-			class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
-			class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
-		>
-			{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
-				<img
-					class="hero-backdrop"
-					src={hero.url}
-					alt=""
-					style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
-				/>
-			{/if}
-			{#if hero.url}
-				<img
-					class="hero-img"
-					src={hero.url}
-					alt=""
-					style:transform={heroTransform(scrollY, hero.isCover)}
-					style:--ratio={heroRatios[heroId]}
-					onload={(e) => onHeroLoad(heroId, e)}
-					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
-				/>
-			{/if}
-			<div class="hero-scrim" aria-hidden="true"></div>
-			{#if !hero.isCover}
-				<div class="hero-grain" aria-hidden="true"></div>
-			{/if}
-			{#if heroPrefs.controls}
-				<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
-			{/if}
-		</section>
+		<div class="hero-frame">
+			<section
+				class="hero"
+				class:hero-fallback={!hero.isCover}
+				class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+				class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+				class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
+			>
+				{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
+					<img
+						class="hero-backdrop"
+						src={hero.url}
+						alt=""
+						style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
+					/>
+				{/if}
+				{#if hero.url}
+					<img
+						class="hero-img"
+						src={hero.url}
+						alt=""
+						style:transform={heroTransform(scrollY, hero.isCover)}
+						style:--ratio={heroRatios[heroId]}
+						onload={(e) => onHeroLoad(heroId, e)}
+						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
+					/>
+				{/if}
+				<div class="hero-scrim" aria-hidden="true"></div>
+				{#if !hero.isCover}
+					<div class="hero-grain" aria-hidden="true"></div>
+				{/if}
+				{#if heroPrefs.controls}
+					<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
+				{/if}
+			</section>
+		</div>
 
 		<div class="content">
 			<section class="masthead">
@@ -2440,16 +2448,23 @@
 		}
 	}
 
-	/* — Hero band. */
-	.hero {
-		position: relative;
-		aspect-ratio: var(--hero-aspect);
-		overflow: hidden;
-		/* Escape the layout's inline gutters AND the rail column on
-		   the left so the banner spreads behind the glassy rail too
-		   (the rail's backdrop-blur frosts whatever shows through).
-		   Right side just escapes the gutter — there's no chrome
-		   there to bleed behind. */
+	/* — Hero band.
+	   The frame holds the band's place: it escapes the layout's
+	   inline gutters AND the rail column on the left so the banner
+	   spreads behind the glassy rail too (the rail's backdrop-blur
+	   frosts whatever shows through). Right side just escapes the
+	   gutter — there's no chrome there to bleed behind.
+	   It also clips. The band below arrives scaled up and settles to
+	   its own size; a transformed box adds to the page's scrollable
+	   overflow unless an ancestor clips it, and the frame is the
+	   nearest box exactly the band's size. Without it the page grew a
+	   horizontal scrollbar for as long as the entry lasted. Once the
+	   page has settled the frame reaches the window's edges on three
+	   sides, and the band's foot fades out under its mask, so the clip
+	   takes nothing a reader could see. `clip`, not `hidden`, so the frame does not become a
+	   scroll container. */
+	.hero-frame {
+		overflow: clip;
 		margin-inline-start: calc(-1 * (var(--space-7) + var(--rail-width)));
 		margin-inline-end: calc(-1 * var(--space-7));
 		inline-size: calc(100% + 2 * var(--space-7) + var(--rail-width));
@@ -2459,6 +2474,14 @@
 		   margin-block-end below compensates so the masthead under
 		   the hero stays at its original y. */
 		margin-block-start: calc(-1 * var(--topbar-h));
+		/* Compensate for the negative margin-block-start above so the
+		   masthead beneath the hero stays at its original y. */
+		margin-block-end: calc(var(--space-7) + var(--topbar-h));
+	}
+	.hero {
+		position: relative;
+		aspect-ratio: var(--hero-aspect);
+		overflow: hidden;
 		/* Per-anime accent gradient shows through when Kitsu has no
 		   cover, no poster, and no episode thumbnail — the show
 		   still gets a branded backdrop instead of dead grey. The
@@ -2471,9 +2494,6 @@
 				var(--ink-050) 100%
 			),
 			var(--ink-050);
-		/* Compensate for the negative margin-block-start above so the
-		   masthead beneath the hero stays at its original y. */
-		margin-block-end: calc(var(--space-7) + var(--topbar-h));
 		/* Bleed the banner image down into the masthead area: mask
 		   the bottom 30% of the hero to transparent so the image
 		   fades over the page background. The masthead then pulls
