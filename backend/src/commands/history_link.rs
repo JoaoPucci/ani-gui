@@ -45,16 +45,27 @@ use crate::history::same_kitsu_id;
 
 #[path = "history_link_plan.rs"]
 mod plan;
-pub use plan::{left_as_linked, plan_link, plan_unlink};
+pub use plan::{card_listing, left_as_linked, of_card, plan_held, plan_link, plan_unlink};
 
 /// A request to link rows to a show.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LinkArgs {
+    /// The row of the card the link is made from.
+    pub card: String,
     /// The history rows to link: the card's row and the guessed rows
     /// it stands for.
     pub rows: Vec<String>,
     /// The Kitsu id of the show the user named.
     pub kitsu_id: String,
+}
+
+/// A request for the rows a link would write.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LinkGroupArgs {
+    /// The row of the card the link would be made from.
+    pub card: String,
+    /// The rows the card stands for.
+    pub rows: Vec<String>,
 }
 
 /// A row a link wrote, as it left it, and the id it had before.
@@ -97,6 +108,19 @@ pub struct UnlinkOutcome {
     pub kept: Vec<String>,
 }
 
+/// The rows a link of `args.rows` from the card `args.card` would
+/// write now — the renderer's count of what its Link covers.
+///
+/// # Errors
+/// History I/O errors.
+pub fn link_group(state: &AppState, args: &LinkGroupArgs) -> Result<Vec<String>> {
+    let entries = crate::history::read_all(&state.history_path)?;
+    Ok(plan_link(&entries, &args.card, &args.rows)
+        .into_iter()
+        .map(|l| l.row)
+        .collect())
+}
+
 /// Link `args.rows` to `args.kitsu_id`.
 ///
 /// # Errors
@@ -107,8 +131,11 @@ pub async fn link(state: &AppState, args: &LinkArgs) -> Result<LinkOutcome> {
     let kitsu_id = crate::kitsu_id::require(&args.kitsu_id)?;
     let begun = crate::history::guard::epoch(&state.history_path);
     crate::commands::kitsu::kitsu_anime_detail_page(state, kitsu_id).await?;
+    // Only the card's own listing: a row a guessed play wrote for
+    // another listing is that show's history ([`card_listing`]).
+    let rows = of_card(&args.card, &args.rows);
     crate::history::guard::hold(&state.history_path, |held| {
-        link_held(state, held, &args.rows, kitsu_id, begun)
+        link_held(state, held, &rows, kitsu_id, begun)
     })
 }
 
@@ -119,7 +146,7 @@ fn link_held(
     kitsu_id: &str,
     begun: Epoch,
 ) -> Result<LinkOutcome> {
-    let mut linked = plan_link(&held.rows()?, rows);
+    let mut linked = plan_held(&held.rows()?, rows);
     linked.retain(|l| !held.show_removed_since(begun, &l.row));
     for l in &linked {
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;

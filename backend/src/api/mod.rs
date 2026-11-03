@@ -99,6 +99,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
         .route("/api/history/link", post(post_history_link))
+        .route("/api/history/link-group", post(post_history_link_group))
         .route("/api/history/unlink", post(post_history_unlink))
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
@@ -246,6 +247,17 @@ async fn post_history_link(
     Ok(Json(
         crate::commands::history_link::link(&state, &args).await?,
     ))
+}
+
+/// The rows a link would write
+/// ([`crate::commands::history_link::link_group`]).
+async fn post_history_link_group(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::LinkGroupArgs>,
+) -> Result<Json<Vec<String>>, AniError> {
+    Ok(Json(crate::commands::history_link::link_group(
+        &state, &args,
+    )?))
 }
 
 /// Undo a link ([`crate::commands::history_link::unlink`]).

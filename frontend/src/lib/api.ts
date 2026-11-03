@@ -645,10 +645,22 @@ export interface UnlinkOutcome {
 	kept: string[];
 }
 
-/** Link history rows to the show the user named for them. Rejects
- *  with Kitsu's 404/410 for an entry Kitsu deleted. */
+/** Link history rows to the show the user named for them: `rows`
+ *  leads with the card's own row, the card the link is made from, and
+ *  only the rows of that card's listing are written. Rejects with
+ *  Kitsu's 404/410 for an entry Kitsu deleted. */
 export function historyLink(rows: string[], kitsuId: string): Promise<LinkOutcome> {
-	return postJson<LinkOutcome>('/api/history/link', { rows, kitsu_id: kitsuId });
+	return postJson<LinkOutcome>('/api/history/link', {
+		card: rows[0],
+		rows,
+		kitsu_id: kitsuId
+	});
+}
+
+/** The rows of `rows` a link from the card whose row is `card` would
+ *  write: those of the card's own listing. */
+export function historyLinkGroup(card: string, rows: string[]): Promise<string[]> {
+	return postJson<string[]>('/api/history/link-group', { card, rows });
 }
 
 /** Undo a link, naming the rows as it left them. */
