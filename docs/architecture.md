@@ -480,11 +480,12 @@ flags the window was opened with. Off, nothing of it mounts: no bell,
 no toast or row from it, no detail page content, no line above Play, no
 read of the source's health, and nothing read from or written to its
 storage. The update badge and dialog, the download dock and the
-diagnostics page are the same either way. The flag is not yet declared
-in `flags::DECLARED`: a flag the file turns on is a riskier value than
-the build's default, which the remote-flags rule above does not allow
-for an unsigned file, so the center ships off and cannot be turned on
-remotely until that is settled.
+diagnostics page are the same either way. The flag is not declared in
+`flags::DECLARED` yet, so it is off in every build: a flag the file
+turns on is a riskier value than the build's default, which the
+remote-flags rule above does not allow. A release turns the center on
+by declaring the flag as a kill switch, which ships on and which the
+file may then only switch off.
 
 **What it shows.** Each notice is a keyed row, either a *condition*
 (true for a while, resolving itself) or an *event* (happened once):
@@ -583,8 +584,9 @@ the string `"source"` is ignored rather than dropping the notice; the priority o
 are kept. Nothing in the block is HTML, and nothing renders it as HTML.
 
 None of it is shown yet, and the donation-ask number schedules nothing
-yet. Showing text and links from the file is the same question as
-turning a flag on from it, and waits on the same decision. What is
+yet: text and links from the file, and a number that makes the app ask
+for something, are trusted only once the file is signed and the
+signature verified, which is planned for the same release. What is
 ready for it: the parser, and the donation ask's schedule as a pure
 state machine (`$lib/notices/donation`): once each time the published
 number rises past the last one the install acted on, never in the first
