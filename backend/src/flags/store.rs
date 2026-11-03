@@ -68,6 +68,8 @@ impl Origin {
 struct Snapshot {
     flags: Resolved,
     origin: Origin,
+    /// The deciding document's notices block (see [`crate::notices`]).
+    notices: Option<serde_json::Value>,
 }
 
 /// The launch's flags, shared by every handler.
@@ -94,6 +96,7 @@ impl FlagStore {
         let (tx, _rx) = watch::channel(Snapshot {
             flags: resolve(decls, None),
             origin,
+            notices: None,
         });
         Self {
             decls,
@@ -138,7 +141,7 @@ impl FlagStore {
     /// the store settles.
     #[must_use]
     pub fn notices(&self) -> Option<serde_json::Value> {
-        None
+        self.tx.borrow().notices.clone()
     }
 
     /// Wait, without a limit, until the flags are decided.
@@ -152,11 +155,18 @@ impl FlagStore {
     /// already. Returns whether this call decided them.
     pub(crate) fn settle(&self, doc: Option<&Document>, origin: Origin) -> bool {
         let flags = resolve(self.decls, doc);
+        let notices = doc
+            .and_then(|d| d.get(crate::notices::NOTICES_KEY))
+            .cloned();
         self.tx.send_if_modified(|snap| {
             if snap.origin != Origin::Pending {
                 return false;
             }
-            *snap = Snapshot { flags, origin };
+            *snap = Snapshot {
+                flags,
+                origin,
+                notices,
+            };
             true
         })
     }
