@@ -159,4 +159,41 @@ describe('the download dock renders the episode verdict', () => {
 		expect(marker?.getAttribute('title')).not.toContain('zokoanime.video');
 		expect(marker?.getAttribute('title')).not.toBe(m.backend_error_network_unreachable());
 	});
+
+	it('a source answer the resolver could not read says so on its failed row', async () => {
+		// The download walks the same provider as play. A page this
+		// version no longer reads gets the play overlay's sentence, not
+		// the shared try-again-later one, and never the log detail.
+		const id = startDownload({
+			title: 'Frieren',
+			episode: '9',
+			mode: 'sub',
+			quality: '1080',
+			destDir: '/dl'
+		});
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('/api/download/stream?')),
+			'the download stream'
+		);
+		const stream = FakeEventSource.instances.find((i) => i.url.includes('/api/download/stream?'))!;
+		stream.dispatch(
+			'error',
+			JSON.stringify({
+				kind: 'parse_failed',
+				key: 'error.scraper.parse_failed',
+				detail: 'the page is not the search shape'
+			})
+		);
+		await until(
+			() => downloadStore.items.find((i) => i.id === id)?.status === 'error',
+			'the row to fail'
+		);
+
+		const pop = openDock();
+		const marker = pop.querySelector<HTMLElement>('span.dl-row-error');
+		expect(marker, 'the failed row carries its error marker').not.toBeNull();
+		expect(marker?.getAttribute('title')).not.toBe(m.backend_error_scraper_parse_failed());
+		expect(marker?.getAttribute('title')).toBe(m.play_play_failure_unreadable());
+		expect(marker?.getAttribute('title')).not.toContain('search shape');
+	});
 });

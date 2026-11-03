@@ -287,15 +287,27 @@ describe('startDownload', () => {
 		);
 	});
 
-	it('names a typed failure by its kind and leaves its detail out', async () => {
-		const failure = { kind: 'parse_failed', detail: 'missing field `dest_dir`' };
+	it('words a source answer the resolver could not read the way the play page does', async () => {
+		// A download resolves through the same provider walk as play,
+		// and a parse failure there is the provider's page no longer
+		// read by this version. The row says so, as the play overlay
+		// does, instead of the shared try-again-later sentence.
+		const failure = {
+			kind: 'parse_failed',
+			key: 'error.scraper.parse_failed',
+			detail: 'the page is not the search shape'
+		};
 		apiMock.downloadStream.mockRejectedValueOnce(failure);
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', describeError(failure));
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describePlayFailure(failure, { otherAudio: null })
+		);
 		const shown = storeMock.downloadStore.markError.mock.calls[0][1] as string;
-		expect(shown).not.toContain('dest_dir');
+		expect(shown).not.toBe(describeError(failure));
+		expect(shown).not.toContain('search shape');
 	});
 
 	it('words every provider answer the way the play page does', async () => {
