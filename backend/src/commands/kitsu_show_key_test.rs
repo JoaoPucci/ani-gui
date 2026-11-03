@@ -668,3 +668,72 @@ async fn the_enrichment_resolve_takes_a_season_kitsu_titles_as_the_slug_words_do
         Some("5971")
     );
 }
+
+const REZERO_SLUG_WORDS: &[u8] =
+    include_bytes!("../../../tests/fixtures/kitsu/search_rezero_season_4_slug_words.json");
+
+/// The Continue card for hianime's Re:ZERO Season 4 resolves through
+/// its key's words, "rezero starting life in another world season 4".
+/// Kitsu answers Re:ZERO Season 4 alone (recorded): its slug marks the
+/// season with a bare `-4`, which is no cour suffix, and its titles
+/// keep "re" and "zero" apart where the key runs them together. It is
+/// the show, so it is answered and stored as the show's guess.
+#[tokio::test]
+async fn the_resolve_takes_the_entry_whose_titles_split_a_word_the_key_runs_together() {
+    let key = "hianime:rezero-starting-life-in-another-world-season-4-4587";
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "rezero starting life in another world season 4",
+        REZERO_SLUG_WORDS.to_vec(),
+    )
+    .await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(state_with_kitsu_at(&mock.uri()), td.path(), key);
+    let got = resolve_allmanga_show_id(&state, key, true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got.expect("Re:ZERO Season 4 resolves").id, "49746");
+    assert_eq!(
+        allmanga_kitsu_get(&state, key)
+            .expect("cache read")
+            .as_deref(),
+        Some("49746")
+    );
+}
+
+/// A Re:ZERO Season 2 key's words, which Kitsu answered with Season 2
+/// first and Season 2 Part 2 second on 2026-11-03. Part 2's slug
+/// carries the cour the key does and Season 2's does not, so before
+/// run-together words named Season 2 the resolve passed over it and
+/// took Part 2. It takes Season 2, which its titles name.
+#[tokio::test]
+async fn the_resolve_takes_the_season_its_titles_name_over_a_later_part() {
+    let key = "hianime:rezero-starting-life-in-another-world-season-2-100";
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "rezero starting life in another world season 2",
+        search_body_titled(&[
+            (
+                "42198",
+                "re-zero-kara-hajimeru-isekai-seikatsu-2",
+                "Re:Zero kara Hajimeru Isekai Seikatsu 2",
+                "Re:ZERO -Starting Life in Another World- Season 2",
+            ),
+            (
+                "43247",
+                "rezero-season-2-part-2",
+                "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+                "Re:ZERO -Starting Life in Another World- Season 2 Part 2",
+            ),
+        ]),
+    )
+    .await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(state_with_kitsu_at(&mock.uri()), td.path(), key);
+    let got = resolve_allmanga_show_id(&state, key, true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got.expect("Season 2 resolves").id, "42198");
+}

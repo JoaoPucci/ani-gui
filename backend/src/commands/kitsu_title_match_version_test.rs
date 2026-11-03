@@ -20,7 +20,7 @@ fn state(history: std::path::PathBuf) -> AppState {
     }
 }
 
-const BEFORE: &str = "title-match:v3:hianime:black clover:c1";
+const BEFORE: &str = "title-match:v4:hianime:black clover:c1";
 
 #[test]
 fn a_title_match_the_version_before_stored_is_not_read() {
@@ -56,6 +56,46 @@ fn removing_the_show_takes_the_title_matches_the_version_before_stored() {
     );
     assert_eq!(
         crate::cache::meta_cache_get(&s.cache_pool, BEFORE).expect("read"),
+        None
+    );
+}
+
+/// The version before files a match for a row that names a year under
+/// its title keyed by that year — the provider lists the 2000 JoJo as
+/// "JoJo's Bizarre Adventure" under `jojos-bizarre-adventure-2000-5182`.
+/// A removal of the row takes it too.
+#[test]
+fn removing_a_show_that_names_a_year_takes_the_match_the_version_before_keyed_by_it() {
+    let td = tempfile::tempdir().expect("td");
+    let path = td.path().join("history");
+    let s = state(path.clone());
+    crate::history::write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "1".into(),
+            id: "hianime:jojos-bizarre-adventure-2000-5182".into(),
+            title: "JoJo's Bizarre Adventure".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let keyed = "title-match:v4:hianime:jojo's bizarre adventure (2000):c1";
+    crate::cache::families::undeclared_allowed(|| {
+        crate::cache::meta_cache_put(&s.cache_pool, keyed, "1240", 86_400).expect("put")
+    });
+    assert!(crate::commands::history::history_delete(
+        &s,
+        "hianime:jojos-bizarre-adventure-2000-5182"
+    )
+    .expect("delete"));
+    assert_eq!(
+        crate::cache::families::undeclared_allowed(|| crate::cache::meta_cache_get(
+            &s.cache_pool,
+            keyed
+        ))
+        .expect("read"),
         None
     );
 }

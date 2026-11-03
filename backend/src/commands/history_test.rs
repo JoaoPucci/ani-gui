@@ -377,6 +377,12 @@ fn row(id: &str, title: &str) -> HistoryEntry {
     }
 }
 
+/// A title-match key at the version this build stores: the family's
+/// prefix, then `rest`.
+fn tm(rest: &str) -> String {
+    format!("{}{rest}", crate::cache::families::title_match())
+}
+
 fn cached(s: &AppState, key: &str) -> Option<String> {
     crate::cache::meta_cache_get(&s.cache_pool, key).unwrap()
 }
@@ -404,17 +410,9 @@ fn delete_removes_what_the_row_left_in_the_cache() {
         crate::commands::kitsu::watched_at_put(&s, id, 1_790_000_000_000).unwrap();
         crate::commands::kitsu::allmanga_kitsu_put(&s, id, "49877").unwrap();
     }
-    put(
-        &s,
-        "title-match:v3:hianime:there is also a hole:c1",
-        "49877",
-    );
-    put(
-        &s,
-        "title-match:v3:hianime:there is also a hole:c2",
-        "49878",
-    );
-    put(&s, "title-match:v3:hianime:one piece:c1", "12");
+    put(&s, &tm("hianime:there is also a hole:c1"), "49877");
+    put(&s, &tm("hianime:there is also a hole:c2"), "49878");
+    put(&s, &tm("hianime:one piece:c1"), "12");
 
     assert!(history_delete(&s, gone).unwrap());
 
@@ -426,21 +424,15 @@ fn delete_removes_what_the_row_left_in_the_cache() {
         crate::commands::kitsu::allmanga_kitsu_get(&s, gone).unwrap(),
         None
     );
-    assert_eq!(
-        cached(&s, "title-match:v3:hianime:there is also a hole:c1"),
-        None
-    );
-    assert_eq!(
-        cached(&s, "title-match:v3:hianime:there is also a hole:c2"),
-        None
-    );
+    assert_eq!(cached(&s, &tm("hianime:there is also a hole:c1")), None);
+    assert_eq!(cached(&s, &tm("hianime:there is also a hole:c2")), None);
     assert!(crate::commands::kitsu::watched_at_get(&s, kept)
         .unwrap()
         .is_some());
     assert!(crate::commands::kitsu::allmanga_kitsu_get(&s, kept)
         .unwrap()
         .is_some());
-    assert!(cached(&s, "title-match:v3:hianime:one piece:c1").is_some());
+    assert!(cached(&s, &tm("hianime:one piece:c1")).is_some());
 }
 
 #[test]
@@ -453,7 +445,7 @@ fn clear_removes_what_every_row_left_in_the_cache() {
         "watched-at:v1:abc",
         "allmanga2kitsu:v3:abc",
         "allmanga2kitsu:v2:abc",
-        "title-match:v3:anidb:t:c1",
+        &tm("anidb:t:c1"),
         "title-match:v2:t:c1",
     ];
     for key in history_keys {
@@ -480,13 +472,13 @@ fn delete_keeps_title_match_rows_of_a_title_that_extends_the_rows() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("re-1", "Re")]).unwrap();
-    put(&s, "title-match:v3:legacy:re:c1", "1");
-    put(&s, "title-match:v3:legacy:re:creators:c1", "2");
+    put(&s, &tm("legacy:re:c1"), "1");
+    put(&s, &tm("legacy:re:creators:c1"), "2");
 
     assert!(history_delete(&s, "re-1").unwrap());
 
-    assert_eq!(cached(&s, "title-match:v3:legacy:re:c1"), None);
-    assert!(cached(&s, "title-match:v3:legacy:re:creators:c1").is_some());
+    assert_eq!(cached(&s, &tm("legacy:re:c1")), None);
+    assert!(cached(&s, &tm("legacy:re:creators:c1")).is_some());
 }
 
 // Title-match rows are keyed by what Continue Watching searched — the
@@ -510,15 +502,12 @@ fn delete_keeps_the_title_match_rows_a_remaining_row_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:legacy:naruto:c1", "11");
+    put(&s, &tm("legacy:naruto:c1"), "11");
     put(&s, "title-match:v2:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
-    assert_eq!(
-        cached(&s, "title-match:v3:legacy:naruto:c1").as_deref(),
-        Some("11")
-    );
+    assert_eq!(cached(&s, &tm("legacy:naruto:c1")).as_deref(), Some("11"));
     assert_eq!(
         cached(&s, "title-match:v2:naruto:c1").as_deref(),
         Some("11")
@@ -538,18 +527,14 @@ fn delete_keeps_an_older_title_match_another_provider_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:legacy:naruto:c1", "11");
-    put(&s, "title-match:v3:hianime:naruto:c1", "11");
+    put(&s, &tm("legacy:naruto:c1"), "11");
+    put(&s, &tm("hianime:naruto:c1"), "11");
     put(&s, "title-match:v2:naruto:c1", "11");
 
     assert!(history_delete(&s, "hianime:naruto-7").unwrap());
 
-    assert_eq!(
-        cached(&s, "title-match:v3:hianime:naruto:c1"),
-        None,
-        "its own"
-    );
-    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
+    assert_eq!(cached(&s, &tm("hianime:naruto:c1")), None, "its own");
+    assert!(cached(&s, &tm("legacy:naruto:c1")).is_some());
     assert!(
         cached(&s, "title-match:v2:naruto:c1").is_some(),
         "the older key both providers' rows search"
@@ -569,11 +554,11 @@ fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:legacy:naruto:c1", "11");
+    put(&s, &tm("legacy:naruto:c1"), "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
-    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
+    assert!(cached(&s, &tm("legacy:naruto:c1")).is_some());
 }
 
 /// A bare row's title matches were written under anidb.app's label
@@ -613,17 +598,17 @@ fn delete_takes_its_own_title_match_beside_one_a_remaining_row_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:legacy:naruto (220 episodes):c1", "11");
-    put(&s, "title-match:v3:legacy:naruto:c1", "11");
+    put(&s, &tm("legacy:naruto (220 episodes):c1"), "11");
+    put(&s, &tm("legacy:naruto:c1"), "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
     assert_eq!(
-        cached(&s, "title-match:v3:legacy:naruto (220 episodes):c1"),
+        cached(&s, &tm("legacy:naruto (220 episodes):c1")),
         None,
         "the key only the removed row searched"
     );
-    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
+    assert!(cached(&s, &tm("legacy:naruto:c1")).is_some());
 }
 
 /// A cache that cannot forget a row's entries fails the delete before
@@ -840,7 +825,7 @@ fn delete_removes_the_shows_skip_times() {
     };
     write_atomic(&path, &[row("one-piece-69", "One Piece"), older]).unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1555").unwrap();
-    put(&s, "title-match:v3:hianime:seitokai:c1", "1777");
+    put(&s, &tm("hianime:seitokai:c1"), "1777");
     for key in [
         "aniskip:v2:49877:59970:1",
         "aniskip:v2:1555:111:1",
@@ -922,10 +907,10 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
     )
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1623").unwrap();
-    put(&s, "title-match:v3:hianime:seitokai:c1", "11");
+    put(&s, &tm("hianime:seitokai:c1"), "11");
     put(&s, "allmanga2kitsu:v2:hianime:seitokai-10497", "20");
     crate::commands::kitsu::allmanga_kitsu_put(&s, "naruto-20", "11").unwrap();
-    put(&s, "title-match:v3:legacy:bleach:c1", "20");
+    put(&s, &tm("legacy:bleach:c1"), "20");
     for key in [
         "aniskip:v2:1623:1:1",
         "aniskip:v2:11:2:1",
@@ -995,7 +980,10 @@ fn a_clear_of_an_unreadable_history_fails_and_changes_nothing() {
 // failure must leave it the finders it needs.
 
 const RENAMED_ID: &str = "hianime:the-show-100";
-const OLD_TITLE_MATCH: &str = "title-match:v3:hianime:the show:c1";
+/// The title match stored under the show's earlier title.
+fn old_title_match() -> String {
+    tm("hianime:the show:c1")
+}
 
 fn renamed_legacy_row(s: &AppState) {
     write_atomic(
@@ -1007,7 +995,7 @@ fn renamed_legacy_row(s: &AppState) {
         }],
     )
     .unwrap();
-    put(s, OLD_TITLE_MATCH, "77");
+    put(s, &old_title_match(), "77");
 }
 
 /// Make the cache refuse to delete the row under `key`.
@@ -1033,7 +1021,7 @@ fn restarted(s: &AppState, dir: &std::path::Path) -> AppState {
 }
 
 fn delete_fails_then_retries_after_a_restart(s: &AppState, dir: &std::path::Path) {
-    refuse_delete_of(s, OLD_TITLE_MATCH);
+    refuse_delete_of(s, &old_title_match());
     assert!(history_delete(s, RENAMED_ID).is_err());
     s.cache_pool
         .get()
@@ -1044,7 +1032,7 @@ fn delete_fails_then_retries_after_a_restart(s: &AppState, dir: &std::path::Path
     let after = restarted(s, dir);
     assert!(history_delete(&after, RENAMED_ID).unwrap());
     assert_eq!(
-        cached(&after, OLD_TITLE_MATCH),
+        cached(&after, &old_title_match()),
         None,
         "the old title's match"
     );
@@ -1065,7 +1053,7 @@ fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() 
     let tmp = tempfile::tempdir().unwrap();
     let s = make_state(tmp.path().join("history"));
     renamed_legacy_row(&s);
-    put(&s, "title-match:v3:hianime:the show: renamed:c1", "77");
+    put(&s, &tm("hianime:the show: renamed:c1"), "77");
 
     delete_fails_then_retries_after_a_restart(&s, tmp.path());
 }
