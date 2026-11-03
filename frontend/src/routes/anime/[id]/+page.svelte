@@ -32,10 +32,7 @@
 		yearFromKitsuRef,
 		checkAvailability,
 		historyByKitsu,
-		historyLink,
-		historyList,
 		historyNumber,
-		historyUnlink,
 		imageProxyUrl,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
@@ -148,8 +145,7 @@
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
 	import { guessedQuery, guessedRowOf } from '$lib/history/guessed-context';
 	import { LinkSession } from '$lib/history/link-session.svelte';
-	import { resolveKitsuMatchWithTrust } from '$lib/history/match';
-	import { resolveHistoryEntry } from '$lib/history/resolve';
+	import { appLinkDeps } from '$lib/history/link-deps';
 	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
@@ -1715,11 +1711,7 @@
 	// the show the card really is ($lib/history/link-session.svelte.ts).
 	const guessedRow = $derived(guessedRowOf(page.url.searchParams));
 	const linkSession = new LinkSession({
-		history: historyList,
-		resolve: (entry) => resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null)),
-		search: kitsuSearch,
-		link: historyLink,
-		unlink: historyUnlink,
+		...appLinkDeps(),
 		notify: (notice) =>
 			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
 		/* eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query */

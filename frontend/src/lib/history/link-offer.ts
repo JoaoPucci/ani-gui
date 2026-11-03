@@ -9,12 +9,18 @@
  * a row with no recorded id, or one whose recorded entry Kitsu has
  * deleted. Anything else, and the page says nothing.
  *
- * A link covers every guessed row the card stands for: the rows
- * Continue Watching shows as one card because they are guessed as the
- * same show. Linking the shown row alone would leave a hidden sibling
- * guessed as the old show, and it would surface as a card of its own.
- * A row Continue Watching trusts — one whose recorded entry Kitsu
- * still serves, or one a play's mapping names — stays out.
+ * A link covers every guessed row the card stands for on the card's
+ * own listing: the rows Continue Watching shows as one card because
+ * they are guessed as the same show, less any another listing wrote.
+ * Linking the shown row alone would leave a hidden sibling guessed as
+ * the old show, and it would surface as a card of its own. A row
+ * Continue Watching trusts — one whose recorded entry Kitsu still
+ * serves, or one a play's mapping names — stays out, and so does a row
+ * of another listing the same guess matches: JoJo's 2000 OVA card
+ * plays the 2012 series, whose play writes the 2012 listing's row, and
+ * that row is the 2012 series' history. Which rows share the card's
+ * listing is the backend's to say (`history_link_plan.rs`): the
+ * renderer never parses a slug.
  */
 
 import type { HistoryEntry, KitsuAnimeRef, LinkedRow, LinkOutcome, UnlinkOutcome } from '$lib/api';
@@ -27,7 +33,10 @@ export interface LinkDeps {
 	/** Continue Watching's match for a row, with whether it is trusted. */
 	resolve: (entry: HistoryEntry) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>;
 	search: (query: string) => Promise<KitsuAnimeRef[]>;
+	/** `rows` leads with the card's own row. */
 	link: (rows: string[], kitsuId: string) => Promise<LinkOutcome>;
+	/** The rows of `rows` a link from the card `card` would write. */
+	group: (card: string, rows: string[]) => Promise<string[]>;
 	unlink: (kitsuId: string, rows: LinkedRow[]) => Promise<UnlinkOutcome>;
 }
 
@@ -90,15 +99,16 @@ export async function searchCandidates(
 }
 
 /** Every guessed row the offer's card stands for: its own, and each
- *  other row Continue Watching guesses as the same show. The rows are
- *  asked side by side, as Continue Watching asks them; a row whose
- *  match cannot be read is left out. */
+ *  other row Continue Watching guesses as the same show on the card's
+ *  own listing. The rows are asked side by side, as Continue Watching
+ *  asks them; a row whose match cannot be read is left out. */
 export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
 	const others = (await deps.history()).filter((e) => e.id !== offer.entry.id);
 	const same = await Promise.all(
 		others.map((e) => guessedAs(deps, e, offer.current.id).catch(() => null))
 	);
-	return [offer.entry.id, ...others.filter((_, i) => same[i] !== null).map((e) => e.id)];
+	const card = offer.entry.id;
+	return deps.group(card, [card, ...others.filter((_, i) => same[i] !== null).map((e) => e.id)]);
 }
 
 /** Link the offer's card, and every guessed row it stands for, to
