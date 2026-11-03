@@ -143,7 +143,9 @@ describe('an update', () => {
 		const action = row.querySelector<HTMLButtonElement>('.nr-action');
 		expect(action?.textContent).toBe("See what's new");
 		action?.click();
+		await settle();
 		expect(updateStore.dialogOpen).toBe(true);
+		expect(panel(), 'the panel steps aside for the dialog').toBeNull();
 	});
 });
 

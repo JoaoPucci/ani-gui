@@ -127,6 +127,27 @@ describe('the notification center', () => {
 		expect(c.rows).toHaveLength(1);
 	});
 
+	it('writes nothing when a source repeats itself', () => {
+		const writes = vi.fn();
+		const storage: NoticeStorage = { getItem: () => null, setItem: writes };
+		const { c } = center(storage);
+		c.take([{ op: 'raise', input: { ...outage, count: 0, data: { failures: 4 } } }]);
+		const after = writes.mock.calls.length;
+		const rows = c.rows;
+		c.take([{ op: 'raise', input: { ...outage, count: 0, data: { failures: 4 } } }]);
+		c.take([{ op: 'withdraw', key: 'nope' }]);
+		expect(writes.mock.calls.length).toBe(after);
+		expect(c.rows).toBe(rows);
+	});
+
+	it('resolves at the time a source gives, or now when it gives none', () => {
+		const { c, tick } = center();
+		c.raise(outage);
+		tick(50);
+		c.take([{ op: 'resolve', key: outage.key, data: {} }]);
+		expect(c.rows[0].resolvedAt).toBe(NOW + 50);
+	});
+
 	it('does nothing for a resolve of a row it does not have', () => {
 		const { c, toasts } = center();
 		c.resolve('outage:x', NOW);

@@ -89,6 +89,27 @@ describe('raising a notice', () => {
 	});
 });
 
+describe('a raise that changes nothing', () => {
+	it('leaves the row, its time and the list as they were', () => {
+		const list = raise([], { ...outage, count: 0, data: { failures: 4 } }, NOW).list;
+		const again = raise(list, { ...outage, count: 0, data: { failures: 4 } }, NOW + 10_000);
+		expect(again.changed).toBe(false);
+		expect(again.fresh).toBe(false);
+		expect(again.list).toEqual(list);
+		expect(again.list[0].at).toBe(NOW);
+		const moved = raise(list, { ...outage, count: 0, data: { failures: 5 } }, NOW + 10_000);
+		expect(moved.changed).toBe(true);
+		expect(moved.list[0].at).toBe(NOW + 10_000);
+		expect(raise(list, outage, NOW + 1).changed).toBe(true);
+	});
+
+	it('a resolve of a row already resolved changes nothing either', () => {
+		const once = resolveKey(raise([], outage, NOW).list, outage.key, NOW + 1);
+		expect(once.changed).toBe(true);
+		expect(resolveKey(once.list, outage.key, NOW + 2).changed).toBe(false);
+	});
+});
+
 describe('resolving a condition', () => {
 	it('marks it resolved and unread: good news counts', () => {
 		const list = markAllRead(raise([], outage, NOW).list);

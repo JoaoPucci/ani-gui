@@ -101,7 +101,8 @@ describe("a notice's page", () => {
 		app = mount(DetailPage, { target });
 		await tick();
 		expect(target.querySelector('h1')).toBeNull();
-		expect(target.textContent).toContain('This notification is no longer here.');
+		expect(target.textContent).not.toContain('dismissed or resolved');
+		expect(target.textContent).toContain("Notifications aren't turned on in this version.");
 	});
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, noticeToast, stepRow, viewOf } from './panel';
+import { act, noticeToast, rowDomId, stepRow, viewOf } from './panel';
 import { raise, type Notice, type RaiseInput } from './model';
 
 const make = (i: RaiseInput): Notice => raise([], i, 1_800_000_000_000).notice as Notice;
@@ -66,5 +66,14 @@ describe('a row action', () => {
 		expect(deps.reveal).toHaveBeenCalledWith('/v');
 		act('reveal-folder', make({ key: 'd', kind: 'download-done' }), deps);
 		expect(deps.reveal).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('row element ids', () => {
+	it('are valid ids, and differ for keys that differ', () => {
+		const keys = ['download-done:A B', 'download-done:A_B', 'download-done:A-B', 'outage:hianime'];
+		const ids = keys.map(rowDomId);
+		expect(new Set(ids).size).toBe(keys.length);
+		for (const id of ids) expect(id).toMatch(/^nr-[a-z0-9-]+$/);
 	});
 });

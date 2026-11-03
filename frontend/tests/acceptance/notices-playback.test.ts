@@ -135,3 +135,50 @@ describe('once the episode stops', () => {
 		expect(toastTexts()).toEqual(["The streaming source isn't answering"]);
 	});
 });
+
+describe('keys in the panel on the player', () => {
+	it('stay in the panel: the player never sees them, and Escape still closes it', async () => {
+		const root = await launchOnPlayer();
+		failADownload();
+		await settle();
+		(bell(root) as HTMLButtonElement).click();
+		await settle();
+		const seen: string[] = [];
+		const spy = (e: KeyboardEvent) => seen.push(e.key);
+		window.addEventListener('keydown', spy);
+		try {
+			const lead = panel()?.querySelector<HTMLElement>('.nr-lead') as HTMLElement;
+			lead.focus();
+			for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'f', 'm', ' ']) {
+				lead.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+			}
+			expect(seen).toEqual([]);
+			lead.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+			await settle();
+			expect(panel()).toBeNull();
+		} finally {
+			window.removeEventListener('keydown', spy);
+		}
+	});
+});
+
+describe('after leaving the player', () => {
+	it('toasts news again, even though the video left without a pause event', async () => {
+		await launchOnPlayer();
+		// The player releases its video by removing it; the element's
+		// pause and emptied events fire after it has left the page.
+		video?.remove();
+		setUrl('/');
+		await settle();
+		const id = downloadStore.add({
+			title: 'Frieren',
+			episode: '8',
+			mode: 'sub',
+			quality: 'best',
+			destDir: '/v'
+		});
+		downloadStore.markDone(id, '/v');
+		await settle();
+		expect(toastTexts()).toEqual(['1 episode downloaded']);
+	});
+});

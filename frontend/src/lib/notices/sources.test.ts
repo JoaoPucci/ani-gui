@@ -70,7 +70,7 @@ describe('outage rows from the health answer', () => {
 	it('raises an outage while a provider is not answering, resolves it once it answers again', () => {
 		expect(
 			outageChanges([
-				{ provider: 'hianime', state: 'answering' },
+				{ provider: 'x', state: 'answering' },
 				{
 					provider: 'hianime',
 					state: 'not_answering',
@@ -81,6 +81,7 @@ describe('outage rows from the health answer', () => {
 				{ provider: 'b', state: 'answering_again', since_ms: 10, recovered_ms: 90 }
 			])
 		).toEqual([
+			{ op: 'resolve', key: 'outage:x', data: {} },
 			{
 				op: 'raise',
 				input: {
@@ -91,6 +92,12 @@ describe('outage rows from the health answer', () => {
 				}
 			},
 			{ op: 'resolve', key: 'outage:b', at: 90, data: { since: 10 } }
+		]);
+	});
+
+	it('resolves a live outage when the provider simply answers, as after the backend restarts', () => {
+		expect(outageChanges([{ provider: 'x', state: 'answering' }])).toEqual([
+			{ op: 'resolve', key: 'outage:x', data: {} }
 		]);
 		expect(outageKey('x')).toBe('outage:x');
 	});
