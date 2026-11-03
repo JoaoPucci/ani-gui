@@ -12,6 +12,8 @@
 //!   donation-ask number, validated strictly: anything malformed is
 //!   dropped and logged, never passed on.
 
+mod fields;
 pub mod remote;
+mod text_fields;
 
 pub use remote::{parse, Parsed, Priority, RemoteNotice, RemoteNotices, NOTICES_KEY};
