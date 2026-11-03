@@ -26,19 +26,25 @@
  * `-1` Electron documents for navigations outside HTTP. A `-1`, or no
  * status at all, is nothing to judge.
  */
-async function loadFirstPage(win, url, logError) {
+async function loadFirstPage(win, url, logError, onFailed = () => {}) {
   // Taken once: a window closed mid-load is destroyed, and reading
   // `webContents` off a destroyed window throws.
   const contents = win.webContents;
   let status = null;
+  // An error status is known at the commit, before the load ends and
+  // perhaps before the page's first paint: `onFailed` hears it then.
   const onNavigate = (_event, _url, httpResponseCode) => {
     status = httpResponseCode;
+    if (typeof status === "number" && status >= 400) onFailed();
   };
   contents.once("did-navigate", onNavigate);
   try {
     await win.loadURL(url);
   } catch (err) {
-    if (!err || err.code !== "ERR_ABORTED") throw err;
+    if (!err || err.code !== "ERR_ABORTED") {
+      onFailed();
+      throw err;
+    }
     logError("[main] first page superseded before it finished loading:", err);
     return;
   } finally {
@@ -194,7 +200,10 @@ async function openFirstPage(
       if (!failed) reveal();
     });
   try {
-    await Promise.all([loadFirstPage(win, url, logError), shown]);
+    const markFailed = () => {
+      failed = true;
+    };
+    await Promise.all([loadFirstPage(win, url, logError, markFailed), shown]);
   } catch (err) {
     failed = true;
     // Either part may go first: close() destroys the contents and

@@ -67,7 +67,7 @@ function splashWindowOptions() {
  *   it would come back always on top, over the dialog that says why
  *   the boot failed.
  */
-function splashController({ createWindow, logError }) {
+function splashController({ createWindow, logError, onDismissed = () => {} }) {
   const state = fresh();
   current = state;
   // Settles once the splash is on screen, or can no longer get there.
@@ -75,6 +75,8 @@ function splashController({ createWindow, logError }) {
   const up = new Promise((resolve) => (markUp = resolve));
   let win = null;
   let suppressed = false;
+  // Set when the splash closes by any hand but the boot's: the user.
+  let dismissedByUser = false;
   // Set once the boot is past the splash: shown its window, or failed.
   let over = false;
   const alive = () => win && !win.isDestroyed();
@@ -113,7 +115,13 @@ function splashController({ createWindow, logError }) {
         // out never answers it (the call neither resolves nor rejects),
         // so this is what releases a wait on a closed splash.
         markUp();
+        const byUser = win === splash && !over;
         if (win === splash) win = null;
+        if (byUser) {
+          dismissedByUser = true;
+          over = true;
+          onDismissed();
+        }
       });
       win = splash;
       state.opened = true;
@@ -132,8 +140,10 @@ function splashController({ createWindow, logError }) {
     // Resolves once the splash is on screen — or there is none to wait
     // for (never asked to open, failed to, put away, gone) — and in any
     // case within SPLASH_SHOW_WAIT_MS.
+    // Whether the user closed the splash before the boot did: the
+    // launch is cancelled, and the app's window must not be revealed.
     dismissed() {
-      return false;
+      return dismissedByUser;
     },
     whenShown() {
       if (!state.opened || over || !alive()) return Promise.resolve();

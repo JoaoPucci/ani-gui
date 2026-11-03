@@ -366,6 +366,11 @@ function signalBackendGroup(pid) {
 const splash = splashController({
   createWindow: (options) => new BrowserWindow(options),
   logError: console.error,
+  // The user closed the splash (from the taskbar, say) before the
+  // app's window was revealed: they cancelled the launch. While that
+  // window loads hidden it is still open, so no window-all-closed
+  // would quit of itself.
+  onDismissed: () => app.quit(),
 });
 
 /** Where the window's remembered maximized size lives: beside the
@@ -531,11 +536,14 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // Remember the size the desktop granted the maximized window, for
   // the next launch's hidden window. Read on resize too: on Wayland
   // the compositor's configure can land after the maximize event.
+  // Kept under the display the window was made for: Wayland exposes no
+  // real window position, so matching the bounds to a display could
+  // file one monitor's size under another's key.
   const rememberMaximized = () => {
-    if (win.isDestroyed() || !win.isMaximized()) return;
-    const bounds = win.getBounds();
-    const on = screen.getDisplayMatching(bounds);
-    writeGeometry(geometryFile(), remember(readGeometry(geometryFile(), fs), on, bounds), fs);
+    if (win.isDestroyed() || !win.isMaximized() || win.isFullScreen()) return;
+    const stored = readGeometry(geometryFile(), fs);
+    const next = remember(stored, display, win.getBounds());
+    if (next !== stored) writeGeometry(geometryFile(), next, fs);
   };
   win.on("maximize", rememberMaximized);
   win.on("resize", rememberMaximized);
@@ -556,7 +564,11 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
-    reveal: () => revealMaximized(win, { onMapped: mapped, afterShow: () => splash.close() }),
+    reveal: () => {
+      // A launch the user cancelled by closing the splash is quitting.
+      if (splash.dismissed()) return;
+      revealMaximized(win, { onMapped: mapped, afterShow: () => splash.close() });
+    },
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });

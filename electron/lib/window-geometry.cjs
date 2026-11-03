@@ -36,7 +36,13 @@ function fits(size, display) {
  *  size remembered for it, or its work area. */
 function initialSize(store, display) {
   const remembered = store[displayKey(display)];
-  if (fits(remembered, display)) return { width: remembered.width, height: remembered.height };
+  if (fits(remembered, display)) {
+    // Never larger than today's work area: a panel may have grown.
+    return {
+      width: Math.min(remembered.width, display.workAreaSize.width),
+      height: Math.min(remembered.height, display.workAreaSize.height),
+    };
+  }
   return { width: display.workAreaSize.width, height: display.workAreaSize.height };
 }
 
@@ -44,6 +50,8 @@ function initialSize(store, display) {
  *  its newest entry, keeping at most MAX_DISPLAYS. */
 function remember(store, display, bounds) {
   const key = displayKey(display);
+  const old = store[key];
+  if (old && old.width === bounds.width && old.height === bounds.height) return store;
   const entries = Object.entries(store).filter(([k]) => k !== key);
   entries.push([key, { width: bounds.width, height: bounds.height }]);
   return Object.fromEntries(entries.slice(-MAX_DISPLAYS));
