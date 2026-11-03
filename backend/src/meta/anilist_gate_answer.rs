@@ -10,12 +10,19 @@ use super::pace::{Class, Pace};
 use crate::error::AniError;
 
 /// The rate limit a caller gets for a request the gate kept back.
-pub(super) fn not_sent(wait: Duration, class: Class) -> AniError {
+pub(super) fn not_sent(
+    wait: Duration,
+    class: Class,
+    retries_in_window: usize,
+    behind_retry: bool,
+) -> AniError {
     let retry_after_secs = wait.as_secs() + u64::from(wait.subsec_nanos() > 0);
     tracing::info!(
         provider = "anilist",
         ?class,
         retry_after_secs,
+        retries_in_window,
+        behind_retry,
         "anilist budget spent; request not sent"
     );
     AniError::RateLimited {

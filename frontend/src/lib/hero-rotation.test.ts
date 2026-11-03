@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { nextHeroIndex, shouldRunHeroRotation } from './hero-rotation';
+// @vitest-environment happy-dom
+import fc from 'fast-check';
+import { describe, expect, it, vi } from 'vitest';
+import {
+	HERO_ROTATE_MS,
+	nextHeroIndex,
+	shouldRunHeroRotation,
+	startHeroRotation,
+	type IntervalHost
+} from './hero-rotation';
 
 describe('nextHeroIndex', () => {
 	it('advances within bounds', () => {
@@ -42,5 +50,94 @@ describe('shouldRunHeroRotation', () => {
 
 	it('does not run when the user prefers reduced motion', () => {
 		expect(shouldRunHeroRotation({ ...ok, prefersReducedMotion: true })).toBe(false);
+	});
+});
+
+describe('startHeroRotation', () => {
+	/** An interval host whose ticks run only when the test says so. */
+	function fakeIntervals() {
+		let nextId = 1;
+		const live = new Map<number, { cb: () => void; ms: number }>();
+		const host: IntervalHost = {
+			every: (cb, ms) => {
+				const id = nextId++;
+				live.set(id, { cb, ms });
+				return id;
+			},
+			cancel: (id) => live.delete(id)
+		};
+		const tick = () => [...live.values()].forEach((t) => t.cb());
+		return { host, live, tick };
+	}
+
+	const running = { rotationLength: 3, paused: false, prefersReducedMotion: false };
+
+	it('advances once per tick, every HERO_ROTATE_MS, until stopped', () => {
+		const f = fakeIntervals();
+		const advance = vi.fn();
+		const stop = startHeroRotation(running, advance, f.host);
+		expect([...f.live.values()].map((t) => t.ms)).toEqual([HERO_ROTATE_MS]);
+		f.tick();
+		f.tick();
+		expect(advance).toHaveBeenCalledTimes(2);
+		stop();
+		expect(f.live.size).toBe(0);
+		f.tick();
+		expect(advance).toHaveBeenCalledTimes(2);
+	});
+
+	it('starts nothing when the rotation should not run, and its stop is harmless', () => {
+		const f = fakeIntervals();
+		const advance = vi.fn();
+		const stop = startHeroRotation({ ...running, prefersReducedMotion: true }, advance, f.host);
+		expect(f.live.size).toBe(0);
+		stop();
+		expect(advance).not.toHaveBeenCalled();
+	});
+
+	it('runs an interval exactly when shouldRunHeroRotation says so, for any conditions', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 10 }),
+				fc.boolean(),
+				fc.boolean(),
+				fc.integer({ min: 0, max: 5 }),
+				(rotationLength, paused, prefersReducedMotion, ticks) => {
+					const conditions = { rotationLength, paused, prefersReducedMotion };
+					const f = fakeIntervals();
+					const advance = vi.fn();
+					const stop = startHeroRotation(conditions, advance, f.host);
+					const runs = shouldRunHeroRotation(conditions);
+					expect(f.live.size).toBe(runs ? 1 : 0);
+					for (let i = 0; i < ticks; i++) f.tick();
+					expect(advance).toHaveBeenCalledTimes(runs ? ticks : 0);
+					stop();
+					expect(f.live.size).toBe(0);
+				}
+			)
+		);
+	});
+
+	it('uses the window interval, never with the host as `this`', () => {
+		// Chromium throws "Illegal invocation" when a web global runs with
+		// another object as `this`; happy-dom does not, so the receiver is
+		// checked directly.
+		vi.useFakeTimers();
+		try {
+			const every = vi.spyOn(window, 'setInterval');
+			const cancel = vi.spyOn(window, 'clearInterval');
+			const advance = vi.fn();
+			const stop = startHeroRotation(running, advance);
+			vi.advanceTimersByTime(HERO_ROTATE_MS * 2 + 10);
+			expect(advance).toHaveBeenCalledTimes(2);
+			stop();
+			vi.advanceTimersByTime(HERO_ROTATE_MS * 2);
+			expect(advance).toHaveBeenCalledTimes(2);
+			expect(every.mock.contexts).toEqual([window]);
+			expect(cancel.mock.contexts).toEqual([window]);
+		} finally {
+			vi.restoreAllMocks();
+			vi.useRealTimers();
+		}
 	});
 });

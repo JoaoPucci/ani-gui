@@ -15,7 +15,7 @@ This project is **strictly TDD**. Every code change starts with a failing test.
      │           Property              │  proptest (Rust),
      └─────────────────────────────────┘  fast-check (TS)
    ┌──────────────────────────────────────┐
-   │              End-to-end              │  Playwright (planned),
+   │              End-to-end              │  Playwright + Electron,
    └──────────────────────────────────────┘  ≤5 hermetic scenarios
  ┌──────────────────────────────────────────┐
  │              Acceptance                  │  cargo integration,
@@ -62,7 +62,7 @@ frontend/
 ├── src/                   # *.test.ts colocated with units
 ├── tests/acceptance/      # vitest + MSW
 ├── tests/acceptance-guard/ # the acceptance guard over fixture scenarios; runs in `pnpm test`
-└── e2e/                   # Playwright (planned)
+└── (e2e lives in electron/e2e/, see below)
 ```
 
 ## Running tests locally
@@ -92,6 +92,42 @@ bash tests/arch/run-all.sh
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 ```
 
+## End-to-end (Playwright + Electron)
+
+The suite under `electron/e2e/` drives the packaged app
+(`electron/dist/linux-unpacked/`). Every spec launches it through
+`electron/e2e/launch.ts`, which mutes it and refuses to open it on a
+display someone may be looking at (`electron/lib/e2e-display.cjs`).
+
+Locally, the suite runs on Wayland, inside a private headless GNOME
+Shell session that `tools/headless-wayland.sh` starts and tears down:
+
+```sh
+cd electron
+pnpm run package      # when main, preload or the backend changed
+../tools/headless-wayland.sh pnpm run e2e:fast
+```
+
+The session has its own runtime directory, D-Bus session, HOME and XDG
+directories, and no `DISPLAY`, so the app's windows open on a
+compositor nobody can see, and a setting changed on the desktop does
+not reach it. It needs `gnome-shell`, `dbus-run-session`,
+`dbus-update-activation-environment`, `setsid` and `pgrep`. The command
+runs without a terminal, so the tool is for the suite, not for an
+interactive shell. The compositor keeps the desktop's system bus, which
+it cannot start without; its settings forbid it to lock, since a lock
+would reach the desktop's login session through that bus. Outside CI, a launch without the session — from a
+desktop shell, or under `xvfb-run`, where the packaged launcher still
+picked the desktop's Wayland compositor — throws before any window
+opens, saying how to run the suite.
+
+CI runs the same suite on X11, under Xvfb (`xvfb-run`): GitHub's
+runners have no Wayland. Wayland behaviour is covered by local runs
+only. The launch helper accepts Xvfb only on a GitHub Actions runner
+(`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
+`smoke.spec.ts` checks that the app landed on Wayland in the headless
+session and on X11 in CI.
+
 ## Coverage targets
 
 Layer-specific. CI fails on regression below the baseline in `coverage-baseline.json`, not on absolute floors.
@@ -117,10 +153,10 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | Workflow | Triggers | Gating |
 |---|---|---|
 | `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, a script the suites execute, a workflow, or a composite action under `.github/actions/` | yes |
-| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json`, `tests/tracker-map-oracle/fixtures-golden.json`, `tools/hostile-tmpdir.sh`, `tools/rust-lcov.sh`, `.github/actions/apt-install/` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
-| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | yes |
+| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json`, `tests/picker-oracle/cases/**`, `tests/tracker-map-oracle/fixtures-golden.json`, `tools/hostile-tmpdir.sh`, `tools/rust-lcov.sh`, `.github/actions/apt-install/` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
+| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md`, `tools/alongside.sh` or the workflow — the same script | yes |
 | `rust.yml`, job `picker oracle fuzz` | the same changes as `picker oracle agreement`; draws 20000 pools from the run number as its seed and prints the seed | yes |
-| `rust.yml`, job `episode map oracle agreement` | PR touches `backend/**`, `tests/fixtures/tracker-map/**`, `tests/tracker-map-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | not in the ruleset's required list yet |
+| `rust.yml`, job `episode map oracle agreement` | PR touches `backend/**`, `tests/fixtures/tracker-map/**`, `tests/tracker-map-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | yes |
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |

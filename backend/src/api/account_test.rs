@@ -590,3 +590,8 @@ fn me_failure_allows_fallback_for_a_tracker_rate_limit() {
         }
     ));
 }
+
+// Clearing one cached row locally: its own file, so this one stays
+// readable.
+#[path = "account_forget_test.rs"]
+mod forget;

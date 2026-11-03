@@ -198,12 +198,14 @@ fn a_numbering_repair_finishing_late_leaves_a_newer_listing() {
         )],
         listing: Vec::new(),
         unread_past: None,
+        heard: None,
     };
     crate::commands::numbering_offset::retag_from_resolve(&state, &native);
     crate::commands::numbering_offset::retag_from_listing(
         &state,
         "test-a:show-2",
         &[row(1, 1, None), row(2, 2, Some("1.25"))],
+        None,
         None,
     );
     for key in ["test-a:show-uncut-1", "test-a:show-2"] {
@@ -517,6 +519,7 @@ async fn a_resolves_hearing_spans_its_picks_listing_fetches() {
         episode: "1",
         mode: "sub",
         quality: "best",
+        wanted: crate::scraper::track_preference::Wanted::locale("en"),
         expected_count: Some(3),
         year: Some(2020),
         subtype: Some("TV"),

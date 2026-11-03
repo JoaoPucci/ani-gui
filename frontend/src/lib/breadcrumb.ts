@@ -47,3 +47,39 @@ export function defaultTrailFor(routeId: string | null): BreadcrumbSegment[] {
 	if (routeId.startsWith('/play')) return [home, { label: m.breadcrumb_watching() }];
 	return [home];
 }
+
+/** `origin` when it is a search the reader ran (the search page with a
+ *  query on it), else null: the one page behind that the breadcrumb
+ *  names and steps back to. */
+export function searchOrigin(origin: string | null): string | null {
+	if (!origin) return null;
+	const url = new URL(origin, 'http://app.invalid');
+	const ran = url.pathname.endsWith('/search') && (url.searchParams.get('q') ?? '').trim() !== '';
+	return ran ? origin : null;
+}
+
+/**
+ * The trail with the search the page was opened from named between
+ * Home and the page, so the reader can see where back leads and get
+ * there from the topbar. `origin` is the address of the page behind
+ * the current one ($lib/history/nav-depth); a trail that already names
+ * it, the search page's own trail, and a trail with no parent are left
+ * as they are.
+ */
+export function withSearchOrigin(
+	trail: BreadcrumbSegment[],
+	origin: string | null,
+	routeId: string | null
+): BreadcrumbSegment[] {
+	const search = searchOrigin(origin);
+	if (!search || trail.length < 2 || routeId?.startsWith('/search')) return trail;
+	if (trail.some((s) => s.href === search)) return trail;
+	return [trail[0], { label: m.breadcrumb_search(), href: search }, ...trail.slice(1)];
+}
+
+/** Whether following `href` is stepping back to the page behind: it
+ *  is that page's address. Stepping back returns to the history entry
+ *  as it was left, where opening the address would start it afresh. */
+export function goesBack(href: string, back: string | null): boolean {
+	return back !== null && href === back;
+}

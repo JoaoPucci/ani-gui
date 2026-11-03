@@ -827,6 +827,50 @@ describe('cachedBindingVerdict', () => {
 		).toBe('reresolve');
 	});
 
+	it('trusts a season whose slug lacks a suffix when Kitsu titles it as the provider does', () => {
+		// Gintama' is `gintama-2` on Kitsu, titled "Gintama Season 2" —
+		// the provider's card title. The slug alone reads as cour 1.
+		const p = resolveHistoryEntry(entry('Gintama Season 2', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: "Gintama'",
+					titles: { en_jp: "Gintama'", en_us: 'Gintama Season 2' },
+					abbreviated_titles: ['Gintama (2011)'],
+					slug: 'gintama-2',
+					episode_count: 51
+				}),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+
+	it('still re-resolves Stone Ocean Part 2 bound to Part 1', () => {
+		// The pairing the cour check was written for: Part 1's entry has no
+		// suffix on its slug and no title naming Part 2.
+		const p = resolveHistoryEntry(
+			entry("JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", '3'),
+			null
+		);
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: "JoJo's Bizarre Adventure: Stone Ocean",
+					titles: {
+						en: "JoJo's Bizarre Adventure: Stone Ocean",
+						en_jp: 'JoJo no Kimyou na Bouken: Stone Ocean'
+					},
+					abbreviated_titles: ['Jojo part 6'],
+					slug: 'jojo-no-kimyou-na-bouken-stone-ocean',
+					episode_count: 12
+				}),
+				p,
+				true
+			)
+		).toBe('reresolve');
+	});
+
 	it('an absent slug on a multi-cour binding is trusted only when trustOnAbsentSlug', () => {
 		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
 		const r = ref({ canonical_title: 'Some Anime Part 2', slug: null, episode_count: 12 });

@@ -92,6 +92,20 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app
 
+- **A later season Kitsu titles only with a bare number is refused
+  by the cross-cour guard.** "That Time I Got Reincarnated as a Slime
+  Season 2" is Kitsu's `tensei-shitara-slime-datta-ken-2`, titled
+  "That Time I Got Reincarnated as a Slime 2" and "Tensei Shitara Slime
+  Datta Ken 2nd Season Part 1" — no title names it as the provider
+  does, and the guard reads neither a slug's bare trailing number nor
+  a title's as a season, so a play from its page records no id on its
+  history row and stores no mapping. It waited because both obvious
+  readings accept wrong pairings: read as a season, the slug's bare
+  trailing number accepts the "Slime 2nd Season Part 2" listing
+  against this Part 1 entry, and a title's bare trailing number
+  collides with names that end in one (Mob Psycho 100). The 2nd-Season-Part-1 alias suggests reading a season and a
+  part together rather than one trailing cour.
+
 - **Decide the resolution cache's final shape after the opt-in
   trial.** Caching play resolutions is a setting now
   (`cache_resolutions`), default off: every play resolves fresh, the
@@ -257,7 +271,8 @@ starting it, and delete it when you find it done.
 
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
-  slot (`numbering_offset_drift.rs`) can run beside a build from before
+  slot (the rule in `numbering_offset_drift.rs`, the repair in
+  `numbering_offset_repair.rs`) can run beside a build from before
   history rows recorded the app's own number, on the same files. Of
   those builds, 0.15.1 and older can: 0.16.0 takes the single-instance
   lock this one does. Such a build writes a play's stamp, then its
@@ -407,11 +422,23 @@ starting it, and delete it when you find it done.
   There is no control on a card to correct its show. What corrects one
   is playing the show from its own page: when that play lands on the
   card's listing, the line records the show and the card goes by it
-  from then on. Worth revisiting when the guess can read more of the
-  provider's listing than its title — its own year or episode count —
-  or when another wrong pick on a user's card is reported.
+  from then on — unless the cross-cour guard refuses the record, as it
+  does for the Slime season (the entry on a later season Kitsu titles
+  only with a bare number). Worth revisiting when the guess can read
+  more of the provider's listing than its title and the year its key
+  names — the year it aired, or its episode count — or when another
+  wrong pick on a user's card is reported.
 
 ## Interface
+
+- **GNOME's newer Reduced Motion preference does not reach the renderer.**
+  On GNOME 50.1 with Electron 33, the accessibility preference was
+  `reduce` while the older global animation switch remained enabled;
+  Electron still reported `prefers-reduced-motion: no-preference`.
+  The app's motion honours that media query, so on such a system it
+  still plays. What Electron reported matched the older switch, not the
+  new preference. The preference could be read another way and handed
+  to the renderer, or a later Electron may expose it to the query.
 
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
@@ -435,6 +462,28 @@ starting it, and delete it when you find it done.
   `startDate` and `averageRating` in either direction. Name any further
   filters wanted before starting, rather than reading this as filters
   being missing.
+- **A search result the provider turns out not to carry vanishes
+  from under the user.** The search page renders each page of
+  results first and checks it against the provider afterwards
+  (`frontend/src/lib/availability/progressive.ts`). Cached verdicts
+  and those that settle within two seconds shape the first render. A
+  later "not carried" for a finished show removes its card from a
+  grid the user is already reading, on any page loaded so far, with
+  no motion and no explanation. The other surfaces that hide such
+  cards never remove one in view: Home's rows, a show page's
+  similar-titles strip, the search page's own discovery rows and the
+  topbar's live results filter against verdicts before rendering, so
+  a card known to be unplayable never appears there in the first
+  place. Continue Watching never hides a card on an availability
+  verdict. What search should do instead is undecided. One option is
+  the exit motion Continue Watching plays when the user deletes a
+  card. The other, which the maintainer leans towards, is to keep the
+  card and mark it, so a show the user searched for by name doesn't
+  silently disappear and the reason is visible. That raises questions
+  a design pass has to settle: what the mark says and where it sits,
+  whether a marked card still opens its page, whether the grid's
+  order or count changes, and whether the surfaces that hide such
+  cards before rendering should show them marked too.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages
@@ -461,6 +510,30 @@ starting it, and delete it when you find it done.
   re-attempt until that lands. PiP as it exists now — the player's
   video, while the player is open — ships and is described in
   `README.md` and `docs/architecture.md`.
+- **An mp4 stream resumed at a point can still show its first frame
+  in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
+  hides the picture with the page's CSS until the resume seek lands,
+  and picture-in-picture and a `<video>` that is itself fullscreen
+  show the element, not the page. An hls stream closes that gap by
+  starting its engine at the fragment that holds the point, so
+  nothing before it is fetched. An mp4 stream is played from `src`,
+  and there Chromium starts the stream at 0 and decodes and shows the
+  frame there unless the seek reaches the media pipeline first. Every way the page can
+  say "start here" becomes that same seek, issued from the main
+  thread when the metadata arrives: `currentTime` set before the
+  metadata, a `#t=` media fragment, and `preload="metadata"` all
+  race. Measured in Electron 33 by noting every frame the element
+  presented (`requestVideoFrameCallback`) across an episode switch
+  in picture-in-picture, with segment latency and a busy main thread:
+  each of the three still showed frame 0 in some switches — in
+  setups where hls never did, and where the hold without any of them
+  showed it every time. The two fixes that do not race are making the
+  proxy serve an mp4 that starts at the point (a backend change that
+  has to ship on Linux and Windows alike, AGENTS.md §15), or playing
+  mp4 sessions through Media Source Extensions with a remuxer, so the
+  page appends only what follows the point. When this entry was
+  written the maintainer's recorded plays were all hls, so the gap
+  reaches only sources the provider serves as mp4.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli
@@ -482,17 +555,67 @@ starting it, and delete it when you find it done.
   settings; and external players and Syncplay receive the tracks as
   files and style them themselves, so this is the embedded player
   only.
-- **Subtitle track selection: a locale-aware default, and a remembered
-  choice.** Which track shows when an episode opens is the provider's
-  call, in every app locale: the browser turns on the track the
-  provider flagged default, the rest start hidden, and the page flips
-  one to showing only when the user picks it. Nothing is remembered —
-  the next episode starts from the provider's flag again.
+- **One set of player controls.** The player has two: the app's own,
+  and Chromium's native ones, which Settings swaps in when "Custom
+  player controls" (`use_custom_player_controls`, on by default) is
+  turned off. Every player feature has to work through
+  both, so it is built twice. The per-show subtitle memory is the
+  latest case: a pick in the app's captions menu is recorded as it
+  is made, while a pick in the browser's menu has to be inferred from
+  the video's text-track changes.
 
-  It waits on evidence. Every hianime listing captured or played so
-  far carried English alone, flagged default, so an app-language
-  preference has nothing to choose between yet. A payload that flags
-  no track at all starts with every subtitle off.
+  Investigate choosing one. Before deciding, measure what the native
+  path still offers that the custom one does not — the setting's own
+  hint names picture-in-picture and the native captions menu — and
+  decide from that.
+- **The starting captions on a playlist-only stream.** The app
+  applies a session's starting captions — the language last picked on
+  the show (Off included), else the app's language — only where the
+  session lists sidecar subtitle tracks. A stream whose subtitles
+  exist only inside its own playlist never gets one, whichever player
+  controls are on: hls.js's own choice plays, a language or Off
+  picked in the app's captions menu is remembered but not applied on
+  the show's next such episode, and with the custom controls off a
+  pick in Chromium's own menu is not remembered at all, since that is
+  recorded only once the app has applied a start.
+
+  It waits because no episode seen has that shape — every one lists
+  its tracks beside the stream — and because the obvious fix, taking
+  the captions as they stand when such a session starts, would let
+  hls.js's own switching of playlist tracks read as the viewer's pick.
+
+  The gap is in where the start is applied, not in either menu, so
+  choosing one set of player controls (above) would not remove it.
+- **Sidecar subtitles on a stream that also carries its own.** Each
+  time hls.js switches its own subtitle track it disables every
+  labelled subtitle track but the one it chose
+  (`SubtitleTrackController.toggleTrackModes`), the app's sidecar
+  `<track>`s included, and it reads the captions again on every
+  change to them. On a stream whose playlist lists subtitle
+  renditions as well as sidecar tracks, then, a sidecar track picked
+  from the captions menu goes off the moment it is picked: showing it
+  reads to hls.js as "none of mine", so it switches to none. The
+  session's start fares the same way. When hls.js picks its playlist
+  track after the sidecar tracks attach, that track replaces the
+  start; when it picked before, the start's own change makes it
+  switch to none, and every track goes off. The pick and the first
+  order were measured on the packaged app with a fixture stream of
+  that shape; the second follows from the same code.
+
+  It waits because the provider serves no such stream. Episodes
+  resolved across sub and dub in November 2026 carried no
+  `EXT-X-MEDIA` subtitle rendition and no closed captions, and each
+  had a single level. With no playlist tracks hls.js's subtitle track
+  stays at none and it never switches: a minute of playback, a pick
+  and a seek leave the sidecar tracks as the app set them.
+
+  Undoing hls.js's change after it happens is not the fix: with the
+  custom controls off, a caption change the app did not make is read
+  as the viewer's pick (`$lib/play/caption-watch`) — all but a track
+  turned on beside the one the app set, and hls.js switches that one
+  off first. The fix
+  belongs in keeping hls.js's own subtitle selection in step with the
+  captions menu.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
@@ -789,8 +912,9 @@ starting it, and delete it when you find it done.
   installs**, and everything that exists to report it: the sweep
   module, the field it carries onto app-info, and the diagnostics
   notice that renders it. The maintainer has tied this removal to
-  v1.0 — it is the last piece of the app that exists because of what
-  the app used to be, and shipping without it is what 1.0 means here.
+  v1.0 — it is one of the last pieces of the app that exist because of
+  what the app used to be, and shipping without them is what 1.0 means
+  here.
 
   Why it waits: the sweep serves installs upgrading from before 0.12,
   which kept a maintained copy of the script in the cache. Removing
@@ -798,6 +922,28 @@ starting it, and delete it when you find it done.
   version to a post-removal one — the file just stays, unreported.
   The judgment of when that cost is acceptable is the whole decision,
   which is why it is a version call and not a cleanup.
+
+## Retiring the legacy-history stamp repair — the v1.0 marker
+
+- **Remove the repair that puts a legacy history row's display stamp
+  back on its slot** (`backend/src/commands/numbering_offset_drift.rs`,
+  its rule module and its tests), together with the guard that leaves
+  alone a stamp that moved while the repair waited for the lock, and
+  the entry "A stamp repair can land inside an older instance's play"
+  under "Correctness in the app (continued)". The maintainer has tied
+  this removal to v1.0, with the legacy-script sweep.
+
+  Why it waits: the repair serves rows written before history rows
+  recorded the app's own number, carrying drift left by builds from
+  before that marker. A row is put right only when its show is next
+  resolved, probed or downloaded against a listing that agrees with
+  the numbering sidecar, so a show not touched since upgrading still
+  carries the drift. Removing the repair leaves such a row reading one
+  episode high where the show has a single recap, for good. The guard
+  and the window it narrows matter only while a build of 0.15.1 or
+  older can share a profile with this one. When that cost is
+  acceptable is the decision, which is why it is a version call and
+  not a cleanup.
 
 ## Recovering a download's abandoned claim automatically
 

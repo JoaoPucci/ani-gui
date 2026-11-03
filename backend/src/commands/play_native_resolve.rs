@@ -94,6 +94,11 @@ pub struct NativeResolved {
     /// Kitsu's count, when whether the listing's rows past it are
     /// appended extras could not be read.
     pub unread_past: Option<u32>,
+    /// When the picked listing was heard
+    /// ([`crate::commands::listing_tags::Hearing`]): a repair of the
+    /// show's numbering stamps from it is ordered by it against another
+    /// walk's. `None` for a resolve that knows no hearing.
+    pub heard: Option<crate::commands::listing_tags::Hearing>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -142,6 +147,11 @@ pub struct NativeResolveRequest<'a> {
     /// `best` keeps the adaptive master; anything else selects a
     /// variant from it, falling back to the master on a miss.
     pub quality: &'a str,
+    /// What the viewer wants of the listing — the show's remembered
+    /// captions choice and the UI locale — which decides which
+    /// subtitle tracks a listing past the cap keeps
+    /// ([`tracks_within_cap`]).
+    pub wanted: crate::scraper::track_preference::Wanted<'a>,
     /// Kitsu's episode count, when known.
     pub expected_count: Option<u32>,
     /// The year the show premiered per Kitsu, when known. The
@@ -298,6 +308,7 @@ where
                             req.stamps_beside,
                             req.mode,
                             req.quality,
+                            req.wanted,
                         )
                         .await;
                         let (versions, version) =
@@ -369,6 +380,7 @@ where
                             other_copies,
                             listing: picked.episodes.clone(),
                             unread_past: picked.unread_past,
+                            heard: Some(heard),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
@@ -457,37 +469,52 @@ where
     })
 }
 
-/// The tracks of a listing the resolve carries: the first
+/// The tracks of a listing the resolve carries: each file once — a
+/// file listed twice is kept at its first place, a default flag on
+/// either copy kept with it — and at most
 /// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
-/// in listing order, with one exception — a default track the listing
-/// put past the cap takes the last kept slot, so the provider's own
-/// choice is never dropped and no more than one track moves. A
-/// listing that fits is kept as it is. Applied once, in the episode
-/// step every resolve goes through, so every projection of the
-/// resolve — and the range download, which resolves its episodes
-/// through the same step — shares the bound instead of each
-/// guarding its own.
+/// of them, the user's most wanted when the listing is longer
+/// ([`crate::scraper::track_preference::most_wanted_within`]), kept in
+/// the listing's order. Applied once, in the episode step every
+/// resolve goes through, so every projection of the resolve — and the
+/// range download, which resolves its episodes through the same step —
+/// shares the bound instead of each guarding its own.
 #[must_use]
-pub(crate) fn tracks_within_cap(mut tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
+pub(crate) fn tracks_within_cap(
+    tracks: Vec<SubtitleTrack>,
+    wanted: crate::scraper::track_preference::Wanted<'_>,
+) -> Vec<SubtitleTrack> {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
-    if tracks.len() <= SUBTITLE_TRACK_CAP {
-        return tracks;
+    let tracks = each_file_once(tracks);
+    let (kept, dropped) =
+        crate::scraper::track_preference::most_wanted_within(tracks, SUBTITLE_TRACK_CAP, wanted);
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            "resolve: subtitle listing longer than the track cap, the rest dropped"
+        );
     }
-    let dropped = tracks.len() - SUBTITLE_TRACK_CAP;
-    tracing::warn!(
-        dropped,
-        "resolve: subtitle listing longer than the track cap, the rest dropped"
-    );
-    if let Some(default_at) = tracks.iter().position(|t| t.default) {
-        if default_at >= SUBTITLE_TRACK_CAP {
-            let default = tracks.swap_remove(default_at);
-            tracks.truncate(SUBTITLE_TRACK_CAP - 1);
-            tracks.push(default);
-            return tracks;
+    kept
+}
+
+/// The listing with each file once, at its first place; a default flag
+/// on a later copy moves to the copy kept. Indexed, so a listing padded
+/// to thousands of copies — what the cap after it refuses — costs one
+/// pass.
+fn each_file_once(tracks: Vec<SubtitleTrack>) -> Vec<SubtitleTrack> {
+    let mut at: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::with_capacity(tracks.len());
+    let mut kept: Vec<SubtitleTrack> = Vec::with_capacity(tracks.len());
+    for track in tracks {
+        match at.get(&track.url) {
+            Some(&i) => kept[i].default |= track.default,
+            None => {
+                at.insert(track.url.clone(), kept.len());
+                kept.push(track);
+            }
         }
     }
-    tracks.truncate(SUBTITLE_TRACK_CAP);
-    tracks
+    kept
 }
 
 #[cfg(test)]
