@@ -429,6 +429,42 @@ describe('accountStore.hydrate', () => {
 			expect(calls.count('anilist')).toBe(0);
 		});
 
+		it('asks once to refresh a sign-in read again while the hydrate is still out', async () => {
+			// MAL's read is overtaken by a connect the user cancels; its read
+			// again finds an expired sign-in while AniList's keyring read is
+			// still out. The hydrate's own refresh, when AniList answers,
+			// covers it: two exchanges of one refresh token can revoke it.
+			const calls = countingSlowBridge();
+			const asked: string[][] = [];
+			const spy = vi.spyOn(accountStore, 'refreshExpired').mockImplementation(async () => {
+				asked.push(
+					Object.entries(accountStore.byProvider)
+						.filter(([, st]) => st.kind === 'expired')
+						.map(([p]) => p)
+				);
+			});
+			try {
+				void accountStore.hydrate();
+				accountStore.setConnecting('mal');
+				calls.answer('mal', { ok: false, kind: 'not_found' });
+				calls.answer('inhouse', { ok: false, kind: 'not_found' });
+				await flush();
+				accountStore.setDisconnected('mal'); // the connect was cancelled
+				await flush();
+				calls.answer('mal', {
+					ok: true,
+					payload: payload({ expires_at_epoch_s: 1, refresh_token: 'rt' })
+				});
+				await flush();
+				calls.answer('anilist', { ok: false, kind: 'not_found' });
+				await flush();
+				expect(accountStore.byProvider.mal.kind).toBe('expired');
+				expect(asked.filter((ps) => ps.includes('mal'))).toHaveLength(1);
+			} finally {
+				spy.mockRestore();
+			}
+		});
+
 		it('says it is waiting on the keyring once a read runs past the wait, and stops when it answers', async () => {
 			vi.useFakeTimers();
 			const answer = stubSlowBridge();
