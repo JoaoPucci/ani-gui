@@ -1688,6 +1688,56 @@ mod tests {
     }
 
     #[test]
+    fn a_mapping_guessed_before_run_together_words_named_the_entry_is_not_read() {
+        // The reverse resolve did not read a key's "rezero" as Kitsu's
+        // "re zero": it passed over Re:ZERO Season 2, Kitsu's first hit
+        // for the Season 2 key's words, and bound the key to Season 2
+        // Part 2, whose slug alone carried the key's cour.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:rezero-starting-life-in-another-world-season-2-100";
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v9:{key}"),
+                "43247",
+                60,
+            )
+            .expect("put")
+        });
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_title_match_guessed_before_a_dash_led_word_reached_kitsu_is_not_read() {
+        // The title guess searched Kitsu with the provider's title as
+        // typed, a dash before "Starting" and all, which Kitsu read as
+        // "without Starting"; and the reverse resolve it falls back to
+        // bound the Season 2 key to Season 2 Part 2. Either stored its
+        // pick under the title.
+        let state = state_with_kitsu_at("http://unused");
+        let title = "Re:ZERO -Starting Life in Another World- Season 2";
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("title-match:v3:hianime:{}:c2", title.to_lowercase()),
+                "43247",
+                60,
+            )
+            .expect("put")
+        });
+        assert_eq!(
+            title_match_get(
+                &state,
+                Some(crate::scraper::provider::ProviderId::Hianime),
+                title,
+                2
+            )
+            .expect("get ok"),
+            None
+        );
+    }
+
+    #[test]
     fn a_mapping_stamped_before_an_undated_pick_read_its_genre_is_not_read() {
         // An undated entry's pick read no entry page: a hentai listed
         // under one of the entry's own names could be its pick, and the
