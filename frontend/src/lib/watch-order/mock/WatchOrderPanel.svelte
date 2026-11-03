@@ -59,8 +59,7 @@
 			? m.watchorder_strip_unnumbered_cycle({ count: loop })
 			: m.watchorder_strip_unnumbered_branch();
 	});
-	const label = (e: MockEntry) =>
-		prefs.titles === 'short' ? shortTitle(e.title, titles) : e.title;
+	const label = (e: MockEntry) => shortTitle(e.title, titles);
 
 	let wrap: HTMLDivElement | undefined = $state();
 	// Bring the entry being viewed into the rail, three quarters of the
@@ -83,7 +82,7 @@
 
 {#snippet trailing()}
 	{#if onNow && onNow.entry.id !== id}
-		<StripWatching entry={onNow.entry} episode={onNow.episode} variant={prefs.resume} {label} />
+		<StripWatching entry={onNow.entry} episode={onNow.episode} {label} />
 	{/if}
 	<a class="text-btn" href={resolve('/anime/[id]/franchise', { id })}
 		>{m.watchorder_strip_franchise_link()}</a
@@ -95,18 +94,7 @@
 		<div class="switch-row">
 			<MockSwitch
 				{prefs}
-				keys={[
-					'order',
-					'strip',
-					'placement',
-					'titles',
-					'wording',
-					'cta',
-					'resume',
-					'stackHover',
-					'footer',
-					'stackPosters'
-				]}
+				keys={['order', 'strip', 'cta', 'stackHover', 'footer', 'stackPosters']}
 				{onchoose}
 			/>
 		</div>

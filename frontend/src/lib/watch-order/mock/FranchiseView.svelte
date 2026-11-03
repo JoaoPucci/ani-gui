@@ -51,8 +51,7 @@
 			.filter((e) => e.id !== first.id)
 			.map((e) => e.title)
 	);
-	const label = (e: MockEntry) =>
-		prefs.titles === 'short' ? shortTitle(e.title, titles) : e.title;
+	const label = (e: MockEntry) => shortTitle(e.title, titles);
 	const posOf = (e: MockEntry) => placement(run, e.id, prefs.order).position;
 	let recapsOpen = $state(false);
 </script>
@@ -118,7 +117,7 @@
 
 		{#if prefs.switcher}
 			<div class="switch-row">
-				<MockSwitch {prefs} keys={['order', 'franchise', 'titles']} {onchoose} />
+				<MockSwitch {prefs} keys={['order', 'franchise']} {onchoose} />
 			</div>
 		{/if}
 

@@ -2041,7 +2041,7 @@
 				</div>
 			{/if}
 
-			{#if mockRun && mockPrefs.placement === 'top'}
+			{#if mockRun}
 				<WatchOrderPanel
 					run={mockRun}
 					{id}
@@ -2428,15 +2428,6 @@
 			<!-- Similar titles strip — placeholder for AniList recommendations.
 		     Today: re-uses kitsuSearch with the canonical title's first
 		     1-2 words to surface franchise neighbours / look-alikes. -->
-			{#if mockRun && mockPrefs.placement === 'bottom'}
-				<WatchOrderPanel
-					run={mockRun}
-					{id}
-					prefs={mockPrefs}
-					today={mockToday}
-					onchoose={chooseMockPrefs}
-				/>
-			{/if}
 			{#if similarShown.length > 0}
 				<section class="similar">
 					<Strip

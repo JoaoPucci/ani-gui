@@ -8,12 +8,6 @@ import type { EmptyColumn } from './strip-view';
 import type { ColumnKey, ColumnWord } from './strip-wording';
 
 const WORDS: Record<ColumnWord, readonly [() => string, () => string]> = {
-	before: [m.watchorder_strip_before, m.watchorder_strip_before],
-	after: [m.watchorder_strip_after, m.watchorder_strip_after],
-	previous: [m.watchorder_strip_word_previous, m.watchorder_strip_word_previous],
-	next: [m.watchorder_strip_word_next, m.watchorder_strip_word_next],
-	watch_before: [m.watchorder_strip_word_watch_before, m.watchorder_strip_word_watch_before],
-	watch_after: [m.watchorder_strip_word_watch_after, m.watchorder_strip_word_watch_after],
 	prequel: [m.watchorder_strip_word_prequel, m.watchorder_strip_word_prequels],
 	sequel: [m.watchorder_strip_word_sequel, m.watchorder_strip_word_sequels],
 	parent: [m.watchorder_strip_word_parent, m.watchorder_strip_word_parents],

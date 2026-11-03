@@ -26,7 +26,7 @@
 	import type { WatchOrderMockPrefs } from './prefs';
 	import { columnCountText, columnKeyText, emptyColumnText } from '../strip-copy';
 	import { emptyColumn, watchingFor, type StripView } from '../strip-view';
-	import { columnKey } from '../strip-wording';
+	import { relationKey } from '../strip-wording';
 	import type { MockEntry, MockRun } from './types';
 
 	let {
@@ -51,7 +51,7 @@
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
 		const list = side === 'before' ? view.before : view.after;
-		return columnKeyText(columnKey(prefs.wording, prefs.order, view.kind, side, list.length));
+		return columnKeyText(relationKey(prefs.order, view.kind, side, list.length));
 	};
 </script>
 
@@ -125,7 +125,6 @@
 						<StripWatching
 							entry={watching.entry}
 							episode={watching.episode}
-							variant={prefs.resume}
 							{label}
 							bare={prefs.footer !== 'ends'}
 						/>

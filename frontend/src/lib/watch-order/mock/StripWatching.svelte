@@ -1,12 +1,8 @@
 <!--
-  The strip's line for the entry the viewer is part-way through, when
-  it is another entry of the run (mockup, second round). It goes to
-  that entry's show page; it does not play. Two variants:
-
-  - `chip`: a link that looks like the thing it opens, the entry's
-    poster beside "You're watching", its title and episode;
-  - `sentence`: the first round's line, reworded so the link says
-    where it goes ("Go to its page") instead of "Resume".
+  The strip's card for the entry the viewer is part-way through, when
+  it is another entry of the run: a link that looks like the thing it
+  opens, the entry's poster beside "You're watching", its title and
+  episode. It goes to that entry's show page; it does not play.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -19,13 +15,11 @@
 	let {
 		entry,
 		episode,
-		variant,
 		label,
 		bare = false
 	}: {
 		entry: MockEntry;
 		episode: number;
-		variant: 'chip' | 'sentence';
 		label: (e: MockEntry) => string;
 		/** No resting border (the centred footers). */
 		bare?: boolean;
@@ -34,30 +28,21 @@
 	const href = $derived(resolve('/anime/[id]', { id: entry.id }));
 </script>
 
-{#if variant === 'chip'}
-	<a class="chip" class:bare {href} style:--accent={accentFor(entry.id)} title={entry.title}>
-		<span class="chip-poster">
-			{#if imageProxyUrl(entry.poster)}
-				<img src={imageProxyUrl(entry.poster)} alt="" loading="lazy" decoding="async" />
-			{/if}
+<a class="chip" class:bare {href} style:--accent={accentFor(entry.id)} title={entry.title}>
+	<span class="chip-poster">
+		{#if imageProxyUrl(entry.poster)}
+			<img src={imageProxyUrl(entry.poster)} alt="" loading="lazy" decoding="async" />
+		{/if}
+	</span>
+	<span class="chip-text">
+		<span class="chip-key">{m.watchorder_strip_watching_key()}</span>
+		<span class="chip-line">
+			<span class="chip-title">{label(entry)}</span>
+			<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span>
 		</span>
-		<span class="chip-text">
-			<span class="chip-key">{m.watchorder_strip_watching_key()}</span>
-			<span class="chip-line">
-				<span class="chip-title">{label(entry)}</span>
-				<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span>
-			</span>
-		</span>
-		<span class="arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span>
-	</a>
-{:else}
-	<p class="sentence">
-		<span class="sentence-text"
-			>{m.watchorder_strip_watching_sentence({ title: label(entry), episode })}</span
-		>
-		<a class="text-btn" {href}>{m.watchorder_strip_watching_go()}</a>
-	</p>
-{/if}
+	</span>
+	<span class="arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span>
+</a>
 
 <style>
 	.chip {
@@ -89,8 +74,7 @@
 	.chip.bare:focus-visible {
 		border-color: transparent;
 	}
-	.chip:focus-visible,
-	.text-btn:focus-visible {
+	.chip:focus-visible {
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
 	}
@@ -161,30 +145,5 @@
 	.chip:focus-visible .arrow {
 		color: var(--bone-100);
 		transform: scaleX(var(--flip, 1)) translateX(2px);
-	}
-
-	.sentence {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: var(--space-1) var(--space-3);
-		margin: 0;
-		min-inline-size: 0;
-		font-size: var(--type-meta);
-	}
-	.sentence-text {
-		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
-	}
-	.text-btn {
-		flex: none;
-		font-weight: 600;
-		color: var(--bone-100);
-		text-decoration: underline;
-		text-decoration-color: color-mix(in oklab, var(--bone-100) 30%, transparent);
-		text-underline-offset: 0.25em;
-		transition: text-decoration-color var(--dur-fast) var(--ease-out-soft);
-	}
-	.text-btn:hover {
-		text-decoration-color: var(--bone-100);
 	}
 </style>
