@@ -572,9 +572,8 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // second, for the splash to have rendered a frame, then for what is
     // left of the splash's minimum time on screen after that paint, and
     // only then is mapped (maximized) and shown, and the splash put
-    // away. The two
-    // are never on screen competing, on any platform. A later window
-    // finds no splash and waits for nothing.
+    // away. The two are never on screen competing, on any platform. A
+    // later window finds no splash and waits for nothing.
     beforeShow: () => splash.whenShown(),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window

@@ -349,27 +349,25 @@ three-second limit below.
    to a second for the splash to answer that it has rendered a frame,
    then until the splash has been on screen for 500 ms since that paint
    (300 ms when it rests on its still frame) — long enough for the
-   opening to read —
-   and only then is it mapped, already maximized and painted, and the
-   splash closes. A launch whose window is ready later than that pays
-   nothing for the minimum; a warm one, whose window is ready as soon
-   as the splash has painted, pays up to that half second. The two are
-   never on screen competing, so it does not matter that native
-   Wayland ignores always-on-top. A splash that never paints, or is
-   minimized, holds the window no longer than that first second. The
-   hidden window is made at the size the desktop granted
-   the window when a launch last revealed it maximized on the same
-   display (by id, size and scale), kept in `window-geometry.json`
-   under the app's user data, else at the work area. On Wayland, which
-   reports no work area until a window is on screen, that remembered
-   size is what lets the window appear at its final size. The first
-   launch on a display, or one after the display's size or scale
-   changes, paints at the full screen; one after its top bar changes
-   paints at the old remembered size. Either takes a one-time
-   correction from the compositor as it appears. Closing the splash
-   before the app's window appears cancels the launch. Measured on
-   GNOME under Wayland and on Xvfb; X11 with a real window manager and
-   Windows were not measured.
+   opening to read — and only then is it mapped, already maximized and
+   painted, and the splash closes. A launch whose window is ready later
+   than that pays nothing for the minimum; a warm one, whose window is
+   ready as soon as the splash has painted, pays up to that half second.
+   The two are never on screen competing, so it does not matter that
+   native Wayland ignores always-on-top. A splash that never paints, or
+   is minimized, holds the window no longer than that first second. The
+   hidden window is made at the size the desktop granted the window when
+   a launch last revealed it maximized on the same display (by id, size
+   and scale), kept in `window-geometry.json` under the app's user data,
+   else at the work area. On Wayland, which reports no work area until a
+   window is on screen, that remembered size is what lets the window
+   appear at its final size. The first launch on a display, or one after
+   the display's size or scale changes, paints at the full screen; one
+   after its top bar changes paints at the old remembered size. Either
+   takes a one-time correction from the compositor as it appears.
+   Closing the splash before the app's window appears cancels the
+   launch. Measured on GNOME under Wayland and on Xvfb; X11 with a real
+   window manager and Windows were not measured.
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate
 a frame at a time, beside a reel title and a frame counter
