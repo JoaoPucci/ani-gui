@@ -8,7 +8,8 @@
  * - a new install records the number current when it is installed and
  *   reacts only to later rises (an install that saw no number takes the
  *   first one it sees as that baseline);
- * - nothing in the first {@link GRACE_MS} after the first launch, and
+ * - nothing in the first {@link GRACE_MS} after the first launch that
+ *   kept this state (the first with the center on), and
  *   an ask held back by it is made after the period if the number is
  *   still unseen;
  * - never while a video plays: it waits for a moment with nothing

@@ -1,5 +1,6 @@
 //! Remote feature flags: a way to move a released build back to safer
-//! behaviour without shipping another release.
+//! behaviour without shipping another release, and, from a signed
+//! file, to switch on a feature that ships off.
 //!
 //! A broken update notifier is the case that motivated this: an
 //! install that takes a notifier which can no longer announce
@@ -66,7 +67,7 @@ pub use store::FlagStore;
 /// it through that same constant with [`Resolved::enabled`] or
 /// [`Resolved::choice`] — never through a name typed out again, which
 /// a typo would turn into a silent default. Then register a test case
-/// for its default and for every retreat in `matrix::CASES`: a test
+/// for its default and for every other value in `matrix::CASES`: a test
 /// fails while any value of a declared flag has none.
 pub const DECLARED: &[FlagDecl] = &[crate::notices::NOTIFICATION_CENTER];
 

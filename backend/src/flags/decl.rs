@@ -125,7 +125,8 @@ fn matches(v: FlagValue, raw: &serde_json::Value) -> bool {
 
 /// Check a declaration list: names well-formed and unique, every
 /// fallback naming at least one earlier behaviour distinct from its
-/// current one, and every declaration stating why its retreat is safe.
+/// current one, and every declaration stating why its other values are
+/// safe (for a rollout, why a signed file may turn it on).
 ///
 /// # Errors
 /// A description of the first problem found.

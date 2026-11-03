@@ -305,7 +305,7 @@ or undeclared flag then reads as its declaration's default.
 **Every value is tested.** A flag sits at its default until something
 breaks, so the value it is flipped to is the one least likely to have
 run. Each consumer registers a test case for its flag's default and for
-every retreat in `flags::matrix::CASES`, a check that receives the
+every other value it allows in `flags::matrix::CASES`, a check that receives the
 flags with that value in force. A test over `DECLARED` fails while any
 value of a declared flag has no case, or a case names a flag or value
 no longer declared.
@@ -320,11 +320,14 @@ the prehashed form only) against the public keys compiled into the
 build (`flags::signature::TRUSTED_KEYS`). A verified file is used
 whole; any other file keeps its flags but loses its notices block and
 every rollout it sets to `true`, and what is cached is that admitted
-document, marked as such. A cache
-without the mark was written by a build before the signature check,
-which kept the file as fetched; it is read as an unsigned file, so its
-notices and any turned-on rollout are dropped and its other flags
-kept. The shipped build trusts no key yet, so no notice is used and no
+document. The cache marks an entry verified when its document holds
+something only a verified file keeps (a notices block, a rollout
+turned on). An entry without the mark is admitted again when it is
+read, as an unsigned file under the reading build's declarations. That
+covers a cache written before the signature check, which kept the file
+as fetched, and one written by a build that did not yet declare a
+rollout the reading build does: neither can turn a feature on or show
+a notice, and their other flags are kept. The shipped build trusts no key yet, so no notice is used and no
 rollout is turned on. Signing, trusting and rotating a key are
 in [`development.md`](./development.md#signing-the-flags-file).
 
@@ -484,11 +487,13 @@ decide them otherwise. A copy dated in the
 future (a clock set back) counts as too old. The cached copy goes
 through the same resolution as a fetched file, so a cache written by
 another build, or edited by hand, still resolves only to values this
-build declares. Why seven days: every value a document can produce is a
-default or a declared retreat, so a cached copy is never less safe than
-the defaults it stands in for. Its age only limits how long a retreat
-the maintainer has since lifted stays in force on a machine that cannot
-reach GitHub. A week covers a stretch of launches without the network,
+build declares. Why seven days: every value an unverified document can
+produce is a default or a declared retreat, so such a cached copy is
+never less safe than the defaults it stands in for; a verified copy may
+also hold a rollout turned on and notices, which the maintainer signed
+(see "What a signature does not cover" above). Its age limits how long
+a change the maintainer has since made, a lifted retreat or a rollout
+turned off again, waits on a machine that cannot reach GitHub. A week covers a stretch of launches without the network,
 such as a trip, a captive portal or a blocked CDN, so a feature switched
 off for a bad release stays off through it. And even on a machine that
 never reaches the file again, a lifted retreat clears within the week.
@@ -654,7 +659,7 @@ row's page while the source is not answering, and nowhere otherwise.
 ask's schedule, a pure state machine (`$lib/notices/donation`, wired by
 `$lib/notices/donation-ask`): once each time the number rises past the
 last one the install acted on, never in the first fourteen days after
-the first launch, never while a video plays, something is fullscreen or
+the first launch with the center on (when the ask first runs), never while a video plays, something is fullscreen or
 the player is open (it waits for a moment when none is true), and a new
 install records the number current when it first sees one and reacts
 only to rises after it. The ask is one pinned toast with two answers:

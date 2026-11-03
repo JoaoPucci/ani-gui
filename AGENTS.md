@@ -243,7 +243,7 @@ authority directed, never a route an agent picks for itself:
 The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) may be signed with minisign, and the backend checks the signature against the public keys built into the app (`backend/src/flags/signature.rs`, `TRUSTED_KEYS`). What a file may do depends on that check:
 
 - **Any file, verified or not, may move a declared flag toward the safer side:** a kill switch to `false`, a fallback to an earlier behaviour, a rollout to `false` (`backend/src/flags/decl.rs`). Nothing in the code checks which side is safer. Each declaration states its case in `safe_because`, and review holds it to that. So a kill switch or a fallback never lists a value that switches a feature on, and a feature's on-state is never a fallback's "earlier" behaviour.
-- **Only a verified file may turn a feature on:** a rollout's `true`. From any file whose signature does not verify, the backend drops that value before the flags are decided or cached (`signature::admit`), and the feature stays off. The notices the file carries are dropped the same way.
+- **Only a verified file may turn a feature on:** a rollout's `true`. From any file whose signature does not verify, the backend drops that value before the flags are decided or cached (`signature::admit`), and the feature stays off. The notices the file carries are dropped the same way. A cached copy not known to have verified is admitted again under the reading build's declarations, so a rollout a later release declares cannot be turned on by an unsigned file an earlier one cached.
 
 The rule follows from that:
 

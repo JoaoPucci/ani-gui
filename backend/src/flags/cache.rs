@@ -17,11 +17,13 @@
 //! check, which held the file as fetched, and one written by a build
 //! that did not yet declare a rollout the reader does.
 //!
-//! **Why seven days.** Every value a document can resolve to is a
-//! flag's default or a declared retreat from it, so a cached document
-//! is never less safe than the defaults it stands in for; what its age
-//! bounds is how long a retreat the maintainer has since lifted
-//! lingers on a machine that cannot reach GitHub. A week rides out a
+//! **Why seven days.** Every value an unverified document can resolve
+//! to is a flag's default or a declared retreat from it, so such a
+//! cached document is never less safe than the defaults it stands in
+//! for; a verified one may also turn a rollout on and carry notices,
+//! which the maintainer signed. What its age bounds is how long a
+//! change the maintainer has since made (a lifted retreat, a rollout
+//! turned off again) waits on a machine that cannot reach GitHub. A week rides out a
 //! run of launches without the network — a trip, a captive portal, a
 //! blocked CDN — so a feature switched off for a bad release stays off
 //! through them, while a lifted retreat clears within a week even on a
