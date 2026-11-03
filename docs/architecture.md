@@ -665,7 +665,9 @@ install records the number current when it first sees one and reacts
 only to rises after it. The ask is one pinned toast with two answers:
 Donate, which opens the About page's Support section, and Not now. The
 number is acted on when the toast is shown, so either answer, or
-neither, ends it until the number rises again. There is no permanent
+neither, ends it until the number rises again. A toast still up when a
+video starts, something goes fullscreen or the player opens is taken
+down, and does not come back. There is no permanent
 opt-out in this version; the stored state reserves an `optOut` field so
 one can be added without a migration. The state is kept in the
 window's `localStorage` (`ani-gui.donation-ask.v1`).
