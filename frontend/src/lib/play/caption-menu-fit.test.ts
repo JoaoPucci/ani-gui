@@ -100,6 +100,13 @@ describe('menuHeight — the captions menu fits inside the player', () => {
 						expect(anchorTop - gap - h).toBeGreaterThanOrEqual(
 							Math.max(frameTop, ceiling) + margin
 						);
+						// And as tall as either bound allows: a pixel more
+						// would pass one of them.
+						const tooTall = h + 1;
+						expect(
+							tooTall > frameHeight / 2 ||
+								anchorTop - gap - tooTall < Math.max(frameTop, ceiling) + margin
+						).toBe(true);
 					}
 				}
 			)

@@ -412,13 +412,13 @@ describe('the captions menu with many languages', () => {
 		// window and the captions button 420 px down.
 		const frame = document.querySelector<HTMLElement>('.player-frame');
 		if (!frame) throw new Error('no player frame');
-		frame.getBoundingClientRect = () => new DOMRect(0, 100, 1280, 600);
+		frame.getBoundingClientRect = () => new DOMRect(0, 100, 1280, 700);
 		ccButton().getBoundingClientRect = () => new DOMRect(1080, 420, 48, 48);
 		await openMenu();
 		const menu = document.querySelector<HTMLElement>('#pc-cc-menu');
-		// 420 − 100, less the gap under the menu and the margin over
-		// it, is 304 px; half the 600 px player is 300.
-		expect(menu?.style.maxBlockSize).toBe('300px');
+		// 420 − 100, less the gap under the menu and the margin over it:
+		// less than half the 700 px player.
+		expect(menu?.style.maxBlockSize).toBe('304px');
 	});
 
 	it("stops at half the player's height in a tall player", async () => {
