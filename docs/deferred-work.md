@@ -269,6 +269,23 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
+- **A connect or disconnect whose bridge call rejects leaves the
+  provider changing for good.** The account page's `connect()` and
+  `disconnect()` and the chip's disconnect
+  (`frontend/src/lib/account/chip-disconnect.ts`) await
+  `connectAccount` / `disconnectAccount` with no catch, and those let a
+  rejected preload call (`openOAuth`, `persistAccount`,
+  `clearPersistedAccount`) through. The main-process handlers catch
+  their own failures, so it takes an IPC failure in the renderer; then
+  the provider stays `connecting` (its card stuck on "Signing in…") or
+  in an account change until a reload. Since the keyring reads wait
+  for a change under way to land (`$lib/account/hydrate-flow`), a
+  provider stuck that way also keeps one waiting read per hydrate
+  alive; the hydrate itself and the other providers are not held.
+  The fix is a catch that restores the pre-click state, as a failed
+  connect already does, or sets the error state, as a failed clear
+  does.
+
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
   slot (the rule in `numbering_offset_drift.rs`, the repair in
