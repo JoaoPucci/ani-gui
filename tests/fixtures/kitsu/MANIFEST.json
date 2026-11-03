@@ -32,14 +32,14 @@
       "captured_at": "2026-11-03",
       "size": 2438,
       "sha256": "37db232d7ec55112362de996fc896d6f5e0ac9d2235a52fe0961a02d9f7233d3",
-      "notes": "Kitsu reads a token-leading '-' as an exclusion: this, the provider's Re:ZERO Season 4 title sent as given, answers Zoids Genesis (anime/646) alone."
+      "notes": "Kitsu reads a '-' that no letter or digit precedes as an exclusion: this, the provider's Re:ZERO Season 4 title sent as given, answers Zoids Genesis (anime/646) alone."
     },
     "search_rezero_season_4.json": {
       "request": "GET /anime?filter[text]=Re:ZERO Starting Life in Another World- Season 4&page[size]=20&page[number]=1&fields[anime]=canonicalTitle,titles,abbreviatedTitles,slug,synopsis,startDate,endDate,episodeCount,averageRating,subtype,status,posterImage,coverImage,ageRating,popularityRank",
       "captured_at": "2026-11-03",
       "size": 2927,
       "sha256": "01909ff115531ca01c710f3757b1b37a7a718688c283ae47fb657123bffc7273",
-      "notes": "The same title with the token-leading '-' dropped, as the client now sends it: Re:ZERO Season 4 (anime/49746) alone."
+      "notes": "The same title with the '-' before \"Starting\" dropped, as the client now sends it: Re:ZERO Season 4 (anime/49746) alone."
     },
     "search_rezero_season_4_slug_words.json": {
       "request": "GET /anime?filter[text]=rezero starting life in another world season 4&page[size]=20&page[number]=1&fields[anime]=canonicalTitle,titles,abbreviatedTitles,slug,synopsis,startDate,endDate,episodeCount,averageRating,subtype,status,posterImage,coverImage,ageRating,popularityRank",
