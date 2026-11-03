@@ -168,8 +168,8 @@ async fn the_signature_is_asked_for_alongside_the_file_not_after_it() {
     // file, so only a request made alongside the file arrives in time.
     let slow = ResponseTemplate::new(200)
         .set_body_string(SIG)
-        .set_delay(super::SIGNATURE_GRACE + std::time::Duration::from_millis(300));
-    let (_s, url) = serve_delayed(600, slow).await;
+        .set_delay(super::SIGNATURE_GRACE + std::time::Duration::from_millis(1000));
+    let (_s, url) = serve_delayed(2000, slow).await;
     let doc = fetch_trusting(
         &reqwest::Client::new(),
         &url,
