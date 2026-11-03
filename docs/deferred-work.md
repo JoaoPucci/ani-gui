@@ -511,14 +511,14 @@ starting it, and delete it when you find it done.
 - **Subtitle track selection: a locale-aware default, and a remembered
   choice.** Which track shows when an episode opens is the provider's
   call, in every app locale: the browser turns on the track the
-  provider flagged default, the rest start hidden, and the page flips
-  one to showing only when the user picks it. Nothing is remembered —
+  provider flagged default, the rest start disabled, and the captions
+  menu shows one only when the user picks it. Nothing is remembered —
   the next episode starts from the provider's flag again.
 
-  It waits on evidence. Every hianime listing captured or played so
-  far carried English alone, flagged default, so an app-language
-  preference has nothing to choose between yet. A payload that flags
-  no track at all starts with every subtitle off.
+  Listings now offer the choice: Steel Ball Run's first episode lists
+  33 languages and Black Clover's 9, English flagged default in both.
+  A payload that flags no track at all starts with every subtitle
+  off.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
