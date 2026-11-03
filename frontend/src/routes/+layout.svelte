@@ -25,7 +25,8 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
-	import { breadcrumb, defaultTrailFor, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
+	import { breadcrumb, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import {
 		imageProxyUrl,
 		kitsuSearch,
@@ -131,9 +132,11 @@
 		}
 		canGoBack = shouldShowBackButton(navDepth);
 		// Reset the breadcrumb to a default URL-only trail on every
-		// navigation. Routes with richer labels (anime title, episode
-		// number) overwrite this in onMount once their data lands.
-		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
+		// navigation, keeping a trail the page on this address already
+		// named itself with: SvelteKit runs this only after the page has
+		// rendered, so a page that stayed mounted, or whose data landed
+		// first, has named itself by now ($lib/page-trail).
+		pageTrail.reset(page.url.pathname, page.route?.id ?? null);
 	});
 
 	// Sign-in notices: one pinned `warning` toast per provider whose
@@ -747,8 +750,9 @@
 		/* Extra inline gutter on both sides so the main column
 		   doesn't feel glued to the rail on the left or the
 		   window edge on the right. Stacks on top of each route's
-		   own padding-inline. Banners (.hero, .masthead) escape
-		   this gutter via negative margins so they stay full-bleed. */
+		   own padding-inline. Banners (Home's .hero, the show page's
+		   .hero-frame, .masthead) escape this gutter via negative
+		   margins so they stay full-bleed. */
 		padding-inline: var(--space-7);
 	}
 	@media (max-inline-size: 720px) {
@@ -1194,8 +1198,17 @@
 		gap: var(--space-3);
 		/* Bumped from 28rem to 32rem; the search is the topbar's
 		   primary action and the previous size made the input feel
-		   secondary. */
-		flex: 0 1 32rem;
+		   secondary.
+		   Sized from its narrowest up rather than from 32rem down, so
+		   that when the row runs short the pill gives way first and the
+		   breadcrumb only after it: the pill starts at its min-content
+		   width (basis 0, held there by its automatic minimum), grows
+		   into whatever room the row has, up to 32rem, and never shrinks.
+		   The breadcrumb is the row's only shrinking item, so it takes
+		   any shortfall left once the pill is at its narrowest. Where
+		   the row has room, the result is what `0 1 32rem` gave. */
+		flex: 1 0 0;
+		max-inline-size: 32rem;
 		margin-inline-start: auto;
 		/* Pill thickens (--space-2 → --space-3 vertical, --space-4
 		   → --space-5 horizontal) to host the new 16px body-sans
