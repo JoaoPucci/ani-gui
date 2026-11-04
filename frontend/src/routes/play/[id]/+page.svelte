@@ -28,13 +28,14 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { settle } from '$lib/motion/settle';
+	import { fade } from '$lib/motion/transitions';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -125,6 +126,16 @@
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
+	import { moreMenuQuality } from '$lib/play/more-menu-quality';
+	import {
+		closedDrill,
+		drillArrow,
+		drillStep,
+		type DrillEvent,
+		type DrillFocus,
+		type DrillMenu
+	} from '$lib/play/drill-menu';
+	import { plainKey } from '$lib/play/menu-arrow';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -292,7 +303,9 @@
 	// the per-show accent color and lets fullscreen target
 	// .player-frame (so the Skip OP/Outro overlay stays visible
 	// in fullscreen). Native is more battle-tested for PiP,
-	// caption picker, and the like. Default is native.
+	// caption picker, and the like. The setting defaults to custom
+	// (`Config::default`, backend/src/config/mod.rs); until the
+	// settings answer, the page reads it as off.
 	const USE_CUSTOM_PLAYER_CONTROLS = $derived(config?.use_custom_player_controls === true);
 
 	// Custom controls — Chromium's native media controls don't
@@ -571,9 +584,16 @@
 	 *  entries, and the player's volume shortcuts on the up and down
 	 *  arrows do not see them. */
 	function onCcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
 		const at = items.indexOf(document.activeElement as HTMLElement);
+		// The horizontal arrows stay in the menu rather than seek.
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
 		const next = menuKeyStep(e.key, at, items.length);
 		if (next === null) return;
 		e.preventDefault();
@@ -659,24 +679,67 @@
 	// bar. Mirrors Chromium's native pattern: Download, Playback
 	// speed, Picture in picture. Open state is component-local;
 	// closes on outside click or Escape.
-	let pcMenuOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	type PcList = 'speed' | 'quality';
+	let pcMenu = $state.raw<DrillMenu<PcList>>(closedDrill());
+	const pcMenuOpen = $derived(pcMenu.open);
+	const pcSpeedExpanded = $derived(pcMenu.list === 'speed');
+	const pcQualityExpanded = $derived(pcMenu.list === 'quality');
 	let pcMenuAnchor = $state<HTMLButtonElement | null>(null);
-	let pcSpeedExpanded = $state(false);
-	let pcQualityExpanded = $state(false);
 	let playbackRate = $state(1);
 	const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+	function pcDo(event: DrillEvent<PcList>) {
+		const step = drillStep(pcMenu, event);
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
+	}
 	function togglePcMenu() {
-		pcMenuOpen = !pcMenuOpen;
-		if (!pcMenuOpen) {
-			pcSpeedExpanded = false;
-			pcQualityExpanded = false;
-		}
+		pcDo({ type: 'toggle' });
+	}
+	function openPcList(list: PcList) {
+		pcDo({ type: 'openList', list, choosable: pcListChoosable(list), width: null });
+	}
+	function closePcList() {
+		pcDo({ type: 'back' });
 	}
 	function closePcMenu() {
-		pcMenuOpen = false;
-		pcSpeedExpanded = false;
-		pcQualityExpanded = false;
+		pcDo({ type: 'close' });
+	}
+	/** Whether the in-player menu's list has something to choose: the
+	 *  speeds always, the levels while their model shows any. */
+	function pcListChoosable(list: PcList): boolean {
+		return list === 'speed' || qualityMenuModel !== null;
+	}
+	// The Quality list closes once its model has nothing to show — the
+	// stream retired, or a lone level nothing names or the engine could
+	// not load.
+	$effect(() => {
+		pcDo({ type: 'models', choosable: pcListChoosable });
+	});
+	/** Applies a drill-down menu's focus target ($lib/play/drill-menu)
+	 *  once the menu has redrawn; the menu's own button at once. */
+	function applyDrillFocus<L extends string>(
+		focus: DrillFocus<L> | null,
+		menuId: string,
+		anchor: HTMLElement | null
+	) {
+		if (!focus) return;
+		if (focus.kind === 'anchor') {
+			anchor?.focus();
+			return;
+		}
+		void tick().then(() => {
+			const menu = document.getElementById(menuId);
+			if (focus.kind === 'opener') {
+				menu?.querySelector<HTMLElement>(`[data-opens="${focus.list}"]`)?.focus();
+				return;
+			}
+			const first = menu?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)');
+			if (first) first.focus();
+			else if (focus.kind === 'first-or-anchor') anchor?.focus();
+		});
 	}
 	// The stream's levels and the choice in force, as the attached
 	// stream's quality control publishes them ($lib/play/arm-quality);
@@ -707,10 +770,7 @@
 			closePcMenu();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closePcMenu();
-				pcMenuAnchor?.focus();
-			}
+			if (e.key === 'Escape') pcDo({ type: 'dismiss' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -1926,10 +1986,10 @@
 				holdsStart: true,
 				startAt,
 				onView: (view) => {
+					// A stream retiring takes its levels with it; both menus'
+					// Quality lists follow the model this feeds, and close
+					// (the effects beside closePcMenu and closeMore).
 					qualityView = view;
-					// A stream retiring takes its levels with it; the next
-					// one's menu opens on the main list.
-					if (!view) pcQualityExpanded = false;
 				}
 			});
 			qualityControl = quality;
@@ -2583,13 +2643,116 @@
 	// Open in external + Download. They were demoted from the np-actions
 	// row to declutter — the primary controls are now ep-nav +
 	// auto-play, with everything else one click deeper.
-	let moreOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	let moreMenu = $state.raw<DrillMenu<'quality'>>(closedDrill());
+	const moreOpen = $derived(moreMenu.open);
+	const moreQualityOpen = $derived(moreMenu.list === 'quality');
 	let moreAnchor = $state<HTMLButtonElement | null>(null);
+	function moreDo(event: DrillEvent<'quality'>) {
+		const step = drillStep(moreMenu, event);
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
 	function toggleMore() {
-		moreOpen = !moreOpen;
+		moreDo({ type: 'toggle' });
 	}
 	function closeMore() {
-		moreOpen = false;
+		moreDo({ type: 'close' });
+	}
+	// The quality picker rides the ⋯ menu while the custom controls are
+	// off: the native controls have none, and the in-player menu goes
+	// with the custom bar. Same model, same pick ($lib/play/more-menu-quality).
+	const moreQuality = $derived(moreMenuQuality(qualityMenuModel, USE_CUSTOM_PLAYER_CONTROLS));
+	/** The ⋯ menu's width as it stands, which it keeps while the levels
+	 *  show, so the right-anchored menu does not jump narrower. */
+	function moreMenuWidthNow(): number | null {
+		return document.getElementById('np-more-menu')?.offsetWidth ?? null;
+	}
+	function openMoreQuality() {
+		moreDo({
+			type: 'openList',
+			list: 'quality',
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+	}
+	function closeMoreQuality() {
+		moreDo({ type: 'back' });
+	}
+	function pickMoreQuality(choice: 'auto' | number) {
+		pickQuality(choice);
+		moreDo({ type: 'dismiss' });
+	}
+	// A stream retiring takes the levels with it, and one of a single
+	// level leaves nothing to choose: the menu falls back to its main
+	// list.
+	$effect(() => {
+		moreDo({ type: 'models', choosable: () => moreQuality?.choosable === true });
+	});
+	// The arrow keys move between the menu's items, as a menu's should,
+	// rather than reaching the player's volume and seek keys.
+	// Left and Right open the levels from the Quality row and go back
+	// from them, and otherwise stay in the menu rather than seek.
+	function onMoreMenuKey(e: KeyboardEvent) {
+		// A modified key (Alt+ArrowLeft for history back) is not the menu's.
+		if (plainKey(e) === null) return;
+		const menu = e.currentTarget as HTMLElement;
+		const step = drillArrow(moreMenu, e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			opener: focusedOpener(['quality']),
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+		if (step === null) {
+			stepMenuFocus(e);
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
+	/** The list the focused row opens (its `data-opens`), among `lists`. */
+	function focusedOpener<L extends string>(lists: readonly L[]): L | null {
+		const opens = (document.activeElement as HTMLElement | null)?.dataset.opens;
+		return lists.find((l) => l === opens) ?? null;
+	}
+	// The in-player menu steps the same way: Left and Right open Speed
+	// or Quality from its row and go back from the list, and otherwise
+	// stay in the menu rather than seek.
+	function onPcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
+		const menu = e.currentTarget as HTMLElement;
+		const opener = focusedOpener<PcList>(['speed', 'quality']);
+		const step = drillArrow(pcMenu, e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			opener,
+			choosable: opener !== null && pcListChoosable(opener),
+			width: null
+		});
+		if (step === null) {
+			stepMenuFocus(e);
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
+	}
+	/** ArrowDown, ArrowUp, Home and End move focus between the menu's
+	 *  enabled items, wrapping at the ends, and go no further. */
+	function stepMenuFocus(e: KeyboardEvent) {
+		const menu = e.currentTarget as HTMLElement;
+		const items = Array.from(
+			menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')
+		);
+		const at = items.indexOf(document.activeElement as HTMLButtonElement);
+		const next = menuKeyStep(e.key, at, items.length);
+		if (next === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		items[next].focus();
 	}
 	$effect(() => {
 		if (!moreOpen) return;
@@ -2605,10 +2768,7 @@
 			closeMore();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closeMore();
-				moreAnchor?.focus();
-			}
+			if (e.key === 'Escape') moreDo({ type: 'escape' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -2968,7 +3128,7 @@
 			{/if}
 
 			<!-- Custom controls overlay — toggled by the
-				     USE_CUSTOM_PLAYER_CONTROLS feature flag (off by
+				     use_custom_player_controls setting (on by
 				     default). When on, replaces Chromium's native
 				     timeline so the progress bar can take the
 				     per-show accent color. -->
@@ -3216,13 +3376,19 @@
 								</svg>
 							</button>
 							{#if pcMenuOpen}
-								<div id="pc-overflow-menu" class="pc-menu" role="menu" tabindex="-1">
+								<div
+									id="pc-overflow-menu"
+									class="pc-menu"
+									role="menu"
+									tabindex="-1"
+									onkeydown={onPcMenuKey}
+								>
 									{#if pcSpeedExpanded}
 										<button
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcSpeedExpanded = false)}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3260,7 +3426,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcQualityExpanded = false)}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3316,7 +3482,8 @@
 											class="pc-menu-item pc-menu-row-arrow"
 											role="menuitem"
 											aria-haspopup="menu"
-											onclick={() => (pcSpeedExpanded = true)}
+											data-opens="speed"
+											onclick={() => openPcList('speed')}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<circle
@@ -3364,7 +3531,8 @@
 												class="pc-menu-item pc-menu-row-arrow"
 												role="menuitem"
 												aria-haspopup="menu"
-												onclick={() => (pcQualityExpanded = true)}
+												data-opens="quality"
+												onclick={() => openPcList('quality')}
 											>
 												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 													<path
@@ -3717,127 +3885,254 @@
 							class="more-menu"
 							role="menu"
 							aria-label={m.play_more_aria_label()}
+							tabindex="-1"
+							onkeydown={onMoreMenuKey}
+							style:min-inline-size={moreMenu.width === null ? undefined : `${moreMenu.width}px`}
 							transition:settle={{ duration: 120 }}
 						>
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									void onOpenExternal();
-								}}
-								disabled={switchBusy || externalBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M14 5h5v5M19 5L10 14M5 9v10h10"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span>
-							</button>
+							{#if moreQualityOpen && moreQuality}
+								<!-- The levels replace the menu's contents, as in the in-player
+     menu: a back row naming the list, then the levels. -->
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item more-back"
+										role="menuitem"
+										onclick={closeMoreQuality}
+									>
+										<svg
+											class="more-icon more-flip"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M15 6l-6 6 6 6"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_quality_label()}</span>
+									</button>
+									<div
+										class="more-pane"
+										role="group"
+										aria-label={m.play_controls_menu_quality_label()}
+									>
+										{#each moreQuality.menu.items as item (item.key)}
+											<button
+												type="button"
+												class="more-item more-radio"
+												class:more-radio-on={item.checked}
+												role="menuitemradio"
+												aria-checked={item.checked}
+												onclick={() => pickMoreQuality(item.key)}
+											>
+												<span class="more-check" aria-hidden="true"
+													>{#if item.checked}✓{/if}</span
+												>
+												<span>{item.label}</span>
+											</button>
+										{/each}
+									</div>
+								</div>
+							{:else}
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											void onOpenExternal();
+										}}
+										disabled={switchBusy || externalBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M14 5h5v5M19 5L10 14M5 9v10h10"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span
+											>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span
+										>
+									</button>
 
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									onDownload();
-								}}
-								disabled={switchBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{m.play_controls_menu_download()}</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											onDownload();
+										}}
+										disabled={switchBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_download()}</span>
+									</button>
 
-							<!-- "Watch together" lives here in addition to the
+									<!-- "Watch together" lives here in addition to the
 							     in-player hamburger (pc-menu) because the
 							     hamburger is gated on use_custom_player_controls.
 							     When the user opts into Chromium's native
 							     controls the hamburger disappears, and the
 							     more-menu becomes the only reachable surface
 							     for Syncplay launches. -->
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								disabled={syncplayBusy}
-								onclick={() => {
-									closeMore();
-									void onSyncplay();
-								}}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<circle
-										cx="9"
-										cy="8"
-										r="3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M3 19c0-3 3-5 6-5s6 2 6 5"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-									<circle
-										cx="17"
-										cy="9"
-										r="2.4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-								</svg>
-								<span>
-									{syncplayBusy
-										? m.play_hamburger_syncplay_busy_label()
-										: m.play_hamburger_syncplay_label()}
-								</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										disabled={syncplayBusy}
+										onclick={() => {
+											closeMore();
+											void onSyncplay();
+										}}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<circle
+												cx="9"
+												cy="8"
+												r="3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M3 19c0-3 3-5 6-5s6 2 6 5"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+											<circle
+												cx="17"
+												cy="9"
+												r="2.4"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+										</svg>
+										<span>
+											{syncplayBusy
+												? m.play_hamburger_syncplay_busy_label()
+												: m.play_hamburger_syncplay_label()}
+										</span>
+									</button>
+									<!-- Quality, while the custom controls are off: the native
+     controls have no quality menu and the in-player one goes with
+     the custom bar. Last, so the actions above keep their places.
+     A stream of one level names it with nothing to open. -->
+									{#if moreQuality}
+										<button
+											type="button"
+											class="more-item more-row-value"
+											class:more-row-still={!moreQuality.choosable}
+											role="menuitem"
+											aria-haspopup={moreQuality.choosable ? 'menu' : undefined}
+											aria-disabled={moreQuality.choosable ? undefined : 'true'}
+											data-opens="quality"
+											onclick={openMoreQuality}
+										>
+											<svg
+												class="more-icon"
+												viewBox="0 0 24 24"
+												width="18"
+												height="18"
+												aria-hidden="true"
+											>
+												<path
+													d="M4 7h9m4 0h3M4 17h3m4 0h9"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+													stroke-linecap="round"
+												/>
+												<circle
+													cx="15"
+													cy="7"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+												<circle
+													cx="9"
+													cy="17"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+											</svg>
+											<span>{m.play_controls_menu_quality_label()}</span>
+											<span class="more-value">{moreQuality.menu.current}</span>
+											{#if moreQuality.choosable}
+												<svg
+													class="more-icon more-chev more-flip"
+													viewBox="0 0 24 24"
+													width="16"
+													height="16"
+													aria-hidden="true"
+												>
+													<path
+														d="M9 6l6 6-6 6"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2.25"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+													/>
+												</svg>
+											{/if}
+										</button>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -4430,6 +4725,62 @@
 	}
 	.more-icon {
 		flex-shrink: 0;
+	}
+	/* A pane is the menu's column; opening the levels swaps one pane
+	   for another, so the two never show at once. */
+	.more-pane {
+		display: flex;
+		flex-direction: column;
+	}
+	.more-row-value {
+		inline-size: 100%;
+	}
+	/* One level: the row names it, with nothing to open. */
+	.more-row-still {
+		cursor: default;
+	}
+	.more-item.more-row-still:hover:not(:disabled) {
+		background: transparent;
+	}
+	/* Heights line up down the list: tabular figures, so 1080p and
+	   720p share a column edge rather than wobbling with digit width. */
+	.more-value {
+		margin-inline-start: auto;
+		padding-inline-start: var(--space-3);
+		color: var(--bone-300);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.more-chev {
+		color: var(--bone-300);
+		margin-inline-start: calc(var(--space-1) * -1);
+	}
+	.more-back {
+		font-weight: 600;
+		border-block-end: 1px solid color-mix(in oklab, var(--accent) 20%, var(--bone-400));
+		border-end-start-radius: 0;
+		border-end-end-radius: 0;
+		margin-block-end: var(--space-1);
+	}
+	/* The check sits in the icon column, so the level names share one
+	   edge with the back row's label and the main list's. */
+	.more-radio {
+		font-variant-numeric: tabular-nums;
+	}
+	.more-radio-on {
+		background: color-mix(in oklab, var(--accent) 10%, transparent);
+	}
+	.more-check {
+		display: inline-flex;
+		justify-content: center;
+		inline-size: 18px;
+		flex-shrink: 0;
+		font-weight: 700;
+		color: var(--accent);
+	}
+	/* Chevrons point along the inline axis, so they turn round in RTL. */
+	:global([dir='rtl']) .more-flip {
+		transform: scaleX(-1);
 	}
 	.bars {
 		display: inline-flex;

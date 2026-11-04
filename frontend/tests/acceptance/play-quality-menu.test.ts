@@ -10,6 +10,14 @@
 // once and is what the row names afterwards. A stream of one level
 // shows its row too, naming that level, with the level as its one
 // entry and no Auto.
+//
+// With the app's custom controls off, Chromium's native controls have
+// no quality menu and the in-player one is gone, so the page's ⋯ menu
+// carries the same picker: a Quality row naming what plays, opening
+// the same levels, a pick reaching the engine the same way. A stream
+// of one level names its level there with nothing to open. With the
+// custom controls on, the in-player menu is the one picker and the ⋯
+// menu offers none.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -147,9 +155,11 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function useShowHandlers() {
+function useShowHandlers(customControls = true) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json({ ...appConfig(), use_custom_player_controls: customControls })
+		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
@@ -168,13 +178,14 @@ function useShowHandlers() {
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		// The backend answers with a list, empty when aniskip has none.
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 	);
 }
 
-async function mountHls(): Promise<FakeHlsT> {
-	useShowHandlers();
+async function mountHls(customControls = true): Promise<FakeHlsT> {
+	useShowHandlers(customControls);
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
@@ -186,6 +197,32 @@ async function mountHls(): Promise<FakeHlsT> {
 const label = (height: number) => m.play_quality_height({ height: String(height) });
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+// A key press starts at the element with focus and bubbles from there.
+const press = (key: string) =>
+	(document.activeElement ?? document.body).dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true })
+	);
+
+/** Presses `key` with modifiers where focus is; true when something
+ *  took it (prevented its default). */
+const pressWith = (key: string, mods: KeyboardEventInit) =>
+	!(document.activeElement ?? document.body).dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods })
+	);
+
+/** Gives the video a duration, at 100 s, and proves the player's seek
+ *  key moves it here: the page seeks only once it knows the duration,
+ *  so without this a press that reached the player could not show. */
+async function seekable(video: HTMLVideoElement) {
+	Object.defineProperty(video, 'duration', { configurable: true, value: 600 });
+	video.dispatchEvent(new Event('durationchange'));
+	await tick();
+	video.currentTime = 100;
+	document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+	await until(() => video.currentTime !== 100, 'the seek key to move the video');
+	video.currentTime = 100;
+}
 
 function menuButton(): HTMLButtonElement {
 	const button = target.querySelector<HTMLButtonElement>(
@@ -246,6 +283,154 @@ describe('play route — the quality the setting names, and the menu that change
 		await until(() => qualityRow() !== undefined, 'the quality row again');
 		expect(qualityRow()?.textContent).toContain(label(720));
 		expect(qualityRow()?.textContent).not.toContain(m.play_quality_auto());
+	});
+
+	it("moves through the player's menu with the arrow keys, which leave the player alone", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		const video = playerVideo();
+		video.volume = 0.5;
+		await seekable(video);
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		// Focus goes into the menu as it opens.
+		await until(() => document.activeElement === menuItems()[0], 'focus on the first item');
+		press('ArrowDown');
+		expect(document.activeElement).toBe(menuItems()[1]);
+		press('ArrowUp');
+		expect(document.activeElement).toBe(menuItems()[0]);
+		press('End');
+		expect(document.activeElement).toBe(menuItems()[menuItems().length - 1]);
+		// Each checked on its own: a Left and a Right that both seek
+		// would cancel out.
+		press('ArrowLeft');
+		expect(video.currentTime).toBe(100);
+		press('ArrowRight');
+		expect(video.currentTime).toBe(100);
+
+		// Right on a row that opens a list opens it, onto its back row;
+		// Left goes back onto the row. Quality, then Speed.
+		for (const name of [m.play_controls_menu_quality_label(), m.play_controls_menu_speed_label()]) {
+			const opener = () =>
+				menuItems().find(
+					(el) => el.getAttribute('aria-haspopup') === 'menu' && el.textContent?.includes(name)
+				);
+			opener()?.focus();
+			press('ArrowRight');
+			await until(
+				() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+				`the ${name} list`
+			);
+			await until(() => document.activeElement === menuItems()[0], `focus on the ${name} back row`);
+			press('ArrowRight');
+			expect(document.activeElement).toBe(menuItems()[0]);
+			expect(video.currentTime).toBe(100);
+			press('ArrowLeft');
+			await until(() => document.activeElement === opener(), `focus back on the ${name} row`);
+		}
+
+		// By the pointer as well: the row opens onto the back row, and the
+		// back row returns to the row.
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		await until(() => document.activeElement === menuItems()[0], 'focus on the back row');
+		menuItems()[0].click();
+		await until(
+			() => document.activeElement?.getAttribute('aria-haspopup') === 'menu',
+			'focus back on the quality row'
+		);
+		expect(document.activeElement?.textContent).toContain(m.play_controls_menu_quality_label());
+
+		expect(video.volume).toBe(0.5);
+		expect(video.currentTime).toBe(100);
+	});
+
+	it("keeps focus in the player's menu when the stream retires under its levels", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the next engine');
+		await until(
+			() => !menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the main list'
+		);
+		await until(() => {
+			const el = document.activeElement;
+			return el instanceof HTMLButtonElement && menuItems().includes(el) && !el.disabled;
+		}, 'focus on an enabled item of the menu');
+	});
+
+	it("leaves the player's Quality list when its menu has nothing left to show, the stream still attached", async () => {
+		// A lone level nothing names has no menu (`qualityMenu` is null)
+		// while the stream's view is still there: the list closes, and
+		// the menu is as if it had never been opened — focus in it, and
+		// Right on Speed opens Speed.
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [{ height: 0, width: 0, bitrate: 0 }] });
+		await until(
+			() => !menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the main list'
+		);
+		await until(() => {
+			const el = document.activeElement;
+			return el instanceof HTMLButtonElement && menuItems().includes(el) && !el.disabled;
+		}, 'focus on an enabled item of the menu');
+		const speed = () =>
+			menuItems().find(
+				(el) =>
+					el.getAttribute('aria-haspopup') === 'menu' &&
+					el.textContent?.includes(m.play_controls_menu_speed_label())
+			);
+		speed()?.focus();
+		press('ArrowRight');
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the speeds'
+		);
+	});
+
+	it("leaves modified arrows to the browser in the player's menu", async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		menuButton().click();
+		await until(() => document.activeElement === menuItems()[0], 'focus on the first item');
+		const first = document.activeElement;
+		expect(pressWith('ArrowDown', { altKey: true })).toBe(false);
+		expect(document.activeElement).toBe(first);
+		const opener = menuItems().find(
+			(el) =>
+				el.getAttribute('aria-haspopup') === 'menu' &&
+				el.textContent?.includes(m.play_controls_menu_quality_label())
+		);
+		opener?.focus();
+		for (const mod of ['altKey', 'ctrlKey', 'metaKey'] as const) {
+			expect(pressWith('ArrowRight', { [mod]: true })).toBe(false);
+		}
+		await tick();
+		expect(menuItems().some((el) => el.getAttribute('role') === 'menuitemradio')).toBe(false);
+		expect(document.activeElement).toBe(opener);
 	});
 
 	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
@@ -369,5 +554,286 @@ describe('play route — the quality the setting names, and the menu that change
 		menuButton().click();
 		await until(() => qualityRow() !== undefined, 'the quality row');
 		expect(qualityRow()?.textContent).toContain(label(1080));
+	});
+});
+
+function moreButton(): HTMLButtonElement {
+	const button = target.querySelector<HTMLButtonElement>(
+		`button[aria-label="${m.play_more_aria_label()}"]`
+	);
+	if (!button) throw new Error('no more button');
+	return button;
+}
+
+function moreItems(): HTMLElement[] {
+	return [...target.querySelectorAll<HTMLElement>('#np-more-menu [role^="menuitem"]')];
+}
+
+function moreQualityRow(): HTMLElement | undefined {
+	return moreItems().find(
+		(el) =>
+			el.getAttribute('role') === 'menuitem' &&
+			el.textContent?.includes(m.play_controls_menu_quality_label())
+	);
+}
+
+function moreRadios(): HTMLElement[] {
+	return moreItems().filter((el) => el.getAttribute('role') === 'menuitemradio');
+}
+
+const names = (els: HTMLElement[]) => els.map((el) => el.textContent?.replace('✓', '').trim());
+
+// A key press starts at the element with focus and bubbles from there.
+const escape = () =>
+	(document.activeElement ?? document.body).dispatchEvent(
+		new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+	);
+
+/** Native controls, a master of three levels playing its highest. */
+async function nativeMaster(): Promise<FakeHlsT> {
+	const hls = await mountHls(false);
+	hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+	await until(() => hls.starts === 1, 'the engine to start');
+	hls.emit(EVENTS.FRAG_CHANGED, { frag: { type: 'main', level: 2 } });
+	await tick();
+	return hls;
+}
+
+describe("play route — the ⋯ menu's quality picker, with the custom controls off", () => {
+	it('lists the levels, applies a pick, and names it afterwards', async () => {
+		const hls = await nativeMaster();
+		// The in-player menu goes with the custom controls.
+		expect(target.querySelector(`button[aria-label="${m.play_controls_menu_aria_label()}"]`)).toBe(
+			null
+		);
+
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		const row = moreQualityRow();
+		expect(row?.textContent).toContain(m.play_quality_auto_playing({ quality: label(1080) }));
+		expect(row?.getAttribute('aria-haspopup')).toBe('menu');
+
+		row?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		expect(names(moreRadios())).toEqual([
+			m.play_quality_auto(),
+			label(1080),
+			label(720),
+			label(360)
+		]);
+		expect(moreRadios().map((el) => el.getAttribute('aria-checked'))).toEqual([
+			'true',
+			'false',
+			'false',
+			'false'
+		]);
+		// The list's actions are gone, and focus is on the list's first
+		// row, which names it, rather than lost with the row clicked.
+		expect(
+			moreItems().some((el) => el.textContent?.includes(m.play_controls_menu_download()))
+		).toBe(false);
+		await until(
+			() => moreItems()[0] !== undefined && document.activeElement === moreItems()[0],
+			'focus on the list'
+		);
+		expect(moreItems()[0].textContent).toContain(m.play_controls_menu_quality_label());
+
+		moreRadios()[2].click();
+		expect(hls.nexts).toEqual([1]);
+		await until(() => target.querySelector('#np-more-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(moreButton());
+
+		// It reopens on its main list, the row naming the pin.
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row again');
+		expect(moreRadios()).toEqual([]);
+		expect(moreQualityRow()?.textContent).toContain(label(720));
+		expect(moreQualityRow()?.textContent).not.toContain(m.play_quality_auto());
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels again');
+		expect(moreRadios().map((el) => el.getAttribute('aria-checked'))).toEqual([
+			'false',
+			'false',
+			'true',
+			'false'
+		]);
+	});
+
+	it('goes back to the main list from the levels, by the back row and by Escape', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+
+		// The back row: the main list, focus on the row that opened it.
+		moreItems()[0].click();
+		await until(() => moreRadios().length === 0, 'the main list');
+		await until(() => document.activeElement === moreQualityRow(), 'focus on the quality row');
+
+		// Escape in the levels goes back one step; on the main list it
+		// closes the menu and hands focus to its button.
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels again');
+		escape();
+		await until(() => moreRadios().length === 0, 'the main list after Escape');
+		expect(target.querySelector('#np-more-menu')).not.toBe(null);
+		await until(
+			() => document.activeElement === moreQualityRow(),
+			'focus on the quality row after Escape'
+		);
+		escape();
+		await until(() => target.querySelector('#np-more-menu') === null, 'the menu to close');
+		expect(document.activeElement).toBe(moreButton());
+	});
+
+	it('moves through the menu with the arrow keys, which leave the player alone', async () => {
+		await nativeMaster();
+		const video = playerVideo();
+		video.volume = 0.5;
+		await seekable(video);
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		await until(() => document.activeElement === moreItems()[0], 'focus on the list');
+
+		const focused = () => document.activeElement?.textContent?.replace('✓', '').trim();
+		// Back row, Auto, then the levels, wrapping at the ends.
+		press('ArrowDown');
+		expect(focused()).toBe(m.play_quality_auto());
+		press('ArrowDown');
+		expect(focused()).toBe(label(1080));
+		press('End');
+		expect(focused()).toBe(label(360));
+		press('ArrowDown');
+		expect(focused()).toBe(m.play_controls_menu_quality_label());
+		press('ArrowUp');
+		expect(focused()).toBe(label(360));
+		press('Home');
+		expect(focused()).toBe(m.play_controls_menu_quality_label());
+
+		// Left goes back to the main list, onto the Quality row; Right
+		// there opens the levels again; anywhere else the horizontal
+		// arrows stay in the menu rather than seek.
+		press('ArrowLeft');
+		await until(() => moreRadios().length === 0, 'the main list');
+		await until(() => document.activeElement === moreQualityRow(), 'focus on the quality row');
+		press('ArrowRight');
+		await until(() => moreRadios().length > 0, 'the levels again');
+		await until(() => document.activeElement === moreItems()[0], 'focus on the back row');
+		press('ArrowDown');
+		press('ArrowRight');
+		expect(focused()).toBe(m.play_quality_auto());
+		expect(video.currentTime).toBe(100);
+		expect(moreRadios().length).toBeGreaterThan(0);
+		expect(video.volume).toBe(0.5);
+		expect(video.currentTime).toBe(100);
+	});
+
+	it('moves focus into the menu as it opens', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreItems().length > 0, 'the more menu');
+		const first = moreItems().find((el) => !(el as HTMLButtonElement).disabled);
+		await until(() => document.activeElement === first, 'focus on the first enabled item');
+	});
+
+	it('drops back to the main list when a mid-drill update leaves one level', async () => {
+		const hls = await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[2]] });
+		await until(() => moreRadios().length === 0, 'the main list');
+		await until(
+			() => moreQualityRow()?.getAttribute('aria-disabled') === 'true',
+			'the row with nothing to open'
+		);
+		await until(
+			() =>
+				document.activeElement instanceof HTMLElement &&
+				moreItems().includes(document.activeElement),
+			'focus in the main list'
+		);
+	});
+
+	it('drops back to the main list when the stream retires under the open levels', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+
+		// Another session attaches: the levels retire with the old one.
+		// Focus goes to the main list's first item a switch has not
+		// disabled, staying in the menu, where the arrows move it.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the next engine');
+		await until(() => moreRadios().length === 0, 'the main list');
+		expect(target.querySelector('#np-more-menu')).not.toBe(null);
+		await until(() => {
+			const el = document.activeElement;
+			return (
+				el instanceof HTMLButtonElement &&
+				moreItems().includes(el) &&
+				!el.disabled &&
+				el.getAttribute('role') === 'menuitem'
+			);
+		}, 'focus on an enabled item of the main list');
+	});
+
+	it('leaves modified arrows to the browser: Alt+ArrowLeft in the levels does not go back', async () => {
+		await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		await until(() => document.activeElement === moreItems()[0], 'focus on the back row');
+		const back = document.activeElement;
+		for (const mod of ['altKey', 'ctrlKey', 'metaKey'] as const) {
+			expect(pressWith('ArrowLeft', { [mod]: true })).toBe(false);
+			expect(pressWith('ArrowDown', { [mod]: true })).toBe(false);
+		}
+		await tick();
+		expect(moreRadios().length).toBeGreaterThan(0);
+		expect(document.activeElement).toBe(back);
+	});
+
+	it('names the one level of a single-level stream, with nothing to open', async () => {
+		const hls = await mountHls(false);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[2]] });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await tick();
+
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		const row = moreQualityRow();
+		expect(row?.textContent).toContain(label(1080));
+		expect(row?.textContent).not.toContain(m.play_quality_auto());
+		expect(row?.getAttribute('aria-disabled')).toBe('true');
+		expect(row?.hasAttribute('aria-haspopup')).toBe(false);
+
+		row?.click();
+		await tick();
+		expect(moreRadios()).toEqual([]);
+		expect(target.querySelector('#np-more-menu')).not.toBe(null);
+		expect(hls.nexts).toEqual([]);
+		expect(hls.loads).toEqual([]);
+	});
+
+	it('offers no quality row while the custom controls carry the picker', async () => {
+		const hls = await mountHls(true);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await tick();
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the in-player quality row');
+		menuButton().click();
+
+		moreButton().click();
+		await until(() => moreItems().length > 0, 'the more menu');
+		expect(moreQualityRow()).toBeUndefined();
 	});
 });

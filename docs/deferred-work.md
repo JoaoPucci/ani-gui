@@ -591,15 +591,27 @@ starting it, and delete it when you find it done.
   and Chromium's native ones, which Settings swaps in when "Custom
   player controls" (`use_custom_player_controls`, on by default) is
   turned off. Every player feature has to work through
-  both, so it is built twice. The per-show subtitle memory is the
-  latest case: a pick in the app's captions menu is recorded as it
+  both, so it is built twice. The per-show subtitle memory is one
+  case: a pick in the app's captions menu is recorded as it
   is made, while a pick in the browser's menu has to be inferred from
-  the video's text-track changes.
+  the video's text-track changes. The quality picker is another: the
+  native bar has none, so with it the picker is in the page's ⋯ menu,
+  as Watch together is.
 
   Investigate choosing one. Before deciding, measure what the native
   path still offers that the custom one does not — the setting's own
   hint names picture-in-picture and the native captions menu — and
   decide from that.
+- **Arrow keys in the app's other menus.** The play page's three
+  menus (the ⋯ menu, the in-player menu and the captions menu) move
+  focus between their items with the arrow keys, Home and End. The
+  other `role="menu"` popovers do not: the account chip's, the
+  download dock's, and the Continue card's on Home. A screen reader
+  announces each one as a menu, which promises those keys. The
+  download dock can be open over the play page, where the arrows reach
+  the player's volume and seek keys instead. `menuKeyStep`
+  (`$lib/play/caption-menu-fit`) is the step the play page's menus
+  use.
 - **The starting captions on a playlist-only stream.** The app
   applies a session's starting captions — the language last picked on
   the show (Off included), else the app's language — only where the

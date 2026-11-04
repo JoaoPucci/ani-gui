@@ -122,7 +122,8 @@ function handlers() {
 			HttpResponse.json({ available: true, episode_count: 12, extra_episodes: [] })
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		// The backend answers with a list, empty when aniskip has none.
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/s/:session/subtitles`, ({ params }) =>
 			HttpResponse.json(LISTING(String(params.session)))
 		)
@@ -465,5 +466,69 @@ describe('the captions menu with many languages', () => {
 		press('Home');
 		expect(focused()).toBe('Off');
 		expect(video.volume).toBe(0.5);
+	});
+
+	it('reads Shift+arrows as arrows: they step through the menu, not the volume', async () => {
+		handlers();
+		const video = await mountAt('many-1', '1', MANY.length);
+		video.volume = 0.5;
+		await openMenu();
+		const focused = () =>
+			(document.activeElement?.textContent ?? '').replace('✓', '').replace(/\s+/g, ' ').trim();
+		expect(focused()).toBe('English');
+		const taken = !document.activeElement?.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowDown',
+				bubbles: true,
+				cancelable: true,
+				shiftKey: true
+			})
+		);
+		expect(taken).toBe(true);
+		expect(focused()).toBe('Arabic');
+		expect(video.volume).toBe(0.5);
+	});
+
+	it('leaves modified arrows to the browser', async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		await openMenu();
+		const before = document.activeElement;
+		for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'End']) {
+			for (const mod of ['altKey', 'ctrlKey', 'metaKey'] as const) {
+				const taken = !document.activeElement?.dispatchEvent(
+					new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, [mod]: true })
+				);
+				expect(taken).toBe(false);
+				expect(document.activeElement).toBe(before);
+			}
+		}
+	});
+
+	it('keeps the horizontal arrows in the menu, rather than seeking', async () => {
+		handlers();
+		const video = await mountAt('many-1', '1', MANY.length);
+		// The page seeks only once it knows the duration; the seek key is
+		// shown to move the video first, so a press that reached the
+		// player would show.
+		Object.defineProperty(video, 'duration', { configurable: true, value: 600 });
+		video.dispatchEvent(new Event('durationchange'));
+		await new Promise((r) => setTimeout(r, 0));
+		video.currentTime = 100;
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		await until(() => video.currentTime !== 100, 'the seek key to move the video');
+		video.currentTime = 100;
+
+		await openMenu();
+		const before = document.activeElement;
+		// Each checked on its own: a Left and a Right that both seek
+		// would cancel out.
+		for (const key of ['ArrowLeft', 'ArrowRight']) {
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+			);
+			expect(document.activeElement).toBe(before);
+			expect(video.currentTime).toBe(100);
+		}
 	});
 });
