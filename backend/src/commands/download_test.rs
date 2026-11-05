@@ -1035,6 +1035,7 @@ fn download_args_alt_titles_accepts_newline_joined_string_for_sse_query_path() {
 #[test]
 fn resolve_dest_prefers_explicit_args_over_paths_helper() {
     let a = DownloadArgs {
+        locale: None,
         title: "x".into(),
         episode: "1".into(),
         mode: "sub".into(),

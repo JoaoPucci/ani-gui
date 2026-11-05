@@ -98,7 +98,9 @@ async fn a_cached_track_whose_get_is_not_a_track_is_a_dead_row() {
     .await;
     let state = state_with_proxy_origin();
     assert!(
-        try_serve_cached(&state, &cached, None).await.is_none(),
+        try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_none(),
         "a track that does not read as a track is a dead row"
     );
     let gets: Vec<String> = server
@@ -125,7 +127,9 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
     .await;
     let state = state_with_proxy_origin();
     assert!(
-        try_serve_cached(&state, &cached, None).await.is_some(),
+        try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_some(),
         "a track that reads as a track is live"
     );
 }
@@ -146,7 +150,9 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     // would top the second up by that moment: a budget that does not
     // refill counts the requests alone.
     state.host_budget = crate::proxy::host_budget::HostBudget::fresh_without_refill();
-    assert!(try_serve_cached(&state, &cached, None).await.is_some());
+    assert!(try_serve_cached(&state, &cached, Default::default())
+        .await
+        .is_some());
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
     let left = state.host_budget.on_hand(&host).expect("spent");
@@ -185,7 +191,9 @@ async fn a_cached_rows_check_is_spent_at_every_host_a_redirect_reaches() {
     // The app's own client for stream traffic, which follows no
     // redirect on its own.
     state.proxy_http = crate::proxy::upstream::build_client().expect("client");
-    assert!(try_serve_cached(&state, &cached, None).await.is_some());
+    assert!(try_serve_cached(&state, &cached, Default::default())
+        .await
+        .is_some());
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
     for server in [&origin, &edge] {
         let host =
@@ -236,7 +244,9 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
         MediaKind::Mp4,
     );
     assert!(
-        try_serve_cached(&state, &landed, None).await.is_some(),
+        try_serve_cached(&state, &landed, Default::default())
+            .await
+            .is_some(),
         "the referer reached the edge"
     );
     let looping = cached_walked(
@@ -245,7 +255,9 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
         MediaKind::Mp4,
     );
     assert!(
-        try_serve_cached(&state, &looping, None).await.is_none(),
+        try_serve_cached(&state, &looping, Default::default())
+            .await
+            .is_none(),
         "a loop is a dead row"
     );
 }
@@ -282,7 +294,7 @@ async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
         &state,
         &cached,
         std::time::Duration::from_millis(300),
-        None,
+        Default::default(),
     )
     .await;
     assert!(!live, "nothing reached the host before the deadline");
@@ -338,7 +350,7 @@ async fn a_cached_rows_check_never_queues_ahead_of_a_playing_players_segment() {
                 &state,
                 &cached,
                 std::time::Duration::from_secs(10),
-                None,
+                Default::default(),
             )
             .await
         })
@@ -387,9 +399,13 @@ async fn a_cached_rows_check_is_served_beside_background_downloads() {
     })
     .await;
     // Its two tokens come at a refill and two; room for a slow runner.
-    let live =
-        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8), None)
-            .await;
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Default::default(),
+    )
+    .await;
     download.abort();
     assert!(live, "served ahead of the downloads within the deadline");
 }
@@ -906,7 +922,9 @@ async fn a_cached_row_no_walked_provider_resolved_is_not_replayed() {
         let _cdn = row_redirecting_elsewhere(&state, &args, show_id).await;
         let cached = row_of(&state, &args).expect("seeded");
         assert!(
-            try_serve_cached(&state, &cached, None).await.is_none(),
+            try_serve_cached(&state, &cached, Default::default())
+                .await
+                .is_none(),
             "{show_id:?}: the embedded player is not handed the row"
         );
         let cfg = crate::config::Config {
@@ -935,7 +953,9 @@ async fn the_walked_providers_row_still_replays() {
     let args = cached_args();
     let _cdn = row_redirecting_elsewhere(&state, &args, "hianime:the-show-77").await;
     let cached = row_of(&state, &args).expect("seeded");
-    assert!(try_serve_cached(&state, &cached, None).await.is_some());
+    assert!(try_serve_cached(&state, &cached, Default::default())
+        .await
+        .is_some());
 }
 
 // ── the replay's stamp names the version that served ───────────────
@@ -1264,9 +1284,13 @@ async fn a_cached_rows_check_reads_only_the_most_wanted_tracks() {
         })
         .collect();
     let state = state_with_proxy_origin();
-    let live =
-        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8), None)
-            .await;
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Default::default(),
+    )
+    .await;
     let reads = server
         .received_requests()
         .await
@@ -1320,9 +1344,13 @@ async fn a_cached_rows_check_reads_the_users_language() {
     let mut state = state_with_proxy_origin();
     state.config_path = td.path().join("config.toml");
     std::fs::write(&state.config_path, "locale = \"pt-BR\"\n").expect("config");
-    let live =
-        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8), None)
-            .await;
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Default::default(),
+    )
+    .await;
     assert!(!live, "the user's track is gone, so the row is not served");
 }
 
@@ -1368,7 +1396,10 @@ async fn a_cached_rows_check_reads_the_shows_remembered_language() {
         &state,
         &cached,
         std::time::Duration::from_secs(8),
-        Some("es-419"),
+        super::Viewer {
+            remembered: Some("es-419"),
+            ..Default::default()
+        },
     )
     .await;
     assert!(!live, "the show's track is gone, so the row is not served");

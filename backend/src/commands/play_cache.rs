@@ -104,6 +104,15 @@ pub(crate) async fn row_before_check(
     .await
 }
 
+/// Whom a cached row's check reads tracks for: the show's remembered
+/// captions choice (a BCP 47 tag, or `off`) and the locale the
+/// renderer runs in, each `None` when the request names none.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Viewer<'a> {
+    pub(crate) remembered: Option<&'a str>,
+    pub(crate) locale: Option<&'a str>,
+}
+
 /// How long a cached row may take to prove itself live. The row is
 /// a shortcut past a fresh resolve, whose first request answers in
 /// a few seconds; a shortcut that takes longer than that is no
@@ -133,10 +142,10 @@ pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
 pub(crate) async fn cached_row_is_live(
     state: &AppState,
     cached: &CachedResolution,
-    remembered: Option<&str>,
+    viewer: Viewer<'_>,
 ) -> bool {
     cached_row_is_walked(state, cached)
-        && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE, remembered).await
+        && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE, viewer).await
 }
 
 /// Whether a cached row was resolved through a provider the state
@@ -157,7 +166,7 @@ pub(crate) async fn cached_row_is_live_within(
     state: &AppState,
     cached: &CachedResolution,
     deadline: std::time::Duration,
-    remembered: Option<&str>,
+    viewer: Viewer<'_>,
 ) -> bool {
     let Ok(stream_url) = url::Url::parse(&cached.upstream_url) else {
         return false;
@@ -175,14 +184,15 @@ pub(crate) async fn cached_row_is_live_within(
     // whose stream and wanted tracks are fine. A listing's tracks sit
     // together on one host and expire with it, so the ones read stand
     // for the rest.
-    let locale = crate::config::read_config(&state.config_path)
+    let configured = crate::config::read_config(&state.config_path)
         .unwrap_or_default()
         .locale;
+    let locale = viewer.locale.unwrap_or(&configured);
     let track_urls: Vec<url::Url> = crate::scraper::track_preference::preferred_first(
         &cached.subtitles,
         crate::scraper::track_preference::Wanted {
-            remembered: remembered.filter(|c| *c != "off"),
-            locale: &locale,
+            remembered: viewer.remembered.filter(|c| *c != "off"),
+            locale,
         },
     )
     .into_iter()
@@ -220,9 +230,9 @@ pub(crate) async fn cached_row_is_live_within(
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
-    remembered: Option<&str>,
+    viewer: Viewer<'_>,
 ) -> Option<CreateSessionResponse> {
-    if !cached_row_is_live(state, cached, remembered).await {
+    if !cached_row_is_live(state, cached, viewer).await {
         return None;
     }
     let session_args = CreateSessionArgs {
@@ -272,7 +282,7 @@ pub(crate) async fn try_launch_args_from_cache(
     // Captured before the check goes out, like a fresh resolve's
     // answer: a refresh landing during the check owns the row.
     let at_start = row_before_check(state, args).await;
-    if !cached_row_is_live(state, &cached, args.caption.as_deref()).await {
+    if !cached_row_is_live(state, &cached, args.viewer()).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(
             title = %args.title,
@@ -350,3 +360,7 @@ mod tests;
 #[cfg(test)]
 #[path = "play_cache_replay_prop_test.rs"]
 mod replay_prop_tests;
+
+#[cfg(test)]
+#[path = "play_ui_locale_test.rs"]
+mod ui_locale_tests;

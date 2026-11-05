@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 19fc0e9802e7f3003ae6b9cff90481958e509090082f9f1255d3adcc20579e72 # shrinks to tracks = [SubtitleTrack { lang: "zh-Hant", label: "zh-Hant", default: false, url: "https://cdn.example/subs/0.vtt" }, SubtitleTrack { lang: "es-419", label: "es-419", default: true, url: "https://cdn.example/subs/1.vtt" }], locale = "zhO-", remembered = None

@@ -77,6 +77,7 @@ fn cached() -> CachedResolution {
 
 fn args() -> PlayArgs {
     PlayArgs {
+        locale: None,
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),

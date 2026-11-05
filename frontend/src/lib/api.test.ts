@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
+import { getLocale } from '$lib/paraglide/runtime';
 import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -293,11 +294,13 @@ describe('play', () => {
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play`);
 		expect(init?.method).toBe('POST');
+		// The body names the renderer's locale too (`api-locale.test.ts`).
 		expect(JSON.parse(init?.body as string)).toEqual({
 			title: 'Cowboy Bebop',
 			episode: '5',
 			mode: 'sub',
-			quality: 'best'
+			quality: 'best',
+			locale: getLocale()
 		});
 	});
 });
@@ -492,7 +495,7 @@ describe('playStream', () => {
 		const es = FakeEventSource.instances[0];
 		expect(es).toBeTruthy();
 		expect(es.url).toBe(
-			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&quality=best&episode_count=1100`
+			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&quality=best&episode_count=1100&locale=${getLocale()}`
 		);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
@@ -616,7 +619,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub`);
+		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub&locale=${getLocale()}`);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 	});
