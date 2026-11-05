@@ -6,7 +6,8 @@
  * that lists thirty-odd languages it ran past the top of the player
  * and under the app's top bar, so its height is capped at the room
  * between the player's top edge — or the top bar, where the page has
- * scrolled the player under it — and the button, and the menu
+ * scrolled the player under it — and the button, and at half the
+ * player's height, so it never covers most of the picture; the menu
  * scrolls.
  * The play page measures the two edges when the menu opens and on
  * every resize while it is open, and hands them here.
@@ -27,21 +28,25 @@ export interface MenuRoom {
 	ceiling?: number;
 	/** The least height the menu keeps, however little room there is. */
 	floor?: number;
+	/** The player's height, which bounds the menu's. */
+	frameHeight?: number;
 }
 
 /** The menu's greatest height, in whole pixels: the room below the
- *  player's top edge, or the top bar where that covers it, and never
- *  less than `floor`. */
+ *  player's top edge, or the top bar where that covers it, at most
+ *  half the player's height, and never less than `floor`. */
 export function menuHeight({
 	frameTop,
 	anchorTop,
 	gap,
 	margin,
 	ceiling = -Infinity,
-	floor = 0
+	floor = 0,
+	frameHeight = Infinity
 }: MenuRoom): number {
 	const top = Math.max(frameTop, ceiling);
-	return Math.max(floor, Math.floor(anchorTop - gap - top - margin));
+	const room = Math.min(anchorTop - gap - top - margin, frameHeight / 2);
+	return Math.max(floor, Math.floor(room));
 }
 
 /** A scroll position and an entry's place, in the menu's own pixels. */

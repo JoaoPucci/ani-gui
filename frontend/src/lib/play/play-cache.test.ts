@@ -66,6 +66,21 @@ describe('makeKey', () => {
 		expect(makeKey('show-1', 1, 'sub', 'best', 'standard', 'hianime:show-1')).not.toBe(guessed);
 	});
 
+	it('keeps a session warmed for one captions choice from serving another', () => {
+		// The backend keeps the tracks a listing past its cap has room
+		// for by the choice: a session cut for one need not carry the
+		// language another names.
+		const plain = makeKey('show-1', 1, 'sub', 'best');
+		const vi = makeKey('show-1', 1, 'sub', 'best', undefined, undefined, 'vi');
+		expect(vi).not.toBe(plain);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, undefined, 'es-419')).not.toBe(vi);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, undefined, 'off')).not.toBe(vi);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, undefined, 'vi')).toBe(vi);
+		expect(makeKey('show-1', 1, 'sub', 'best', 'standard', 'hianime:show-1', 'vi')).not.toBe(
+			makeKey('show-1', 1, 'sub', 'best', 'standard', 'hianime:show-1', 'es-419')
+		);
+	});
+
 	it("still lets clearForShow release every version's entries", async () => {
 		const signals: AbortSignal[] = [];
 		const hold = (_emit: unknown, signal: AbortSignal) => {
@@ -616,6 +631,26 @@ describe('clearBackgroundForOtherVersions', () => {
 		clearBackgroundForOtherVersions('show-1', undefined);
 		expect(unversioned.seen.signal?.aborted).toBe(false);
 		expect(standard.seen.signal?.aborted).toBe(true);
+	});
+
+	it('sweeps warms named for a captions choice by their version too', async () => {
+		// The choice goes before the version, which stays the key's last
+		// axis.
+		const standard = heldFire();
+		const uncensored = heldFire();
+		const a = getOrFire(
+			makeKey('show-1', 1, 'sub', 'best', 'standard', undefined, 'vi'),
+			standard.fire
+		);
+		const b = getOrFire(
+			makeKey('show-1', 2, 'sub', 'best', 'uncensored', undefined, 'vi'),
+			uncensored.fire
+		);
+		for (const p of [a, b]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', 'standard');
+		expect(standard.seen.signal?.aborted).toBe(false);
+		expect(uncensored.seen.signal?.aborted).toBe(true);
 	});
 
 	it("sweeps a guessed card's warms by their version too", async () => {

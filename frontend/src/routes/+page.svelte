@@ -871,12 +871,14 @@
 				count: r?.episode_count ?? null,
 				approximate: r?.episode_count_approximate === true
 			})),
-		resolvePlay: (a, onProgress) =>
-			getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id), a.row),
-				(emit, signal) => playStream(playArgsFor(a), emit, signal),
+		resolvePlay: (a, onProgress) => {
+			const args = playArgsFor(a);
+			return getOrFire(
+				makeKey(a.match.id, a.episode, a.mode, a.quality, args.version, a.row, args.caption),
+				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
-			),
+			);
+		},
 		markWatched: (a) => markWatched(playArgsFor(a)),
 		// Completion is decided against the FULL finite series total
 		// (mode-independent), NOT the dub/sub playable cap, and only

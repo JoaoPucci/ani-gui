@@ -76,7 +76,8 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import { captionChoiceOf, rememberCaption, storedCaption } from '$lib/play/caption-choice';
+	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
+	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
@@ -100,7 +101,7 @@
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
-	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
@@ -541,17 +542,19 @@
 	}
 
 	/** The captions menu, as it mounts: capped at the room above the
-	 *  captions button inside the player and below the app's top bar —
-	 *  again on every resize while it is open — and opened on the
-	 *  selected entry. */
+	 *  captions button inside the player and below the app's top bar,
+	 *  and at half the player's height — again on every resize while it
+	 *  is open — and opened on the selected entry. */
 	function fitCcMenu(menu: HTMLElement) {
 		const fit = () => {
 			const frame = ccMenuAnchor?.closest('.player-frame');
 			if (!ccMenuAnchor || !frame) return;
 			// In fullscreen the player covers the top bar.
 			const topbar = document.fullscreenElement ? null : document.querySelector('.topbar');
+			const frameBox = frame.getBoundingClientRect();
 			const height = menuHeight({
-				frameTop: frame.getBoundingClientRect().top,
+				frameTop: frameBox.top,
+				frameHeight: frameBox.height,
 				ceiling: topbar?.getBoundingClientRect().bottom,
 				anchorTop: ccMenuAnchor.getBoundingClientRect().top,
 				gap: 8, // the menu's 0.5rem offset above the button
@@ -591,7 +594,22 @@
 		const pick = noteCaptionChange(video, video.textTracks);
 		if (pick === null) return;
 		const choice = captionChoiceOf(video.textTracks, pick);
-		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+		if (choice !== undefined) rememberPick(choice);
+	}
+
+	/** Captions picks on this page that moved the show's remembered
+	 *  choice. The page's warms read the choice, so each such pick runs
+	 *  them again. */
+	let captionPicks = $state(0);
+
+	/** Remember a captions pick for the show — under its id, unless the
+	 *  session was opened from a guessed match — and, when it moved the
+	 *  choice, drop the show's running warms and warm again
+	 *  ($lib/play/caption-repick). */
+	function rememberPick(choice: string) {
+		if (!rememberPickMoved(recordableId(id, fromGuess) ?? '', choice)) return;
+		clearBackgroundForShow(id);
+		captionPicks += 1;
 	}
 
 	/** The UI locale, which the subtitle track a session starts on
@@ -612,10 +630,8 @@
 		if (!videoEl) return;
 		applyCaptionPick(videoEl.textTracks, target);
 		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
-		// Under the show's id, unless the session was opened from a
-		// guessed match, which records nothing under the guess.
 		const choice = captionChoiceOf(videoEl.textTracks, target);
-		if (choice !== undefined) rememberCaption(recordableId(id, fromGuess) ?? '', choice);
+		if (choice !== undefined) rememberPick(choice);
 	}
 
 	function setVolume(v: number) {
@@ -2159,6 +2175,8 @@
 	// Widening the radius here changes how many are queued, not how
 	// many are in flight.
 	$effect(() => {
+		// A captions pick names another choice: warm again for it.
+		void captionPicks;
 		if (!detail || !config || !episodes) return;
 		// Wait for the airing answer — warming on mount with airing
 		// still in flight would resolve greyed-out future episodes.
@@ -2198,13 +2216,14 @@
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
 				version,
+				caption: storedCaption(id),
 				// The click may take this warm's session: it answers for the
 				// guessed card's row as the click would.
 				guessRow: guessRow(fromGuess, fromRow),
 				guessId: guessedId(fromGuess, id)
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, quality, version, args.guess_row),
+				makeKey(id, targetEp, mode, quality, version, args.guess_row, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2288,7 +2307,15 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality, version, playArgs.guess_row),
+						makeKey(
+							owner.showId,
+							targetEp,
+							mode,
+							quality,
+							version,
+							playArgs.guess_row,
+							playArgs.caption
+						),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2443,7 +2470,9 @@
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
-			// names the one the failing session was resolved for.
+			// names the one the failing session was resolved for. It
+			// describes the play as every other request does, the captions
+			// choice included, though the cache key does not read it.
 			await evictPlayCache(
 				playArgsFor({
 					title,
@@ -2452,7 +2481,8 @@
 					quality,
 					show: detail,
 					kitsuId: undefined,
-					version: storedChoice(id)
+					version: storedChoice(id),
+					caption: storedCaption(id)
 				})
 			);
 		} catch {
@@ -2771,7 +2801,8 @@
 			mode,
 			quality,
 			kitsuId: id,
-			version: storedChoice(id)
+			version: storedChoice(id),
+			caption: storedCaption(id)
 		});
 		downloadModalOpen = true;
 	}

@@ -920,6 +920,10 @@ export interface DownloadArgs {
 	download_dir?: string;
 	/** Which version to download — {@link PlayArgs.version}. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show —
+	 *  {@link PlayArgs.caption} — which decides the subtitle tracks a
+	 *  listing past the backend's cap keeps. */
+	caption?: string;
 }
 
 /** SSE progress event body — one line of the download's progress
@@ -966,6 +970,7 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
+	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>

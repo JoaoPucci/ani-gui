@@ -1373,3 +1373,29 @@ async fn a_cached_rows_check_reads_the_shows_remembered_language() {
     .await;
     assert!(!live, "the show's track is gone, so the row is not served");
 }
+
+/// A row as long as the track cap may hold a cut listing, and the row
+/// does not say what the cut kept the tracks for: the show's
+/// remembered language, or the locale, of the play that wrote it. A
+/// later play remembering another language could be handed a listing
+/// that dropped it, so such a row is not replayed — the play resolves
+/// afresh and its own cut keeps its own choice. A row under the cap
+/// holds the whole listing, and is.
+#[tokio::test]
+async fn a_row_as_long_as_the_track_cap_is_not_replayed() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let server = MockServer::start().await;
+    let state = state_with_proxy_origin();
+    let whole = row_with_tracks(&server, SUBTITLE_TRACK_CAP - 1).await;
+    assert!(
+        try_serve_cached(&state, &whole, Some("vi")).await.is_some(),
+        "a row under the cap holds the whole listing and is replayed"
+    );
+    let at_cap = row_with_tracks(&server, SUBTITLE_TRACK_CAP).await;
+    assert!(
+        try_serve_cached(&state, &at_cap, Some("vi"))
+            .await
+            .is_none(),
+        "a row at the cap may have been cut for another choice"
+    );
+}
