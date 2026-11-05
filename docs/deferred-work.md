@@ -1065,7 +1065,8 @@ starting it, and delete it when you find it done.
   setuid execution, so Chromium's setuid sandbox helper cannot be
   used from inside it (the `.deb` sets the helper's SUID bit in its
   postinst and keeps the sandbox), which is a packaging question of
-  its own and not part of this entry.
+  its own and not part of this entry — see "Chromium's namespace
+  sandbox in the AppImage".
 
   Two things a grep will not surface. The manual diagnostic route
   hands a pasted public URL straight to the player, the one place
@@ -1293,6 +1294,32 @@ the shape against the app as it is then.
   inherits the app's environment — so that route needs the same
   path wiring on the hand-off, or a yt-dlp the user installed
   themselves.
+
+## Chromium's namespace sandbox in the AppImage
+
+The AppImage starts Electron with `--no-sandbox` on every host. The
+reason is the setuid helper: the image runs from a read-only FUSE mount,
+so `chrome-sandbox` inside it cannot be SUID. But Chromium has a second
+sandbox that needs no helper, built on unprivileged user namespaces, and
+the unconditional flag gives that one up too on hosts where it would
+work.
+
+electron-builder 26's AppRun already tries to keep it: it passes
+`--no-sandbox` only when `unshare -Ur true` fails. The repack
+(`electron/lib/appimage-tree.cjs`) overrides that probe on purpose.
+`unshare` succeeding does not show that Chromium's sandbox will start,
+because Ubuntu's AppArmor restriction on user namespaces grants its
+exceptions per binary, and a sandbox that fails to start aborts the
+launch. Keeping the namespace sandbox needs a probe that answers for the
+app's own binary, or a way to fall back when the sandboxed start fails.
+The AppRun is not the only place the flag comes from: electron-builder
+still writes the image's own `.desktop` entry as
+`Exec=AppRun --no-sandbox %U`, so a launch through desktop integration
+skips the probe even in its stock form, and that entry's arguments
+(`appImage.executableArgs`) change along with it.
+It waited because it changes which hosts run sandboxed, which wants
+testing across distributions rather than riding along with a toolchain
+bump.
 
 ## Update information in the AppImage
 

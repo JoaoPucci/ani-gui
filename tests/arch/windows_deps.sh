@@ -143,6 +143,30 @@ if [ -f "$FETCH" ]; then
     fi
 fi
 
+# 6. The installer's own hooks must not remove anything under
+#    $INSTDIR. electron-builder's uninstall sequence removes the whole
+#    install tree, the ffmpeg.exe the install hook fetched included; on
+#    an update it first moves the tree aside and, when a file is busy,
+#    moves it back and aborts. From electron-builder 26 the
+#    `customUnInstall` hook runs before that sequence, so a removal of
+#    its own lands even when the update aborts, and the restored
+#    install is missing the file.
+#
+#    The check is a grep, case-insensitive as NSIS instructions are,
+#    for a `Delete` or `RMDir` at the start of a line naming `$INSTDIR`
+#    on that same line. NSIS comments start with `;`, so a commented-out
+#    line does not match. It does not see a removal split across a `\`
+#    continuation, one that reaches `$INSTDIR` through a variable or a
+#    macro, or a `Rename` out of it; a green run means no such command
+#    is written plainly, not that none can happen. `$INSTDIR` is
+#    NSIS's, not the shell's, so it stays in single quotes.
+NSH=electron/build-resources/installer.nsh
+# shellcheck disable=SC2016
+if [ -f "$NSH" ] && grep -inE '^[[:space:]]*(Delete|RMDir)[[:space:]].*\$INSTDIR' "$NSH" >&2; then
+    printf 'arch/windows_deps FAIL: %s removes files under $INSTDIR — the uninstall sequence already does, and a removal in customUnInstall survives an aborted update\n' "$NSH" >&2
+    failed=1
+fi
+
 [ "$failed" -eq 0 ] || {
     printf 'arch/windows_deps: FAILED\n'
     exit 1
