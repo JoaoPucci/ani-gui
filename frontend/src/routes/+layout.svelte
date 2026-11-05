@@ -258,7 +258,8 @@
 		// backend is the documented outbound HTTP boundary
 		// (`docs/architecture.md`). The
 		// `update_include_prereleases` setting (default true)
-		// drives which GitHub endpoint the backend hits.
+		// decides whether the backend counts pre-releases when it
+		// picks the newest release with this platform's package.
 		const localApiBase = window.aniGui?.apiBase ?? '';
 		if (localApiBase) {
 			void settingsGet()

@@ -344,11 +344,18 @@ is user-facing:
 
 - A release announces itself to everyone, not to the platforms it
   carries assets for.
-- The update notifier compares versions and nothing else. It does not
-  read a release's assets and has no concept of platform, so shipping
-  a release with no asset for a platform actively prompts that
-  platform's users toward a page with nothing on it for them. Any
-  change to which platforms a release serves has to answer for that
+- From 0.18.0 the update notifier offers a release to an install only
+  when the release carries a package for that install's platform,
+  matched by file name (`Platform::carries` in
+  `backend/src/meta/github.rs`). A newer release without one is
+  passed over for the newest of the ten most recent releases that
+  carries one, or, failing that, for the newest full release, if that
+  release carries one. Installs on 0.17.0 or earlier compare versions
+  and nothing else: they do not read a release's assets and have no
+  concept of platform, so shipping a release with no asset for a
+  platform still prompts those of that platform's users toward a page
+  with nothing on it for them. Any change to which platforms a release
+  serves, or to how their files are named, has to answer for that
   path.
 - Say it in the release notes, and record the gap where the next
   person will find it.
