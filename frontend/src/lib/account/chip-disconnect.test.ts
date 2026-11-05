@@ -14,7 +14,10 @@ describe('handleChipDisconnect', () => {
 			setDisconnected: vi.fn(),
 			pushToast: vi.fn(),
 			unknownErrorMessage: () => 'unknown',
-			tokenClearFailedMessage: () => 'token clear failed'
+			tokenClearFailedMessage: () => 'token clear failed',
+			reread: vi.fn().mockResolvedValue(true),
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		const deps = {
 			disconnectAccount,
@@ -38,7 +41,10 @@ describe('handleChipDisconnect', () => {
 			setDisconnected: vi.fn(),
 			pushToast: vi.fn(),
 			unknownErrorMessage: () => 'unknown',
-			tokenClearFailedMessage: () => 'token clear failed'
+			tokenClearFailedMessage: () => 'token clear failed',
+			reread: vi.fn().mockResolvedValue(true),
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		const deps = {
 			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'ok' }),
@@ -59,7 +65,10 @@ describe('handleChipDisconnect', () => {
 			setDisconnected: vi.fn(),
 			pushToast: vi.fn(),
 			unknownErrorMessage: () => 'unknown',
-			tokenClearFailedMessage: () => 'token clear failed'
+			tokenClearFailedMessage: () => 'token clear failed',
+			reread: vi.fn().mockResolvedValue(true),
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		const deps = {
 			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'token_clear_failed' }),
@@ -99,9 +108,79 @@ describe('handleChipDisconnect', () => {
 			setDisconnected: vi.fn(),
 			pushToast: vi.fn(),
 			unknownErrorMessage: () => 'u',
-			tokenClearFailedMessage: () => 'tcf'
+			tokenClearFailedMessage: () => 'tcf',
+			reread: vi.fn().mockResolvedValue(true),
+			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
+			dismissToast: vi.fn()
 		};
 		await handleChipDisconnect('mal', prev, deps, cb);
 		expect(disconnectAccount.mock.calls[0]?.[1]).toBe(prev);
+	});
+
+	describe('a disconnect whose bridge call rejects', () => {
+		function rejecting(stateAfterReread: ProviderState, applied = true) {
+			const order: string[] = [];
+			const cb = {
+				setError: vi.fn((p: string, msg: string) => order.push(`setError ${p} ${msg}`)),
+				setDisconnected: vi.fn(),
+				pushToast: vi.fn((t: { message: string }) => {
+					order.push(`toast ${t.message}`);
+					return 'toast-id';
+				}),
+				unknownErrorMessage: () => 'unknown',
+				tokenClearFailedMessage: () => 'token clear failed',
+				reread: vi.fn(async (p: string) => {
+					order.push(`reread ${p}`);
+					return applied;
+				}),
+				stateOf: () => stateAfterReread,
+				dismissToast: vi.fn()
+			};
+			const deps = {
+				disconnectAccount: vi.fn().mockRejectedValue(new Error('ipc gone')),
+				beginAccountChange: vi.fn(),
+				clearPersistedAccount: vi.fn(),
+				dropListCache: vi.fn(),
+				dropProviderCache: vi.fn()
+			};
+			return { cb, deps, order };
+		}
+		const signedIn: ProviderState = {
+			kind: 'connected',
+			account: {
+				access_token: 't',
+				refresh_token: null,
+				expires_at_epoch_s: 0,
+				user_id: 'u',
+				username: 'name',
+				avatar_url: null
+			},
+			lastSyncedAt: null
+		};
+
+		it('settles the change at once, then reads the disk, and says the clear failed when the sign-in is still there', async () => {
+			const { cb, deps, order } = rejecting(signedIn);
+			await expect(handleChipDisconnect('anilist', signedIn, deps, cb)).resolves.toBeUndefined();
+			expect(order).toEqual([
+				'setError anilist unknown',
+				'reread anilist',
+				'toast token clear failed'
+			]);
+			expect(cb.pushToast).toHaveBeenCalledWith({ kind: 'error', message: 'token clear failed' });
+			expect(cb.setDisconnected).not.toHaveBeenCalled();
+		});
+
+		it('says nothing failed when the disk shows the clear landed', async () => {
+			const { cb, deps } = rejecting({ kind: 'disconnected' });
+			await handleChipDisconnect('anilist', signedIn, deps, cb);
+			expect(cb.setError).toHaveBeenCalled();
+			expect(cb.pushToast).not.toHaveBeenCalled();
+		});
+
+		it('says the clear failed when the disk could not be read again', async () => {
+			const { cb, deps } = rejecting({ kind: 'disconnected' }, false);
+			await handleChipDisconnect('anilist', signedIn, deps, cb);
+			expect(cb.pushToast).toHaveBeenCalledWith({ kind: 'error', message: 'token clear failed' });
+		});
 	});
 });

@@ -6,9 +6,10 @@
   `connect(provider)` adapter; PKCE method is picked per provider
   (S256 for AniList, plain for MAL) via `pkceForProvider`.
 
-  All visible strings via Paraglide per AGENTS.md §6. Imperative
-  connect-flow logic delegated to $lib/account/connect-flow to keep
-  the page itself a thin adapter — per AGENTS.md §2.
+  All visible strings via Paraglide per AGENTS.md §6. Sign in, Cancel
+  and Disconnect are delegated to $lib/account/connect-action and
+  $lib/account/chip-disconnect to keep the page itself a thin adapter
+  — per AGENTS.md §2.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -32,13 +33,12 @@
 		dropListCache,
 		dropProviderCache
 	} from '$lib/account/api';
+	import { disconnectAccount } from '$lib/account/connect-flow';
 	import {
-		bearerFor,
-		connectAccount,
-		connectErrorKey,
-		disconnectAccount,
-		restoreAfterFailedConnect
-	} from '$lib/account/connect-flow';
+		cancelConnect as cancelConnectAction,
+		connectProvider
+	} from '$lib/account/connect-action';
+	import { handleChipDisconnect as handleDisconnect } from '$lib/account/chip-disconnect';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { toastStore } from '$lib/toasts/store.svelte';
 
@@ -104,137 +104,64 @@
 		}
 	}
 
-	async function connect(provider: Provider) {
-		// Snapshot the pre-click state so a failed reconnect-from-
-		// expired (or connect-from-error-with-account) can restore the
-		// UI to it instead of collapsing to `disconnected` — the
-		// persisted token is still on disk and hydrate() would resurrect
-		// it on next launch anyway.
-		const prev = accountStore.byProvider[provider];
-		accountStore.setConnecting(provider);
-		const r = await connectAccount(provider, {
-			generateState: randomState,
-			generatePkce: () => pkceForProvider(provider),
-			buildAuthUrl,
-			openOAuth,
-			exchangeCode,
-			fetchMe,
-			persistAccount
+	// Connect / Sign in again, Cancel and Disconnect live in tested
+	// $lib modules; each settles the provider whatever its bridge calls
+	// do, a rejection included.
+	function connect(provider: Provider) {
+		return connectProvider(provider, {
+			store: accountStore,
+			flow: {
+				generateState: randomState,
+				generatePkce: () => pkceForProvider(provider),
+				buildAuthUrl,
+				openOAuth,
+				exchangeCode,
+				fetchMe,
+				persistAccount
+			},
+			seedConnectedList,
+			pushToast: (t) => toastStore.push(t),
+			dismissToast: (id) => toastStore.dismiss(id)
 		});
-		if (r.kind === 'connected') {
-			accountStore.setConnected(provider, r.account);
-			// Seed user_list_cache for the rails +
-			// account stats that read from it (Watch Later,
-			// progress/score). The bearer is good and the token
-			// is already persisted; if this errors the connection is
-			// still valid — we just leave the cache empty and the next
-			// rail/sync mount will warm it. Best-effort, not fatal.
-			await seedConnectedList(provider, r.account.access_token);
-			return;
-		}
-		applyRestoreState(provider, restoreAfterFailedConnect(prev));
-		if (r.kind === 'oauth_error' || r.kind === 'state_mismatch') {
-			const key =
-				r.kind === 'state_mismatch'
-					? 'oauth_error'
-					: connectErrorKey((r as { reason: string }).reason);
-			toastStore.push({ kind: 'error', message: connectErrorMessageFor(key) });
-			return;
-		}
-		if (r.kind === 'persist_failed') {
-			// Surface the underlying keychain
-			// failure so Linux users without a usable libsecret/kwallet
-			// see "install your OS keyring" instead of the generic
-			// sign-in error.
-			const message =
-				r.reason === 'encryption_unavailable'
-					? m.account_persist_error_keychain_unavailable()
-					: m.account_connect_error_unknown();
-			accountStore.setError(provider, message);
-			toastStore.push({ kind: 'error', message });
-			return;
-		}
-		const status = (r as { status?: number }).status;
-		const message = status
-			? `${m.account_connect_error_unknown()} (${status})`
-			: m.account_connect_error_unknown();
-		toastStore.push({ kind: 'error', message });
 	}
 
-	function applyRestoreState(provider: Provider, restored: ProviderState): void {
-		// Thin dispatch from the restore helper to the matching store
-		// setter. Kept here (one switch) rather than inside the store
-		// so the helper stays a pure data->data function the tests can
-		// pin without mocking the store.
-		switch (restored.kind) {
-			case 'expired':
-				accountStore.setExpired(provider, restored.account);
-				return;
-			case 'error':
-				if (restored.account) {
-					// setError pulls the account from the prior state in
-					// the store — set it back as expired-with-account
-					// first so setError finds it, then promote to error.
-					accountStore.setExpired(provider, restored.account);
-				}
-				accountStore.setError(provider, restored.message);
-				return;
-			default:
-				accountStore.setDisconnected(provider);
-		}
-	}
-
-	async function cancelConnect() {
-		// Without this the `connecting` state
-		// only resolves after openOAuth's 5-minute server timeout — the
-		// user can't recover until then. cancelOAuth stops the
-		// loopback server immediately; the awaiting connectAccount
-		// then resolves as oauth_error with kind === 'cancelled',
-		// and the prior `disconnected` state is restored via the
-		// existing restoreAfterFailedConnect path. (The OAuth server
-		// is process-singleton across providers, so we don't need a
-		// provider arg — MAL reuses the same server.)
-		await cancelOAuth();
-	}
-
-	async function disconnect(provider: Provider) {
-		const prev = accountStore.byProvider[provider];
-		const r = await disconnectAccount(provider, prev, {
-			// Supersede any in-flight boot refresh before the async clear
-			// (disconnectAccount calls this first) so a refresh resolving
-			// mid-disconnect can't re-persist/reconnect.
-			beginAccountChange: () => accountStore.beginAccountChange(provider),
-			clearPersistedAccount,
-			dropListCache,
-			dropProviderCache
+	function cancelConnect(provider: Provider) {
+		// Without a cancel the `connecting` state only resolves after
+		// openOAuth's 5-minute server timeout. The OAuth server is a
+		// process singleton, so the request names no provider; the
+		// provider is for abandoning the sign-in if it cannot be sent.
+		return cancelConnectAction(provider, {
+			store: accountStore,
+			cancelOAuth,
+			pushToast: (t) => toastStore.push(t)
 		});
-		if (r.kind === 'token_clear_failed') {
-			// The bearer is still on disk; telling
-			// the user they're disconnected would be a lie because the
-			// next hydrate() restores the account. Leave state as-is and
-			// surface the failure as an error.
-			accountStore.setError(provider, m.account_connect_error_unknown());
-			toastStore.push({ kind: 'error', message: m.account_disconnect_error_token_clear() });
-			return;
-		}
-		accountStore.setDisconnected(provider);
 	}
 
-	function connectErrorMessageFor(key: string): string {
-		switch (key) {
-			case 'port_busy':
-				return m.account_connect_error_port_busy();
-			case 'timeout':
-				return m.account_connect_error_timeout();
-			case 'cancelled':
-				return m.account_connect_error_cancelled();
-			case 'oauth_error':
-				return m.account_connect_error_oauth_error();
-			case 'no_bridge':
-				return m.account_connect_error_no_bridge();
-			default:
-				return m.account_connect_error_unknown();
-		}
+	function disconnect(provider: Provider) {
+		return handleDisconnect(
+			provider,
+			accountStore.byProvider[provider],
+			{
+				disconnectAccount,
+				// Supersede any in-flight boot refresh before the async clear
+				// (disconnectAccount calls this first) so a refresh resolving
+				// mid-disconnect can't re-persist/reconnect.
+				beginAccountChange: () => accountStore.beginAccountChange(provider),
+				clearPersistedAccount,
+				dropListCache,
+				dropProviderCache
+			},
+			{
+				setError: (p, msg) => accountStore.setError(p, msg),
+				setDisconnected: (p) => accountStore.setDisconnected(p),
+				pushToast: (t) => toastStore.push(t),
+				unknownErrorMessage: () => m.account_connect_error_unknown(),
+				tokenClearFailedMessage: () => m.account_disconnect_error_token_clear(),
+				reread: (p) => accountStore.reread(p),
+				stateOf: (p) => accountStore.byProvider[p],
+				dismissToast: (id) => toastStore.dismiss(id)
+			}
+		);
 	}
 
 	function randomState(): string {
@@ -262,9 +189,6 @@
 				return m.account_card_status_disconnected();
 		}
 	}
-	// Used by template, kept exported so connect-flow tests can pin
-	// the helper without test-only exports leaking from +page.svelte.
-	void bearerFor;
 </script>
 
 <svelte:head>
@@ -337,7 +261,7 @@
 					<button type="button" class="btn" disabled>
 						{m.account_card_status_connecting()}
 					</button>
-					<button type="button" class="btn" onclick={cancelConnect}>
+					<button type="button" class="btn" onclick={() => cancelConnect(provider)}>
 						{m.account_card_action_cancel()}
 					</button>
 				{:else if state.kind === 'expired' || (state.kind === 'error' && state.account)}
