@@ -487,7 +487,9 @@ starting it, and delete it when you find it done.
   work is finding the causes, counting the occurrences across the
   catalogue, and choosing a source the list can trust.
 - **Localised content fetch** — synopsis and episode titles.
-- **Franchise and season grouping** across surfaces.
+- **Franchise and season grouping** across surfaces. A design is
+  proposed in
+  [`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md).
 - **Search has no sort *direction* control.** Sorting by relevance,
   year and rating ships, as do subtype filter chips; only
   ascending/descending is absent. Kitsu does the sorting, and it takes
@@ -1172,8 +1174,10 @@ for when AniList's listing is the show's.
 - **Relations.** AniList `relations` names prequels, sequels, side
   stories, adaptations and looser links by `relationType`, and includes
   manga and novel entries, so grouping anime filters on the related
-  node's `type`; a base for the franchise and season grouping listed
-  under Interface.
+  node's `type`. The franchise proposal
+  ([`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md))
+  compared it with Kitsu's relations and chose Kitsu's, so this stays
+  unused.
 - **Spoiler-safe tags.** AniList `tags` carry a relevance rank and two
   spoiler flags: `isMediaSpoiler` (spoils this show) and
   `isGeneralSpoiler` (spoils any show it is on). Showing tags without
