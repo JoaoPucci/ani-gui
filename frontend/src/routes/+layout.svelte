@@ -43,6 +43,8 @@
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
+	import MiniHost, { miniMock } from '$lib/mini/mock/MiniHost.svelte';
+	import MiniChip from '$lib/mini/mock/MiniChip.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
@@ -679,6 +681,14 @@
 					</div>
 				{/if}
 			</form>
+			{#if miniMock.prefs.enabled && miniMock.session && page.url.pathname !== `/play/${miniMock.session.show.id}`}
+				<MiniChip
+					title={miniMock.session.show.title}
+					episode={miniMock.session.show.episode}
+					accent={miniMock.session.show.accent}
+					onPlayHere={() => miniMock.returnToApp()}
+				/>
+			{/if}
 			<UpdateBadge />
 			<DownloadDock />
 			<AccountChip />
@@ -702,6 +712,7 @@
   (50 vs 40).
 -->
 <ToastHost downloadBarEnabled={config?.download_bottom_bar_enabled !== false} />
+<MiniHost />
 
 <!-- UpdateDialog — opens when the user clicks the UpdateBadge in
      the topbar. Lives here at the layout root so the modal sits
