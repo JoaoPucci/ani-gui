@@ -78,6 +78,14 @@
 				{
 					"from": "build-resources/linux/bin",
 					"to": "bin"
+				},
+				{
+					"from": "build-resources/licenses",
+					"to": "licenses",
+					"filter": [
+						"curl-impersonate.txt",
+						"yt-dlp.txt"
+					]
 				}
 			]
 		},
@@ -116,6 +124,10 @@
 				{
 					"from": "build-resources/win/bin",
 					"to": "bin"
+				},
+				{
+					"from": "build-resources/licenses",
+					"to": "licenses"
 				}
 			]
 		},

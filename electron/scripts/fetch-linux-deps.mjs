@@ -24,18 +24,20 @@
 //                downloader rather than only those who happened to
 //                install it. ~37 MB, one self-contained file.
 //
-// NOT bundled, by design:
-//   - ffmpeg   — too large (~80 MB compressed). Declared as a
-//                `Recommends:` on the .deb so apt pulls the distro
-//                build; AppImage users fall back to system PATH or
-//                see the typed FfmpegMissing modal. Mirrors the
-//                Windows installer which fetches ffmpeg at install
-//                time rather than embedding it in the .exe.
+// Taken from the system, not bundled — see `SYSTEM_DEPS` below:
+//   - ffmpeg   — declared as a `Recommends:` on the .deb so apt pulls
+//                the distro build; AppImage users fall back to system
+//                PATH or see the typed FfmpegMissing modal. Windows
+//                has no package manager to recommend through, so its
+//                installer downloads ffmpeg at install time instead
+//                (`INSTALL_TIME_DEPS` in fetch-windows-deps.mjs).
 //
 // This script is the Linux analog of `fetch-windows-deps.mjs`. Keep
-// the two in lockstep when adding a new bundled dep — there are no
-// exceptions, and `tests/arch/{linux,windows}_deps.sh` hold each side
-// to it.
+// the two in lockstep when adding a new bundled dep. The one exception
+// is declared, not implied: `SYSTEM_DEPS` names what Linux takes from
+// the distribution, and `tests/arch/{linux,windows}_deps.sh` hold the
+// .deb to recommending it and Windows to staging it or downloading it
+// at install time.
 //
 // The two stage curl-impersonate differently, which is a difference in
 // what upstream ships rather than in what each platform needs. Here the
@@ -143,6 +145,19 @@ export const DEPS = [
 		binary: 'curl_chrome116',
 		archivePath: 'curl_chrome116',
 		tarFlag: '-xzf',
+	},
+];
+
+// Runtime dependencies the Linux packages take from the distribution
+// rather than stage. Nothing here is downloaded; the list exists so
+// the arch checks can tell a declared exception from a forgotten
+// dependency — each entry must appear in `build.deb.recommends`, and
+// the Windows fetcher must stage it or declare it downloaded at install
+// time.
+export const SYSTEM_DEPS = [
+	{
+		name: 'ffmpeg',
+		dep: 'ffmpeg',
 	},
 ];
 

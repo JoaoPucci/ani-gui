@@ -16,8 +16,8 @@
 // Bundled today:
 //   - curl-impersonate.exe — the transport native resolution spawns.
 //   - yt-dlp.exe           — the downloader.
-// Not bundled: ffmpeg. Too large (~80 MB compressed) to ship in the
-// installer, so the NSIS script fetches it at install time — see
+// Not bundled: ffmpeg. The NSIS installer downloads it at install
+// time instead — see `INSTALL_TIME_DEPS` below and
 // `build-resources/installer.nsh`.
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
@@ -85,6 +85,43 @@ export const DEPS = [
 		// the name as written — dropping the prefix fails the extract
 		// with "not found in archive".
 		archivePath: './curl-impersonate.exe',
+	},
+];
+
+// Dependencies the Windows package provides without carrying them: the
+// NSIS installer downloads each at install time (see
+// `build-resources/installer.nsh`), and this script neither downloads
+// nor stages them. Declared here so the arch checks and the credits
+// can tell a deliberate install-time download from a forgotten
+// dependency. tests/arch/windows_deps.sh holds installer.nsh to each
+// entry's version, URL and archive path, verbatim.
+export const INSTALL_TIME_DEPS = [
+	// ffmpeg: the muxer yt-dlp hands MPEG-TS to, and the downloader's
+	// fallback. Linux takes it from the distribution (the .deb
+	// recommends it — `SYSTEM_DEPS` in fetch-linux-deps.mjs); Windows
+	// has no package manager to recommend through, so the installer
+	// fetches it.
+	//
+	// Not carried in the package, for two reasons. The zip is ~90 MB,
+	// which is why the installer has downloaded it since 0.1.0. And the
+	// build is GPL: redistributing it would oblige an offer of its
+	// corresponding source, which cannot be made, because gyan.dev does
+	// not publish the versions of the libraries the essentials build
+	// links. Downloaded by the user's own installer from gyan.dev's
+	// release, it is not redistributed by this project.
+	//
+	// The installer keeps the copy across updates and fetches again
+	// only when this version changes; installer.nsh says how.
+	//
+	// Source: gyan.dev's essentials build, published on GitHub. Only
+	// ffmpeg.exe is installed; the zip's ffprobe and ffplay are not used.
+	{
+		name: 'ffmpeg',
+		dep: 'ffmpeg',
+		version: '7.1.1',
+		url: 'https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip',
+		binary: 'ffmpeg.exe',
+		archivePath: 'ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe',
 	},
 ];
 

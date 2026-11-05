@@ -8,8 +8,10 @@
 # that matter and says little about why: every play dies on the
 # provider's TLS interstitial without the impersonating transport, and
 # every download dies without a downloader. Bundling the small fast
-# ones removes that dependency on the user's environment; ffmpeg is
-# too large to stage, hence the `Recommends:`.
+# ones removes that dependency on the user's environment; ffmpeg Linux
+# takes from the distribution instead, hence the `Recommends:` (the
+# Windows installer, with no package manager to lean on, downloads it
+# at install time).
 #
 # This once described the script's dependencies — `dep_ch fzf`
 # aborting at startup, aria2c for downloads. Those went when the app
@@ -34,7 +36,10 @@
 #   - `electron/package.json` must list `build-resources/linux/bin`
 #     under `build.linux.extraResources` so electron-builder copies
 #     the staged binaries into both AppImage and .deb payloads.
-#   - `build.deb.recommends` must include "ffmpeg".
+#   - `build.deb.recommends` must include "ffmpeg", and every
+#     dependency `fetch-linux-deps.mjs` declares in `SYSTEM_DEPS` —
+#     what Linux takes from the distribution rather than staging.
+#   - every staged binary ships its licence text in the package.
 #   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
 #     so any invocation path (package, dist, e2e) gets the bin
 #     dir populated before electron-builder runs.
@@ -151,6 +156,68 @@ if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
 if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
 ' "$REPO_ROOT/$PKG"; then
     printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    failed=1
+fi
+
+# 8. Whatever the fetcher declares it takes from the system instead of
+#    staging, the .deb must recommend. `windows_deps.sh` lets a Windows
+#    dependency go unstaged on Linux only through that declaration, so
+#    an entry here that no package names would excuse a dependency
+#    Linux does not provide at all. Both files are read with node — the
+#    module by import, package.json by its JSON parser. The leading
+#    `inventory` argument keeps the fetcher out of `process.argv[1]`,
+#    where its entry guard would take it for the program and run it.
+if ! node --input-type=module -e '
+const [fetcher, pkg] = process.argv.slice(2);
+const { SYSTEM_DEPS } = await import(fetcher);
+const { readFileSync } = await import("node:fs");
+const recommends = (JSON.parse(readFileSync(pkg, "utf8")).build.deb || {}).recommends || [];
+if (!Array.isArray(SYSTEM_DEPS)) { console.error("SYSTEM_DEPS is not exported as an array"); process.exit(1); }
+const bad = SYSTEM_DEPS.filter((d) => typeof d.dep !== "string" || !recommends.includes(d.dep));
+if (bad.length) { console.error(bad.map((d) => String(d.dep)).join(" ")); process.exit(1); }
+' inventory "$REPO_ROOT/$FETCH" "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s SYSTEM_DEPS could not be read, or names a dependency (above) that build.deb.recommends in %s does not\n' "$FETCH" "$PKG" >&2
+    failed=1
+fi
+
+# 9. Every binary the Linux packages bundle ships with its licence
+#    text: `electron/build-resources/licenses/<dep>.txt`, non-empty,
+#    for every `dep` in the fetcher's DEPS, copied into the package by
+#    a `build.linux.extraResources` entry from `build-resources/licenses`
+#    to `licenses` whose filter, if it has one, names that file. The
+#    licences of what these binaries bundle require their notice to
+#    travel with every copy, and GPL object code needs its licence
+#    beside it. Read with node: DEPS by import, package.json by its
+#    JSON parser.
+#
+#    The filter is held to a constraint rather than evaluated: it may
+#    be absent (everything is copied), or a name or list of names with
+#    no `!` exclusion, and each licence file must be named in it
+#    literally. A glob that would in fact match therefore fails here,
+#    loudly; an exclusion is refused outright, since judging what it
+#    removes would mean re-implementing electron-builder's matcher,
+#    which the arch job has no node_modules to load. Not checked: that
+#    a file's text is the right licence.
+if ! node --input-type=module -e '
+const [fetcher, pkg, root] = process.argv.slice(2);
+const { DEPS } = await import(fetcher);
+const { readFileSync, statSync } = await import("node:fs");
+const extra = ((JSON.parse(readFileSync(pkg, "utf8")).build || {}).linux || {}).extraResources || [];
+const entry = extra.find((e) => typeof e === "object" && e.from === "build-resources/licenses" && e.to === "licenses");
+const bad = [];
+if (!entry) bad.push("no extraResources entry copies build-resources/licenses to licenses");
+const filter = entry && entry.filter !== undefined ? [].concat(entry.filter) : null;
+if (filter && filter.some((f) => typeof f !== "string" || f.startsWith("!"))) bad.push("the licenses filter has an exclusion or a non-string entry");
+for (const dep of new Set(DEPS.map((d) => d.dep))) {
+    const file = dep + ".txt";
+    let ok = false;
+    try { const st = statSync(root + "/electron/build-resources/licenses/" + file); ok = st.isFile() && st.size > 0; } catch {}
+    if (!ok) bad.push(file + " is missing, empty, or not a file");
+    if (filter && !filter.includes(file)) bad.push(file + " is not named in the filter");
+}
+if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+' inventory "$REPO_ROOT/electron/scripts/fetch-linux-deps.mjs" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
+    printf 'arch/linux_deps FAIL: a bundled binary does not ship its licence text (above)\n' >&2
     failed=1
 fi
 
