@@ -192,6 +192,12 @@ async function settle(steps = 40) {
 	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
 }
 
+/** The Watch Later row's Refresh action, found by the name it shows. */
+const refreshAction = () =>
+	Array.from(target.querySelectorAll<HTMLButtonElement>('.strip-header button')).find(
+		(b) => b.textContent?.trim() === m.account_watch_later_refresh_action()
+	) ?? null;
+
 const railTitles = () =>
 	Array.from(
 		target.querySelectorAll(`[aria-label="${m.account_watch_later_title()}"] .card-title`)
@@ -320,9 +326,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 		);
 		app = mount(HomePage, { target });
 		await settle();
-		target
-			.querySelector<HTMLButtonElement>(`button[aria-label="${m.account_watch_later_refresh()}"]`)!
-			.click();
+		refreshAction()!.click();
 		await settle();
 		expect(answer).not.toBeNull();
 		// The write asks for the list to be read again: the refresh already
@@ -359,9 +363,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 			app = mount(HomePage, { target });
 			await settle();
 			expect(pulls).toBe(0);
-			const refresh = target.querySelector<HTMLButtonElement>(
-				`button[aria-label="${m.account_watch_later_refresh()}"]`
-			);
+			const refresh = refreshAction();
 			expect(refresh).not.toBeNull();
 			refresh!.click();
 			await settle();

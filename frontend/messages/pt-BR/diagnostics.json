@@ -37,5 +37,8 @@
 	"legacy_sweep_description": "Estes arquivos não são mais usados, então foram excluídos:",
 	"section_banner_framing": "Enquadramento do banner",
 	"banner_framing_description": "Mostra um pequeno controle na página inicial e na página de cada anime para escolher como o banner é enquadrado e qual imagem ele usa primeiro. A escolha fica salva neste computador e continua valendo depois que os controles são ocultados de novo.",
-	"banner_framing_toggle_label": "Mostrar os controles de enquadramento do banner"
+	"banner_framing_toggle_label": "Mostrar os controles de enquadramento do banner",
+	"section_row_style": "Estilo das fileiras do início",
+	"row_style_description": "Mostra um pequeno controle na página inicial para escolher como as fileiras apresentam suas ações: ao lado do título de cada fileira ou sobre uma faixa que delimita a fileira inteira. A escolha fica salva neste computador e continua valendo depois que o controle é ocultado de novo.",
+	"row_style_toggle_label": "Mostrar o controle de estilo das fileiras"
 }

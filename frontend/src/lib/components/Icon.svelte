@@ -22,7 +22,9 @@
 		| 'external'
 		| 'arrow-back'
 		| 'arrow-right'
-		| 'update';
+		| 'update'
+		| 'refresh'
+		| 'clear-history';
 
 	let { name, size = 18 }: { name: IconName; size?: number } = $props();
 </script>
@@ -198,5 +200,44 @@
 		<circle cx="12" cy="12" r="9" />
 		<path d="M12 7 V15" />
 		<path d="M8 12 L12 16 L16 12" />
+	</svg>
+{:else if name === 'refresh'}
+	<!-- Refresh: three-quarters of a circle closing on its own
+	     arrowhead — "pull this again". Not the 'update' glyph above,
+	     whose arrow points down into a circle and reads as a download. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<path d="M19.5 12 A7.5 7.5 0 1 1 18 7.5" />
+		<path d="M18 3.5 V7.5 H14" />
+	</svg>
+{:else if name === 'clear-history'}
+	<!-- Clear history: a clock — the mark for history — whose rim gives
+	     way, bottom right, to an ×: "this history, removed". The gap and
+	     the × sit opposite Refresh's arrowhead (top right), so the two
+	     never read alike at 16px. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<path d="M12.94 18.24 A7.5 7.5 0 1 1 18.24 12.94" />
+		<path d="M11 6.5 V11 H14.5" />
+		<path d="M14.5 14.5 L21 21" />
+		<path d="M21 14.5 L14.5 21" />
 	</svg>
 {/if}

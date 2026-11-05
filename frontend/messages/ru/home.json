@@ -27,8 +27,7 @@
 	"delete_confirm_title": "Удалить «{title}» из истории?",
 	"delete_confirm_body": "Можно добавить обратно, начав просмотр заново.",
 	"delete_confirm_button": "Удалить",
-	"clear_menu_button_aria": "Параметры истории",
-	"clear_menu_item": "Очистить историю",
+	"clear_history_action": "Очистить историю",
 	"clear_confirm_eyebrow": "Очистить всё",
 	"clear_confirm_title": [
 		{

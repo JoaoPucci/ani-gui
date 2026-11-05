@@ -5243,9 +5243,6 @@
 	   reads as supporting content, not a peer to the player. The
 	   accent rule + bone-300 caption stay so the editorial voice
 	   carries through. */
-	.similar-wrap :global(.strip-header) {
-		justify-content: flex-start;
-	}
 	.similar-wrap :global(.eyebrow) {
 		font-family: var(--font-body);
 		font-size: 1.25rem; /* 20px — matches Episodes toolbar h2 */

@@ -18,6 +18,7 @@
 	import { retiredSweepView } from '$lib/diagnostics/retired-sweep';
 	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
+	import { loadRowPrefs, saveRowPrefs } from '$lib/rows/prefs';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -48,6 +49,14 @@
 	function setFramingControls(shown: boolean) {
 		heroPrefs = { ...heroPrefs, controls: shown };
 		saveHeroPrefs(browserStorage(), heroPrefs);
+	}
+
+	// Whether the home page shows its row style switch, kept with the
+	// row preferences the same way — see $lib/rows/prefs.
+	let rowPrefs = $state(loadRowPrefs(browserStorage()));
+	function setRowStyleControls(shown: boolean) {
+		rowPrefs = { ...rowPrefs, controls: shown };
+		saveRowPrefs(browserStorage(), rowPrefs);
 	}
 
 	async function refresh() {
@@ -229,6 +238,21 @@
 					onchange={(e) => setFramingControls((e.currentTarget as HTMLInputElement).checked)}
 				/>
 				{m.diagnostics_banner_framing_toggle_label()}
+			</label>
+		</p>
+	</section>
+
+	<section>
+		<h2>{m.diagnostics_section_row_style()}</h2>
+		<p>{m.diagnostics_row_style_description()}</p>
+		<p>
+			<label>
+				<input
+					type="checkbox"
+					checked={rowPrefs.controls}
+					onchange={(e) => setRowStyleControls((e.currentTarget as HTMLInputElement).checked)}
+				/>
+				{m.diagnostics_row_style_toggle_label()}
 			</label>
 		</p>
 	</section>

@@ -27,8 +27,7 @@
 	"delete_confirm_title": "Remove \"{title}\" from history?",
 	"delete_confirm_body": "You can re-add it by watching the show again.",
 	"delete_confirm_button": "Remove",
-	"clear_menu_button_aria": "History options",
-	"clear_menu_item": "Clear history",
+	"clear_history_action": "Clear history",
 	"clear_confirm_eyebrow": "Clear all",
 	"clear_confirm_title": [
 		{

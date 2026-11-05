@@ -90,10 +90,21 @@
 		isWatchLaterStale,
 		readLastRefreshed,
 		refreshStamp,
-		markRefreshedSince
+		markRefreshedSince,
+		onWatchLaterInvalidated
 	} from '$lib/account/watch-later-refresh';
+	import {
+		nextAgeChange,
+		statusLabel,
+		statusPhrases,
+		watchLaterStatus,
+		type StatusCopy
+	} from '$lib/account/watch-later-status';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
-	import Icon from '$lib/components/Icon.svelte';
+	import RowAction from '$lib/components/RowAction.svelte';
+	import RowStyleSwitch from '$lib/rows/RowStyleSwitch.svelte';
+	import { actionShape, loadRowPrefs, saveRowPrefs, type RowPrefs } from '$lib/rows/prefs';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
@@ -189,6 +200,11 @@
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
 	let watchLaterFailed = $state(false);
+	// The row shows its failed state when the last load failed and there
+	// are no cards to keep showing (a populated rail keeps its cards).
+	const wlFailedRow = $derived(
+		accountStore.hasAny && watchLaterFailed && !(watchLater && watchLater.length > 0)
+	);
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
@@ -348,8 +364,6 @@
 	// state update (optimistic — no reload to keep the deletion crisp).
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
-	// Kebab menu open state for the rail header.
-	let clearMenuOpen = $state(false);
 	// Clear-all confirmation modal open state.
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
@@ -407,7 +421,6 @@
 		}
 	}
 	function openClearConfirm() {
-		clearMenuOpen = false;
 		clearConfirmOpen = true;
 	}
 	function cancelClear() {
@@ -681,6 +694,10 @@
 	// initial load path, post-refresh, and a settled tracker write — the
 	// one caller that moves the cards it changed (`moved`).
 	async function reloadWatchLaterRail(moved = false) {
+		// Whatever sent the row here — a mount, a pull, a settled write
+		// that invalidated a tracker's last pull — may have changed the
+		// stamps the freshness line reads, so it reads them again.
+		wlStamped += 1;
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const ticket = watchLaterLoads.start(false);
 		const deps = buildWatchLaterDeps();
@@ -728,7 +745,9 @@
 		const deps = buildWatchLaterDeps();
 		const providers = Object.keys(deps.credentials) as Provider[];
 		if (providers.length === 0) return;
+		wlHeld = wlStatusText;
 		refreshingWatchLater = true;
+		wlAnnounce = m.account_watch_later_refreshing();
 		try {
 			await Promise.all(
 				providers.map(async (p) => {
@@ -754,8 +773,60 @@
 			await reloadWatchLaterRail();
 		} finally {
 			refreshingWatchLater = false;
+			wlNow = Date.now();
+			wlStamped += 1;
+			wlHeld = null;
+			wlAnnounce = wlStatusText ?? '';
 		}
 	}
+
+	// The Watch Later rail's freshness line — see
+	// $lib/account/watch-later-status. The last-pulled times live in
+	// local storage, which nothing reactive watches, so `wlStamped`
+	// moves whenever a pull may have recorded one, or a write cleared
+	// one, and the times are read again; `wlNow` moves when the age on
+	// screen next changes, and not otherwise.
+	let wlStamped = $state(0);
+	let wlNow = $state(Date.now());
+	// A write clears a tracker's stamp whatever became of it, including
+	// writes that land nowhere and so never read the rail again.
+	$effect(() => onWatchLaterInvalidated(() => (wlStamped += 1)));
+	const wlCopy: StatusCopy = {
+		refreshing: () => m.account_watch_later_refreshing(),
+		never: () => m.account_watch_later_not_updated(),
+		justNow: () => m.account_watch_later_updated_now(),
+		updated: (when) => m.account_watch_later_updated({ when })
+	};
+	const wlStatus = $derived.by(() => {
+		void wlStamped;
+		const providers = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
+		return watchLaterStatus(providers.map(readLastRefreshed), refreshingWatchLater);
+	});
+	const wlStatusText = $derived(statusLabel(wlStatus, wlNow, getLocale(), wlCopy));
+	// The label the line had when a refresh started, held (hidden) for
+	// its width until the refresh settles; see statusPhrases.
+	let wlHeld = $state<string | null>(null);
+	const wlPhrases = $derived(statusPhrases(wlStatus, wlNow, getLocale(), wlCopy, wlHeld));
+	// What a refresh says to assistive technology: written when one
+	// starts and when it settles, and at no other time — the line itself
+	// ticks every minute and would chatter as a live region.
+	let wlAnnounce = $state('');
+	$effect(() => {
+		const s = wlStatus;
+		if (s?.kind !== 'updated') return;
+		const timer = setTimeout(() => (wlNow = Date.now()), nextAgeChange(s.at, wlNow));
+		return () => clearTimeout(timer);
+	});
+
+	// Home row style — see $lib/rows/prefs. A choice made in the switch
+	// applies to every row at once and is kept for the next load.
+	let rowPrefs = $state(loadRowPrefs(browserStorage()));
+	function chooseRowPrefs(next: RowPrefs) {
+		rowPrefs = next;
+		saveRowPrefs(browserStorage(), next);
+	}
+	const rowSurface = $derived(rowPrefs.style === 'band' ? 'band' : 'plain');
+	const rowActionShape = $derived(actionShape(rowPrefs.style));
 
 	// One-shot TTL check after the first cached render: if any connected
 	// provider's snapshot is past the TTL, re-pull in the background.
@@ -1154,53 +1225,34 @@
 	{/if}
 {/snippet}
 
-{#snippet continueHeaderTrailing()}
-	<div class="continue-menu-wrap">
-		<button
-			type="button"
-			class="continue-menu-btn"
-			aria-label={m.home_clear_menu_button_aria()}
-			aria-haspopup="true"
-			aria-expanded={clearMenuOpen}
-			onclick={(e) => {
-				e.stopPropagation();
-				clearMenuOpen = !clearMenuOpen;
-			}}
-		>
-			<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-				<circle cx="5" cy="12" r="1.6" fill="currentColor" />
-				<circle cx="12" cy="12" r="1.6" fill="currentColor" />
-				<circle cx="19" cy="12" r="1.6" fill="currentColor" />
-			</svg>
-		</button>
-		{#if clearMenuOpen}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="continue-menu-backdrop" onclick={() => (clearMenuOpen = false)}></div>
-			<menu class="continue-menu" role="menu">
-				<li role="presentation">
-					<button
-						type="button"
-						class="continue-menu-item"
-						role="menuitem"
-						onclick={openClearConfirm}
-					>
-						{m.home_clear_menu_item()}
-					</button>
-				</li>
-			</menu>
-		{/if}
-	</div>
+{#snippet continueActions()}
+	<RowAction
+		label={m.home_clear_history_action()}
+		icon="clear-history"
+		tone="quiet"
+		shape={rowActionShape}
+		onclick={openClearConfirm}
+	/>
 {/snippet}
+
+<!-- The row style switch, while the diagnostics page's toggle is on:
+     at the head of the rows it governs, in flow, so it scrolls with them
+     and covers no row's header. -->
+{#if rowPrefs.controls}
+	<div class="row-style-slot">
+		<RowStyleSwitch prefs={rowPrefs} onchoose={chooseRowPrefs} />
+	</div>
+{/if}
 
 <!-- Continue Watching: only when history is non-empty -->
 {#if history && history.length > 0}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_continue_eyebrow()}
 		caption={m.home_strip_continue_caption()}
 		cardWidth="16rem"
 		padBlock="var(--space-4) var(--space-3)"
-		headerTrailing={continueHeaderTrailing}
+		headerActions={continueActions}
 	>
 		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
@@ -1378,60 +1430,77 @@
        - watchLater === null  → boot, accountStore not hydrated yet
        - watchLater.length === 0 → no provider connected, or every
          connected provider's Plan-to-Watch is empty / un-bridged. -->
-{#snippet watchLaterRefresh()}
-	<button
-		type="button"
-		class="rail-refresh"
-		class:is-refreshing={refreshingWatchLater}
-		disabled={refreshingWatchLater}
-		aria-label={m.account_watch_later_refresh()}
-		title={m.account_watch_later_refresh()}
-		onclick={refreshWatchLater}
-	>
-		<Icon name="update" size={16} />
-	</button>
+{#snippet watchLaterMeta()}
+	<!-- The current phrasing, and through a refresh the one it replaced,
+	     stacked in one cell; only the current one is seen or read. -->
+	<span class="wl-status">
+		{#each wlPhrases as phrase (phrase.text)}
+			<span
+				class="wl-phrase"
+				data-shown={phrase.shown ? '' : undefined}
+				aria-hidden={phrase.shown ? undefined : 'true'}>{phrase.text}</span
+			>
+		{/each}
+	</span>
 {/snippet}
 
-{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+{#snippet watchLaterActions()}
+	<RowAction
+		label={m.account_watch_later_refresh_action()}
+		icon="refresh"
+		shape={rowActionShape}
+		busy={refreshingWatchLater}
+		onclick={refreshWatchLater}
+	/>
+{/snippet}
+
+{#if wlFailedRow || (watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed)))}
 	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
 	     empty — the empty row with its header and refresh, so newly-added
-	     tracker titles can be pulled in before the TTL. One strip for both,
-	     so the first card a settled write adds grows into the row and the
-	     last one it removes shrinks out of it, like any other card. -->
+	     tracker titles can be pulled in before the TTL; or, connected but
+	     the last load failed (bridge/availability down), a retry
+	     affordance rather than a false "nothing planned" — an empty list
+	     and a failed fetch are different states. One strip for all three:
+	     the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card, and a
+	     refresh that moves the row between failed and loaded leaves the
+	     Refresh the keyboard pressed where it was. A failed row vouches
+	     for no freshness, so it carries no status. -->
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.account_watch_later_title()}
-		caption={watchLater.length > 0
-			? m.account_watch_later_caption()
-			: m.account_watch_later_empty()}
-		headerTrailing={watchLaterRefresh}
+		caption={wlFailedRow
+			? m.account_watch_later_failed()
+			: watchLater && watchLater.length > 0
+				? m.account_watch_later_caption()
+				: m.account_watch_later_empty()}
+		headerMeta={!wlFailedRow && wlStatusText ? watchLaterMeta : undefined}
+		headerActions={watchLaterActions}
 	>
-		{#each watchLater as anime (anime.id)}
-			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
-				<PosterCard {anime} />
-			</div>
-		{/each}
-		{#if watchLater.length === 0}
-			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{#if wlFailedRow}
+			<p class="watch-later-empty">
+				{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
+			</p>
+		{:else if watchLater}
+			{#each watchLater as anime (anime.id)}
+				<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+					<PosterCard {anime} />
+				</div>
+			{/each}
+			{#if watchLater.length === 0}
+				<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+			{/if}
 		{/if}
 	</Strip>
-{:else if accountStore.hasAny && watchLaterFailed}
-	<!-- Connected but the last load failed (bridge/availability down). Show
-	     a retry affordance rather than a false "nothing planned" — an empty
-	     list and a failed fetch are different states. -->
-	<Strip
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_failed()}
-		headerTrailing={watchLaterRefresh}
-	>
-		<p class="watch-later-empty">
-			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
-		</p>
-	</Strip>
 {/if}
+
+<!-- The Watch Later refresh's announcement; see wlAnnounce. -->
+<p class="wl-announce" role="status">{wlAnnounce}</p>
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_trending_eyebrow()}
 		caption={m.home_strip_trending_caption_loading()}
 	>
@@ -1444,7 +1513,11 @@
 		{/each}
 	</Strip>
 {:else if trendingTail.length > 0}
-	<Strip eyebrow={m.home_strip_trending_eyebrow()} caption={m.home_strip_trending_caption()}>
+	<Strip
+		surface={rowSurface}
+		eyebrow={m.home_strip_trending_eyebrow()}
+		caption={m.home_strip_trending_caption()}
+	>
 		{#each trendingTail as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1454,6 +1527,7 @@
 <!-- Top Rated strip -->
 {#if topRated === null && !topRatedError}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_top_rated_eyebrow()}
 		caption={m.home_strip_top_rated_caption_loading()}
 	>
@@ -1466,7 +1540,11 @@
 		{/each}
 	</Strip>
 {:else if topRated && topRated.length > 0}
-	<Strip eyebrow={m.home_strip_top_rated_eyebrow()} caption={m.home_strip_top_rated_caption()}>
+	<Strip
+		surface={rowSurface}
+		eyebrow={m.home_strip_top_rated_eyebrow()}
+		caption={m.home_strip_top_rated_caption()}
+	>
 		{#each topRated as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1919,25 +1997,39 @@
 		outline-offset: 2px;
 	}
 
-	/* Continue-Watching rail kebab + dropdown. */
-	.continue-menu-wrap {
-		position: relative;
-		display: inline-flex;
+	/* The row style switch's place: the head of the rows, flush with
+	   their end edge (the strips' gutter). */
+	.row-style-slot {
+		display: flex;
+		justify-content: flex-end;
+		padding-inline: var(--space-8);
+		margin-block-end: var(--space-4);
 	}
-	.continue-menu-btn {
+
+	/* The Watch Later status: its phrasings stacked in one grid cell, a
+	   hidden one holding the width through a refresh; digits of one
+	   width, so the minute tick does not nudge the line either. */
+	.wl-status {
 		display: inline-grid;
-		place-items: center;
-		inline-size: 2rem;
-		block-size: 2rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.wl-phrase {
+		grid-area: 1 / 1;
+		white-space: nowrap;
+	}
+	.wl-phrase:not([data-shown]) {
+		visibility: hidden;
+	}
+	.wl-announce {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
 		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	/* Empty-state note shown in the Watch Later rail when a provider is
@@ -1948,94 +2040,6 @@
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		color: var(--bone-400);
-	}
-
-	/* Watch Later rail refresh button (Strip headerTrailing). */
-	.rail-refresh {
-		display: inline-grid;
-		place-items: center;
-		inline-size: 2rem;
-		block-size: 2rem;
-		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
-	}
-	.rail-refresh:hover:not(:disabled) {
-		background: var(--ink-100);
-		color: var(--bone-100);
-	}
-	.rail-refresh:disabled {
-		cursor: default;
-		opacity: 0.7;
-	}
-	.rail-refresh.is-refreshing :global(svg) {
-		animation: rail-refresh-spin 0.8s linear infinite;
-	}
-	@keyframes rail-refresh-spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-	.continue-menu-btn:hover,
-	.continue-menu-btn[aria-expanded='true'] {
-		background: var(--ink-100);
-		color: var(--bone-100);
-	}
-	.continue-menu-backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 19;
-	}
-	.continue-menu {
-		position: absolute;
-		inset-block-start: calc(100% + var(--space-2));
-		inset-inline-end: 0;
-		margin: 0;
-		padding: var(--space-2);
-		list-style: none;
-		background: var(--ink-050);
-		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card-hover);
-		z-index: 20;
-		min-inline-size: 12rem;
-		animation: cm-rise var(--dur-fast) var(--ease-out-soft) both;
-	}
-	@keyframes cm-rise {
-		from {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-	.continue-menu-item {
-		display: block;
-		inline-size: 100%;
-		text-align: start;
-		padding: var(--space-2) var(--space-3);
-		border: none;
-		border-radius: calc(var(--radius-card) - 4px);
-		background: transparent;
-		color: var(--bone-200);
-		font: inherit;
-		font-size: var(--type-meta);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
-	}
-	.continue-menu-item:hover {
-		background: var(--ink-100);
-		color: var(--accent-oxblood);
 	}
 
 	.resume-card {

@@ -688,7 +688,8 @@ starting it, and delete it when you find it done.
   the number the card shows beforehand, where it shows one, is not
   always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the
-  row's menu clears the row whole, the strip's arrows scroll it.
+  row's Clear history action clears it whole, the strip's arrows
+  scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
   without a title renders as a card whose click does nothing. This

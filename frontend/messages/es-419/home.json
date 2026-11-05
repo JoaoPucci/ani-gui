@@ -27,8 +27,7 @@
 	"delete_confirm_title": "¿Quitar \"{title}\" del historial?",
 	"delete_confirm_body": "Puedes volver a agregarlo viendo el programa de nuevo.",
 	"delete_confirm_button": "Quitar",
-	"clear_menu_button_aria": "Opciones del historial",
-	"clear_menu_item": "Borrar historial",
+	"clear_history_action": "Borrar historial",
 	"clear_confirm_eyebrow": "Borrar todo",
 	"clear_confirm_title": [
 		{

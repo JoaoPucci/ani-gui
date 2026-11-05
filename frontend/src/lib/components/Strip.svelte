@@ -9,6 +9,7 @@
 	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { watchStripOverflow } from '$lib/components/strip-overflow';
+	import { watchHeaderLines } from '$lib/components/strip-header-wrap';
 
 	interface Props {
 		eyebrow: string;
@@ -29,10 +30,17 @@
 		 *  Continue Watching's popped-out delete chip) needs this
 		 *  widened to keep that hover surface from being clipped. */
 		padBlock?: string;
-		/** Optional trailing slot in the strip header, right-aligned
-		 *  next to the eyebrow. The Continue Watching rail uses this
-		 *  for a kebab → "Clear history" affordance. */
-		headerTrailing?: Snippet;
+		/** Status words that continue the header's title line, after
+		 *  the caption and a separator — the Watch Later rail says how
+		 *  fresh it is here. */
+		headerMeta?: Snippet;
+		/** The row's actions (RowAction buttons). They continue the
+		 *  title line on a plain row, and sit at the band's end on a
+		 *  banded one; either way they are inside this row's header. */
+		headerActions?: Snippet;
+		/** What the row sits on: the page itself, or a faint band that
+		 *  marks out the row's extent (the home row style switch). */
+		surface?: 'plain' | 'band';
 		children: Snippet;
 	}
 
@@ -43,7 +51,9 @@
 		cardWidth = '11.25rem',
 		pad = 'var(--space-8)',
 		padBlock = 'var(--space-2) var(--space-3)',
-		headerTrailing,
+		headerMeta,
+		headerActions,
+		surface = 'plain',
 		children
 	}: Props = $props();
 
@@ -58,6 +68,43 @@
 			canScrollLeft = edges.canScrollLeft;
 			canScrollRight = edges.canScrollRight;
 		});
+	});
+
+	// How the header's line breaks — see $lib/components/strip-header-wrap.
+	// A wrapped status loses its separator and starts the next line; a
+	// banded row's wrapped actions stop being pushed to the band's end.
+	let headerEl: HTMLElement | undefined = $state();
+	let titleEl: HTMLElement | undefined = $state();
+	let sepEl: HTMLElement | undefined = $state();
+	let statusEl: HTMLElement | undefined = $state();
+	let actionsEl: HTMLElement | undefined = $state();
+	let metaWraps = $state(false);
+	let actionsWrap = $state(false);
+	function headerStyle(el: Element) {
+		const cs = getComputedStyle(el);
+		const px = (v: string) => parseFloat(v) || 0;
+		return {
+			padStart: px(cs.paddingInlineStart),
+			padEnd: px(cs.paddingInlineEnd),
+			gap: px(cs.columnGap)
+		};
+	}
+	$effect(() => {
+		if (!headerEl || !titleEl) return;
+		return watchHeaderLines(
+			{
+				header: headerEl,
+				title: titleEl,
+				sep: sepEl ?? null,
+				status: statusEl ?? null,
+				actions: actionsEl ?? null
+			},
+			(lines) => {
+				metaWraps = lines.metaWraps;
+				actionsWrap = lines.actionsWrap;
+			},
+			{ Observer: ResizeObserver, styleOf: headerStyle }
+		);
 	});
 
 	function nudge(dir: 1 | -1) {
@@ -152,17 +199,29 @@
 <section
 	class="strip"
 	class:strip-headless={headless}
+	data-surface={surface}
 	style="--strip-card: {cardWidth}; --strip-pad: {pad}; --strip-pad-block: {padBlock};"
 >
 	{#if !headless}
-		<header class="strip-header">
-			<h2 class="eyebrow">
+		<header
+			class="strip-header"
+			bind:this={headerEl}
+			data-meta-wraps={metaWraps}
+			data-actions-wrap={actionsWrap}
+		>
+			<h2 class="eyebrow strip-title" bind:this={titleEl}>
 				<span class="eyebrow-key">{eyebrow}</span>
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				{#if caption}<span class="eyebrow-value">{caption}</span>{/if}
 			</h2>
-			{#if headerTrailing}
-				<div class="strip-header-trailing">{@render headerTrailing()}</div>
+			{#if headerMeta}
+				<p class="eyebrow eyebrow-value strip-meta">
+					<span class="strip-meta-sep" aria-hidden="true" bind:this={sepEl}>·</span>
+					<span class="strip-meta-words" bind:this={statusEl}>{@render headerMeta()}</span>
+				</p>
+			{/if}
+			{#if headerActions}
+				<div class="strip-actions" bind:this={actionsEl}>{@render headerActions()}</div>
 			{/if}
 		</header>
 	{/if}
@@ -260,21 +319,92 @@
 		   the content begins ~160px from the viewport edge, which reads
 		   as "designed" rather than "glued to the rail". */
 		--strip-pad: var(--space-8);
+		/* What the row sits on. The edge fades are drawn in it, so they
+		   melt into the page on a plain row and into the band on a
+		   banded one (registered in tokens.css so it can transition). */
+		--strip-surface: var(--ink-000);
 		margin-block-end: var(--space-7);
 	}
 
+	/* A banded row: a faint ground the whole row — header, cards, fades —
+	   sits on, so an action in the header is visibly part of this row.
+	   It runs the full width of the rows' column, square, with the row's
+	   own gutter: an inset rounded panel per row is the stacked-card
+	   look the design rules keep out, and a change of ground is all the
+	   row needs. It lifts a little while the row is under the pointer or
+	   holds focus — the subtle per-row highlight the style is for. */
+	.strip[data-surface='band'] {
+		--strip-surface: color-mix(in oklab, var(--bone-100) 4%, var(--ink-000));
+		/* The band's own padding replaces part of the gap between rows,
+		   so the page is no taller than with plain rows. */
+		margin-block-end: var(--space-5);
+		padding-block: var(--space-4) var(--space-2);
+		background: var(--strip-surface);
+		/* --dur-med is 0ms under prefers-reduced-motion (tokens.css). */
+		transition: --strip-surface var(--dur-med) var(--ease-out-soft);
+	}
+	.strip[data-surface='band']:hover,
+	.strip[data-surface='band']:focus-within {
+		--strip-surface: color-mix(in oklab, var(--bone-100) 6.5%, var(--ink-000));
+	}
+
+	/* The header is one line of items — title, rule, caption, status,
+	   actions — spaced by one gap. Every rule below that spaces an item
+	   reads --strip-header-gap, so the space between any two neighbours
+	   on the line is the same. The one margin is the band's push of its
+	   actions to the row's end, below, which opens the line deliberately. */
 	.strip-header {
+		--strip-header-gap: var(--space-3);
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--space-5);
+		flex-wrap: wrap;
+		align-items: center;
+		column-gap: var(--strip-header-gap);
+		row-gap: var(--space-2);
+		/* An action is 32px tall; every row reserves that height, so a
+		   row with an action and one without start their cards level. */
+		min-block-size: var(--space-6);
 		padding-inline: var(--strip-pad);
 		margin-block-end: var(--space-4);
 	}
-	.strip-header-trailing {
+	.strip-title {
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--strip-header-gap);
+	}
+	.strip-meta {
+		/* The caption's voice comes from the eyebrow classes (tokens.css);
+		   only the line's own gap is set here. */
+		gap: var(--strip-header-gap);
+	}
+	.strip-meta-sep {
+		color: color-mix(in oklab, var(--bone-100) 40%, transparent);
+	}
+	/* A status pushed onto its own line has nothing to separate it from.
+	   Whether it wraps is decided from natural widths (strip-header-wrap),
+	   with the hidden separator counted at its last shown width, so the
+	   title also takes the whole first line while it wraps: the status
+	   then starts the next line whatever its width, and a hidden
+	   separator never sits between caption and status. */
+	.strip-header[data-meta-wraps='true'] .strip-meta-sep {
+		display: none;
+	}
+	.strip-header[data-meta-wraps='true'] .strip-title {
+		flex-basis: 100%;
+	}
+	.strip-actions {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--strip-header-gap);
+	}
+	/* On a band the row's extent is drawn, so its actions can sit at the
+	   band's end and still read as this row's. */
+	.strip[data-surface='band'] .strip-actions {
+		margin-inline-start: auto;
+	}
+	/* …until they wrap below the title: pushed to the far end of a line of
+	   their own they would sit away from the title they belong to. */
+	.strip[data-surface='band'] .strip-header[data-actions-wrap='true'] .strip-actions {
+		margin-inline-start: 0;
 	}
 
 	.strip-frame {
@@ -352,9 +482,9 @@
 		inset-inline-start: 0;
 		background: linear-gradient(
 			to right,
-			var(--ink-000) 0%,
-			color-mix(in oklab, var(--ink-000) 90%, transparent) 30%,
-			color-mix(in oklab, var(--ink-000) 60%, transparent) 60%,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
 			transparent 100%
 		);
 	}
@@ -362,9 +492,29 @@
 		inset-inline-end: 0;
 		background: linear-gradient(
 			to left,
-			var(--ink-000) 0%,
-			color-mix(in oklab, var(--ink-000) 90%, transparent) 30%,
-			color-mix(in oklab, var(--ink-000) 60%, transparent) 60%,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
+			transparent 100%
+		);
+	}
+	/* The gradients' directions are physical; a right-to-left row starts
+	   at the right, so its fades turn round. */
+	.strip-fade-start:dir(rtl) {
+		background: linear-gradient(
+			to left,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
+			transparent 100%
+		);
+	}
+	.strip-fade-end:dir(rtl) {
+		background: linear-gradient(
+			to right,
+			var(--strip-surface) 0%,
+			color-mix(in oklab, var(--strip-surface) 90%, transparent) 30%,
+			color-mix(in oklab, var(--strip-surface) 60%, transparent) 60%,
 			transparent 100%
 		);
 	}
