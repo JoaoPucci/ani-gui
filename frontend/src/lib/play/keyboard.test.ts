@@ -14,6 +14,24 @@ const baseCtx: PlayerKeyContext = {
 	repeat: false
 };
 
+describe('a dialog open over the player', () => {
+	it('takes every key: no shortcut reaches the player behind it', () => {
+		for (const key of [
+			' ',
+			'ArrowLeft',
+			'ArrowRight',
+			'ArrowUp',
+			'ArrowDown',
+			'f',
+			'm',
+			'n',
+			'p'
+		]) {
+			expect(decidePlayerKeyAction({ ...baseCtx, key, overDialog: true })).toBeNull();
+		}
+	});
+});
+
 describe('decidePlayerKeyAction', () => {
 	it('maps Space (modern KeyboardEvent.key) to togglePlay', () => {
 		expect(decidePlayerKeyAction({ ...baseCtx, key: ' ' })).toEqual({ kind: 'togglePlay' });

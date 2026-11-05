@@ -1,9 +1,12 @@
 //! What a history row leaves behind, removed with the row.
 //!
-//! A row records the Kitsu id of the show played. The app keeps more
+//! A row records the Kitsu id of the show played, or of the show the
+//! user linked it to. The app keeps more
 //! about the show, keyed by the row's show id or title:
 //!
 //! - the show's watch stamp (`watched-at:`);
+//! - the card its guessed play came from (`guessed-from:`,
+//!   [`super::guessed_from`]);
 //! - its reverse mapping to Kitsu (`allmanga2kitsu:`), under every
 //!   version's key, with the mark a play left beside it;
 //! - the title-match rows Continue Watching stored for the row's title
@@ -48,8 +51,9 @@ use crate::commands::kitsu::{watched_at_key, ALLMANGA_KITSU_VERSION};
 use crate::error::Result;
 
 /// The prefixes every history-derived cache entry lives under.
-const HISTORY_PREFIXES: [&str; 6] = [
+const HISTORY_PREFIXES: [&str; 7] = [
     "watched-at:",
+    "guessed-from:",
     "allmanga2kitsu:",
     "title-match:",
     "play:",
@@ -83,6 +87,7 @@ pub(crate) fn forget_show(
 ) -> Result<Vec<String>> {
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
+    meta_cache_delete(pool, &super::guessed_from::key(id))?;
     // Every Kitsu id the player could have asked with for this show:
     // the one the row records, the pages this process saw it played
     // from, and for an older row the ones its mapping and title match

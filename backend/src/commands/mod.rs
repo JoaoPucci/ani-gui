@@ -52,12 +52,15 @@ pub(crate) mod download_tool;
 mod download_tool_output;
 mod download_transfer;
 pub mod external_player;
+pub(crate) mod guess_guard;
+pub(crate) mod guessed_from;
 pub mod history;
 pub(crate) mod history_claim;
 pub(crate) mod history_forget;
 pub(crate) mod history_forget_resolutions;
 pub(crate) mod history_forget_skips;
 pub(crate) mod history_forget_titles;
+pub mod history_link;
 pub mod history_number;
 mod history_remove;
 pub(crate) mod history_resume;
@@ -146,3 +149,11 @@ mod kitsu_id_compare_test;
 #[cfg(test)]
 #[path = "anilist_unanswered_test.rs"]
 mod anilist_unanswered_test;
+
+#[cfg(test)]
+#[path = "guessed_from_test.rs"]
+mod guessed_from_test;
+
+#[cfg(test)]
+#[path = "guess_guard_test.rs"]
+mod guess_guard_test;

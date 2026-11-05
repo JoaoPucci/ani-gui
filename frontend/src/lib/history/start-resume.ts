@@ -143,15 +143,18 @@ export interface StartResumeDeps {
 	) => number;
 }
 
-export function makeStartResume(
-	deps: StartResumeDeps
-): (
+export function makeStartResume(deps: StartResumeDeps): (
 	entry: HistoryEntry,
 	match: KitsuAnimeRef,
 	seriesTotal: number | null,
-	seriesFinished: boolean
+	seriesFinished: boolean,
+	/** The line the card stands for, when it is another row than the
+	 *  one it shows ($lib/history/card-row.ts): the play is a guess of
+	 *  that line, from the shown row's progress. */
+	cardRow?: string
 ) => Promise<void> {
-	return async (entry, match, seriesTotal, seriesFinished) => {
+	return async (entry, match, seriesTotal, seriesFinished, cardRow) => {
+		const line = cardRow ?? entry.id;
 		if (deps.isBusy()) return;
 		const title = match.canonical_title;
 		if (!title) return;
@@ -187,7 +190,7 @@ export function makeStartResume(
 		// for the listing that puts its numbering right, and the card
 		// read it before. A position kept under what it read as moves.
 		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
-		const guess = deps.isGuess?.(entry.id) ?? false;
+		const guess = deps.isGuess?.(line) ?? false;
 		const now = await settledRow(
 			deps,
 			entry.id,
@@ -221,7 +224,7 @@ export function makeStartResume(
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
-		const row = guessRow(guess, entry.id);
+		const row = guessRow(guess, line);
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
 		if (row) args.row = row;
 		// The viewer moved on while the click was still settling what to
@@ -231,7 +234,7 @@ export function makeStartResume(
 			deps.onBusy(null);
 			return;
 		}
-		deps.markStarted?.(match.id, episode, entry.id);
+		deps.markStarted?.(match.id, episode, line);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			// The episode the session plays, which the request may have
@@ -258,7 +261,7 @@ export function makeStartResume(
 				deps.onBusy(null);
 				return;
 			}
-			deps.navigateToSession(match.id, session, played, guess, entry.id);
+			deps.navigateToSession(match.id, session, played, guess, line);
 		} catch (e) {
 			deps.onProgress(null);
 			// A failure about a page the viewer has moved on from says

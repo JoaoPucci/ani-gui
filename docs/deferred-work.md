@@ -436,12 +436,15 @@ starting it, and delete it when you find it done.
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
-  There is no control on a card to correct its show. What corrects one
-  is playing the show from its own page: when that play lands on the
-  card's listing, the line records the show and the card goes by it
-  from then on — unless the cross-cour guard refuses the record, as it
-  does for the Slime season (the entry on a later season Kitsu titles
-  only with a bare number). Worth revisiting when the guess can read
+  The user can correct a card by hand: its "Not this show?" pill on
+  Home, its failed resume, the player's slip and ⋯ menu, and the show
+  page its player led to all link the line to the show the user names.
+  Playing the show from its own page also corrects one: when that play
+  lands on the card's listing, the line records the show and the card
+  goes by it from then on — unless the cross-cour guard refuses the
+  record, as it does for the Slime season (the entry on a later season
+  Kitsu titles only with a bare number). The guess itself is what
+  waits, and it is worth revisiting when the guess can read
   more of the provider's listing than its title and the year its key
   names — the year it aired, or its episode count — or when another
   wrong pick on a user's card is reported.

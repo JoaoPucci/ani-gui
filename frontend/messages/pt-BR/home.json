@@ -43,5 +43,8 @@
 	],
 	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Não pode ser desfeito.",
 	"clear_confirm_button": "Limpar tudo",
-	"hero_error_eyebrow_value": "Sem resposta do Kitsu"
+	"hero_error_eyebrow_value": "Sem resposta do Kitsu",
+	"resume_guess_note": "O anime deste card foi deduzido de “{title}” no seu histórico. Se for o anime errado, escolha o certo.",
+	"link_pick_button": "Escolher o anime certo",
+	"link_on_card": "No card"
 }

@@ -142,5 +142,17 @@
 	"test_error_play_failed": "Falló la reproducción: {detail}",
 	"test_error_setup_failed": "Falló la configuración: {detail}",
 	"error_load_failed": "No se pudo cargar este título. {reason}",
-	"play_failure_source_error": "La fuente de streaming respondió con un error. Inténtalo más tarde."
+	"play_failure_source_error": "La fuente de streaming respondió con un error. Inténtalo más tarde.",
+	"link_guess_note": "Esta serie se dedujo de «{title}» en tu historial.",
+	"link_guess_right": "Es correcta",
+	"link_linked_note": "Vinculada a {title}. Lo que se reproduce sigue siendo la serie deducida.",
+	"link_open_linked": "Ir a la serie vinculada",
+	"link_kept_toast": "Se mantuvo {title}.",
+	"link_hide_aria": "Ocultar este aviso",
+	"link_slip_aria": "Serie deducida",
+	"link_menu_item": "No es esta serie…",
+	"link_playing_now": "Reproduciendo",
+	"link_change_button": "¿No es esta serie? Cambiar",
+	"link_dialog_body": "Se está reproduciendo el episodio {episode}. Elige a qué serie pertenece en realidad.",
+	"link_warning_episode": "Se está reproduciendo el episodio {episode}, pero esta serie tiene {count} episodios."
 }

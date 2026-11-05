@@ -188,14 +188,22 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
-		guessedId,
-		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
+		landedElsewhere,
+		sessionShow,
 		withGuess,
+		withLanding,
 		withRow
 	} from '$lib/play/play-origin';
+	import { guessedQuery } from '$lib/history/guessed-context';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { appLinkDeps } from '$lib/history/link-deps';
+	import { holdPlayback } from '$lib/play/hold-playback';
+	import GuessSlip from '$lib/components/GuessSlip.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess —
@@ -208,7 +216,28 @@
 	// card's history row, so removing the card forgets them whatever
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
+	// The show page a guessed card's session goes up to says which
+	// history title the card was matched from ($lib/history/guessed-context).
+	const showHref = $derived(resolve('/anime/[id]', { id }) + guessedQuery(fromGuess, fromRow));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
+	// A guessed session's slip, its ⋯ entry and the picker they open
+	// ($lib/history/in-place-link.svelte.ts). The player stays where it
+	// is through a link and its undo; the picker holds playback while
+	// it is open ($lib/play/hold-playback).
+	const playLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined })
+	});
+	$effect(() => void playLink.arrive(fromGuess ? fromRow : null, id));
+	// What the session's plays name as their show: its page's, its guess
+	// named apart, or once the card was linked from here, the link
+	// ($lib/play/play-origin).
+	const playingAs = $derived(
+		sessionShow({ id, guess: fromGuess, row: fromRow, linked: playLink.linked?.id ?? null })
+	);
+	$effect(() => {
+		if (playLink.open) return holdPlayback(untrack(() => videoEl));
+	});
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
@@ -2137,7 +2166,7 @@
 		const title = detail?.canonical_title ?? null;
 		pageTrail.name(page.url.pathname, [
 			{ label: m.breadcrumb_home(), href: '/' },
-			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
+			{ label: title ?? m.breadcrumb_anime(), href: showHref },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
 		]);
 	});
@@ -2195,13 +2224,13 @@
 				mode,
 				quality,
 				show: detail,
-				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
 				version,
 				// The click may take this warm's session: it answers for the
-				// guessed card's row as the click would.
-				guessRow: guessRow(fromGuess, fromRow),
-				guessId: guessedId(fromGuess, id)
+				// guessed card's row, naming its show, as the click would.
+				kitsuId: playingAs.kitsuId,
+				guessRow: playingAs.guessRow,
+				guessId: playingAs.guessId
 			});
 			void getOrFire(
 				makeKey(id, targetEp, mode, quality, version, args.guess_row),
@@ -2252,6 +2281,9 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
+		// What the switch names as its show: the page's, or a guess named
+		// apart — the link, once the card was linked from here.
+		const as = playingAs;
 		const quality = playQuality(config);
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
@@ -2260,13 +2292,13 @@
 			mode,
 			quality,
 			show,
-			kitsuId: recordableId(owner.showId, guess),
 			version,
 			caption: storedCaption(owner.showId),
-			guessRow: guessRow(guess, row),
+			kitsuId: as.kitsuId,
+			guessRow: as.guessRow,
 			// The guess, apart from the page's id: the resolve records it on
 			// the card's row when the switch lands on that row's listing.
-			guessId: guessedId(guess, owner.showId)
+			guessId: as.guessId
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2341,7 +2373,7 @@
 			// and mirrored as a play from the show's page is.
 			const record = playedRecord(
 				{ ...playArgs, episode: String(played) },
-				owner.showId,
+				as.recordAs,
 				guess,
 				outcome.session
 			);
@@ -2351,7 +2383,7 @@
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: record.mirror,
+					mirror: record.mirror && as.mirrors,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
@@ -2371,7 +2403,11 @@
 			// flag. A navigation that fails is not a failed play.
 			await goto(
 				resolve('/play/[id]', { id: owner.showId }) +
-					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
+					withLanding(
+						withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
+						guess,
+						outcome.session
+					),
 				{ replaceState: true }
 			).catch(() => {
 				// Nothing replaced the stream on screen: its error stands —
@@ -2802,7 +2838,8 @@
 				inField,
 				inButton,
 				modifier: e.ctrlKey || e.metaKey || e.altKey,
-				repeat: e.repeat
+				repeat: e.repeat,
+				overDialog: playLink.open
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
@@ -2903,14 +2940,15 @@
 					<p class="player-error-body">
 						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
 					</p>
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 					<a
 						class="player-error-action"
-						href={resolve('/anime/[id]', { id })}
+						href={showHref}
 						onclick={(e) => {
 							// Replace, like the now-playing link: the show's page
 							// is "up" from the player.
 							e.preventDefault();
-							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+							void goto(showHref, { replaceState: true });
 						}}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -2921,6 +2959,7 @@
 						</svg>
 						<span>{m.play_error_stream_back_to_show()}</span>
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{:else}
 					<!-- Held while the airing lookup is out: the switch the
 					     Reload hands to would decline it ($lib/play/reload-offer). -->
@@ -3538,19 +3577,35 @@
 	</section>
 
 	<div class="watch-column">
+		{#if playLink.slip !== 'none'}
+			<GuessSlip
+				view={playLink.slip}
+				title={playLink.offer?.entry.title ?? null}
+				linkedTitle={playLink.linked?.title ?? null}
+				busy={playLink.busy}
+				canKeep={!landedElsewhere(page.url.searchParams)}
+				onchange={() => void playLink.start(episodeNum)}
+				onright={() => void playLink.confirmCurrent()}
+				onopen={() => {
+					if (playLink.linked) void goto(resolve('/anime/[id]', { id: playLink.linked.id }));
+				}}
+				onhide={() => playLink.hide()}
+			/>
+		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode
 		     prev/next + external player live on the right. -->
 		<header class="now-playing">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 			<a
 				class="np-link"
-				href={resolve('/anime/[id]', { id })}
+				href={showHref}
 				onclick={(e) => {
 					// Replace, not push — treats poster → details as an "up"
 					// navigation rather than burying the player in history.
 					e.preventDefault();
-					void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+					void goto(showHref, { replaceState: true });
 				}}
 			>
 				{#if npPoster}
@@ -3595,6 +3650,7 @@
 					</span>
 				</span>
 			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 			<div class="np-actions">
 				{#if !singleVideo}
@@ -3719,6 +3775,20 @@
 							aria-label={m.play_more_aria_label()}
 							transition:settle={{ duration: 120 }}
 						>
+							{#if playLink.offer}
+								<button
+									type="button"
+									class="more-item"
+									role="menuitem"
+									onclick={() => {
+										closeMore();
+										void playLink.start(episodeNum);
+									}}
+								>
+									<GuessMark class="more-icon" />
+									<span>{m.play_link_menu_item()}</span>
+								</button>
+							{/if}
 							<button
 								type="button"
 								class="more-item"
@@ -4088,6 +4158,26 @@
 			</div>
 		{/if}
 	</div>
+	{#if playLink.offer}
+		<LinkShowDialog
+			open={playLink.open}
+			savedTitle={playLink.offer.entry.title}
+			episode={playLink.episode}
+			playing
+			currentLabel={m.play_link_playing_now()}
+			candidates={playLink.candidates}
+			failed={playLink.failed}
+			chosen={playLink.chosen}
+			warnings={playLink.warnings}
+			rowCount={playLink.group?.length ?? null}
+			busy={playLink.busy}
+			error={playLink.error}
+			onSearch={(q) => void playLink.search(q)}
+			onChoose={(c) => playLink.choose(c)}
+			onConfirm={() => void playLink.confirm()}
+			onCancel={() => playLink.cancel()}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay visible={switchBusy} progress={switchProgress} />

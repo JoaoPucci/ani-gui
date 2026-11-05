@@ -111,8 +111,10 @@ pub struct HistoryEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watched_at: Option<i64>,
     /// The Kitsu id of the show the user played: the page the play was
-    /// started from. A write without one keeps the row's; a row from
-    /// before the column, or a play no page stood behind, has none.
+    /// started from, or the show the user linked the row to
+    /// ([`crate::commands::history_link`]). A write without one keeps
+    /// the row's; a row from before the column, or a play no page
+    /// stood behind, has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
     /// Whether `ep_no` is the app's own number for the episode — the

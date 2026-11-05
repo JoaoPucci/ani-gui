@@ -298,6 +298,28 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
 	});
 
+	it("opens a card that stands for the line clicked as a guess of that line, from the shown row's progress", async () => {
+		// JoJo: the card shows the 2012 listing's row, which a guessed play
+		// of the 2000 card wrote, and stands for the 2000 card's line.
+		const h = makeHarness({ isGuess: (id) => id === 'h-card' });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h-played', '5', 'Show'), makeMatch('k1', 12), 12, true, 'h-card');
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h-card', episode: 6 }),
+			expect.any(Function)
+		);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			6,
+			true,
+			'h-card'
+		);
+		// The cap is the shown row's, as its progress is.
+		expect(h.counts).toEqual([['h-played', 12]]);
+	});
+
 	it('opens a trusted match as the show itself', async () => {
 		const h = makeHarness({ isGuess: () => false });
 		const start = makeStartResume(h.deps);

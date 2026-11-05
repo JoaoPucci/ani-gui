@@ -250,6 +250,7 @@ fn write_history_on_cache_hit(
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
+    crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The episode played, as the app numbers it — the one the
         // cached resolve matched, or the request on a row from before
@@ -268,7 +269,12 @@ fn write_history_on_cache_hit(
         kitsu_id: crate::commands::play_native_record::resolved_id(
             state,
             &cached.show_title,
-            args.resolve_kitsu_id(&cached.show_id),
+            crate::commands::guess_guard::guarded(
+                state,
+                args,
+                &cached.show_id,
+                args.resolve_kitsu_id(&cached.show_id),
+            ),
         ),
         own_number: true,
     };
@@ -402,7 +408,8 @@ where
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(mut resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await
             {
-                resp.own_listing = args.lands_on_guess_row(&cached.show_id);
+                resp.own_listing =
+                    crate::commands::guess_guard::own_listing(state, args, &cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -517,8 +524,14 @@ where
             &native,
             &args.episode,
             asked,
-            args.resolve_kitsu_id(&native.slug),
+            crate::commands::guess_guard::guarded(
+                state,
+                args,
+                &native.slug,
+                args.resolve_kitsu_id(&native.slug),
+            ),
         );
+        crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &native.slug);
     }
     // A successful resolve is a positive availability fact, same
     // guard — carrying the episode cap the native episodes list
@@ -612,7 +625,11 @@ where
         episode: Some(episode),
         former_episode,
         episode_unverified: cached_resolution.episode_unverified,
-        own_listing: args.lands_on_guess_row(&cached_resolution.show_id),
+        own_listing: crate::commands::guess_guard::own_listing(
+            state,
+            args,
+            &cached_resolution.show_id,
+        ),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);

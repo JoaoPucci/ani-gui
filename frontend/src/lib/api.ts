@@ -327,6 +327,11 @@ export interface HistoryEntry {
 	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
 	 *  the backend; absent when it names none. */
 	key_year?: number;
+	/** The Continue card whose guessed play wrote this row on another
+	 *  listing — JoJo's 2000 card for the 2012 listing's row its play
+	 *  wrote. Home's card stands for that line while both show as the
+	 *  same show ($lib/history/card-row.ts). */
+	guessed_from?: string;
 }
 
 /** Input to `cmd_create_session`. */
@@ -622,6 +627,50 @@ export function historyClear(): Promise<void> {
  *  safe. The Continue Watching rail uses this for per-card delete. */
 export function historyDelete(id: string): Promise<void> {
 	return deleteJson<void>(`/api/history/${encodeURIComponent(id)}`);
+}
+
+/** A history row as a link left it, and the Kitsu id it had before. */
+export interface LinkedRow {
+	row: string;
+	previous: string | null;
+	ep_no: string;
+	watched_at: number | null;
+}
+
+/** What a link wrote: the id the rows now record, and every row. */
+export interface LinkOutcome {
+	kitsu_id: string;
+	linked: LinkedRow[];
+}
+
+/** What an undo did: the rows given back their earlier id, and those a
+ *  write since the link left as they are. */
+export interface UnlinkOutcome {
+	restored: string[];
+	kept: string[];
+}
+
+/** Link history rows to the show the user named for them, from the
+ *  card whose row is `card`: only the rows of that card's listing among
+ *  `rows` are written. The card is named even when no row is left to
+ *  link. Rejects with Kitsu's 404/410 for an entry Kitsu deleted. */
+export function historyLink(card: string, rows: string[], kitsuId: string): Promise<LinkOutcome> {
+	return postJson<LinkOutcome>('/api/history/link', {
+		card,
+		rows,
+		kitsu_id: kitsuId
+	});
+}
+
+/** The rows of `rows` a link from the card whose row is `card` would
+ *  write: those of the card's own listing. */
+export function historyLinkGroup(card: string, rows: string[]): Promise<string[]> {
+	return postJson<string[]>('/api/history/link-group', { card, rows });
+}
+
+/** Undo a link, naming the rows as it left them. */
+export function historyUnlink(kitsuId: string, rows: LinkedRow[]): Promise<UnlinkOutcome> {
+	return postJson<UnlinkOutcome>('/api/history/unlink', { kitsu_id: kitsuId, rows });
 }
 
 /** Find the most-recent history entry whose show id maps to this Kitsu

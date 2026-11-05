@@ -98,6 +98,9 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
+        .route("/api/history/link", post(post_history_link))
+        .route("/api/history/link-group", post(post_history_link_group))
+        .route("/api/history/unlink", post(post_history_unlink))
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -184,16 +187,25 @@ struct HistoryRow {
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
+    /// The Continue card whose guessed play wrote this row on another
+    /// listing ([`crate::commands::guessed_from`]): the renderer stands
+    /// the card for that line while both show as the same show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guessed_from: Option<String>,
 }
 
 async fn get_history(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<HistoryRow>>, AniError> {
+    // A cache that cannot list the notes leaves every card standing for
+    // its newer row, as before the notes existed.
+    let mut from = crate::commands::guessed_from::all(&state).unwrap_or_default();
     Ok(Json(
         h_inner::history_list(&state)?
             .into_iter()
             .map(|entry| HistoryRow {
                 key_year: crate::scraper::provider::key_year(&entry.id),
+                guessed_from: from.remove(&entry.id),
                 entry,
             })
             .collect(),
@@ -233,6 +245,36 @@ async fn get_history_number(
     Ok(Json(crate::commands::history_number::history_number(
         &state, &id,
     )?))
+}
+
+/// Link history rows to the show the user named for them
+/// ([`crate::commands::history_link::link`]).
+async fn post_history_link(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::LinkArgs>,
+) -> Result<Json<crate::commands::history_link::LinkOutcome>, AniError> {
+    Ok(Json(
+        crate::commands::history_link::link(&state, &args).await?,
+    ))
+}
+
+/// The rows a link would write
+/// ([`crate::commands::history_link::link_group`]).
+async fn post_history_link_group(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::LinkGroupArgs>,
+) -> Result<Json<Vec<String>>, AniError> {
+    Ok(Json(crate::commands::history_link::link_group(
+        &state, &args,
+    )?))
+}
+
+/// Undo a link ([`crate::commands::history_link::unlink`]).
+async fn post_history_unlink(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::UnlinkArgs>,
+) -> Result<Json<crate::commands::history_link::UnlinkOutcome>, AniError> {
+    Ok(Json(crate::commands::history_link::unlink(&state, &args)?))
 }
 
 async fn post_external_player(
@@ -727,13 +769,27 @@ async fn post_play_mark_watched(
             // A guessed card's watch carries the guessed id only onto
             // that card's own listing: a resolve since the session's may
             // have landed elsewhere.
+            // A guessed session's never replaces a show the row records:
+            // a link made since the session began stands.
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
-                args.recordable_kitsu_id(&cached.show_id),
+                crate::commands::guess_guard::guarded(
+                    &state,
+                    &args,
+                    &cached.show_id,
+                    args.recordable_kitsu_id(&cached.show_id),
+                ),
                 begun,
             )
             .await;
+            // Which card the row's play came from, when a guessed card's
+            // play landed on another listing; none otherwise.
+            crate::commands::guessed_from::record(
+                &state,
+                args.guess_row.as_deref(),
+                &cached.show_id,
+            );
         }
     }
     StatusCode::NO_CONTENT
@@ -845,6 +901,10 @@ mod title_match_year_tests;
 #[cfg(test)]
 #[path = "mark_watched_guess_test.rs"]
 mod mark_watched_guess_tests;
+
+#[cfg(test)]
+#[path = "history_guessed_from_test.rs"]
+mod history_guessed_from_tests;
 
 #[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]

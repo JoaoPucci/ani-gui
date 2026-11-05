@@ -42,5 +42,8 @@
 	],
 	"clear_confirm_body": "Esto borra el historial de reproducción de ani-gui. No se puede deshacer.",
 	"clear_confirm_button": "Borrar todo",
-	"hero_error_eyebrow_value": "Sin respuesta de Kitsu"
+	"hero_error_eyebrow_value": "Sin respuesta de Kitsu",
+	"resume_guess_note": "La serie de esta tarjeta se dedujo de «{title}» en tu historial. Si es la serie equivocada, elige la correcta.",
+	"link_pick_button": "Elegir la serie correcta",
+	"link_on_card": "En la tarjeta"
 }

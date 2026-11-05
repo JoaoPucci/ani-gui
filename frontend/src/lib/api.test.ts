@@ -19,6 +19,9 @@ import {
 	historyByKitsu,
 	historyClear,
 	historyDelete,
+	historyLink,
+	historyLinkGroup,
+	historyUnlink,
 	historyList,
 	historyNumber,
 	imageCacheClear,
@@ -2130,5 +2133,79 @@ describe('downloadStream', () => {
 		es.dispatch('done', 'not-json');
 		await expect(promise).rejects.toBeDefined();
 		expect(es.closed).toBe(true);
+	});
+});
+
+describe('historyLink and historyUnlink', () => {
+	it('posts the rows and the id, and reads back what was written', async () => {
+		const outcome = {
+			kitsu_id: '13209',
+			linked: [{ row: 'hianime:black-clover-949', previous: null, ep_no: '1', watched_at: 5 }]
+		};
+		const fetchMock = mockFetchOnce(outcome);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(
+			await historyLink('hianime:black-clover-949', ['hianime:black-clover-949'], '13209')
+		).toEqual(outcome);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual({
+			card: 'hianime:black-clover-949',
+			rows: ['hianime:black-clover-949'],
+			kitsu_id: '13209'
+		});
+	});
+
+	it("names the card's row as the link's card", async () => {
+		const fetchMock = mockFetchOnce({ kitsu_id: '13209', linked: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyLink(
+			'hianime:jojo-2000-5182',
+			['hianime:jojo-2000-5182', 'hianime:jojo-2012-708'],
+			'13209'
+		);
+		expect(JSON.parse(String(lastCall(fetchMock).init?.body)).card).toBe('hianime:jojo-2000-5182');
+	});
+
+	it('names the card even when no row is left to link', async () => {
+		// The backend refuses a link with no card: an empty group still
+		// says which card it was made from.
+		const fetchMock = mockFetchOnce({ kitsu_id: '13209', linked: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyLink('hianime:jojo-2000-5182', [], '13209');
+		expect(JSON.parse(String(lastCall(fetchMock).init?.body))).toEqual({
+			card: 'hianime:jojo-2000-5182',
+			rows: [],
+			kitsu_id: '13209'
+		});
+	});
+
+	it('asks which of the rows a link from the card would write', async () => {
+		const fetchMock = mockFetchOnce(['hianime:jojo-2000-5182']);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(
+			await historyLinkGroup('hianime:jojo-2000-5182', [
+				'hianime:jojo-2000-5182',
+				'hianime:jojo-2012-708'
+			])
+		).toEqual(['hianime:jojo-2000-5182']);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link-group`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual({
+			card: 'hianime:jojo-2000-5182',
+			rows: ['hianime:jojo-2000-5182', 'hianime:jojo-2012-708']
+		});
+	});
+
+	it('posts the rows as the link left them to undo it', async () => {
+		const fetchMock = mockFetchOnce({ restored: ['a'], kept: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const rows = [{ row: 'a', previous: null, ep_no: '1', watched_at: null }];
+		expect(await historyUnlink('13209', rows)).toEqual({ restored: ['a'], kept: [] });
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/unlink`);
+		expect(JSON.parse(String(init?.body))).toEqual({ kitsu_id: '13209', rows });
 	});
 });
