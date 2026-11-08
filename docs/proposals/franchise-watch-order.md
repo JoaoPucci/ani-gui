@@ -1110,7 +1110,7 @@ them introduces a new widget style.
     beside the name is that entry's. The entry being watched has its
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
-    "Franchise · 15 entries" eyebrow (every entry the page lists, the
+    "Franchise · 15 titles" eyebrow (every entry the page lists, the
     total the strip's "Whole franchise" link stands for), with a Resume
     button styled and
     glowing like the show page's Play. The page takes the accent of the
@@ -1221,7 +1221,7 @@ The rules below hold on every surface:
   for the strip, the franchise page, the setting, Continue and the
   player, and in English at 960 px, the smallest window the app
   allows. Counts that sit beside a
-  noun ("10 entries", "2 ways to continue") use plural variants; the
+  noun ("10 titles", "2 ways to continue") use plural variants; the
   rest put the number where no noun agrees with it ("Comes after these
   2"). Order words follow the setting's wording: "As linked" is "Por
   vínculo" in Portuguese, since "ligado" reads as "switched on".
@@ -1260,9 +1260,9 @@ The rules below hold on every surface:
   (2006) → the UBW prologue → UBW as one sequence, though they are two
   ways on from *Fate/Zero 2nd Season*. So each branch opens with a key
   ("Way 1 of 2") and a hairline in the gap before it; a loop opens
-  with "Linked with 9 others, order unclear"; an entry that only leads into a
-  join says so ("Leads into 10", by the number of the entry it leads
-  into, since a title would not fit the key line). Every member of a
+  with "Linked with 9 others, order unclear"; an entry that only
+  leads into a join says so ("Leads into 10", by the number of the
+  entry it leads into, since a title would not fit the key line). Every member of a
   loop carries a rule over its poster that runs across the gaps, so
   the loop reads as one stretch even where "You are here" takes its
   key. Positions count
@@ -1271,8 +1271,8 @@ The rules below hold on every surface:
   line is reserved on every card, so titles share one baseline.
 - **Missing data.** No run: no strip, no position in the masthead.
   First or last entry: "Nothing comes before this", "Nothing comes
-  after this" in the empty column. Unknown date: "Date not announced" in place of the
-  year and count. An entry the provider lacks looks like any other.
+  after this" in the empty column. Unknown date: "Date not announced"
+  in place of the year and count. An entry the provider lacks looks like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1323,10 +1323,10 @@ The rules below hold on every surface:
   entry; a stretch after a loop is not, since the loop gives it no
   single place, and its key says so. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
-  columns, each under "Way n of N". A loop is a group under "Linked with 9
-  others, order unclear" with one sentence on why it has no clear
-  order; its entries are listed along their links. In release order every one of these is a single numbered
-  line.
+  columns, each under "Way n of N". A loop is a group under "10
+  linked titles, order unclear" with one sentence on why it has no
+  clear order; its entries are listed along their links. In release
+  order every one of these is a single numbered line.
 - **Masthead.** The franchise is named after the run's first entry,
   without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
@@ -1393,8 +1393,8 @@ variant below is one of the switch's options.
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty
   side keeps its column, drops its key and says why it is empty
-  ("Nothing comes before this", "Nothing comes after this"), so the numeral does not move
-  at either end of a run. The centre column stays at every window
+  ("Nothing comes before this", "Nothing comes after this"), so the
+  numeral does not move at either end of a run. The centre column stays at every window
   width; the first round hid it below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
@@ -1427,7 +1427,7 @@ variant below is one of the switch's options.
   - *Button*: the show page's outline button at its full size (the
     size of Download), with the number of entries the franchise page
     lists, recaps included, and the app's arrow ("Whole franchise |
-    15 entries →" on JoJo).
+    15 titles →" on JoJo).
   - *Poster stack*: three posters fanned (the run's first entry, a
     film or other version, a side story), "See the whole franchise",
     and what the page holds ("9 in the main story · 4 films and
