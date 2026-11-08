@@ -27,8 +27,9 @@ fi
 # leave a window without it. A downgrade to a version older than the
 # profile runs this script with `upgrade` and keeps it, and that
 # version's own postrm will not remove it: the file then stays, granting
-# user namespaces to a path nothing occupies once the package is gone,
-# until the next install of this one rewrites and removes it.
+# user namespaces to a path nothing occupies once that version is gone
+# too, until this package is installed again and takes the file back
+# over (its postrm then removes it on removal).
 case "$1" in
     remove | purge | disappear)
         PROFILE="$DPKG_ROOT/etc/apparmor.d/ani-gui"

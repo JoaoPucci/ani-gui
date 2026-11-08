@@ -5,8 +5,8 @@
 // user namespaces per program, so without a profile for the installed
 // binary the .deb always fell through to the setuid helper. The
 // postinst now also installs an AppArmor profile granting `userns` to
-// `/opt/ani-gui/ani-gui.bin` — the shape Ubuntu ships for Chrome,
-// VS Code and Signal — and loads it where AppArmor is active; the
+// `/opt/ani-gui/ani-gui.bin` — with the rules Ubuntu's own profiles for
+// Chrome, VS Code and Obsidian carry — and loads it where AppArmor is active; the
 // postrm unloads and deletes it on removal. The setuid helper stays as
 // the fallback for hosts with no user namespaces at all.
 //
