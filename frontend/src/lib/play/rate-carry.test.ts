@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { carryRate, takeRate, __resetRateForTests } from './rate-carry';
+import { carryRate, rateFor, takeRate, __resetRateForTests } from './rate-carry';
 
 beforeEach(() => __resetRateForTests());
 
@@ -11,6 +11,14 @@ describe('the carried playback speed', () => {
 		carryRate('4013', 1.5);
 		expect(takeRate('4013')).toBe(1.5);
 		expect(takeRate('4013')).toBeNull();
+	});
+
+	it('is seen without being taken, so a stream attached again before it plays still has it', () => {
+		carryRate('4013', 1.5);
+		expect(rateFor('4013')).toBe(true);
+		expect(rateFor('7158')).toBe(false);
+		expect(takeRate('4013')).toBe(1.5);
+		expect(rateFor('4013')).toBe(false);
 	});
 
 	it('is dropped by a player of another show', () => {
