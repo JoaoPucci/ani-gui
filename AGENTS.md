@@ -318,6 +318,23 @@ package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
 
+### Choosing between options
+
+When a change can be made more than one way, rank the options on
+correctness, safety, maintainability and the user's experience,
+weighed together rather than in a fixed order.
+
+"Faster to write" is not an argument on its own. Development effort
+counts only when it would become a real blocker for the schedule.
+Compile time and binary size are different: they are real costs, and
+may be weighed against the rest.
+
+The ranking is how a recommendation is made, not a licence to decide
+alone. When the choice is the maintainer's — anything users see,
+scope, a new dependency, or a real trade-off between these criteria —
+put the options to them, as **Ask** above describes, with the ranking
+as the recommendation.
+
 ## 15. Every change ships on every platform we package
 
 The packaged platforms are **Linux** (AppImage and `.deb`) and
