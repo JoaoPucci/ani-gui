@@ -111,3 +111,21 @@ test("a pattern left to electron-builder's default is refused, not guessed", () 
   assert.deepEqual(found.map((m) => `${m.platform}/${m.target}`), ["windows/nsis"]);
   assert.match(found[0].reason, /artifactName/);
 });
+
+test("the release builds take their targets and arches from the config this check reads", () => {
+  // Targets named on electron-builder's command line replace the
+  // config's `target` lists and their `arch`, so a release script
+  // naming them would build files this check never expands. Each
+  // release script's one electron-builder call names its platform and
+  // nothing else. A syntactic check on the two scripts as written.
+  const calls = {
+    "dist:release": " && electron-builder --linux && ",
+    "dist:win": " && electron-builder --win",
+  };
+  for (const [script, call] of Object.entries(calls)) {
+    const line = pkg.scripts[script];
+    assert.equal(line.split("electron-builder").length - 1, 1, `${script}: one electron-builder call`);
+    assert.ok(line.includes(call), `${script}: ${line}`);
+    if (script === "dist:win") assert.ok(line.endsWith(call), `${script}: ${line}`);
+  }
+});
