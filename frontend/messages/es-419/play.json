@@ -125,6 +125,7 @@
 	"play_failure_network": "Problemas de red al conectar con la fuente de streaming. Revisa tu conexión y vuelve a intentarlo.",
 	"play_failure_rate_limited": "La fuente de streaming está ocupada en este momento. Espera unos segundos y vuelve a intentarlo.",
 	"play_failure_rate_limited_wait": "La fuente de streaming está ocupada en este momento. Vuelve a intentarlo en unos {seconds} s.",
+	"play_failure_unreadable": "La fuente de streaming respondió de una forma que esta versión de la app no puede leer. Una actualización podría solucionarlo.",
 	"play_failure_generic": "No se pudo iniciar este episodio ahora mismo. Vuelve a intentarlo en unos minutos.",
 	"progress_searching": "Buscando en {provider}…",
 	"progress_matched": "Encontrado: {title}",
