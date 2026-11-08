@@ -648,6 +648,7 @@ test("every IPC channel refuses a sender that is not the app's document", async 
         "ani-gui:account:open-oauth",
         "ani-gui:account:cancel-oauth",
         "ani-gui:account:set-token",
+        "ani-gui:account:get-token",
         "ani-gui:account:clear-token",
         "ani-gui:open-external",
       ]),
@@ -660,7 +661,6 @@ test("every IPC channel refuses a sender that is not the app's document", async 
         "ani-gui:window:is-maximized",
         "ani-gui:active-downloads",
         "ani-gui:read-config-locale",
-        "ani-gui:account:get-token",
       ]),
     );
     for (const channel of handledChannels) {
@@ -669,11 +669,7 @@ test("every IPC channel refuses a sender that is not the app's document", async 
     for (const channel of listenedChannels) {
       expect(outcome.listened[channel].touched, channel).toEqual([]);
     }
-    // The sync channels answer with a refusal, never a token or a locale.
-    expect(outcome.listened["ani-gui:account:get-token"].returnValue).toEqual({
-      ok: false,
-      kind: "refused",
-    });
+    // The sync channels answer with a refusal, never a locale.
     expect(outcome.listened["ani-gui:read-config-locale"].returnValue).toBeNull();
     expect(outcome.listened["ani-gui:window:is-maximized"].returnValue).toBe(false);
     // Every refusal is logged, the async messages included.
@@ -695,13 +691,13 @@ test("the app's own document still reaches the bridge", async () => {
         aniGui: {
           windowControls: { isMaximized(): boolean };
           openExternal(url: string): Promise<boolean>;
-          account: { getToken(p: string): { ok: boolean; kind?: string } };
+          account: { getToken(p: string): Promise<{ ok: boolean; kind?: string }> };
         };
       }).aniGui;
       return {
         maximized: typeof bridge.windowControls.isMaximized(),
         opened: await bridge.openExternal("https://example.com/privacy"),
-        token: bridge.account.getToken("anilist"),
+        token: await bridge.account.getToken("anilist"),
       };
     });
     expect(answers.maximized).toBe("boolean");
