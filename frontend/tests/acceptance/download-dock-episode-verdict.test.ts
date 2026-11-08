@@ -3,12 +3,12 @@
 // version cannot read) tells the user so, in the dock, with the play
 // page's own words.
 //
-// The backend ends the download stream with the typed episode
-// verdict — a unit variant, so no message rides with it — and the
-// glue between the stream, the store and the dock used to let it
-// fall through to the generic "Download failed". This scenario
+// The backend ends the download stream with a typed provider
+// failure, and the glue between the stream, the store and the dock
+// once let the episode verdict (a unit variant, so no message rides
+// with it) fall through to the generic "Download failed". Each case
 // starts a real download through the real glue over a faked
-// EventSource, fails it with the verdict as the sidecar sends it,
+// EventSource, fails it with its payload as the sidecar sends it,
 // and reads the rendered dock row, so a dropped call anywhere
 // between `startDownload`, the store and the dock's error marker
 // cannot hide behind the mocked unit case.
