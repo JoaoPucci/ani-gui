@@ -572,7 +572,8 @@ describe('switching to the pick', () => {
 			'the now-playing row'
 		);
 		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
-		videoAt(74);
+		const before = videoAt(74);
+		before.playbackRate = 1.5;
 		await openPicker();
 		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
 		await until(() => pickPlay() !== undefined, 'the play of the pick');
@@ -600,6 +601,13 @@ describe('switching to the pick', () => {
 			.filter(([, at]) => at !== null);
 		expect(handed).toEqual([[[RIGHT, 2], 74]]);
 		consumed.mockRestore();
+		// The speed goes along once the pick's stream has loaded, as the
+		// speed playing, not as a default a later episode would fall
+		// back to.
+		const after = target.querySelector<HTMLVideoElement>('.player-video-slot video')!;
+		after.dispatchEvent(new Event('loadedmetadata'));
+		expect(after.playbackRate).toBe(1.5);
+		expect(after.defaultPlaybackRate).toBe(1);
 		await moreMenu();
 		expect(button(m.play_link_menu_item())).not.toBeNull();
 	});
@@ -629,6 +637,24 @@ describe('switching to the pick', () => {
 		await settle();
 		expect(pickPlay()).toBeUndefined();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
+	it('names no episode of a single-video work on the player, from its first line', async () => {
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
+				HttpResponse.json(
+					String(params.id) === GUESS
+						? { ...show(GUESS), subtype: 'movie', episode_count: 1 }
+						: show(String(params.id))
+				)
+			)
+		);
+		await openPlayer();
+		await until(() => slipText().includes(guessNote()), 'the slip');
+		button(m.play_link_change_button(), slip()!)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		// Before the candidates land, the line already knows the work.
+		expect(dialog()!.textContent).toContain(m.play_link_dialog_body_single({ title: TITLE }));
 	});
 
 	it('says so and keeps the player as it was when the pick has no stream', async () => {

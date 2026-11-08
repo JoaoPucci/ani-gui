@@ -51,6 +51,7 @@ function deps(over: Partial<SwitchShowDeps> = {}) {
 			(_showId: string, _session: CreateSessionResponse, requested: number) => requested
 		),
 		carryRate: vi.fn(),
+		forget: vi.fn(() => void calls.push('forget')),
 		isCurrent: () => true,
 		...over
 	};
@@ -89,8 +90,14 @@ describe('switching to the picked show', () => {
 	it('records the play, carries the point over, tells the next session, then opens it', async () => {
 		const { d, calls } = deps();
 		await switchShow(d, request());
-		expect(calls).toEqual(['resolve', 'record', 'carry', 'note', 'open']);
-		expect(d.record).toHaveBeenCalledWith(expect.objectContaining({ kitsu_id: RIGHT.id }), SESSION);
+		// The next page is told before it opens; the play is recorded once
+		// it has.
+		expect(calls).toEqual(['resolve', 'carry', 'note', 'open', 'record']);
+		expect(d.record).toHaveBeenCalledWith(
+			expect.objectContaining({ kitsu_id: RIGHT.id }),
+			SESSION,
+			2
+		);
 		expect(d.carry).toHaveBeenCalledWith(RIGHT.id, 2, 14.5);
 		expect(d.noteSwitch).toHaveBeenCalledWith(CARD, RIGHT.canonical_title);
 		expect(d.open).toHaveBeenCalledWith(RIGHT.id, SESSION, 2, CARD);
@@ -130,6 +137,8 @@ describe('switching to the picked show', () => {
 		await switchShow(d, request({ episode: 24.5 }));
 		expect(d.played).toHaveBeenCalledWith(RIGHT.id, SESSION, 24.5);
 		expect((vi.mocked(d.record).mock.calls[0][0] as PlayArgs).episode).toBe('12.5');
+		// The trackers hear the episode played too.
+		expect(vi.mocked(d.record).mock.calls[0][2]).toBe(12.5);
 		expect(d.carry).toHaveBeenCalledWith(RIGHT.id, 12.5, 14.5);
 		expect(d.open).toHaveBeenCalledWith(RIGHT.id, SESSION, 12.5, CARD);
 	});
@@ -140,9 +149,19 @@ describe('switching to the picked show', () => {
 		expect(d.carryRate).toHaveBeenCalledWith(RIGHT.id, 1.5);
 	});
 
-	it('fails when the player cannot be opened on the stream', async () => {
-		const { d } = deps({ open: vi.fn(async () => false) });
+	it('fails when the player cannot be opened on the stream, and leaves nothing behind', async () => {
+		const { d, calls } = deps({
+			open: vi.fn(async () => {
+				calls.push('open');
+				return false;
+			})
+		});
 		expect(await switchShow(d, request())).toBe('failed');
+		// No watch of a show that never played, and nothing left for a
+		// later page to take.
+		expect(d.record).not.toHaveBeenCalled();
+		expect(calls.at(-1)).toBe('forget');
+		expect(d.forget).toHaveBeenCalledWith(RIGHT.id, CARD);
 	});
 
 	it('carries over exactly the episode and point it was asked for', async () => {
