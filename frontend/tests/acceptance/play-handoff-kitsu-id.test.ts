@@ -41,6 +41,7 @@ import { goto } from '$app/navigation';
 import { syncWatchedToTrackers } from '$lib/account/push-watched';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -116,9 +117,12 @@ type Posted = Record<string, unknown>;
 
 /** Stubs every request the page makes on mount, and records the body
  *  of each handoff. */
-function useHandlers(posted: { external: Posted[]; syncplay: Posted[] }) {
+function useHandlers(
+	posted: { external: Posted[]; syncplay: Posted[] },
+	config: Record<string, unknown> = appConfig()
+) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config)),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
@@ -199,7 +203,7 @@ describe('play route — the handoffs send the Kitsu id', () => {
 		useHandlers(posted);
 		await mountPlaying();
 
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expectHandoffBody(posted.external[0]);
 		expect(posted.syncplay).toHaveLength(0);
@@ -214,6 +218,27 @@ describe('play route — the handoffs send the Kitsu id', () => {
 		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
 		expectHandoffBody(posted.syncplay[0]);
 		expect(posted.external).toHaveLength(0);
+	});
+});
+
+// The external-player item names the player it opens, from the
+// configured flavour, and clicking it is still the external handoff.
+describe('play route — the external-player item names the configured player', () => {
+	it.each([
+		['vlc', 'Open in VLC'],
+		['iina', 'Open in IINA'],
+		['custom', 'Open in external player']
+	] as const)('a %s flavour reads "%s"', async (kind, label) => {
+		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
+		useHandlers(posted, { ...appConfig(), external_player_kind: kind });
+		await mountPlaying();
+
+		moreButton()!.click();
+		await until(() => menuItem(label) !== undefined, `the "${label}" menu item`);
+		expect(menuItem('Open in mpv')).toBeUndefined();
+		menuItem(label)!.click();
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expectHandoffBody(posted.external[0]);
 	});
 });
 
@@ -242,7 +267,7 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 		await until(() => moreButton() !== null, 'the More actions button under the player');
 
 		expect(new URL(FakeEventSource.instances[0].url).searchParams.get('kitsu_id')).toBeNull();
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect(posted.external[0].kitsu_id).toBeUndefined();
 		expect(posted.external[0].title).toBe(TITLE);

@@ -47,6 +47,7 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { externalLaunchSuccessToast } from '../../src/lib/play/external-toast';
@@ -326,7 +327,7 @@ const menuItem = (label: string) =>
 
 describe('play — a handoff that meets the episode verdict and the other audio', () => {
 	const labels: [Handoff, () => string][] = [
-		['external', () => m.play_external_label()],
+		['external', () => externalOpenLabel('mpv')],
 		['syncplay', () => m.play_hamburger_syncplay_label()]
 	];
 	for (const [handoff, label] of labels) {
@@ -470,7 +471,7 @@ describe('play — a handoff names the episode it launched, not the one on scree
 	const labels: [Handoff, () => string, () => string][] = [
 		[
 			'external',
-			() => m.play_external_label(),
+			() => externalOpenLabel('mpv'),
 			() => m.play_error_external_headline({ episode: '3' })
 		],
 		[
@@ -802,7 +803,7 @@ describe('a play for one show that answers after the page moved on', () => {
 	});
 
 	for (const [handoff, label] of [
-		['external', () => m.play_external_label()],
+		['external', () => externalOpenLabel('mpv')],
 		['syncplay', () => m.play_hamburger_syncplay_label()]
 	] as const) {
 		it(`play: a ${handoff} launch that fails after the viewer moved says nothing`, async () => {
