@@ -5,8 +5,9 @@
  *   - `style` — how a home row presents its header actions:
  *       `inline`: the actions continue the row's title line, in its
  *                 type, the same gap between every item on it
- *       `band`:   every row sits on a faint surface that marks out its
- *                 extent; the actions sit at that surface's end
+ *       `band`:   the actions sit at the end of the row's header, and a
+ *                 faint surface marks out the row's extent while the
+ *                 pointer is over it or focus is inside it
  *   - `controls` — whether the on-page switch that changes the style is
  *     shown; the diagnostics page owns it
  *
@@ -74,9 +75,10 @@ export function saveRowPrefs(storage: StorageLike | null, prefs: RowPrefs): void
  *              keyboard focus it widens to the labelled pill. Beside
  *              the title the row has no surface of its own, so the
  *              header line stays quiet until an action is reached for.
- *   - `label`: the labelled pill, its words always shown. A band
- *              already marks the row out, and its actions sit at the
- *              band's end with room to spare. */
+ *   - `label`: the labelled pill, its words always shown. The banded
+ *              style's actions sit at the header's end, apart from the
+ *              title, with room to spare, so they say what they are
+ *              without being reached for. */
 export type RowActionShape = 'icon' | 'label';
 
 /** The shape a row's header actions take in `style`. */

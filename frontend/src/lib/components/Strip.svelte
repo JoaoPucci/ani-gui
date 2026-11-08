@@ -328,7 +328,7 @@
 		margin-block-end: var(--space-7);
 	}
 
-	/* A banded row: while the row is under the pointer or holds focus,
+	/* A banded row: while the row is under the pointer or focus is inside it,
 	   a faint ground the whole row — header, cards, fades — sits on, so
 	   an action in the header is visibly part of this row. At rest the
 	   row sits on the page, as a plain row does. The band runs the full
@@ -354,7 +354,7 @@
 	/* The header is one line of items — title, rule, caption, status,
 	   actions — spaced by one gap. Every rule below that spaces an item
 	   reads --strip-header-gap, so the space between any two neighbours
-	   on the line is the same. The one margin is the band's push of its
+	   on the line is the same. The one margin is a banded row's push of its
 	   actions to the row's end, below, which opens the line deliberately. */
 	.strip-header {
 		--strip-header-gap: var(--space-3);

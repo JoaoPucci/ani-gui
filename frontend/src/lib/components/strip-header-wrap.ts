@@ -7,7 +7,7 @@
  *     hides the "·" (it would open a line and separate nothing) and
  *     gives the title the whole first line.
  *   - `actionsWrap`: the actions sit below the title's line. On a
- *     banded row they are pushed to the band's end; once they wrap that
+ *     banded row they are pushed to the header's end; once they wrap that
  *     push would strand them at the far end of an otherwise empty line,
  *     so Strip drops it.
  *
