@@ -318,6 +318,14 @@ package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
 
+An entry already in the log is an opening, not a boundary. Before
+building in an area, read the deferred-work entries that concern it,
+and prefer tackling one within the change over building around it —
+that is **Do it here**, and the change removes the entry it lands. An
+entry is a reminder, never a constraint the design has to respect. If
+tackling it is genuinely large or risky, put the options to the
+maintainer, as **Ask** describes.
+
 ### Choosing between options
 
 When a change can be made more than one way, rank the options on
