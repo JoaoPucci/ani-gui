@@ -215,10 +215,10 @@ describe('one phrase per term', () => {
 	});
 
 	it('Russian says «Попробуйте снова», never «Попробуйте ещё раз»', () => {
-		expect(offenders('ru', (s) => /Попробуйте ещё раз/i.test(s))).toEqual([]);
+		expect(offenders('ru', (s) => /Попробуйте е[её] раз/i.test(s))).toEqual([]);
 	});
 
 	it('Russian never calls the streaming source «Источник видео»', () => {
-		expect(offenders('ru', (s) => /Источник видео/i.test(s))).toEqual([]);
+		expect(offenders('ru', (s) => /источник\S* видео/i.test(s))).toEqual([]);
 	});
 });
