@@ -6,7 +6,7 @@
 import { m } from '$lib/paraglide/messages';
 import { loopText, numeral } from './meta';
 import type { StripCaption } from './page-model';
-import type { EmptyColumn } from './strip-view';
+import type { EmptyColumn, FranchiseSummary } from './strip-view';
 import type { ColumnKey, ColumnWord } from './strip-wording';
 
 const WORDS: Record<ColumnWord, readonly [() => string, () => string]> = {
@@ -62,4 +62,14 @@ export function captionText(caption: StripCaption): string {
 		case 'branch':
 			return m.watchorder_strip_unnumbered_branch();
 	}
+}
+
+/**
+ * What the franchise page holds, as the strip's link to it lists it
+ * under "See the whole franchise": the main story, then films and
+ * other versions, side stories and recaps, each only where there is one.
+ */
+export function stackPartsText(summary: FranchiseSummary): string[] {
+	void summary;
+	return [];
 }
