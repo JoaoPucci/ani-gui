@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { killTree } from "../lib/cold-launch.cjs";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { launchPackagedApp, packagedBinary } from "./launch";
+import { appWindow, launchPackagedApp, packagedBinary, routeContext } from "./launch";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -159,26 +159,34 @@ test("a secret service that never answers keeps neither the window nor the first
       contentType: "application/json",
       body: JSON.stringify(body),
     });
-    await context.route("**/api/app-info", (r) => r.fulfill(json(appInfo)));
-    await context.route("**/api/history", (r) => r.fulfill(json(emptyHistory)));
-    await context.route("**/api/kitsu/trending", (r) =>
+    await routeContext(context, "**/api/app-info", (r) => r.fulfill(json(appInfo)));
+    await routeContext(context, "**/api/history", (r) => r.fulfill(json(emptyHistory)));
+    await routeContext(context, "**/api/kitsu/trending", (r) =>
       r.fulfill(json(trending)),
     );
-    await context.route("**/api/kitsu/top-rated", (r) =>
+    await routeContext(context, "**/api/kitsu/top-rated", (r) =>
       r.fulfill(json(topRated)),
     );
-    await context.route("**/api/image*", (r) => r.fulfill({ status: 503 }));
+    await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
 
-    const page = await app.firstWindow();
+    // The app's window, not the splash that opens before it.
+    const page = await appWindow(app);
     // The first page renders, signed out.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
-    // The main process is free: it answers, and its window is up.
-    const visible = await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().map((w) => w.isVisible()),
-    );
-    expect(visible).toEqual([true]);
+    // The main process is free: it answers, and its window is up. The
+    // splash closes once that window has shown, so the one window left
+    // is the app's.
+    await expect
+      .poll(
+        () =>
+          app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows().map((w) => w.isVisible()),
+          ),
+        { timeout: 10_000 },
+      )
+      .toEqual([true]);
     // The read is still out, and the app says what it is waiting on.
     await expect(page.locator(".toast .message")).toHaveText(
       [/Waiting for your system keyring/],

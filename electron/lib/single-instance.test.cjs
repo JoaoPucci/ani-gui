@@ -238,9 +238,9 @@ test("a launch while the app is quitting opens nothing", () => {
 });
 
 test("a reopen that fails discards the window it left behind", async () => {
-  // The window is on screen while its first page loads, frameless and
-  // blank until the renderer draws — a close button included — so one
-  // whose page never arrives would otherwise stay there, unclosable.
+  // A window whose first page never arrives is frameless and has
+  // nothing on it — its close button is the renderer's to draw — so
+  // it would otherwise stay, unclosable, once anything showed it.
   const { keeper, discarded, settle } = reopeningKeeper();
   keeper.booted(BACKEND);
   assert.strictEqual(keeper.summon(), "reopened");

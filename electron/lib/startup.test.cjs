@@ -24,6 +24,8 @@ const {
   loadFirstPage,
   openFirstPage,
 } = require("./startup.cjs");
+const { FLAGS_WAIT_MS, waitForLaunchFlags } = require("./launch-flags.cjs");
+const { splashController } = require("./splash.cjs");
 
 // Electron's loadURL rejections carry the net error name as `code`.
 const loadError = (code, errno, url) =>
@@ -508,4 +510,410 @@ test("a clean boot opens the window with the backend's handshake and never exits
     logError: () => {},
   });
   assert.deepEqual(events, ["window"]);
+});
+
+test("the splash is up before the backend starts, and closes once the window is open", async () => {
+  const events = [];
+  const backend = { apiBase: "http://127.0.0.1:1" };
+  const flags = { origin: "file", flags: { a: false } };
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => {
+      events.push("spawn");
+      return backend;
+    },
+    fetchFlags: async (got) => {
+      events.push(got === backend ? "flags" : "wrong");
+      return flags;
+    },
+    createWindow: async (gotBackend, gotFlags) =>
+      events.push(gotBackend === backend && gotFlags === flags ? "window" : "wrong"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash", "spawn", "flags", "window", "close-splash"]);
+});
+
+test("the splash's rail hears each boot step as it lands: the backend, then the flags, before the window", async () => {
+  const events = [];
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => {
+      events.push("spawn");
+      return { apiBase: "http://127.0.0.1:1" };
+    },
+    fetchFlags: async () => {
+      events.push("flags");
+      return null;
+    },
+    stepDone: (step) => events.push(`step:${step}`),
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash", "spawn", "step:backend", "flags", "step:flags", "window", "close-splash"]);
+});
+
+test("a step the splash cannot take does not stop the boot", async () => {
+  const events = [];
+  await bootApp({
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    stepDone: () => {
+      throw new Error("splash gone sideways");
+    },
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: (msg) => events.push(`log:${msg}`),
+  });
+  assert.deepEqual(events, [
+    "log:[main] could not tell the splash a step landed:",
+    "log:[main] could not tell the splash a step landed:",
+    "window",
+    "close-splash",
+  ]);
+});
+
+test("a step that did not land is never reported", async () => {
+  const events = [];
+  await bootApp({
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake");
+    },
+    stepDone: (step) => events.push(`step:${step}`),
+    createWindow: async () => events.push("window"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["stop", "exit:1"]);
+});
+
+test("a failed boot puts the splash away before it reports, and never closes it", async () => {
+  const events = [];
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    suppressSplash: () => events.push("suppress"),
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake");
+    },
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    reportFailure: async () => events.push("report"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash", "suppress", "stop", "report", "exit:1"]);
+});
+
+test("a splash that cannot be shown does not stop the boot", async () => {
+  const events = [];
+  await bootApp({
+    showSplash: () => {
+      throw new Error("no display for a second window");
+    },
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    createWindow: async () => events.push("window"),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => events.push("logged"),
+  });
+  assert.deepEqual(events, ["logged", "window"]);
+});
+
+test("a backend that never answers for its flags holds the window back no longer than the wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const events = [];
+  const booted = bootApp({
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    fetchFlags: (backend) =>
+      waitForLaunchFlags(backend.apiBase, { fetch: () => new Promise(() => {}) }),
+    createWindow: async (_backend, flags) => events.push(`window:${JSON.stringify(flags)}`),
+    stopBackend: () => events.push("stop"),
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(FLAGS_WAIT_MS - 1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.deepEqual(events, []);
+  t.mock.timers.tick(1);
+  await booted;
+  assert.deepEqual(events, ["window:null"]);
+});
+
+test("a quit asked for while the flags were awaited opens no window", async () => {
+  const events = [];
+  let quitting = false;
+  await bootApp({
+    showSplash: () => events.push("splash"),
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1" }),
+    fetchFlags: async () => {
+      quitting = true; // the splash closed from the taskbar, say
+      return null;
+    },
+    createWindow: async () => events.push("window"),
+    closeSplash: () => events.push("close-splash"),
+    stopBackend: () => events.push("stop"),
+    quitting: () => quitting,
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["splash"]);
+});
+
+test("the window waits for whatever must show first, then shows", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 0, "held until the splash is up");
+  release();
+  await opened;
+  assert.equal(win.shows, 1);
+});
+
+test("a wait before showing that fails still shows the window, and is logged", async () => {
+  const logged = [];
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: (...a) => logged.push(a),
+    beforeShow: async () => {
+      throw new Error("splash gone sideways");
+    },
+  });
+  win.emit("ready-to-show");
+  await opened;
+  assert.equal(win.shows, 1);
+  assert.equal(logged.length, 1);
+});
+
+test("a first page that fails while the window waits to show is never shown", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = showableWindow(async () => {
+    throw loadError("ERR_FAILED", -2, "app://localhost/");
+  });
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+  });
+  win.emit("ready-to-show");
+  await assert.rejects(opened);
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 0);
+});
+
+test("a renderer that dies while the window waits to show fails the boot, and the window is not shown", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  release();
+  await assert.rejects(opened, /renderer gone/);
+  assert.equal(win.shows, 0);
+});
+
+// The reveal — mapping the window maximized, showing it and closing
+// the splash — stands in for the plain show, and is held to the same
+// guard: a window whose first page failed is never revealed.
+
+/** A window whose reveal is counted; `load` plays its first load. */
+const revealable = (load) => {
+  const win = showableWindow(load);
+  win.reveals = 0;
+  return win;
+};
+const reveal = (win) => () => (win.reveals += 1);
+
+test("the window is revealed, not merely shown, once it is ready and what must come first has", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = revealable(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0);
+  release();
+  await opened;
+  assert.equal(win.reveals, 1);
+  assert.equal(win.shows, 0, "the reveal does the showing");
+});
+
+test("a first page that fails while the window waits is never revealed", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = revealable(fails(loadError("ERR_FAILED", -2, "app://localhost/")));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await assert.rejects(opened);
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0);
+});
+
+test("an error page that paints after its failure is never revealed", async () => {
+  const win = revealable(answers(404));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: async () => {},
+    reveal: reveal(win),
+  });
+  await assert.rejects(opened, /404/);
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0);
+});
+
+test("a renderer that dies while the window waits is never revealed", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  const win = revealable(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  release();
+  await assert.rejects(opened, /renderer gone/);
+  assert.equal(win.reveals, 0);
+});
+
+test("the app's window is not revealed until the splash has painted, even where nothing keeps the splash on top", async () => {
+  // On native Wayland always-on-top is ignored: the splash must be on
+  // screen first and alone, so the app's window waits for its paint.
+  const splashWin = new EventEmitter();
+  splashWin.isDestroyed = () => false;
+  splashWin.show = () => splashWin.emit("show");
+  splashWin.loadFile = async () => {};
+  let painted;
+  splashWin.webContents = Object.assign(new EventEmitter(), {
+    executeJavaScript: () => new Promise((resolve) => (painted = resolve)),
+  });
+  const splash = splashController({ createWindow: () => splashWin, logError: () => {} });
+  splash.show();
+  splashWin.emit("ready-to-show");
+  const win = revealable(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => splash.whenShown(),
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.reveals, 0, "not revealed while the splash has not painted");
+  splash.motionPreference(false);
+  painted(false);
+  await opened;
+  assert.equal(win.reveals, 1);
+});
+
+test("an error page that paints before its load has finished is never revealed", async () => {
+  // The 404 is known at the commit; the load resolves only at its end,
+  // and the page's first paint can come in between.
+  let finish;
+  const win = revealable(async (w, url) => {
+    w.webContents.emit("did-navigate", {}, url, 404, "");
+    w.emit("ready-to-show");
+    await new Promise((resolve) => (finish = resolve));
+  });
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: async () => {},
+    reveal: reveal(win),
+  });
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  finish();
+  await assert.rejects(opened, /404/);
+  assert.equal(win.reveals, 0);
+});
+
+test("a load that fails in the same turn the wait ends is never revealed", async () => {
+  let release;
+  const before = new Promise((resolve) => (release = resolve));
+  let failLoad;
+  const win = revealable(
+    () => new Promise((_resolve, reject) => (failLoad = reject)),
+  );
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => before,
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  failLoad(loadError("ERR_FAILED", -2, "app://localhost/"));
+  release();
+  await assert.rejects(opened);
+  assert.equal(win.reveals, 0);
+});
+
+test("a 404 whose load is then superseded still fails the boot", async () => {
+  // Once the error status has decided the open failed, a later
+  // navigation taking over must not turn it into a success that leaves
+  // a hidden window and nothing on screen.
+  const win = revealable(async (w, url) => {
+    w.webContents.emit("did-navigate", {}, url, 404, "");
+    throw aborted();
+  });
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    reveal: reveal(win),
+  });
+  win.emit("ready-to-show");
+  await assert.rejects(opened, /404/);
+  assert.equal(win.reveals, 0);
+});
+
+test("a first page that commits without an error status and is then superseded is logged and dropped", async () => {
+  for (const status of [200, -1]) {
+    const logged = [];
+    const win = pageWindow(async (w, url) => {
+      w.webContents.emit("did-navigate", {}, url, status, "");
+      throw aborted();
+    });
+    await loadFirstPage(win, "app://localhost/", (...args) => logged.push(args));
+    assert.equal(logged.length, 1, String(status));
+  }
 });
