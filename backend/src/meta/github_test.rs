@@ -51,6 +51,17 @@ fn list(releases: &[serde_json::Value]) -> Vec<u8> {
     serde_json::to_vec(&serde_json::Value::Array(releases.to_vec())).unwrap()
 }
 
+/// Parse a list body and pick from it alone, as the lookup does with
+/// its page.
+fn parse_response(
+    body: &[u8],
+    platform: Platform,
+    include_prereleases: bool,
+) -> Option<ReleaseInfo> {
+    let releases: Vec<RawRelease> = serde_json::from_slice(body).ok()?;
+    select_release(releases, platform, include_prereleases)
+}
+
 fn tag_of(body: &[u8], platform: Platform, include_prereleases: bool) -> Option<String> {
     parse_response(body, platform, include_prereleases).map(|r| r.tag)
 }

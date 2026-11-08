@@ -126,7 +126,7 @@ pub struct ReleaseInfo {
 
 /// Raw shape from the GitHub API. `serde` parses what we need;
 /// extra fields are ignored.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawRelease {
     #[serde(default)]
     tag_name: Option<String>,
@@ -147,7 +147,7 @@ struct RawRelease {
 }
 
 /// One downloadable file attached to a release.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawAsset {
     #[serde(default)]
     name: String,
@@ -186,14 +186,19 @@ fn select_release(
         .find_map(normalise)
 }
 
-/// Parse the list endpoint's body and pick the release to offer.
-fn parse_response(
-    body: &[u8],
+/// The release to offer from what the lookup read: the page of recent
+/// releases, newest first, and — when the page offered nothing and
+/// GitHub answered — the newest full release. The page's pick comes
+/// first; the latest full release is offered only as a full release
+/// carrying this platform's package.
+fn offer(
+    page: Vec<RawRelease>,
+    latest: Option<RawRelease>,
     platform: Platform,
     include_prereleases: bool,
 ) -> Option<ReleaseInfo> {
-    let releases: Vec<RawRelease> = serde_json::from_slice(body).ok()?;
-    select_release(releases, platform, include_prereleases)
+    select_release(page, platform, include_prereleases)
+        .or_else(|| select_release(latest.into_iter().collect(), platform, false))
 }
 
 /// Fetch the newest release `platform` can install. Returns `None`
@@ -214,12 +219,14 @@ pub async fn fetch_latest_release(
         &format!("{base}/repos/{REPO_PATH}/releases?per_page={RELEASE_PAGE}"),
     )
     .await?;
-    if let Some(offer) = parse_response(&page, platform, include_prereleases) {
-        return Some(offer);
+    let page: Vec<RawRelease> = serde_json::from_slice(&page).unwrap_or_default();
+    if let Some(found) = select_release(page.clone(), platform, include_prereleases) {
+        return Some(found);
     }
-    let latest = get_body(client, &format!("{base}/repos/{REPO_PATH}/releases/latest")).await?;
-    let raw: RawRelease = serde_json::from_slice(&latest).ok()?;
-    select_release(vec![raw], platform, false)
+    let latest = get_body(client, &format!("{base}/repos/{REPO_PATH}/releases/latest"))
+        .await
+        .and_then(|body| serde_json::from_slice::<RawRelease>(&body).ok());
+    offer(page, latest, platform, include_prereleases)
 }
 
 /// GET `url` from the GitHub API and return the body of a successful
