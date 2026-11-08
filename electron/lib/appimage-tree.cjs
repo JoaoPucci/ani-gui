@@ -57,9 +57,9 @@ const EB26_PROBE =
 
 // electron-builder's launcher: the function its EXIT trap runs, which
 // execs the app. The trap is set before the function is defined, so
-// the probe goes after the definition — any exit from then on, an
-// interrupted probe or a failed write included, finds a launcher to
-// run rather than "atexit: command not found".
+// the probe goes after the definition: an exit while the probe runs
+// that is not an interrupt finds the launcher defined, rather than
+// "atexit: command not found", and launches with the default below.
 const LAUNCHER = /^atexit\(\)\n\{\n(?:.*\n)*?\}\n/gm;
 
 const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own binary.";
@@ -70,8 +70,10 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 // from main.js means the sandbox came up for this binary on this host.
 //
 // - `--no-sandbox` is the default until the probe has answered, so
-//   every way out before then launches the app unsandboxed rather
-//   than not at all.
+//   an exit before then launches the app unsandboxed rather than not
+//   at all. That, the block's place after the launcher and the
+//   `|| true` on its one line of output back each other up: any one
+//   of them keeps a fallback with no usable stderr launching.
 // - The probe's stdout goes to a file, not a pipe, so a child that
 //   outlives it cannot hold the wait open. Core dumps are off, and its
 //   stderr and the shell's job reports are dropped, so the only output
@@ -80,9 +82,10 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 // - A watchdog kills a probe that has not returned by the bound, with
 //   bash's own `wait`, not coreutils `timeout`.
 // - The probe runs as a background job the launcher waits on, so an
-//   interrupt (Ctrl-C, SIGTERM) is handled at once. It stops the probe
-//   and its watchdog, removes the answer file and ends AppRun without
-//   launching anything.
+//   interrupt (Ctrl-C, SIGTERM, or SIGHUP when the terminal closes) is
+//   handled at once. It stops the probe and its watchdog, removes the
+//   answer file, and ends AppRun by that same signal without launching
+//   anything, so a shell that started it stops as well.
 const PROBE_BLOCK = `${PROBE_MARK}
 #
 # The image cannot use Chromium's setuid sandbox: its read-only mount
@@ -97,13 +100,18 @@ ani_gui_answer_file=
 ani_gui_probe_job=
 ani_gui_probe_stop()
 {
-  if [ -n "$ani_gui_probe_job" ] ; then
-    kill "$ani_gui_probe_job" 2>/dev/null || true
-    wait "$ani_gui_probe_job" 2>/dev/null || true
+  # A signal between starting the job and recording it finds it in $!.
+  local job="\${ani_gui_probe_job:-$!}"
+  if [ -n "$job" ] ; then
+    kill "$job" 2>/dev/null || true
+    wait "$job" 2>/dev/null || true
   fi
-  rm -f "$ani_gui_answer_file"
-  trap - EXIT
-  exit "$1"
+  if [ -n "$ani_gui_answer_file" ] ; then
+    rm -f "$ani_gui_answer_file"
+  fi
+  trap - EXIT INT TERM HUP
+  kill -s "$1" $$
+  exit 1
 }
 ani_gui_sandbox_starts()
 {
@@ -111,6 +119,9 @@ ani_gui_sandbox_starts()
   ani_gui_answer_file="$(mktemp 2>/dev/null)" || return 1
   (
     exec 2>/dev/null
+    probe=
+    watchdog=
+    trap 'kill -9 "$probe"; kill "$watchdog"; wait "$watchdog"; exit 143' TERM
     ulimit -c 0
     "$BIN" ${SANDBOX_PROBE_SWITCH} </dev/null >"$ani_gui_answer_file" &
     probe=$!
@@ -122,7 +133,6 @@ ani_gui_sandbox_starts()
       kill -9 "$probe"
     ) </dev/null >/dev/null &
     watchdog=$!
-    trap 'kill -9 "$probe"; kill "$watchdog"; wait "$watchdog"; exit 143' TERM
     probe_status=0
     wait "$probe" || probe_status=$?
     kill "$watchdog" || true
@@ -146,14 +156,15 @@ done
 if [ -n "$APPIMAGE_EXIT_AFTER_INSTALL" ] || [ $ani_gui_user_no_sandbox -eq 1 ] ; then
   ANI_GUI_SANDBOX=()
 else
-  trap 'ani_gui_probe_stop 130' INT
-  trap 'ani_gui_probe_stop 143' TERM
+  trap 'ani_gui_probe_stop INT' INT
+  trap 'ani_gui_probe_stop TERM' TERM
+  trap 'ani_gui_probe_stop HUP' HUP
   if ani_gui_sandbox_starts ; then
     ANI_GUI_SANDBOX=()
   else
     echo "ani-gui: Chromium's sandbox cannot start on this system. Starting without it (--no-sandbox)." >&2 || true
   fi
-  trap - INT TERM
+  trap - INT TERM HUP
 fi
 `;
 
@@ -161,7 +172,7 @@ const count = (text, re) => (text.match(re) || []).length;
 
 /**
  * The AppRun electron-builder wrote, with the sandbox decided by the
- * probe: the probe block ahead of the launcher, electron-builder 26's
+ * probe: the probe block after the launcher, electron-builder 26's
  * `unshare` decision removed, and both exec lines passing the probe's
  * array. Returns null for an AppRun that already carries it. Throws on
  * anything it does not recognise: electron-builder's template drifted
