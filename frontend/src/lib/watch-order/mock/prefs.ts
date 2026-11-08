@@ -9,7 +9,6 @@ import type { StorageLike } from '$lib/hero/prefs';
 
 export const MOCK_OPTIONS = {
 	order: ['linked', 'released'],
-	upNext: ['poster', 'still'],
 	franchise: ['list', 'shelf'],
 	handoff: ['next', 'episode']
 } as const;
@@ -27,7 +26,6 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	enabled: false,
 	switcher: false,
 	order: 'linked',
-	upNext: 'poster',
 	franchise: 'list',
 	handoff: 'next'
 };

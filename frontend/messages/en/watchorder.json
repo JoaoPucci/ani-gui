@@ -1,5 +1,5 @@
 {
-	"diag_description": "Design mockups for the watch-order feature, drawn from fixed sample data: an Up next card in the player, Up next cards at the start of Continue Watching, and a franchise page.",
+	"diag_description": "Design mockups for the watch-order feature, drawn from fixed sample data: Up next cards at the start of Continue Watching, and a franchise page.",
 	"diag_section": "Watch-order mockups",
 	"diag_switcher": "Show the switch for the mockup options",
 	"diag_toggle": "Show the watch-order mockups",
@@ -47,9 +47,6 @@
 	"mock_handoff_episode": "EP 1",
 	"mock_handoff_next": "Next",
 	"mock_order": "Order",
-	"mock_upnext": "Up next",
-	"mock_upnext_poster": "Poster",
-	"mock_upnext_still": "Still",
 	"setting_aria": "Watch order",
 	"setting_hint": "How a series' seasons, films and specials are ordered: as the anime databases link them, or by release date. The links generally follow the story, but they are maintained by each database's community and can be wrong.",
 	"setting_key": "Watch order",

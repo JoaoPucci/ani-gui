@@ -19,15 +19,12 @@
 
 	const groupLabel: Record<MockOptionKey, () => string> = {
 		order: m.watchorder_mock_order,
-		upNext: m.watchorder_mock_upnext,
 		franchise: m.watchorder_mock_franchise,
 		handoff: m.watchorder_mock_handoff
 	};
 	const optionLabel: Record<string, () => string> = {
 		linked: m.watchorder_setting_linked,
 		released: m.watchorder_setting_released,
-		poster: m.watchorder_mock_upnext_poster,
-		still: m.watchorder_mock_upnext_still,
 		list: m.watchorder_mock_franchise_list,
 		shelf: m.watchorder_mock_franchise_shelf,
 		next: m.watchorder_mock_handoff_next,
