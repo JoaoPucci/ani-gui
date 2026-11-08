@@ -17,13 +17,22 @@ import { describe, it, expect } from 'vitest';
 
 const LOCALES = ['en', 'pt-BR', 'es-419', 'ru'] as const;
 
+// A term stands alone: no letter of any script touches either side of
+// it, which `\b` cannot say for accented or Cyrillic letters.
+const word = (terms: string) => new RegExp(`(?<!\\p{L})(${terms})(?!\\p{L})`, 'iu');
+// A stem starts a word and may run on: "цикл" catches "циклы" but not
+// "энциклопедия".
+const stem = (stems: string) => new RegExp(`(?<!\\p{L})(${stems})`, 'iu');
+
 const BANNED: Record<(typeof LOCALES)[number], RegExp> = {
-	en: /\b(runs?|entry|entries|loops?|forks?|joins?)\b/i,
-	'pt-BR': /\b(sequências?|ciclos?|entradas?|ligad[oa]s?|bifurca\w*|ramifica\w*|junç(ão|ões))\b/iu,
-	'es-419': /\b(secuencias?|ciclos?|bucles?|entradas?|bifurca\w*|ramifica\w*|unión|uniones)\b/iu,
-	// Stems, since \b knows only ASCII letters; "круг" is anchored so
-	// "вокруг" (around) is not caught.
-	ru: /(цепоч|(^|[^а-яё])круг|цикл|петл|развилк|запис)/iu
+	en: word('runs?|entry|entries|loops?|forks?|joins?'),
+	'pt-BR': word(
+		'sequências?|ciclos?|entradas?|ligad[oa]s?|bifurca\\p{L}*|ramifica\\p{L}*|junç(ão|ões)'
+	),
+	'es-419': word(
+		'secuencias?|ciclos?|bucles?|entradas?|bifurca\\p{L}*|ramifica\\p{L}*|unión|uniones'
+	),
+	ru: stem('цепоч|круг|цикл|петл|развилк|запис')
 };
 
 /** Every text a message can show: plain strings and each plural variant. */
