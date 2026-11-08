@@ -154,6 +154,8 @@ interface Options {
 	franchise?: ReturnType<typeof franchise> | null;
 	/** How many episodes the source lists and has aired: Kitsu's 12 unless set. */
 	sourceEpisodes?: number;
+	/** Fractional extras the source lists ("12.5"). */
+	extras?: string[];
 }
 
 /** Opens `options.episode` of Second Arc and gives its video a length. */
@@ -193,7 +195,7 @@ async function openEpisode(options: Options = {}) {
 			HttpResponse.json({
 				available: true,
 				episode_count: options.sourceEpisodes ?? EPISODES,
-				extra_episodes: [],
+				extra_episodes: options.extras ?? [],
 				episode_count_approximate: false
 			})
 		),
@@ -577,5 +579,59 @@ describe('the Up next card at a finale', () => {
 		cardLinks()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await until(() => card() === null, 'the card to be dismissed');
 		expect(document.activeElement).toBe(before);
+	});
+
+	it('shows on an extra after the last episode, which has no skip times to ask for', async () => {
+		const { video, fetches } = await openEpisode({ episode: 12.5, extras: ['12.5'] });
+		expect(fetches.sent.some((f) => f.path.startsWith('/api/aniskip/'))).toBe(false);
+		await playTo(video, LENGTH - 60);
+		await until(() => card() !== null, 'the card on the extra');
+	});
+
+	it('leaves focus alone when the close button is clicked with the mouse', async () => {
+		const { video } = await openEpisode();
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card');
+		const control = target.querySelector<HTMLButtonElement>('.player-controls button')!;
+		control.focus();
+		const close = card()!.querySelector<HTMLButtonElement>(
+			`button[aria-label="${m.watchorder_upnext_dismiss()}"]`
+		)!;
+		close.focus();
+		close.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+		await until(() => card() === null, 'the card to be dismissed');
+		expect(target.querySelector('.player-controls')!.contains(document.activeElement)).toBe(false);
+	});
+
+	it('stays dismissed, and unannounced, when the same episode is opened again by a recovery', async () => {
+		const { video } = await openEpisode();
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card');
+		card()!
+			.querySelector<HTMLButtonElement>(`button[aria-label="${m.watchorder_upnext_dismiss()}"]`)!
+			.click();
+		await until(() => card() === null, 'the card to be dismissed');
+		await switchTo(video, 12, 'session-2');
+		// A recovery resumes where playback was: let that land.
+		video.dispatchEvent(new Event('seeked'));
+		video.dispatchEvent(new Event('playing'));
+		const frame = target.querySelector('section.player-frame')!;
+		await until(() => frame.getAttribute('aria-busy') !== 'true', 'the resume to land');
+		await playTo(video, 1300);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(frame.classList.contains('player-resuming')).toBe(false);
+		expect(card()).toBeNull();
+	});
+
+	it("asks for the next episode's skip times with that episode's own length", async () => {
+		const { video, fetches } = await openEpisode({ episode: 11 });
+		const before = fetches.sent.length;
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1500 });
+		await switchTo(video, 12, 'session-2');
+		await fetches.settled('the skip times for episode 12');
+		const asked = fetches.sent
+			.slice(before)
+			.filter((f) => f.path.startsWith(`/api/aniskip/${KITSU_ID}/12`));
+		expect(asked.map((f) => f.query.get('episode_length'))).toEqual(['1500']);
 	});
 });
