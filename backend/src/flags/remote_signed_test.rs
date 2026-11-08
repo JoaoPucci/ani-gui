@@ -83,7 +83,7 @@ async fn an_unsigned_or_wrongly_signed_file_keeps_its_offs_and_loses_its_ons() {
 }
 
 #[tokio::test]
-async fn the_shipped_build_trusts_no_signature_yet() {
+async fn the_shipped_build_does_not_trust_a_test_keys_signature() {
     let (_s, url) = serve(Some(SIG)).await;
     let doc = fetch(&reqwest::Client::new(), &url, FETCH_TIMEOUT)
         .await
