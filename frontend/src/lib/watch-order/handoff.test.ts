@@ -185,7 +185,7 @@ describe('playedIds', () => {
 				{ id: 'd' },
 				{ id: 'e', kitsu_id: '5' }
 			],
-			{ a: { id: '9' }, b: { id: '2' }, c: null, e: { id: '5' } }
+			{ a: { id: '9' }, b: { id: '2' }, c: null, d: null, e: { id: '5' } }
 		);
 		expect([...got!].sort()).toEqual(['1', '2', '5']);
 	});
