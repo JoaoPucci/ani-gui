@@ -7,7 +7,8 @@ use proptest::prelude::*;
 #[test]
 fn the_id_the_user_linked_stands() {
     assert!(stands(Some("44294"), Some("44294")));
-    assert!(stands(Some("kitsu:44294"), Some("44294")));
+    // A row written before the routes refused non-ids can hold a padded id.
+    assert!(stands(Some(" 44294"), Some("44294")));
 }
 
 #[test]
