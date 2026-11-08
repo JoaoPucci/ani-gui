@@ -3,9 +3,10 @@
   place, and what comes after, mirrored about the centre so the
   position sits between its neighbours rather than beside one of them.
   The before column reads towards the centre (poster on its inline-end
-  side, text aligned to it), the after column away from it. The grid
-  has three rows (keys, the join or fork line, the entries), so the
-  three keys share a baseline whatever sits under them. An empty column
+  side, text aligned to it), the after column away from it. The grid's
+  first three rows are the keys, the join or fork line and the
+  entries, so the three keys share a baseline whatever sits under
+  them; the footer is its fourth. An empty column
   drops its key and keeps the line saying why it is empty.
 
   Everything sits on a faint band, one step of the page's own ink, so
@@ -94,13 +95,11 @@
 			</p>
 			<p class="col-count here-cell" aria-hidden="true"></p>
 			<div class="col col-here here-cell" aria-hidden="true">
-				{#if view.kind === 'side'}
-					<p class="here-word">{m.watchorder_strip_side_story()}</p>
-				{:else if view.position !== null}
-					<p class="here-numeral">{numeral(view.position)}</p>
-					{#if view.total !== null}
+				{#if model.caption.kind === 'position' || model.caption.kind === 'numeral'}
+					<p class="here-numeral">{numeral(model.caption.position)}</p>
+					{#if model.caption.kind === 'position'}
 						<p class="here-total">
-							{m.watchorder_strip_of_total({ total: numeral(view.total) })}
+							{m.watchorder_strip_of_total({ total: numeral(model.caption.total) })}
 						</p>
 					{/if}
 				{:else}
