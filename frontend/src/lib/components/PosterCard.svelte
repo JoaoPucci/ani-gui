@@ -172,7 +172,9 @@
 		font-variant-numeric: tabular-nums lining-nums;
 		font-size: 0.75rem; /* 12px per spec */
 		font-weight: 500;
-		color: color-mix(in oklab, var(--bone-100) 45%, transparent);
+		/* The faint tier, not a translucent mix: bone-100 at 45% read
+		   4.0:1 on the page, short of AA for 12px text. */
+		color: var(--bone-400);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 	}

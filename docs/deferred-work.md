@@ -457,6 +457,21 @@ starting it, and delete it when you find it done.
   new preference. The preference could be read another way and handed
   to the renderer, or a later Electron may expose it to the query.
 
+- **Small text over a thumbnail can fall below WCAG AA on a bright
+  frame.** The "EP" key and number set over an episode thumbnail (the
+  show page's tiles, the Continue cards) rely on a bottom scrim that
+  fades from transparent to the page ink at 75%, drawn at 0.85 until
+  hover. The text sits partway up that gradient, so over a near-white
+  frame the 11–12px key falls well under 4.5:1; over a typical frame
+  it clears with room. The text tiers themselves meet AA on every ink
+  surface, which `frontend/tests/lint/text-contrast.test.ts` holds,
+  but nothing measures text against imagery. Closing it means a scrim
+  strong enough at the text's height to hold AA over white, which
+  darkens the lower part of every thumbnail, or a local protection
+  behind the text alone; either changes how the thumbnails look, so
+  it waits on a design choice. The hero's eyebrow over its banner is
+  in the same position.
+
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
   episode, and Kitsu sometimes gives a double-length episode its
