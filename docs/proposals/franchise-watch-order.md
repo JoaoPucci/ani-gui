@@ -750,8 +750,9 @@ first.**
 
 - *In the player*: when the last episode of an entry reaches its
   ending credits (the point the existing "Skip Ending" button already
-  knows from skip data, else the final seconds), the button becomes
-  an end card — the sequel's banner, its title, its year and format,
+  knows from skip data, else the last minute and a half), the button
+  becomes an end card — the sequel's poster, its title, its year and
+  format,
   under "Up next". The card waits for a click. It does not count down
   or play the sequel by itself, whatever the auto-play setting:
   auto-play stays within one entry, as it does today.
@@ -1066,12 +1067,16 @@ them introduces a new widget style.
   of the "Skip Ending" pill, in the same bottom-end corner, with the
   same dark translucent surface and accent border. It grows from a
   pill into a small card: the sequel's poster, an "Up next" eyebrow,
-  the title clamped to two lines, and a format and year line. The
+  the title clamped to three lines (the card is narrow, and the words
+  that tell entries apart come last), and a format and year line. The
   reason for this spot: it is where the eye already goes at the
   credits, and it does not cover the picture's centre. Unlike the
   pill, which shows for five seconds, the card stays through the
   credits and after the video ends, until it is used or dismissed.
-  With no skip data, it appears in the final seconds instead. Showing
+  With no skip data, it appears in the last minute and a half
+  instead, where the app already counts an episode as finished. It
+  waits for the player's own last step: where the source lists an
+  episode past Kitsu's count, the card shows on that one. Showing
   the sequel in the now-playing header's "next" button (below the
   player) on a finale was decided: no, the button stays within the
   entry ("Decisions recorded", 3).
@@ -1282,18 +1287,18 @@ The rules below hold on every surface:
 
 #### The "Up next" card (player)
 
-- **Options.** *Poster*: the next entry's 5:7 poster beside its title
-  and meta, in the skip pill's surface and corner. *Still*: the next
-  entry's banner above its title, wider. **Recommended: poster.** It
-  covers less of the end credits (at 1280 px the still variant covers
-  more than half of the picture's height), and banners crop
-  unpredictably at that size.
+- **Poster, decided** ("Decisions recorded", 5): the next entry's 5:7
+  poster beside its title and meta, in the skip pill's surface and
+  corner. The other option, *Still*, put the entry's banner above its
+  title, wider; it covered more of the end credits (at 1280 px more
+  than half of the picture's height), and banners crop unpredictably
+  at that size.
 - **States.** One aired next entry: a link to its page. Several (a
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. The mockup shows the card on an entry's
-  last episode, from the start of playback, so a screenshot can catch
-  it over the credits.
+  no link. None: no card. The mockup showed the card from the start
+  of a last episode, so a screenshot could catch it; the player shows
+  it from the credits.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after
