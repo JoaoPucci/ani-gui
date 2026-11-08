@@ -7,11 +7,16 @@
  * puts it away again.
  */
 import type { SkipInterval } from '$lib/api';
+import { isFinishedAt } from './watch-position';
 
 /** Where the ending credits start, from the latest ending interval, or null. */
 export function creditsStart(skips: readonly SkipInterval[]): number | null {
-	void skips;
-	return null;
+	let start: number | null = null;
+	for (const s of skips) {
+		if (s.skip_type !== 'ed' && s.skip_type !== 'mixed-ed') continue;
+		if (start === null || s.start_time > start) start = s.start_time;
+	}
+	return start;
 }
 
 /** Whether the playhead is in a finale's credits, or past them. */
@@ -20,6 +25,6 @@ export function inCredits(
 	duration: number,
 	skips: readonly SkipInterval[]
 ): boolean {
-	void [currentTime, duration, skips];
-	return false;
+	const start = creditsStart(skips);
+	return start !== null ? currentTime >= start : isFinishedAt(currentTime, duration);
 }

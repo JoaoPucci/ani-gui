@@ -8,6 +8,8 @@
 import { isUnaired } from './entry';
 import type { WatchOrderData } from './loader';
 import { placement, type WatchOrder } from './order';
+import { progressFromHistory } from './progress';
+import { runOf } from './strip-model';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
 export type UpNext =
@@ -34,9 +36,7 @@ export interface FinaleSelf {
 
 /** Whether `episode` is the last of an entry that has finished airing. */
 export function isFinale(self: FinaleSelf, episode: number): boolean {
-	void self;
-	void episode;
-	return false;
+	return self.status === 'finished' && self.episodes !== null && episode >= self.episodes;
 }
 
 /** What the card shows: the next entries, and their progress for the meta line. */
@@ -60,6 +60,12 @@ export function finaleCard(
 	episode: number,
 	self: FinaleSelf | null
 ): FinaleCard | null {
-	void [data, id, order, today, episode, self];
-	return null;
+	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
+	const run = runOf(data.franchise);
+	const entry = run?.entries.find((e) => e.id === id);
+	if (!run || !entry || !isFinale(self ?? entry, episode)) return null;
+	const upNext = upNextFor(run, id, order, today);
+	if (upNext.kind === 'none') return null;
+	const shown = upNext.kind === 'choices' ? upNext.entries : [upNext.entry];
+	return { upNext, progress: progressFromHistory(data.rows, shown) };
 }
