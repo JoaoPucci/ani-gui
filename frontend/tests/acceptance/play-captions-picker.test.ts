@@ -412,12 +412,27 @@ describe('the captions menu with many languages', () => {
 		// window and the captions button 420 px down.
 		const frame = document.querySelector<HTMLElement>('.player-frame');
 		if (!frame) throw new Error('no player frame');
-		frame.getBoundingClientRect = () => new DOMRect(0, 100, 1280, 600);
+		frame.getBoundingClientRect = () => new DOMRect(0, 100, 1280, 700);
 		ccButton().getBoundingClientRect = () => new DOMRect(1080, 420, 48, 48);
 		await openMenu();
 		const menu = document.querySelector<HTMLElement>('#pc-cc-menu');
-		// 420 − 100, less the gap under the menu and the margin over it.
+		// 420 − 100, less the gap under the menu and the margin over it:
+		// less than half the 700 px player.
 		expect(menu?.style.maxBlockSize).toBe('304px');
+	});
+
+	it("stops at half the player's height in a tall player", async () => {
+		handlers();
+		await mountAt('many-1', '1', MANY.length);
+		const frame = document.querySelector<HTMLElement>('.player-frame');
+		if (!frame) throw new Error('no player frame');
+		// A 1000 px player from 100 px down, its button 1000 px down: 884
+		// px of room above the button, of which half the player is kept.
+		frame.getBoundingClientRect = () => new DOMRect(0, 100, 1280, 1000);
+		ccButton().getBoundingClientRect = () => new DOMRect(1080, 1000, 48, 48);
+		await openMenu();
+		const menu = document.querySelector<HTMLElement>('#pc-cc-menu');
+		expect(menu?.style.maxBlockSize).toBe('500px');
 	});
 
 	it('stops at the top bar when the page has scrolled the player up under it', async () => {
