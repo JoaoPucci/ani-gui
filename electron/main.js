@@ -68,8 +68,7 @@ const {
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
-const { guardWindow } = require("./lib/window-guard.cjs");
-const { guardPermissions } = require("./lib/permissions.cjs");
+const { guardedWindowMaker } = require("./lib/guarded-window.cjs");
 const { mainProcessIpc } = require("./lib/ipc-guard.cjs");
 const { isRevealableDirectory } = require("./lib/reveal-folder.cjs");
 const { KEYRING_HELPER_SWITCH, serveKeyring } = require("./lib/keyring-helper.cjs");
@@ -178,6 +177,18 @@ const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
 // answers only the main frame holding that document (lib/ipc-guard.cjs);
 // tests/arch/ipc_sender.sh keeps them all registered through it.
 const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: console.error });
+// Every window, the splash's and the app's, holds the app's document or
+// nothing loaded by a page: navigations, redirects, subframes, webviews
+// and new windows all pass through one verdict, and web links go to the
+// system browser. Fullscreen and clipboard writes for the app's
+// document; every other permission denied (lib/guarded-window.cjs,
+// tests/arch/window_guard.sh).
+const makeWindow = guardedWindowMaker({
+  BrowserWindow,
+  app: APP_DOCUMENT,
+  openExternal: (url) => shell.openExternal(url),
+  logError: console.error,
+});
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -411,7 +422,7 @@ function signalBackendGroup(pid) {
 /** The splash, while the backend starts and the launch's flags are
  *  decided (lib/splash.cjs). */
 const splash = splashController({
-  createWindow: (options) => new BrowserWindow(options),
+  createWindow: (options) => makeWindow(options),
   logError: console.error,
   // The user closed the splash (from the taskbar, say) before the
   // app's window was revealed: they cancelled the launch. While that
@@ -458,7 +469,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // packaged builds get theirs from the .desktop file. The backend's
   // handshake, the configured locale and the launch's flags reach the
   // preload as additional arguments (lib/window-args.cjs).
-  const win = new BrowserWindow(
+  const win = makeWindow(
     appWindowOptions({
       width: workW,
       height: workH,
@@ -479,22 +490,6 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
         : "[main] app's first page did not say it rendered in time; revealing it anyway",
     ),
   );
-
-  // The window holds the app's own document and nothing else: every
-  // document it loads gets the preload bridge. Navigations, redirects,
-  // subframes, webviews and new windows all pass through one verdict
-  // (lib/window-guard.cjs, lib/app-document.cjs); web links go to the
-  // system browser.
-  guardWindow(win.webContents, {
-    app: APP_DOCUMENT,
-    openExternal: (url) => shell.openExternal(url),
-    logError: console.error,
-  });
-  // Fullscreen and clipboard writes for the app's document; every other
-  // permission denied (lib/permissions.cjs). The handlers belong to the
-  // session the window shares, so installing them again for a later
-  // window replaces them with the same.
-  guardPermissions(win.webContents.session, { app: APP_DOCUMENT });
 
   // Renderer-side diagnostics surface in the main process log so we
   // can tell whether the page actually loaded and whether scripts
