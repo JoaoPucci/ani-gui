@@ -7,8 +7,15 @@
 //! [`TRUSTED_KEYS`]. Any of them will do, so a rotation ships the next
 //! key a release before the maintainer starts signing with it. The
 //! trusted comment is covered by the signature as well, so it cannot be
-//! edited either. The private key never enters this repository; the
-//! steps are in `docs/development.md`, "Signing the flags file".
+//! edited either.
+//!
+//! What a verdict decides is narrow. Every flag ships off, and the
+//! only value that moves one away from that is `true`, which turns a
+//! feature on. [`admit`] keeps a verified file whole, and drops every
+//! `true` from any other before the flags are decided or cached. The
+//! rest of an unverified file is kept: its `false` values say no more
+//! than the defaults do. The private key never enters this repository;
+//! the steps are in `docs/development.md`, "Signing the flags file".
 
 use minisign_verify::{PublicKey, Signature};
 
@@ -57,11 +64,25 @@ pub fn verify(body: &[u8], signature: Option<&str>, keys: &[&str]) -> Verdict {
     }
 }
 
-/// Stub.
+/// The document as this launch may use it: whole when verified.
+/// Otherwise every entry whose value is `true` is dropped, so its flag
+/// falls back to its default, off. This reads no declaration: for every
+/// kind, `true` is the only value a signature alone may select
+/// ([`super::decl::FlagDecl::signed_only`]), so the rule holds for a
+/// flag declared by any build, including one that reads a cache this
+/// build wrote. Entries no declaration accepts are left for resolution,
+/// which ignores them.
 #[must_use]
-pub fn admit(doc: Document, verdict: Verdict) -> Document {
-    let _ = verdict;
+pub fn admit(mut doc: Document, verdict: Verdict) -> Document {
+    if verdict != Verdict::Verified {
+        doc.retain(|_, raw| !turns_on(raw));
+    }
     doc
+}
+
+/// Whether `raw` is the value that turns a flag on.
+fn turns_on(raw: &serde_json::Value) -> bool {
+    *raw == serde_json::Value::Bool(true)
 }
 
 #[cfg(test)]
