@@ -120,18 +120,18 @@ test("on: an untrusted message is dropped", () => {
 test("onSync: an untrusted call gets the refusal value, so the renderer never hangs", () => {
   const { ipc, guarded } = setup();
   guarded.onSync(
-    "ani-gui:account:get-token",
+    "ani-gui:read-config-locale",
     (event) => {
-      event.returnValue = { ok: true, payload: "secret" };
+      event.returnValue = "pt-BR";
     },
-    { ok: false, kind: "refused" },
+    null,
   );
   const refused = { senderFrame: mainFrame("https://example.com/") };
-  ipc.emit("ani-gui:account:get-token", refused, "anilist");
-  assert.deepStrictEqual(refused.returnValue, { ok: false, kind: "refused" });
+  ipc.emit("ani-gui:read-config-locale", refused);
+  assert.deepStrictEqual(refused.returnValue, null);
   const trusted = { senderFrame: mainFrame("app://localhost/") };
-  ipc.emit("ani-gui:account:get-token", trusted, "anilist");
-  assert.deepStrictEqual(trusted.returnValue, { ok: true, payload: "secret" });
+  ipc.emit("ani-gui:read-config-locale", trusted);
+  assert.deepStrictEqual(trusted.returnValue, "pt-BR");
 });
 
 test("onSync: a refusal value is required — a sync channel without one is a programming error", () => {
