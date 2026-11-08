@@ -890,6 +890,7 @@
 	onDestroy(() => navigationClaims.left());
 	const startResume = makeStartResume({
 		claimNavigation: () => navigationClaims.claim(),
+		since: () => relink.since(),
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		currentNumber: (entryId) => historyNumber(entryId),
@@ -1414,6 +1415,7 @@
 					<button
 						type="button"
 						class="resume-link"
+						disabled={resumeBusy !== null}
 						onclick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
@@ -2052,7 +2054,11 @@
 		transform: translateY(-3px);
 		pointer-events: auto;
 	}
-	.resume-link:hover,
+	/* Held while a resume runs: a link then would race the click's cap. */
+	.resume-link:disabled {
+		cursor: progress;
+	}
+	.resume-link:hover:not(:disabled),
 	.resume-link:focus-visible {
 		border-color: var(--accent-persimmon);
 	}

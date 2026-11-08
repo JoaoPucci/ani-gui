@@ -131,6 +131,12 @@ export interface StartResumeDeps {
 	/** Keeps what was kept for `from` of `kitsuId` under `to` instead.
 	 *  Omitted, nothing moves. */
 	movePosition?: (kitsuId: string, from: number, to: number) => void;
+	/** A view of the rows as they are matched now ($lib/history/card-relink.ts),
+	 *  taken when the click starts: the cap the click learns is pinned only
+	 *  while the view holds for the row. A row linked while the click
+	 *  works is another show, and the cap is the former one's. Omitted,
+	 *  the cap is always pinned. */
+	since?: () => (row: string) => boolean;
 	/** Resolves `args` without recording a watch — a prefetch — so the
 	 *  backend fetches the show's listing. Omitted, nothing is warmed. */
 	warm?: (args: ResumePlayArgs) => Promise<unknown>;
@@ -159,6 +165,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 		const title = match.canonical_title;
 		if (!title) return;
 		const stillHere = claimOrHold(deps.claimNavigation);
+		const asFound = deps.since?.() ?? (() => true);
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 
@@ -220,7 +227,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 			next,
 			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
 		);
-		if (typeof count === 'number') {
+		if (typeof count === 'number' && asFound(entry.id)) {
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
