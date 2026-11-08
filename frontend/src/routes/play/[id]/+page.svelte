@@ -37,13 +37,14 @@
 	import { settle } from '$lib/motion/settle';
 	import { browserStorage as mockStorage } from '$lib/hero/prefs';
 	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
-	import UpNextCard from '$lib/watch-order/mock/UpNextCard.svelte';
+	import UpNextCard from '$lib/watch-order/UpNextCard.svelte';
 	import {
 		loadMockPrefs,
 		saveMockPrefs,
 		type WatchOrderMockPrefs
 	} from '$lib/watch-order/mock/prefs';
-	import { runFor as mockRunFor, upNextFor as mockUpNextFor } from '$lib/watch-order/mock/view';
+	import { runFor as mockRunFor } from '$lib/watch-order/mock/view';
+	import { upNextFor as mockUpNextFor } from '$lib/watch-order/up-next';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -3567,7 +3568,7 @@
 		{/if}
 		{#if mockRun && mockUpNext && mockUpNext.kind !== 'none' && mockAtFinale && !mockDismissed}
 			<UpNextCard
-				run={mockRun}
+				progress={mockRun.progress}
 				upNext={mockUpNext}
 				variant={mockPrefs.upNext}
 				today={mockToday}

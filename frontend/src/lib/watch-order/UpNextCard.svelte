@@ -1,5 +1,5 @@
 <!--
-  The player's "Up next" card at a finale (mockup). It takes the skip
+  The player's "Up next" card at a finale. It takes the skip
   pill's corner, surface and accent border, and grows into a card:
 
   - `poster`: the next entry's poster beside its title and meta;
@@ -16,19 +16,19 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { settle } from '$lib/motion/settle';
-	import MetaLine from '../MetaLine.svelte';
-	import { metaLine } from '../meta';
-	import type { MockEntry, MockRun } from './types';
-	import type { UpNext } from './view';
+	import MetaLine from './MetaLine.svelte';
+	import { metaLine } from './meta';
+	import type { Progress, WatchEntry } from './types';
+	import type { UpNext } from './up-next';
 
 	let {
-		run,
+		progress,
 		upNext,
 		variant,
 		today,
 		ondismiss
 	}: {
-		run: MockRun;
+		progress: Progress;
 		upNext: Exclude<UpNext, { kind: 'none' }>;
 		variant: 'poster' | 'still';
 		today: string;
@@ -44,7 +44,7 @@
 				? m.watchorder_upnext_coming()
 				: m.watchorder_upnext_eyebrow()
 	);
-	const image = (e: MockEntry) =>
+	const image = (e: WatchEntry) =>
 		imageProxyUrl(variant === 'still' ? (e.cover ?? e.poster) : e.poster);
 
 	// Filled after mount: a live region that already holds its text
@@ -62,14 +62,14 @@
 	}
 </script>
 
-{#snippet inner(e: MockEntry, compact: boolean)}
+{#snippet inner(e: WatchEntry, compact: boolean)}
 	<span class="art" class:compact>
 		{#if image(e)}<img src={image(e)} alt="" />{/if}
 	</span>
 	<span class="text">
 		{#if !compact}<span class="key">{key}</span>{/if}
 		<span class="title">{e.title}</span>
-		<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
+		<MetaLine segments={metaLine(e, progress[e.id], today)} />
 	</span>
 {/snippet}
 
