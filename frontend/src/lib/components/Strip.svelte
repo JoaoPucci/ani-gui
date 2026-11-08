@@ -35,11 +35,12 @@
 		 *  fresh it is here. */
 		headerMeta?: Snippet;
 		/** The row's actions (RowAction buttons). They continue the
-		 *  title line on a plain row, and sit at the band's end on a
+		 *  title line on a plain row, and sit at the header's end on a
 		 *  banded one; either way they are inside this row's header. */
 		headerActions?: Snippet;
-		/** What the row sits on: the page itself, or a faint band that
-		 *  marks out the row's extent (the home row style switch). */
+		/** What the row sits on: the page itself, or the page with a
+		 *  faint band marking out the row's extent while the pointer is
+		 *  over it or focus is inside it (the home row style switch). */
 		surface?: 'plain' | 'band';
 		children: Snippet;
 	}
@@ -72,7 +73,7 @@
 
 	// How the header's line breaks — see $lib/components/strip-header-wrap.
 	// A wrapped status loses its separator and starts the next line; a
-	// banded row's wrapped actions stop being pushed to the band's end.
+	// banded row's wrapped actions stop being pushed to the header's end.
 	let headerEl: HTMLElement | undefined = $state();
 	let titleEl: HTMLElement | undefined = $state();
 	let sepEl: HTMLElement | undefined = $state();
@@ -321,8 +322,8 @@
 		   as "designed" rather than "glued to the rail". */
 		--strip-pad: var(--space-8);
 		/* What the row sits on. The edge fades are drawn in it, so they
-		   melt into the page on a plain row and into the band on a
-		   banded one (registered in tokens.css so it can transition). */
+		   melt into the page, and into the band while a banded row shows
+		   it (registered in tokens.css so it can transition). */
 		--strip-surface: var(--ink-000);
 		margin-block-end: var(--space-7);
 	}
@@ -466,9 +467,9 @@
 
 	/* Edge fade — non-interactive gradient backdrop that says "more
 	   content this way". Wider (9rem ≈ 144px) and stronger than the
-	   previous radial: solid row surface (--strip-surface) at the edge, semi-solid
-	   in the middle, transparent past 70%. Reads clearly even when
-	   the cards underneath are dark posters. */
+	   previous radial: solid row surface (--strip-surface) at the
+	   edge, semi-solid in the middle, transparent past 70%. Reads
+	   clearly even when the cards underneath are dark posters. */
 	.strip-fade {
 		position: absolute;
 		inset-block: 0;
