@@ -253,7 +253,8 @@ describe('franchisePage', () => {
 
 	it('keeps numbered titles that follow each other in one list', () => {
 		// 11 → 51 → 14, and 59 → 51, 59 → 31: 59 and 31 have no clear
-		// place, and 11, 51 and 14 read as one numbered list.
+		// place, and 11, 51 and 14 read as one numbered list. The page is
+		// opened from 31, the payload's anchor.
 		const page = franchisePage(
 			shaped(
 				['31', '51', '14', '11', '59'],
@@ -264,7 +265,7 @@ describe('franchisePage', () => {
 					['11', '51']
 				]
 			),
-			'11',
+			'31',
 			'linked'
 		)!;
 		const first = page.sections[0];
