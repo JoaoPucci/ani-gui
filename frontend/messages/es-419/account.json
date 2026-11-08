@@ -37,7 +37,7 @@
 	"watch_later_empty_hint": "¿Agregaste un anime a tu lista? Actualiza para traerlo.",
 	"watch_later_failed": "No se pudo cargar tu lista",
 	"watch_later_failed_hint": "No pudimos cargar tu lista “Por ver”. {reason}",
-	"disconnect_error_token_clear": "No se pudo borrar el token local. Inténtalo de nuevo o revisa los registros de ani-gui.",
+	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
 	"chip_aria_label": "Menú de cuenta, sesión iniciada como {username}",
 	"chip_warning_expired": "Sesión expirada",
 	"chip_warning_error": "Error al sincronizar",
