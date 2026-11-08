@@ -71,9 +71,9 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //
 // - `--no-sandbox` is the default until the probe has answered, so
 //   an exit before then launches the app unsandboxed rather than not
-//   at all. That, the block's place after the launcher and the
-//   `|| true` on its one line of output back each other up: any one
-//   of them keeps a fallback with no usable stderr launching.
+//   at all; the fallback relies on it. The block's place after the
+//   launcher and the `|| true` on its one line of output back each
+//   other up: either keeps a fallback with no usable stderr launching.
 // - The probe's stdout goes to a file, not a pipe, so a child that
 //   outlives it cannot hold the wait open. Core dumps are off, and its
 //   stderr and the shell's job reports are dropped, so the only output
@@ -98,10 +98,15 @@ const PROBE_BLOCK = `${PROBE_MARK}
 ANI_GUI_SANDBOX=(--no-sandbox)
 ani_gui_answer_file=
 ani_gui_probe_job=
+ani_gui_probe_starting=0
 ani_gui_probe_stop()
 {
-  # A signal between starting the job and recording it finds it in $!.
-  local job="\${ani_gui_probe_job:-$!}"
+  # A signal between starting the job and recording it finds it in $!;
+  # at any other time $! names nothing of the probe's.
+  local job="$ani_gui_probe_job"
+  if [ -z "$job" ] && [ "$ani_gui_probe_starting" -eq 1 ] ; then
+    job=$!
+  fi
   if [ -n "$job" ] ; then
     kill "$job" 2>/dev/null || true
     wait "$job" 2>/dev/null || true
@@ -117,11 +122,12 @@ ani_gui_sandbox_starts()
 {
   local answer status
   ani_gui_answer_file="$(mktemp 2>/dev/null)" || return 1
+  ani_gui_probe_starting=1
   (
     exec 2>/dev/null
     probe=
     watchdog=
-    trap 'kill -9 "$probe"; kill "$watchdog"; wait "$watchdog"; exit 143' TERM
+    trap 'kill -9 "\${probe:-$!}"; kill "\${watchdog:-$!}"; wait "$watchdog"; exit 143' TERM
     ulimit -c 0
     "$BIN" ${SANDBOX_PROBE_SWITCH} </dev/null >"$ani_gui_answer_file" &
     probe=$!
@@ -140,6 +146,7 @@ ani_gui_sandbox_starts()
     exit "$probe_status"
   ) &
   ani_gui_probe_job=$!
+  ani_gui_probe_starting=0
   status=0
   wait "$ani_gui_probe_job" 2>/dev/null || status=$?
   ani_gui_probe_job=
