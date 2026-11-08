@@ -10,30 +10,27 @@ use crate::flags::cache::{self, CacheEntry, FRESH_FOR};
 use crate::flags::decl::FlagValue;
 use crate::flags::resolve::{parse_document, Document};
 use crate::flags::store::{FlagStore, Origin, SETTLE_CAP};
-use crate::flags::test_decls::{FALLBACK, KILL, TEST_DECLS};
+use crate::flags::test_decls::{A, B, TEST_DECLS};
 
 const NOW: u64 = 1_800_000_000;
 const DAY: u64 = 24 * 60 * 60;
 
 type Pair = (Option<FlagValue>, Option<FlagValue>);
-const DEFAULTS: Pair = (Some(FlagValue::Bool(true)), Some(FlagValue::Choice("new")));
-const FROM_FILE: Pair = (
-    Some(FlagValue::Bool(false)),
-    Some(FlagValue::Choice("older")),
-);
-const FROM_CACHE: Pair = (Some(FlagValue::Bool(true)), Some(FlagValue::Choice("old")));
+const DEFAULTS: Pair = (Some(FlagValue::Bool(false)), Some(FlagValue::Bool(false)));
+const FROM_FILE: Pair = (Some(FlagValue::Bool(true)), Some(FlagValue::Bool(true)));
+const FROM_CACHE: Pair = (Some(FlagValue::Bool(false)), Some(FlagValue::Bool(true)));
 
 fn pair(store: &FlagStore) -> Pair {
     let r = store.current();
-    (r.get(KILL), r.get(FALLBACK))
+    (r.get(A), r.get(B))
 }
 
 fn file_doc() -> Document {
-    parse_document(br#"{"flags":{"test_kill":false,"test_fallback":"older"}}"#).expect("doc")
+    parse_document(br#"{"flags":{"test_a":true,"test_b":true}}"#).expect("doc")
 }
 
 fn cached_doc() -> Document {
-    parse_document(br#"{"flags":{"test_fallback":"old"}}"#).expect("doc")
+    parse_document(br#"{"flags":{"test_b":true}}"#).expect("doc")
 }
 
 /// A fetcher that plays `script` attempt by attempt — each a delay and
@@ -263,8 +260,7 @@ async fn a_stale_or_future_cache_is_not_used() {
 async fn a_cached_value_this_build_does_not_allow_resolves_to_the_default() {
     let td = tempfile::tempdir().expect("tempdir");
     let path = cache_in(td.path());
-    let bad =
-        parse_document(br#"{"flags":{"test_kill":"off","test_fallback":"newest"}}"#).expect("doc");
+    let bad = parse_document(br#"{"flags":{"test_a":"on","test_b":1}}"#).expect("doc");
     seed(&path, NOW, bad).await;
     let script = Script::new(Vec::new());
     let (store, task) = launch(Some(path), &script);

@@ -8,7 +8,7 @@ use tokio::io::AsyncReadExt;
 use super::{plan, plan_from_env, start, LaunchPlan, TEST_FLAGS_ENV, UNATTENDED_ENV};
 use crate::flags::decl::FlagValue;
 use crate::flags::store::{FlagStore, Origin};
-use crate::flags::test_decls::{FALLBACK, KILL, TEST_DECLS};
+use crate::flags::test_decls::{A, B, TEST_DECLS};
 
 fn os(s: &str) -> Option<&OsStr> {
     Some(OsStr::new(s))
@@ -119,18 +119,14 @@ fn client_through(proxy: &Proxy) -> reqwest::Client {
 
 fn pair(store: &FlagStore) -> (Option<FlagValue>, Option<FlagValue>) {
     let r = store.current();
-    (r.get(KILL), r.get(FALLBACK))
+    (r.get(A), r.get(B))
 }
 
 #[tokio::test]
 async fn a_test_run_with_a_file_takes_its_flags_and_makes_no_request() {
     let td = tempfile::tempdir().expect("tempdir");
     let file = td.path().join("flags.json");
-    std::fs::write(
-        &file,
-        r#"{"flags":{"test_kill":false,"test_fallback":"old"}}"#,
-    )
-    .expect("write");
+    std::fs::write(&file, r#"{"flags":{"test_a":true,"test_b":false}}"#).expect("write");
     let mut proxy = proxy().await;
     let store = FlagStore::pending(TEST_DECLS);
     start(
@@ -143,7 +139,7 @@ async fn a_test_run_with_a_file_takes_its_flags_and_makes_no_request() {
     assert_eq!(store.origin(), Origin::Test);
     assert_eq!(
         pair(&store),
-        (Some(FlagValue::Bool(false)), Some(FlagValue::Choice("old")))
+        (Some(FlagValue::Bool(true)), Some(FlagValue::Bool(false)))
     );
     let none = tokio::time::timeout(Duration::from_millis(300), proxy.seen.recv()).await;
     assert!(none.is_err(), "a test run reached the network: {none:?}");
@@ -165,7 +161,7 @@ async fn a_test_run_without_a_file_or_with_an_unreadable_one_takes_the_defaults(
         assert_eq!(store.origin(), Origin::Test, "{file:?}");
         assert_eq!(
             pair(&store),
-            (Some(FlagValue::Bool(true)), Some(FlagValue::Choice("new")))
+            (Some(FlagValue::Bool(false)), Some(FlagValue::Bool(false)))
         );
         let none = tokio::time::timeout(Duration::from_millis(300), proxy.seen.recv()).await;
         assert!(none.is_err(), "a test run reached the network: {none:?}");

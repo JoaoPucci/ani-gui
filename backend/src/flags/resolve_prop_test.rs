@@ -5,21 +5,18 @@ use proptest::prelude::*;
 use serde_json::{Map, Value};
 
 use super::{parse_document, resolve, Resolved, MAX_BYTES};
-use crate::flags::decl::{FlagDecl, FlagKind, FlagValue};
-use crate::flags::test_decls::{FALLBACK, KILL, TEST_DECLS};
+use crate::flags::decl::{FlagDecl, FlagValue};
+use crate::flags::test_decls::{A, B, TEST_DECLS};
 
-/// Strings that sit on and around the declared ones, so the generated
-/// files hit allowed values often and near-misses more often.
+/// Strings that spell a boolean without being one, so the generated
+/// files hit near-misses often.
 fn near_string() -> impl Strategy<Value = String> {
     prop_oneof![
-        Just("new".to_string()),
-        Just("old".to_string()),
-        Just("older".to_string()),
-        Just("newer".to_string()),
-        Just("Old".to_string()),
-        Just(String::new()),
         Just("true".to_string()),
         Just("false".to_string()),
+        Just("on".to_string()),
+        Just("True".to_string()),
+        Just(String::new()),
         any::<String>(),
     ]
 }
@@ -43,8 +40,8 @@ fn json_value() -> impl Strategy<Value = Value> {
 
 fn key() -> impl Strategy<Value = String> {
     prop_oneof![
-        Just(KILL.to_string()),
-        Just(FALLBACK.to_string()),
+        Just(A.to_string()),
+        Just(B.to_string()),
         Just("flags".to_string()),
         "[a-z_]{0,12}",
         any::<String>(),
@@ -63,23 +60,11 @@ fn document() -> impl Strategy<Value = Value> {
     ]
 }
 
-/// The values a declaration permits, written out from its kind
-/// rather than through the code under test.
-fn permitted(decl: &FlagDecl) -> Vec<FlagValue> {
-    match decl.kind {
-        FlagKind::KillSwitch => vec![FlagValue::Bool(true), FlagValue::Bool(false)],
-        FlagKind::Fallback { current, earlier } => std::iter::once(current)
-            .chain(earlier.iter().copied())
-            .map(FlagValue::Choice)
-            .collect(),
-        FlagKind::Probe { may_switch_on } => {
-            let mut v = vec![FlagValue::Bool(false)];
-            if may_switch_on {
-                v.push(FlagValue::Bool(true));
-            }
-            v
-        }
-    }
+/// The values a test declaration permits, written out rather than
+/// read through the code under test: every one is a probe the file
+/// may switch on, so off, the default, then on.
+fn permitted(_decl: &FlagDecl) -> Vec<FlagValue> {
+    vec![FlagValue::Bool(false), FlagValue::Bool(true)]
 }
 
 fn assert_only_declared(r: &Resolved) {
@@ -99,11 +84,7 @@ fn oracle(decl: &FlagDecl, raw: Option<&Value>) -> FlagValue {
     let Some(raw) = raw else { return default };
     permitted(decl)
         .into_iter()
-        .find(|p| match (p, raw) {
-            (FlagValue::Bool(b), Value::Bool(r)) => b == r,
-            (FlagValue::Choice(c), Value::String(r)) => c == r,
-            _ => false,
-        })
+        .find(|p| raw.as_bool().map(FlagValue::Bool) == Some(*p))
         .unwrap_or(default)
 }
 
@@ -132,13 +113,26 @@ proptest! {
         }
     }
 
+    /// The rule: a flag reads on only when the file held exactly
+    /// `true` for it, and anything else, a failed read included, is off.
+    #[test]
+    fn a_flag_reads_on_only_for_an_exact_true(doc in document()) {
+        let bytes = serde_json::to_vec(&doc).expect("serialise");
+        let r = resolve(TEST_DECLS, parse_document(&bytes).as_ref());
+        let flags = doc.get("flags").and_then(Value::as_object).filter(|_| bytes.len() <= MAX_BYTES);
+        for decl in TEST_DECLS {
+            let raw = flags.and_then(|f| f.get(decl.name));
+            prop_assert_eq!(r.enabled(decl), raw == Some(&Value::Bool(true)), "{}", decl.name);
+        }
+    }
+
     #[test]
     fn a_huge_file_resolves_to_defaults(pad in (MAX_BYTES - 64)..(MAX_BYTES * 3)) {
-        let body = format!(r#"{{"flags":{{"test_kill":false,"test_fallback":"old"}}}}{}"#, " ".repeat(pad));
+        let body = format!(r#"{{"flags":{{"test_a":true,"test_b":true}}}}{}"#, " ".repeat(pad));
         let r = resolve(TEST_DECLS, parse_document(body.as_bytes()).as_ref());
         assert_only_declared(&r);
         let expect_honoured = body.len() <= MAX_BYTES;
-        prop_assert_eq!(r.get(KILL) == Some(FlagValue::Bool(false)), expect_honoured);
-        prop_assert_eq!(r.get(FALLBACK) == Some(FlagValue::Choice("old")), expect_honoured);
+        prop_assert_eq!(r.get(A) == Some(FlagValue::Bool(true)), expect_honoured);
+        prop_assert_eq!(r.get(B) == Some(FlagValue::Bool(true)), expect_honoured);
     }
 }

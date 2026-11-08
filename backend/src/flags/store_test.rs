@@ -3,22 +3,19 @@ use std::time::Duration;
 use super::{FlagStore, Origin, SETTLE_CAP, SETTLE_LIMIT};
 use crate::flags::decl::FlagValue;
 use crate::flags::resolve::parse_document;
-use crate::flags::test_decls::{FALLBACK, KILL, TEST_DECLS};
+use crate::flags::test_decls::{A, B, TEST_DECLS};
 
 type Pair = (Option<FlagValue>, Option<FlagValue>);
-const DEFAULTS: Pair = (Some(FlagValue::Bool(true)), Some(FlagValue::Choice("new")));
-const FROM_DOC: Pair = (
-    Some(FlagValue::Bool(false)),
-    Some(FlagValue::Choice("older")),
-);
+const DEFAULTS: Pair = (Some(FlagValue::Bool(false)), Some(FlagValue::Bool(false)));
+const FROM_DOC: Pair = (Some(FlagValue::Bool(true)), Some(FlagValue::Bool(true)));
 
 fn pair(store: &FlagStore) -> Pair {
     let r = store.current();
-    (r.get(KILL), r.get(FALLBACK))
+    (r.get(A), r.get(B))
 }
 
 fn doc() -> crate::flags::resolve::Document {
-    parse_document(br#"{"flags":{"test_kill":false,"test_fallback":"older"}}"#).expect("doc")
+    parse_document(br#"{"flags":{"test_a":true,"test_b":true}}"#).expect("doc")
 }
 
 #[test]
@@ -82,7 +79,7 @@ async fn settled_answers_with_the_decision_once_it_is_made() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     store.settle(Some(&doc()), Origin::File);
     let r = waiter.await.expect("join");
-    assert_eq!((r.get(KILL), r.get(FALLBACK)), FROM_DOC);
+    assert_eq!((r.get(A), r.get(B)), FROM_DOC);
 }
 
 #[tokio::test(start_paused = true)]
@@ -90,7 +87,7 @@ async fn settled_never_waits_past_its_limit_and_then_decides_the_defaults() {
     let store = FlagStore::pending(TEST_DECLS);
     let started = tokio::time::Instant::now();
     let r = store.settled().await;
-    assert_eq!((r.get(KILL), r.get(FALLBACK)), DEFAULTS);
+    assert_eq!((r.get(A), r.get(B)), DEFAULTS);
     assert!(started.elapsed() >= SETTLE_LIMIT);
     assert!(started.elapsed() < SETTLE_LIMIT + Duration::from_secs(1));
     // The defaults it answered with are the session's: a refresh that
