@@ -9,6 +9,8 @@
 //!   default and the only values the remote file may select;
 //! - [`resolve`] — the pure step from the file's bytes to one
 //!   declared value per declared flag;
+//! - [`signature`] — the file's detached signature, and what an
+//!   unverified file may not say;
 //! - [`cache`] — the last good copy kept on disk, and how long it
 //!   stands in for an unreachable file;
 //! - [`remote`] — the request for the file;
@@ -26,14 +28,16 @@
 //! does not mention all leave it there. The value resolution returns
 //! is borrowed from the declaration, never copied from the file.
 //!
-//! This build declares no flag, and no kind a flag could be declared
-//! with ([`decl::FlagKind`] has no variant outside the tests), so the
-//! file it reads can change nothing, and the file is not signed. A
-//! kind arrives with the change that verifies the file with the
-//! minisign verifier proposed for the update path (see
-//! `docs/architecture.md`, "Remote flags"). Whether a flag's other
-//! values are safe for the feature it gates is not something a type
-//! can see: that is the declaration's `safe_because`, and review.
+//! **What a signature adds.** The one kind a flag is declared with,
+//! [`decl::FlagKind::Rollout`], gates a feature that ships off, and
+//! its `true` turns that feature on. Only a file whose minisign
+//! signature verifies under a key compiled into the build may do that:
+//! [`signature::admit`] drops every `true` from any other file before
+//! the flags are decided or cached, and keeps the rest. So an unsigned
+//! file, or anyone able to rewrite it in transit, can only leave a
+//! feature off. Whether turning a flag's feature on is safe is not
+//! something a type can see: that is the declaration's
+//! `safe_because`, and review.
 //!
 //! The backend owns the request; the renderer reads the resolved
 //! values through `GET /api/flags`.
@@ -51,8 +55,8 @@ pub use decl::{FlagDecl, FlagKind, FlagValue};
 pub use resolve::Resolved;
 pub use store::FlagStore;
 
-/// Every flag this build declares. Empty: no kind is declarable yet,
-/// and a declaration comes with the code that reads it.
+/// Every flag this build declares. Empty: a declaration comes with the
+/// code that reads it.
 ///
 /// Declare each flag as a `pub const FlagDecl`, list it here, and read
 /// it through that same constant with [`Resolved::enabled`] — never

@@ -1,5 +1,8 @@
 //! The request for the flags file: one per launch, and in a session
-//! where it fails, the occasional retry (see [`super::refresh`]).
+//! where it fails, the occasional retry (see [`super::refresh`]). Each
+//! attempt also asks for the file's detached signature beside it,
+//! which decides whether the file may turn a feature on (see
+//! [`super::signature`]).
 //!
 //! The file lives on the repository's `flags` branch and is read from
 //! `raw.githubusercontent.com`, GitHub's content CDN — not the REST
@@ -11,6 +14,7 @@
 use std::time::Duration;
 
 use super::resolve::{parse_document, Document, MAX_BYTES};
+use super::signature::{admit, verify, MAX_SIGNATURE_BYTES, SIGNATURE_SUFFIX, TRUSTED_KEYS};
 
 /// Where the flags file is read from.
 pub const FLAGS_URL: &str = "https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json";
@@ -39,7 +43,9 @@ pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long the signature may lag behind the file once the file has
-/// arrived.
+/// arrived. Both are asked for at once; this bounds only the wait after
+/// the file, so a signature that hangs costs the turn-on and holds the
+/// flags at most this long past the file.
 pub const SIGNATURE_GRACE: Duration = Duration::from_millis(750);
 
 /// The client the flags file is fetched with: its own, for the
@@ -54,30 +60,70 @@ pub fn client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
-/// Fetch and parse the flags file. `None` on every failure: a
-/// transport error, the timeout, a status other than 200, a body over
-/// the cap, or a body that is not a flags document.
+/// Fetch and parse the flags file, admitted under the build's own
+/// keys ([`TRUSTED_KEYS`]). `None` on every failure: a transport
+/// error, the timeout, a status other than 200, a body over the cap, or
+/// a body that is not a flags document.
 pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Document> {
-    fetch_trusting(client, url, timeout, &[]).await
+    fetch_trusting(client, url, timeout, TRUSTED_KEYS).await
 }
 
-/// Stub.
+/// [`fetch`], trusting the signature keys `keys`: the file and its
+/// detached signature, from the same address with [`SIGNATURE_SUFFIX`]
+/// appended, asked for at once. The file has `timeout`; once it has
+/// arrived the signature has at most [`SIGNATURE_GRACE`] more, and a
+/// file that fails ends the attempt without waiting for it. The file
+/// is returned as [`super::signature::admit`] leaves it: whole when it
+/// verifies under one of `keys`, and otherwise without any value that
+/// turns a feature on. A signature that fails, is over
+/// [`MAX_SIGNATURE_BYTES`] or does not arrive in time is no signature:
+/// it costs the turn-on, never the flags.
 pub async fn fetch_trusting(
     client: &reqwest::Client,
     url: &str,
     timeout: Duration,
     keys: &[&str],
 ) -> Option<Document> {
-    let _ = keys;
+    let sig_client = client.clone();
+    let sig_url = format!("{url}{SIGNATURE_SUFFIX}");
+    let mut signature = tokio::spawn(async move {
+        fetch_capped(&sig_client, &sig_url, timeout, MAX_SIGNATURE_BYTES).await
+    });
     let body = tokio::time::timeout(timeout, fetch_body(client, url, timeout))
         .await
-        .ok()??;
-    parse_document(&body)
+        .ok()
+        .flatten();
+    let Some(body) = body else {
+        signature.abort();
+        return None;
+    };
+    let signature = match tokio::time::timeout(SIGNATURE_GRACE, &mut signature).await {
+        Ok(Ok(sig)) => sig,
+        _ => {
+            signature.abort();
+            None
+        }
+    };
+    let doc = parse_document(&body)?;
+    let signature = signature.and_then(|s| String::from_utf8(s).ok());
+    let verdict = verify(&body, signature.as_deref(), keys);
+    tracing::info!(?verdict, "flags file signature checked");
+    Some(admit(doc, verdict))
 }
 
 /// The body of a 200 response, read no further than one byte past the
 /// cap, so an oversized body is refused without being held whole.
 async fn fetch_body(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Vec<u8>> {
+    fetch_capped(client, url, timeout, MAX_BYTES).await
+}
+
+/// [`fetch_body`] under the cap `max`.
+async fn fetch_capped(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: Duration,
+    max: usize,
+) -> Option<Vec<u8>> {
     // A client's own total timeout may be shorter; this request
     // carries the one it is given.
     let mut resp = client
@@ -93,7 +139,7 @@ async fn fetch_body(client: &reqwest::Client, url: &str, timeout: Duration) -> O
     let mut body = Vec::new();
     while let Some(chunk) = resp.chunk().await.ok()? {
         body.extend_from_slice(&chunk);
-        if body.len() > MAX_BYTES {
+        if body.len() > max {
             return None;
         }
     }
