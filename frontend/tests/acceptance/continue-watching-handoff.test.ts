@@ -181,6 +181,18 @@ function everHeld(predicate: () => boolean): () => boolean {
 	return () => held;
 }
 
+/**
+ * Until the reads a no-hand-off case cares about have answered and
+ * rendered: the control series has moved on (so the order and the
+ * played set are known), the first series has been asked for, and a
+ * few more turns have passed for its answer to land.
+ */
+async function settled(asked: readonly string[]) {
+	await until(() => handoffTo('40') !== null, 'the other series to move on');
+	await until(() => asked.includes('10'), "the first show's series read");
+	await new Promise((r) => setTimeout(r, 50));
+}
+
 const handoffTo = (id: string) =>
 	target.querySelector<HTMLAnchorElement>(`a[href$="/anime/${id}"]`);
 const resumeFor = (title: string) =>
@@ -213,10 +225,13 @@ describe('Continue Watching after a finale', () => {
 	});
 
 	it('keeps both ordinary cards once the next show has a row of its own', async () => {
-		mountHome({ history: [row('3', 'p-second', '20', SECOND), row('13'), controlRow()] });
-		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		const asked = mountHome({
+			history: [row('3', 'p-second', '20', SECOND), row('13'), controlRow()]
+		});
+		const movedOn = everHeld(() => handoffTo('20') !== null);
+		await settled(asked);
 		await until(() => resumeFor(SECOND) !== null, "the next show's own card");
-		expect(handoffTo('20')).toBeNull();
+		expect(movedOn()).toBe(false);
 		expect(resumeFor(FIRST)).not.toBeNull();
 	});
 
@@ -238,24 +253,25 @@ describe('Continue Watching after a finale', () => {
 	});
 
 	it('keeps the ordinary card, with no error, when the series cannot be read', async () => {
-		mountHome({
+		const asked = mountHome({
 			history: [row('13'), controlRow()],
 			franchise: () => new HttpResponse(null, { status: 503 })
 		});
-		await until(() => handoffTo('40') !== null, 'the other series to move on');
-		expect(handoffTo('20')).toBeNull();
+		const movedOn = everHeld(() => handoffTo('20') !== null);
+		await settled(asked);
+		expect(movedOn()).toBe(false);
 		expect(resumeFor(FIRST)).not.toBeNull();
 	});
 
 	it('keeps the ordinary card where the show leads two ways as linked', async () => {
-		mountHome({
+		const asked = mountHome({
 			history: [row('13'), controlRow()],
 			franchise: () => HttpResponse.json(forkFrom10)
 		});
-		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		const movedOn = everHeld(() => handoffTo('20') !== null || handoffTo('25') !== null);
+		await settled(asked);
 		expect(resumeFor(FIRST)).not.toBeNull();
-		expect(handoffTo('20')).toBeNull();
-		expect(handoffTo('25')).toBeNull();
+		expect(movedOn()).toBe(false);
 	});
 
 	it('moves on to the next show by release date when the setting says so', async () => {
