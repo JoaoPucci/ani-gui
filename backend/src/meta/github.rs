@@ -66,24 +66,44 @@ impl Platform {
         }
     }
 
-    /// How the names of this platform's packages end.
+    /// How the names of this platform's packages end, as
+    /// `release_assets.json` lists them.
     pub fn endings(self) -> Vec<String> {
-        let suffixes: &[&str] = match self {
-            Self::Windows => &["-x64-setup.exe"],
-            Self::Linux => &["-x86_64.AppImage", "-amd64.deb"],
+        let file = release_assets();
+        let targets = match self {
+            Self::Windows => &file.windows,
+            Self::Linux => &file.linux,
         };
-        suffixes.iter().map(|s| (*s).to_owned()).collect()
+        targets.values().cloned().collect()
     }
 
     /// Whether a release asset named `asset_name` installs on this
     /// platform.
     pub fn carries(self, asset_name: &str) -> bool {
-        let suffixes: &[&str] = match self {
-            Self::Windows => &["-x64-setup.exe"],
-            Self::Linux => &["-x86_64.AppImage", "-amd64.deb"],
-        };
-        suffixes.iter().any(|s| asset_name.ends_with(s))
+        self.endings()
+            .iter()
+            .any(|s| asset_name.ends_with(s.as_str()))
     }
+}
+
+/// The packages' name endings, per platform and electron-builder
+/// target. The same file is what `electron/lib/release-asset-names.cjs`
+/// checks electron-builder's real file names against, so the endings
+/// and the packaging cannot drift apart without that check failing.
+#[derive(Debug, Deserialize)]
+struct ReleaseAssets {
+    linux: std::collections::BTreeMap<String, String>,
+    windows: std::collections::BTreeMap<String, String>,
+}
+
+fn release_assets() -> &'static ReleaseAssets {
+    static FILE: std::sync::OnceLock<ReleaseAssets> = std::sync::OnceLock::new();
+    FILE.get_or_init(|| {
+        // Embedded at compile time; the tests read it, so a malformed
+        // file fails them rather than reaching a release.
+        serde_json::from_str(include_str!("release_assets.json"))
+            .expect("release_assets.json lists each platform's endings")
+    })
 }
 
 /// Slim shape of the GitHub `release` object — only what the
