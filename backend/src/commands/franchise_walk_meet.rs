@@ -2,17 +2,15 @@
 //! met through the earliest-starting entry that lists it, as many as the
 //! listing bound leaves room to read.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::alt::listed;
 use super::rules::Walk;
 use super::MAX_LISTINGS;
 
-/// An entry met at the current distance: the entry it was met through
-/// and the roles that entry lists it under.
+/// An entry met at the current distance: the entry it was met through.
 pub(super) struct Met {
     pub(super) via: String,
-    pub(super) roles: BTreeSet<String>,
 }
 
 impl Walk<'_, '_> {
@@ -27,13 +25,8 @@ impl Walk<'_, '_> {
                 if self.members.contains_key(&r.id) || self.left_out.contains(&r.id) {
                     continue;
                 }
-                let m = met.entry(r.id.clone()).or_insert_with(|| Met {
-                    via: f.clone(),
-                    roles: BTreeSet::new(),
-                });
-                if &m.via == f {
-                    m.roles.insert(r.role.clone());
-                }
+                met.entry(r.id.clone())
+                    .or_insert_with(|| Met { via: f.clone() });
             }
         }
         met

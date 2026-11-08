@@ -116,7 +116,8 @@ fn page_body(ids: std::ops::Range<u32>, count: usize) -> serde_json::Value {
 }
 
 /// A listing Kitsu counts past one page is read page by page, each
-/// asked at the offset the pages before it reached.
+/// asked at the offset the pages before it reached, in id order: an
+/// offset means nothing over an order Kitsu does not promise to keep.
 #[tokio::test]
 async fn a_long_listing_is_read_page_by_page() {
     let server = MockServer::start().await;
@@ -124,6 +125,7 @@ async fn a_long_listing_is_read_page_by_page() {
         Mock::given(method("GET"))
             .and(path("/anime/9/media-relationships"))
             .and(query_param("page[offset]", offset))
+            .and(query_param("sort", "id"))
             .and(query_param("fields[anime]", FRANCHISE_ANIME_FIELDS))
             .respond_with(ResponseTemplate::new(200).set_body_json(page_body(ids, 25)))
             .expect(1)

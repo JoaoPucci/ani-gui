@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use proptest::prelude::*;
 
-use super::rules::{alt, run};
+use super::rules::{alt, listed, run};
 use super::tests::Catalogue;
 use super::*;
 
@@ -148,6 +148,44 @@ proptest! {
         prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(f.clone()));
         let everything = cat.listings.clone();
         prop_assert_eq!(plan(&anchor, &everything, &details), Plan::Done(f));
+    }
+
+    /// A member's listing never names, in one role, two members that
+    /// are versions of each other when either joined in the step that
+    /// walked from it: a group of versions it lists keeps one. Two that
+    /// were both in the run before it was walked from cannot be undone.
+    #[test]
+    fn a_listing_keeps_one_of_each_group_it_lists((cat, anchor) in catalogue()) {
+        let (_, (known, details)) = drive_with(&anchor, &cat, &[]);
+        let look = Lookup { known: &known, details: &details };
+        let walked = run(&anchor, &look).expect("decided");
+        let depth = |m: &str| {
+            let mut d = 0;
+            let mut at = walked.members[m].clone();
+            while let Some(p) = at {
+                d += 1;
+                at = walked.members[&p].clone();
+            }
+            d
+        };
+        for l in walked.members.keys() {
+            for role in ["prequel", "sequel"] {
+                let both: BTreeSet<String> = listed(&look, l, &[role])
+                    .map(|r| r.id.clone())
+                    .filter(|id| walked.members.contains_key(id))
+                    .collect();
+                for a in &both {
+                    for b in both.range::<String, _>((std::ops::Bound::Excluded(a), std::ops::Bound::Unbounded)) {
+                        if alt(&look, a, b) {
+                            prop_assert!(
+                                depth(a) <= depth(l) && depth(b) <= depth(l),
+                                "{} lists {} and {} as {}", l, a, b, role
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// No member and an entry on its path list each other as another

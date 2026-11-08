@@ -351,3 +351,68 @@ fn a_cut_listing_makes_it_incomplete() {
     c.listings.get_mut("8739").expect("listing").complete = false;
     assert!(!drive("8063", &c).complete);
 }
+
+/// A run holds one of each group of versions, even when the second is
+/// met through another entry than the first: A lists P as its prequel
+/// and S1 as its sequel, and P lists S2 as a sequel beside them. S1
+/// and S2 are versions of each other, so S2, met a step later through
+/// P, is left out although S1 is not on its path.
+#[test]
+fn a_version_of_a_member_met_through_another_entry_is_left_out() {
+    let mut c = Catalogue::default();
+    c.add("93001", "TV", Some("2010-01-01"))
+        .add("93002", "TV", Some("2008-01-01"))
+        .add("93003", "TV", Some("2012-01-01"))
+        .add("93004", "TV", Some("2013-01-01"));
+    c.rel("93001", "prequel", "93002")
+        .rel("93001", "sequel", "93003")
+        .rel("93002", "sequel", "93001")
+        .rel("93002", "sequel", "93003")
+        .rel("93002", "sequel", "93004")
+        .rel("93003", "alternative_version", "93004");
+    let f = drive("93001", &c);
+    assert_eq!(ids(&f.entries), ["93002", "93001", "93003"]);
+    assert_eq!(ids(&f.versions), ["93004"]);
+}
+
+/// Music is never listed around the run, and that holds for a music
+/// entry rules 2 and 3 leave out: it is not an other version either.
+#[test]
+fn a_music_entry_left_out_is_not_an_other_version() {
+    let mut c = Catalogue::default();
+    c.add("94001", "TV", Some("2010-01-01"))
+        .add("94002", "TV", Some("2011-01-01"))
+        .add("94003", "music", Some("2011-01-01"));
+    c.rel("94001", "sequel", "94002")
+        .rel("94001", "sequel", "94003")
+        .rel("94003", "alternative_version", "94002");
+    let f = drive("94001", &c);
+    assert_eq!(ids(&f.entries), ["94001", "94002"]);
+    assert!(f.versions.is_empty(), "{:?}", ids(&f.versions));
+}
+
+/// Two versions met in one step through different entries still keep
+/// one when an entry lists both: R lists X and Y, X lists A, and Y
+/// lists A and B, which are versions of each other. B starts first, so
+/// it is decided first, but A must not join beside it.
+#[test]
+fn versions_met_in_one_step_through_different_entries_keep_one() {
+    let mut c = Catalogue::default();
+    c.add("95001", "TV", Some("2010-01-01"))
+        .add("95002", "TV", Some("2011-01-01"))
+        .add("95003", "TV", Some("2011-06-01"))
+        .add("95004", "TV", Some("2013-01-01"))
+        .add("95005", "TV", Some("2012-01-01"));
+    c.rel("95001", "sequel", "95002")
+        .rel("95001", "sequel", "95003")
+        .rel("95002", "sequel", "95004")
+        .rel("95003", "sequel", "95004")
+        .rel("95003", "sequel", "95005")
+        .rel("95004", "alternative_version", "95005");
+    let f = drive("95001", &c);
+    let members = ids(&f.entries);
+    assert!(
+        members.contains(&"95004") != members.contains(&"95005"),
+        "{members:?}"
+    );
+}

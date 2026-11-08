@@ -1,7 +1,7 @@
 //! The relations read the franchise walk works from: every entry Kitsu
 //! relates an anime to, with what a watch-order strip shows of each
 //! related anime (title, format, start, count, status, artwork), paged
-//! past Kitsu's twenty per page.
+//! past Kitsu's twenty per page, in id order so the offsets hold.
 //!
 //! Separate from [`super::relations`] (`media_relationships`), which
 //! asks one page with no titles or artwork and feeds the tracker map;
@@ -140,6 +140,7 @@ impl KitsuClient {
                 ("fields[manga]", "subtype".to_string()),
                 ("page[limit]", FRANCHISE_PAGE_LIMIT.to_string()),
                 ("page[offset]", offset.to_string()),
+                ("sort", "id".to_string()),
             ])
             .send()
             .await

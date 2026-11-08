@@ -478,28 +478,32 @@ build's history:
 
 ## 4. Design options
 
-All four options share one backend piece [proposal], two reads of
-Kitsu's relations:
+All four options share one backend piece, `GET
+/api/kitsu/franchise/:kitsu_id`, built on one read of Kitsu's
+relations per entry. As built, that read is not role-filtered: it lists
+every relation an entry has, each related anime with its title,
+format, start, episode count, status, poster and cover, paged in id
+order past 20 where Kitsu counts more, and cached separately from the
+`kitsu:relations:v3` read the tracker map uses, which asks for neither
+titles nor posters. From those listings it builds two things:
 
-- `chain(kitsu_id)`: the **run** an entry belongs to — a bounded walk
-  along prequel/sequel edges from that entry (say up to 40 entries),
-  each with title, format, year, episode count, status and poster,
-  under the rules below. It reads Kitsu's relations role-filtered to
-  `sequel,prequel,alternative_version,alternative_setting` — fewer
-  rows than the full list (four instead of fifteen for *Gintama*), and
-  paged past 20 where Kitsu counts more, so no link is hidden — a new,
-  separately cached query beside the existing `kitsu:relations:v3`
-  read, which asks for neither titles nor posters. One request per
-  entry the walk considers, cached; JoJo's TV run, from the 2012
-  series to *Steel Ball Run*, is nine entries.
-- `around(kitsu_id)`: one entry's other relations — side stories,
-  recaps, films and alternative versions — read in full, paging past
-  20 where Kitsu counts more. They are attached as leaves and not
-  walked from, because `alternative_version`/`ALTERNATIVE` links
-  unrelated series (Fate's *Apocrypha* and *Grand Order* hang off
-  *Fate/stay night*).
+- the **run** an entry belongs to: a bounded walk along prequel/sequel
+  edges from that entry (up to 40 entries and 80 listings), under the
+  rules below. JoJo's TV run, from the 2012 series to *Steel Ball Run*,
+  is nine entries;
+- what sits **around** the run: side stories, recaps, films and other
+  versions, from the members' own listings. They are attached as
+  leaves and not walked from, because `alternative_version`/`ALTERNATIVE`
+  links unrelated series (Fate's *Apocrypha* and *Grand Order* hang
+  off *Fate/stay night*).
 
-Neither makes a provider request. Kitsu is the metadata service the
+The read is unfiltered so one cached listing serves both. An earlier
+draft of this section filtered the walk's read to
+`sequel,prequel,alternative_version,alternative_setting` (four rows
+instead of fifteen for *Gintama*) and read one entry's other
+relations separately; one unfiltered listing serves both.
+
+It makes no provider request. Kitsu is the metadata service the
 app already pages through on every show page.
 
 ### How the walk builds a run, and keeps other versions out
@@ -525,14 +529,20 @@ is defined from the entry being viewed — the anchor — by these rules
    sequels (or several prequels) of which some list one another, in
    either direction, as `alternative_version` or
    `alternative_setting`, only one of each such group is added: the
-   one in the same format as the entry listing them (TV, movie,
+   one in the same format as the entry it was met through (TV, movie,
    OVA…), else the one that started first, else the lowest Kitsu id.
+   A group is decided once per distance, over every entry that lists
+   its members, so it keeps one even when they were met through
+   different entries, and adds none when one of them is already in
+   the run. Groups that share an entry are one group: entries that
+   are versions of one another, directly or through one another.
 3. **Versions along the path are left out.** An entry is not added if
    it and any entry on its path to the anchor list each other (in
    either direction) as `alternative_version` or
    `alternative_setting`. The anchor is never left out.
 4. **Other versions** are the anime entries rules 2 and 3 left out,
-   plus the anime that run members list as `alternative_version`.
+   music videos aside, plus the anime that run members list as
+   `alternative_version`.
    `alternative_setting` is not listed: Kitsu uses it for separate
    series in the same world (*Fate/stay night* lists *Apocrypha*,
    *Prisma☆Illya* and *Grand Order* that way). Manga and novels are
@@ -710,8 +720,8 @@ year.
   finale and *The Semi-Final*): the "before" slot holds both, side by
   side, the way a fork fills the "next" slot. The position number
   follows the earliest-starting one (section 4).
-- Recaps (`summary`) never take a slot; the role filter leaves them
-  out.
+- Recaps (`summary`) never take a slot; the walk follows only
+  prequel and sequel links, which leaves them out.
 - An unaired sequel (a start date in the future — the repository's
   fixture for Kitsu 48677 has a sequel starting 2027-01-10 with no
   episode count): shown dated,

@@ -166,3 +166,122 @@ async fn a_value_that_is_not_an_id_is_refused() {
         Err(crate::error::AniError::InvalidKitsuId)
     ));
 }
+
+/// Two reads of one listing at the same time make one request to
+/// Kitsu: the show page and another surface asking for the same
+/// franchise share the read in flight.
+#[tokio::test]
+async fn reads_of_one_listing_at_the_same_time_share_one_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/610/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(page(&[("prequel", OVA_2000)], 1))
+                .set_delay(std::time::Duration::from_millis(200)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&server.uri());
+    let (a, b) = tokio::join!(
+        super::franchise_listing(&state, "610"),
+        super::franchise_listing(&state, "610")
+    );
+    assert_eq!(a.expect("listing"), b.expect("listing"));
+    server.verify().await;
+}
+
+/// A listing whose related anime have all finished keeps the week the
+/// detail read keeps; one that relates an anime still airing, not yet
+/// out or of unknown status keeps a day, so its counts and statuses do
+/// not go a week stale.
+mod listing_lifetime {
+    use proptest::prelude::*;
+
+    use super::super::listing_ttl;
+    use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
+    use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
+
+    fn related(kind: &str, status: Option<&str>) -> FranchiseRelation {
+        let entry = (kind == "anime").then(|| FranchiseEntry {
+            id: "1".into(),
+            title: "T".into(),
+            subtype: Some("TV".into()),
+            start: None,
+            episodes: None,
+            status: status.map(str::to_string),
+            poster: None,
+            cover: None,
+        });
+        FranchiseRelation {
+            role: "sequel".into(),
+            kind: kind.into(),
+            id: "1".into(),
+            subtype: None,
+            entry,
+        }
+    }
+
+    fn listing(relations: Vec<FranchiseRelation>) -> FranchiseListing {
+        FranchiseListing {
+            relations,
+            complete: true,
+        }
+    }
+
+    #[test]
+    fn a_listing_of_finished_anime_keeps_a_week() {
+        let l = listing(vec![
+            related("anime", Some("finished")),
+            related("anime", Some("finished")),
+            related("manga", None),
+        ]);
+        assert_eq!(listing_ttl(&l), ANIME_DETAIL_TTL.as_secs());
+        assert_eq!(listing_ttl(&listing(vec![])), ANIME_DETAIL_TTL.as_secs());
+    }
+
+    #[test]
+    fn a_listing_with_an_unfinished_anime_keeps_a_day() {
+        for status in [
+            Some("current"),
+            Some("upcoming"),
+            Some("tba"),
+            Some("unreleased"),
+            None,
+        ] {
+            let l = listing(vec![
+                related("anime", Some("finished")),
+                related("anime", status),
+            ]);
+            assert_eq!(listing_ttl(&l), EPISODES_TTL.as_secs(), "{status:?}");
+        }
+    }
+
+    fn status() -> impl Strategy<Value = Option<String>> {
+        prop_oneof![
+            Just(Some("finished".to_string())),
+            Just(Some("current".to_string())),
+            Just(None),
+            any::<String>().prop_map(Some),
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn a_week_only_when_every_related_anime_has_finished(
+            rels in prop::collection::vec((any::<bool>(), status()), 0..8)
+        ) {
+            let relations: Vec<FranchiseRelation> = rels
+                .iter()
+                .map(|(anime, s)| related(if *anime { "anime" } else { "manga" }, s.as_deref()))
+                .collect();
+            let all_finished = rels
+                .iter()
+                .filter(|(anime, _)| *anime)
+                .all(|(_, s)| s.as_deref() == Some("finished"));
+            let want = if all_finished { ANIME_DETAIL_TTL } else { EPISODES_TTL };
+            prop_assert_eq!(listing_ttl(&listing(relations)), want.as_secs());
+        }
+    }
+}

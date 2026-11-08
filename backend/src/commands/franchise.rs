@@ -3,20 +3,23 @@
 //!
 //! Each listing is the detailed relations read
 //! ([`crate::meta::kitsu::KitsuClient::franchise_relations`]), cached
-//! under `kitsu:franchise-rel:v1:<id>` for as long as the tracker's
-//! relations read keeps its rows. An entry no listing describes — the
-//! anchor, usually — takes its fields from the cached detail read
-//! ([`crate::commands::kitsu::kitsu_anime_detail`]).
+//! under `kitsu:franchise-rel:v1:<id>` for a week, or a day when it
+//! relates an anime that has not finished ([`listing_ttl`]). Two reads
+//! of one listing at the same time share one request. The entry asked
+//! about takes its fields from the cached detail read
+//! ([`crate::commands::kitsu::kitsu_anime_detail`]); every other entry,
+//! from the listing that relates it.
 
 use std::collections::BTreeMap;
 
 use futures_util::stream::{self, StreamExt};
 
 use crate::app::AppState;
-use crate::cache::ttl::ANIME_DETAIL_TTL;
+use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::franchise_walk::{plan, Franchise, Plan};
 use crate::error::Result;
+use crate::meta::inflight::Inflight;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, KitsuAnimeRef};
 
 /// Listings read at the same time in one round of the walk.
@@ -25,6 +28,24 @@ const READS_AT_ONCE: usize = 4;
 /// The cache key of `id`'s listing.
 pub(crate) fn listing_key(id: &str) -> String {
     format!("{}{id}", crate::cache::families::KITSU_FRANCHISE_RELATIONS)
+}
+
+/// How long a listing is cached, in seconds: a week when every anime
+/// it relates has finished, else a day, since an airing entry's count
+/// and status move (as [`crate::commands::kitsu::anime_detail_ttl`]
+/// does for one show).
+#[must_use]
+pub fn listing_ttl(listing: &FranchiseListing) -> u64 {
+    let finished = listing
+        .relations
+        .iter()
+        .filter(|r| r.kind == "anime")
+        .all(|r| r.entry.as_ref().and_then(|e| e.status.as_deref()) == Some("finished"));
+    if finished {
+        ANIME_DETAIL_TTL.as_secs()
+    } else {
+        EPISODES_TTL.as_secs()
+    }
 }
 
 /// `id`'s relation listing, from the cache or Kitsu.
@@ -38,12 +59,23 @@ pub async fn franchise_listing(state: &AppState, id: &str) -> Result<FranchiseLi
             return Ok(listing);
         }
     }
-    let listing = state.kitsu.franchise_relations(id).await?;
-    if let Ok(body) = serde_json::to_string(&listing) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ANIME_DETAIL_TTL.as_secs());
-    }
-    Ok(listing)
+    // Keyed by the state as well as the id: one app has one state, and
+    // two states (two tests) never share an answer.
+    let running = format!("{:p}:{id}", std::ptr::from_ref(state));
+    LISTINGS_IN_FLIGHT
+        .run(running, || async {
+            let listing = state.kitsu.franchise_relations(id).await?;
+            if let Ok(body) = serde_json::to_string(&listing) {
+                let _ = meta_cache_put(&state.cache_pool, &key, &body, listing_ttl(&listing));
+            }
+            Ok(listing)
+        })
+        .await
 }
+
+/// The listing reads in flight: two at once for one entry share one.
+static LISTINGS_IN_FLIGHT: std::sync::LazyLock<Inflight<Result<FranchiseListing>>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// What the franchise surfaces show of an entry, from its detail.
 #[must_use]
