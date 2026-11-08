@@ -96,8 +96,10 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 interface ShowOptions {
 	order?: string;
+	settings?: () => Response;
 	franchise?: () => Response;
-	history?: { ep_no: string; id: string; title: string; kitsu_id?: string }[];
+	/** Null: the history read fails. */
+	history?: { ep_no: string; id: string; title: string; kitsu_id?: string }[] | null;
 	similar?: string[];
 }
 
@@ -107,7 +109,9 @@ function useShow(opts: ShowOptions = {}) {
 	const similar = (opts.similar ?? []).map((id) => kitsuRef(id, `Similar ${id}`, 12));
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: opts.order ?? 'linked' })
+			opts.settings
+				? opts.settings()
+				: HttpResponse.json({ ...appConfig(), watch_order: opts.order ?? 'linked' })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12), subtype: 'TV' })
@@ -134,7 +138,11 @@ function useShow(opts: ShowOptions = {}) {
 		),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(opts.history ?? [])),
+		http.get(`${API_BASE}/api/history`, () =>
+			opts.history === null
+				? new HttpResponse(null, { status: 503 })
+				: HttpResponse.json(opts.history ?? [])
+		),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
 	);
 	return calls;
@@ -268,5 +276,66 @@ describe('detail route — the watch-order strip', () => {
 		await until(() => strip() !== null && similarCard('77') !== null, 'the strip and Similar');
 		expect(sawFifty).toBe(false);
 		expect(similarCard('50')).toBeNull();
+	});
+
+	it('draws in link order when the settings cannot be read', async () => {
+		useShow({ settings: () => new HttpResponse(null, { status: 503 }) });
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		expect(tile('50')).not.toBeNull();
+		expect(eyebrow()).toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
+	});
+
+	it('shows the strip without progress when the history cannot be read', async () => {
+		useShow({ history: null });
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		expect(tile('10')).not.toBeNull();
+		expect(strip()!.textContent).not.toContain(m.watchorder_strip_watching_key());
+	});
+
+	it("names a side story's parent stories, and nothing after it", async () => {
+		useShow({
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [SAGA, FINAL],
+					links: [['10', '50']],
+					sides: [SECOND],
+					parents: { [KITSU_ID]: ['10', '50'] }
+				})
+		});
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		expect(tile('10')).not.toBeNull();
+		expect(tile('50')).not.toBeNull();
+		expect(strip()!.textContent).toContain(m.watchorder_strip_word_parents());
+		expect(strip()!.textContent).toContain(m.watchorder_strip_side_end());
+		expect(strip()!.textContent).not.toContain(m.watchorder_strip_join({ count: 2 }));
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
+	});
+
+	it('keeps no strip or place from the show before, moving to one without a run', async () => {
+		useShow();
+		const OTHER = '99';
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER, 'Lone Film', 1), subtype: 'movie' })
+			),
+			http.get(`${API_BASE}/api/kitsu/franchise/${OTHER}`, () =>
+				HttpResponse.json({ ...FRANCHISE, anchor: OTHER, entries: [], links: [] })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
+				HttpResponse.json({ aired: 1, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () => HttpResponse.json(null))
+		);
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, "the first show's strip");
+		setParams({ id: OTHER });
+		await until(() => title() === 'Lone Film', 'the second show');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(strip()).toBeNull();
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
 	});
 });
