@@ -2581,7 +2581,7 @@
 	} | null>(null);
 
 	// Overflow menu (the "..." button) housing the secondary actions
-	// Open in external + Download. They were demoted from the np-actions
+	// "Open in …" (the external player) + Download. They were demoted from the np-actions
 	// row to declutter — the primary controls are now ep-nav +
 	// auto-play, with everything else one click deeper.
 	let moreOpen = $state(false);

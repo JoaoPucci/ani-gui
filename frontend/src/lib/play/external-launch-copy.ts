@@ -1,5 +1,5 @@
 /**
- * Copy for an "Open in external player" failure. Kept beside
+ * Copy for a failed launch from the "Open in …" (external player) item. Kept beside
  * `error-copy.ts`, whose play-failure mapper it falls back to, rather
  * than inside it, so neither file carries both surfaces' branching.
  */
@@ -7,7 +7,7 @@
 import { m } from '$lib/paraglide/messages';
 import { describePlayFailure, type OtherAudio } from './error-copy';
 
-/** User-facing copy for an "Open in external player" failure. The
+/** User-facing copy for a failed external-player launch. The
  *  common case is a `player_spawn_failed` payload — the configured
  *  binary isn't on PATH or doesn't exist. Other resolve-step
  *  failures (scraper / timeout / network) reuse `describePlayFailure`
