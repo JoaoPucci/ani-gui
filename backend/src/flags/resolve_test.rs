@@ -22,8 +22,9 @@ fn no_document_resolves_every_flag_to_its_default() {
     assert_eq!(r.iter().count(), TEST_DECLS.len());
 }
 
-/// The rule: a flag is off unless the file switches it on, and a
-/// file that cannot be read switches nothing on. Over the test
+/// The rule: a flag is off unless the file holds a `true` its
+/// declaration allows, and a file that cannot be read leaves every
+/// flag off. Over the test
 /// declarations and over whatever this build declares.
 #[test]
 fn every_flag_reads_off_when_the_file_says_nothing_usable() {
