@@ -72,6 +72,12 @@ export function loopText(count: number): string {
 	return m.watchorder_strip_unnumbered_cycle({ others: count - 1 });
 }
 
+/** A loop of `count` as the heading over its group of titles. */
+export function loopGroupText(count: number): string {
+	void count;
+	return '';
+}
+
 /** "05": positions read as oversized two-digit numerals. */
 export function numeral(position: number): string {
 	return String(position).padStart(2, '0');
