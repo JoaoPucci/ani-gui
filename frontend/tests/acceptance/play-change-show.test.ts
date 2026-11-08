@@ -39,6 +39,7 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
+import PlayRoute from './PlayRoute.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
@@ -502,6 +503,11 @@ describe('switching to the pick', () => {
 		expect(asked.get('guess_id')).toBeNull();
 		// The band between episodes holds the player meanwhile.
 		expect(target.ownerDocument.querySelector('.band')).not.toBeNull();
+		// The route mounts a new page for the other show
+		// (play/[id]/+layout.svelte, its own test): the page on screen
+		// never sees the new URL. Moving this harness's URL under it
+		// would let it take what the switch left for the next page.
+		vi.mocked(goto).mockImplementationOnce(async () => {});
 		play.dispatch(
 			'done',
 			JSON.stringify({ session_id: 'session-9', master_url: '/s/u/file.mp4', media_kind: 'mp4' })
@@ -541,20 +547,40 @@ describe('switching to the pick', () => {
 	});
 
 	it('opens a session that says once what plays now, with the ⋯ entry to change it again', async () => {
-		await openPlayer();
+		// The route as SvelteKit renders it, its layout around the page,
+		// and a navigation that moves the route param as SvelteKit's does:
+		// the page that switched never sees the other show's URL.
+		setParams({ id: GUESS });
+		setUrl(`/play/${GUESS}`, {
+			session: 'session-1',
+			kind: 'mp4',
+			episode: '2',
+			guess: '1',
+			row: CARD
+		});
+		app = mount(PlayRoute, { target });
+		await until(
+			() => (target.querySelector('a.np-link')?.textContent ?? '').includes(GUESS_TITLE),
+			'the now-playing row'
+		);
 		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
 		videoAt(74);
 		await openPicker();
 		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
-		const href = await answerSwitch();
-		// The route mounts the player afresh for the other show
-		// (play/[id]/+layout.svelte).
-		unmount(app!);
-		app = null;
-		const url = new URL(href, 'http://x');
-		setParams({ id: RIGHT });
-		setUrl(url.pathname, Object.fromEntries(url.searchParams));
-		app = mount(PlayPage, { target });
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		vi.mocked(goto).mockImplementationOnce(async (href) => {
+			const next = new URL(String(href), 'http://127.0.0.1:31337');
+			setParams({ id: next.pathname.split('/').at(-1)! });
+			setUrl(next.pathname, Object.fromEntries(next.searchParams));
+		});
+		pickPlay()!.dispatch(
+			'done',
+			JSON.stringify({ session_id: 'session-9', master_url: '/s/u/file.mp4', media_kind: 'mp4' })
+		);
+		await until(
+			() => (target.querySelector('a.np-link')?.textContent ?? '').includes(RIGHT_TITLE),
+			"the pick's player"
+		);
 		await until(
 			() => slipText().includes(m.play_link_switched_note({ title: RIGHT_TITLE })),
 			'the switched note'
