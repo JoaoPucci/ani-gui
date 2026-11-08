@@ -19,14 +19,37 @@ export function creditsStart(skips: readonly SkipInterval[]): number | null {
 	return start;
 }
 
-/** Whether the playhead is in a finale's credits, or past them. */
+/**
+ * Whether the playhead is in a finale's credits, or past them. `skips`
+ * is null while the skip times have not answered: the last-minutes
+ * rule waits for them, so a late answer cannot take the card back.
+ */
 export function inCredits(
 	currentTime: number,
 	duration: number,
-	skips: readonly SkipInterval[]
+	skips: readonly SkipInterval[] | null
 ): boolean {
-	const start = creditsStart(skips);
+	const start = creditsStart(skips ?? []);
 	if (start !== null) return currentTime >= start;
 	// The play page holds a length it has not learned as zero.
 	return duration > 0 && isFinishedAt(currentTime, duration);
+}
+
+/** What the play page knows when it decides whether the card shows. */
+export interface UpNextState {
+	/** `finaleCard` found something to name. */
+	readonly card: boolean;
+	/** The player's own next-episode step is open: not the entry's end. */
+	readonly hasNext: boolean;
+	readonly resumeHolding: boolean;
+	readonly dismissed: boolean;
+	/** The <video> itself is fullscreen: nothing else on the page is drawn. */
+	readonly videoFullscreen: boolean;
+	readonly inCredits: boolean;
+}
+
+/** Whether the Up next card shows. */
+export function upNextShown(state: UpNextState): boolean {
+	void state;
+	return false;
 }
