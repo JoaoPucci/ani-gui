@@ -413,7 +413,7 @@ arrives with the change that verifies the file.
 ## Frequently asked
 
 **Why doesn't an `mpv` window pop up when I play something?**
-The GUI plays inside the window using hls.js + a local stream proxy. An external player is only launched from the "Open in …" item in the player's More menu. It names the player flavour picked in Settings ("Open in mpv" by default, "Open in external player" for Custom) and runs the External player command, `mpv` unless you changed it.
+The GUI plays inside the window using hls.js + a local stream proxy. An external player is only launched from the "Open in …" item in the player's More menu. It names the player flavour picked in Settings ("Open in mpv" by default, "Open in external player" for Custom) and runs the External player command, `mpv` unless you changed it. Moving between mpv, VLC and IINA turns the previous one's bare name (`mpv`, `vlc`, `iina`) into the new one's, and leaves any other command as you wrote it.
 
 **Where does the GUI keep watch history?**
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.

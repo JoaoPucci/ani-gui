@@ -21,6 +21,7 @@
 	import { externalOpenLabel } from '$lib/play/external-label';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
+	import { commandAfterKindChange } from '$lib/settings/player-command';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 
@@ -141,7 +142,14 @@
 	];
 	function setExternalPlayerKind(kind: ExternalPlayerKind) {
 		if (!cfg) return;
-		void persist({ ...cfg, external_player_kind: kind });
+		// The command follows the type while it is the previous type's
+		// bare command ($lib/settings/player-command.ts).
+		const external_player = commandAfterKindChange(
+			cfg.external_player,
+			cfg.external_player_kind,
+			kind
+		);
+		void persist({ ...cfg, external_player_kind: kind, external_player });
 	}
 	function setExternalPlayerCustomArgs(value: string) {
 		if (!cfg) return;
