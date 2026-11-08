@@ -3,20 +3,20 @@
 	"diag_section": "Макеты порядка просмотра",
 	"diag_switcher": "Показывать переключатель вариантов макетов",
 	"diag_toggle": "Показывать макеты порядка просмотра",
-	"franchise_after_loop": "После круга, без номеров: круг не даёт им единого места",
+	"franchise_after_loop": "Без ясного места в порядке просмотра",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} запись",
-				"countPlural=few": "{count} записи",
-				"countPlural=many": "{count} записей",
-				"countPlural=*": "{count} записи"
+				"countPlural=one": "{count} тайтл",
+				"countPlural=few": "{count} тайтла",
+				"countPlural=many": "{count} тайтлов",
+				"countPlural=*": "{count} тайтла"
 			}
 		}
 	],
-	"franchise_cycle_hint": "Эти записи связаны друг с другом по кругу, поэтому единого порядка у них нет. Они показаны по связям, начиная с того места, где цепочка входит в круг.",
+	"franchise_cycle_hint": "Все они связаны друг с другом, поэтому ясного порядка просмотра нет. Они показаны в порядке связей.",
 	"franchise_eyebrow": "Франшиза",
 	"franchise_films": "Фильмы",
 	"franchise_here": "Вы здесь",
@@ -58,7 +58,7 @@
 	"setting_linked": "По связям",
 	"setting_released": "По выходу",
 	"strip_eyebrow": "Порядок просмотра",
-	"strip_first": "Начало цепочки",
+	"strip_first": "До этого ничего нет",
 	"strip_franchise_link": "Вся франшиза",
 	"strip_franchise_stack_films": "Фильмы и версии: {count}",
 	"strip_franchise_stack_main": "В основной истории: {count}",
@@ -66,23 +66,23 @@
 	"strip_franchise_stack_sides": "Побочные истории: {count}",
 	"strip_franchise_stack_title": "Смотреть всю франшизу",
 	"strip_join": "Идёт после этих частей ({count})",
-	"strip_last": "Конец цепочки",
+	"strip_last": "После этого ничего нет",
 	"strip_leads_into": "Ведёт к «{title}»",
 	"strip_of_total": "из {total}",
 	"strip_position": "{position} из {total}",
 	"strip_position_open": "Позиция {position}",
-	"strip_side_end": "Дальше связей нет",
+	"strip_side_end": "После этого ничего нет",
 	"strip_side_story": "Побочная история",
 	"strip_unnumbered_branch": "Один из вариантов продолжения",
 	"strip_unnumbered_cycle": [
 		{
-			"declarations": ["input count", "local countPlural = count: plural"],
+			"declarations": ["input others", "local countPlural = others: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Часть круга из {count} записи",
-				"countPlural=few": "Часть круга из {count} записей",
-				"countPlural=many": "Часть круга из {count} записей",
-				"countPlural=*": "Часть круга из {count} записей"
+				"countPlural=one": "Связан ещё с {others} тайтлом, порядок неясен",
+				"countPlural=few": "Связан ещё с {others} тайтлами, порядок неясен",
+				"countPlural=many": "Связан ещё с {others} тайтлами, порядок неясен",
+				"countPlural=*": "Связан ещё с {others} тайтлами, порядок неясен"
 			}
 		}
 	],
