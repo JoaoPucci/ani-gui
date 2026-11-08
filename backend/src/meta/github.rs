@@ -66,14 +66,15 @@ struct RawRelease {
 }
 
 /// Normalise a `RawRelease` into the smaller `ReleaseInfo` or
-/// `None` when load-bearing fields are missing. Drafts are
-/// filtered (badge would link to a release the user can't see).
+/// `None` when load-bearing fields are missing or the release page
+/// is not an https URL. Drafts are filtered (badge would link to a
+/// release the user can't see).
 fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
     if raw.draft {
         return None;
     }
     let tag = raw.tag_name?;
-    let url = raw.html_url?;
+    let url = raw.html_url.filter(|u| is_https_page(u))?;
     Some(ReleaseInfo {
         tag: tag.clone(),
         name: raw.name.unwrap_or(tag),
@@ -81,6 +82,12 @@ fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
         published_at: raw.published_at.unwrap_or_default(),
         body: raw.body.unwrap_or_default(),
     })
+}
+
+/// Whether `url` parses as an https URL. The update dialog links to
+/// the release's page, so anything else is not offered.
+fn is_https_page(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| u.scheme() == "https")
 }
 
 /// Parse the response body bytes. The list endpoint returns an

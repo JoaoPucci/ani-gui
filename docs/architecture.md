@@ -59,7 +59,7 @@ Every page the window loads runs the preload and gets the bridge: the backend's 
 - **IPC** (`electron/lib/ipc-guard.cjs`). Every handler in the main process acts only for the main frame holding the app's document; a call from anything else is refused and logged. `tests/arch/ipc_sender.sh` fails on a handler registered without that check in the spelled-out ways a line-by-line search can see; its header lists what it cannot. Opening a folder takes an existing absolute directory and nothing else, since the call it makes would open a file in its application or run it (on macOS, which runs from source only, an application bundle is a directory and still opens).
 - **Permissions** (`electron/lib/permissions.cjs`). Electron grants every web permission unless told otherwise. The app's document gets the two it uses, fullscreen and writing to the clipboard; every other permission is denied to every document.
 
-In development the app's document is whatever the Vite dev server's origin serves. The update notice links only to an `https` release page. The renderer has no content security policy yet ([`deferred-work.md`](./deferred-work.md), "A content security policy for the renderer").
+In development the app's document is whatever the Vite dev server's origin serves. The update notice links only to an `https` release page: the backend offers no release whose page is anything else (`backend/src/meta/github.rs`). The renderer has no content security policy yet ([`deferred-work.md`](./deferred-work.md), "A content security policy for the renderer").
 
 ## One loopback origin per class of traffic
 
