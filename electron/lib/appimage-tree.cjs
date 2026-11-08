@@ -99,12 +99,14 @@ ANI_GUI_SANDBOX=(--no-sandbox)
 ani_gui_answer_file=
 ani_gui_probe_job=
 ani_gui_probe_starting=0
+ani_gui_probe_prev_bg=
 ani_gui_probe_stop()
 {
-  # A signal between starting the job and recording it finds it in $!;
-  # at any other time $! names nothing of the probe's.
+  # A signal between starting the job and recording it finds it in $!,
+  # once $! has moved past whatever background job AppRun had before.
+  # At any other time $! names nothing of the probe's.
   local job="$ani_gui_probe_job"
-  if [ -z "$job" ] && [ "$ani_gui_probe_starting" -eq 1 ] ; then
+  if [ -z "$job" ] && [ "$ani_gui_probe_starting" -eq 1 ] && [ "$!" != "$ani_gui_probe_prev_bg" ] ; then
     job=$!
   fi
   if [ -n "$job" ] ; then
@@ -122,17 +124,28 @@ ani_gui_sandbox_starts()
 {
   local answer status
   ani_gui_answer_file="$(mktemp 2>/dev/null)" || return 1
+  ani_gui_probe_prev_bg=$!
   ani_gui_probe_starting=1
   (
     exec 2>/dev/null
+    # As in the stop handler: $! stands in for a child started but not
+    # yet recorded, never for one this subshell inherited or reaped.
+    prev_bg=$!
     probe=
     watchdog=
-    trap 'kill -9 "\${probe:-$!}"; kill "\${watchdog:-$!}"; wait "$watchdog"; exit 143' TERM
+    stop_children()
+    {
+      if [ -n "$probe" ] ; then kill -9 "$probe" ; elif [ -z "$watchdog" ] && [ "$!" != "$prev_bg" ] ; then kill -9 "$!" ; fi
+      if [ -n "$watchdog" ] ; then kill "$watchdog" ; wait "$watchdog" ; elif [ -n "$probe" ] && [ "$!" != "$probe" ] ; then kill "$!" ; fi
+      exit 143
+    }
+    trap stop_children TERM
     ulimit -c 0
     "$BIN" ${SANDBOX_PROBE_SWITCH} </dev/null >"$ani_gui_answer_file" &
     probe=$!
     (
-      trap 'kill "$sleeper"; exit 0' TERM
+      sleeper=
+      trap 'if [ -n "$sleeper" ] ; then kill "$sleeper" ; elif [ "$!" != "$probe" ] ; then kill "$!" ; fi ; exit 0' TERM
       sleep ${PROBE_BOUND_SECONDS} &
       sleeper=$!
       wait "$sleeper"
@@ -141,8 +154,10 @@ ani_gui_sandbox_starts()
     watchdog=$!
     probe_status=0
     wait "$probe" || probe_status=$?
+    probe=
     kill "$watchdog" || true
     wait "$watchdog" || true
+    watchdog=
     exit "$probe_status"
   ) &
   ani_gui_probe_job=$!
@@ -150,6 +165,7 @@ ani_gui_sandbox_starts()
   status=0
   wait "$ani_gui_probe_job" 2>/dev/null || status=$?
   ani_gui_probe_job=
+  ani_gui_probe_prev_bg=
   answer="$(cat "$ani_gui_answer_file" 2>/dev/null)" || answer=
   rm -f "$ani_gui_answer_file"
   [ "$status" -eq 0 ] && [ "$answer" = "${SANDBOX_PROBE_ANSWER}" ]
