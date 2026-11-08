@@ -117,6 +117,19 @@ test("on: an untrusted message is dropped", () => {
   assert.strictEqual(ran, true);
 });
 
+test("on: it answers a way to stop listening, which removes that listener and no other", () => {
+  const { ipc, guarded } = setup();
+  const seen = [];
+  const off = guarded.on("ani-gui:app-ready", () => seen.push("first"));
+  guarded.on("ani-gui:app-ready", () => seen.push("second"));
+  assert.strictEqual(typeof off, "function");
+  assert.strictEqual(ipc.listenerCount("ani-gui:app-ready"), 2);
+  off();
+  assert.strictEqual(ipc.listenerCount("ani-gui:app-ready"), 1);
+  ipc.emit("ani-gui:app-ready", { senderFrame: mainFrame("app://localhost/") });
+  assert.deepStrictEqual(seen, ["second"]);
+});
+
 test("onSync: an untrusted call gets the refusal value, so the renderer never hangs", () => {
   const { ipc, guarded } = setup();
   guarded.onSync(
