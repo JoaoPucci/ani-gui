@@ -4,12 +4,13 @@
   and never hides with the player's controls; fullscreen shows only the
   player, so it is not there either.
 
-  While the session is a guess it says which history title the guess
-  was made from and offers "That's right" and "Not this show? Change";
-  "That's right" only when the play landed on the card's own listing.
-  After a link to another show it stays and says what is playing is
-  still the guessed show, with a way to the linked one; the toast holds
-  the Undo. Hide sets it aside for the card's row until the app
+  While the session is a guess it names the title the history saved and
+  asks "Is this the show you meant?", with Yes and No: No opens the
+  picker. After the viewer picked another show and kept watching this
+  one, it says the pick is saved and offers "Switch to it now". The
+  session a switch opened says once which show plays now. It never
+  speaks of a link or a guess: how the app keeps the answer is not the
+  user's concern. Hide sets it aside for the card's row until the app
   restarts ($lib/history/in-place-link.svelte.ts).
 
   While the offer is decided ("holding") it keeps its room, empty: no
@@ -28,27 +29,31 @@
 		view,
 		title,
 		linkedTitle,
+		switchedTitle = null,
 		busy = false,
-		canKeep = true,
+		switching = false,
 		onchange,
 		onright,
-		onopen,
+		onswitch,
 		onhide
 	}: {
 		view: Exclude<SlipState, 'none'>;
-		/** The history title the guess was made from. */
+		/** The title the history saved for the card. */
 		title: string | null;
-		/** The show linked from here, in the "linked" state. */
+		/** The show picked from here, in the "linked" state. */
 		linkedTitle: string | null;
-		/** A link in flight. */
+		/** The show a switch opened the session for, in the "switched"
+		 *  state. */
+		switchedTitle?: string | null;
+		/** A pick being saved. */
 		busy?: boolean;
-		/** Whether "That's right" is offered: not when the play landed on
-		 *  another listing than the card's, where it would record that
-		 *  listing's show on the card's line. */
-		canKeep?: boolean;
+		/** A switch to the pick on its way. */
+		switching?: boolean;
+		/** No: open the picker. */
 		onchange: () => void;
+		/** Yes. */
 		onright: () => void;
-		onopen: () => void;
+		onswitch: () => void;
 		onhide: () => void;
 	} = $props();
 </script>
@@ -61,7 +66,7 @@
 	data-state={view}
 	out:slide={{ duration: 180 }}
 >
-	{#if view === 'linked'}
+	{#if view === 'linked' || view === 'switched'}
 		<svg class="mark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
 			<path
 				d="M5 12.5l4.5 4.5L19 7.5"
@@ -72,21 +77,31 @@
 				stroke-linejoin="round"
 			/>
 		</svg>
-		<p class="text" id="guess-slip-text">{m.play_link_linked_note({ title: linkedTitle ?? '' })}</p>
-		<span class="actions">
-			<button type="button" class="act act-strong" onclick={onopen}
-				>{m.play_link_open_linked()}</button
-			>
-		</span>
+		{#if view === 'linked'}
+			<p class="text" id="guess-slip-text">
+				{m.play_link_linked_note({ title: linkedTitle ?? '' })}
+			</p>
+			<span class="actions">
+				<button
+					type="button"
+					class="act act-strong"
+					onclick={onswitch}
+					disabled={switching}
+					aria-busy={switching}>{m.play_link_switch_now()}</button
+				>
+			</span>
+		{:else}
+			<p class="text" id="guess-slip-text">
+				{m.play_link_switched_note({ title: switchedTitle ?? '' })}
+			</p>
+		{/if}
 	{:else if view === 'guess' && title !== null}
 		<GuessMark class="mark" />
 		<p class="text" id="guess-slip-text">{m.play_link_guess_note({ title })}</p>
 		<span class="actions">
-			{#if canKeep}
-				<button type="button" class="act" onclick={onright} disabled={busy}
-					>{m.play_link_guess_right()}</button
-				>
-			{/if}
+			<button type="button" class="act" onclick={onright} disabled={busy}
+				>{m.play_link_guess_right()}</button
+			>
 			<button type="button" class="act act-strong" onclick={onchange} disabled={busy}
 				>{m.play_link_change_button()}</button
 			>

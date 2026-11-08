@@ -80,9 +80,10 @@ export function withRow(query: string, row: string | null): string {
 
 /** `query` (a `?…` play query) saying the guessed session's play landed
  *  on another listing than the card's own (`own_listing` false). The
- *  player then offers no "That's right": the guess was never tested
- *  against the card's listing, and keeping it would record the other
- *  listing's show on the card's line. Nothing for any other session. */
+ *  player's Yes then records nothing and sets its question aside: the
+ *  guess was never tested against the card's listing, and keeping it
+ *  would record the other listing's show on the card's line. Nothing
+ *  for any other session. */
 export function withLanding(
 	query: string,
 	guess: boolean,
@@ -102,18 +103,20 @@ export function landedElsewhere(search: URLSearchParams): boolean {
  *  recorded and mirrored as.
  *
  *  A session no guess opened plays its page's show. A guessed one names
- *  its guess apart, with the card's row. Once the card was linked from
- *  the session (`linked`), its later plays name the link in place of
- *  the guess: the backend records it only on the card's own listing,
- *  never the old guess, and the trackers hear nothing of a stream that
- *  is still the guessed show's. */
+ *  its guess apart, with the card's row. Once another show was picked
+ *  for the card from the session (`linked`), its later plays name the
+ *  pick in place of the guess: the backend records it only on the
+ *  card's own listing, never the old guess, and the trackers hear
+ *  nothing of a stream that is still the show before. A session a
+ *  switch to a pick opened is no guess, and a show picked again from it
+ *  goes out the same way, apart from its page. */
 export function sessionShow(o: {
 	id: string;
 	guess: boolean;
 	row: string | null;
 	linked: string | null;
 }): { kitsuId?: string; guessRow?: string; guessId?: string; recordAs: string; mirrors: boolean } {
-	if (!o.guess) {
+	if (!o.guess && o.linked === null) {
 		const kitsuId = recordableId(o.id, false);
 		return { ...(kitsuId ? { kitsuId } : {}), recordAs: o.id, mirrors: true };
 	}

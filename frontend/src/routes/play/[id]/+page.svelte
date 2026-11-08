@@ -200,7 +200,9 @@
 	} from '$lib/play/play-origin';
 	import { guessedQuery } from '$lib/history/guessed-context';
 	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { noteSwitch, sessionRow } from '$lib/history/guess-slip';
 	import { appLinkDeps } from '$lib/history/link-deps';
+	import { switchShow } from '$lib/play/switch-show';
 	import { holdPlayback } from '$lib/play/hold-playback';
 	import GuessSlip from '$lib/components/GuessSlip.svelte';
 	import GuessMark from '$lib/components/GuessMark.svelte';
@@ -222,14 +224,20 @@
 	const showHref = $derived(resolve('/anime/[id]', { id }) + guessedQuery(fromGuess, fromRow));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
 	// A guessed session's slip, its ⋯ entry and the picker they open
-	// ($lib/history/in-place-link.svelte.ts). The player stays where it
-	// is through a link and its undo; the picker holds playback while
-	// it is open ($lib/play/hold-playback).
+	// ($lib/history/in-place-link.svelte.ts): "Is this the show you
+	// meant?". The player stays where it is through a pick until the
+	// viewer switches to it (switchToPick); the picker holds playback
+	// while it is open ($lib/play/hold-playback). What a pick did is
+	// said in the slip, not a toast. A session a switch opened, or one
+	// of a row picked for here since the app started, keeps the ⋯ entry
+	// to change the show again ($lib/history/guess-slip.ts).
 	const playLink = new InPlaceLinkSession({
 		...appLinkDeps(),
-		notify: (notice) => toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined })
+		notify: (notice) =>
+			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
+		inPlayer: true
 	});
-	$effect(() => void playLink.arrive(fromGuess ? fromRow : null, id));
+	$effect(() => void playLink.arrive(sessionRow(fromGuess, fromRow), id));
 	// What the session's plays name as their show: its page's, its guess
 	// named apart, or once the card was linked from here, the link
 	// ($lib/play/play-origin).
@@ -2115,11 +2123,11 @@
 	 *  even if they've scrolled to the episode strip. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
 
-	// Drop the per-show page-cache when the show id changes. No in-app
-	// path navigates /play/A → /play/B today (PosterCard sends to
-	// /anime/[id], prev/next reuses the same id), so the only way to
-	// land here with a stale cache is browser back/forward or URL-bar
-	// edits — but the defense is one line. Same contract /anime/[id]'s
+	// Drop the per-show page-cache when the show id changes. The route
+	// mounts the page afresh for another show (./+layout.svelte), which
+	// a switch to a card's pick does (switchToPick), so this only
+	// guards a page mounted without that layout — but the defense is
+	// one line. Same contract /anime/[id]'s
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
@@ -2442,6 +2450,75 @@
 				if (owner.isCurrent()) playerError ??= errorBefore;
 			});
 			/* eslint-enable svelte/no-navigation-without-resolve */
+		} finally {
+			switchBusy = false;
+		}
+	}
+
+	/** "Switch to it now": the same episode, from the point playback
+	 *  stands at, on the stream of the show picked for the card
+	 *  ($lib/play/switch-show.ts). The between-episodes loading band
+	 *  holds the player meanwhile. The route mounts the page afresh for
+	 *  the other show (./+layout.svelte); a stream that cannot be had
+	 *  leaves the episode on screen and says so. */
+	async function switchToPick() {
+		const pick = playLink.linked;
+		if (!pick || switchBusy) return;
+		const at = videoEl?.currentTime ?? currentTime;
+		const wasPlaying = videoEl ? !videoEl.paused : false;
+		videoEl?.pause();
+		const mode = playMode(config);
+		const quality = playQuality(config);
+		const version = storedChoice(pick.id);
+		const caption = storedCaption(pick.id);
+		const here = navigationClaims.claim();
+		switchBusy = true;
+		switchProgress = null;
+		try {
+			const outcome = await switchShow(
+				{
+					resolve: (args) =>
+						getOrFire(
+							makeKey(pick.id, episodeNum, mode, quality, version, undefined, args.caption),
+							(emit, signal) => playStream(args, emit, signal),
+							(p) => {
+								switchProgress = progressLabel(p);
+							}
+						),
+					record: (args, session) =>
+						void recordPlayed(
+							{
+								args,
+								showId: pick.id,
+								episode: episodeNum,
+								show: pick.show,
+								mirror: true,
+								unverified: session.episode_unverified
+							},
+							{ markWatched, syncTrackers: syncWatchedToTrackers }
+						),
+					carry: (showId, episode, seconds) => recoveryResume.capture(showId, episode, seconds),
+					noteSwitch,
+					open: async (showId, session, episode, row) => {
+						/* eslint-disable svelte/no-navigation-without-resolve */
+						await goto(
+							resolve('/play/[id]', { id: showId }) +
+								withRow(buildPlayQuery(session, episode), row),
+							{ replaceState: true }
+						).catch(() => {});
+						/* eslint-enable svelte/no-navigation-without-resolve */
+					},
+					isCurrent: () => !gone && here()
+				},
+				{ to: pick.show, episode: episodeNum, at, row: fromRow, mode, quality, version, caption }
+			);
+			if (outcome === 'failed') {
+				toastStore.push({
+					kind: 'error',
+					message: m.play_link_switch_failed({ title: pick.title })
+				});
+				if (wasPlaying) void videoEl?.play().catch(() => {});
+			}
 		} finally {
 			switchBusy = false;
 		}
@@ -3613,13 +3690,12 @@
 				view={playLink.slip}
 				title={playLink.offer?.entry.title ?? null}
 				linkedTitle={playLink.linked?.title ?? null}
+				switchedTitle={playLink.switchedTitle}
 				busy={playLink.busy}
-				canKeep={!landedElsewhere(page.url.searchParams)}
+				switching={switchBusy}
 				onchange={() => void playLink.start(episodeNum)}
-				onright={() => void playLink.confirmCurrent()}
-				onopen={() => {
-					if (playLink.linked) void goto(resolve('/anime/[id]', { id: playLink.linked.id }));
-				}}
+				onright={() => void playLink.answerYes(!landedElsewhere(page.url.searchParams))}
+				onswitch={() => void switchToPick()}
 				onhide={() => playLink.hide()}
 			/>
 		{/if}
@@ -4207,6 +4283,11 @@
 			onChoose={(c) => playLink.choose(c)}
 			onConfirm={() => void playLink.confirm()}
 			onCancel={() => playLink.cancel()}
+			switchAt={formatTime(currentTime)}
+			onSwitch={async () => {
+				await playLink.confirm();
+				if (playLink.linked) void switchToPick();
+			}}
 		/>
 	{/if}
 </main>

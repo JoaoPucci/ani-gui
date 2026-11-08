@@ -64,10 +64,15 @@ export class LinkSession extends LinkPicker {
 		this.open = false;
 		this.settled = false;
 		this.group = null;
-		const offer = await linkOffer(this.#deps, row, pageId);
+		const offer = await this.findOffer(row, pageId);
 		if (arrival !== this.#arrival) return;
 		this.offer = offer;
 		this.settled = true;
+	}
+
+	/** The offer the page `pageId` makes for the card row `row`. */
+	protected findOffer(row: string | null, pageId: string) {
+		return linkOffer(this.#deps, row, pageId);
 	}
 
 	/** Open the picker on the offer's candidates, naming `episode` —

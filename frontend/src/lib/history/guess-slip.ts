@@ -1,37 +1,51 @@
 /**
- * What the player's slip for a guessed session shows, and the rows
- * whose slip the viewer hid — split from
- * $lib/history/in-place-link.svelte.ts for the per-file complexity bar.
+ * What the player's slip for a guessed session shows, the rows whose
+ * slip the viewer hid, and the rows the viewer picked a show for on the
+ * player — split from $lib/history/in-place-link.svelte.ts for the
+ * per-file complexity bar.
  *
- * Hide lasts until the app restarts: the hidden rows are a module-level
- * set, which lives as long as the renderer.
+ * Hide lasts until the app restarts, and so does a pick's way to change
+ * the show again: both are module-level sets, which live as long as the
+ * renderer. A switch to a pick tells the session it opens once
+ * (`noteSwitch`, `takeSwitch`).
  */
 
 /** What the slip shows: nothing, its held room while the offer is
- *  decided, the guess, or the note after a link elsewhere. */
-export type SlipState = 'none' | 'holding' | 'guess' | 'linked';
+ *  decided, the question, the note after a pick the viewer kept
+ *  watching past, or the note of the session a switch opened. */
+export type SlipState = 'none' | 'holding' | 'guess' | 'linked' | 'switched';
 
 export interface SlipInputs {
 	/** The card's history row; null for a session no guess opened. */
 	row: string | null;
 	/** Whether the viewer hid the row's slip. */
 	aside: boolean;
-	/** Whether the card was linked to another show from here. */
+	/** Whether another show was picked for the card from here, while
+	 *  what plays is still the one before. */
 	linked: boolean;
+	/** Whether the session was opened by a switch to a pick, and has not
+	 *  been told otherwise since. */
+	switched: boolean;
 	/** Whether the offer is decided. */
 	settled: boolean;
-	/** Whether the row is still offered as a guess. */
+	/** Whether there is an offer: the ⋯ entry's way to the picker. */
 	offered: boolean;
+	/** Whether the offer still asks: a guess, not a pick kept only to
+	 *  change the show again. */
+	asking: boolean;
 }
 
 export function slipState(s: SlipInputs): SlipState {
 	if (s.row === null || s.aside) return 'none';
 	if (s.linked) return 'linked';
+	if (s.switched) return 'switched';
 	if (!s.settled) return 'holding';
-	return s.offered ? 'guess' : 'none';
+	return s.offered && s.asking ? 'guess' : 'none';
 }
 
 const hiddenRows = new Set<string>();
+const pickedRows = new Set<string>();
+let switchNote: { row: string; title: string } | null = null;
 
 /** Hide the slip of `row` until the app restarts. */
 export function hideRow(row: string): void {
@@ -43,7 +57,42 @@ export function isRowHidden(row: string | null): boolean {
 	return row !== null && hiddenRows.has(row);
 }
 
-/** Test seam: forget every hidden row, as a restart does. */
+/** Note that the viewer picked a show for `row` on the player: its
+ *  sessions keep the way to change it again until the app restarts. */
+export function notePick(row: string): void {
+	pickedRows.add(row);
+}
+
+/** Whether the viewer picked a show for `row` on the player since the
+ *  app started. */
+export function pickedRow(row: string | null): boolean {
+	return row !== null && pickedRows.has(row);
+}
+
+/** The card row a player session is about: the guessed card's, or one
+ *  the viewer picked a show for on the player; null otherwise. */
+export function sessionRow(guess: boolean, row: string | null): string | null {
+	return row !== null && (guess || pickedRow(row)) ? row : null;
+}
+
+/** Tell the next session of `row`, the one a switch opens, that it
+ *  plays `title` now. */
+export function noteSwitch(row: string, title: string): void {
+	switchNote = { row, title };
+}
+
+/** What the session of `row` is to say it switched to, once; null when
+ *  nothing. Taking it clears it either way, so a note meant for another
+ *  row never reaches a later one. */
+export function takeSwitch(row: string | null): string | null {
+	const note = switchNote;
+	switchNote = null;
+	return note !== null && note.row === row ? note.title : null;
+}
+
+/** Test seam: forget every hidden row and pick, as a restart does. */
 export function __resetHiddenRowsForTests(): void {
 	hiddenRows.clear();
+	pickedRows.clear();
+	switchNote = null;
 }

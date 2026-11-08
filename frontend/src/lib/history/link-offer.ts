@@ -40,10 +40,14 @@ export interface LinkDeps {
 	unlink: (kitsuId: string, rows: LinkedRow[]) => Promise<UnlinkOutcome>;
 }
 
-/** The offer: the card's row, and the show it is guessed as. */
+/** The offer: the card's row, and the show it is guessed as. On the
+ *  player, once the viewer picked a show for the row, the offer stays
+ *  as the way to change it again: `current` is then the show playing,
+ *  and `saved` the id the row records now. */
 export interface LinkOffer {
 	entry: HistoryEntry;
 	current: KitsuAnimeRef;
+	saved?: string;
 }
 
 /** Whether a row is matched to `pageId` by a guess. */
@@ -69,6 +73,24 @@ export async function linkOffer(
 		if (!entry) return null;
 		const current = await guessedAs(deps, entry, pageId);
 		return current ? { entry, current } : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The offer the player of a row the viewer picked a show for makes,
+ *  to change it again: while the row records `pageId`, the show
+ *  playing. A failure to read makes none. */
+export async function pickedOffer(
+	deps: LinkDeps,
+	row: string,
+	pageId: string
+): Promise<LinkOffer | null> {
+	try {
+		const entry = (await deps.history()).find((e) => e.id === row);
+		if (!entry) return null;
+		const { match } = await deps.resolve(entry);
+		return match && match.id === pageId ? { entry, current: match, saved: pageId } : null;
 	} catch {
 		return null;
 	}
@@ -101,11 +123,19 @@ export async function searchCandidates(
 /** Every guessed row the offer's card stands for: its own, and each
  *  other row Continue Watching guesses as the same show on the card's
  *  own listing. The rows are asked side by side, as Continue Watching
- *  asks them; a row whose match cannot be read is left out. */
+ *  asks them; a row whose match cannot be read is left out. For a card
+ *  picked on the player (`saved`), the rows are those recorded as the
+ *  pick: the pick moved them all, and no guess matches them now. */
 export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
 	const others = (await deps.history()).filter((e) => e.id !== offer.entry.id);
+	const saved = offer.saved;
 	const same = await Promise.all(
-		others.map((e) => guessedAs(deps, e, offer.current.id).catch(() => null))
+		others.map((e) =>
+			(saved === undefined
+				? guessedAs(deps, e, offer.current.id)
+				: deps.resolve(e).then(({ match }) => (match?.id === saved ? match : null))
+			).catch(() => null)
+		)
 	);
 	const card = offer.entry.id;
 	return deps.group(card, [card, ...others.filter((_, i) => same[i] !== null).map((e) => e.id)]);

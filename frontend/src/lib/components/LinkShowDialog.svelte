@@ -4,12 +4,15 @@
   Opened from the show page's quiet note, the player's slip and ⋯ menu,
   and Home's guessed cards, never on arrival. A modal <dialog> in the
   top layer (showModal()), so it shows over a fullscreen player too.
-  Two steps in one card:
-  pick a show from the candidates (or search for one), then confirm
-  with what the link changes and anything worth a second look. The
-  candidates, the search and the link itself are the caller's
+  Two steps in one card: "Which show is it?", a pick from the
+  candidates (or a search for one), then the answer, with anything
+  worth a second look. On the player (`switchAt`), a pick of another
+  show than the one playing is answered "Switch to it now" (focused)
+  or "Keep watching this": the pick is saved either way. Anywhere else,
+  and for the show playing, the answer is one button. The candidates,
+  the search and saving the pick are the caller's
   ($lib/history/link-offer.ts); this only renders them and reports the
-  choice.
+  choice. It speaks of shows, never of links or guesses.
 
   Esc and the backdrop close it while nothing is in flight. The show
   the card shows now is labelled as the surface it opened from names
@@ -55,6 +58,11 @@
 		onChoose: (candidate: LinkCandidate | null) => void;
 		onConfirm: () => void;
 		onCancel: () => void;
+		/** On the player: where playback stands, as the switch question
+		 *  says it; null anywhere else. */
+		switchAt?: string | null;
+		/** "Switch to it now": save the pick and switch to it. */
+		onSwitch?: () => void;
 	}
 	let {
 		open,
@@ -73,8 +81,18 @@
 		onSearch,
 		onChoose,
 		onConfirm,
-		onCancel
+		onCancel,
+		switchAt = null,
+		onSwitch
 	}: Props = $props();
+
+	/** Whether the answer is "switch now or keep watching". */
+	const asksSwitch = $derived(switchAt !== null && chosen !== null && !chosen.current);
+	/** The answer given, while it is being saved. */
+	let answer = $state<'keep' | 'switch' | null>(null);
+	$effect(() => {
+		if (!busy) answer = null;
+	});
 
 	let query = $state('');
 	let dialog: HTMLDialogElement | undefined = $state();
@@ -143,21 +161,24 @@
 					<span class="ls-eyebrow-rule"></span>
 					<span>{m.detail_link_dialog_eyebrow()}</span>
 				</p>
-				{#if chosen}
+				{#if chosen && asksSwitch}
+					<h2 id="ls-title" class="ls-title">
+						{m.play_link_switch_heading({ title: chosen.ref.canonical_title })}
+					</h2>
+					<p class="ls-body">
+						{m.play_link_switch_hint({ episode, time: switchAt ?? '' })}
+					</p>
+				{:else if chosen}
 					<h2 id="ls-title" class="ls-title">
 						{m.detail_link_confirm_heading({ title: chosen.ref.canonical_title })}
 					</h2>
-					<p class="ls-body">
-						{m.detail_link_confirm_body({ title: chosen.ref.canonical_title })}
-					</p>
+					<p class="ls-body">{m.detail_link_confirm_body()}</p>
 				{:else}
-					<h2 id="ls-title" class="ls-title">
-						{m.detail_link_dialog_title({ title: savedTitle })}
-					</h2>
+					<h2 id="ls-title" class="ls-title">{m.detail_link_dialog_title()}</h2>
 					<p class="ls-body">
 						{playing
-							? m.play_link_dialog_body({ episode })
-							: m.detail_link_dialog_body({ episode })}
+							? m.play_link_dialog_body({ episode, title: savedTitle })
+							: m.detail_link_dialog_body({ episode, title: savedTitle })}
 					</p>
 				{/if}
 			</header>
@@ -193,16 +214,45 @@
 					>
 						{m.detail_link_back_button()}
 					</button>
-					<button
-						bind:this={confirmBtn}
-						type="button"
-						class="ls-btn ls-btn-accent"
-						onclick={onConfirm}
-						disabled={busy || rowCount === null}
-						aria-busy={busy}
-					>
-						{busy ? m.detail_link_linking() : m.detail_link_confirm_button()}
-					</button>
+					{#if asksSwitch}
+						<span class="ls-foot-gap"></span>
+						<button
+							type="button"
+							class="ls-btn ls-btn-quiet ls-btn-ring"
+							onclick={() => {
+								answer = 'keep';
+								onConfirm();
+							}}
+							disabled={busy || rowCount === null}
+							aria-busy={busy && answer === 'keep'}
+						>
+							{busy && answer === 'keep' ? m.detail_link_linking() : m.play_link_keep_watching()}
+						</button>
+						<button
+							bind:this={confirmBtn}
+							type="button"
+							class="ls-btn ls-btn-accent"
+							onclick={() => {
+								answer = 'switch';
+								onSwitch?.();
+							}}
+							disabled={busy || rowCount === null}
+							aria-busy={busy && answer === 'switch'}
+						>
+							{busy && answer === 'switch' ? m.detail_link_linking() : m.play_link_switch_now()}
+						</button>
+					{:else}
+						<button
+							bind:this={confirmBtn}
+							type="button"
+							class="ls-btn ls-btn-accent"
+							onclick={onConfirm}
+							disabled={busy || rowCount === null}
+							aria-busy={busy}
+						>
+							{busy ? m.detail_link_linking() : m.detail_link_confirm_button()}
+						</button>
+					{/if}
 				</footer>
 			{:else}
 				<form
@@ -491,6 +541,7 @@
 	}
 	.ls-foot {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: var(--space-3);
 		margin-block-start: var(--space-4);
@@ -520,6 +571,14 @@
 	.ls-btn-quiet:hover:not(:disabled) {
 		background: var(--ink-100);
 		color: var(--bone-100);
+	}
+	/* The switch question's three answers wrap as one row: Back on its
+	   own side, the two answers on the other. */
+	.ls-foot-gap {
+		flex: 1 1 auto;
+	}
+	.ls-btn-ring {
+		border: 1px solid var(--ink-300);
 	}
 	.ls-btn-accent {
 		background: var(--brand);

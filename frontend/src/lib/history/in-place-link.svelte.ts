@@ -4,24 +4,38 @@
  *
  * The show page's session ($lib/history/link-session.svelte.ts) leaves
  * for the linked show's page after a link and comes back after an
- * undo. These do not. The player goes on playing the guessed show's
- * episode, and says so after a link to another show, with a way to it;
- * Home reads the card again in place. An undo makes the same offer
- * again, so the guess comes back.
+ * undo. These do not. Home reads the card again in place, and its
+ * notice holds an Undo, which makes the same offer again, so the guess
+ * comes back.
  *
- * "That's right" links the card to the show it is guessed as: the
- * guess is recorded on the row and stops being a guess for good. Its
- * notice says the show was kept, not linked.
+ * The player (`inPlayer`) asks "Is this the show you meant?". Yes
+ * records the show playing on the row, which stops being a guess for
+ * good, and says nothing. Where the play landed on another listing
+ * than the card's, recording it would put that listing's show on the
+ * card's line, so Yes sets the question aside instead. A pick of
+ * another show is recorded the same way while the episode goes on
+ * playing, and the slip alone says so, with the way to switch to it
+ * (`linked`): the player gives no notice, so no Undo. The offer stays
+ * after a pick as the ⋯ entry's way to change the show again, asking
+ * nothing, and so does the session a switch opens for the row
+ * ($lib/history/guess-slip.ts), which says once what plays now.
  *
  * Hide sets the player's slip aside for the card's row until the app
- * restarts ($lib/history/guess-slip.ts).
+ * restarts.
  */
 
-import type { LinkOutcome } from '$lib/api';
+import type { KitsuAnimeRef, LinkOutcome } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
-import type { LinkDeps } from './link-offer';
-import { keptNotice } from './link-notices';
-import { hideRow, isRowHidden, slipState, type SlipState } from './guess-slip';
+import { pickedOffer, type LinkDeps, type LinkOffer } from './link-offer';
+import {
+	hideRow,
+	isRowHidden,
+	notePick,
+	pickedRow,
+	slipState,
+	takeSwitch,
+	type SlipState
+} from './guess-slip';
 
 export { __resetHiddenRowsForTests, type SlipState } from './guess-slip';
 
@@ -30,28 +44,38 @@ export interface InPlaceLinkDeps extends LinkDeps {
 	/** Read again what the surface reads from the history, after a link
 	 *  or an undo. */
 	refresh?: () => void;
+	/** The player's session: a pick is said in its slip, not a notice,
+	 *  and its offer stays to change the show again. */
+	inPlayer?: boolean;
 }
 
 export class InPlaceLinkSession extends LinkSession {
 	/** Whether the viewer hid this row's slip. */
 	aside = $state(false);
-	/** The show the card was linked to from here, while what plays is
-	 *  still the guessed show; null otherwise. */
-	linked = $state<{ id: string; title: string } | null>(null);
+	/** The show picked for the card from here, while what plays is
+	 *  still the one before; null otherwise. */
+	linked = $state<{ id: string; title: string; show: KitsuAnimeRef } | null>(null);
+	/** The show a switch to a pick opened this session for, which the
+	 *  slip names once; null otherwise. */
+	switchedTitle = $state<string | null>(null);
 
 	#row = $state<string | null>(null);
 	#page = '';
 	#refresh: () => void;
-	#keeping: { title: string | null };
 	#notify: (notice: LinkNotice) => void;
+	#inPlayer: boolean;
+	#linkDeps: LinkDeps;
 
 	constructor(deps: InPlaceLinkDeps) {
 		const refresh = deps.refresh ?? noRefresh;
-		const keeping = { title: null as string | null };
+		const inPlayer = deps.inPlayer === true;
 		super({
 			...deps,
-			// A guess confirmed is kept, not changed: its notice says so.
-			notify: (notice) => deps.notify(keptNotice(notice, keeping.title)),
+			// The player says what a pick did in its slip, once: no
+			// notice, and so no Undo. Failures are still said.
+			notify: (notice) => {
+				if (!inPlayer || notice.kind === 'error') deps.notify(notice);
+			},
 			refresh,
 			// The surface is not left for the linked show's page, so an
 			// undo never navigates either.
@@ -59,8 +83,9 @@ export class InPlaceLinkSession extends LinkSession {
 			here: () => ''
 		} satisfies LinkSessionDeps);
 		this.#refresh = refresh;
-		this.#keeping = keeping;
 		this.#notify = deps.notify;
+		this.#inPlayer = inPlayer;
+		this.#linkDeps = deps;
 	}
 
 	/** What the slip shows now. */
@@ -69,8 +94,10 @@ export class InPlaceLinkSession extends LinkSession {
 			row: this.#row,
 			aside: this.aside,
 			linked: this.linked !== null,
+			switched: this.switchedTitle !== null,
 			settled: this.settled,
-			offered: this.offer !== null
+			offered: this.offer !== null,
+			asking: this.offer?.saved === undefined
 		});
 	}
 
@@ -79,7 +106,19 @@ export class InPlaceLinkSession extends LinkSession {
 		this.#page = pageId;
 		this.aside = isRowHidden(row);
 		this.linked = null;
+		this.switchedTitle = this.#inPlayer ? takeSwitch(row) : null;
 		await super.arrive(row, pageId);
+	}
+
+	/** A guessed row's offer; on the player, else the way to change the
+	 *  show again of a row the viewer picked a show for there. */
+	protected override async findOffer(
+		row: string | null,
+		pageId: string
+	): Promise<LinkOffer | null> {
+		const offer = await super.findOffer(row, pageId);
+		if (offer || !this.#inPlayer || !row || !pickedRow(row)) return offer;
+		return pickedOffer(this.#linkDeps, row, pageId);
 	}
 
 	/** Hide the slip for this row until the app restarts. */
@@ -88,7 +127,16 @@ export class InPlaceLinkSession extends LinkSession {
 		this.aside = true;
 	}
 
-	/** "That's right": link the card to the show it is guessed as. */
+	/** "Yes" to "Is this the show you meant?": record the show playing,
+	 *  where the play landed on the card's own listing (`canKeep`);
+	 *  elsewhere, set the question aside, recording nothing. */
+	async answerYes(canKeep: boolean): Promise<void> {
+		if (!this.offer) return;
+		if (canKeep) await this.confirmCurrent();
+		else this.hide();
+	}
+
+	/** Link the card to the show it is guessed as. */
 	async confirmCurrent(): Promise<void> {
 		const offer = this.offer;
 		if (!offer || this.busy) return;
@@ -101,16 +149,19 @@ export class InPlaceLinkSession extends LinkSession {
 	override async confirm(): Promise<void> {
 		const chosen = this.chosen;
 		const offered = this.offer;
-		this.#keeping.title = chosen?.current ? chosen.ref.canonical_title : null;
-		try {
-			await super.confirm();
-		} finally {
-			this.#keeping.title = null;
-		}
+		await super.confirm();
 		if (!offered || !chosen || this.offer || this.error) return;
-		// Another show: what plays is still the guess's, and the slip
+		// Another show: what plays is still the one before, and the slip
 		// says so.
-		this.linked = chosen.current ? null : { id: chosen.ref.id, title: chosen.ref.canonical_title };
+		this.linked = chosen.current
+			? null
+			: { id: chosen.ref.id, title: chosen.ref.canonical_title, show: chosen.ref };
+		if (this.#inPlayer) {
+			// The ⋯ entry stays, to change the show again; the show playing
+			// is still the one the picker names as playing.
+			notePick(offered.entry.id);
+			this.offer = { entry: offered.entry, current: offered.current, saved: chosen.ref.id };
+		}
 		if (chosen.ref.id !== this.#page) this.#refresh();
 	}
 
