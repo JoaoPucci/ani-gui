@@ -364,9 +364,10 @@ test("a stop after the probe has ended signals nothing but AppRun itself", () =>
   const img = image(EB25, "answers");
   try {
     const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
-    const start = appRun.indexOf("ani_gui_answer_file=\n");
+    const start = appRun.indexOf("ANI_GUI_SANDBOX=(--no-sandbox)\n");
     const end = appRun.indexOf("ani_gui_user_no_sandbox=0\n");
     assert.ok(start > 0 && end > start, "the probe's functions are in AppRun");
+    assert.match(appRun.slice(start, end), /^ani_gui_probe_starting=0$/m, "the cut carries the probe's state");
     const script = [
       `BIN=${JSON.stringify(path.join(img.app, "ani-gui"))}`,
       appRun.slice(start, end),
@@ -386,6 +387,41 @@ test("a stop after the probe has ended signals nothing but AppRun itself", () =>
     }
     if (alive) process.kill(bystander, "SIGKILL");
     assert.ok(alive, "the stop handler killed a process that was not the probe");
+  } finally {
+    fs.rmSync(img.root, { recursive: true, force: true });
+  }
+});
+
+// The same handler, for a signal that lands while the probe job is
+// being started, before the job exists: then `$!` still names
+// AppRun's previous background job, if it has one, and that is not
+// the probe's to signal. The state is set as the start sequence sets
+// it at that moment, with a bystander as the previous job.
+test("a stop before the probe job exists signals no earlier background job", () => {
+  const img = image(EB25, "answers");
+  try {
+    const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
+    const start = appRun.indexOf("ANI_GUI_SANDBOX=(--no-sandbox)\n");
+    const end = appRun.indexOf("ani_gui_user_no_sandbox=0\n");
+    const script = [
+      appRun.slice(start, end),
+      "sleep 30 </dev/null >/dev/null 2>&1 & bystander=$!",
+      'echo "$bystander" > "$APPDIR/bystander"',
+      "ani_gui_probe_prev_bg=$!",
+      "ani_gui_probe_starting=1",
+      "ani_gui_probe_stop TERM",
+    ].join("\n");
+    const run = spawnSync("bash", ["-c", script], { encoding: "utf8", env: img.env({}) });
+    assert.equal(run.signal, "SIGTERM", `status ${run.status}: ${run.stderr}`);
+    const bystander = Number(fs.readFileSync(path.join(img.app, "bystander"), "utf8"));
+    let alive = true;
+    try {
+      process.kill(bystander, 0);
+    } catch {
+      alive = false;
+    }
+    if (alive) process.kill(bystander, "SIGKILL");
+    assert.ok(alive, "the stop handler killed AppRun's earlier background job");
   } finally {
     fs.rmSync(img.root, { recursive: true, force: true });
   }
