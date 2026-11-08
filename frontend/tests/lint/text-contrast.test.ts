@@ -76,6 +76,7 @@ const NOT_A_SURFACE = new Set(['--ink-300']);
  * criterion; nothing else belongs here.
  */
 const EXEMPT: Record<string, string> = {
+	'lib/components/Strip.svelte .strip-meta-sep': 'separator dot between the caption and the status',
 	'routes/anime/[id]/+page.svelte .ep-jump-go:disabled': 'disabled control',
 	'routes/play/[id]/+page.svelte .ep-jump-go:disabled': 'disabled control',
 	'routes/play/[id]/+page.svelte .ep-card-foot-dot': 'separator dot between number and length',
