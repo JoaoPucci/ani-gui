@@ -681,11 +681,52 @@ fn files_no_platform_recognises_offer_the_newest_release_by_version() {
             offered(page.clone(), None, platform, true).as_deref(),
             Some("v0.19.0")
         );
+        // With pre-releases off the check used to ask
+        // `/releases/latest` and nothing else; the fallback does the
+        // same, so with no latest release read it offers nothing.
+        assert_eq!(offered(page.clone(), None, platform, false), None);
+    }
+}
+
+#[test]
+fn with_pre_releases_off_the_fallback_offers_the_latest_full_release_as_before() {
+    // A full release on the page newer than the one GitHub marks latest
+    // (published with "make latest" off) is not what the check offered
+    // before it read files, and is not what the fallback offers.
+    let page = vec![renamed("0.19.0", false)];
+    for platform in [Platform::Windows, Platform::Linux] {
         assert_eq!(
-            offered(page.clone(), None, platform, false).as_deref(),
+            offered(
+                page.clone(),
+                Some(renamed("0.18.0", false)),
+                platform,
+                false
+            )
+            .as_deref(),
             Some("v0.18.0")
         );
     }
+}
+
+#[test]
+fn the_fallback_never_offers_a_release_without_files() {
+    // A release whose files have not finished uploading has nothing to
+    // download; the fallback passes over it for the next.
+    let page = vec![raw("0.20.0", true, false, &[]), renamed("0.19.0", true)];
+    assert_eq!(
+        offered(page, None, Platform::Linux, true).as_deref(),
+        Some("v0.19.0")
+    );
+    let page = vec![renamed("0.19.0", true)];
+    assert_eq!(
+        offered(
+            page,
+            Some(raw("0.18.0", false, false, &[])),
+            Platform::Linux,
+            false
+        ),
+        None
+    );
 }
 
 #[test]
@@ -866,9 +907,11 @@ proptest::proptest! {
     /// release installable here; else the latest release, if it is a
     /// published full release carrying this platform's package; else,
     /// when something read carries files and none of them is any
-    /// platform's package, the newest page release under the draft and
-    /// pre-release rules, or the latest if it is a published full
-    /// release; else nothing.
+    /// platform's package, what the check offered before it read files:
+    /// with pre-releases on, the newest published page release that
+    /// carries files, or else the latest release; with them off, the
+    /// latest release; the latest only if it is a published full release
+    /// carrying files. Else nothing.
     #[test]
     fn the_offer_follows_the_platform_then_falls_back_only_on_unknown_naming(
         page in proptest::collection::vec(full_shape(), 0..6),
@@ -891,11 +934,21 @@ proptest::proptest! {
             .map(page_tag)
             .or_else(|| latest.filter(|s| eligible(s, false) && carried(s.2)).map(|_| latest_tag.clone()))
             .or_else(|| {
+                let has_files = |&(_, _, mask, unknown): &FullShape| mask != 0 || unknown;
+                let latest_full = || {
+                    latest
+                        .filter(|s| eligible(s, false) && has_files(s))
+                        .map(|_| latest_tag.clone())
+                };
                 (any_file && !recognised).then(|| {
-                    page.iter()
-                        .position(|s| eligible(s, include_prereleases))
-                        .map(page_tag)
-                        .or_else(|| latest.filter(|s| eligible(s, false)).map(|_| latest_tag.clone()))
+                    if include_prereleases {
+                        page.iter()
+                            .position(|s| eligible(s, true) && has_files(s))
+                            .map(page_tag)
+                            .or_else(latest_full)
+                    } else {
+                        latest_full()
+                    }
                 })?
             });
 
