@@ -16,7 +16,7 @@
 	"mode_this_episode": "Este episódio",
 	"mode_range": "Intervalo",
 	"mode_all": "Todos",
-	"disabled_all_tooltip": "Não dá para baixar todos os episódios deste título.",
+	"disabled_all_tooltip": "Não dá para baixar todos os episódios deste anime.",
 	"range_from_aria_label": "Do episódio",
 	"range_to_aria_label": "Até o episódio",
 	"range_separator": "–",
@@ -197,9 +197,9 @@
 			"declarations": ["input max", "local maxPlural = max: plural"],
 			"selectors": ["max", "maxPlural"],
 			"match": {
-				"max=0, maxPlural=*": "Não é possível baixar mais de {max} episódios deste título.",
-				"max=*, maxPlural=one": "Não é possível baixar mais de {max} episódio deste título.",
-				"max=*, maxPlural=*": "Não é possível baixar mais de {max} episódios deste título."
+				"max=0, maxPlural=*": "Não é possível baixar mais de {max} episódios deste anime.",
+				"max=*, maxPlural=one": "Não é possível baixar mais de {max} episódio deste anime.",
+				"max=*, maxPlural=*": "Não é possível baixar mais de {max} episódios deste anime."
 			}
 		}
 	],

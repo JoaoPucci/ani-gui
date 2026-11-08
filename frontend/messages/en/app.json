@@ -27,6 +27,8 @@
 	"about_link_title": "About ani-gui: version, licences, dependencies",
 	"quality_best": "Best",
 	"quality_worst": "Worst",
+	"audio_sub": "SUB",
+	"audio_dub": "DUB",
 	"subtype_tv": "TV",
 	"subtype_movie": "Movie",
 	"subtype_special": "Special",

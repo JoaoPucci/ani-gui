@@ -139,9 +139,9 @@
 			"declarations": ["input count", "input speed", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} загрузка в процессе, {speed}",
-				"countPlural=few": "{count} загрузки в процессе, {speed}",
-				"countPlural=*": "{count} загрузок в процессе, {speed}"
+				"countPlural=one": "{count} активная загрузка, {speed}",
+				"countPlural=few": "{count} активные загрузки, {speed}",
+				"countPlural=*": "{count} активных загрузок, {speed}"
 			}
 		}
 	],
@@ -155,9 +155,9 @@
 			],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} загрузка в процессе, {queued} в очереди, {speed}",
-				"countPlural=few": "{count} загрузки в процессе, {queued} в очереди, {speed}",
-				"countPlural=*": "{count} загрузок в процессе, {queued} в очереди, {speed}"
+				"countPlural=one": "{count} активная загрузка, {queued} в очереди, {speed}",
+				"countPlural=few": "{count} активные загрузки, {queued} в очереди, {speed}",
+				"countPlural=*": "{count} активных загрузок, {queued} в очереди, {speed}"
 			}
 		}
 	],

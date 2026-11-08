@@ -7,7 +7,7 @@
 	"hero_cta_browse": "Открыть каталог",
 	"hero_pager_dot_label": "Показать {title}",
 	"hero_error_eyebrow_key": "Не в эфире",
-	"hero_error_title": "Каталог недоступен.",
+	"hero_error_title": "Каталог недоступен",
 	"hero_error_body": "Kitsu не отвечает. Локальный поиск при этом работает, просто введите название.",
 	"hero_error_cta": "Открыть поиск",
 	"hero_skeleton_eyebrow_key": "Загрузка",

@@ -27,6 +27,8 @@
 	"about_link_title": "О ani-gui: версия, лицензии, зависимости",
 	"quality_best": "Лучшее",
 	"quality_worst": "Худшее",
+	"audio_sub": "SUB",
+	"audio_dub": "DUB",
 	"subtype_tv": "ТВ",
 	"subtype_movie": "Фильм",
 	"subtype_special": "Спешл",

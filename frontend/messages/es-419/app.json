@@ -27,6 +27,8 @@
 	"about_link_title": "Acerca de ani-gui: versión, licencias y dependencias",
 	"quality_best": "Mejor",
 	"quality_worst": "Peor",
+	"audio_sub": "Subtitulado",
+	"audio_dub": "Doblado",
 	"subtype_tv": "TV",
 	"subtype_movie": "Película",
 	"subtype_special": "Especial",

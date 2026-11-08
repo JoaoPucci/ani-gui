@@ -34,6 +34,14 @@
 	let clearingImages = $state(false);
 	let imagesCleared = $state(false);
 
+	// The audio toggle's labels, called at render like the quality
+	// labels below. Portuguese and Spanish spell the audio out, and
+	// English and Russian show SUB and DUB.
+	const AUDIO_LABELS: Record<string, () => string> = {
+		sub: m.app_audio_sub,
+		dub: m.app_audio_dub
+	};
+
 	// Labels are message functions, called at render, so a locale
 	// switch relabels the buttons without rebuilding the table.
 	const QUALITIES: Array<{ key: string; label: () => string }> = [
@@ -312,7 +320,7 @@
 							aria-pressed={cfg.mode === mode}
 							onclick={() => setMode(mode as 'sub' | 'dub')}
 						>
-							{mode.toUpperCase()}
+							{AUDIO_LABELS[mode]()}
 						</button>
 					{/each}
 				</div>

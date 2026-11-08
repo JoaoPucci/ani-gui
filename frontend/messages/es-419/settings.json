@@ -9,7 +9,7 @@
 	"section_playback_title": "Reproducción",
 	"section_playback_hint": "valores predeterminados para cada reproducción",
 	"field_audio_key": "Audio",
-	"field_audio_hint": "Sub usa audio japonés con subtítulos. Dub usa audio doblado.",
+	"field_audio_hint": "Subtitulado mantiene el audio japonés, con subtítulos. Doblado cambia el audio por el doblaje.",
 	"audio_group_aria_label": "Modo de audio",
 	"field_quality_key": "Calidad",
 	"field_quality_hint": "“Mejor” deja que la fuente decida. Los valores menores limitan la resolución.",

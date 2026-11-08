@@ -27,6 +27,8 @@
 	"about_link_title": "Sobre o ani-gui: versão, licenças, dependências",
 	"quality_best": "Melhor",
 	"quality_worst": "Pior",
+	"audio_sub": "Legendado",
+	"audio_dub": "Dublado",
 	"subtype_tv": "TV",
 	"subtype_movie": "Filme",
 	"subtype_special": "Especial",
