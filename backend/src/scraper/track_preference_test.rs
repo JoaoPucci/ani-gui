@@ -305,6 +305,43 @@ fn a_track_whose_lang_is_a_three_letter_code_is_read_by_it() {
     );
 }
 
+/// A locale given as a three-letter code reads as the language it
+/// names, in any case, as the built-in player reads it: `Intl.Locale`
+/// takes `zho` for `zh` and `por-BR` for `pt-BR`. A bare Chinese code
+/// reads in Simplified, as a bare `zh` does.
+#[test]
+fn a_locale_given_as_a_three_letter_code_reads_as_its_language() {
+    assert_eq!(
+        labels_first(&steel_ball_run(), "zho", 2),
+        ["Chinese (- Simplified)", "Chinese (- Traditional)"]
+    );
+    assert_eq!(
+        labels_first(&steel_ball_run(), "CHI", 2),
+        ["Chinese (- Simplified)", "Chinese (- Traditional)"]
+    );
+    assert_eq!(
+        labels_first(&steel_ball_run(), "por-BR", 2),
+        ["Portuguese (- Brazil)", "Portuguese (- Portugal)"]
+    );
+    assert_eq!(
+        labels_first(&steel_ball_run(), "Spa", 3),
+        [
+            "Spanish (- Latin America)",
+            "Spanish (- Latin America | SDH)",
+            "Spanish (- Spain)"
+        ]
+    );
+    assert_eq!(labels_first(&steel_ball_run(), "jpn", 1), ["Japanese"]);
+    assert_eq!(labels_first(&steel_ball_run(), "rus", 1), ["Russian"]);
+    // The case the order property first failed on, its locale spelled
+    // as a code: the locale's Chinese leads the provider's default.
+    let ordinary_default = vec![
+        track("zh-Hant", "zh-Hant", false, 0),
+        track("es-419", "es-419", true, 1),
+    ];
+    assert_eq!(labels_first(&ordinary_default, "zho", 1), ["zh-Hant"]);
+}
+
 /// Past the cap the most wanted are kept: cut to four, a Brazilian
 /// user's Portuguese tracks survive where listing order would have
 /// kept Arabic, both Chinese tracks and Croatian; and what is kept
@@ -361,13 +398,28 @@ fn locale() -> impl Strategy<Value = String> {
     ]
 }
 
-/// The primary subtag of a tag, lowercased.
+/// The language a tag names: its primary subtag, lowercased, with a
+/// three-letter code read as the two-letter tag it stands for. The
+/// codes are spelled out for the languages the property knows; the
+/// order reads every code its table carries the same way, as the
+/// built-in player's `Intl.Locale` does.
 fn primary(tag: &str) -> String {
-    tag.trim()
+    let subtag = tag
+        .trim()
         .split(['-', '_'])
         .next()
         .unwrap_or_default()
-        .to_ascii_lowercase()
+        .to_ascii_lowercase();
+    let language = match subtag.as_str() {
+        "eng" => "en",
+        "por" => "pt",
+        "spa" => "es",
+        "jpn" => "ja",
+        "chi" | "zho" => "zh",
+        "rus" => "ru",
+        other => other,
+    };
+    language.to_string()
 }
 
 proptest! {
