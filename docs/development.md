@@ -297,8 +297,9 @@ the installed app's shell profile, and hands over to it if it is running.
 ## Remote flags
 
 The maintainer can switch a declared flag without a release by editing
-`flags.json` on the repository's `flags` branch, and signing it. What a flag may do, and
-which values need the file signed, is in
+`flags.json` on the repository's `flags` branch (and, to turn a feature
+on, signing it). What a flag may do, and which values need the file
+signed, is in
 [`architecture.md`](./architecture.md#remote-flags). Only a flag
 declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
 build ignores names it does not declare and values its declaration
@@ -428,10 +429,10 @@ To see what a running backend decided, read
 where they came from (`origin`: `file`, `cache` or `defaults`, or
 `test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the
-same origin, and each fetch that gets the live file logs the
-signature's verdict as `flags file signature checked` (`Verified`, `Unsigned` or
-`Invalid`). The app's window gets
-the same values from the preload, as `window.aniGui.flags`.
+same origin, and each fetch that gets a valid flags file logs the
+signature's verdict as `flags file signature checked` (`Verified`,
+`Unsigned` or `Invalid`). The app's window gets the same values from
+the preload, as `window.aniGui.flags`.
 
 **Development and test runs.** `pnpm dev` is a normal launch: it reads
 the live file, so a flag flipped on the branch reaches a dev run too.

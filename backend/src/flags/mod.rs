@@ -36,9 +36,9 @@
 //! the flags are decided or cached, and keeps the rest. So an unsigned
 //! file, or anyone able to rewrite it in transit, can only leave a
 //! feature off, or bring back a file and signature the maintainer
-//! signed before, which verifies again. Whether turning a flag's feature on is safe is not
-//! something a type can see: that is the declaration's
-//! `safe_because`, and review.
+//! signed before, which verifies again. Whether turning a flag's
+//! feature on is safe is not something a type can see: that is the
+//! declaration's `safe_because`, and review.
 //!
 //! The backend owns the request; the renderer reads the resolved
 //! values through `GET /api/flags`.

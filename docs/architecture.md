@@ -326,8 +326,8 @@ older signed pair, below). That is also why the flags still apply while
 signing is not set up, or when a signature is stale: an unsigned edit
 can still turn a feature off. What is cached is the admitted document
 (see "The last good copy" below). The shipped build trusts no key yet,
-so no file turns anything on until a release adds one. Signing, trusting and rotating a key are
-in [`development.md`](./development.md#signing-the-flags-file).
+so no file turns anything on until a release adds one. Signing,
+trusting and rotating a key are in [`development.md`](./development.md#signing-the-flags-file).
 
 What a signature does not cover: the cached copy is the user's own disk
 and is read back without checking again, so a feature a verified file
