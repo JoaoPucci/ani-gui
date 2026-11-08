@@ -1,15 +1,15 @@
 /**
- * Normalises a GitHub `/releases/latest` response into the smaller
- * shape the update notifier consumes. Rejects drafts and malformed
- * payloads (missing tag_name, html_url missing or not an https page)
- * so the badge can never point at a release that doesn't exist or
- * shouldn't be visible, and the dialog's link never at anything but
- * a web page.
+ * `ReleaseInfo` is the release shape the update notifier consumes:
+ * the backend's `/api/update-check` answers with it, having picked
+ * and normalised the release itself (`meta::github`).
  *
- * Pre-releases pass through — our releases are all marked
- * prerelease today; future stable cuts will flip the bit but the
- * notifier shouldn't gate on it either way (a user who has v0.4.0
- * installed wants to know about v0.5.0-rc1).
+ * `parseGitHubRelease` normalises a raw GitHub release object (the
+ * shape `/releases/latest` returns) into the same shape, rejecting
+ * drafts, payloads missing `tag_name`, and an `html_url` that is
+ * missing or not an https page, and passing pre-releases through.
+ * The notifier does not call it; only the type is imported from
+ * here. The https rule the update dialog relies on is enforced where
+ * the answer is built, in the backend's `meta::github::normalise`.
  */
 
 export interface ReleaseInfo {
