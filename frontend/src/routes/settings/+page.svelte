@@ -18,6 +18,7 @@
 		type ExternalPlayerKind
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
+	import { externalOpenLabel } from '$lib/play/external-label';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
@@ -365,8 +366,9 @@
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_key()}</span>
 					<span class="field-hint">
-						{m.settings_field_external_player_hint_prefix()}<code
-							>{m.settings_field_external_player_default()}</code
+						{m.settings_field_external_player_hint_prefix({
+							button: externalOpenLabel(cfg.external_player_kind)
+						})}<code>{m.settings_field_external_player_default()}</code
 						>{m.settings_field_external_player_hint_suffix()}
 					</span>
 				</div>

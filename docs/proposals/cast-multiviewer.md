@@ -40,7 +40,7 @@ The user described anime watching as inherently multi-person. There are two leve
 
 ### Level 1 — Syncplay parity
 
-`ani-gui` can already launch `mpv` under [Syncplay](https://syncplay.pl), which keeps two `mpv` instances synced via a relay server, through the "Open in external player" escape hatch. It works, but it's clunky — the user falls out of the GUI to use it.
+`ani-gui` can already launch `mpv` under [Syncplay](https://syncplay.pl), which keeps two `mpv` instances synced via a relay server, through the external-player escape hatch. It works, but it's clunky — the user falls out of the GUI to use it.
 
 Native equivalent: `ani-gui` joins a Syncplay-like relay session for the embedded `<video>` element. Each participant runs their own `ani-gui`, opens the same anime/episode, and clicks "Watch with friends". State (play, pause, seek, ready) is broadcast through a relay; each client's player obeys.
 

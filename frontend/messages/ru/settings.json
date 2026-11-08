@@ -15,7 +15,7 @@
 	"field_quality_hint": "«Лучшее» — выбор за источником. Меньшие значения ограничивают разрешение.",
 	"quality_group_aria_label": "Качество",
 	"field_external_player_key": "Внешний плеер",
-	"field_external_player_hint_prefix": "Команда для кнопки «Открыть во внешнем плеере». По умолчанию ",
+	"field_external_player_hint_prefix": "Команда для кнопки «{button}». По умолчанию ",
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_default": "mpv",
 	"field_external_player_kind_key": "Тип плеера",

@@ -15,7 +15,7 @@
 	"field_quality_hint": "\"Best\" lets the source pick. Lower values cap the resolution.",
 	"quality_group_aria_label": "Quality",
 	"field_external_player_key": "External player",
-	"field_external_player_hint_prefix": "Command launched by \"Open in external player\". Defaults to ",
+	"field_external_player_hint_prefix": "Command launched by \"{button}\". Defaults to ",
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_default": "mpv",
 	"field_external_player_kind_key": "Player flavour",

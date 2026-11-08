@@ -166,6 +166,7 @@
 	} from '$lib/play/owned-play';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
+	import { externalOpenLabel } from '$lib/play/external-label';
 	import {
 		canRecoverFromStaleStream,
 		shouldAttemptStaleStreamRetry,
@@ -3745,7 +3746,11 @@
 										stroke-linejoin="round"
 									/>
 								</svg>
-								<span>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span>
+								<span
+									>{externalBusy
+										? m.play_external_launching()
+										: externalOpenLabel(config?.external_player_kind ?? 'custom')}</span
+								>
 							</button>
 
 							<button

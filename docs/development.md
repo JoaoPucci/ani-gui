@@ -302,7 +302,7 @@ the installed app's shell profile, and hands over to it if it is running.
 ## Frequently asked
 
 **Why doesn't an `mpv` window pop up when I play something?**
-The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is only launched if you click "Open in external player".
+The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is only launched if you click "Open in mpv" (the item names the player picked in Settings, and reads "Open in external player" for a custom command).
 
 **Where does the GUI keep watch history?**
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
