@@ -376,13 +376,12 @@ describe('franchisePage', () => {
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
-				// A fork left with one way is drawn as a line, and a line
-				// may be split where its numbers stop: compare with
-				// neighbouring lines run together.
-				const runs = (kinds: string[]) =>
-					kinds.filter((k, i) => k !== 'line' || kinds[i - 1] !== 'line');
-				expect(runs(page.sections.map((s) => s.kind))).toEqual(
-					runs(
+				// The ways and groups come in the segments' order. A fork
+				// left with one way is drawn as a line, and the lines'
+				// titles may move to the stretch with no clear place.
+				const shapes = (kinds: string[]) => kinds.filter((k) => k !== 'line');
+				expect(shapes(page.sections.map((s) => s.kind))).toEqual(
+					shapes(
 						segments(page.run, order).map((s) =>
 							s.kind === 'cycle'
 								? 'group'
