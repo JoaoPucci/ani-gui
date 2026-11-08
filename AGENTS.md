@@ -250,10 +250,22 @@ mid-task, exactly one of these is an acceptable outcome:
 - **Do it here.** The default. Estimate the work before declining it —
   an estimate made in order to justify not doing something tends to
   come out high.
-- **Do it in its own PR.** Open the follow-up PR, land it, then update
-  the original. Say on the thread which PR carries it.
-- **Add an entry to the deferred-work log**, and link it wherever you
-  deferred it. An unwritten deferral is a dropped one, and a deferral
+- **Do it in its own PR.** Yours to choose, as long as you open that
+  PR now. Land it, then update the original, and say on the thread
+  which PR carries it.
+- **Add an entry to the deferred-work log — only when the maintainer
+  has chosen it.** A deferral is never yours to pick. Put the options
+  to the maintainer — do it here, its own PR now, or defer — with your
+  recommendation, and the maintainer decides. That covers everything
+  that defers: a new entry, an existing one extended or reworded so it
+  defers more, and a "later", "not covered", "left open" or "out of
+  scope" note in a PR body, a commit or a doc that leaves known work
+  undone. Keeping an entry true is not a deferral: when a change makes
+  part of one false, correct it in that change, or remove it when the
+  work lands, and say so in the PR body.
+
+  Once the maintainer has chosen it, link the entry wherever the work
+  was deferred. An unwritten deferral is a dropped one, and a deferral
   written only where you happen to be standing is the same thing: the
   internal planning directory is ignored by git, so an entry there
   leaves with your checkout and a thread citing it points at a file
@@ -280,7 +292,7 @@ mid-task, exactly one of these is an acceptable outcome:
 
 <!-- record-path: docs/deferred-work.md -->
 - **Ask.** If the tradeoff is genuinely the maintainer's call, put the
-  options to them. Silence is not a way to ask.
+  options to them. A deferral always is. Silence is not a way to ask.
 
 What is never acceptable is the fifth outcome: replying that the fix
 is out of scope or too costly and leaving nothing behind. That reads
@@ -294,10 +306,10 @@ knows about — one it introduced, uncovered, or was told of in
 review — records the gap where it will be read once, as context,
 and then merged past. That defect leaves the change by one of the
 four outcomes above, and the note links whichever carries it: the
-PR, the deferred-work entry, or the question put to the maintainer.
-A reviewer reading such a note with no link beside it treats it as a
-finding, not as a disclosure that settles it. Saying which checks
-were not run, as §10 asks, or describing behaviour that is
+PR, the deferred-work entry the maintainer chose, or the question put
+to them. A reviewer reading such a note with no link beside it treats
+it as a finding, not as a disclosure that settles it. Saying which
+checks were not run, as §10 asks, or describing behaviour that is
 intended, is not such a note.
 
 The same rule applies to your own estimates. Before invoking cost,
@@ -319,9 +331,9 @@ may be weighed against the rest.
 
 The ranking is how a recommendation is made, not a licence to decide
 alone. When the choice is the maintainer's — anything users see,
-scope, a new dependency, or a real trade-off between these criteria —
-put the options to them, as **Ask** above describes, with the ranking
-as the recommendation.
+scope (deferring work always is), a new dependency, or a real
+trade-off between these criteria — put the options to them, as
+**Ask** above describes, with the ranking as the recommendation.
 
 ## 15. Every change ships on every platform we package
 

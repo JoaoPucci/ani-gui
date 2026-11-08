@@ -20,7 +20,11 @@ else is able to read.
 
 Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
 it third of four options, after doing it here and doing it in its own
-pull request.
+pull request, and it is the one an agent never takes alone: an entry
+is added, or widened to defer more, only when the maintainer has
+chosen to defer. Correcting an entry so it stays true, or removing it
+when the work lands, needs no such choice — the pull request that does
+it says so.
 
 Write an entry about the code, not about the work in flight. An entry
 stands on its own: what is wrong, where it lives, and what should
