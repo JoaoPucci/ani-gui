@@ -64,6 +64,7 @@ fn state_for(dir: &std::path::Path, provider: &Arc<TableProvider>) -> crate::app
 
 fn play_args() -> PlayArgs {
     PlayArgs {
+        locale: None,
         title: "the show".into(),
         episode: "2".into(),
         mode: "sub".into(),

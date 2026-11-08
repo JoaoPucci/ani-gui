@@ -1,12 +1,14 @@
-// Acceptance: a download of an episode the source does not carry
-// tells the user so, in the dock, with the play page's own words.
+// Acceptance: a download the provider fails (an episode the source
+// does not carry, a video server that did not serve, an answer this
+// version cannot read) tells the user so, in the dock, with the play
+// page's own words.
 //
-// The backend ends the download stream with the typed episode
-// verdict — a unit variant, so no message rides with it — and the
-// glue between the stream, the store and the dock used to let it
-// fall through to the generic "Download failed". This scenario
+// The backend ends the download stream with a typed provider
+// failure, and the glue between the stream, the store and the dock
+// once let the episode verdict (a unit variant, so no message rides
+// with it) fall through to the generic "Download failed". Each case
 // starts a real download through the real glue over a faked
-// EventSource, fails it with the verdict as the sidecar sends it,
+// EventSource, fails it with its payload as the sidecar sends it,
 // and reads the rendered dock row, so a dropped call anywhere
 // between `startDownload`, the store and the dock's error marker
 // cannot hide behind the mocked unit case.
@@ -86,7 +88,7 @@ function openDock(): HTMLElement {
 	return pop as HTMLElement;
 }
 
-describe('the download dock renders the episode verdict', () => {
+describe('the download dock words a provider failure as the play page does', () => {
 	it('an episode the source does not carry names the episode on its failed row', async () => {
 		const id = startDownload({
 			title: 'Frieren',
@@ -158,5 +160,42 @@ describe('the download dock renders the episode verdict', () => {
 		expect(marker?.getAttribute('title')).toBe(m.backend_error_play_stream_server_failed());
 		expect(marker?.getAttribute('title')).not.toContain('zokoanime.video');
 		expect(marker?.getAttribute('title')).not.toBe(m.backend_error_network_unreachable());
+	});
+
+	it('a source answer the resolver could not read says so on its failed row', async () => {
+		// The download walks the same provider as play. A page this
+		// version no longer reads gets the play overlay's sentence, not
+		// the shared try-again-later one, and never the log detail.
+		const id = startDownload({
+			title: 'Frieren',
+			episode: '9',
+			mode: 'sub',
+			quality: '1080',
+			destDir: '/dl'
+		});
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('/api/download/stream?')),
+			'the download stream'
+		);
+		const stream = FakeEventSource.instances.find((i) => i.url.includes('/api/download/stream?'))!;
+		stream.dispatch(
+			'error',
+			JSON.stringify({
+				kind: 'parse_failed',
+				key: 'error.scraper.parse_failed',
+				detail: 'the page is not the search shape'
+			})
+		);
+		await until(
+			() => downloadStore.items.find((i) => i.id === id)?.status === 'error',
+			'the row to fail'
+		);
+
+		const pop = openDock();
+		const marker = pop.querySelector<HTMLElement>('span.dl-row-error');
+		expect(marker, 'the failed row carries its error marker').not.toBeNull();
+		expect(marker?.getAttribute('title')).not.toBe(m.backend_error_scraper_parse_failed());
+		expect(marker?.getAttribute('title')).toBe(m.play_play_failure_unreadable());
+		expect(marker?.getAttribute('title')).not.toContain('search shape');
 	});
 });
