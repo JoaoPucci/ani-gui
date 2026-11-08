@@ -55,7 +55,7 @@
 	"keyring_waiting": "Aguardando o chaveiro do sistema. Suas contas vão aparecer assim que ele responder. Se ele pedir, desbloqueie.",
 	"primary_badge": "Principal",
 	"primary_make": "Tornar principal",
-	"primary_hint": "Aparece na barra superior. Ver depois mostra primeiro os animes atualizados por último em qualquer uma das suas listas. Se um anime está nas duas, vale o que está nesta. O progresso continua sincronizando com todas as listas conectadas.",
+	"primary_hint": "Aparece na barra superior. Ver depois mostra primeiro os animes atualizados mais recentemente em qualquer uma das suas listas. Se um anime estiver nas duas, vale o que está nesta. O progresso continua sincronizando com todas as listas conectadas.",
 	"primary_save_error": "Não foi possível salvar sua lista principal. Tente de novo.",
 	"busy_saving": "O {provider} está ocupado. Salvando em {seconds} s",
 	"busy_saving_for": "O {busy} está ocupado. Salvando no {provider} em {seconds} s",
