@@ -21,3 +21,8 @@ const NONE: LaunchFlags = Object.freeze({});
 export function launchFlags(win: FlagsWindow = globalThis.window): LaunchFlags {
 	return win?.aniGui?.flags ?? NONE;
 }
+
+/** Whether flag `name` is on for this launch. */
+export function flagOn(name: string, win: FlagsWindow = globalThis.window): boolean {
+	return Boolean(launchFlags(win)[name]);
+}
