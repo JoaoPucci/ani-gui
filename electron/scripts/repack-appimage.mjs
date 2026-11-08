@@ -5,16 +5,21 @@
 //   1. Swap the bundled AppImage runtime (appimage-12.0.1, dlopens
 //      libfuse.so.2) for the modern type2-runtime (links libfuse3,
 //      which Ubuntu 24.04+ ships by default).
-//   2. Patch the in-squashfs `AppRun` script to add `--no-sandbox`
-//      to every Electron exec. AppImages mount their squashfs
-//      read-only via FUSE, so `chrome-sandbox` inside it can't
-//      carry the SUID 4755 bits Chromium's setuid sandbox demands;
-//      Electron aborts at startup with a fatal "sandbox helper
-//      not configured correctly" otherwise. The flag has to land
-//      on argv at process spawn time — `app.commandLine.appendSwitch`
-//      is too late, the check fires before main.js runs. The .deb
-//      doesn't need this (its postinst sets the SUID bit on the
-//      installed chrome-sandbox).
+//   2. Rewrite the in-squashfs `AppRun` so the sandbox is decided at
+//      launch by the app's own binary. AppImages mount their squashfs
+//      read-only via FUSE, so `chrome-sandbox` inside it can't carry
+//      the SUID 4755 bits Chromium's setuid sandbox demands, which
+//      leaves the namespace sandbox. Whether that starts depends on
+//      the host (on Ubuntu 23.10+, AppArmor decides per binary), and
+//      one that cannot start aborts the launch before main.js runs.
+//      So AppRun starts the binary once as a probe and passes
+//      `--no-sandbox` only when it gets no answer
+//      (lib/appimage-tree.cjs, lib/sandbox-probe.cjs). The flag has to
+//      be on argv at spawn — `app.commandLine.appendSwitch` is too
+//      late. The image's desktop entry loses electron-builder's
+//      `--no-sandbox` for the same reason. The .deb doesn't need any
+//      of this (its postinst sets the SUID bit on the installed
+//      chrome-sandbox).
 //   3. Open the tree to every user before packing it. The extract's
 //      directories arrive at 0700 and the pack makes them root's, so
 //      anything that mounts the image as root and runs the app as a
@@ -26,7 +31,7 @@
 // open the tree, re-pack with mksquashfs, then concatenate the modern
 // runtime header with the new squashfs payload. Same end shape as before:
 //
-//   new.AppImage = new-runtime-elf || mksquashfs(open(extract(old) + AppRun patch))
+//   new.AppImage = new-runtime-elf || mksquashfs(open(extract(old) + AppRun/desktop rewrite))
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -82,8 +87,9 @@ function run(cmd, args, opts = {}) {
 
 /**
  * Repack one AppImage: extract via `--appimage-extract` (uses the
- * file's own runtime to read its squashfs), patch AppRun and open the
- * tree, mksquashfs the result, then prepend the modern runtime header.
+ * file's own runtime to read its squashfs), rewrite AppRun and the
+ * desktop entry, open the tree, mksquashfs the result, then prepend
+ * the modern runtime header.
  */
 async function repack(appimage) {
 	const tmpRoot = path.join(distDir, '.repack-tmp-' + path.basename(appimage));
@@ -97,16 +103,16 @@ async function repack(appimage) {
 	await run(appimage, ['--appimage-extract'], { cwd: tmpRoot });
 	const appDir = path.join(tmpRoot, 'squashfs-root');
 
-	// 2. Patch AppRun and open the tree to every user. An image a
-	//    previous repack produced already carries the patch, but its
-	//    directories may still be closed — the extract's directories
-	//    arrive at 0700 and `-all-root` below makes them root's — so
-	//    every image goes through the whole repack, stale ones too.
-	const patched = prepareTree(appDir);
+	// 2. Rewrite AppRun and the desktop entry, and open the tree to
+	//    every user. An image a previous repack produced may already
+	//    carry the rewrite, but its directories may still be closed —
+	//    the extract's directories arrive at 0700 and `-all-root` below
+	//    makes them root's — so every image goes through the whole
+	//    repack, stale ones too.
+	const changed = prepareTree(appDir);
 	console.log(
-		patched
-			? `[repack] patched AppRun: --no-sandbox added to exec lines`
-			: `[repack] AppRun already patched: ${path.basename(appimage)}`
+		`[repack] ${path.basename(appimage)}: AppRun ${changed.appRun ? 'rewritten to probe the sandbox' : 'already probes the sandbox'}, ` +
+			`desktop entry ${changed.desktop ? 'stripped of --no-sandbox' : 'already plain'}`
 	);
 
 	// 3. Repack with mksquashfs. type2-runtime only links zlib + zstd
@@ -165,7 +171,7 @@ async function main() {
 	}
 	for (const c of candidates) await repack(c);
 	console.log(
-		`[repack] done — ${candidates.length} AppImage(s) repacked with type2-runtime + AppRun --no-sandbox patch`
+		`[repack] done — ${candidates.length} AppImage(s) repacked with type2-runtime + AppRun sandbox probe`
 	);
 }
 
