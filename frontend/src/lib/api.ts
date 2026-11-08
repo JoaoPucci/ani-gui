@@ -67,7 +67,7 @@ declare global {
 			/** The launch's remote flags, decided by the backend before
 			 *  the window opened and fixed for the session
 			 *  (`$lib/flags`). Absent in browser-only dev. */
-			flags?: Readonly<Record<string, boolean | string>>;
+			flags?: Readonly<Record<string, boolean>>;
 			/** Where those flags came from: `file`, `cache`,
 			 *  `defaults` or `test`; null when the window opened
 			 *  without them. */
