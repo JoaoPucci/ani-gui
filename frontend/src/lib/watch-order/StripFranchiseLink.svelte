@@ -97,8 +97,7 @@
 	}
 
 	/* The whole link is one target. Its padding is the highlight's
-	   area; the negative margin keeps the posters and text on the
-	   footer's edge while nothing is highlighted. */
+	   area. */
 	.stack {
 		display: inline-grid;
 		grid-template-columns: auto minmax(0, 1fr) auto;
@@ -106,7 +105,6 @@
 		gap: var(--space-4);
 		max-inline-size: 100%;
 		padding: var(--space-2) var(--space-3);
-		margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-3));
 		border-radius: var(--radius-card);
 		color: inherit;
 		transition:
