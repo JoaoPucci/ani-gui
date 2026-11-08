@@ -44,7 +44,7 @@ import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
 const SIGN_IN_FAILED = 'Sign-in failed. Try again.';
 const SIGN_IN_CANCELLED = 'Sign-in was cancelled.';
-const CLEAR_FAILED = "Couldn't clear the local token. Try again or check ani-gui logs.";
+const CLEAR_FAILED = "Couldn't remove your sign-in from this computer. Try again.";
 
 const SAVED: PersistedAccount = {
 	access_token: 'al-bearer',
