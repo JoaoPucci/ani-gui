@@ -30,11 +30,13 @@
 //!
 //! A failsafe for the naming: when nothing offers and the releases
 //! read carry files, none of which any packaged platform recognises,
-//! the lookup takes the naming to have changed and offers the newest
-//! release by version alone, under the same draft and pre-release
-//! rules, with a warning in the log. A release whose recognisable
-//! files are another platform's is still skipped, and releases with
-//! no files at all do not trigger it.
+//! the lookup takes the naming to have changed and offers what it
+//! offered before it read files, with a warning in the log: with
+//! pre-releases counted, the newest published release on the page;
+//! without, the latest full release. A release with no files is never
+//! offered this way, and releases with no files at all do not trigger
+//! it. A release whose recognisable files are another platform's is
+//! still skipped.
 //!
 //! Failures (network down, GitHub rate limit, malformed payload)
 //! collapse to `None` so the renderer can branch on a single
@@ -207,9 +209,9 @@ fn select_release(
 ///
 /// When neither offers anything and the releases read carry files but
 /// none that any packaged platform recognises, the naming has changed
-/// rather than this platform having been skipped: the newest release
-/// is offered by version alone ([`newest_by_version`]), so a renamed
-/// package cannot silence every update.
+/// rather than this platform having been skipped: the release is
+/// chosen as before files were read ([`newest_by_version`]), so a
+/// renamed package cannot silence every update.
 fn offer(
     page: Vec<RawRelease>,
     latest: Option<RawRelease>,
@@ -227,7 +229,7 @@ fn offer(
     }
     tracing::warn!(
         "update check: no release read carries a file any packaged platform recognises; \
-         offering the newest release by version alone"
+         offering a release by version alone"
     );
     newest_by_version(page, latest, include_prereleases)
 }
@@ -240,18 +242,29 @@ fn naming_unrecognised(page: &[RawRelease], latest: Option<&RawRelease>) -> bool
     assets().next().is_some() && !assets().any(|a| Platform::ALL.iter().any(|p| p.carries(&a.name)))
 }
 
-/// The newest release under the draft and pre-release rules, files
-/// unread: the first on the page that counts, else the latest release
-/// if it is a full one.
+/// What the check offered before it read files, for when their naming
+/// is not recognised: with pre-releases counted, the newest published
+/// page release; without, the latest full release alone, as the
+/// `/releases/latest` request it made then. A release carrying no
+/// files has nothing to download and is passed over either way.
 fn newest_by_version(
     page: Vec<RawRelease>,
     latest: Option<RawRelease>,
     include_prereleases: bool,
 ) -> Option<ReleaseInfo> {
+    let has_files = |r: &RawRelease| !r.assets.is_empty();
+    let latest_full = || {
+        latest
+            .filter(|r| !r.prerelease && has_files(r))
+            .and_then(normalise)
+    };
+    if !include_prereleases {
+        return latest_full();
+    }
     page.into_iter()
-        .filter(|r| include_prereleases || !r.prerelease)
+        .filter(has_files)
         .find_map(normalise)
-        .or_else(|| latest.filter(|r| !r.prerelease).and_then(normalise))
+        .or_else(latest_full)
 }
 
 /// Fetch the newest release `platform` can install. Returns `None`
