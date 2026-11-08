@@ -10,7 +10,9 @@
  * recorded show changed ($lib/history/reread-linked.ts), publishing
  * what each row is now. Reads run one after another, each against the
  * history the one before left: a link and its undo, close together,
- * both reach the cards.
+ * both reach the cards. A row matched to another show forgets what was
+ * kept for the former one: a cap a failed resume of a one-episode
+ * special pinned as exact would hold the linked series at episode 1.
  *
  * The component holds the state; this decides what happens to it.
  */
@@ -31,6 +33,9 @@ export interface CardRelinkDeps {
 	setHistory: (rows: HistoryEntry[]) => void;
 	/** The row's match, as the first load resolves it. */
 	resolveMatch: (entry: HistoryEntry) => Promise<KitsuAnimeRef | null>;
+	/** Drops what was kept for the row's former show — the cap a click
+	 *  pinned, the count a probe found. */
+	forget: (row: string) => void;
 	/** Publishes the row's match. A row whose match failed has none. */
 	publish: (row: string, match: KitsuAnimeRef | null) => void;
 }
@@ -46,11 +51,14 @@ export interface CardRelink {
 export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 	let reads: Promise<unknown> = Promise.resolve();
 
+	// A row matched to another show forgets the former one's cap, then
+	// takes its new match.
 	const rematch = (h: HistoryEntry) => {
-		void deps.resolveMatch(h).then(
-			(match) => deps.publish(h.id, match),
-			() => deps.publish(h.id, null)
-		);
+		const settle = (match: KitsuAnimeRef | null) => {
+			deps.forget(h.id);
+			deps.publish(h.id, match);
+		};
+		void deps.resolveMatch(h).then(settle, () => settle(null));
 	};
 
 	const readOnce = async () => {

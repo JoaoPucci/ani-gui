@@ -486,6 +486,12 @@
 		},
 		// rowTrust is declared further down: read it at the call.
 		resolveMatch: (h) => rowTrust.resolveMatch(h),
+		forget: (id) => {
+			capAuthority.forget(id);
+			const { [id]: _former, ...counts } = historyPlayableCounts;
+			void _former;
+			historyPlayableCounts = counts;
+		},
 		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true)
 	});
 	/** The card that stands for the history row `row`. */
