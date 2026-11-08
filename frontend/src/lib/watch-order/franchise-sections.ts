@@ -7,6 +7,7 @@
  */
 import type { WatchOrder } from './by-start';
 import { progressOf, progressShare } from './entry';
+import { gatherUnplaced } from './no-clear-place';
 import { pathNote, placement, type Segment } from './order';
 import type { EntryProgress, Progress, WatchEntry, WatchRun } from './types';
 
@@ -74,42 +75,13 @@ function sectionOf(ctx: RowContext, seg: Segment): FranchiseSection {
 }
 
 /**
- * The titles of `rows` with no clear place: no number, and either no
- * note or a note leading into a title with no clear place itself.
- */
-function noClearPlace(ctx: RowContext, rows: readonly FranchiseRow[]): Set<string> {
-	const leads = new Map<string, string>();
-	for (const r of rows) {
-		const note = pathNote(ctx.run, r.entry.id, ctx.order);
-		if (note?.kind === 'leads-into') leads.set(r.entry.id, note.entry.id);
-	}
-	const unnumbered = rows.filter((r) => r.position === null).map((r) => r.entry.id);
-	const loose = new Set(unnumbered.filter((id) => !leads.has(id)));
-	for (let grew = true; grew; ) {
-		grew = false;
-		for (const id of unnumbered) {
-			if (loose.has(id) || !loose.has(leads.get(id)!)) continue;
-			loose.add(id);
-			grew = true;
-		}
-	}
-	return loose;
-}
-
-/**
  * The main story's sections, from the run's segments. The titles with
  * no clear place leave their lines and gather in one stretch at the
  * end, under its heading, so nothing numbered follows it.
  */
 export function mainStory(ctx: RowContext, segs: readonly Segment[]): FranchiseSection[] {
-	const sections = segs.map((seg) => sectionOf(ctx, seg));
-	const lineRows = sections.flatMap((s) => (s.kind === 'line' ? s.rows : []));
-	const loose = noClearPlace(ctx, lineRows);
-	const placed = sections
-		.map((s) =>
-			s.kind === 'line' ? { ...s, rows: s.rows.filter((r) => !loose.has(r.entry.id)) } : s
-		)
-		.filter((s) => s.kind !== 'line' || s.rows.length > 0);
-	const rest = lineRows.filter((r) => loose.has(r.entry.id));
-	return rest.length > 0 ? [...placed, { kind: 'line', rows: rest, unplaced: true }] : placed;
+	return gatherUnplaced(
+		ctx,
+		segs.map((seg) => sectionOf(ctx, seg))
+	);
 }
