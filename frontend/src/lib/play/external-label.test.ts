@@ -28,7 +28,7 @@ const EXPECTED: Record<Locale, Record<ExternalPlayerKind, string>> = {
 		mpv: 'Abrir en mpv',
 		vlc: 'Abrir en VLC',
 		iina: 'Abrir en IINA',
-		custom: 'Abrir en reproductor externo'
+		custom: 'Abrir en el reproductor externo'
 	},
 	ru: {
 		mpv: 'Открыть в mpv',
