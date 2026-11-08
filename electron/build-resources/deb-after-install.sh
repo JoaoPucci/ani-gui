@@ -1,10 +1,12 @@
 #!/bin/sh
 # .deb postinst hook — runs as root after dpkg lays down /opt/ani-gui/.
 #
-# Every path is prefixed with $DPKG_ROOT, which dpkg sets to the root
-# it installs into: empty for a normal install, a directory for
-# `dpkg --root`. Link targets stay unprefixed, because they are read
-# from inside that root.
+# Every file path is prefixed with $DPKG_ROOT. dpkg leaves it empty for
+# a normal install, and for `dpkg --root`, which runs this script in a
+# chroot; only `--force-script-chrootless` sets it to the target root.
+# Link targets stay unprefixed, because they are read from inside that
+# root. Loading the AppArmor profile acts on the running kernel either
+# way, as dh_apparmor's own snippet does.
 
 set -e
 
@@ -31,8 +33,9 @@ fi
 # the installed binary Chromium falls through to the setuid helper.
 # The profile grants `userns` to /opt/ani-gui/ani-gui.bin (the ELF the
 # /opt/ani-gui/ani-gui wrapper starts), and nothing else: it is
-# unconfined otherwise, the shape Ubuntu ships for Chrome, VS Code and
-# Signal. The path is root-owned, so no other program can borrow it.
+# unconfined otherwise, with the rules Ubuntu's own profiles for Chrome,
+# VS Code and Obsidian carry. The path is root-owned, so no other
+# program can borrow it.
 #
 # Written only where AppArmor ships ABI 4.0, the first that knows the
 # `userns` rule: an older AppArmor (Debian 12's 3.0) could not parse
@@ -53,6 +56,7 @@ include <tunables/global>
 
 profile ani-gui /opt/ani-gui/ani-gui.bin flags=(unconfined) {
   userns,
+  @{exec_path} mr,
 
   # Site-specific additions and overrides. See local/README for details.
   include if exists <local/ani-gui>
