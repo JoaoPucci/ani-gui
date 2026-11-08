@@ -42,7 +42,7 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
 const WAITING =
-	'Waiting for your system keyring. Your accounts load as soon as it answers; unlock it if it asks.';
+	'Waiting for your system keyring. Your accounts will load as soon as it answers. Unlock it if asked.';
 
 const ACCOUNT: PersistedAccount = {
 	access_token: 'al-bearer',
