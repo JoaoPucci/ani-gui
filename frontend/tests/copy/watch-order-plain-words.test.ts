@@ -4,6 +4,10 @@
 // viewer sees or hears may use them, in any locale. Portuguese also
 // keeps "ligado" out: next to "Por vínculo" it reads as "switched on".
 //
+// The lists name the words known to have been used, with their
+// plurals; they are not a full vocabulary check, so a new synonym of
+// one of these terms gets past it.
+//
 // Reads the namespace sources as data, like the other copy pins here.
 
 import { readFileSync } from 'node:fs';
@@ -14,10 +18,12 @@ import { describe, it, expect } from 'vitest';
 const LOCALES = ['en', 'pt-BR', 'es-419', 'ru'] as const;
 
 const BANNED: Record<(typeof LOCALES)[number], RegExp> = {
-	en: /\b(run|runs|entry|entries|loop|loops|fork|forks|join|joins)\b/i,
-	'pt-BR': /\b(sequência|ciclo|entrada|ligad[oa]s?)\b/i,
-	'es-419': /\b(secuencia|ciclo|entrada)\b/i,
-	ru: /(цепоч|круг|запис)/i
+	en: /\b(runs?|entry|entries|loops?|forks?|joins?)\b/i,
+	'pt-BR': /\b(sequências?|ciclos?|entradas?|ligad[oa]s?|bifurca\w*|ramifica\w*|junç(ão|ões))\b/iu,
+	'es-419': /\b(secuencias?|ciclos?|bucles?|entradas?|bifurca\w*|ramifica\w*|unión|uniones)\b/iu,
+	// Stems, since \b knows only ASCII letters; "круг" is anchored so
+	// "вокруг" (around) is not caught.
+	ru: /(цепоч|(^|[^а-яё])круг|цикл|петл|развилк|запис)/iu
 };
 
 /** Every text a message can show: plain strings and each plural variant. */
