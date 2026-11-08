@@ -18,16 +18,20 @@
 # it raw, which a search for `ipcMain.on(` could not see. So the rule
 # is on getting hold of them, not on the call that registers.
 #
-# Specifically, outside `electron/lib/ipc-guard.cjs`, no main-process
-# source under `electron/` (`*.js`, `*.cjs`, `*.mjs`; tests,
-# `node_modules` and `dist` excluded) contains, anywhere on a line,
-# comments and strings included:
+# Specifically, outside `electron/lib/ipc-guard.cjs`, no source under
+# `electron/` (`*.js`, `*.cjs`, `*.mjs`, main process, preload, splash
+# page and build scripts alike; tests, `node_modules` and `dist`
+# excluded) contains, anywhere on a line, comments and strings
+# included:
 #
 #   - the text `ipcMain` — no import, destructure, parameter or member
 #     access of it;
-#   - a member named `ipc` (`.ipc` not followed by a name character) —
-#     the per-contents and per-frame IPC objects (`webContents.ipc`,
-#     `webFrameMain.ipc`), which Electron consults before ipcMain;
+#   - a member named `ipc` — `.ipc`, with or without spaces after the
+#     dot, or `["ipc"]` in any quotes, not followed by a name
+#     character — the per-contents and per-frame IPC objects
+#     (`webContents.ipc`, `webFrameMain.ipc`), which Electron consults
+#     before ipcMain. Prose or a string such as `socket.ipc` matches as
+#     well, and fails the check;
 #   - the name of the `ipc-message` or `ipc-message-sync` event, which
 #     a webContents emits for every message it receives.
 #
@@ -35,7 +39,10 @@
 # not. What it does NOT establish, and cannot without a JavaScript
 # parser: a name assembled at runtime (`electron["ipc" + "Main"]`), the
 # per-contents object taken by destructuring (`const { ipc } =
-# win.webContents`), or the event's name built from pieces. A green run
+# win.webContents`) or through `Reflect.get(contents, "ipc")`, a member
+# access split across lines (`webContents.` on one line, `ipc` on the
+# next) — grep reads a line at a time — or the event's name built from
+# pieces. A green run
 # says no file names these objects in the spelled-out forms above, not
 # that no file reaches them at all. At runtime, the e2e case "every IPC
 # channel refuses a sender that is not the app's document" calls every
@@ -60,7 +67,7 @@ if [ ! -f "$WRAPPER" ]; then
     exit 1
 fi
 
-pattern='ipcMain|[.]ipc([^[:alnum:]_$]|$)|ipc-message'
+pattern='ipcMain|([.][[:space:]]*ipc|\[[[:space:]]*["'"'"'`]ipc["'"'"'`][[:space:]]*\])([^[:alnum:]_$]|$)|ipc-message'
 
 hits=$(find electron -path electron/node_modules -prune -o -path electron/dist -prune -o \
     -type f \( -name '*.js' -o -name '*.cjs' -o -name '*.mjs' \) \

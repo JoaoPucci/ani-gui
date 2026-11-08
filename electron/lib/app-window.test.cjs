@@ -60,6 +60,8 @@ test("the app's window is made with the app's own dark background, the splash's 
   assert.deepEqual([o.width, o.height], [1920, 1048]);
   assert.equal(o.webPreferences.preload, "p");
   assert.equal(o.webPreferences.contextIsolation, true);
+  // A file or link dropped on the window does not become a navigation.
+  assert.equal(o.webPreferences.navigateOnDragDrop, false);
 });
 
 let ids = 0;
