@@ -28,42 +28,13 @@ const http = require("node:http");
 const OAUTH_CALLBACK_PORT = 53682;
 const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
 
-const SUCCESS_PAGE = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>ani-gui</title>
-<style>
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: #0f0f10; color: #f5f5f4; display: grid; place-items: center;
-         min-height: 100vh; padding: 2rem; }
-  main { text-align: center; max-width: 28rem; }
-  h1 { font-weight: 600; margin: 0 0 .75rem; }
-  p { opacity: .7; line-height: 1.5; margin: 0; }
-  .check { font-size: 3rem; margin-bottom: 1rem; }
-</style></head>
-<body><main>
-  <div class="check">✓</div>
-  <h1>Connected to ani-gui</h1>
-  <p>You can close this tab and return to the app.</p>
-</main></body></html>`;
-
-const ERROR_PAGE = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>ani-gui</title>
-<style>
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: #0f0f10; color: #f5f5f4; display: grid; place-items: center;
-         min-height: 100vh; padding: 2rem; }
-  main { text-align: center; max-width: 28rem; }
-  h1 { font-weight: 600; margin: 0 0 .75rem; }
-  p { opacity: .7; line-height: 1.5; margin: 0; }
-  .x { font-size: 3rem; margin-bottom: 1rem; color: #c44; }
-</style></head>
-<body><main>
-  <div class="x">×</div>
-  <h1>Connection failed</h1>
-  <p>The authorisation was declined or returned an error. Close this tab and try again from ani-gui.</p>
-</main></body></html>`;
+const { oauthPage } = require("./lib/oauth-pages.cjs");
 
 /**
- * Start the OAuth callback server. Returns a handle with:
+ * Start the OAuth callback server. `locale` picks the language of the
+ * page the browser lands on after a sign-in (lib/oauth-pages.cjs); the
+ * caller passes the main process's resolved locale. Returns a handle
+ * with:
  *
  *   - `ready`: Promise resolving when the socket is bound + accepting
  *     (the `listening` event has fired). Rejects on EADDRINUSE before
@@ -93,7 +64,7 @@ const LOOPBACK_HOSTS = ["127.0.0.1", "::1"];
 // either — tolerating the bind error is symmetric with the resolver.
 const FAMILY_UNAVAILABLE_CODES = new Set(["EADDRNOTAVAIL", "EAFNOSUPPORT"]);
 
-function startOAuthServer() {
+function startOAuthServer({ locale = "en" } = {}) {
   let servers = [];
   let timer = null;
   let resolveFn = null;
@@ -156,7 +127,7 @@ function startOAuthServer() {
     const error = url.searchParams.get("error");
     if (error) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(ERROR_PAGE);
+      res.end(oauthPage("failed", locale));
       shutdown();
       rejectFn(new Error(`oauth_error: ${error}`));
       return;
@@ -168,7 +139,7 @@ function startOAuthServer() {
       return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(SUCCESS_PAGE);
+    res.end(oauthPage("connected", locale));
     shutdown();
     resolveFn({ code, state });
   }

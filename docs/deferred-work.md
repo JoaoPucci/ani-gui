@@ -536,12 +536,6 @@ starting it, and delete it when you find it done.
   ("dragon ball" is 3 pages, "gundam" 9), bounded by the deepest
   offset a search walks to.
 - **Update notifier is not resilient to GitHub rate limits.**
-- **The OAuth callback pages still speak English whatever the app's
-  language.** The pages the OAuth callback server answers the browser
-  with after a sign-in — "Connected to ani-gui", "Connection failed" —
-  are written into `electron/oauth-server.js`; the main process has a
-  message table in every shipped locale for its dialogs
-  (`electron/lib/main-messages.cjs`), and they belong in it.
 - **Adopt the `documentPictureInPicture` browser API** for the player's
   pop-out window. Not a request to write documentation — "Document
   Picture-in-Picture" is the W3C API's name.
