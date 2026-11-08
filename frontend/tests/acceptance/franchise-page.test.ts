@@ -48,8 +48,8 @@ const entry = (id: string, title: string, subtype: string, start: string, episod
 
 // Link order: Origins → Saga → Second Arc → Final Arc. Origins came
 // out after Second Arc, so release order puts it third.
-const ORIGINS = entry('5', 'Saga: Origins', 'OVA', '2013-04-01', 2);
-const SAGA = entry('10', 'Saga (TV)', 'TV', '2010-01-01');
+const ORIGINS = entry('5', 'Saga: Origins (OVA)', 'OVA', '2013-04-01', 2);
+const SAGA = entry('10', 'Saga', 'TV', '2010-01-01');
 const SECOND = entry('42', 'Saga: Second Arc', 'TV', '2012-01-01');
 const FINAL = entry('50', 'Saga: Final Arc', 'TV', '2014-01-01');
 const REMAKE = entry('70', 'Saga (2020)', 'TV', '2020-01-01', 24);
@@ -146,8 +146,9 @@ describe('franchise page', () => {
 		useFranchise();
 		app = mount(FranchisePage, { target });
 		await until(() => title() !== '', 'the masthead');
-		// "(TV)" goes: no other title reads "Saga".
-		expect(title()).toBe('Saga');
+		// The first title in link order is Origins, the prequel. Its
+		// "(OVA)" goes: no other title reads "Saga: Origins".
+		expect(title()).toBe('Saga: Origins');
 		expect(target.textContent).toContain(m.watchorder_franchise_eyebrow());
 		expect(target.textContent).toContain(m.watchorder_franchise_count({ count: 8 }));
 	});
