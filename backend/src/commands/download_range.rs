@@ -130,9 +130,7 @@ where
         super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode).await;
     let remembered = at_start.remembered();
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
-    let locale = crate::config::read_config(&state.config_path)
-        .unwrap_or_default()
-        .locale;
+    let locale = args.ordering_locale(&state.config_path);
     // Every listing the start picks is recorded, whether or not its
     // first episode serves.
     let recorder = crate::commands::listing_tags::Recorder::new(state);

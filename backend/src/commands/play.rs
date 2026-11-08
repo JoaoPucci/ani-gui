@@ -134,6 +134,14 @@ pub struct PlayArgs {
     /// when none is.
     #[serde(default)]
     pub caption: Option<String>,
+    /// The locale the renderer runs in, which the built-in player
+    /// starts by. It wins over `config.toml`'s, which the renderer
+    /// adopts only when it is one of the app's own locales. Empty when
+    /// the renderer resolved none, which names no language, as the
+    /// built-in player reads it. `None` from a caller that names none,
+    /// which orders by the configured one.
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 impl PlayArgs {
@@ -173,12 +181,26 @@ impl PlayArgs {
         })
     }
 
-    /// What the viewer wants of a listing, with `locale` the UI's.
+    /// What the viewer wants of a listing: the renderer's locale, or
+    /// `configured` (`config.toml`'s) when the request names none.
     #[must_use]
-    pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
+    pub fn wanted<'a>(
+        &'a self,
+        configured: &'a str,
+    ) -> crate::scraper::track_preference::Wanted<'a> {
         crate::scraper::track_preference::Wanted {
             remembered: self.caption.as_deref().filter(|c| *c != "off"),
-            locale,
+            locale: self.locale.as_deref().unwrap_or(configured),
+        }
+    }
+
+    /// Whom a cached row's check reads tracks for
+    /// ([`crate::commands::play_cache::Viewer`]).
+    #[must_use]
+    pub(crate) fn viewer(&self) -> crate::commands::play_cache::Viewer<'_> {
+        crate::commands::play_cache::Viewer {
+            remembered: self.caption.as_deref(),
+            locale: self.locale.as_deref(),
         }
     }
 
@@ -400,8 +422,7 @@ where
     let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
-            if let Some(mut resp) = try_serve_cached(state, &cached, args.caption.as_deref()).await
-            {
+            if let Some(mut resp) = try_serve_cached(state, &cached, args.viewer()).await {
                 resp.own_listing = args.lands_on_guess_row(&cached.show_id);
                 tracing::info!(
                     title = %args.title,
@@ -690,6 +711,7 @@ pub(crate) mod tests {
             kitsu_id in proptest::option::of("[a-z0-9-]{1,12}"),
         ) {
             let args = PlayArgs {
+                locale: None,
                 title,
                 episode,
                 mode,
@@ -759,6 +781,7 @@ pub(crate) mod tests {
     async fn the_exact_cap_stamp_derives_extras_with_no_prior_row() {
         let state = state_with_proxy_origin();
         let args = PlayArgs {
+            locale: None,
             title: "x".into(),
             episode: "3".into(),
             mode: "sub".into(),
@@ -832,6 +855,7 @@ pub(crate) mod tests {
             },
         );
         let args = PlayArgs {
+            locale: None,
             title: "x".into(),
             episode: "3".into(),
             mode: "sub".into(),
@@ -894,6 +918,7 @@ pub(crate) mod tests {
             crate::scraper::table_provider::TableProvider::new(),
         ));
         let mk = |title: &str| PlayArgs {
+            locale: None,
             title: title.into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -955,6 +980,7 @@ pub(crate) mod tests {
 
     fn uncached_args(title: &str) -> PlayArgs {
         PlayArgs {
+            locale: None,
             title: title.into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -1236,6 +1262,7 @@ pub(crate) mod tests {
         cached.show_title = "The Sequel".into();
         crate::commands::numbering_offset::put(&state, "the-sequel-88", 40);
         let args = PlayArgs {
+            locale: None,
             title: "The Sequel".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -1275,7 +1302,9 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached, None).await.is_none());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -1295,7 +1324,9 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        let resp = try_serve_cached(&state, &cached, None).await.expect("hit");
+        let resp = try_serve_cached(&state, &cached, Default::default())
+            .await
+            .expect("hit");
         // Session is freshly created, but the upstream + kind match.
         assert!(resp.media_url.contains("/file.mp4"));
         assert_eq!(resp.media_kind, MediaKind::Mp4);
@@ -1324,7 +1355,9 @@ pub(crate) mod tests {
             String::new(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached, None).await.is_none());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -1345,7 +1378,9 @@ pub(crate) mod tests {
             "https://allmanga.to".into(),
             MediaKind::Mp4,
         );
-        assert!(try_serve_cached(&state, &cached, None).await.is_some());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_some());
     }
 
     /// A sidecar track is signed like the stream and expires on its
@@ -1375,7 +1410,9 @@ pub(crate) mod tests {
         );
         cached.subtitles = vec![track("en", true, &format!("{}/subs/en.vtt", server.uri()))];
         assert!(
-            try_serve_cached(&state, &cached, None).await.is_none(),
+            try_serve_cached(&state, &cached, Default::default())
+                .await
+                .is_none(),
             "a dead track is a dead row"
         );
     }
@@ -1440,7 +1477,7 @@ pub(crate) mod tests {
                 &state,
                 &row(&stalling),
                 deadline,
-                None,
+                Default::default(),
             ),
         )
         .await
@@ -1473,7 +1510,10 @@ pub(crate) mod tests {
             tokio::time::timeout(
                 std::time::Duration::from_secs(10),
                 crate::commands::play_cache::cached_row_is_live_within(
-                    &state, &again, deadline, None,
+                    &state,
+                    &again,
+                    deadline,
+                    Default::default(),
                 ),
             ),
             stalled_again.asked(),
@@ -1520,7 +1560,9 @@ pub(crate) mod tests {
             track("en", true, &format!("{}/subs/en.vtt", server.uri())),
             track("es", false, &format!("{}/subs/es.vtt", server.uri())),
         ];
-        assert!(try_serve_cached(&state, &cached, None).await.is_some());
+        assert!(try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_some());
         let asked: Vec<String> = server
             .received_requests()
             .await
@@ -1537,6 +1579,7 @@ pub(crate) mod tests {
 
     fn external_args(title: &str, episode: &str) -> PlayArgs {
         PlayArgs {
+            locale: None,
             title: title.into(),
             episode: episode.into(),
             mode: "sub".into(),
@@ -1692,6 +1735,7 @@ pub(crate) mod tests {
         let mut state = state;
         state.history_path = td.path().join("history");
         let args = PlayArgs {
+            locale: None,
             title: "Recap Show".into(),
             episode: "3.5".into(),
             mode: "sub".into(),
@@ -1740,6 +1784,7 @@ pub(crate) mod tests {
         let mut state = state_with_proxy_origin();
         state.history_path = tmp.path().join("history");
         let args = PlayArgs {
+            locale: None,
             title: "Recap Show".into(),
             episode: "24.5".into(),
             mode: "sub".into(),
@@ -2196,6 +2241,7 @@ pub(crate) mod tests {
     #[test]
     fn play_args_quality_defaults_to_best() {
         let args = PlayArgs {
+            locale: None,
             title: "test".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -2350,6 +2396,7 @@ pub(crate) mod tests {
         // told about.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Race Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -2417,6 +2464,7 @@ pub(crate) mod tests {
         // TTL and target episodes the provider has not listed.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Cap Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
@@ -2471,6 +2519,7 @@ pub(crate) mod tests {
         // back to the primary's clean miss.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Dub Show".into(),
             episode: "1".into(),
             mode: "dub".into(),
@@ -2530,6 +2579,7 @@ pub(crate) mod tests {
         // count self-heals via the next mode-aware probe.
         let state = std::sync::Arc::new(state_with_proxy_origin());
         let args = PlayArgs {
+            locale: None,
             title: "Dub Show".into(),
             episode: "1".into(),
             mode: "dub".into(),
