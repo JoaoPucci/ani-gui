@@ -242,6 +242,42 @@ async fn a_refused_play_clears_a_stale_id_the_title_disagrees_with() {
     assert_eq!(row_id(&state, &watch.show_id), None);
 }
 
+/// A refused watch never takes away the id the user linked the row to:
+/// the user named the show, and the stream's title doubting it is what
+/// the link overrules. A guessed card linked from its player plays its
+/// later episodes naming the link, and a Continue click on the linked
+/// card names it too: either watch would otherwise turn the card back
+/// into a guess. The mapping is still not written.
+#[tokio::test]
+async fn a_refused_play_keeps_the_id_the_user_linked() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    cache_detail(&state, "44294", "jojo-no-kimyou-na-bouken-stone-ocean");
+    let watch = part_two();
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: watch.show_id.clone(),
+            title: watch.title.clone(),
+            watched_at: None,
+            kitsu_id: Some("44294".into()),
+            own_number: false,
+        },
+    )
+    .expect("seed row");
+    crate::commands::linked_note::record(&state, &watch.show_id, "44294").expect("note");
+
+    record_watch(&state, &watch, Some("44294")).await;
+
+    assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("44294"));
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &watch.show_id).expect("mapping"),
+        None
+    );
+}
+
 /// A refused play leaves a recorded id the title agrees with.
 #[tokio::test]
 async fn a_refused_play_keeps_an_id_the_title_agrees_with() {

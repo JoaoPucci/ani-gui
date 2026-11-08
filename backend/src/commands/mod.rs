@@ -157,3 +157,7 @@ mod guessed_from_test;
 #[cfg(test)]
 #[path = "guess_guard_test.rs"]
 mod guess_guard_test;
+
+#[cfg(test)]
+#[path = "linked_note_test.rs"]
+mod linked_note_test;

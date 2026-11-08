@@ -499,3 +499,62 @@ async fn the_group_route_answers_the_rows_a_link_would_write() {
         serde_json::json!(["black-clover-77", "hianime:black-clover-949"])
     );
 }
+
+#[tokio::test]
+async fn a_link_notes_the_rows_it_linked_and_its_undo_drops_the_note() {
+    let (_tmp, _mock, state) = setup(200).await;
+    let note = |row: &str| crate::commands::linked_note::linked(&state, row);
+    let outcome = link(
+        &state,
+        &args(&["hianime:black-clover-949", "black-clover-77"], LINKED),
+    )
+    .await
+    .expect("link");
+    assert_eq!(note("hianime:black-clover-949").as_deref(), Some(LINKED));
+    assert_eq!(note("black-clover-77").as_deref(), Some(LINKED));
+    assert_eq!(note("hianime:gintama-1237"), None);
+
+    // The card's row is watched as the linked show since: its undo keeps it.
+    crate::history::upsert_and_write(
+        &state.history_path,
+        row(
+            "2",
+            "hianime:black-clover-949",
+            "Black Clover",
+            Some(1_793_000_000_000),
+            Some(LINKED),
+        ),
+    )
+    .unwrap();
+    unlink(
+        &state,
+        &UnlinkArgs {
+            kitsu_id: LINKED.into(),
+            rows: outcome.linked,
+        },
+    )
+    .expect("unlink");
+    assert_eq!(note("hianime:black-clover-949").as_deref(), Some(LINKED));
+    assert_eq!(note("black-clover-77"), None);
+}
+
+#[tokio::test]
+async fn forgetting_a_row_drops_its_link_note() {
+    let (_tmp, _mock, state) = setup(200).await;
+    link(&state, &args(&["hianime:black-clover-949"], LINKED))
+        .await
+        .expect("link");
+    crate::commands::history_forget::forget_show(
+        &state,
+        "hianime:black-clover-949",
+        "Black Clover",
+        Some(LINKED),
+        &[],
+        &std::collections::HashSet::new(),
+    )
+    .expect("forget");
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, "hianime:black-clover-949"),
+        None
+    );
+}
