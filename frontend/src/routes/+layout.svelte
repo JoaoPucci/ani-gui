@@ -55,6 +55,7 @@
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { signInToastCopy } from '$lib/account/sign-in-toast-copy';
 	import { needsRenewalRetry, RenewalRetry } from '$lib/account/renewal-retry';
+	import { KeyringWaitNotice } from '$lib/account/keyring-wait';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
@@ -182,6 +183,18 @@
 		renewalRetry.sync();
 	});
 
+	// Keyring notice: pinned while a saved sign-in's keyring read runs
+	// past its wait (see `$lib/account/keyring-wait`), so a signed-out
+	// home is not taken for a lost sign-in; down when the read settles.
+	const keyringWaitNotice = new KeyringWaitNotice();
+	$effect(() => {
+		keyringWaitNotice.sync(accountStore.keyringWaiting, {
+			push: () =>
+				toastStore.push({ kind: 'info', duration: null, message: m.account_keyring_waiting() }),
+			dismiss: (id) => toastStore.dismiss(id)
+		});
+	});
+
 	let topbarQuery = $state('');
 	let topbarInputEl: HTMLInputElement | undefined = $state();
 
@@ -231,13 +244,13 @@
 		// only `/account/+page.svelte` called this, which meant a cold
 		// launch directly to `/` left the rail blank for connected
 		// users until they visited Accounts first.
-		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
-		// the time the home page mounts the store is fully populated.
-		// hydrate() seeds the store from safeStorage AND kicks off a
-		// silent refresh of any expired-but-refreshable token (e.g. MAL's
-		// ~1h access token), so the user isn't pushed through OAuth every
-		// hour.
-		accountStore.hydrate();
+		// `hydrate()` is asynchronous: the keyring may be locked or slow
+		// to answer, and the page renders signed out until it does —
+		// every consumer reads the store reactively. hydrate() seeds the
+		// store from the OS keyring AND kicks off a silent refresh of any
+		// expired-but-refreshable token (e.g. MAL's ~1h access token), so
+		// the user isn't pushed through OAuth every hour.
+		void accountStore.hydrate();
 
 		// Update notifier — one-shot check on app open. Routes
 		// through the local backend (`/api/update-check`); the
@@ -888,12 +901,15 @@
 			flex-wrap: wrap;
 		}
 	}
+	/* The small rail link steps down to the faintest text tier rather
+	   than fading with opacity: bone-300 at 0.6 read 3.8:1, short of
+	   WCAG AA for its label. */
 	.nav li.small .nav-link {
-		opacity: 0.6;
+		color: var(--bone-400);
 	}
 	.nav li.small .nav-link:hover,
 	.nav li.small .nav-link.active {
-		opacity: 1;
+		color: var(--bone-100);
 	}
 
 	.nav-link {
@@ -1276,9 +1292,9 @@
 		display: none;
 	}
 	.topbar-search input::placeholder {
-		/* Lift placeholder from bone-400 to a brighter color-mix so
-		   the call-to-action ("Search anime…") is legible at the
-		   bumped 16px size. */
+		/* The call-to-action ("Search anime…") at the bumped 16px
+		   size. Bone-100 at 55% clears WCAG AA (4.5:1) on every ink
+		   surface; tests/lint/text-contrast.test.ts holds it there. */
 		color: color-mix(in oklab, var(--bone-100) 55%, transparent);
 		font-weight: 400;
 	}
