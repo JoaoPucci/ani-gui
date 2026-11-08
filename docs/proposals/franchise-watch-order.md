@@ -1,10 +1,14 @@
 # Proposal: watch order — what comes before, what comes next, and the franchise around a show
 
-**Status**: proposed as the main feature of the 0.19.0 release. The
-product questions are decided (section 6); the design questions are
-open (section 5). Nothing below is built. The research was done on
-2026-11-01; the live samples it quotes describe the catalogues on that
-day and will drift.
+**Status**: built as the main feature of the 0.19.0 release. The
+product questions are decided (section 6) and so are the design
+questions (section 5): the app has the watch-order strip on the show
+page with its link to the franchise page, the "Watch order" setting,
+the player's "Up next" card at a finale, Continue Watching moving on
+to the next entry, and the franchise page. One card per franchise
+(option d) is not planned. The research was done on 2026-11-01; the
+live samples it quotes describe the catalogues on that day and will
+drift.
 
 ## The problem in plain terms
 
@@ -857,13 +861,13 @@ count per MyAnimeList id, through Kitsu's mappings, which the app
 already caches for 30 days).
 
 **Edge cases.** A run longer than the walk's bound (about 40 entries;
-the largest run sampled, *Monogatari*, has 16) ends with "showing 40
-of more"; Kitsu pages are cached for a week, so a second visit costs
-nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
-numbered path and the branches side by side; a join shows its earlier
-entries side by side above it; the entries of a cycle are listed as
-one unnumbered group, in air-date order, where the cycle sits in the
-run. Entries without a Kitsu id in the history (the hianime "Gintama
+the largest run sampled, *Monogatari*, has 16) ends with a note that
+there may be more titles; Kitsu pages are cached, so a second visit
+costs nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
+numbered path and the branches side by side; an entry that only leads
+into a join (*Gintama: The Semi-Final*) is listed with the title it
+leads into; the entries of a cycle are listed as one unnumbered group,
+along their links, where the cycle sits in the run. Entries without a Kitsu id in the history (the hianime "Gintama
 Season N" rows) contribute no progress.
 
 **Trackers.** Read-only.
@@ -1138,8 +1142,9 @@ them introduces a new widget style.
   show page. Under reduced motion it does not
   animate.
 - **When data is missing.**
-  - A bounded walk that stopped early: the list ends with a quiet
-    "Showing 40 of more" line.
+  - A bounded walk that stopped early, or a listing cut short: the
+    list ends with a quiet "There may be more titles than the ones
+    listed here." line.
   - A forked run: the numbered path continues as a list, and the
     branches stand side by side, unnumbered, from the fork.
   - Entries the provider lacks: listed normally.
@@ -1205,18 +1210,19 @@ and a warning on every strip, card and page.
 
 ### Phase 0: the mockups, surface by surface
 
-The mockups are drawn in the real app from fixture data: real Kitsu
+The mockups were drawn in the real app from fixture data: real Kitsu
 entries, with titles, formats, dates, episode counts and images as
 Kitsu served them on 2026-11-02, and made-up progress so every state
-shows. The runs are *Bleach* (a straight line, from the 2004 series to
+shows. The runs were *Bleach* (a straight line, from the 2004 series to
 the fourth *Thousand-Year Blood War* part), *Attack on Titan*, *JoJo*
 (long romanised titles), *Gintama* (a join at *The Final*), *Fate*
 seen from *Fate/Zero* (a fork) and *Monogatari* (a loop of ten
-entries, and *Off & Monster Season*'s undated special). They are
-turned on in Diagnostics; nothing is fetched or walked at runtime, and
-`frontend/src/lib/watch-order/mock/` is removed when the feature
-lands. Where a choice is real, the mockup offers two options; the
-recommendation follows each.
+entries, and *Off & Monster Season*'s undated special). They were
+turned on in Diagnostics, and nothing was fetched or walked at
+runtime. `frontend/src/lib/watch-order/mock/` and the Diagnostics
+switch were removed as each surface was built, the last of them with
+the franchise page. Where a choice was real, the mockup offered two
+options; the recommendation follows each.
 
 The rules below hold on every surface:
 
@@ -1562,26 +1568,16 @@ The third round revises the strip's footer only.
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
 
-### Open design questions
+### Decisions recorded (third review round)
 
-Each with a recommendation; the maintainer decides.
-
-1. **The stack's highlight.** Surface (recommended), underline or
-   border. Surface is the only one that marks the whole link as one
-   target, and it is the hover the strip's own tiles already use.
-   Underline marks only the label; border reads as a second framed
-   card beside the watching card, and under the focus ring as two
-   rings. The design critic agreed.
-2. **The footer.** Centred (recommended), on the centre line, or
-   opposite ends. Centred is what was asked for and holds at every
-   width; the centre-line version ties the pair to the strip's
-   columns but only fits side by side from about a 1210 px window,
-   and below that stacks them, centred. The design critic agreed.
-3. **The watching card's border.** In the centred footers the card
-   loses its resting border so it pairs with the stack (both bare at
-   rest, the same plate on hover and focus). Recommended: keep that;
-   the alternative is a border on both, which makes the stack read as
-   a second card. This one came from the design critic's review.
+1. **The stack's highlight: surface.** It is the only one of the
+   three that marks the whole link as one target, and it is the hover
+   the strip's own tiles already use.
+2. **The footer: centred.** It holds at every width; the centre-line
+   arrangement fits side by side only from about a 1210 px window.
+3. **The watching card's border: none at rest** in the centred
+   footer, so the card and the stack pair as two bare items that
+   take the same plate on hover and focus.
 
 ## 6. Recommendation and plan for 0.19.0
 

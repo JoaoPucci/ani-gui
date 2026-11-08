@@ -472,9 +472,6 @@ starting it, and delete it when you find it done.
   work is finding the causes, counting the occurrences across the
   catalogue, and choosing a source the list can trust.
 - **Localised content fetch** — synopsis and episode titles.
-- **Franchise and season grouping** across surfaces. A design is
-  proposed in
-  [`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md).
 - **Search has no sort *direction* control.** Sorting by relevance,
   year and rating ships, as do subtype filter chips; only
   ascending/descending is absent. Kitsu does the sorting, and it takes
