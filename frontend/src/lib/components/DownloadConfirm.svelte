@@ -662,7 +662,7 @@
 		color: var(--bone-300);
 	}
 	.dl-range-faint {
-		color: color-mix(in oklab, var(--bone-300) 60%, transparent);
+		color: var(--bone-400);
 		margin-inline-start: var(--space-1);
 	}
 	.dl-input {
