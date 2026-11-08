@@ -129,7 +129,7 @@
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
-	import HandoffCard from '$lib/watch-order/mock/HandoffCard.svelte';
+	import HandoffCard from '$lib/watch-order/HandoffCard.svelte';
 	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
 	import {
 		loadMockPrefs,

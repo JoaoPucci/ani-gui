@@ -1,11 +1,11 @@
 /**
  * Continue Watching's hand-offs.
- * Part of the mockups' views; `./view` gathers them.
+ * Part of the mockups' views; `./mock/view` gathers them.
  */
-import { MOCK_RUNS } from './fixtures';
-import { sequence, type WatchOrder } from '../order';
-import type { MockEntry, MockRun } from './types';
-import { upNextFor } from '../up-next';
+import { MOCK_RUNS } from './mock/fixtures';
+import { sequence, type WatchOrder } from './order';
+import type { MockEntry, MockRun } from './mock/types';
+import { upNextFor } from './up-next';
 
 export interface Handoff {
 	readonly run: MockRun;

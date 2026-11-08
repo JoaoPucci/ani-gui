@@ -16,7 +16,7 @@ export function entryIn(run: MockRun, id: string): MockEntry | null {
 	return all.find((e) => e.id === id) ?? null;
 }
 
-export { handoffs, type Handoff } from './handoff';
+export { handoffs, type Handoff } from '../handoff';
 export { currentIn } from '../strip-view';
 export { isUnaired, progressOf, progressShare, yearOf, type ProgressView } from '../entry';
 export { asRef, franchiseName } from './adapters';
