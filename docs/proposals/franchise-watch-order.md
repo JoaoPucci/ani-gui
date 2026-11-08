@@ -1260,19 +1260,20 @@ The rules below hold on every surface:
   (2006) → the UBW prologue → UBW as one sequence, though they are two
   ways on from *Fate/Zero 2nd Season*. So each branch opens with a key
   ("Way 1 of 2") and a hairline in the gap before it; a loop opens
-  with "Linked with 9 others, order unclear"; an entry that only
-  leads into a join says so ("Leads into 10", by the number of the
-  entry it leads into, since a title would not fit the key line). Every member of a
-  loop carries a rule over its poster that runs across the gaps, so
-  the loop reads as one stretch even where "You are here" takes its
-  key. Positions count
-  along the path to the run's first entry: *The Semi-Final*, which no
-  prequel reaches, has no number rather than a second "01". The key
-  line is reserved on every card, so titles share one baseline.
+  with "Linked with 9 others, order unclear"; an entry that only leads
+  into a join says so ("Leads into 10", by the number of the entry it
+  leads into, since a title would not fit the key line). Every member
+  of a loop carries a rule over its poster that runs across the gaps,
+  so the loop reads as one stretch even where "You are here" takes its
+  key. Positions count along the path to the run's first entry: *The
+  Semi-Final*, which no prequel reaches, has no number rather than a
+  second "01". The key line is reserved on every card, so titles share
+  one baseline.
 - **Missing data.** No run: no strip, no position in the masthead.
   First or last entry: "Nothing comes before this", "Nothing comes
   after this" in the empty column. Unknown date: "Date not announced"
-  in place of the year and count. An entry the provider lacks looks like any other.
+  in place of the year and count. An entry the provider lacks looks
+  like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1391,11 +1392,11 @@ variant below is one of the switch's options.
   position numeral is the strip's centre whichever side is longer. The
   grid has three rows (the keys, the join or fork line, the entries),
   so the three keys share one baseline whatever sits under them, and
-  the centre's two hairlines run through all three rows. An empty
-  side keeps its column, drops its key and says why it is empty
-  ("Nothing comes before this", "Nothing comes after this"), so the
-  numeral does not move at either end of a run. The centre column stays at every window
-  width; the first round hid it below 1100 px.
+  the centre's two hairlines run through all three rows. An empty side
+  keeps its column, drops its key and says why it is empty ("Nothing
+  comes before this", "Nothing comes after this"), so the numeral does
+  not move at either end of a run. The centre column stays at every
+  window width; the first round hid it below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
   radius. No border, blur, shadow or gradient. Its footer, under a
