@@ -69,6 +69,11 @@ cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 # ANSI escape stripping for spawned tools' output
 strip-ansi-escapes = "0.2"
 
+# minisign signature verification for the remote flags file: Ed25519
+# over a BLAKE2b-512 hash, pure Rust with no dependencies of its own, so
+# the packages carry nothing new on either platform.
+minisign-verify = "0.3.0"
+
 # URLs + bytes streaming
 url = "2.5"
 bytes = "1.7"
@@ -127,6 +132,10 @@ serde_urlencoded = "0.7"
 # without binding a real socket. Used by `api::tests`.
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+# Signs the flags file inside a test with minisign's own code, so the
+# verifier is checked against the real format rather than a vector this
+# repository built by hand. Throwaway keys made per run; never a real key.
+minisign = "0.10"
 
 [profile.release]
 opt-level = 3
