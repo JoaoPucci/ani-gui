@@ -133,6 +133,36 @@ describe('the band', () => {
 	});
 });
 
+describe('the band, at rest and under the pointer', () => {
+	// The band shows only on the row under the pointer or holding focus.
+	// At rest a banded row sits on the page, as a plain row does; the
+	// band's spacing stays in place at rest, so showing it changes the
+	// ground and moves nothing.
+	const BAND = ".strip[data-surface='band']";
+
+	it('sits on the page at rest, keeping the band’s spacing and its eased surface', () => {
+		const rest = rule(BAND);
+		expect(rest).toContain('--strip-surface: var(--ink-000);');
+		expect(rest).toContain('background: var(--strip-surface);');
+		expect(rest).toMatch(/padding-block: /);
+		expect(rest).toMatch(/margin-block-end: /);
+		expect(rest).toContain('transition: --strip-surface ');
+	});
+
+	it('shows the band while hovered or focused, changing nothing but the surface', () => {
+		expect(STYLE).toContain(`${BAND}:hover,\n\t${BAND}:focus-within {`);
+		const lit = rule(`${BAND}:focus-within`);
+		const declarations = lit
+			.slice(lit.indexOf('{') + 1)
+			.split(';')
+			.map((d) => d.trim())
+			.filter(Boolean);
+		expect(declarations).toEqual([
+			'--strip-surface: color-mix(in oklab, var(--bone-100) 6.5%, var(--ink-000))'
+		]);
+	});
+});
+
 describe('a header line in a right-to-left locale', () => {
 	it('fades its edges toward the side the row continues on', () => {
 		expect(rule('.strip-fade-start:dir(rtl)')).toContain('to left');
